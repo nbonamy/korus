@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 if (process.argv[2] === '--version') { console.log(fs.readFileSync(path.join(__dirname, 'version'), 'utf8')); process.exit(); }
-if (process.argv[2] === 'status') { console.log(JSON.stringify({ isAuthenticated: true })); process.exit(); }
+if (process.argv[2] === 'status') { console.log(fs.existsSync(path.join(__dirname, 'status.json')) ? fs.readFileSync(path.join(__dirname, 'status.json'),'utf8') : JSON.stringify({ isAuthenticated: true })); process.exit(); }
 if (process.argv[2] !== 'acp' || process.env.NO_OPEN_BROWSER !== '1' || process.env.CURSOR_API_KEY) process.exit(99);
 const log = value => fs.appendFileSync(path.join(__dirname, 'wire.jsonl'), JSON.stringify(value) + '\n');
 const historyFile = path.join(__dirname, 'history.json');

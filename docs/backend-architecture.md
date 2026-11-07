@@ -122,6 +122,9 @@ authentication changes. The renderer waits for a fresh read before showing store
 monetary balances and drops responses after the account or menu lifecycle changes.
 Explicit login owns a cancellable process group. Connection observations never
 enable Cursor, and new-work admission refreshes authentication before selection.
+Observed logout, expiry, account or team changes close cached native sessions and
+settle pending callbacks. Same-account reconnection can rehydrate only the saved
+workspace-validated session; a changed identity requires explicit history selection.
 Each agent owns a native `agent acp` process through the shared ACP connection.
 The host serializes prompts and projects text, thoughts and tool updates into a
 Cursor-owned revisioned replica. App developer instructions travel in prompt
@@ -148,7 +151,8 @@ unreported timestamps unknown. A presentation journal under the selected home
 restores authored prompt content and attachment parts only when native replay
 text exactly matches an admitted prompt. Workspace-filtered history listing
 does not create a session; explicit resume validates and hydrates its replacement
-before adopting it, and provides recovery from a lost process. Known team-switch and
+before adopting it, and provides recovery from a lost process. Stored message
+reads use validated replay without changing the active session or emitting usage. Known team-switch and
 policy markers produce fixed safe errors and disconnected observations; raw
 diagnostics and URLs are discarded.
 

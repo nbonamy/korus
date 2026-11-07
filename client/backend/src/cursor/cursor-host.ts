@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { normalizePromptContent, promptContentText } from '@codex-app-sdk/core/surface';
-import type { Agent, BackendSession, SendPromptOptions, ConversationListInput, ConversationSummary, ConversationResumeTarget } from '@workspace/core/contracts';
+import type { Agent, BackendSession, SendPromptOptions, ConversationListInput, ConversationSummary, ConversationResumeTarget, BackendConversationRef, RendererMessage } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
@@ -26,6 +26,11 @@ export class CursorHost implements AgentBackendDriver {
   private readonly sessions = new Map<string, CursorSession>();
   private readonly opening = new Map<string, { abort: AbortController; done: Promise<CursorSession> }>();
   private readonly resuming = new Set<string>();
+  private readonly readers = new Map<string, { abort: AbortController; done: Promise<RendererMessage[]> }>();
+  private observedIdentity?: string;
+  private authenticated = false;
+  private readonly sessionIdentities = new Map<string, string | undefined>();
+  private invalidating: Promise<unknown> = Promise.resolve();
   private readonly catalogs = new Map<string, { abort: AbortController; done: Promise<ConversationSummary[]> }>();
   private readonly generations = new Map<string, number>();
   private readonly queues = new Map<string, Promise<void>>();
@@ -38,12 +43,24 @@ export class CursorHost implements AgentBackendDriver {
   private readonly authentication;
   constructor(private readonly options: BackendDriverRegistryOptions = {}) {
     this.runtime = cursorRuntime(options.generalSettings?.providerHomes?.cursor);
-    this.authentication = new CursorAuthentication(payload => this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload }), this.runtime);
+    this.authentication = new CursorAuthentication(payload => {
+      const identity = JSON.stringify([payload.connected,payload.state.account?.email ?? null,payload.state.team ?? null]);
+      if (this.observedIdentity !== undefined && identity !== this.observedIdentity) {
+        const pending = this.invalidating;
+        for (const id of new Set([...this.sessions.keys(),...this.opening.keys(),...this.queues.keys()])) this.generations.set(id,(this.generations.get(id) ?? 0)+1);
+        for (const entry of this.opening.values()) entry.abort.abort();
+        for (const entry of this.readers.values()) entry.abort.abort();
+        for (const entry of this.catalogs.values()) entry.abort.abort();
+        this.invalidating = Promise.allSettled([pending,...[...this.sessions.values()].map(session => session.close())]);
+      }
+      this.observedIdentity = identity; this.authenticated = payload.connected;
+      this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload });
+    }, this.runtime);
   }
   authenticate(request: Parameters<CursorAuthentication['authenticate']>[0]) {
-    if (request.action !== 'check') return this.authentication.authenticate(request);
+    if (request.action !== 'check') return this.authentication.authenticate(request).then(async value => { await this.invalidating; return value; });
     if (this.checking) return this.checking;
-    const checking = this.authentication.authenticate(request).finally(() => { if (this.checking === checking) this.checking = undefined; });
+    const checking = this.authentication.authenticate(request).then(async value => { await this.invalidating; return value; }).finally(() => { if (this.checking === checking) this.checking = undefined; });
     this.checking = checking; return checking;
   }
   getRuntimeStatus() {
@@ -91,6 +108,26 @@ export class CursorHost implements AgentBackendDriver {
     await session.interrupt(expectedTurnId);
     return { backendSession: this.reference(session), turnId };
   }
+  async readConversationMessages(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]> {
+    if (ref.backend !== this.backend || this.closed) throw new Error('Invalid Cursor conversation reference.');
+    const current = this.sessions.get(agentId);
+    const cwd = ref.folder ?? path.join(backendHomeDir(), 'cursor-quick-chats', encodeURIComponent(agentId));
+    if (current?.sessionId === ref.sessionId) {
+      if (await realpath(cwd) !== await realpath(current.cwd)) throw new Error('Cursor conversation belongs to another workspace.');
+      return structuredClone(current.snapshot.messages);
+    }
+    const sessionId = ref.sessionId, abort = new AbortController(), id = randomUUID();
+    const done = (async () => {
+      const auth = await this.authenticate({action:'check'});
+      if (!auth.connected) throw new Error('Cursor is disconnected.');
+      const session = await CursorSession.open({agentId,cwd,runtime:this.runtime,sessionId,signal:abort.signal,changed:()=>{},disconnected:()=>{}});
+      try {
+        if (this.closed || abort.signal.aborted) throw new Error('Cursor history read was released.');
+        return structuredClone(session.snapshot.messages);
+      } finally { await session.close(); }
+    })().finally(() => this.readers.delete(id));
+    this.readers.set(id,{abort,done}); return done;
+  }
   async listConversations(agent: Agent, input?: ConversationListInput): Promise<ConversationSummary[]> {
     if (agent.backend !== this.backend || this.closed) throw new Error('Cursor history is unavailable.');
     const abort = new AbortController(), id = randomUUID();
@@ -122,7 +159,7 @@ export class CursorHost implements AgentBackendDriver {
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
       const previous = this.sessions.get(agent.id); await previous?.close();
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
-      this.sessions.set(agent.id, next); this.publishSnapshot(agent.id, next); return next;
+      this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, next); this.publishSnapshot(agent.id, next); return next;
     })().finally(() => { this.opening.delete(agent.id); this.resuming.delete(agent.id); });
     this.opening.set(agent.id, { abort, done });
     return { backendSession: this.reference(await done) };
@@ -157,6 +194,7 @@ export class CursorHost implements AgentBackendDriver {
   }
   async close(): Promise<void> {
     this.closed = true;
+    for (const reader of this.readers.values()) reader.abort.abort();
     for (const catalog of this.catalogs.values()) catalog.abort.abort();
     for (const opening of this.opening.values()) opening.abort.abort();
     await this.authentication.close();
@@ -164,16 +202,22 @@ export class CursorHost implements AgentBackendDriver {
     await Promise.allSettled([...this.opening.values()].map(value => value.done));
     await Promise.allSettled(this.queues.values());
     await Promise.allSettled([...this.catalogs.values()].map(value => value.done));
+    await Promise.allSettled([...this.readers.values()].map(value => value.done));
+    await this.invalidating;
     this.listeners.clear();
     this.usageListeners.clear();
   }
   private async ensure(agent: Agent): Promise<CursorSession> {
     const current = this.sessions.get(agent.id);
     if (current) {
-      if (current.isClosed) throw new Error('Cursor connection closed. Reconnect in Settings; history resume is not available yet.');
+      if (current.isClosed) {
+        if (!agent.backendSession) throw new Error('Cursor connection closed. A saved session reference is required.');
+        if (!this.authenticated) throw new Error('Cursor is disconnected. Sign in in Settings.');
+        if (this.sessionIdentities.get(agent.id) !== this.observedIdentity) throw new Error('Cursor account identity changed. Explicitly select a conversation from history.');
+      }
       if (agent.backendSession && (agent.backendSession.kind !== this.backend || agent.backendSession.sessionId !== current.sessionId)) throw new Error('Cursor conversation identity mismatch.');
       if (agent.folder && path.resolve(agent.folder) !== path.resolve(current.cwd)) throw new Error('Cursor conversation belongs to another workspace.');
-      return current;
+      if (!current.isClosed) return current;
     }
     if (agent.backendSession && agent.backendSession.kind !== this.backend) throw new Error('Cursor conversation identity mismatch.');
     const existing = this.opening.get(agent.id); if (existing) return existing.done;
@@ -188,7 +232,7 @@ export class CursorHost implements AgentBackendDriver {
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }
-      this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); return session;
+      this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); return session;
     })().catch(error => { this.disconnected(error instanceof Error ? error : new Error('Cursor session failed.')); throw error; }).finally(() => this.opening.delete(agent.id));
     this.opening.set(agent.id, { abort, done }); return done;
   }

@@ -155,6 +155,52 @@ describe('Cursor ACP host transport boundary', () => {
     expect(await pending).toBeInstanceOf(Error);
     expect(events.filter(event => event.type === 'cursor.conversationSnapshotChanged')).toStrictEqual([]);
   });
+  it('reads validated stored messages without replacing the live session or emitting execution frames', async () => {
+    const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    const before = events.length; const observations: unknown[] = []; host.onUsage!(value => observations.push(value));
+    const messages = await host.readConversationMessages!({backend:'cursor',folder:root,sessionId:'saved-session'},agent.id);
+    expect(JSON.stringify(messages)).toContain('Remember synthetic marker');
+    expect(events.slice(before).filter(event => event.type.startsWith('cursor.'))).toStrictEqual([]);
+    expect(observations).toStrictEqual([]);
+    await expect(host.readConversationMessages!({backend:'cursor',folder:root,sessionId:'foreign-session'},agent.id)).rejects.toThrow(/workspace/i);
+    await host.sendPrompt({...agent,backendSession:first.backendSession},'continue'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+  });
+  it.each([
+    {isAuthenticated:false},
+    {isAuthenticated:true,userInfo:{email:'new@example.invalid',teamName:'First'}},
+    {isAuthenticated:true,userInfo:{email:'first@example.invalid',teamName:'Second'}},
+  ])('invalidates cached sessions and pending callbacks on observed authentication identity changes (%j)', async status => {
+    await writeFile(path.join(root,'status.json'),JSON.stringify({isAuthenticated:true,userInfo:{email:'first@example.invalid',teamName:'First'}}));
+    await host.sendPrompt(agent,'extension');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    const request = (await snapshot()).clientRequests[0]!;
+    await writeFile(path.join(root,'status.json'),JSON.stringify(status));
+    await host.authenticate!({action:'check'});
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'decision',decision:'allow'}})).rejects.toThrow(/pending/i);
+    await expect(host.sendPrompt(agent,'must-not-run')).rejects.toThrow(/closed|reconnect/i);
+    expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
+  });
+  it('preserves the signed-out replica and rehydrates only the saved same-account reference after explicit sign-in', async () => {
+    const loggedIn = {isAuthenticated:true,userInfo:{email:'owner@example.invalid',teamName:'Team'}};
+    await writeFile(path.join(root,'status.json'),JSON.stringify(loggedIn));
+    const first = await host.sendPrompt(agent,'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    const saved = {...agent,backendSession:first.backendSession};
+    await writeFile(path.join(root,'status.json'),JSON.stringify({isAuthenticated:false})); await host.authenticate!({action:'check'});
+    const before = await snapshot();
+    await expect(host.sendPrompt(saved,'signed-out')).rejects.toThrow(/sign in|disconnected/i);
+    expect((await snapshot()).messages).toStrictEqual(before.messages);
+    await writeFile(path.join(root,'status.json'),JSON.stringify(loggedIn)); await host.authenticate!({action:'check'});
+    await expect(host.sendPrompt(agent,'missing-reference')).rejects.toThrow(/closed|reference/i);
+    await host.sendPrompt(saved,'recovered'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+    expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
+    await writeFile(path.join(root,'status.json'),JSON.stringify({isAuthenticated:true,userInfo:{email:'other@example.invalid',teamName:'Team'}})); await host.authenticate!({action:'check'});
+    await expect(host.sendPrompt(saved,'wrong-account')).rejects.toThrow(/account|identity/i);
+    expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(2);
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
