@@ -823,7 +823,9 @@ publishes only after saving.
   attempts use distinct worker conversations in the same repository worktree,
   with dependency-ready tickets executed within the Mission lead’s persisted dispatch
   plan. Available workers from
-  accepted tickets can be reused after their provider turn finishes. Shared files and Git
+  accepted tickets can be reused after their provider turn finishes. In one worker
+  per repository mode, the lead keeps the same member assignment across the
+  repository’s tickets to retain its worker conversation. Shared files and Git
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
