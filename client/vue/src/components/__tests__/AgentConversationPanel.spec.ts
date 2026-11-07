@@ -46,6 +46,13 @@ describe('AgentConversationPanel', () => {
       expect(wrapper.text()).toContain('Read synthetic.txt');
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
+      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
+        id: 'cursor-permission', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'Shell', summary: 'Run tests?', argumentsPreview: 'npm test', allowAlways: false, allowConversation: false } },
+      }] };
+      await flushPromises();
+      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Run tests?');
+      await wrapper.get('.codex-conversation-pane__footer').findAll('button').find(button => button.text() === 'Deny')!.trigger('click');
+      expect(actions.clientResponse).toHaveBeenCalledWith({ agentId: agent.id, id: 'cursor-permission', payload: { decision: 'deny' } });
     } finally { wrapper.unmount(); }
   });
   it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {

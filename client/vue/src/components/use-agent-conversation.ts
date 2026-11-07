@@ -12,7 +12,7 @@ import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
+import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
 
 export type AgentConversationActions = {
@@ -90,8 +90,8 @@ export function agentConversationState(view: () => AgentConversationView, extens
     thread: {
       get approvals() { return view().codexSnapshot?.approvals ?? view().approvals; },
       get clientRequests() {
-        const antigravity = view().antigravitySnapshot;
-        if (antigravity) return antigravityPaneClientRequests(antigravity);
+        const structured = view().cursorSnapshot ?? view().antigravitySnapshot;
+        if (structured) return providerPaneClientRequests(structured);
         return view().codexSnapshot?.clientRequests ?? claudePaneClientRequests(view().claudeSnapshot);
       },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },

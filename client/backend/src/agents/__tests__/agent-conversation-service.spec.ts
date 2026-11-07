@@ -106,11 +106,14 @@ describe('AgentConversationService', () => {
     expect(service.isStoredConversationRef({ backend: 'codex', threadId: 'thread-unknown' }, agent.id)).toBe(false);
   });
 
-  it('hydrates the session, refreshes workspace metadata, and synchronizes a generated title', async () => {
+  it.each(['codex', 'cursor', 'antigravity'] as const)('hydrates the %s session, refreshes workspace metadata, and synchronizes a generated title', async backend => {
     const { agent, driverRequest, persistSnapshot, refreshGitStatus, refreshWorkspaceIdentity, service } = createService();
+    agent.backend = backend;
+    agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'thread-root' } : { kind: backend, sessionId: 'session-root' };
+    const session = backend === 'codex' ? { kind: 'codex' as const, threadId: 'thread-hydrated' } : { kind: backend, sessionId: 'session-hydrated' };
     driverRequest.mockImplementation(async (_agent, method) => (
       method === backendMethods.driverConversationLoad
-        ? { kind: 'codex', threadId: 'thread-hydrated' }
+        ? session
         : undefined
     ));
 
@@ -118,7 +121,7 @@ describe('AgentConversationService', () => {
     service.setTitle(agent.id);
     await Promise.resolve();
 
-    expect(agent.backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-hydrated' });
+    expect(agent.backendSession).toStrictEqual(session);
     expect(persistSnapshot).toHaveBeenCalledOnce();
     expect(refreshWorkspaceIdentity).toHaveBeenCalledWith(agent.id);
     expect(refreshGitStatus).toHaveBeenCalledWith(agent.id);

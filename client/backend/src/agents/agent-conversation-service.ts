@@ -277,7 +277,7 @@ function isBackendSession(value: unknown): value is BackendSession {
   if (session.kind === 'codex') {
     return typeof session.threadId === 'string' && session.threadId.trim().length > 0;
   }
-  if (session.kind === 'antigravity') return typeof session.sessionId === 'string' && session.sessionId.trim().length > 0;
+  if (session.kind === 'antigravity' || session.kind === 'cursor') return typeof session.sessionId === 'string' && session.sessionId.trim().length > 0;
   return session.kind === 'claude' &&
     typeof session.sessionId === 'string' &&
     session.sessionId.trim().length > 0 &&

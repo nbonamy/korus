@@ -738,7 +738,7 @@ import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
 import { conversationCommandMenuItems, conversationMenuCommand, type ConversationMenuCommand } from './conversation-command-menu';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
+import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import type { AgentConversationView } from '../app-state';
 import MissionCodeReview from './MissionCodeReview.vue';
@@ -2602,7 +2602,7 @@ const conversationPaneState: CodexConversationPaneState = {
   thread: {
     get approvals() { return effectiveApprovals.value; },
     get clientRequests() {
-      if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return antigravityPaneClientRequests(props.antigravityConversationSnapshot);
+      if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return providerPaneClientRequests(props.antigravityConversationSnapshot);
       return currentAgent.value?.backend === 'codex'
         ? props.codexConversationSnapshot?.clientRequests ?? []
         : claudePaneClientRequests(props.claudeConversationSnapshot);
