@@ -1,8 +1,8 @@
-import { config, enableAutoUnmount } from '@vue/test-utils';
+import { config, disableAutoUnmount, enableAutoUnmount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { backendChoicesKey } from '../components/backend-selection';
 import { resetProvisioningOperations } from '../components/provisioning-operations';
-import { afterEach, beforeEach, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { i18n } from '../i18n';
 import { configureAppClient } from '../platform-api';
 import { installElectronTestClientAccessor, setElectronTestClient } from './client';
@@ -25,6 +25,8 @@ config.global.components = elementPlusStubs;
 // another catalog. AppShell provides its own authoritative snapshot catalog.
 config.global.provide = { [backendChoicesKey as symbol]: computed(() => ['codex']) };
 enableAutoUnmount(afterEach);
+// Vue Test Utils is shared by reused VM workers; each suite must own its cleanup hook.
+afterAll(disableAutoUnmount);
 
 afterEach(() => {
   setElectronTestClient();
