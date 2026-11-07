@@ -68,10 +68,14 @@
         class="app-button app-button--neutral agent-header__share"
         type="button"
         :aria-label="$t('sharing.share')"
-        :title="$t('sharing.share')"
+        :title="connectedGuests === null ? $t('sharing.share') : $t('sharing.guests', { count: connectedGuests })"
+        :aria-description="connectedGuests === null ? undefined : $t('sharing.guests', { count: connectedGuests })"
         @click="emit('share')"
       >
-        <ShareIcon aria-hidden="true" />
+        <ElBadge v-if="connectedGuests !== null && connectedGuests > 0" class="agent-header__guest-count" :value="connectedGuests" :max="9999" type="primary" aria-hidden="true">
+          <ShareIcon aria-hidden="true" />
+        </ElBadge>
+        <ShareIcon v-else aria-hidden="true" />
       </button>
       <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <GitDiffControl
@@ -193,7 +197,8 @@ import GitDiffControl from './GitDiffControl.vue';
 import RunProfilesControl from './RunProfilesControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
 import { appApi } from '../platform-api';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from './conversation-share-state';
+import { ElBadge } from 'element-plus';
 
 const props = withDefaults(defineProps<{
   runHostLabel?: string;
@@ -233,11 +238,13 @@ const props = withDefaults(defineProps<{
   revertGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
 }>(), { workspaceToggleAvailable: true, workspaceToggleDisabled: undefined, shareStatusOnMount: false });
 
-const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
-const localShareActive = ref(false);
-const shareActive = computed(() => props.agent
-  ? shareActiveByAgentId?.[props.agent.id] ?? localShareActive.value
-  : false);
+const sharePresenceByAgentId = inject(conversationSharePresenceByAgentIdKey, null);
+const localSharePresence = ref<ConversationSharePresence | null>(null);
+const sharePresence = computed(() => props.agent
+  ? sharePresenceByAgentId?.[props.agent.id] ?? localSharePresence.value
+  : null);
+const shareActive = computed(() => sharePresence.value?.active ?? false);
+const connectedGuests = computed(() => shareActive.value ? sharePresence.value?.connectedGuests ?? null : null);
 function shareTargetKey() {
   return props.agent && props.shareAvailable ? JSON.stringify(conversationShareTarget(props.agent)) : '';
 }
@@ -251,18 +258,21 @@ async function loadShareStatus() {
   try {
     const result = await appApi.conversationShareControl({ action: 'status', target });
     if (expected !== shareStatusGeneration || props.agent?.id !== agent.id) return;
-    if (shareActiveByAgentId) shareActiveByAgentId[agent.id] = result.state.active;
-    else localShareActive.value = result.state.active;
+    if (sharePresenceByAgentId) sharePresenceByAgentId[agent.id] = result.state;
+    else localSharePresence.value = result.state;
   } catch { /* A sharing status failure must not block the conversation header. */ }
 }
-watch(() => props.shareStatusOnMount ? shareTargetKey() : '', target => {
-  if (target) void loadShareStatus();
+watch(() => [shareTargetKey(), props.shareStatusOnMount] as const, ([target, load]) => {
+  shareStatusGeneration++;
+  localSharePresence.value = null;
+  if (load && target) void loadShareStatus();
 }, { immediate: true });
 onMounted(() => {
   unsubscribeShareState = appApi?.onEvent(event => {
     if (event.type !== 'conversation.shareChanged' || event.agentId !== props.agent?.id) return;
-    if (shareActiveByAgentId) shareActiveByAgentId[event.agentId] = event.payload.active;
-    else localShareActive.value = event.payload.active;
+    shareStatusGeneration++;
+    if (sharePresenceByAgentId) sharePresenceByAgentId[event.agentId] = event.payload;
+    else localSharePresence.value = event.payload;
   });
 });
 onBeforeUnmount(() => { shareStatusGeneration++; unsubscribeShareState?.(); });

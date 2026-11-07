@@ -141,6 +141,7 @@ describe('owner Share workflow', () => {
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
       await flushPromises(); await openShareDialog(wrapper);
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('2');
       const switches = () => wrapper.findAll('[role="switch"]');
       expect(switches()).toHaveLength(2);
       expect(switches().map(item => item.attributes('aria-checked'))).toEqual(['false', 'false']);
@@ -151,6 +152,20 @@ describe('owner Share workflow', () => {
       expect(switches().map(item => item.attributes('aria-checked'))).toEqual(['true', 'false']);
       client.emit(decodeAppBackendEvent({ seq: 1, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [{ ...guests[0]!, writeAccess: false }] , connectedGuests: 1 } }));
       await flushPromises(); expect(switches()).toHaveLength(1); expect(switches()[0]!.attributes('aria-checked')).toBe('false');
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('1');
+      await wrapper.get('.app-dialog__footer button').trigger('click');
+      await flushPromises();
+      client.emit(decodeAppBackendEvent({ seq: 2, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [], connectedGuests: 0 } }));
+      await flushPromises();
+      expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(true);
+      expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
+      client.emit(decodeAppBackendEvent({ seq: 3, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [guests[0]!], connectedGuests: 1 } }));
+      await flushPromises();
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('1');
+      client.emit(decodeAppBackendEvent({ seq: 4, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, guests: [], connectedGuests: null, availability: 'transportPending' } }));
+      await flushPromises();
+      expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
+      expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(true);
     } finally { wrapper.unmount(); }
   });
   it('uses one dialog and the same backend link from the header and context menu', async () => {

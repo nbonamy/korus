@@ -1,9 +1,12 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import AgentHeader from '../AgentHeader.vue';
-import { conversationShareActiveByAgentIdKey } from '../conversation-share-state';
+import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from '../conversation-share-state';
 import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
+import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
+import { setElectronTestClient } from '../../test/client';
+import { createClientApiMock } from '../../test/client-api-mock';
 import '../../styles/base.css';
 // Menus open in a popper attached to the body.
 const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
@@ -35,11 +38,35 @@ function mountHeader(backendRuntime: BackendRuntimeStatus, isLoading = false, gi
 
 describe('AgentHeader', () => {
 
+  it('keeps pushed guest presence when an older initial status resolves and resets it when switching agents', async () => {
+    const state = { active: true, handle: 'a'.repeat(32), connectedGuests: 0, availability: 'ready' as const };
+    let resolveStatus!: (value: { state: typeof state }) => void;
+    const client = createClientApiMock();
+    setElectronTestClient({ onEvent: client.api.onEvent, conversationShareControl: vi.fn(() => new Promise<{ state: typeof state }>(resolve => { resolveStatus = resolve; })) });
+    const wrapper = mount(AgentHeader, {
+      props: { agent: { ...agent, backendSession: { kind: 'codex', threadId: 'owner' } }, shareAvailable: true, shareStatusOnMount: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+    });
+    try {
+      client.emit(decodeAppBackendEvent({ seq: 1, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, connectedGuests: 3 } }));
+      await flushPromises();
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('3');
+      resolveStatus({ state });
+      await flushPromises();
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('3');
+      await wrapper.setProps({ agent: { ...agent, id: 'other', backendSession: { kind: 'codex', threadId: 'other' } } });
+      expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
+      resolveStatus({ state });
+      await flushPromises();
+      expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(true);
+      expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
   it('moves Share from the actions menu to a separate button while sharing is active', async () => {
-    const sharing = reactive<Record<string, boolean>>({ [agent.id]: false });
+    const sharing = reactive<Record<string, ConversationSharePresence>>({ [agent.id]: { active: false, connectedGuests: null } });
     const wrapper = mount(AgentHeader, {
       props: { agent, shareAvailable: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
-      global: { provide: { [conversationShareActiveByAgentIdKey as symbol]: sharing } },
+      global: { provide: { [conversationSharePresenceByAgentIdKey as symbol]: sharing } },
       attachTo: document.body,
     });
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');
@@ -48,7 +75,7 @@ describe('AgentHeader', () => {
     expect(wrapper.find('[aria-label="Share"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');
 
-    sharing[agent.id] = true;
+    sharing[agent.id] = { active: true, connectedGuests: 2 };
     await flushPromises();
     const share = wrapper.get('[aria-label="Share"]');
     expect(wrapper.get('[aria-label="Agent actions"]').element.compareDocumentPosition(share.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -60,7 +87,7 @@ describe('AgentHeader', () => {
     expect(bodyAll('[role="menuitem"]').some(item => item.text() === 'Share')).toBe(false);
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');
 
-    sharing[agent.id] = false;
+    sharing[agent.id] = { active: false, connectedGuests: null };
     await flushPromises();
     expect(wrapper.find('[aria-label="Share"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');

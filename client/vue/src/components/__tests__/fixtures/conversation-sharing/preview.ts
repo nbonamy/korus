@@ -13,7 +13,7 @@ import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navi
 import ConversationShareDialog from '../../../ConversationShareDialog.vue';
 import type { Agent } from '@workspace/core/contracts';
 import { conversationShareTarget, type ConversationShareControl } from '@workspace/core/conversation-sharing';
-import { conversationShareActiveByAgentIdKey } from '../../../conversation-share-state';
+import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from '../../../conversation-share-state';
 
 // Presentation-only fixture. No credentials, provider sessions or relay connections.
 const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', backend: 'codex', backendSession: { kind: 'codex', threadId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
@@ -32,8 +32,9 @@ createApp({
     }
     const open = ref(false); const active = ref(true);
     const guests = reactive([{ identity: 'synthetic-one', name: 'Alex', discriminator: '1234abcd', writeAccess: false }, { identity: 'synthetic-two', name: 'Alex', discriminator: '5678efab', writeAccess: false }, { identity: 'synthetic-three', name: 'Jordan', discriminator: 'abcd1234', writeAccess: false }]);
-    const shareActiveByAgentId = reactive<Record<string, boolean>>({ [agent.id]: true });
-    provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
+    if (new URLSearchParams(window.location.search).get('guests') === '0') guests.splice(0);
+    const sharePresenceByAgentId = reactive<Record<string, ConversationSharePresence>>({ [agent.id]: { active: true, connectedGuests: guests.length } });
+    provide(conversationSharePresenceByAgentIdKey, sharePresenceByAgentId);
     const target = shallowRef(conversationShareTarget(agent)!);
     const control = async (input: ConversationShareControl) => {
       if (window.app?.conversationShareControl) return window.app.conversationShareControl(input);

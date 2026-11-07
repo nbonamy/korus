@@ -719,7 +719,7 @@ import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationShareDialog from './ConversationShareDialog.vue';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from './conversation-share-state';
 import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SharedConversationPane from './SharedConversationPane.vue';
@@ -1501,8 +1501,8 @@ const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
 // IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
 const shareTarget = shallowRef<ConversationShareTarget | null>(null);
-const shareActiveByAgentId = reactive<Record<string, boolean>>({});
-provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
+const sharePresenceByAgentId = reactive<Record<string, ConversationSharePresence>>({});
+provide(conversationSharePresenceByAgentIdKey, sharePresenceByAgentId);
 function openShare(agentId: string) {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
   if (!agent || agent.remoteConnectionId) return;

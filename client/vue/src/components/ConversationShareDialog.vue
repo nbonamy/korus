@@ -39,12 +39,12 @@ import { appApi } from '../platform-api';
 import FormSection from '../shared/form/FormSection.vue';
 import FormRow from '../shared/form/FormRow.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationSharePresenceByAgentIdKey } from './conversation-share-state';
 
 const props = defineProps<{ target: ConversationShareTarget; control: (input: ConversationShareControl) => Promise<ConversationShareResult> }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
-const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
+const sharePresenceByAgentId = inject(conversationSharePresenceByAgentIdKey, null);
 const state = ref<ConversationShareState | null>(null);
 const loading = ref(true);
 const busy = ref(false);
@@ -70,7 +70,7 @@ async function load() {
     const result = await props.control({ action: 'status', target: props.target });
     if (!disposed && expected === revision) {
       state.value = result.state;
-      if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = result.state.active;
+      if (sharePresenceByAgentId) sharePresenceByAgentId[props.target.agentId] = result.state;
     }
   } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) loading.value = false; }
@@ -85,7 +85,7 @@ async function run(action: 'create' | 'copy' | 'revoke') {
     const result = await props.control(input);
     if (disposed) return;
     revision++; state.value = result.state;
-    if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = result.state.active;
+    if (sharePresenceByAgentId) sharePresenceByAgentId[props.target.agentId] = result.state;
     if (result.link) {
       try {
         await navigator.clipboard.writeText(result.link);
@@ -115,7 +115,7 @@ onMounted(() => {
   unsubscribe = appApi?.onEvent(event => {
     if (event.type !== 'conversation.shareChanged' || event.agentId !== props.target.agentId) return;
     revision++; state.value = event.payload;
-    if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = event.payload.active;
+    if (sharePresenceByAgentId) sharePresenceByAgentId[props.target.agentId] = event.payload;
   });
   void load();
 });
