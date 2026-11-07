@@ -78,7 +78,7 @@
             :disabled="disabled"
             @click="requestAttachmentAnnotation(attachments[index])"
           >
-            <PlusCircleIcon aria-hidden="true" />
+            <ClickIcon aria-hidden="true" />
           </button>
         </el-tooltip>
       </template>
@@ -180,7 +180,7 @@ import {
   type CodexNativeAttachment,
   type SurfaceMessage,
 } from '@codex-app-sdk/vue';
-import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, PlusCircleIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';
 import { IconSitemap } from '@tabler/icons-vue';
 import type {
   Agent,

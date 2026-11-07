@@ -1172,7 +1172,7 @@ describe('ConversationPane', () => {
     const wrapper = mountPane({ controller: controllerWithAttachments([image]), agent });
 
     const annotate = wrapper.get('[aria-label="Annotate screenshot.png"]');
-    expect(annotate.find('.tabler-icon-circle-plus').exists()).toBe(true);
+    expect(annotate.find('.tabler-icon-click').exists()).toBe(true);
     await annotate.trigger('click');
     expect(wrapper.emitted('annotate-attachment')).toStrictEqual([[image]]);
 

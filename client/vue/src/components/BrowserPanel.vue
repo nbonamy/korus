@@ -29,7 +29,7 @@
           <button v-if="!activeExtensions.length" type="button" :aria-label="$t('surface.browserExtensions.extensions')" :title="$t('surface.browserExtensions.extensions')" @click="emit('open-browser-settings')"><PuzzleIcon aria-hidden="true" /></button>
           <button v-for="extension in activeExtensions" :key="extension.id" type="button" :aria-label="`Open ${extension.name}`" :title="extension.name" @click="openExtension(extension.id)"><BrowserExtensionIcon :id="extension.id" /></button>
         </template>
-        <button v-if="!visualization" class="browser-panel__annotate" type="button" :aria-label="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :title="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :aria-pressed="annotationMode" @click="toggleAnnotation"><IconX v-if="annotationMode" /><IconCirclePlus v-else /></button>
+        <button v-if="!visualization" class="browser-panel__annotate" type="button" :aria-label="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :title="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :aria-pressed="annotationMode" @click="toggleAnnotation"><IconX v-if="annotationMode" /><ScanPositionIcon v-else /></button>
         <AnnotationSendButton
           v-if="annotations.length"
           :count="annotations.length"
@@ -102,12 +102,12 @@
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconTrash, IconX, IconZoom } from '@tabler/icons-vue';
+import { IconArrowLeft, IconArrowRight, IconCamera, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconTrash, IconX, IconZoom } from '@tabler/icons-vue';
 import { PRIMARY_BROWSER_ID, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type MainToRendererEvent } from '@workspace/core/contracts';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { browserDevicePresets, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
 import { appClientPlatform, appApi } from '../platform-api';
-import { ArrowUpRightIcon, CodeIcon, PuzzleIcon } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, CodeIcon, PuzzleIcon, ScanPositionIcon } from '../shared/icons/app-icons';
 import AnnotationSendButton from './AnnotationSendButton.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
