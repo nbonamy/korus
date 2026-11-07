@@ -1,4 +1,4 @@
-import { cursorEnvironment, cursorVersion } from './cursor/runtime';
+import { cursorEnvironment, cursorRuntime, cursorVersion } from './cursor/runtime';
 import { execFile } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { resolveRuntimeExecutable, withDiscoveredRuntimePath } from '@workspace/core/runtime-discovery';
 import type { AgentBackend } from '@workspace/core/contracts';
+import type { ProviderHomeSettings } from '@workspace/core/contracts/provider-setup';
 import type { ProviderInstallation } from './provider-updates';
 
 const packages = { codex: '@openai/codex', claude: '@anthropic-ai/claude-code' };
@@ -23,7 +24,7 @@ type Dependencies = {
 /** Detects the installation actually used by Korus; never switches package managers. */
 export class ProviderUpdateRuntime {
   private readonly io: Dependencies;
-  constructor(private readonly options: { command(backend: AgentBackend): string; claudeHome(): string; env?: NodeJS.ProcessEnv }, dependencies: Partial<Dependencies> = {}) {
+  constructor(private readonly options: { command(backend: AgentBackend): string; claudeHome(): string; cursorHome?(): ProviderHomeSettings | undefined; env?: NodeJS.ProcessEnv }, dependencies: Partial<Dependencies> = {}) {
     this.io = {
       resolve: command => resolveRuntimeExecutable(command, { env: { ...process.env, ...options.env } }), realpath, read: file => readFile(file, 'utf8'),
       run: async (file, args, timeout, env) => (await exec(file, args, {
@@ -120,24 +121,28 @@ export class ProviderUpdateRuntime {
   }
 
   private async inspectCursor(): Promise<ProviderInstallation> {
+    const runtime = cursorRuntime(this.options.cursorHome?.());
     const executable = this.io.resolve('agent') ?? this.io.resolve('cursor-agent');
     if (!executable) return { backend: 'cursor', method: 'manual', identity: 'cursor:missing' };
     const resolved = await this.io.realpath(executable);
-    const about: unknown = JSON.parse(await this.io.run(executable, ['about', '--format', 'json'], 15_000, cursorEnvironment()));
+    const about: unknown = JSON.parse(await this.io.run(executable, ['about', '--format', 'json'], 15_000, cursorEnvironment(false, runtime)));
     if (!about || typeof about !== 'object' || !('cliVersion' in about) || !('latestStatus' in about)
       || typeof about.cliVersion !== 'string' || cursorVersion(about.cliVersion) === null || typeof about.latestStatus !== 'string') {
       throw new Error('Could not read Cursor CLI version.');
     }
     const latestVersion = about.latestStatus === 'up_to_date' ? about.cliVersion
       : 'latestVersion' in about && typeof about.latestVersion === 'string' && cursorVersion(about.latestVersion) !== null ? about.latestVersion : undefined;
-    const command = latestVersion ? { file: executable, args: ['update'] } : undefined;
+    // Native installer targets HOME/.local, independently of the running executable.
+    // A private HOME would install a second CLI rather than upgrade the detected one.
+    const command = latestVersion && !runtime.isolated ? { file: executable, args: ['update'] } : undefined;
     return { backend: 'cursor', executable, version: about.cliVersion, latestVersion, method: 'native',
-      identity: JSON.stringify([resolved, about.cliVersion, about.latestStatus, latestVersion]), command };
+      identity: JSON.stringify([resolved, about.cliVersion, about.latestStatus, latestVersion, runtime.homePath, runtime.isolated]), command };
   }
 
   async upgrade(installation: ProviderInstallation): Promise<void> {
-    if (!installation.command || !installation.executable) throw new Error('Manual provider upgrade required.');
-    await this.io.run(installation.command.file, installation.command.args, 5 * 60_000, installation.backend === 'cursor' ? cursorEnvironment() : {
+    const cursor = installation.backend === 'cursor' ? cursorRuntime(this.options.cursorHome?.()) : undefined;
+    if (!installation.command || !installation.executable || cursor?.isolated) throw new Error('Manual provider upgrade required.');
+    await this.io.run(installation.command.file, installation.command.args, 5 * 60_000, cursor ? cursorEnvironment(false, cursor) : {
       CLAUDE_CONFIG_DIR: this.options.claudeHome(),
       ...(installation.method === 'native' && path.basename(installation.executable) === 'codex' ? { CODEX_HOME: path.join(this.io.home, '.codex') } : {}),
     });

@@ -33,11 +33,14 @@ const isolated=process.env.AGENT_CLI_CREDENTIAL_STORE==='file';
 const statusFile=isolated?process.env.CURSOR_CONFIG_DIR+'/fixture-status':root+'/status';
 fs.appendFileSync(root+'/calls',JSON.stringify({args,browser:process.env.NO_OPEN_BROWSER,home:process.env.CURSOR_CONFIG_DIR,apiKey:Boolean(process.env.CURSOR_API_KEY),authToken:Boolean(process.env.CURSOR_AUTH_TOKEN),...(isolated?{childHome:process.env.HOME,store:process.env.AGENT_CLI_CREDENTIAL_STORE}:{})})+'\\n');
 if(args[0]==='--version')console.log(fs.readFileSync(root+'/version','utf8'));
-else if(args[0]==='status')console.log(fs.existsSync(statusFile)?fs.readFileSync(statusFile,'utf8'):JSON.stringify({isAuthenticated:false}));
+else if(args[0]==='status'){
+ if(fs.existsSync(root+'/hang-status'))setInterval(()=>{},1000);
+ else console.log(fs.existsSync(statusFile)?fs.readFileSync(statusFile,'utf8'):JSON.stringify({isAuthenticated:false}));
+}
 else if(args[0]==='login'){
  if(process.env.NO_OPEN_BROWSER==='1')process.exit(99);
  if(fs.existsSync(root+'/hang')){process.stdin.resume();setInterval(()=>{},1000);}
- else {fs.writeFileSync(statusFile,JSON.stringify({isAuthenticated:true}));}
+ else {fs.rmSync(root+'/hang-status',{force:true});fs.writeFileSync(statusFile,JSON.stringify({isAuthenticated:true}));}
 }
 else if(args[0]==='about')console.log(JSON.stringify({cliVersion:'2026.10.22-27dcf5f',latestStatus:'up_to_date',latestVersion:'2026.10.22-27dcf5f'}));
 else if(args[0]==='update')console.log('updated');
@@ -70,6 +73,27 @@ describe('Cursor CLI connection boundary', () => {
       { args: ['about', '--format', 'json'], apiKey: false, authToken: false, browser: '1' },
       { args: ['update'], apiKey: false, authToken: false, browser: '1' },
     ]);
+  });
+
+  it('inspects the selected private home and refuses an updater that would install a second CLI there', async () => {
+    const lifecycle = createProviderLifecycles().get('cursor')!;
+    let selected = lifecycle.home(createEmptySnapshot(), { isolated: true, shareSkills: false });
+    await lifecycle.prepareHome(selected, true);
+    const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/unused', cursorHome: () => selected });
+    const installation = await runtime.inspect('cursor');
+    expect(installation.command).toBeUndefined();
+    await expect(runtime.upgrade(installation)).rejects.toThrow('Manual');
+    expect((await calls()).map(call => ({ args: call.args, home: call.home, store: call.store }))).toStrictEqual([
+      { args: ['about', '--format', 'json'], home: selected.homePath, store: 'file' },
+    ]);
+    selected = lifecycle.home(createEmptySnapshot());
+    const existing = await runtime.inspect('cursor');
+    expect(existing.identity).not.toBe(installation.identity);
+    expect(existing.command).toBeDefined();
+    // A stale existing-home installation cannot bypass the separate-home updater gate.
+    selected = lifecycle.home(createEmptySnapshot(), { isolated: true, shareSkills: false });
+    await expect(runtime.upgrade(existing)).rejects.toThrow('Manual');
+    expect((await calls()).some(call => call.args[0] === 'update')).toBe(false);
   });
 
   it('detects agent and the cursor-agent alias with existing and separate home choices', async () => {
@@ -126,10 +150,13 @@ describe('Cursor CLI connection boundary', () => {
     expect(events).toStrictEqual([{ type: 'provider.authenticationChanged', backend: 'cursor', payload: result }]);
   });
 
-  it('detects logout and a login completed outside Korus on the next check', async () => {
+  it('refreshes team changes and clears expired account metadata before detecting an external login', async () => {
     const current = connection();
-    await state({ isAuthenticated: false });
-    expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: false, state: { loggedIn: false } });
+    expect(await current.authenticate!({ action: 'check' })).toMatchObject({ state: { team: 'Fixture team' } });
+    await state({ ...fixture, userInfo: { email: 'switched@example.test', teamName: 'Other team' } });
+    expect(await current.authenticate!({ action: 'check' })).toMatchObject({ state: { account: { email: 'switched@example.test' }, team: 'Other team' } });
+    await state({ ...fixture, isAuthenticated: false });
+    expect(await current.authenticate!({ action: 'check' })).toStrictEqual({ kind: 'cursor', connected: false, state: { loggedIn: false, homePath: path.join(root, '.cursor'), version: build, supported: true } });
     await state();
     expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: true });
     expect(await current.authenticate!({ action: 'logout' })).toMatchObject({ connected: false, state: { loggedIn: false } });
@@ -158,6 +185,20 @@ describe('Cursor CLI connection boundary', () => {
     expect(events).not.toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ connected: true }) }));
     await rm(path.join(root, 'hang'));
     expect(await current.authenticate!({ action: 'login' })).toMatchObject({ connected: true });
+  });
+
+  it('supersedes a slow status check with login without publishing its stale result', async () => {
+    await state({ isAuthenticated: false });
+    await writeFile(path.join(root, 'hang-status'), '');
+    const current = connection();
+    const events: BackendEvent[] = [];
+    current.onEvent(event => events.push(event));
+    const check = current.authenticate!({ action: 'check' }).catch(error => error);
+    await vi.waitFor(async () => expect((await calls()).some(call => call.args[0] === 'status')).toBe(true));
+    expect(await current.authenticate!({ action: 'login' })).toMatchObject({ connected: true });
+    expect(await check).toBeInstanceOf(Error);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'provider.authenticationChanged', payload: { connected: true } });
   });
 
   it('rechecks retained credentials after cancelling a redundant login', async () => {
