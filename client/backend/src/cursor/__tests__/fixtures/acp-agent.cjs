@@ -112,6 +112,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       send({method:'cursor/generate_image',params});
       reply({stopReason:'end_turn'}); return;
     }
+    // Synthetic ConnectRPC quota envelope; no captured native reset deadline.
+    if (mode === 'quota') { send({id:pending,error:{code:-32603,message:"[resource_exhausted] You've reached your usage limit. https://private.invalid/secret"}});return; }
     if (mode === 'auth-rpc') { send({id:pending,error:{code:-32000,message:'Authentication required https://private.invalid/token'}});return; }
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }
     if (mode === 'team-stderr') { process.stderr.write('Your team has switched. https://private.invalid/token\n'); process.exit(1); }

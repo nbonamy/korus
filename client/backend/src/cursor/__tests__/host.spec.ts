@@ -596,6 +596,39 @@ describe('Cursor ACP host transport boundary', () => {
       expect(calls[index].params.mcpServers.map((server: {env: {name:string;value:string}[]}) => new URL(server.env.find(env => env.name === 'KORUS_ACP_MCP_URL')!.value).searchParams.get('agentId'))).toStrictEqual([owner, owner]);
     }
   });
+  it.each([true, false])('keeps quota exhaustion connected and resumes only with a known reset (knownReset=%s)', async knownReset => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const reset = Math.ceil((Date.now() + 300_000) / 1000) * 1000;
+    const state = createTestSnapshot(); state.agents = [{ ...agent }];
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    try {
+      if (knownReset) server.emitEvent({ type: 'account.rateLimitsUpdated', backend: 'cursor', payload: { rateLimits: {
+        limitId: 'cursor', limitName: 'Included', primary: { usedPercent: 100, windowDurationMins: 43200, resetsAt: reset / 1000 }, secondary: null,
+        credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
+      } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'quota', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'quota' } });
+      await vi.waitFor(() => expect(completions()).toHaveLength(1));
+      const reference = state.agents[0]!.backendSession;
+      expect(host.getRuntimeStatus()).toMatchObject({ status: 'running' });
+      expect(state.providerConnections[0]).toMatchObject({ connected: true });
+      expect(events.filter(event => event.type === 'provider.authenticationChanged' && !event.payload.connected)).toStrictEqual([]);
+      expect(JSON.stringify(events)).not.toContain('private.invalid');
+      if (knownReset) {
+        expect(state.agents[0]!.rateLimitPause).toMatchObject({ backend: 'cursor', resumeAt: reset, enabled: true });
+        await vi.advanceTimersByTimeAsync(reset - Date.now() + 5_000);
+      } else {
+        expect(state.agents[0]!.rateLimitPause).toBeUndefined();
+        await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'hello' } });
+      }
+      await vi.waitFor(() => expect(completions()).toHaveLength(2));
+      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      expect(state.agents[0]!.rateLimitPause).toBeFalsy();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+      expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(2);
+    } finally { vi.useRealTimers(); await server.close(); }
+  });
   it('keeps an unanswered native plan alive overnight and settles it only on explicit interruption', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const state = createTestSnapshot(); state.agents = [{ ...agent }];

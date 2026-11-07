@@ -12,15 +12,11 @@ import { cursorQuestion } from './questions';
 import { CursorPromptJournal } from './prompt-journal';
 import { cursorModelCatalog, cursorModels, cursorThoughtControl, type CursorCatalogModel } from './catalog';
 import { CursorTranscript } from './transcript';
+import { cursorRpcErrorMessage, isCursorAuthenticationFailure, isCursorQuotaFailure } from './rpc-errors';
+export { isCursorAuthenticationFailure } from './rpc-errors';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-const authenticationRequired = 'Cursor authentication is required. Reconnect Cursor in Settings.';
-
-export function isCursorAuthenticationFailure(error: Error): boolean {
-  return error instanceof AcpError && error.code === -32000 ||
-    [teamSwitched, policyDenied, authenticationRequired].includes(error.message);
-}
 type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
@@ -51,9 +47,7 @@ export class CursorSession {
       stderrErrorMarkers: [{ marker: 'Your team has switched', message: teamSwitched },
         { marker: 'Headless ACP use is disabled', message: policyDenied }, { marker: 'ACP is disabled', message: policyDenied },
         { marker: 'Headless mode is disabled', message: policyDenied }],
-      formatRpcError: (code, message) => typeof message === 'string' && /your team has switched/i.test(message) ? teamSwitched
-        : typeof message === 'string' && /(?:headless|acp).*(?:disabled|blocked|not allowed|policy)/i.test(message) ? policyDenied
-        : code === -32000 ? authenticationRequired : `Cursor ACP request failed (${code}). Try again in this conversation.`,
+      formatRpcError: cursorRpcErrorMessage,
     });
     const abort = () => { void session.close(); };
     options.signal.addEventListener('abort', abort, { once: true });
@@ -195,7 +189,12 @@ export class CursorSession {
       this.transcript.finish(turnId, status, status === 'failed' ? `Cursor stopped: ${result.stopReason}.` : undefined);
     }).catch(error => {
       if (this.interrupted) { this.transcript.finish(turnId, 'interrupted'); if (!this.closing) this.failed(error instanceof Error ? error : new Error('Cursor cancellation failed.')); }
-      else this.failed(error instanceof Error ? error : new Error('Cursor turn failed.'));
+      else if (error instanceof Error && isCursorQuotaFailure(error)) {
+        // A rejected turn is not a dead transport or an expired login. Keep the
+        // session available for manual retry or the daemon's known-reset policy.
+        this.cancelRequests();
+        this.transcript.finish(turnId, 'failed', error.message);
+      } else this.failed(error instanceof Error ? error : new Error('Cursor turn failed.'));
     }).finally(() => { if (this.active === completion) this.active = undefined; });
     this.active = completion;
     return { turnId, completion };
