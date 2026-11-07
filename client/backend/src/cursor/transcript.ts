@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { RendererMessage, RendererMessagePart, RendererToolPart } from '@workspace/core/contracts';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import { createCursorConversationReplica, emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
+import { cursorContent, cursorToolContent } from './content';
 import { record } from '../acp/acp-connection';
 
 type Change = CursorConversationEvent extends infer Event ? Event extends CursorConversationEvent ? Omit<Event, 'agentId' | 'sessionId' | 'turnId' | 'occurredAt'> : never : never;
@@ -12,6 +13,7 @@ export class CursorTranscript {
   private message?: RendererMessage;
   private readonly todoItems = new Map<string, Record<string, unknown>>();
   private replayUser: Record<string, unknown>[] = [];
+  private readonly toolBodies = new Map<string,string>();
   private denied = new Set<string>();
   constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void, private readonly display: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] })) {
     this.replica = createCursorConversationReplica(emptyCursorSnapshot(agentId, sessionId));
@@ -21,7 +23,7 @@ export class CursorTranscript {
     this.replica.apply(event); this.changed(event);
   }
   start(text: string, metadata?: RendererMessage['metadata'], parts: RendererMessagePart[] = []): string {
-    const turnId = randomUUID(); this.message = undefined; this.denied.clear();
+    const turnId = randomUUID(); this.message = undefined; this.denied.clear(); this.toolBodies.clear();
     this.event({ type: 'turn.started', payload: { turn: { id: turnId } } }, turnId);
     this.text('user', text, false, metadata);
     if (parts.length) { this.message!.parts.push(...structuredClone(parts)); this.event({ type: 'message.upsert', payload: { message: this.message! } }); }
@@ -45,8 +47,11 @@ export class CursorTranscript {
     switch (update.sessionUpdate) {
       case 'agent_message_chunk':
       case 'agent_thought_chunk':
-        if (!record(update.content) || update.content.type !== 'text' || typeof update.content.text !== 'string') throw new Error('Invalid Cursor text update.');
-        this.text('assistant', update.content.text, update.sessionUpdate === 'agent_thought_chunk'); return;
+        { const content = cursorContent(update.content);
+          if (content.text !== undefined) this.text('assistant',content.text,update.sessionUpdate === 'agent_thought_chunk');
+          if (content.media) { const message = this.current('assistant'); message.parts.push(content.media); this.event({type:'message.upsert',payload:{message}}); }
+          return;
+        }
       case 'tool_call': case 'tool_call_update': this.tool(update); return;
       // Native metadata is not proof of an implemented catalog, plan or billable usage.
       case 'session_info_update': case 'subagent_spawned': case 'subagent_state_update': return;
@@ -137,15 +142,26 @@ export class CursorTranscript {
     const previous = message.parts.find((part): part is RendererToolPart => part.type === 'tool' && part.id === update.toolCallId);
     const part = previous ?? { type: 'tool' as const, id: update.toolCallId, kind: 'tool', title: 'Cursor tool', status: 'running' as const };
     if (typeof update.title === 'string') part.title = update.title;
-    if (typeof update.kind === 'string') part.kind = update.kind;
+    if (typeof update.kind === 'string') { part.kind = update.kind; part.metadata = {...part.metadata,cursorToolKind:update.kind}; }
     if (typeof update.status === 'string') part.status = update.status === 'completed' ? 'completed' : update.status === 'failed' ? 'failed' : 'running';
     if ('rawInput' in update) part.input = update.rawInput;
     if ('rawOutput' in update) { part.output = update.rawOutput; part.body = typeof update.rawOutput === 'string' ? update.rawOutput : JSON.stringify(update.rawOutput); }
     if (Array.isArray(update.content)) {
-      const text = update.content.flatMap(item => record(item) && record(item.content) && typeof item.content.text === 'string' ? [item.content.text] : []).join('\n');
-      if (text) part.body = text;
+      const content = cursorToolContent(update.content,typeof part.metadata?.cursorToolKind === 'string' ? part.metadata.cursorToolKind : part.kind);
+      this.toolBodies.set(update.toolCallId,content.body);
+      if (content.changes.length) { part.kind = 'fileChange'; part.metadata = {...part.metadata,changes:content.changes}; }
+      const prefix = `cursor-tool:${update.toolCallId}:`;
+      message.parts = message.parts.filter(value => value.type !== 'media' || !value.itemId?.startsWith(prefix));
+      message.parts.push(...content.media.map((value,index)=>({...value,itemId:`${prefix}${index}`})));
     }
+    if (Array.isArray(part.metadata?.changes) && part.metadata.changes.length) part.kind = 'fileChange';
+    const contentBody = this.toolBodies.get(update.toolCallId);
+    if (contentBody) part.body = contentBody;
     if (this.denied.has(update.toolCallId) || (record(update.rawOutput) && update.rawOutput.rejected === true)) { part.status = 'failed'; part.body = 'Permission denied.'; }
+    if (Array.isArray(update.locations)) {
+      const locations = update.locations.map(value => { if (!record(value) || typeof value.path !== 'string' || (value.line !== undefined && (typeof value.line !== 'number' || !Number.isSafeInteger(value.line) || value.line < 0))) throw new Error('Invalid Cursor tool location.'); return {path:value.path,...(typeof value.line === 'number' ? {line:value.line} : {})}; });
+      part.metadata = {...part.metadata,locations};
+    }
     part.metadata = { ...part.metadata, displayTitle: part.title };
     if (!previous) message.parts.push(part);
     if (message.id === this.message?.id) this.message = message;

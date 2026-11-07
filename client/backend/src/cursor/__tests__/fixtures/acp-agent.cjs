@@ -13,6 +13,25 @@ configOptions.push({id:'mode',name:'Mode',category:'mode',type:'select',currentV
 let sessionId = 'session-' + process.pid, pending, mode;
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
+// Diff/location shape from installed Cursor source; resource/image blocks are synthetic ACP content fixtures.
+const richOutput = replay => {
+  const toolCallId = replay ? 'replay-rich-edit' : 'rich-edit';
+  update({sessionUpdate:'tool_call',toolCallId,title:'Edit note.txt',kind:'edit',status:'pending',rawInput:{path:'note.txt'},locations:[{path:'note.txt',line:2}]});
+  const completed = {sessionUpdate:'tool_call_update',toolCallId,status:'completed',rawOutput:{native:'retained'},content:[
+    {type:'diff',path:'note.txt',oldText:'before\nlast line',newText:'after\nlast line\n'},
+    {type:'content',content:{type:'resource',resource:{uri:'file:///synthetic/context.txt',mimeType:'text/plain',text:'RESOURCE_MARKER'}}},
+    {type:'content',content:{type:'image',mimeType:'image/png',data:'iVBORw0KGgo='}},
+  ]};
+  update(completed); update(completed);
+  update({sessionUpdate:'tool_call_update',toolCallId,rawOutput:{native:'retained'}});
+  const deleted = replay ? 'replay-delete' : 'delete';
+  update({sessionUpdate:'tool_call',toolCallId:deleted,title:'Delete removed.txt',kind:'delete',status:'pending'});
+  const deletion = {sessionUpdate:'tool_call_update',toolCallId:deleted,status:'completed',content:[{type:'diff',path:'removed.txt',oldText:'gone',newText:''}]};
+  update(deletion); update(deletion);
+  update({sessionUpdate:'tool_call',toolCallId:replay?'replay-add':'add',title:'Write added.txt',kind:'edit',status:'completed',content:[{type:'diff',path:'added.txt',oldText:null,newText:'created'}]});
+  update({sessionUpdate:'agent_message_chunk',content:{type:'image',mimeType:'image/png',data:'iVBORw0KGgo='}});
+  update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Rich output complete'}});
+};
 readline.createInterface({ input: process.stdin }).on('line', line => {
   const value = JSON.parse(line); log(value);
   const reply = result => send({ id: value.id, result });
@@ -30,6 +49,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         if (content.type === 'text') { const middle = Math.floor(content.text.length / 2); update({sessionUpdate:'user_message_chunk',content:{type:'text',text:content.text.slice(0,middle)}}); update({sessionUpdate:'user_message_chunk',content:{type:'text',text:content.text.slice(middle)}}); }
         else update({ sessionUpdate: 'user_message_chunk', content });
       }
+      if (saved.prompt[0].text.split('\n')[0] === 'rich-output') { richOutput(true); reply({configOptions}); return; }
       update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello Cursor' } });
       reply({ configOptions }); return;
     }
@@ -46,6 +66,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     update({sessionUpdate:'session_info_update',title:'Synthetic conversation'});
     update({sessionUpdate:'subagent_spawned',agentId:'synthetic-child'});
     update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
+    if (mode === 'rich-output') { richOutput(false); reply({stopReason:'end_turn'}); return; }
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }
     if (mode === 'team-stderr') { process.stderr.write('Your team has switched. https://private.invalid/token\n'); process.exit(1); }
     if (mode === 'policy') { send({ id: pending, error: { code: -32000, message: 'Headless ACP use is disabled by team policy' } }); return; }

@@ -125,8 +125,8 @@ Observed logout, expiry, account or team changes close cached native sessions an
 settle pending callbacks. Same-account reconnection can rehydrate only the saved
 workspace-validated session; a changed identity requires explicit history selection.
 Each agent owns a native `agent acp` process through the shared ACP connection.
-The host serializes prompts and projects text, thoughts and tool updates into a
-Cursor-owned revisioned replica. App developer instructions travel in prompt
+The host serializes prompts and projects text, thoughts, tool updates, structured
+file changes, embedded resources and images into a Cursor-owned revisioned replica. App developer instructions travel in prompt
 context blocks; the renderer receives only app-owned messages. Quick Chats use
 private working directories. Native plan mode selects a catalog mode before
 prompt admission and restores agent mode for a normal follow-up. Continuation

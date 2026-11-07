@@ -228,6 +228,25 @@ describe('Cursor ACP host transport boundary', () => {
     await expect(host.sendPrompt(agent,'must-not-run',{planMode:true})).rejects.toThrow(/mode|confirm/i);
     expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
   });
+  it('preserves edit changes, locations, resource text and images through live output and cold replay', async () => {
+    const first = await host.sendPrompt(agent,'rich-output'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    const verify = (state: CursorConversationSnapshot) => {
+      expect(state.turns.at(-1)?.status).toBe('completed');
+      const parts = state.messages.flatMap(message=>message.parts);
+      const tool = parts.find(part=>part.type==='tool' && part.title==='Edit note.txt');
+      expect(tool).toMatchObject({kind:'fileChange',status:'completed',input:{path:'note.txt'},output:{native:'retained'},metadata:{locations:[{path:'note.txt',line:2}],changes:[{path:'note.txt',kind:'update',oldText:'before\nlast line',newText:'after\nlast line\n'}]}});
+      if (tool?.type !== 'tool') throw new Error('No edit tool');
+      expect(parts).toContainEqual(expect.objectContaining({type:'tool',title:'Delete removed.txt',metadata:expect.objectContaining({changes:[{path:'removed.txt',kind:'delete',oldText:'gone',newText:''}]})}));
+      expect(parts).toContainEqual(expect.objectContaining({type:'tool',title:'Write added.txt',metadata:expect.objectContaining({changes:[{path:'added.txt',kind:'add',oldText:null,newText:'created'}]})}));
+      expect(tool.body).toContain('before'); expect(tool.body).toContain('after'); expect(tool.body).toContain('RESOURCE_MARKER');
+      expect(parts.filter(part=>part.type==='media').map(part=>part.type==='media' && part.media.url)).toStrictEqual(['data:image/png;base64,iVBORw0KGgo=','data:image/png;base64,iVBORw0KGgo=']);
+      expect(parts).toContainEqual({type:'text',text:'Rich output complete'});
+    };
+    verify(await snapshot());
+    await host.close(); host=createBackendDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));
+    await host.loadConversation!({...agent,backendSession:first.backendSession});
+    verify(await snapshot());
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
