@@ -9,10 +9,10 @@ describe('backend capabilities', () => {
   it('enables implemented Cursor execution and cold history controls', () => {
     expect(defaultBackendCapabilities('cursor')).toStrictEqual({
       codeReview: false, planReview: false, questions: false, plugins: false,
-      conversationArchive: false, conversationResume: false, conversationReplaceWithSummary: false,
+      conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
       remoteControl: false, attachments: true, models: true, skills: false,
       reasoningEffort: false, serviceTier: false, thinkingBudget: false, planMode: 'unsupported',
-      goals: false, steerPrompt: false, interrupt: true, history: false, conversationFork: false,
+      goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
       deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
       approvalPresets: [], permissionModes: [],
     });

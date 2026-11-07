@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { RendererMessage, RendererToolPart } from '@workspace/core/contracts';
+import type { RendererMessage, RendererMessagePart, RendererToolPart } from '@workspace/core/contracts';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import { createCursorConversationReplica, emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 import { record } from '../acp/acp-connection';
@@ -10,18 +10,20 @@ type Change = CursorConversationEvent extends infer Event ? Event extends Cursor
 export class CursorTranscript {
   readonly replica;
   private message?: RendererMessage;
+  private replayUser: Record<string, unknown>[] = [];
   private denied = new Set<string>();
-  constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void) {
+  constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void, private readonly display: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] })) {
     this.replica = createCursorConversationReplica(emptyCursorSnapshot(agentId, sessionId));
   }
   private event(change: Change, turnId = this.replica.getSnapshot().activeTurnId!): void {
     const event = { ...change, agentId: this.agentId, sessionId: this.sessionId, turnId, occurredAt: new Date().toISOString() } as CursorConversationEvent;
     this.replica.apply(event); this.changed(event);
   }
-  start(text: string, metadata?: RendererMessage['metadata']): string {
+  start(text: string, metadata?: RendererMessage['metadata'], parts: RendererMessagePart[] = []): string {
     const turnId = randomUUID(); this.message = undefined; this.denied.clear();
     this.event({ type: 'turn.started', payload: { turn: { id: turnId } } }, turnId);
     this.text('user', text, false, metadata);
+    if (parts.length) { this.message!.parts.push(...structuredClone(parts)); this.event({ type: 'message.upsert', payload: { message: this.message! } }); }
     return turnId;
   }
   finish(turnId: string, status: 'completed' | 'interrupted' | 'failed', error?: string): void {
@@ -52,19 +54,29 @@ export class CursorTranscript {
   }
   replay(update: Record<string, unknown>): void {
     if (update.sessionUpdate === 'user_message_chunk') {
-      if (!record(update.content) || update.content.type !== 'text' || typeof update.content.text !== 'string') throw new Error('Invalid Cursor replay prompt.');
-      if (this.message?.role === 'user') this.text('user', update.content.text, false);
-      else {
-        const active = this.replica.getSnapshot().activeTurnId;
-        if (active) this.finish(active, 'completed');
-        this.start(update.content.text);
-      }
-    } else {
-      if (!this.replica.getSnapshot().busy && ['agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update'].includes(String(update.sessionUpdate))) this.start('');
-      this.update(update);
+      if (!record(update.content)) throw new Error('Invalid Cursor replay prompt.');
+      this.replayUser.push(update.content); return;
     }
+    this.flushReplayUser();
+    if (!this.replica.getSnapshot().busy && ['agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update'].includes(String(update.sessionUpdate))) this.start('');
+    this.update(update);
+  }
+  private flushReplayUser(): void {
+    if (!this.replayUser.length) return;
+    const blocks = this.replayUser; this.replayUser = [];
+    const active = this.replica.getSnapshot().activeTurnId;
+    if (active) this.finish(active, 'completed');
+    const nativeText = blocks.filter(block => block.type === 'text' && typeof block.text === 'string').map(block => block.text).join('');
+    const presentation = this.display(nativeText);
+    const parts = presentation.parts.length ? presentation.parts : blocks.flatMap((block): RendererMessagePart[] => {
+      if (block.type === 'image' && typeof block.mimeType === 'string' && typeof block.data === 'string') return [{ type: 'attachment', attachment: { kind: 'image', name: 'Image', mimeType: block.mimeType, url: `data:${block.mimeType};base64,${block.data}` } }];
+      if (block.type === 'resource' && record(block.resource) && typeof block.resource.uri === 'string') return [{ type: 'attachment', attachment: { kind: 'file', name: typeof block.resource.name === 'string' ? block.resource.name : block.resource.uri, url: block.resource.uri } }];
+      return [];
+    });
+    this.start(presentation.text, presentation.metadata, parts);
   }
   finishReplay(): void {
+    this.flushReplayUser();
     const active = this.replica.getSnapshot().activeTurnId;
     if (active) this.finish(active, 'completed');
     const snapshot = structuredClone(this.replica.getSnapshot());

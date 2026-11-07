@@ -139,7 +139,11 @@ cancellation. A lost process keeps its terminal replica rather than silently
 creating a replacement conversation. A fresh host loads persisted native session
 references after checking workspace ownership against the native catalog. Replay
 hydrates a fresh replica, generates no live execution observations, and leaves
-unreported timestamps unknown. Known team-switch and
+unreported timestamps unknown. A presentation journal under the selected home
+restores authored prompt content and attachment parts only when native replay
+text exactly matches an admitted prompt. Workspace-filtered history listing
+does not create a session; explicit resume validates and hydrates its replacement
+before adopting it, and provides recovery from a lost process. Known team-switch and
 policy markers produce fixed safe errors and disconnected observations; raw
 diagnostics and URLs are discarded.
 
@@ -155,7 +159,10 @@ consuming report POST attempts; reports for existing providers remain compatible
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly
 clear ambient Cursor credentials even when PATH discovery merges environments.
-Existing-home login and updates preserve native conversation identities.
+Existing-home login and updates preserve native conversation identities. Separate
+homes expose version inspection and manual updates: the native installer derives
+its installation target from HOME, so running it privately would create a second
+installation. Update admission rechecks the selected home before executing.
 
 ## Antigravity
 

@@ -1,20 +1,22 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { product } from '@workspace/core/product';
-import type { RendererMessage } from '@workspace/core/contracts';
+import type { RendererMessage, RendererMessagePart } from '@workspace/core/contracts';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import { AcpConnection, record } from '../acp/acp-connection';
-import { cursorEnvironment, resolveCursorExecutable, type CursorRuntime } from './runtime';
+import { cursorEnvironment, resolveCursorExecutable, type CursorRuntime, cursorRuntime } from './runtime';
+import { CursorPromptJournal } from './prompt-journal';
 import { CursorTranscript } from './transcript';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
+type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
 export class CursorSession {
   private connection!: AcpConnection;
   private transcript!: CursorTranscript;
+  private journal!: CursorPromptJournal;
   private config: Record<string, unknown> = {};
   private loading = true;
   private disposed = false;
@@ -45,17 +47,20 @@ export class CursorSession {
       if (!record(initialized) || initialized.protocolVersion !== 1 || !Array.isArray(initialized.authMethods) || !initialized.authMethods.some(method => record(method) && method.id === 'cursor_login')) throw new Error('Unsupported Cursor ACP handshake.');
       if (!record(initialized.agentCapabilities) || !record(initialized.agentCapabilities.sessionCapabilities) || !record(initialized.agentCapabilities.sessionCapabilities.list)) throw new Error('Cursor ACP lacks session/list support required for safe cancellation.');
       await session.connection.request('authenticate', { methodId: 'cursor_login' });
+      if (options.catalogOnly) { session.transcript = new CursorTranscript(options.agentId, 'catalog', () => {}); session.loading = false; return session; }
       if (options.sessionId) {
         if (initialized.agentCapabilities.loadSession !== true) throw new Error('Cursor does not support history loading.');
         const catalog = await session.connection.request('session/list', { cwd: options.cwd });
         if (!record(catalog) || !Array.isArray(catalog.sessions) || catalog.sessions.length > 10_000) throw new Error('Invalid Cursor history catalog.');
         const entry = catalog.sessions.find(value => record(value) && value.sessionId === options.sessionId);
         if (!record(entry) || typeof entry.cwd !== 'string' || !path.isAbsolute(entry.cwd) || await realpath(entry.cwd).catch(() => null) !== await realpath(options.cwd)) throw new Error('Cursor conversation is missing or belongs to another workspace.');
-        session.transcript = new CursorTranscript(options.agentId, options.sessionId, () => {});
+        session.journal = await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, options.sessionId);
+        session.transcript = new CursorTranscript(options.agentId, options.sessionId, () => {}, text => session.journal.display(text));
       }
       const created = await session.connection.request(options.sessionId ? 'session/load' : 'session/new', { ...(options.sessionId ? { sessionId: options.sessionId } : {}), cwd: options.cwd, mcpServers: [] });
       if (!record(created) || (!options.sessionId && (typeof created.sessionId !== 'string' || !created.sessionId)) || (options.sessionId && created.sessionId !== undefined && created.sessionId !== options.sessionId)) throw new Error('Invalid Cursor session identity.');
       session.config = created;
+      session.journal ??= await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, created.sessionId as string);
       if (!options.sessionId) session.transcript = new CursorTranscript(options.agentId, created.sessionId as string, event => { if (!session.loading) options.changed(event); });
       // Rebind replay without publishing its synthetic lifecycle as live execution.
       if (options.sessionId) {
@@ -71,6 +76,20 @@ export class CursorSession {
     } catch (error) { await session.close(); throw error; }
     finally { options.signal.removeEventListener('abort', abort); }
   }
+  static async list(options: Options): Promise<{ sessionId: string; cwd: string; title: string }[]> {
+    const session = await CursorSession.open({ ...options, catalogOnly: true });
+    const abort = () => { void session.close(); };
+    options.signal.addEventListener('abort', abort, { once: true });
+    try {
+      if (options.signal.aborted) throw new Error('Cursor history operation was released.');
+      const result = await session.connection.request('session/list', { cwd: options.cwd });
+      if (!record(result) || !Array.isArray(result.sessions) || result.sessions.length > 10_000) throw new Error('Invalid Cursor history catalog.');
+      return result.sessions.map(entry => {
+        if (!record(entry) || typeof entry.sessionId !== 'string' || !entry.sessionId || typeof entry.cwd !== 'string' || !path.isAbsolute(entry.cwd)) throw new Error('Invalid Cursor history entry.');
+        return { sessionId: entry.sessionId, cwd: entry.cwd, title: typeof entry.title === 'string' ? entry.title : entry.sessionId };
+      });
+    } finally { options.signal.removeEventListener('abort', abort); await session.close(); }
+  }
   get configuration() { return this.config; }
   async setModel(model: string): Promise<void> {
     const result = await this.connection.request('session/set_config_option', { sessionId: this.sessionId, configId: 'model', value: model });
@@ -81,11 +100,14 @@ export class CursorSession {
   get sessionId() { return this.snapshot.sessionId; }
   get isClosed() { return this.disposed; }
   get cwd() { return this.options.cwd; }
-  prompt(text: string, wireText: string, metadata?: RendererMessage['metadata'], attachments: unknown[] = []): { turnId: string; completion: Promise<void> } {
+  prompt(text: string, wireText: string, metadata?: RendererMessage['metadata'], attachments: unknown[] = [], parts: RendererMessagePart[] = []): { turnId: string; completion: Promise<void> } {
     if (this.disposed || this.active) throw new Error('Cursor session is closed or still finishing a turn.');
     this.interrupted = false;
-    const turnId = this.transcript.start(text, metadata);
-    const completion = this.connection.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: wireText }, ...attachments] }, 30 * 60_000).then(async result => {
+    const turnId = this.transcript.start(text, metadata, parts);
+    const completion = this.journal.append({wireText, text, parts, ...(metadata ? {metadata} : {})}).then(() => {
+      if (this.disposed || this.interrupted) throw new Error('Cursor prompt was cancelled before admission.');
+      return this.connection.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: wireText }, ...attachments] }, 30 * 60_000);
+    }).then(async result => {
       if (!record(result) || typeof result.stopReason !== 'string' || !['end_turn', 'cancelled', 'max_tokens', 'max_turn_requests', 'refusal'].includes(result.stopReason)) throw new Error('Invalid Cursor turn completion.');
       const status = this.interrupted || result.stopReason === 'cancelled' ? 'interrupted' : result.stopReason === 'end_turn' ? 'completed' : 'failed';
       if (status === 'interrupted') {

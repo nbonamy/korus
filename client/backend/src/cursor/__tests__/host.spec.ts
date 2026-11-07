@@ -116,6 +116,43 @@ describe('Cursor ACP host transport boundary', () => {
       { type: 'image', mimeType: 'image/png', data: Buffer.from([137,80,78,71,13,10,26,10]).toString('base64') },
     ]);
   });
+  it('restores presentation and attachments after close/load without exposing developer context', async () => {
+    const file = path.join(root, 'notes.txt'), image = path.join(root, 'picture.png'); await writeFile(file, 'MARKER');
+    await writeFile(image, Buffer.from([137,80,78,71,13,10,26,10]));
+    const first = await host.sendPrompt(agent, 'My prompt', { attachments: [{ type: 'file', path: file }, { type: 'image', path: image, mimeType: 'image/png' }] });
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    const liveUser = (await snapshot()).messages.find(message => message.role === 'user')!;
+    expect(liveUser.parts).toContainEqual({ type: 'attachment', attachment: { kind: 'file', name: 'notes.txt', path: file } });
+    await host.close(); host = createBackendDriver('cursor'); events = []; host.onEvent(event => events.push(event));
+    const saved = { ...agent, backendSession: first.backendSession };
+    await host.loadConversation!(saved);
+    const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged')!;
+    if (frame.type !== 'cursor.conversationSnapshotChanged') throw new Error('No snapshot');
+    const user = frame.payload.snapshot.messages.find(message => message.role === 'user')!;
+    expect(user.parts).toStrictEqual(liveUser.parts);
+    expect(user.parts.filter(part => part.type === 'attachment')).toHaveLength(2);
+    expect(JSON.stringify(frame)).not.toContain('<context');
+    expect(user.createdAt).toBe('');
+  });
+  it('lists workspace history without creating a session and explicitly resumes only idle validated targets', async () => {
+    const history = await host.listConversations!(agent, { searchTerm: 'saved', limit: 1 });
+    expect(history).toMatchObject([{ sessionId: 'saved-session', updatedAt: '', ref: { backend: 'cursor', folder: root, sessionId: 'saved-session' } }]);
+    expect((await wire()).some(call => call.method === 'session/new')).toBe(false);
+    await expect(host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: 'foreign-session' }, storageState: 'active' })).rejects.toThrow(/workspace/);
+    const resumed = await host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' });
+    expect(resumed.backendSession).toStrictEqual({ kind: 'cursor', sessionId: 'saved-session' });
+    const active = await host.sendPrompt({ ...agent, backendSession: resumed.backendSession }, 'wait');
+    await expect(host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' })).rejects.toThrow(/current|finish/i);
+    await host.interrupt(agent, active.turnId);
+  });
+  it('cancels an explicit resume during replay without adopting its session', async () => {
+    await writeFile(path.join(root, 'hold-load'), '');
+    const pending = host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: 'saved-session' }, storageState: 'active' }).catch(error => error);
+    await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/load')).toBe(true));
+    await host.releaseConversation!(agent.id);
+    expect(await pending).toBeInstanceOf(Error);
+    expect(events.filter(event => event.type === 'cursor.conversationSnapshotChanged')).toStrictEqual([]);
+  });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
     state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
@@ -157,7 +194,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect(calls[2].params).toEqual({ cwd: root, mcpServers: [] });
     expect(calls.find(call => call.method === 'session/prompt').params.prompt[0].text).toContain('<context id=');
     expect(calls.find(call => call.method === 'session/prompt').params.prompt[0].text).toContain(`agent ID is ${agent.id}`);
-    expect(host.getCapabilities(agent)).toMatchObject({ interrupt: true, approvals: false, history: false, models: true });
+    expect(host.getCapabilities(agent)).toMatchObject({ interrupt: true, approvals: false, history: true, models: true });
   });
   it('denies permissions using the native reject option and keeps a completed-but-rejected tool visibly failed', async () => {
     await host.sendPrompt(agent, 'permission'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
@@ -227,6 +264,11 @@ describe('Cursor ACP host transport boundary', () => {
       await vi.advanceTimersByTimeAsync(5_000); await stopped;
       expect((await snapshot()).turns).toMatchObject([{ status: 'interrupted' }]);
       await expect(host.sendPrompt(agent, 'after-process-loss')).rejects.toThrow(/connection closed/i);
+      vi.useRealTimers();
+      if (first.backendSession.kind !== 'cursor') throw new Error('Invalid session');
+      await host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: first.backendSession.sessionId }, storageState: 'active' });
+      await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'RECOVERED');
+      await vi.waitFor(() => expect(completions()).toHaveLength(2));
     } finally { vi.useRealTimers(); }
   });
   it('creates a private Quick Chat workspace and supplies no MCP servers', async () => {

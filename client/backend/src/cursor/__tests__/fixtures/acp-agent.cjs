@@ -6,6 +6,8 @@ if (process.argv[2] === '--version') { console.log(fs.readFileSync(path.join(__d
 if (process.argv[2] === 'status') { console.log(JSON.stringify({ isAuthenticated: true })); process.exit(); }
 if (process.argv[2] !== 'acp' || process.env.NO_OPEN_BROWSER !== '1' || process.env.CURSOR_API_KEY) process.exit(99);
 const log = value => fs.appendFileSync(path.join(__dirname, 'wire.jsonl'), JSON.stringify(value) + '\n');
+const historyFile = path.join(__dirname, 'history.json');
+const history = () => fs.existsSync(historyFile) ? JSON.parse(fs.readFileSync(historyFile, 'utf8')) : {};
 const configOptions = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'auto', options: [{ value: 'auto', name: 'Auto' }, { value: 'composer-2.5', name: 'Composer' }] }];
 let sessionId = 'session-' + process.pid, pending, mode;
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
@@ -17,9 +19,19 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   else if (value.method === 'authenticate') reply({});
   else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
   else if (value.method === 'session/set_config_option') reply({ configOptions: configOptions.map(option => ({ ...option, currentValue: value.params.value })) });
-  else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }] });
+  else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }, ...Object.entries(history()).map(([sessionId, value]) => ({sessionId,cwd:value.cwd,title:'Saved conversation'}))] });
   else if (value.method === 'session/load') {
     sessionId = value.params.sessionId;
+    if (fs.existsSync(path.join(__dirname, 'hold-load'))) return;
+    const saved = history()[sessionId];
+    if (saved) {
+      for (const content of saved.prompt) {
+        if (content.type === 'text') { const middle = Math.floor(content.text.length / 2); update({sessionUpdate:'user_message_chunk',content:{type:'text',text:content.text.slice(0,middle)}}); update({sessionUpdate:'user_message_chunk',content:{type:'text',text:content.text.slice(middle)}}); }
+        else update({ sessionUpdate: 'user_message_chunk', content });
+      }
+      update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello Cursor' } });
+      reply({ configOptions }); return;
+    }
     update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Remember synthetic marker' } });
     update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Remembering' } });
     update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Remembered' } });
@@ -27,6 +39,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     reply({ configOptions });
   }
   else if (value.method === 'session/prompt') {
+    const saved = history(); saved[sessionId] = {cwd:process.cwd(),prompt:value.params.prompt}; fs.writeFileSync(historyFile,JSON.stringify(saved));
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }
     if (mode === 'team-stderr') { process.stderr.write('Your team has switched. https://private.invalid/token\n'); process.exit(1); }
