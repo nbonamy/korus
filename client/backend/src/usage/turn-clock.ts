@@ -5,14 +5,15 @@ type Turn = {
   first: number | null;
   /** The agent is waiting on the user (approval, question). */
   waiting: boolean;
+  userWaitAt: number | null;
+  userWaitMs: number;
   /** Tool calls in flight; parallel calls pause the clock once, until the last one ends. */
   tools: Set<string>;
   generating: boolean;
 };
 /**
- * Measures how long a turn really worked, independent of the provider driver:
- * the clock starts when the prompt is submitted, stops while the agent waits on the
- * user or on tools, and notes the first generated output.
+ * Tracks task duration and throughput from prompt submission. Task duration excludes
+ * only explicit user waits; throughput also excludes tool waits and notes first output.
  */
 export class TurnClock {
   private readonly turns = new Map<string, Turn>();
@@ -25,6 +26,8 @@ export class TurnClock {
         paused: 0,
         first: null,
         waiting: false,
+        userWaitAt: null,
+        userWaitMs: 0,
         tools: new Set(),
         generating: false,
       });
@@ -40,9 +43,22 @@ export class TurnClock {
   wait(agentId: string, waiting: boolean): void {
     const turn = this.turns.get(agentId);
     if (turn) {
+      if (waiting && turn.userWaitAt === null) turn.userWaitAt = this.now();
+      else if (!waiting && turn.userWaitAt !== null) {
+        turn.userWaitMs += this.now() - turn.userWaitAt;
+        turn.userWaitAt = null;
+      }
       turn.waiting = waiting;
       this.sync(turn);
     }
+  }
+  /** Task time includes tools; only an explicit end of the user wait resumes it. */
+  taskDurationMs(agentId: string): number | null {
+    const turn = this.turns.get(agentId);
+    if (!turn) return null;
+    const end = this.now();
+    const pendingWait = turn.userWaitAt === null ? 0 : end - turn.userWaitAt;
+    return Math.max(0, Math.round(end - turn.start - turn.userWaitMs - pendingWait));
   }
   /** A tool call started or ended; its id makes repeated events harmless. */
   tool(agentId: string, id: string, running: boolean): void {
@@ -56,7 +72,7 @@ export class TurnClock {
   output(agentId: string): void {
     const turn = this.turns.get(agentId);
     if (!turn || turn.first !== null) return;
-    turn.waiting = false; // Output proves the user is not being waited on.
+    turn.waiting = false; // Throughput resumes when output proves generation is active.
     this.sync(turn);
     turn.first = this.working(turn);
   }

@@ -30,6 +30,7 @@ it("excludes time spent waiting on the user, including before the first output",
   at(63000);
   clock.output("a");
   at(73000);
+  expect(clock.taskDurationMs("a")).toBe(12000);
   expect(clock.finish("a")).toStrictEqual({ activeMs: 12000, ttftMs: 2000 });
 });
 
@@ -40,11 +41,13 @@ it("stops the clock when a turn ends while blocked and keeps agents independent"
   at(5000);
   clock.wait("a", true);
   at(65000);
+  expect(clock.taskDurationMs("a")).toBe(4000);
+  expect(clock.taskDurationMs("b")).toBe(64000);
   expect(clock.finish("a")).toStrictEqual({ activeMs: 4000, ttftMs: null });
   expect(clock.finish("b")).toStrictEqual({ activeMs: 64000, ttftMs: null });
 });
 
-it("treats output as proof that nothing is blocking", () => {
+it("resumes throughput on output without ending an explicit task user wait", () => {
   const { clock, at } = setup();
   clock.start("a", 0);
   at(1000);
@@ -52,6 +55,8 @@ it("treats output as proof that nothing is blocking", () => {
   at(9000);
   clock.output("a");
   at(10000);
+  // Background output must not end an explicit user wait for task duration.
+  expect(clock.taskDurationMs("a")).toBe(1000);
   expect(clock.finish("a")).toStrictEqual({ activeMs: 2000, ttftMs: 1000 });
 });
 
@@ -71,6 +76,7 @@ it("pauses once for parallel tool calls until the last one ends, and ignores rep
   clock.output("a");
   at(10000);
   // Working 1000-2000 and 7000-10000; the tools held the clock from 2000 to 7000.
+  expect(clock.taskDurationMs("a")).toBe(9000);
   expect(clock.finish("a")).toStrictEqual({ activeMs: 4000, ttftMs: 2000 });
 });
 

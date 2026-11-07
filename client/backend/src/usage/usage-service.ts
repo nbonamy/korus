@@ -122,7 +122,9 @@ export class UsageService {
       this.executions.get(event.agentId) === key
     ) {
       this.executions.delete(event.agentId);
+      const taskDurationMs = this.clock.taskDurationMs(event.agentId);
       const timing = this.clock.finish(event.agentId);
+      if (taskDurationMs !== null) event = { ...event, taskDurationMs };
       if (timing) event = { ...event, timing };
     }
     const agent = this.agent(event.agentId);

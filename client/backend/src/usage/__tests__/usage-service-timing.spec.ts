@@ -35,6 +35,8 @@ it("records a turn's real working time from backend events, not from the provide
     service.observeEvent(
       event("agent.statusChanged", { type: "awaitingInput" }),
     );
+    now = 10000;
+    service.observeEvent(event("agent.statusChanged", { type: "awaitingInput" })); // Another pending request keeps the same wait open.
     now = 31000; // Thirty seconds waiting on an approval.
     service.observeEvent(event("agent.statusChanged", { type: "working" }));
     now = 32000;
@@ -61,6 +63,8 @@ it("records a turn's real working time from backend events, not from the provide
         },
       }),
     );
+    now = 34000;
+    service.observeEvent(event("agent.statusChanged", { type: "awaitingInput" }));
     now = 35000;
     service.observeEvent(
       event("codex.conversationEventReceived", {
@@ -70,6 +74,8 @@ it("records a turn's real working time from backend events, not from the provide
         },
       }),
     );
+    now = 36000;
+    service.observeEvent(event("agent.statusChanged", { type: "working" }));
     now = 38000;
     service.observeEvent(
       event("codex.conversationEventReceived", {
@@ -93,6 +99,7 @@ it("records a turn's real working time from backend events, not from the provide
       },
     });
     await service.drain();
+    expect(local.query().longestTurnMs).toBe(10000); // Includes tools; excludes the 30s and 2s user waits, including their overlap with tools.
     expect(local.query({ group: "provider" }).rows[0]).toMatchObject({
       speed: {
         turns: 1,
@@ -105,4 +112,21 @@ it("records a turn's real working time from backend events, not from the provide
   } finally {
     await service.close();
   }
+});
+
+it("retains a zero task duration when a turn ends entirely blocked on the user", async () => {
+  const local = new UsageLedger(":memory:");
+  let now = 0;
+  const service = new UsageService(local, () => undefined, new TurnClock(() => now), () => now);
+  const base = { agentId: "a", sessionId: "s", turnId: "t", provider: "codex" as const, model: "m", at: Date.now() };
+  try {
+    await local.load();
+    service.observe({ ...base, phase: "started" });
+    service.observeEvent({ seq: 1, occurredAt: new Date(base.at).toISOString(), agentId: "a", type: "agent.statusChanged", payload: { type: "awaitingInput" } });
+    now = 30000;
+    service.observe({ ...base, phase: "completed", durationMs: 30000 });
+    await service.drain();
+    expect(local.query().longestTurnMs).toBeUndefined(); // Zero must not fall back to 30 seconds of wall time.
+    expect(local.query().rows[0]?.completed).toBe(1);
+  } finally { await service.close(); }
 });

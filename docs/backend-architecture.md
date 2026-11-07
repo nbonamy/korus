@@ -1178,6 +1178,12 @@ counts do not claim to count unknown legacy requests. Producers must explicitly
 attest a complete execution request set; otherwise coverage retains an execution
 with an unknown additional request count, even when some requests were captured.
 Execution token/timing fields keep their execution-start date and model attribution.
+Task duration includes tool execution and excludes intervals blocked on approvals or
+synchronous user questions. The daemon measures it independently of throughput and
+persists it with the execution. Longest-task summaries use that measurement, with
+recorded elapsed duration as the fallback for historical executions whose user waits
+were not recorded separately. Historical token, cost and timing observations are
+preserved.
 Cost uses request dates/models, so a cost contribution may create a group/day with
 zero execution starts. Backend-provider filters retain their existing meaning;
 API-provider grouping/filtering uses the underlying billing provider separately.
