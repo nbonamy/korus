@@ -49,6 +49,15 @@ describe('AgentConversationPanel', () => {
     });
     } }, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
     try {
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
+      expect(permissions).toBeDefined();
+      expect(permissions!.text()).toContain('Cursor-managed');
+      expect(permissions!.attributes('disabled')).toBeDefined();
+      await permissions!.trigger('click');
+      expect(actions.setPermissionMode).not.toHaveBeenCalled();
+      expect(actions.setApprovalPreset).not.toHaveBeenCalled();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Cursor Enum'))!.trigger('mouseenter');

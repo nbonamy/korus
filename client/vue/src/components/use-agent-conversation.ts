@@ -242,7 +242,9 @@ export function useAgentConversation(options: {
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
   const modes = view.capabilities.permissionModes ?? [];
-  if (!modes.length) return [];
+  if (!modes.length) return view.agent.backend === 'cursor'
+    ? [{ id: 'backend-permissions', type: 'action', label: translate('surface.appShell.permissions'), value: translate('cursor.managedPermissions'), disabled: true }]
+    : [];
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
   return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'),
