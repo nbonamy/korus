@@ -734,7 +734,9 @@ documentation claims; this checkpoint qualifies only the native results above.
 
 ## Full-provider implementation audit
 
-The current [provider contract and Cursor capability checklist](../docs/backend-architecture.md#provider-integration-checklist) distinguish implemented, partial and unavailable operations.
+The shared [provider contract](../docs/backend-architecture.md#provider-integration-checklist)
+and [Cursor capability checklist](../docs/cursor.md#capability-checklist) distinguish
+implemented, partial and unavailable operations.
 
 The desktop integration includes native sign-in/status, enabled-provider selection,
 serialized streaming conversations, tool rendering and once-only confirmations,
