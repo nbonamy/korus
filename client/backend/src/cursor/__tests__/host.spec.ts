@@ -437,6 +437,28 @@ describe('Cursor ACP host transport boundary', () => {
     await expect(access(path.join(root, 'should-not-exist'))).rejects.toThrow();
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({ type: 'tool', status: 'failed', body: expect.stringMatching(/denied/i) }));
   });
+  it.each([
+    {prompt:'permission',outcome:{kind:'decision',decision:'deny'},nativeId:1,native:{outcome:{outcome:'selected',optionId:'reject-once'}}},
+    {prompt:'extension',outcome:{kind:'decision',decision:'allow'},nativeId:2,native:{outcome:{outcome:'accepted'}}},
+    {prompt:'question',outcome:{kind:'answered',answers:{mode:{answers:['Fast']},extras:{answers:['One']}}},nativeId:4,native:{outcome:{outcome:'answered',answers:[{questionId:'mode',selectedOptionIds:['fast-id']},{questionId:'extras',selectedOptionIds:['one-id']}]}}},
+  ] as const)('round-trips $prompt through the daemon request registry', async ({prompt,outcome,nativeId,native}) => {
+    const state = createTestSnapshot(); state.agents = [{...agent}]; state.activeAgentId=agent.id;
+    state.teams[0]!.agentIds=[agent.id]; state.teams[0]!.activeAgentId=agent.id;
+    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
+    const server = new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    try {
+      await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt,expectedSessionId:null,options:{planMode:prompt==='extension'}}});
+      await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
+      const request=(await snapshot()).clientRequests[0]!;
+      const response={id:request.id,agentId:agent.id,outcome};
+      await expect(server.handleMessage({jsonrpc:'2.0',id:'answer',method:'agent/request/respond',params:{response}})).resolves.toMatchObject({result:expect.any(Object)});
+      await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+      expect((await snapshot()).clientRequests).toStrictEqual([]);
+      expect(state.agentRequests?.[agent.id]??[]).toStrictEqual([]);
+      expect((await wire()).find(call=>call.id===nativeId&&call.result)?.result).toStrictEqual(native);
+      await expect(server.handleMessage({jsonrpc:'2.0',id:'duplicate',method:'agent/request/respond',params:{response}})).rejects.toThrow(/no longer pending/i);
+    } finally {await server.close();}
+  });
   it('exposes a once-only plan decision and cancels pending callbacks on interruption', async () => {
     const first = await host.sendPrompt(agent, 'extension');
     await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));

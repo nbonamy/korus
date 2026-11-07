@@ -1,4 +1,4 @@
-import type { AgentRequestResponse } from '@workspace/core/agent-request';
+import { requestFromClientRequest, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { sessionMcpServer } from '../acp/mcp-bridge';
 import { appMcpUrlForAgent, agentScopedMcpUrl } from '../mcp/codex-config';
 import { randomUUID } from 'node:crypto';
@@ -262,6 +262,8 @@ export class CursorHost implements AgentBackendDriver {
     // terminal events. Snapshot reads and replay never produce observations.
     if (event.type === 'turn.started') this.observeUsage(event, 'started');
     this.emit({ ...identity, type: 'cursor.conversationEventReceived', payload: { revision: this.nextRevision(event.agentId), event } });
+    if (event.type === 'request.created') this.emit({ ...identity, type: 'agentRequest.created', payload: { request: requestFromClientRequest(event.payload.request, { conversationId: event.sessionId, turnId: event.turnId }) } });
+    else if (event.type === 'request.resolved') this.emit({ ...identity, type: 'agentRequest.resolved', payload: event.payload });
     if (event.type === 'turn.started') this.emit({ ...identity, type: 'agent.statusChanged', payload: { type: 'working' } });
     if (event.type === 'turn.completed') this.emit({ ...identity, type: 'agent.statusChanged', payload: event.payload.turn.status === 'failed' ? { type: 'error', message: event.payload.error ?? 'Cursor turn failed.' } : { type: 'idle' } });
     if (event.type === 'turn.completed') this.observeUsage(event, event.payload.turn.status);
