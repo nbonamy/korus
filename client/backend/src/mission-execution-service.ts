@@ -842,7 +842,8 @@ export class MissionExecutionService {
   /** Called before sending the provider interrupt, including desktop and remote user Stop. */
   async stopAgent(agentId: string): Promise<void> {
     this.stoppedAgents.add(agentId);
-    this.postTurnLaunches.delete(agentId);
+    // Keep handoffs waiting until the interrupted turn actually finishes. Runs
+    // owned by the stopped agent are cancelled below and cannot be launched.
     for (const mission of this.ports.snapshot.missions ?? []) {
       if (!mission.execution || (!mission.execution.runs.some(run => run.workerId === agentId) && missionLeadAgentId(mission) !== agentId)) continue;
       const runIds = mission.execution.runs.filter(run => run.workerId === agentId && ['preparing', 'running', 'awaitingReview'].includes(run.status)).map(run => run.id);

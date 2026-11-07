@@ -168,6 +168,45 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs.at(-1)!.workerId).not.toBe(first.workerId);
   });
 
+  it('starts the next member only after a stopped submitting worker finishes its turn', async () => {
+    const h = setup(); const [lead, other] = h.originalAgents; const repositoryPath = lead!.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead!.id;
+      mission.artifacts.tickets = ['a', 'b'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath, done: false }));
+    });
+    await h.service.schedule(lead!.id, { commandId: 'members-stop', expectedRevision: 0, maxConcurrency: 2, continuationLimit: 0,
+      assignments: [lead!, other!].map((member, index) => ({ ticketId: `mission-ticket-${index ? 'b' : 'a'}`, ticketRevision: 0, memberId: member.id })) });
+    await h.service.waitForLaunches();
+    const first = h.current().execution!.runs[0]!;
+    h.service.agentStarted(first.workerId!, 'submitting');
+    await h.service.submit(first.workerId!, { summary: 'Done', ticketId: first.ticketId!, implementation: { changes: 'commit abc123', tests: 'pass' } });
+    await h.service.stopAgent(first.workerId!);
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('preparing');
+    expect(h.ports.continueStage).toHaveBeenCalledOnce();
+    await h.service.agentFinished(first.workerId!, 'submitting'); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ status: 'running', memberId: other!.id });
+    expect(h.current().execution!.runs.at(-1)!.workerId).not.toBe(first.workerId);
+  });
+
+  it('does not restart a stopped worker when its own next assignment was deferred', async () => {
+    const h = setup(); const lead = h.originalAgents[0]!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.artifacts.tickets = ['a', 'b'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath: lead.folder!, done: false }));
+    });
+    await h.service.schedule(lead.id, { commandId: 'same-member-stop', expectedRevision: 0, maxConcurrency: 1, continuationLimit: 0,
+      assignments: ['a', 'b'].map(id => ({ ticketId: `mission-ticket-${id}`, ticketRevision: 0, memberId: lead.id })) });
+    await h.service.waitForLaunches();
+    const first = h.current().execution!.runs[0]!;
+    h.service.agentStarted(first.workerId!, 'submitting');
+    await h.service.submit(first.workerId!, { summary: 'Done', ticketId: first.ticketId!, implementation: { changes: 'commit abc123', tests: 'pass' } });
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ status: 'preparing', workerId: first.workerId });
+    await h.service.stopAgent(first.workerId!);
+    await h.service.agentFinished(first.workerId!, 'submitting'); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.status).toBe('cancelled');
+    expect(h.ports.continueStage).toHaveBeenCalledOnce();
+  });
+
   it.each([['lead', 1], ['lead', 2]] as const)('executes work with the existing Mission lead (%s, %s repositories)', async (implementationMode, repositoryCount) => {
     const h = setup(); const lead = h.originalAgents[0]!; const repositoryPath = lead.folder!;
     await h.store.change(h.current().id, mission => {
