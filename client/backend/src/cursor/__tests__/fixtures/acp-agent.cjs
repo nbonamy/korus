@@ -41,6 +41,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   else if (value.method === 'session/prompt') {
     const saved = history(); saved[sessionId] = {cwd:process.cwd(),prompt:value.params.prompt}; fs.writeFileSync(historyFile,JSON.stringify(saved));
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
+    // session_info_update: installed CLI live evidence; subagent kinds: installed-source evidence only.
+    update({sessionUpdate:'session_info_update',title:'Synthetic conversation'});
+    update({sessionUpdate:'subagent_spawned',agentId:'synthetic-child'});
+    update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
     if (mode === 'team') { send({ id: pending, error: { code: -32000, message: 'Your team has switched. https://private.invalid/token' } }); return; }
     if (mode === 'team-stderr') { process.stderr.write('Your team has switched. https://private.invalid/token\n'); process.exit(1); }
     if (mode === 'policy') { send({ id: pending, error: { code: -32000, message: 'Headless ACP use is disabled by team policy' } }); return; }
@@ -53,6 +57,16 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       send({ id: 1, method: 'session/request_permission', params: { sessionId, toolCall: { toolCallId: 'shell', title: 'Write synthetic file', kind: 'execute', status: 'pending' }, options: [
         { optionId: 'allow-once', kind: 'allow_once' }, { optionId: 'allow-always', kind: 'allow_always' }, { optionId: 'reject-once', kind: 'reject_once' },
       ] } }); return;
+    }
+    // Documented Cursor extension schemas: synthetic behavior, not a captured native question/todo exchange.
+    if (mode === 'question') {
+      // Sanitized native session plan-entry shape from plans/cursor.md.
+      update({sessionUpdate:'plan',entries:[{content:'Choose mode',priority:'medium',status:'in_progress'}]});
+      send({method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}],merge:false}});
+      send({id:4,method:'cursor/ask_question',params:{toolCallId:'question-tool',title:'Configuration',questions:[
+        {id:'mode',prompt:'Choose mode',options:[{id:'fast-id',label:'Fast'},{id:'safe-id',label:'Safe'}]},
+        {id:'extras',prompt:'Choose extras',options:[{id:'one-id',label:'One'},{id:'two-id',label:'Two'}],allowMultiple:true}
+      ]}}); return;
     }
     if (mode === 'extension') { send({ id: 2, method: 'cursor/create_plan', params: { toolCallId: 'plan', plan: '# Synthetic plan', todos: [] } }); return; }
     update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Thinking' } });
@@ -72,5 +86,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if (value.result.outcome.optionId === 'allow-once' || value.result.outcome.optionId === 'allow-always') fs.writeFileSync(path.join(process.cwd(), 'should-not-exist'), 'unsafe');
     update({ sessionUpdate: 'tool_call_update', toolCallId: 'shell', status: 'completed', rawOutput: { rejected: true } });
     send({ id: pending, result: { stopReason: 'end_turn' } });
+  } else if (value.id === 4 && value.result) {
+    send({method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'completed'}],merge:true}});
+    send({id:pending,result:{stopReason:'end_turn'}});
   } else if (value.id === 2 && value.result) send({ id: pending, result: { stopReason: 'end_turn' } });
 });

@@ -269,6 +269,24 @@ describe('Cursor ACP host transport boundary', () => {
     await host.interrupt(agent, next.turnId);
     expect((await snapshot()).clientRequests).toStrictEqual([]);
   });
+  it('maps documented question choices back to exact native IDs and cancels unanswered questions on release', async () => {
+    await host.sendPrompt(agent,'question');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    const request = (await snapshot()).clientRequests[0]!;
+    expect(request).toMatchObject({kind:'ask_user',payload:{request:{questions:[{id:'mode',options:[{label:'Fast'},{label:'Safe'}]},{id:'extras',multiSelect:true}]}}});
+    await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'answered',answers:{mode:{answers:['invented']},extras:{answers:['one-id']}}}})).rejects.toThrow(/choice|answer/i);
+    await host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'answered',answers:{mode:{answers:['Fast']},extras:{answers:['one-id','two-id']}}}});
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    expect((await wire()).find(call => call.id === 4 && call.result)?.result).toStrictEqual({outcome:{outcome:'answered',answers:[{questionId:'mode',selectedOptionIds:['fast-id']},{questionId:'extras',selectedOptionIds:['one-id','two-id']}]}});
+    expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',metadata:expect.objectContaining({todos:[{id:'todo-1',content:'Choose mode',status:'completed'}]})}));
+    expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',metadata:expect.objectContaining({planEntries:[{content:'Choose mode',priority:'medium',status:'in_progress'}]})}));
+    await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'cancelled'}})).rejects.toThrow(/pending/i);
+    await host.sendPrompt(agent,'question');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    const next = (await snapshot()).clientRequests[0]!;
+    await host.releaseConversation!(agent.id);
+    await expect(host.respondToAgentRequest({id:next.id,agentId:agent.id,outcome:{kind:'answered',answers:{}}})).rejects.toThrow(/pending/i);
+  });
   it('binds each supplied app and hosted MCP bridge to its owning agent', async () => {
     await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ synthetic: 'http://127.0.0.1:1235/mcp' }) });
     const second = { ...agent, id: 'other-agent' };

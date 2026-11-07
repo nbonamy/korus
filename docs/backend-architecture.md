@@ -134,7 +134,10 @@ is not evidence of the served model or billing. Permission callbacks and plan
 proposals become once-only app tool confirmations; duplicate and stale responses
 are rejected, and interruption or teardown cancels pending callbacks. Native edits
 can bypass permission callbacks, so approval presets and automatic review remain
-unavailable. Unsupported blocking extensions are cancelled. Per-agent app and
+unavailable. Structured questions map displayed choices back to native option
+identities and reject ambiguous or stale answers. Native plan entries and todo
+updates remain observed metadata. Unsupported blocking extensions are cancelled.
+Per-agent app and
 hosted MCP endpoints use the shared session bridge with identity scoped in each
 child process; this does not establish approval-free native tool execution.
 

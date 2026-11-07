@@ -10,6 +10,7 @@ type Change = CursorConversationEvent extends infer Event ? Event extends Cursor
 export class CursorTranscript {
   readonly replica;
   private message?: RendererMessage;
+  private readonly todoItems = new Map<string, Record<string, unknown>>();
   private replayUser: Record<string, unknown>[] = [];
   private denied = new Set<string>();
   constructor(private readonly agentId: string, private readonly sessionId: string, private readonly changed: (event: CursorConversationEvent) => void, private readonly display: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] })) {
@@ -48,7 +49,9 @@ export class CursorTranscript {
         this.text('assistant', update.content.text, update.sessionUpdate === 'agent_thought_chunk'); return;
       case 'tool_call': case 'tool_call_update': this.tool(update); return;
       // Native metadata is not proof of an implemented catalog, plan or billable usage.
-      case 'user_message_chunk': case 'config_option_update': case 'available_commands_update': case 'plan': case 'usage_update': case 'current_mode_update': return;
+      case 'session_info_update': case 'subagent_spawned': case 'subagent_state_update': return;
+      case 'plan': this.progress(update); return;
+      case 'user_message_chunk': case 'config_option_update': case 'available_commands_update': case 'usage_update': case 'current_mode_update': return;
       default: throw new Error('Unsupported Cursor session update.');
     }
   }
@@ -90,6 +93,26 @@ export class CursorTranscript {
     this.tool({ toolCallId: params.toolCallId, title: typeof params.name === 'string' ? params.name : 'Review plan', kind: 'plan', status: 'pending', rawInput: params, rawOutput: params.plan });
     const part = this.message?.parts.find(part => part.type === 'tool' && part.id === params.toolCallId);
     if (part?.type === 'tool') { part.metadata = { ...part.metadata, plan: params.plan, todos: params.todos, ...(typeof params.name === 'string' ? {name:params.name} : {}) }; this.event({type:'message.upsert',payload:{message:this.message!}}); }
+  }
+  private progress(update: Record<string, unknown>): void {
+    if (!Array.isArray(update.entries) || !update.entries.every(entry => record(entry) && typeof entry.content === 'string' && ['pending','in_progress','completed'].includes(String(entry.status)))) throw new Error('Invalid Cursor plan entries.');
+    const toolCallId = `cursor-plan:${this.replica.getSnapshot().activeTurnId}`;
+    this.tool({toolCallId,title:'Plan progress',kind:'plan',status:'completed',rawOutput:update.entries.map(entry => `${entry.status === 'completed' ? '[x]' : '[ ]'} ${entry.content}`).join('\n')});
+    const part = this.message?.parts.find(part => part.type === 'tool' && part.id === toolCallId);
+    if (part?.type === 'tool') { part.metadata = {...part.metadata,source:'session-plan',planEntries:structuredClone(update.entries)}; this.event({type:'message.upsert',payload:{message:this.message!}}); }
+  }
+  todos(params: Record<string, unknown>): void {
+    if (typeof params.toolCallId !== 'string' || typeof params.merge !== 'boolean' || !Array.isArray(params.todos)) throw new Error('Invalid Cursor todos.');
+    const todos = params.todos.map(todo => {
+      if (!record(todo) || typeof todo.id !== 'string' || typeof todo.content !== 'string' || !['pending','in_progress','completed','cancelled'].includes(String(todo.status))) throw new Error('Invalid Cursor todo.');
+      return todo;
+    });
+    if (!params.merge) this.todoItems.clear();
+    for (const todo of todos) this.todoItems.set(todo.id as string, structuredClone(todo));
+    const items = [...this.todoItems.values()];
+    this.tool({toolCallId:params.toolCallId,title:'Tasks',kind:'plan',status:'completed',rawOutput:items.map(todo => `${todo.status === 'completed' ? '[x]' : '[ ]'} ${todo.content}`).join('\n')});
+    const part = this.message?.parts.find(part => part.type === 'tool' && part.id === params.toolCallId);
+    if (part?.type === 'tool') { part.metadata = {...part.metadata,todos:items}; this.event({type:'message.upsert',payload:{message:this.message!}}); }
   }
   planDecision(toolCallId: string, accepted: boolean): void { this.tool({toolCallId,status:accepted ? 'completed' : 'failed'}); }
   deny(toolCall: unknown): void {

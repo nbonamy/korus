@@ -7,6 +7,7 @@ import type { RendererMessage, RendererMessagePart } from '@workspace/core/contr
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import { AcpConnection, record } from '../acp/acp-connection';
 import { cursorEnvironment, resolveCursorExecutable, type CursorRuntime, cursorRuntime } from './runtime';
+import { cursorQuestion } from './questions';
 import { CursorPromptJournal } from './prompt-journal';
 import { CursorTranscript } from './transcript';
 
@@ -145,6 +146,10 @@ export class CursorSession {
     await this.connection.close(); await this.active;
   }
   private notification(method: string, params: unknown): void {
+    if (method === 'cursor/update_todos') {
+      if (this.transcript && !this.disposed && !this.interrupted && !this.loading && this.snapshot.busy && record(params)) this.transcript.todos(params);
+      return;
+    }
     if (method !== 'session/update') return;
     if (!this.transcript && record(params) && record(params.update) && ['config_option_update', 'available_commands_update', 'current_mode_update'].includes(String(params.update.sessionUpdate))) {
       if (this.startupUpdates.length >= 256) throw new Error('Cursor startup update limit exceeded.');
@@ -168,6 +173,11 @@ export class CursorSession {
   private async request(method: string, params: unknown): Promise<unknown> {
     const cancelled = { outcome: { outcome: 'cancelled' } };
     if (!this.transcript || this.loading || this.disposed || this.interrupted || !this.snapshot.busy || !record(params)) return cancelled;
+    if (method === 'cursor/ask_question') {
+      const id = randomUUID();
+      const question = cursorQuestion(params,id,this.sessionId,this.snapshot.activeTurnId!);
+      return new Promise(resolve => { this.pending.set(id,{resolve,answer:question.answer}); this.transcript.request(question.request); });
+    }
     const permission = method === 'session/request_permission';
     const plan = method === 'cursor/create_plan';
     if (!permission && !plan) {
