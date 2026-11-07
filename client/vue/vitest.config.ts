@@ -45,6 +45,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'logic',
+          sequence: { groupOrder: 2 },
           environment: 'node',
           include: logicTestFiles,
           setupFiles: [],
@@ -72,6 +73,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'components',
+          sequence: { groupOrder: 2 },
           include: ['src/**/*.spec.ts'],
           exclude: logicTestFiles,
           setupFiles: [path.resolve(__dirname, 'src/test/setup.ts')],

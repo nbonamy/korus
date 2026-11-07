@@ -457,6 +457,7 @@ describe('split-screen conversations', () => {
     expect(api.selectAgent).not.toHaveBeenCalled();
   });
 
+  // Loads cold transcripts through every layout and checks pane focus, stability and sidebar ownership.
   it('loads cold conversations in every layout, keeps panes stable on focus, and shares only the focused sidebar', async () => {
     const snapshot = createInitialSnapshot();
     const agents = snapshot.agents;
@@ -568,7 +569,7 @@ describe('split-screen conversations', () => {
     await chooseLayout(wrapper, 'Single Pane');
     expect(wrapper.findAll('[contenteditable="true"]')).toHaveLength(1);
     expect(wrapper.get('.agent-header').text()).toContain(agents[3]!.name);
-  });
+  }, 5_000);
 
   it('keeps draft shortcuts, submissions and late completions tied to their pane rather than the latest focus', async () => {
     const snapshot = createInitialSnapshot();
