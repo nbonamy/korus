@@ -15,7 +15,7 @@ import { CursorTranscript } from './transcript';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
+type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
 export class CursorSession {
@@ -266,6 +266,8 @@ export class CursorSession {
     if (plan) this.transcript.plan(params);
     const id = randomUUID();
     const call = permission ? params.toolCall as Record<string, unknown> : params;
+    const appPermission = permission ? this.appMcpPermission(call, params.options) : undefined;
+    if (appPermission) return { outcome: { outcome: 'selected', optionId: appPermission } };
     return new Promise(resolve => {
       this.pending.set(id, { resolve, answer: response => {
         if (response.outcome.kind === 'cancelled') return cancelled;
@@ -278,6 +280,20 @@ export class CursorSession {
       } });
       this.transcript.request({ id, kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: plan ? 'create_plan' : String(call.kind ?? 'tool'), summary: typeof call.title === 'string' ? call.title : plan ? 'Review Cursor plan' : 'Approve Cursor tool', argumentsPreview: plan ? params.plan as string : JSON.stringify(call.rawInput ?? call), allowConversation: false, allowAlways: false } } });
     });
+  }
+  private appMcpPermission(call: Record<string, unknown>, options: unknown): string | undefined {
+    const name = this.options.appMcpServerName;
+    if (!name || call.kind !== 'other' || this.options.mcpServers?.filter(server => record(server) && server.name === name).length !== 1) return;
+    // Cursor's permission callback omits rawInput. Bind it to an observed tool in
+    // this turn; display titles cannot establish an MCP server's identity.
+    const part = this.snapshot.messages.filter(message => message.turnId === this.snapshot.activeTurnId)
+      .flatMap(message => message.parts).find(part => part.type === 'tool' && part.id === call.toolCallId);
+    if (part?.type !== 'tool' || part.metadata?.cursorToolKind !== 'other' || part.status !== 'running') return;
+    const input = part.input;
+    if (!record(input) || input.providerIdentifier !== name || typeof input.toolName !== 'string' || !input.toolName) return;
+    if ('rawInput' in call && (!record(call.rawInput) || call.rawInput.providerIdentifier !== name || call.rawInput.toolName !== input.toolName)) return;
+    const once = Array.isArray(options) ? options.filter(option => record(option) && option.kind === 'allow_once' && typeof option.optionId === 'string' && option.optionId.trim()) : [];
+    return once.length === 1 ? once[0].optionId as string : undefined;
   }
   private failed(error: Error): void {
     if (this.disposed) return;

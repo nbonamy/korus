@@ -471,6 +471,37 @@ describe('Cursor ACP host transport boundary', () => {
     await host.releaseConversation!(agent.id);
     await expect(host.respondToAgentRequest({id:next.id,agentId:agent.id,outcome:{kind:'answered',answers:{}}})).rejects.toThrow(/pending/i);
   });
+  it('preapproves only observed app MCP calls in the active turn without persistent permissions', async () => {
+    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp' }); host.onEvent(event => events.push(event));
+    await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({}));
+    const first = await host.sendPrompt(agent,'mcp-permission');
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    expect(events.some(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='request.created')).toBe(false);
+    expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-once'}});
+    await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({omitObservation:true}));
+    await host.sendPrompt({...agent,backendSession:first.backendSession},'mcp-permission');
+    await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
+    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).clientRequests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
+    await vi.waitFor(()=>expect(completions()).toHaveLength(2));
+  });
+  it.each([
+    {name:'another MCP server with a Korus-looking title',config:{input:{providerIdentifier:'external',toolName:'set-status'}}},
+    {name:'shell with Korus-shaped arguments',config:{kind:'execute'}},
+    {name:'missing observed tool identity',config:{omitObservation:true}},
+    {name:'contradictory request identity',config:{requestInput:{providerIdentifier:'external',toolName:'set-status'}}},
+    {name:'no once-only option',config:{noOnce:true}},
+    {name:'no app gateway',config:{},noGateway:true},
+    {name:'duplicate server identity',config:{},duplicate:true},
+  ])('keeps manual permission for $name', async ({config,noGateway,duplicate}) => {
+    await host.close(); host = createBackendDriver('cursor', { ...(!noGateway?{appMcpServerUrl:'http://127.0.0.1:1234/mcp'}:{}), ...(duplicate?{hostedMcpServerUrls:()=>({korus:'http://127.0.0.1:1235/mcp'})}:{}) }); host.onEvent(event=>events.push(event));
+    await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify(config));
+    await host.sendPrompt(agent,'mcp-permission');
+    await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
+    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).clientRequests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
+    await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-reject'}});
+  });
   it('binds each supplied app and hosted MCP bridge to its owning agent', async () => {
     await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ synthetic: 'http://127.0.0.1:1235/mcp' }) });
     const second = { ...agent, id: 'other-agent' };

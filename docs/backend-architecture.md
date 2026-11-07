@@ -143,7 +143,10 @@ and requires a matching native acknowledgment before prompt admission;
 trusted local attachments become native content blocks. Configured model choice
 is not evidence of the served model or billing. Permission callbacks and plan
 proposals become once-only app tool confirmations; duplicate and stale responses
-are rejected, and interruption or teardown cancels pending callbacks. Native edits
+are rejected, and interruption or teardown cancels pending callbacks. The session-injected
+Korus MCP server is preapproved only through a current-turn tool-call identity,
+using the native once-only option. Display titles, other MCP servers and native
+shell/file tools do not grant that authorization. Native edits
 can bypass permission callbacks, so approval presets and automatic review remain
 unavailable. Structured questions map displayed choices back to native option
 identities and reject ambiguous or stale answers. Native plan entries and todo

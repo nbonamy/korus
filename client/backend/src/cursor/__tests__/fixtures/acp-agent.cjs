@@ -116,6 +116,14 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if (mode === 'protocol') { process.stdout.write('not-json\n'); return; }
     if (mode === 'invalid-completion') { reply({ stopReason: 'https://private.invalid/token' }); return; }
     if (mode === 'eof') { update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Partial' } }); process.stdout.end(); return; }
+    // Native MCP tool updates carry identity; permission requests omit rawInput (2026.11.05 source).
+    if (mode === 'mcp-permission') {
+      const config = JSON.parse(fs.readFileSync(path.join(__dirname,'mcp-permission.json'),'utf8'));
+      if (!config.omitObservation) update({sessionUpdate:'tool_call',toolCallId:'mcp-call',kind:config.kind??'other',title:'korus: set-status',status:'pending',rawInput:config.input??{providerIdentifier:'korus',toolName:'set-status',args:{status:'Fixture'}}});
+      send({id:8,method:'session/request_permission',params:{sessionId,toolCall:{toolCallId:'mcp-call',kind:config.kind??'other',title:'korus: set-status',status:'pending',...(config.requestInput?{rawInput:config.requestInput}:{})},options:[
+        ...(!config.noOnce?[{optionId:'native-mcp-once',kind:'allow_once'}]:[]),{optionId:'native-mcp-always',kind:'allow_always'},{optionId:'native-mcp-reject',kind:'reject_once'}
+      ]}});return;
+    }
     if (mode === 'permission') {
       update({ sessionUpdate: 'tool_call', toolCallId: 'shell', title: 'Write synthetic file', kind: 'execute', status: 'pending' });
       send({ id: 1, method: 'session/request_permission', params: { sessionId, toolCall: { toolCallId: 'shell', title: 'Write synthetic file', kind: 'execute', status: 'pending' }, options: [
@@ -153,6 +161,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if (value.result.outcome.optionId === 'allow-once' || value.result.outcome.optionId === 'allow-always') fs.writeFileSync(path.join(process.cwd(), 'should-not-exist'), 'unsafe');
     update({ sessionUpdate: 'tool_call_update', toolCallId: 'shell', status: 'completed', rawOutput: { rejected: true } });
     send({ id: pending, result: { stopReason: 'end_turn' } });
+  } else if (value.id === 8 && value.result) {
+    update({sessionUpdate:'tool_call_update',toolCallId:'mcp-call',status:'completed',rawOutput:{approved:value.result.outcome.optionId==='native-mcp-once'}});
+    send({id:pending,result:{stopReason:'end_turn'}});
   } else if (value.id === 4 && value.result) {
     send({method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'completed'}],merge:true}});
     send({id:pending,result:{stopReason:'end_turn'}});
