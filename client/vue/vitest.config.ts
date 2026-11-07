@@ -43,6 +43,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'logic',
+          sequence: { groupOrder: 2 },
           environment: 'node',
           include: logicTestFiles,
           setupFiles: [],
@@ -54,7 +55,7 @@ export default defineConfig({
         test: {
           name: 'browser',
           // Cold Vite/Chromium work must not contend with short DOM behavior tests.
-          sequence: { groupOrder: -1 },
+          sequence: { groupOrder: 1 },
           fileParallelism: false,
           environment: 'node',
           pool: 'forks',
@@ -70,6 +71,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'components',
+          sequence: { groupOrder: 2 },
           include: ['src/**/*.spec.ts'],
           exclude: logicTestFiles,
           setupFiles: [path.resolve(__dirname, 'src/test/setup.ts')],

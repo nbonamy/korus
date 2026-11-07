@@ -37,6 +37,7 @@ const teams: Team[] = [
 
 describe('TeamRail', () => {
   // Real tooltip/popover lifecycle across all rail actions; delays use controlled time.
+  // Cycles real tooltip, focus and menu controls across rail status updates with a controlled clock.
   it('shows rail tooltips on hover and focus, updates state labels, and keeps menu triggers usable', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const hold = ref<false | { until: number | null }>(false);
@@ -88,7 +89,7 @@ describe('TeamRail', () => {
       expect(visibleTooltip('Settings menu')).toBeUndefined();
       expect(new DOMWrapper(document.body.querySelector<HTMLElement>('.settings-menu')!).isVisible()).toBe(true);
     } finally { wrapper.unmount(); vi.useRealTimers(); }
-  });
+  }, 5_000);
   it('matches the selection ring to the selected team color', async () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-app' });
     expect(getComputedStyle(wrapper.get(`[aria-label="${product.name}"]`).element).outlineColor)

@@ -11,6 +11,7 @@ import { curatedSkills, type SkillManagerState } from '@workspace/core/skill-man
 
 describe('SettingsView', () => {
   // Full rendered skill installation, provider synchronization and recovery workflow.
+  // Installs packs, synchronizes providers and exercises error recovery through the full settings view.
   it('installs a featured skill, offers whole packs, syncs providers and keeps failures visible', async () => {
     const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ backend: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
     const nativeGuidelines = { ...personal, name: 'web-design-guidelines', providers: personal.providers.map(provider => ({ ...provider, status: 'installed' as const })) };
@@ -85,7 +86,7 @@ describe('SettingsView', () => {
     expect(manageSkills).toHaveBeenLastCalledWith({ action: 'remove', name: 'personal-notes', confirmed: true });
     expect(wrapper.find('[aria-label="personal-notes actions"]').exists()).toBe(false);
 
-  });
+  }, 5_000);
   it('shows the featured skills at once and a placeholder for the installed list while it loads', async () => {
     let resolveList!: (state: SkillManagerState) => void;
     const manageSkills = vi.fn().mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { resolveList = resolve; }));

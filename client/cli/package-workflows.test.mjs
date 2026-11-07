@@ -130,7 +130,7 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
       } finally { await new Promise(resolve => mcp.close(resolve)); }
     });
 
-    if (process.platform !== 'win32') await t.test('real provider auth, triage priority and provider exit codes', { timeout: 3_000 }, async () => {
+    if (process.platform !== 'win32') {
       for (const [id, name] of [['claude', 'claude'], ['codex', 'codex'], ['antigravity', 'agy']]) {
         const code = `#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); const signed=process.env['TEST_AUTH_${id}']!=='no';
 if(process.env.TEST_HANG && ['auth','login','models'].includes(args[0])){setInterval(()=>{},1000);return;}
@@ -143,24 +143,34 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       }
       const homes = Object.fromEntries(['claude', 'codex', 'antigravity'].map(id => [id, { homePath: path.join(home, `${id}-home`), isolated: true }]));
       await save('settings.json', { settings: { providerHomes: homes } });
-      const doctor = await run(['doctor', '--json'], { TEST_AUTH_claude: 'no', TEST_AUTH_codex: 'no' });
-      assert.equal(doctor.code, 0); assert.deepEqual(JSON.parse(doctor.stdout).providers.map(p => p.auth), ['signed-out', 'signed-out', 'authenticated'], doctor.stdout); assert.doesNotMatch(doctor.stdout, /PRIVATE_ACCOUNT/);
+      await t.test('reports provider authentication without exposing account identity', { timeout: 2_500 }, async () => {
+        const doctor = await run(['doctor', '--json'], { TEST_AUTH_claude: 'no', TEST_AUTH_codex: 'no' });
+        assert.equal(doctor.code, 0); assert.deepEqual(JSON.parse(doctor.stdout).providers.map(p => p.auth), ['signed-out', 'signed-out', 'authenticated'], doctor.stdout); assert.doesNotMatch(doctor.stdout, /PRIVATE_ACCOUNT/);
+      });
       const capture = path.join(directory, 'provider.json');
       for (const [selected, auth] of [['claude', {}], ['codex', { TEST_AUTH_claude: 'no' }], ['antigravity', { TEST_AUTH_claude: 'no', TEST_AUTH_codex: 'no' }]]) {
-        assert.equal((await run(['triage', 'test problem', '--model', 'model with spaces'], { TEST_CAPTURE: capture, ...auth })).code, 7);
-        const launched = JSON.parse(await readFile(capture, 'utf8')); assert.equal(launched.id, selected); assert.equal(launched.home, homes[selected].homePath); assert.ok(launched.args.includes('model with spaces'));
+        await t.test(`triage selects ${selected}, its isolated home and the provider exit code`, { timeout: 2_500 }, async () => {
+          assert.equal((await run(['triage', 'test problem', '--model', 'model with spaces'], { TEST_CAPTURE: capture, ...auth })).code, 7);
+          const launched = JSON.parse(await readFile(capture, 'utf8')); assert.equal(launched.id, selected); assert.equal(launched.home, homes[selected].homePath); assert.ok(launched.args.includes('model with spaces'));
+        });
       }
-      const hung = await run(['doctor', '--json', '--timeout', '50'], { TEST_HANG: '1' });
-      assert.equal(hung.code, 0); assert.ok(JSON.parse(hung.stdout).providers.every(provider => provider.auth === 'unknown'));
-      const active = launch(['triage'], { TEST_CAPTURE: capture, TEST_LONG: '1' });
-      try {
-        await active.waitFor('CLIENT_RUNNING'); const pid = JSON.parse(await readFile(capture, 'utf8')).pid;
-        active.child.kill('SIGTERM'); assert.equal((await active.done).code, 143);
-        assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
-      } finally { active.child.kill('SIGKILL'); }
-      const rejected = await run(['triage', '--agent', 'codex'], { TEST_AUTH_codex: 'no' }); assert.equal(rejected.code, 1); assert.doesNotMatch(rejected.stdout + rejected.stderr, /PRIVATE_ACCOUNT/);
-      const prepared = await run(['triage', '--no-launch', '--json']); assert.equal(prepared.code, 0); assert.match(await readFile(JSON.parse(prepared.stdout).promptPath, 'utf8'), /approval/);
-    });
+      await t.test('bounds hung authentication discovery', { timeout: 2_500 }, async () => {
+        const hung = await run(['doctor', '--json', '--timeout', '50'], { TEST_HANG: '1' });
+        assert.equal(hung.code, 0); assert.ok(JSON.parse(hung.stdout).providers.every(provider => provider.auth === 'unknown'));
+      });
+      await t.test('terminates the owned provider when triage is interrupted', { timeout: 2_500 }, async () => {
+        const active = launch(['triage'], { TEST_CAPTURE: capture, TEST_LONG: '1' });
+        try {
+          await active.waitFor('CLIENT_RUNNING'); const pid = JSON.parse(await readFile(capture, 'utf8')).pid;
+          active.child.kill('SIGTERM'); assert.equal((await active.done).code, 143);
+          assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+        } finally { active.child.kill('SIGKILL'); }
+      });
+      await t.test('rejects signed-out explicit providers and prepares prompts without launching', { timeout: 2_500 }, async () => {
+        const rejected = await run(['triage', '--agent', 'codex'], { TEST_AUTH_codex: 'no' }); assert.equal(rejected.code, 1); assert.doesNotMatch(rejected.stdout + rejected.stderr, /PRIVATE_ACCOUNT/);
+        const prepared = await run(['triage', '--no-launch', '--json']); assert.equal(prepared.code, 0); assert.match(await readFile(JSON.parse(prepared.stdout).promptPath, 'utf8'), /approval/);
+      });
+    }
 
     await t.test('support bundles and finite log output preserve privacy', { timeout: 2_500 }, async () => {
       const log = path.join(home, 'logs', 'daemon.log');
