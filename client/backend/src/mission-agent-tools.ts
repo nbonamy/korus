@@ -66,7 +66,8 @@ export class MissionAgentTools {
     const mission = this.requireMission(context.missionId);
     const run = mission.execution!.runs.find(candidate => candidate.id === context.runId)!;
     if (mission.stage === 'implementation' && missionLeadAgentId(mission) === agentId) {
-      return missionLeadSchedulingInstructions(mission);
+      return [missionLeadSchedulingInstructions(mission), ...(run.stage === 'implementation' && this.ownsWritableRun(mission, run.id, agentId)
+        ? [missionDeveloperInstructions(mission, run, missionTeamRepositories(this.ports.snapshot, mission))] : [])].join('\n\n');
     }
     if (run.workerId === agentId && !this.ownsWritableRun(mission, run.id, agentId)) return undefined;
     if (run.workerId !== agentId) {

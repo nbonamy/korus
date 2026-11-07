@@ -34,6 +34,9 @@ describe('MissionService', () => {
         status: 'running', skills: [], feedback: '', startedAt: '2026-09-19T00:00:00.000Z',
       }],
     };
+    const delivery = { ...snapshot.agents[0]!, id: 'delivery-1', folder: '/worktree' };
+    snapshot.agents.push(delivery); snapshot.teams[0]!.agentIds.push(delivery.id);
+    mission.execution.deliveries = [{ repositoryPath: '/repo', agentId: delivery.id, status: 'pending' }];
     const persist = vi.fn().mockResolvedValue(undefined);
     const cleanup = vi.fn().mockResolvedValue(undefined);
     const service = new MissionService(snapshot, persist);
@@ -42,7 +45,7 @@ describe('MissionService', () => {
 
     expect(cleanup).toHaveBeenCalledWith(
       expect.objectContaining({ id: mission.id }),
-      [expect.objectContaining({ id: 'worker-1' })],
+      [expect.objectContaining({ id: 'worker-1' }), expect.objectContaining({ id: 'delivery-1' })],
     );
     expect(snapshot.missions).toStrictEqual([]);
     expect(snapshot.agents).toStrictEqual([]);

@@ -1,3 +1,7 @@
+import { createEntityId } from '@workspace/core/ids';
+import { basename } from 'node:path';
+import { createAgentInSnapshot } from '@workspace/core/agent-manager';
+import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import type { AppSnapshot, CreateSourceWorktreeInput, SourceWorktree } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
@@ -50,15 +54,32 @@ export class MissionWorkspaceService {
     execution.workspaces.push(...workspaces);
   }
 
-  prepareDeliveries(mission: Mission): void {
+  prepareDeliveries(mission: Mission, missionHome?: string): void {
     const execution = mission.execution;
     if (!execution?.workspaces?.length) throw new Error('This Mission has no repository workspaces to ship.');
+    const previousDeliveries = execution.deliveries;
+    const leadId = missionLeadAgentId(mission);
     execution.deliveries = execution.workspaces.map(workspace => {
       const run = execution.runs.slice().reverse().find(candidate => (
         candidate.stage === 'implementation' && candidate.repositoryPath === workspace.repositoryPath && candidate.workerId
       ));
       if (!run?.workerId) throw new Error(`No implementation agent is available to ship ${workspace.repositoryPath}.`);
-      return { repositoryPath: workspace.repositoryPath, agentId: run.workerId, status: 'pending' };
+      let agentId = run.workerId;
+      if (agentId === leadId) {
+        // Git delivery is repository-bound and can remove its agent's worktree.
+        // Use an idle handle, never another model run or the lead's conversation.
+        const previous = previousDeliveries?.find(delivery => delivery.repositoryPath === workspace.repositoryPath);
+        const handle = this.ports.snapshot.agents.find(agent => agent.id === previous?.agentId && agent.id !== leadId && agent.folder === workspace.path);
+        const lead = this.ports.snapshot.agents.find(agent => agent.id === leadId)!;
+        agentId = handle?.id ?? createEntityId('agent');
+        if (!handle) createAgentInSnapshot(this.ports.snapshot, {
+          name: `Delivery · ${basename(workspace.repositoryPath)}`, teamId: execution.teamId,
+          folder: workspace.path, selection: { backend: lead.backend },
+        }, undefined, agentId, { select: false });
+      }
+      return { repositoryPath: workspace.repositoryPath, agentId, status: 'pending' };
     });
+    const lead = this.ports.snapshot.agents.find(agent => agent.id === leadId);
+    if (missionHome && lead) { lead.folder = missionHome; delete lead.workspace; }
   }
 }

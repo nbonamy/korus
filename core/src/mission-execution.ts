@@ -69,9 +69,15 @@ export function missionRunAssignment(mission: Mission, run: MissionRun): Mission
   };
 }
 
+/** An absent mode preserves saved runs and older clients' execution semantics. */
+export function missionImplementationUsesLead(mission: Mission): boolean {
+  return mission.execution?.implementationMode === 'lead';
+}
+
 /** The lead retains coordination duties while repository workers own implementation. */
 export function missionLeadSchedulingInstructions(mission: Mission): string {
   return [
+    `Implementation execution: ${mission.execution?.implementationMode ?? (mission.execution?.parallelImplementation ? 'multiplePerRepository' : 'perRepository')}. Executor: ${missionImplementationUsesLead(mission) ? 'you, the Mission lead, serially across all repositories; no delegation' : 'repository workers'}.`,
     `Mission lead: ${mission.outcome} (${mission.id}). Current stage: ${mission.stage}.`,
     'You own implementation scheduling: after the user approves Tickets, read get-mission-schedule and use set-mission-schedule to persist ordered ticket/member assignments, concurrency and a continuation budget (0 to 2). The daemon executes within that bounded plan.',
     'Drive approved work to completion: follow up on stalled workers, inspect failures, resolve routine command, test and environment problems, and adapt assignments and priorities when workers discover new information. Authorize a targeted failed-run retry by naming retryFailedRunId when evidence supports it. Each decision authorizes one failed-run retry; do not blindly repeat attempts. Explicit Stop requires user retry.',

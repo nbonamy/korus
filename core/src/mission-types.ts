@@ -84,6 +84,8 @@ export type MissionDelivery = {
   pullRequest?: { number: number; url: string };
 };
 /** Bounded authorization for approved implementation work; order expresses priority. */
+export type MissionImplementationMode = 'lead' | 'perRepository' | 'multiplePerRepository';
+
 export type MissionDispatchInput = {
   commandId: string;
   expectedRevision: number;
@@ -99,6 +101,7 @@ export type MissionExecution = {
   implementationModel?: ExecutionSelection;
   /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
   parallelImplementation?: boolean;
+  implementationMode?: MissionImplementationMode;
   dispatchPlan?: MissionDispatchPlan;
   repoPath?: string;
   memberIds: string[];
@@ -145,7 +148,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection; parallelImplementation?: boolean }
+  | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection; parallelImplementation?: boolean; implementationMode?: MissionImplementationMode }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }

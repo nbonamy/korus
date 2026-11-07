@@ -10,7 +10,7 @@ export function missionAgent(snapshot: AppSnapshot, id: string | undefined): Age
 export function missionTeamRepositories(snapshot: AppSnapshot, mission: Mission): string[] {
   const team = snapshot.teams.find(candidate => candidate.id === mission.teamId);
   const workerIds = new Set((snapshot.missions ?? []).flatMap(candidate => (
-    candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []
+    [...(candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []), ...(candidate.execution?.deliveries?.map(delivery => delivery.agentId) ?? [])]
   )));
   return [...new Set((team?.agentIds ?? []).flatMap(id => {
     if (workerIds.has(id)) return [];

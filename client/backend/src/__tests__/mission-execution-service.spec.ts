@@ -168,6 +168,43 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs.at(-1)!.workerId).not.toBe(first.workerId);
   });
 
+  it.each([['lead', 1], ['lead', 2]] as const)('executes work with the existing Mission lead (%s, %s repositories)', async (implementationMode, repositoryCount) => {
+    const h = setup(); const lead = h.originalAgents[0]!; const repositoryPath = lead.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.execution!.implementationMode = implementationMode;
+      mission.execution!.workspaces = [repositoryPath, '/second/repo'].slice(0, repositoryCount).map((repositoryPath, index) => ({ repositoryPath, path: `/isolated/mission-${index}`, branch: 'mission/test' }));
+      mission.artifacts.tickets = ['a', 'b'].map((id, index) => ({ id: `mission-ticket-${id}`, title: id, repositoryPath: mission.execution!.workspaces![index % repositoryCount]!.repositoryPath, done: false }));
+    });
+    const count = h.snapshot.agents.length;
+    await h.service.schedule(lead.id, { commandId: 'lead-work', expectedRevision: 0, maxConcurrency: 2, continuationLimit: 1,
+      assignments: ['a', 'b'].map(id => ({ ticketId: `mission-ticket-${id}`, ticketRevision: 0, memberId: lead.id })) });
+    await h.service.waitForLaunches();
+    expect(h.snapshot.agents).toHaveLength(count);
+    expect(h.current().execution!.runs[0]).toMatchObject({ workerId: lead.id, status: 'running' });
+    expect(h.snapshot.agents.find(agent => agent.id === lead.id)!.folder).toBe('/isolated/mission-0');
+    expect(h.service.developerInstructionsForAgent(lead.id)).toContain('You own implementation scheduling');
+    expect(h.service.developerInstructionsForAgent(lead.id)).toContain('Assigned ticket');
+    await h.service.submit(lead.id, { summary: 'Done', ticketId: 'mission-ticket-a', implementation: { changes: 'commit abc123', tests: 'pass' } });
+    await h.service.agentFinished(lead.id, 'first-ticket'); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ workerId: lead.id, ticketId: 'mission-ticket-b', status: 'running' });
+    expect(h.snapshot.agents.find(agent => agent.id === lead.id)!.folder).toBe(`/isolated/mission-${repositoryCount - 1}`);
+    expect(h.snapshot.agents).toHaveLength(count);
+    await h.service.submit(lead.id, { summary: 'Done', ticketId: 'mission-ticket-b', implementation: { changes: 'commit def456', tests: 'pass' } });
+    const currentLead = h.snapshot.agents.find(agent => agent.id === lead.id)!;
+    currentLead.status = { type: 'working' };
+    await expect(h.service.reopenStage(lead.id, 'tickets')).rejects.toThrow(/active/);
+    currentLead.status = { type: 'idle' };
+    await h.store.change(h.current().id, mission => {
+      mission.execution!.implementationMode = 'perRepository';
+      mission.artifacts.tickets.push({ id: 'mission-ticket-c', title: 'Follow-up', repositoryPath, done: false });
+    });
+    await h.service.schedule(lead.id, { commandId: 'use-worker', expectedRevision: 1, maxConcurrency: 1, continuationLimit: 0,
+      assignments: [{ ticketId: 'mission-ticket-c', ticketRevision: 0, memberId: lead.id }] });
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)!.workerId).not.toBe(lead.id);
+  });
+
   it('keeps the lead informed and continues an unfinished worker twice in the same conversation', async () => {
     const h = setup();
     const lead = h.originalAgents[0]!;
@@ -696,7 +733,7 @@ describe('mission execution', () => {
     await h.service.upsertTicket(lead.workerId!, { title: 'Checkout', body: 'Join both APIs.', repositoryPath, blockedByTicketIds: [first.ticketId, second.ticketId] });
     await h.service.submit(lead.workerId!, { summary: 'Ready', artifacts: structuredClone(h.current().artifacts) });
     await expect(h.command({ action: 'accept', runId: lead.id, parallelImplementation: 'true' })).rejects.toThrow('parallel implementation');
-    await h.command({ action: 'accept', runId: lead.id, parallelImplementation: true });
+    await h.command({ action: 'accept', runId: lead.id, implementationMode: 'multiplePerRepository' });
     await h.service.waitForLaunches();
     expect(h.current().execution!.parallelImplementation).toBe(true);
     expect(h.persisted.mock.calls.at(-1)![0].missions[0].execution.parallelImplementation).toBe(true);
@@ -899,7 +936,7 @@ describe('mission execution', () => {
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     h.snapshot.providerConnections![1]!.enabled = true;
     const implementationModel = { ...selection, reasoningEffort: 'low' };
-    await h.command({ action: 'accept', runId: 'tickets-ready', implementationModel });
+    await h.command({ action: 'accept', runId: 'tickets-ready', implementationModel, implementationMode: 'perRepository' });
     await h.service.waitForLaunches();
     expect(h.persisted).toHaveBeenLastCalledWith(expect.objectContaining({ missions: [expect.objectContaining({ execution: expect.objectContaining({ implementationModel }) })] }));
     const home = await mkdtemp(path.join(tmpdir(), 'mission-model-'));
@@ -1729,7 +1766,7 @@ describe('mission execution', () => {
     await h.service.submit(ticketsRun.workerId!, {
       artifacts: structuredClone(h.current().artifacts), summary: 'Backlog ready',
     });
-    await h.command({ action: 'accept', runId: ticketsRun.id });
+    await h.command({ action: 'accept', runId: ticketsRun.id, implementationMode: 'perRepository' });
 
     const workspaces = h.current().execution!.workspaces!;
     expect(workspaces).toHaveLength(2);

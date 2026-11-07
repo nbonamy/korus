@@ -161,6 +161,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && text(update.id) && text(update.runId) && text(update.fromAgentId) && text(update.leadId) && text(update.content)
       && (update.delivered === undefined || update.delivered === true))))
     && (v.dispatchPlan === undefined || isMissionDispatchPlan(v.dispatchPlan))
+    && (v.implementationMode === undefined || ['lead', 'perRepository', 'multiplePerRepository'].includes(v.implementationMode as string))
     && (v.parallelImplementation === undefined || typeof v.parallelImplementation === 'boolean')
     && (v.implementationModel === undefined || isExecutionSelection(v.implementationModel))
     && (v.workspaceName === undefined || (text(v.workspaceName) && !!v.workspaceName.trim()))

@@ -232,32 +232,27 @@
     @update:model-value="visible => { if (!visible && !busy) implementationApprovalVisible = false; }"
   >
     <div class="mission-workspace__start-options">
+      <el-select v-model="implementationMode" class="mission-workspace__execution-mode" :aria-label="t('missions.implementationExecution')" :disabled="busy">
+        <el-option :label="t('missions.executionLead')" value="lead" />
+        <el-option :label="t('missions.executionPerRepository')" value="perRepository" />
+        <el-option :label="t('missions.executionMultiplePerRepository')" value="multiplePerRepository" />
+      </el-select>
       <BackendModelSelector
+        v-if="!leadExecutesImplementation"
         v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
         :disabled="busy"
       />
-      <div>
-        <div class="mission-workspace__parallel-option">
-          <span>{{ t('missions.parallelImplementation') }}</span>
-          <el-switch
-            v-model="parallelImplementation"
-            :aria-label="t('missions.parallelImplementation')"
-            :aria-describedby="`mission-parallel-warning-${mission.id}`"
-            :disabled="busy"
-          />
-        </div>
-        <p :id="`mission-parallel-warning-${mission.id}`" class="mission-workspace__parallel-warning">
-          {{ t('missions.parallelImplementationWarning') }}
-        </p>
-      </div>
+      <p v-if="implementationMode === 'multiplePerRepository'" class="mission-workspace__parallel-warning">
+        {{ t('missions.parallelImplementationWarning') }}
+      </p>
       <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
         {{ t('common.cancel') }}
       </button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || !implementationModel" @click="approveProposal">
+      <button class="app-button app-button--primary" type="button" :disabled="busy || (!leadExecutesImplementation && !implementationModel)" @click="approveProposal">
         {{ t('missions.startImplementationAction') }}
       </button>
     </template>
@@ -561,10 +556,11 @@ const missionLead = computed(() => {
   const run = execution?.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
   return props.agents.find(agent => agent.id === (run?.workerId ?? execution?.memberIds[0]));
 });
-const parallelImplementation = ref(false);
+const implementationMode = ref<'lead' | 'perRepository' | 'multiplePerRepository'>('perRepository');
+const leadExecutesImplementation = computed(() => implementationMode.value === 'lead');
 const implementationApprovalVisible = ref(false);
 function resetImplementationModel(): void {
-  parallelImplementation.value = props.mission.execution?.parallelImplementation ?? false;
+  implementationMode.value = props.mission.execution?.implementationMode ?? (props.mission.execution?.parallelImplementation ? 'multiplePerRepository' : 'perRepository');
   const selected = props.mission.execution?.implementationModel;
   const lead = missionLead.value;
   implementationBackend.value = selected?.backend ?? lead?.backend;
@@ -602,8 +598,8 @@ async function approveProposal(): Promise<void> {
   }
   try {
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id,
-      ...(startsImplementation ? { parallelImplementation: parallelImplementation.value } : {}),
-      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
+      ...(startsImplementation ? { implementationMode: implementationMode.value, parallelImplementation: implementationMode.value === 'multiplePerRepository' } : {}),
+      ...(startsImplementation && !leadExecutesImplementation.value && implementationBackend.value && implementationModel.value ? { implementationModel: { ...implementationSelection.value! } } : {}),
     });
     implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }

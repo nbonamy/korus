@@ -1,7 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from './provisioning-host';
 import { computed } from 'vue';
-import { ElDialog, ElPopover, ElTabs, ElTabPane } from 'element-plus';
+import { ElDialog, ElPopover, ElSelect, ElTabs, ElTabPane } from 'element-plus';
 import { backendChoicesKey } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
@@ -335,7 +335,10 @@ describe('MissionWorkspace', () => {
     await approve.trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.get('[role="dialog"][aria-label="Start implementation"]').text()).toContain('1 ticket');
-    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.find('[aria-label="Implementation execution"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'multiplePerRepository');
+    await flushPromises();
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
@@ -345,13 +348,15 @@ describe('MissionWorkspace', () => {
     expect(low).toBeDefined();
     low!.click(); await flushPromises();
     expect(picker.text()).toContain('Luna');
-    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
+
     await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click'); await flushPromises();
     expect(executeMission).not.toHaveBeenCalled();
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await approve.trigger('click'); await flushPromises();
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'multiplePerRepository');
+    await flushPromises();
     const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
-    expect(wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').attributes('aria-checked')).toBe('false');
     expect(reopenedPicker.text()).toContain('Planner');
     await reopenedPicker.trigger('click'); await flushPromises();
     document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
@@ -359,14 +364,14 @@ describe('MissionWorkspace', () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
     await flushPromises();
     const confirm = wrapper.get('[role="dialog"] .app-button--primary');
-    await wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]').setValue(true);
+
     expect(wrapper.get('.mission-workspace__parallel-warning').text()).toContain('Agents share files and Git state');
     expect(confirm.text()).toBe('Start');
     await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
       implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
-      parallelImplementation: true,
+      parallelImplementation: true, implementationMode: 'multiplePerRepository',
     });
     expect(() => structuredClone(executeMission.mock.calls[0]![0])).not.toThrow();
     expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
@@ -376,12 +381,30 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
+  it('starts explicit lead-only implementation with no worker model', async () => {
+    const mode = 'lead';
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets'; mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { agents: createInitialSnapshot().agents, executeMission });
+    await flushPromises();
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    expect(wrapper.findComponent(ElSelect).text()).toContain('One worker per repository');
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', mode); await flushPromises();
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({ id: mission.id, revision: mission.revision, action: 'accept',
+      runId: mission.execution!.runs[0]!.id, implementationMode: mode, parallelImplementation: false });
+    wrapper.unmount();
+  });
+
   it('starts implementation on the chosen service tier, prefilled from the lead while the model still offers it', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.execution!.parallelImplementation = true;
     mission.stage = 'tickets';
     mission.execution!.runs[0]!.stage = 'tickets';
-    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }, { title: 'Invoices', repositoryPath: '/other', done: false }];
     const agents = createInitialSnapshot().agents;
     agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
@@ -393,9 +416,9 @@ describe('MissionWorkspace', () => {
     await flushPromises();
     await wrapper.setProps({ agents }); await flushPromises();
     await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
-    const parallel = wrapper.get('[role="switch"][aria-label="Allow parallel agents in the same repository"]');
-    expect(parallel.attributes('aria-checked')).toBe('true');
-    await parallel.setValue(false);
+    expect(wrapper.findComponent(ElSelect).text()).toContain('Multiple workers per repository');
+    wrapper.findComponent(ElSelect).vm.$emit('update:modelValue', 'perRepository');
+    await flushPromises();
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('fast');
     await picker.trigger('click'); await flushPromises();
@@ -407,7 +430,7 @@ describe('MissionWorkspace', () => {
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
       implementationModel: { backend: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
-      parallelImplementation: false,
+      parallelImplementation: false, implementationMode: 'perRepository',
     });
     wrapper.unmount();
   });

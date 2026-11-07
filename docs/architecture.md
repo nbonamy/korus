@@ -809,8 +809,17 @@ publishes only after saving.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel; work within one repository is
-  serialized unless the user opts into parallel implementation when approving
-  Tickets. That choice is persisted with the implementation model. Concurrent
+  serialized unless the user chooses multiple workers per repository when approving
+  Tickets. Implementation execution selects the Mission lead only, one worker per
+  repository (the default), or multiple workers per repository. Worker modes always
+  use workers and the selected implementation model, including single-repository
+  Missions. Lead-only execution retains its conversation and model, serializes all tickets across
+  repositories, and moves between isolated Mission worktrees. User-approved Ship creates idle repository-bound
+  delivery handles for lead-executed work and returns the lead to the Mission home,
+  keeping its conversation outside worktree cleanup. These handles launch no model
+  turns. The daemon enforces the execution choice; the lead's plan
+  cannot override it. Requests without an execution mode preserve the existing
+  parallelImplementation wire semantics. Concurrent
   attempts use distinct worker conversations in the same repository worktree,
   with dependency-ready tickets executed within the Mission lead’s persisted dispatch
   plan. Available workers from
