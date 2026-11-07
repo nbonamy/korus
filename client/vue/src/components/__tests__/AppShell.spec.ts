@@ -21,6 +21,7 @@ import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../on
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
+import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 
 import {
@@ -480,9 +481,14 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.getComponent({ name: 'ConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
-  it('presents a blocking provider question through the controlled pane and forwards its answer', async () => {
+  it.each(['codex', 'cursor'] as const)('presents a blocking %s question through the controlled pane and forwards its answer', async backend => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-question' };
+    const agent = snapshot.agents[0]!;
+    agent.backend = backend;
+    agent.backendDefaults = { kind: backend };
+    agent.backendSession = backend === 'codex'
+      ? { kind: 'codex', threadId: 'thread-question' }
+      : { kind: 'cursor', sessionId: 'thread-question' };
     const question: CodexSurfaceClientRequest = {
       id: 'request-framework', kind: 'ask_user', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
@@ -497,6 +503,10 @@ describe('AppShell authentication and conversation', () => {
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
+      cursorConversationSnapshot: backend === 'cursor' ? {
+        ...emptyCursorSnapshot(agent.id, 'thread-question'), activeTurnId: 'turn-question', busy: true,
+        clientRequests: [{ id: question.id, kind: 'ask_user', payload: question.payload }],
+      } : null,
       codexConversationSnapshot: codexConversationSnapshot([{
         id: 'assistant-question', role: 'assistant', status: 'streaming', turnId: 'turn-question',
         parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
@@ -525,12 +535,14 @@ describe('AppShell authentication and conversation', () => {
     ]]);
   });
 
-  it('uses the provider-owned Claude conversation', () => {
+  it.each(['claude', 'cursor'] as const)('uses the provider-owned %s conversation', backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
-    agent.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    agent.backend = backend;
+    agent.backendDefaults = { kind: backend };
+    agent.backendSession = backend === 'claude'
+      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'cursor', sessionId: 'cursor-session-1' };
     const messages: RendererMessage[] = [{
       id: 'claude-owned', agentId: agent.id, role: 'assistant', status: 'complete', turnId: 'turn-1',
       createdAt: '2026-09-06T00:00:01.000Z', parts: [{ type: 'text', text: 'Provider owned' }],
@@ -547,7 +559,12 @@ describe('AppShell authentication and conversation', () => {
 
     const state = conversationControllerState(mountShell({
       snapshot,
-      claudeConversationSnapshot: providerSnapshot,
+      ...(backend === 'claude' ? { claudeConversationSnapshot: providerSnapshot } : {
+        cursorConversationSnapshot: { ...emptyCursorSnapshot(agent.id, 'cursor-session-1'),
+          messages, turns: [{ id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
+            startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null }],
+          activeTurnId: 'turn-1', busy: true },
+      }),
     }));
 
     expect(state.identity.messages).toStrictEqual(messages);

@@ -1800,6 +1800,7 @@ export function useAppState() {
     activeBackendCommands,
     activeCodexConversationSnapshot,
     activeClaudeConversationSnapshot,
+    activeCursorConversationSnapshot: computed(() => activeAgent.value ? cursorConversations.select(activeAgent.value) : null),
     agentConversationFor,
     activeAntigravityConversationSnapshot: computed(() => activeAgent.value ? antigravityConversations.select(activeAgent.value) : null),
     prepareAgentConversation,

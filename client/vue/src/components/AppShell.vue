@@ -843,6 +843,7 @@ const props = withDefaults(defineProps<{
   backendCapabilities?: BackendCapabilities;
   codexConversationSnapshot?: CodexConversationSnapshot | null;
   claudeConversationSnapshot?: ClaudeConversationSnapshot | null;
+  cursorConversationSnapshot?: import('@workspace/core/contracts/cursor-conversation').CursorConversationSnapshot | null;
   antigravityConversationSnapshot?: import('@workspace/core/contracts/antigravity-conversation').AntigravityConversationSnapshot | null;
   modelCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   skillCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
@@ -2402,7 +2403,9 @@ const providerConversation = computed(() => (
     ? props.codexConversationSnapshot ?? null
     : currentAgent.value?.backend === 'claude'
       ? props.claudeConversationSnapshot ?? null
-      : currentAgent.value?.backend === 'antigravity' ? props.antigravityConversationSnapshot ?? null : null
+      : currentAgent.value?.backend === 'cursor'
+        ? props.cursorConversationSnapshot ?? null
+        : currentAgent.value?.backend === 'antigravity' ? props.antigravityConversationSnapshot ?? null : null
 ));
 const conversationMessages = computed(() => {
   const messages = providerConversation.value?.messages ?? [];
@@ -2413,7 +2416,8 @@ const conversationMessages = computed(() => {
 const conversationLatestTurnId = computed(() => providerConversation.value?.turns.at(-1)?.id ?? null);
 function latestTurnIdForAgent(agentId: string): string | null {
   const view = props.agentConversationFor?.(agentId);
-  return (view?.codexSnapshot ?? view?.claudeSnapshot)?.turnIds.at(-1) ?? null;
+  return (view?.codexSnapshot ?? view?.claudeSnapshot)?.turnIds.at(-1)
+    ?? (view?.cursorSnapshot ?? view?.antigravitySnapshot)?.turns.at(-1)?.id ?? null;
 }
 const conversationHasRunningPlanTool = computed(() => conversationMessages.value.some(
   (message) => message.parts.some(
@@ -2602,6 +2606,7 @@ const conversationPaneState: CodexConversationPaneState = {
   thread: {
     get approvals() { return effectiveApprovals.value; },
     get clientRequests() {
+      if (currentAgent.value?.backend === 'cursor' && props.cursorConversationSnapshot) return providerPaneClientRequests(props.cursorConversationSnapshot);
       if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return providerPaneClientRequests(props.antigravityConversationSnapshot);
       return currentAgent.value?.backend === 'codex'
         ? props.codexConversationSnapshot?.clientRequests ?? []
