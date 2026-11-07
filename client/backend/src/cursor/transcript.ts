@@ -84,6 +84,14 @@ export class CursorTranscript {
     for (const message of snapshot.messages) message.createdAt = '';
     this.replica.replace(snapshot);
   }
+  request(request: import('@workspace/core/contracts').ClientRequest): void { this.event({ type: 'request.created', payload: { request } }); }
+  resolved(response: import('@workspace/core/agent-request').AgentRequestResponse): void { this.event({ type: 'request.resolved', payload: response }); }
+  plan(params: Record<string, unknown>): void {
+    this.tool({ toolCallId: params.toolCallId, title: typeof params.name === 'string' ? params.name : 'Review plan', kind: 'plan', status: 'pending', rawInput: params, rawOutput: params.plan });
+    const part = this.message?.parts.find(part => part.type === 'tool' && part.id === params.toolCallId);
+    if (part?.type === 'tool') { part.metadata = { ...part.metadata, plan: params.plan, todos: params.todos, ...(typeof params.name === 'string' ? {name:params.name} : {}) }; this.event({type:'message.upsert',payload:{message:this.message!}}); }
+  }
+  planDecision(toolCallId: string, accepted: boolean): void { this.tool({toolCallId,status:accepted ? 'completed' : 'failed'}); }
   deny(toolCall: unknown): void {
     if (!record(toolCall) || typeof toolCall.toolCallId !== 'string') throw new Error('Invalid Cursor permission tool identity.');
     this.denied.add(toolCall.toolCallId);

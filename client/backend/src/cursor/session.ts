@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { product } from '@workspace/core/product';
@@ -10,12 +12,13 @@ import { CursorTranscript } from './transcript';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
+type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
 export class CursorSession {
   private connection!: AcpConnection;
   private transcript!: CursorTranscript;
+  private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown }>();
   private journal!: CursorPromptJournal;
   private config: Record<string, unknown> = {};
   private loading = true;
@@ -57,7 +60,7 @@ export class CursorSession {
         session.journal = await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, options.sessionId);
         session.transcript = new CursorTranscript(options.agentId, options.sessionId, () => {}, text => session.journal.display(text));
       }
-      const created = await session.connection.request(options.sessionId ? 'session/load' : 'session/new', { ...(options.sessionId ? { sessionId: options.sessionId } : {}), cwd: options.cwd, mcpServers: [] });
+      const created = await session.connection.request(options.sessionId ? 'session/load' : 'session/new', { ...(options.sessionId ? { sessionId: options.sessionId } : {}), cwd: options.cwd, mcpServers: options.mcpServers ?? [] });
       if (!record(created) || (!options.sessionId && (typeof created.sessionId !== 'string' || !created.sessionId)) || (options.sessionId && created.sessionId !== undefined && created.sessionId !== options.sessionId)) throw new Error('Invalid Cursor session identity.');
       session.config = created;
       session.journal ??= await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, created.sessionId as string);
@@ -116,6 +119,7 @@ export class CursorSession {
         // cancellation output before the next prompt; no history is retained.
         await this.connection.request('session/list', { cwd: this.options.cwd }, 5_000);
       }
+      this.cancelRequests();
       this.transcript.finish(turnId, status, status === 'failed' ? `Cursor stopped: ${result.stopReason}.` : undefined);
     }).catch(error => {
       if (this.interrupted) { this.transcript.finish(turnId, 'interrupted'); if (!this.closing) this.failed(error instanceof Error ? error : new Error('Cursor cancellation failed.')); }
@@ -128,11 +132,13 @@ export class CursorSession {
     if (!this.active) return;
     if (expectedTurnId && expectedTurnId !== this.snapshot.activeTurnId) throw new Error('Cursor turn changed before cancellation.');
     this.interrupted = true;
+    this.cancelRequests();
     if (!this.disposed) this.connection.notify('session/cancel', { sessionId: this.sessionId });
     const timer = setTimeout(() => { void this.close(); }, 5_000);
     try { await this.active; } finally { clearTimeout(timer); }
   }
   async close(): Promise<void> {
+    this.cancelRequests();
     const turnId = this.transcript?.replica.getSnapshot().activeTurnId;
     if (turnId) { this.interrupted = true; this.transcript.finish(turnId, 'interrupted'); }
     this.closing = true; this.disposed = true;
@@ -150,19 +156,45 @@ export class CursorSession {
     if (this.loading) this.transcript.replay(params.update);
     else this.transcript.update(params.update);
   }
+  respond(response: AgentRequestResponse): void {
+    const pending = this.pending.get(response.id);
+    if (!pending || (response.agentId && response.agentId !== this.options.agentId) || this.disposed || this.interrupted) throw new Error('Cursor request is no longer pending.');
+    const result = pending.answer(response);
+    this.pending.delete(response.id); this.transcript.resolved(response); pending.resolve(result);
+  }
+  private cancelRequests(): void {
+    for (const [id, pending] of this.pending) { this.pending.delete(id); this.transcript.resolved({id,outcome:{kind:'cancelled'}}); pending.resolve({outcome:{outcome:'cancelled'}}); }
+  }
   private async request(method: string, params: unknown): Promise<unknown> {
-    if (method.startsWith('cursor/')) return { outcome: { outcome: 'cancelled' } };
-    if (method === 'session/request_permission') {
-      if (!record(params) || !this.transcript || params.sessionId !== this.sessionId || this.disposed || !this.snapshot.busy || this.interrupted) return { outcome: { outcome: 'cancelled' } };
-      if (!record(params.toolCall) || typeof params.toolCall.toolCallId !== 'string') return { outcome: { outcome: 'cancelled' } };
-      this.transcript.deny(params.toolCall);
-      const rejected = Array.isArray(params.options) ? params.options.find(option => record(option) && option.kind === 'reject_once' && typeof option.optionId === 'string') : undefined;
-      return record(rejected) ? { outcome: { outcome: 'selected', optionId: rejected.optionId } } : { outcome: { outcome: 'cancelled' } };
+    const cancelled = { outcome: { outcome: 'cancelled' } };
+    if (!this.transcript || this.loading || this.disposed || this.interrupted || !this.snapshot.busy || !record(params)) return cancelled;
+    const permission = method === 'session/request_permission';
+    const plan = method === 'cursor/create_plan';
+    if (!permission && !plan) {
+      if (method.startsWith('cursor/')) return cancelled;
+      throw new Error('Unsupported Cursor client request.');
     }
-    throw new Error('Unsupported Cursor client request.');
+    if (permission && (params.sessionId !== this.sessionId || !record(params.toolCall) || typeof params.toolCall.toolCallId !== 'string')) return cancelled;
+    if (plan && (typeof params.toolCallId !== 'string' || typeof params.plan !== 'string' || !Array.isArray(params.todos))) return cancelled;
+    if (plan) this.transcript.plan(params);
+    const id = randomUUID();
+    const call = permission ? params.toolCall as Record<string, unknown> : params;
+    return new Promise(resolve => {
+      this.pending.set(id, { resolve, answer: response => {
+        if (response.outcome.kind === 'cancelled') return cancelled;
+        if (response.outcome.kind !== 'decision' || !['allow', 'deny'].includes(response.outcome.decision)) throw new Error('Cursor requires a once-only decision.');
+        const allowed = response.outcome.decision === 'allow';
+        if (plan) { this.transcript.planDecision(params.toolCallId as string, allowed); return { outcome: { outcome: allowed ? 'accepted' : 'rejected' } }; }
+        const option = Array.isArray(params.options) ? params.options.find(option => record(option) && option.kind === (allowed ? 'allow_once' : 'reject_once') && typeof option.optionId === 'string') : undefined;
+        if (!allowed) this.transcript.deny(call);
+        return record(option) ? { outcome: { outcome: 'selected', optionId: option.optionId } } : cancelled;
+      } });
+      this.transcript.request({ id, kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: plan ? 'create_plan' : String(call.kind ?? 'tool'), summary: typeof call.title === 'string' ? call.title : plan ? 'Review Cursor plan' : 'Approve Cursor tool', argumentsPreview: plan ? params.plan as string : JSON.stringify(call.rawInput ?? call), allowConversation: false, allowAlways: false } } });
+    });
   }
   private failed(error: Error): void {
     if (this.disposed) return;
+    this.cancelRequests();
     this.disposed = true;
     const turnId = this.transcript?.replica.getSnapshot().activeTurnId;
     if (turnId) this.transcript.finish(turnId, this.interrupted ? 'interrupted' : 'failed', this.interrupted ? undefined : error.message);

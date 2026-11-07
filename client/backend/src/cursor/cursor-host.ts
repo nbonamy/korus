@@ -1,3 +1,6 @@
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
+import { sessionMcpServer } from '../acp/mcp-bridge';
+import { appMcpUrlForAgent, agentScopedMcpUrl } from '../mcp/codex-config';
 import { randomUUID } from 'node:crypto';
 import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -115,7 +118,7 @@ export class CursorHost implements AgentBackendDriver {
     const done = (async () => {
       const auth = await this.authenticate({ action: 'check' });
       if (!auth.connected) throw new Error('Cursor is disconnected.');
-      const next = await CursorSession.open({ agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error) });
+      const next = await CursorSession.open({ agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error) });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
       const previous = this.sessions.get(agent.id); await previous?.close();
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
@@ -126,7 +129,14 @@ export class CursorHost implements AgentBackendDriver {
   }
   private workingDirectory(agent: Agent): string { return agent.folder ?? path.join(backendHomeDir(), 'cursor-quick-chats', encodeURIComponent(agent.id)); }
   async listModels(agent: Agent) { return cursorModels((await this.ensure(agent)).configuration); }
-  async respondToAgentRequest(): Promise<void> { throw new Error('Cursor permissions and questions are not available yet.'); }
+  async respondToAgentRequest(response: AgentRequestResponse): Promise<void> {
+    const session = response.agentId ? this.sessions.get(response.agentId) : [...this.sessions.values()].find(session => session.snapshot.clientRequests.some(request => request.id === response.id));
+    if (!session) throw new Error('Cursor request is no longer pending.');
+    session.respond(response);
+  }
+  private mcpServers(agent: Agent) {
+    return [...(this.options.appMcpServerUrl ? [sessionMcpServer(appMcpUrlForAgent(this.options.appMcpServerUrl, agent))] : []), ...Object.entries(this.options.hostedMcpServerUrls?.() ?? {}).map(([name, url]) => sessionMcpServer(agentScopedMcpUrl(url, agent.id), name))];
+  }
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
     const current = this.sessions.get(agent.id);
     if (!current) { if (!agent.backendSession) return null; const loaded = await this.ensure(agent); return this.reference(loaded); }
@@ -174,7 +184,7 @@ export class CursorHost implements AgentBackendDriver {
       if (!auth.connected) throw new Error(auth.state.error ?? 'Cursor is disconnected. Sign in in Settings.');
       const cwd = this.workingDirectory(agent);
       if (!agent.folder) await mkdir(cwd, { recursive: true, mode: 0o700 });
-      const session = await CursorSession.open({ agentId: agent.id, cwd, runtime: this.runtime, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
+      const session = await CursorSession.open({ agentId: agent.id, cwd, runtime: this.runtime, mcpServers: this.mcpServers(agent), sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }

@@ -17,6 +17,13 @@ export function createCursorConversationReplica(initial: CursorConversationSnaps
           else next.messages[index] = structuredClone(event.payload.message);
           break;
         }
+        case 'request.created':
+          if (event.turnId !== next.activeTurnId || next.clientRequests.some(request => request.id === event.payload.request.id)) return snapshot;
+          next.clientRequests.push(structuredClone(event.payload.request)); break;
+        case 'request.resolved':
+          if (!next.clientRequests.some(request => request.id === event.payload.id)) return snapshot;
+          next.clientRequests = next.clientRequests.filter(request => request.id !== event.payload.id);
+          next.answeredClientRequestIds.push(event.payload.id); break;
         case 'turn.started':
           if (next.busy) throw new Error('Cursor prompts must be serialized.');
           next.activeTurnId = event.turnId;

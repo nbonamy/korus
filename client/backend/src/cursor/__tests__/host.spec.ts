@@ -7,6 +7,7 @@ import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversation-guards';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
@@ -28,6 +29,7 @@ async function snapshot(): Promise<CursorConversationSnapshot> {
   await host.loadConversation!(agent);
   const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged').at(-1);
   if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('No Cursor snapshot');
+  expect(isCursorSnapshot(frame.payload.snapshot)).toBe(true);
   return frame.payload.snapshot;
 }
 async function wire() { return (await readFile(path.join(root, 'wire.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
@@ -197,14 +199,39 @@ describe('Cursor ACP host transport boundary', () => {
     expect(host.getCapabilities(agent)).toMatchObject({ interrupt: true, approvals: false, history: true, models: true });
   });
   it('denies permissions using the native reject option and keeps a completed-but-rejected tool visibly failed', async () => {
-    await host.sendPrompt(agent, 'permission'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    await host.sendPrompt(agent, 'permission');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    await host.respondToAgentRequest({ id: (await snapshot()).clientRequests[0]!.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'deny' } });
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 1 && call.result)?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
     await expect(access(path.join(root, 'should-not-exist'))).rejects.toThrow();
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({ type: 'tool', status: 'failed', body: expect.stringMatching(/denied/i) }));
   });
-  it('settles blocking extensions with cancellation', async () => {
-    await host.sendPrompt(agent, 'extension'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    expect((await wire()).find(call => call.id === 2 && call.result)?.result).toEqual({ outcome: { outcome: 'cancelled' } });
+  it('exposes a once-only plan decision and cancels pending callbacks on interruption', async () => {
+    const first = await host.sendPrompt(agent, 'extension');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    const request = (await snapshot()).clientRequests[0]!;
+    await expect(host.respondToAgentRequest({ id: request.id, agentId: 'wrong', outcome: { kind: 'decision', decision: 'allow' } })).rejects.toThrow(/pending/i);
+    await host.respondToAgentRequest({ id: request.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'allow' } });
+    await vi.waitFor(() => expect(completions()).toHaveLength(1));
+    expect((await wire()).find(call => call.id === 2 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'accepted' } });
+    expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',status:'completed',metadata:expect.objectContaining({plan:'# Synthetic plan',todos:[]})}));
+    for (const event of events) if (event.type === 'cursor.conversationEventReceived') expect(isCursorEvent(event.payload.event)).toBe(true);
+    await expect(host.respondToAgentRequest({ id: request.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'allow' } })).rejects.toThrow(/pending/i);
+    const next = await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'extension');
+    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    await host.interrupt(agent, next.turnId);
+    expect((await snapshot()).clientRequests).toStrictEqual([]);
+  });
+  it('binds each supplied app and hosted MCP bridge to its owning agent', async () => {
+    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ synthetic: 'http://127.0.0.1:1235/mcp' }) });
+    const second = { ...agent, id: 'other-agent' };
+    await host.listModels!(agent); await host.listModels!(second);
+    const calls = (await wire()).filter(call => call.method === 'session/new');
+    expect(calls).toHaveLength(2);
+    for (const [index, owner] of [agent.id, second.id].entries()) {
+      expect(calls[index].params.mcpServers.map((server: {env: {name:string;value:string}[]}) => new URL(server.env.find(env => env.name === 'KORUS_ACP_MCP_URL')!.value).searchParams.get('agentId'))).toStrictEqual([owner, owner]);
+    }
   });
   it('interrupts once, ignores stale completion/chunks, and admits the next prompt', async () => {
     const first = await host.sendPrompt(agent, 'wait');

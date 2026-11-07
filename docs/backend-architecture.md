@@ -128,8 +128,13 @@ Cursor-owned revisioned replica. App developer instructions travel in prompt
 context blocks; the renderer receives only app-owned messages. Quick Chats use
 private working directories. Model selection preserves native config values;
 trusted local attachments become native content blocks. Configured model choice
-is not evidence of the served model or billing. Permission callbacks are rejected
-and unsupported blocking Cursor extensions are cancelled.
+is not evidence of the served model or billing. Permission callbacks and plan
+proposals become once-only app tool confirmations; duplicate and stale responses
+are rejected, and interruption or teardown cancels pending callbacks. Native edits
+can bypass permission callbacks, so approval presets and automatic review remain
+unavailable. Unsupported blocking extensions are cancelled. Per-agent app and
+hosted MCP endpoints use the shared session bridge with identity scoped in each
+child process; this does not establish approval-free native tool execution.
 
 Cancellation waits for prompt settlement and a bounded, workspace-filtered
 `session/list` round trip before admitting the next prompt. This drains buffered
