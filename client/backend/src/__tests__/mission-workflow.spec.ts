@@ -67,6 +67,11 @@ it.each([
         expect(result.status).toBe('accepted');
         expect(current().execution!.runs.find(candidate => candidate.id === run.id)!.status).toBe('accepted');
         await service.agentFinished(run.workerId!);
+        if (current().artifacts.tickets.some(ticket => !ticket.done)) {
+          const plan = current().execution!.dispatchPlan!;
+          await service.schedule(plan.leadId, { commandId: `after-${run.id}`, expectedRevision: plan.revision,
+            assignments: plan.assignments, maxConcurrency: plan.maxConcurrency, continuationLimit: plan.continuationLimit });
+        }
       } else {
         expect(result.status).toBe('awaitingReview');
         expect(current().execution!.runs.find(candidate => candidate.id === run.id)!.status).toBe('awaitingReview');

@@ -407,7 +407,7 @@ export class MissionExecutionService {
           implementationCompleted = this.acceptImplementationResult(current, run);
           await this.persistImplementationArtifact(current);
           this.recordSupervisorUpdate(current, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
-            implementationCompleted ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Wait for the user to continue to Review.' : 'Result accepted; the daemon executes ready assignments within your persisted plan.');
+            implementationCompleted ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Wait for the user to continue to Review.' : 'The worker is done. Review its result and proceed with the next assignment using get-mission-schedule and set-mission-schedule.');
         } else {
           if (run.stage === 'tickets' && !workflow.stageReady('tickets', run.proposal)) {
             throw new Error('Assign one represented repository to every ticket before starting implementation.');
@@ -429,7 +429,7 @@ export class MissionExecutionService {
           }
           if (current.stage === 'ship') this.workspaces.prepareDeliveries(current, missionImplementationUsesLead(current) ? await this.ports.ensureMissionHome(current.id) : undefined);
         }
-        nextRunIds = this.enqueueRuns(current, {});
+        nextRunIds = run.stage === 'implementation' ? [] : this.enqueueRuns(current, {});
         if (startsImplementation) this.recordSupervisorUpdate(current, { ...run, stage: 'implementation' }, 'schedule-required', 'ready for lead scheduling',
           'The user approved Tickets. Read get-mission-schedule and persist your ordered assignments with set-mission-schedule. No new work starts without your plan.');
       });
@@ -637,7 +637,6 @@ export class MissionExecutionService {
     const context = this.agentTools.contextForAgent(agentId);
     if (!context) throw new Error('This agent does not own an active run for this mission stage.');
     let status: 'awaitingReview' | 'accepted' = 'awaitingReview';
-    let nextRunIds: string[] = [];
     let implementationCompleted = false;
     let commitLockReleased = false;
     await this.ports.missions.changeAsync(context.missionId, async mission => {
@@ -701,16 +700,14 @@ export class MissionExecutionService {
           commitLockReleased = true;
         }
         status = 'accepted';
-        nextRunIds = this.enqueueRuns(mission, {});
         this.recordSupervisorUpdate(mission, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
           implementationCompleted
             ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Give the user a concise completion update. Wait for the user to continue to Review.'
-            : `Result accepted. Your persisted plan authorized ${nextRunIds.length} ready assignment(s); other workers continue.`, input.summary);
+            : 'The worker is done. Review its result and proceed with the next assignment using get-mission-schedule and set-mission-schedule. The daemon has not assigned or started another ticket.', input.summary);
       }
     });
     if (commitLockReleased) for (const wake of this.commitLockWaiters) wake();
     await this.ports.publish();
-    this.launchReservedRuns(context.missionId, nextRunIds, agentId);
     await this.deliverSupervisorUpdates(context.missionId);
     return { success: true, status };
   }
@@ -947,12 +944,16 @@ export class MissionExecutionService {
       }
       return;
     }
+    if (turnId) {
+      const submitted = this.ports.snapshot.missions?.find(mission => this.postTurnLaunches.get(agentId)?.missionId === mission.id
+        || mission.execution?.runs.slice().reverse().find(run => run.workerId === agentId)?.status === 'accepted');
+      if (submitted) await this.ports.missions.change(submitted.id, current => {
+        const run = current.execution!.runs.slice().reverse().find(run => run.workerId === agentId && run.status === 'accepted');
+        if (run) run.completedTurnIds = [...new Set([...(run.completedTurnIds ?? []), turnId])].slice(-64);
+      });
+    }
     const postTurnLaunch = this.postTurnLaunches.get(agentId);
     if (postTurnLaunch) {
-      if (turnId) await this.ports.missions.change(postTurnLaunch.missionId, current => {
-        const completedRun = current.execution?.runs.slice().reverse().find(run => run.workerId === agentId && run.status === 'accepted');
-        if (completedRun) completedRun.completedTurnIds = [...(completedRun.completedTurnIds ?? []), turnId].slice(-64);
-      });
       this.postTurnLaunches.delete(agentId);
       for (const runId of postTurnLaunch.runIds) void this.startLaunch(postTurnLaunch.missionId, runId);
       return;
@@ -1258,7 +1259,7 @@ export class MissionExecutionService {
 
   private recordSupervisorUpdate(mission: Mission, run: MissionRun, event: string, outcome: string, decision: string, summary?: string): void {
     const leadId = missionLeadAgentId(mission);
-    if (run.workerId === leadId && event !== 'schedule-required') return;
+    if (run.workerId === leadId && !['schedule-required', 'accepted'].includes(event)) return;
     if (!leadId || run.stage !== 'implementation' || mission.execution?.debugFixture) return;
     const updates = mission.execution!.supervisorUpdates ??= [];
     const id = `${run.id}:${event}`;
@@ -1274,7 +1275,9 @@ export class MissionExecutionService {
       `Execution status: ${decision}`,
       ...(run.error ? [`Error: ${run.error}`] : []),
       'You own scheduling. Use get-mission-schedule and set-mission-schedule to assign approved tickets, set priorities and adapt the bounded dispatch plan. The daemon executes only that authorization. Resolve escalated blockers and keep approved work moving; never restart stopped work without explicit user retry.',
-      ['unfinished', 'launch-failed', 'schedule-required'].includes(event)
+      event === 'accepted'
+        ? 'Action required: the worker has completed this ticket. Assess its result and evidence, briefly explain your next assignment, and use get-mission-schedule and set-mission-schedule to assign the next approved ready work. The daemon has not dispatched another ticket. If all implementation is complete, report the outcome to the user and wait for user approval to continue to Review. Do not merely acknowledge this completion.'
+        : ['unfinished', 'launch-failed', 'schedule-required'].includes(event)
         ? 'Action required: drive the approved work forward. Inspect the evidence, resolve routine failures, adapt assignments or authorize a targeted failed-run retry. Escalate only blockers requiring user authority or input, with attempts, preserved progress and the smallest decision needed. Never retry explicit Stop.'
         : 'Informational update: no acknowledgment needed. Continue driving the approved plan; surface a user decision only when necessary.',
       'This message does not authorize Review, stage advancement, push, merge or PR creation. Honor explicit user Stop.',

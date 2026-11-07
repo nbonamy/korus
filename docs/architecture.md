@@ -855,6 +855,10 @@ publishes only after saving.
   future dispatch; existing reserved runs retain their authorization. The daemon atomically
   validates decisions, enforces ticket dependencies and the user's per-repository concurrency
   choice, reserves runs and launches workers. It never invents assignments outside that plan.
+  Worker completion saves evidence and sends the lead a durable message. Instructions
+  to assess the result and proceed with the next assignment stay in hidden context.
+  Completion does not reserve or launch another ticket; the lead submits the next
+  scheduling decision. Existing authorized in-flight workers continue.
   Revision checks reject stale decisions; command IDs make identical retries idempotent and
   reject conflicting reuse. Tickets approval invalidates the previous plan and asks the lead
   for a new decision. Missions without a plan keep reserved work, conversations and
