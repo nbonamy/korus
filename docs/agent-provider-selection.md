@@ -89,10 +89,12 @@ catalog responses from the former provider are ignored. Antigravity effort is en
 in native model IDs; separate effort, thinking-budget and service-tier settings do
 not apply.
 
-Cursor uses its native default model while its model and permission controls are
-unsupported; its host advertises interrupt only. Cold Cursor history requires a
-separate resume implementation. Selecting a provider does not grant capabilities
-that its host has not implemented.
+Cursor model choices preserve native catalog values and require a matching
+acknowledgment before prompt admission. Native Plan mode and normal follow-ups
+select their corresponding native modes. History loading and explicit resume
+validate the native session against its workspace. Provider-specific controls
+follow the owning host's capabilities; selecting a provider does not grant
+controls that its host has not implemented.
 
 ## Connection State
 
