@@ -168,7 +168,7 @@ export class CursorSession {
   private notification(method: string, params: unknown): void {
     if (method === 'cursor/generate_image') { void this.observeImage(params); return; }
     if (method === 'cursor/update_todos') {
-      if (this.transcript && !this.disposed && !this.interrupted && !this.loading && this.snapshot.busy && record(params)) this.transcript.todos(params);
+      if (this.transcript && !this.disposed && !this.interrupted && !this.loading && this.snapshot.busy && record(params) && (params.sessionId === undefined || params.sessionId === this.sessionId)) this.transcript.todos(params);
       return;
     }
     if (method !== 'session/update') return;
@@ -203,6 +203,10 @@ export class CursorSession {
     const cancelled = { outcome: { outcome: 'cancelled' } };
     if (method === 'cursor/generate_image') { await this.observeImage(params); return cancelled; }
     if (!this.transcript || this.loading || this.disposed || this.interrupted || !this.snapshot.busy || !record(params)) return cancelled;
+    if (method === 'cursor/update_todos') {
+      if (params.sessionId !== undefined && params.sessionId !== this.sessionId) return cancelled;
+      return {outcome:{outcome:'accepted',todos:this.transcript.todos(params)}};
+    }
     if (method === 'cursor/ask_question') {
       const id = randomUUID();
       const question = cursorQuestion(params,id,this.sessionId,this.snapshot.activeTurnId!);

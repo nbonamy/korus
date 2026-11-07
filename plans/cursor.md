@@ -1,14 +1,13 @@
 # Cursor provider qualification and integration
 
-Status: Phase 0 measured on 2026-11-03 with Cursor CLI **2026.10.22-27dcf5f**
-(minimum supported candidate: 2026.10.08). ACP session creation is permitted
-with the existing Enterprise team login. **Full provider qualification is blocked**:
-file edits bypassed permission callbacks, session-supplied MCP still prompted,
-and authenticated home isolation failed; several Enterprise controls remain
-unverified.
-The streaming host is implemented with fixture evidence and only interrupt
-enabled. The checkpoints below distinguish implemented behavior from remaining
-native qualification; this is not a production-readiness claim.
+Status: The desktop integration implements conversations, tools, history,
+model selection, attachments, native Plan mode, scoped MCP, account credits/quota
+and analytics. See the [implementation audit](#full-provider-implementation-audit)
+for current acceptance evidence and provider boundaries. Full native qualification
+remains incomplete: edits can bypass permission callbacks, structured question
+emission is unverified, and served-model/token/cost data is unavailable. Separate
+home setup is excluded at the user's direction. The Phase 0 measurements below
+retain their original CLI versions and evidence limits.
 
 ## Objective and scope
 
@@ -771,14 +770,21 @@ The tightened adapter separately validated native mode acknowledgments for
 `plan` and `agent` without starting a model turn. These results do not attest to
 the served model, all native tools, or effective approval enforcement.
 
+A production-host native todo request created two synthetic checklist items and
+marked both completed. Both todo snapshots reached the app-owned conversation.
+The installed CLI frames `cursor/update_todos` as a request despite documentation
+describing a notification; the adapter accepts both forms and rejects explicitly
+foreign session identities. The subprocess regression first reproduced a
+cancelled response and missing todo projection before the fix.
+
 ### Remaining provider boundaries
 
 - Native edits can bypass permission callbacks. Full approval presets, automatic
   review and approval-free code review remain unavailable; once-only callbacks
   cover only requests the provider actually sends.
-- Structured question and todo adapters have documented-contract subprocess
-  coverage; native emission has not been elicited. The question capability flag
-  remains false.
+- Structured questions have documented-contract subprocess coverage; native
+  emission has not been elicited, including a production-host clarification
+  probe. The question capability flag remains false.
 - Image-extension observations are live-only and require contained, bounded
   regular-image reads. Suggested or existing paths do not prove successful
   generation, freshness or historical reconstruction.

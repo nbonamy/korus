@@ -114,7 +114,7 @@ export class CursorTranscript {
     const part = this.message?.parts.find(part => part.type === 'tool' && part.id === toolCallId);
     if (part?.type === 'tool') { part.metadata = {...part.metadata,source:'session-plan',planEntries:structuredClone(update.entries)}; this.event({type:'message.upsert',payload:{message:this.message!}}); }
   }
-  todos(params: Record<string, unknown>): void {
+  todos(params: Record<string, unknown>): Record<string, unknown>[] {
     if (typeof params.toolCallId !== 'string' || typeof params.merge !== 'boolean' || !Array.isArray(params.todos)) throw new Error('Invalid Cursor todos.');
     const todos = params.todos.map(todo => {
       if (!record(todo) || typeof todo.id !== 'string' || typeof todo.content !== 'string' || !['pending','in_progress','completed','cancelled'].includes(String(todo.status))) throw new Error('Invalid Cursor todo.');
@@ -126,6 +126,7 @@ export class CursorTranscript {
     this.tool({toolCallId:params.toolCallId,title:'Tasks',kind:'plan',status:'completed',rawOutput:items.map(todo => `${todo.status === 'completed' ? '[x]' : '[ ]'} ${todo.content}`).join('\n')});
     const part = this.message?.parts.find(part => part.type === 'tool' && part.id === params.toolCallId);
     if (part?.type === 'tool') { part.metadata = {...part.metadata,todos:items}; this.event({type:'message.upsert',payload:{message:this.message!}}); }
+    return items;
   }
   planDecision(toolCallId: string, accepted: boolean): void { this.tool({toolCallId,status:accepted ? 'completed' : 'failed'}); }
   deny(toolCall: unknown): void {

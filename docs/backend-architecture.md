@@ -138,7 +138,9 @@ are rejected, and interruption or teardown cancels pending callbacks. Native edi
 can bypass permission callbacks, so approval presets and automatic review remain
 unavailable. Structured questions map displayed choices back to native option
 identities and reject ambiguous or stale answers. Native plan entries and todo
-updates remain observed metadata. Unsupported blocking extensions are cancelled.
+updates remain observed metadata. Todo extensions accept both request and
+notification framing; requests acknowledge only the validated projected state.
+Unsupported blocking extensions are cancelled.
 Image-extension requests and notifications can display an observed workspace
 image after bounded, contained file validation. Suggested paths do not establish
 generation success; missing, replaced or outside files produce no media. These

@@ -93,7 +93,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if (mode === 'question') {
       // Sanitized native session plan-entry shape from plans/cursor.md.
       update({sessionUpdate:'plan',entries:[{content:'Choose mode',priority:'medium',status:'in_progress'}]});
-      send({method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}],merge:false}});
+      // Installed 2026.11.05-86047df sendNonBlockingExtensionNotification uses extMethod (a request).
+      send({id:6,method:'cursor/update_todos',params:{toolCallId:'todos',todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}],merge:false}});
+      send({id:7,method:'cursor/update_todos',params:{sessionId:'foreign-session',toolCallId:'todos',todos:[{id:'foreign',content:'Wrong conversation',status:'pending'}],merge:false}});
+      send({method:'cursor/update_todos',params:{sessionId:'foreign-session',toolCallId:'todos',todos:[{id:'foreign',content:'Wrong conversation',status:'pending'}],merge:false}});
       send({id:4,method:'cursor/ask_question',params:{toolCallId:'question-tool',title:'Configuration',questions:[
         {id:'mode',prompt:'Choose mode',options:[{id:'fast-id',label:'Fast'},{id:'safe-id',label:'Safe'}]},
         {id:'extras',prompt:'Choose extras',options:[{id:'one-id',label:'One'},{id:'two-id',label:'Two'}],allowMultiple:true}

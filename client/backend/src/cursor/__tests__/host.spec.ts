@@ -364,6 +364,9 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
     const request = (await snapshot()).clientRequests[0]!;
     expect(request).toMatchObject({kind:'ask_user',payload:{request:{questions:[{id:'mode',options:[{label:'Fast'},{label:'Safe'}]},{id:'extras',multiSelect:true}]}}});
+    expect((await wire()).find(call => call.id === 6 && call.result)?.result).toStrictEqual({outcome:{outcome:'accepted',todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}]}});
+    expect((await wire()).find(call => call.id === 7 && call.result)?.result).toStrictEqual({outcome:{outcome:'cancelled'}});
+    expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',metadata:expect.objectContaining({todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}]})}));
     await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'answered',answers:{mode:{answers:['invented']},extras:{answers:['one-id']}}}})).rejects.toThrow(/choice|answer/i);
     await host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'answered',answers:{mode:{answers:['Fast']},extras:{answers:['one-id','two-id']}}}});
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
