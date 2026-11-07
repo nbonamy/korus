@@ -98,6 +98,10 @@ describe('ACP duplex process boundary', () => {
     expect(options.onClose).not.toHaveBeenCalled();
   });
 
+  it('preserves a numeric RPC code with a sanitized provider message for optional extension fallback', async () => {
+    const {connection}=connect(`process.stdin.once('data',()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:1,error:{code:-32601,message:'private-native-detail',data:{secret:'private'}}})+'\\n'));`,{formatRpcError:()=> 'Safe provider message'});
+    await expect(connection.request('cursor/list_available_models',{})).rejects.toMatchObject({code:-32601,message:'Safe provider message'});
+  });
   it('drains stderr without reporting login when no marker is configured', async () => {
     const onLoginRequired = vi.fn();
     const { connection, options } = connect(`

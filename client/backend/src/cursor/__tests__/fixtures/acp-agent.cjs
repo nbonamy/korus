@@ -8,8 +8,17 @@ if (process.argv[2] !== 'acp' || process.env.NO_OPEN_BROWSER !== '1' || process.
 const log = value => fs.appendFileSync(path.join(__dirname, 'wire.jsonl'), JSON.stringify(value) + '\n');
 const historyFile = path.join(__dirname, 'history.json');
 const history = () => fs.existsSync(historyFile) ? JSON.parse(fs.readFileSync(historyFile, 'utf8')) : {};
-const configOptions = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'auto', options: [{ value: 'auto', name: 'Auto' }, { value: 'composer-2.5', name: 'Composer' }] }];
+let configOptions = [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'auto', options: [{ value: 'auto', name: 'Auto' }, { value: 'composer-2.5', name: 'Composer' }] }];
 configOptions.push({id:'mode',name:'Mode',category:'mode',type:'select',currentValue:'agent',options:[{value:'agent',name:'Agent'}, ...(fs.existsSync(path.join(__dirname,'no-plan')) ? [] : [{value:'plan',name:'Plan'},{value:'ask',name:'Ask'}])]});
+// Synthetic exact-native parameterized catalog shapes (IDs and distinct enum spellings are deliberate).
+const select = (id,currentValue,values) => ({id,name:id,category:'thought_level',type:'select',currentValue,options:values.map(value=>({value,name:value}))});
+const controlsFor = model => model==='fixture-alpha' ? [select('reasoning','low',['low','extra-high'])]
+  : model==='fixture-beta' ? [select('reasoning_effort','medium',['medium','xhigh'])]
+  : model==='fixture-dual' ? [select('thinking','false',['false','true']),select('effort','high',['low','high'])]
+  : model==='fixture-thinking' ? [select('thinking','false',['false','true'])] : [];
+const rich = fs.existsSync(path.join(__dirname,'rich-models'));
+if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha')); }
+if(rich && fs.existsSync(path.join(__dirname,'missing-live-model-id'))) delete configOptions[0].id;
 let sessionId = 'session-' + process.pid, pending, mode;
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
@@ -37,12 +46,28 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const reply = result => send({ id: value.id, result });
   if (value.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: fs.existsSync(path.join(__dirname, 'no-list')) ? {} : { list: {} } }, authMethods: [{ id: 'cursor_login', name: 'Cursor Login' }] });
   else if (value.method === 'authenticate') reply({});
+  else if (value.method === 'cursor/list_available_models') {
+    if(fs.existsSync(path.join(__dirname,'hold-model-catalog'))) return;
+    if(fs.existsSync(path.join(__dirname,'catalog-error.json'))) {send({id:value.id,error:JSON.parse(fs.readFileSync(path.join(__dirname,'catalog-error.json'),'utf8'))});return;}
+    if(fs.existsSync(path.join(__dirname,'catalog-result.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'catalog-result.json'),'utf8')));return;}
+    reply({models:configOptions[0].options.map(option=>({...option,configOptions:controlsFor(option.value)}))});
+  }
   else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
   else if (value.method === 'session/set_config_option') {
     if (value.params.configId === 'model' && fs.existsSync(path.join(__dirname,'model-ack.json'))) { reply(JSON.parse(fs.readFileSync(path.join(__dirname,'model-ack.json'),'utf8'))); return; }
+    if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'mode-selection-ack.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'mode-selection-ack.json'),'utf8')));return;}
     if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'no-mode-ack'))) { reply({configOptions:[]}); return; }
     if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'bad-mode-ack'))) { reply({configOptions:configOptions.map(option=>({...option,currentValue:option.id==='mode'?'agent':option.currentValue}))}); return; }
-    reply({ configOptions: configOptions.map(option => ({ ...option, currentValue: option.id === value.params.configId ? value.params.value : option.currentValue })) });
+    if(!['model','mode'].includes(value.params.configId) && fs.existsSync(path.join(__dirname,'effort-ack.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'effort-ack.json'),'utf8')));return;}
+    if(rich) {
+      if(value.params.configId==='model') configOptions=[...configOptions.filter(option=>option.category!=='thought_level'),...controlsFor(value.params.value)];
+      if(!['model','mode'].includes(value.params.configId) && fs.existsSync(path.join(__dirname,'effort-resets-mode'))) configOptions=configOptions.map(option=>option.id==='mode'?{...option,currentValue:'agent'}:option);
+      configOptions=configOptions.map(option=>({...option,currentValue:option.id===value.params.configId?value.params.value:option.currentValue})); reply({configOptions});return;
+    }
+    // Persist complete acknowledgments; model changes deliberately report Agent mode for the cache regression.
+    if(value.params.configId==='model') configOptions=configOptions.map(option=>option.id==='mode'?{...option,currentValue:'agent'}:option);
+    configOptions=configOptions.map(option => ({ ...option, currentValue: option.id === value.params.configId ? value.params.value : option.currentValue }));
+    reply({configOptions});
   }
   else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }, ...Object.entries(history()).map(([sessionId, value]) => ({sessionId,cwd:value.cwd,title:'Saved conversation'}))] });
   else if (value.method === 'session/load') {
@@ -65,6 +90,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     reply({ configOptions });
   }
   else if (value.method === 'session/prompt') {
+    log({fixture:'prompt-admission',model:configOptions[0].currentValue,thoughts:Object.fromEntries(configOptions.filter(option=>option.category==='thought_level').map(option=>[option.id,option.currentValue]))});
+    // External/native preference change: the app must preserve this on a later same-model null selection.
+    if(configOptions[0].currentValue==='fixture-dual' && fs.existsSync(path.join(__dirname,'native-thinking-change'))) {configOptions=configOptions.map(option=>option.id==='thinking'?{...option,currentValue:'true'}:option);update({sessionUpdate:'config_option_update',configOptions});}
     const saved = history(); saved[sessionId] = {cwd:process.cwd(),prompt:value.params.prompt}; fs.writeFileSync(historyFile,JSON.stringify(saved));
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
     // session_info_update: installed CLI live evidence; subagent kinds: installed-source evidence only.

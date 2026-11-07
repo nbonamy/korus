@@ -17,7 +17,7 @@ import { backendHomeDir } from '../state';
 import { CursorAuthentication } from './authentication';
 import { cursorRuntime, resolveCursorExecutable } from './runtime';
 import { CursorSession } from './session';
-import { cursorModels } from './catalog';
+import { executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { cursorAttachments } from './attachments';
 import { getCursorAccountUsage } from './account-usage';
 
@@ -75,6 +75,8 @@ export class CursorHost implements AgentBackendDriver {
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
     if (this.resuming.has(agent.id)) throw new Error('Finish the current Cursor history operation first.');
     if (options?.backendOptions) throw new Error('Cursor backend options are not available.');
+    const selection=resolveExecutionSelection(executionSelectionForAgent(agent),options?.selection);
+    if (selection.serviceTier!==null) throw new Error('Cursor service tiers are not supported.');
     const generation = this.generations.get(agent.id) ?? 0;
     const previous = this.queues.get(agent.id);
     let release!: () => void;
@@ -86,12 +88,14 @@ export class CursorHost implements AgentBackendDriver {
       if (this.closed || generation !== (this.generations.get(agent.id) ?? 0)) throw new Error('Cursor conversation was released before admission.');
       const attachments = await cursorAttachments(options?.attachments ?? []);
       const session = await this.ensure(agent);
-      const model = options?.selection?.model ?? (agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.model : undefined);
+      const model=selection.model;
       if (model) {
-        if (!cursorModels(session.configuration).some(option => option.id === model)) throw new Error('Unknown Cursor model. Refresh the model catalog.');
+        if (!session.models.some(option => option.id === model)) throw new Error('Unknown Cursor model. Refresh the model catalog.');
         await session.setModel(model);
       }
+      if (selection.reasoningEffort!==null) await session.setReasoningEffort(selection.reasoningEffort);
       await session.setPromptMode(options?.planMode === true);
+      session.assertSelection(selection.model,selection.reasoningEffort,options?.planMode === true);
       const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
       const instructions = appDeveloperInstructions(agent, this.options.pluginSettings?.(), {
         celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
@@ -171,7 +175,7 @@ export class CursorHost implements AgentBackendDriver {
     return { backendSession: this.reference(await done) };
   }
   private workingDirectory(agent: Agent): string { return agent.folder ?? path.join(backendHomeDir(), 'cursor-quick-chats', encodeURIComponent(agent.id)); }
-  async listModels(agent: Agent) { return cursorModels((await this.ensure(agent)).configuration); }
+  async listModels(agent: Agent) { return (await this.ensure(agent)).models; }
   async respondToAgentRequest(response: AgentRequestResponse): Promise<void> {
     const session = response.agentId ? this.sessions.get(response.agentId) : [...this.sessions.values()].find(session => session.snapshot.clientRequests.some(request => request.id === response.id));
     if (!session) throw new Error('Cursor request is no longer pending.');

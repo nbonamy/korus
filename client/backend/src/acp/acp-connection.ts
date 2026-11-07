@@ -154,7 +154,7 @@ export class AcpConnection {
     clearTimeout(pending.timer);
     if (record(value.error)) {
       const code = typeof value.error.code === 'number' ? value.error.code : -32603;
-      pending.reject(this.options.formatRpcError ? new Error(this.options.formatRpcError(code, value.error.message)) : new AcpError(code, this.options.displayName));
+      pending.reject(new AcpError(code,this.options.displayName,this.options.formatRpcError?.(code,value.error.message)));
     }
     else pending.resolve(value.result);
   }
@@ -174,8 +174,8 @@ export class AcpConnection {
   }
 }
 
-class AcpError extends Error {
-  constructor(readonly code: number, displayName: string) { super(`${displayName} ACP request failed (${code}).`); }
+export class AcpError extends Error {
+  constructor(readonly code: number, displayName: string, message = `${displayName} ACP request failed (${code}).`) { super(message); }
 }
 
 function rpcId(value: unknown): value is RpcId { return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)); }

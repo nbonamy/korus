@@ -5,11 +5,12 @@ import { realpath } from 'node:fs/promises';
 import { product } from '@workspace/core/product';
 import type { RendererMessage, RendererMessagePart } from '@workspace/core/contracts';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
-import { AcpConnection, record } from '../acp/acp-connection';
+import { AcpConnection, AcpError, record } from '../acp/acp-connection';
 import { cursorEnvironment, resolveCursorExecutable, type CursorRuntime, cursorRuntime } from './runtime';
 import { cursorImageFile } from './image-file';
 import { cursorQuestion } from './questions';
 import { CursorPromptJournal } from './prompt-journal';
+import { cursorModelCatalog, cursorModels, cursorThoughtControl, type CursorCatalogModel } from './catalog';
 import { CursorTranscript } from './transcript';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
@@ -24,6 +25,9 @@ export class CursorSession {
   private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown }>();
   private journal!: CursorPromptJournal;
   private promptMode?: string;
+  private configurationConfirmed = true;
+  private appliedEffort?: {model:string;configId:string;value:string};
+  private modelCatalog?: CursorCatalogModel[];
   private config: Record<string, unknown> = {};
   private loading = true;
   private disposed = false;
@@ -78,6 +82,8 @@ export class CursorSession {
       }
       for (const params of session.startupUpdates) session.notification('session/update', params);
       session.startupUpdates.length = 0;
+      try { session.modelCatalog=cursorModelCatalog(await session.connection.request('cursor/list_available_models',{})); }
+      catch(error) { if (!(error instanceof AcpError && error.code===-32601)) throw error; }
       session.loading = false;
       return session;
     } catch (error) { await session.close(); throw error; }
@@ -97,8 +103,23 @@ export class CursorSession {
       });
     } finally { options.signal.removeEventListener('abort', abort); await session.close(); }
   }
+  get models() { return cursorModels(this.config,this.modelCatalog); }
+  async setReasoningEffort(value: string): Promise<void> {
+    const model=Array.isArray(this.config.configOptions) ? this.config.configOptions.find(option=>record(option) && option.category==='model') : undefined;
+    const thought=cursorThoughtControl(this.config.configOptions);
+    this.assertConfigurationConfirmed();
+    if (!record(model) || typeof model.id!=='string' || !model.id || typeof model.currentValue!=='string' || !model.currentValue || !thought || !thought.options.some(option=>option.value===value)) throw new Error('Unsupported Cursor reasoning effort for the selected model.');
+    this.configurationConfirmed=false;
+    const result=await this.connection.request('session/set_config_option',{sessionId:this.sessionId,configId:thought.id,value});
+    if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor reasoning acknowledgment.');
+    const confirmedModel=result.configOptions.find(option=>record(option) && option.id===model.id);
+    const confirmed=cursorThoughtControl(result.configOptions);
+    if (!record(confirmedModel) || confirmedModel.category!=='model' || confirmedModel.currentValue!==model.currentValue || confirmed?.id!==thought.id || confirmed.currentValue!==value) throw new Error('Cursor did not confirm the requested reasoning effort.');
+    this.config={...this.config,configOptions:result.configOptions}; this.configurationConfirmed=true; this.appliedEffort={model:model.currentValue,configId:thought.id,value};
+  }
   get configuration() { return this.config; }
   async setPromptMode(plan: boolean): Promise<void> {
+    this.assertConfigurationConfirmed();
     const mode = Array.isArray(this.config.configOptions) ? this.config.configOptions.find(option => record(option) && option.category === 'mode') : undefined;
     if (!record(mode) || typeof mode.id !== 'string' || !Array.isArray(mode.options)) {
       if (plan || (this.promptMode !== undefined && this.promptMode !== 'agent')) throw new Error('Cursor mode catalog is unavailable.');
@@ -107,19 +128,39 @@ export class CursorSession {
     const value = plan ? 'plan' : 'agent';
     if (!mode.options.some(option => record(option) && option.value === value)) throw new Error(`Cursor ${value} mode is unavailable in the native catalog.`);
     if (mode.currentValue === value) { this.promptMode = value; return; }
-    this.promptMode = 'unknown';
+    this.promptMode = 'unknown'; this.configurationConfirmed=false;
     const result = await this.connection.request('session/set_config_option',{sessionId:this.sessionId,configId:mode.id,value});
     if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor mode response.');
     const confirmed = result.configOptions.find(option => record(option) && option.id === mode.id);
-    if (!record(confirmed) || confirmed.currentValue !== value || !Array.isArray(confirmed.options) || !confirmed.options.some(option => record(option) && option.value === value)) throw new Error('Cursor did not confirm the requested mode.');
-    this.config = {...this.config,configOptions:result.configOptions}; this.promptMode = value;
+    if (!record(confirmed) || confirmed.category!=='mode' || confirmed.currentValue !== value || !Array.isArray(confirmed.options) || !confirmed.options.some(option => record(option) && option.value === value)) throw new Error('Cursor did not confirm the requested mode.');
+    this.config = {...this.config,configOptions:result.configOptions}; this.promptMode = value; this.configurationConfirmed=true;
   }
   async setModel(model: string): Promise<void> {
+    const current=Array.isArray(this.config.configOptions) ? this.config.configOptions.find(option=>record(option) && option.id==='model') : undefined;
+    if (this.configurationConfirmed && record(current) && current.category==='model' && current.currentValue===model) return;
+    this.configurationConfirmed=false;
     const result = await this.connection.request('session/set_config_option', { sessionId: this.sessionId, configId: 'model', value: model });
     if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor model response.');
     const confirmed = result.configOptions.find(option => record(option) && option.id === 'model');
-    if (!record(confirmed) || confirmed.currentValue !== model) throw new Error('Cursor did not confirm the requested model.');
-    this.config = { ...this.config, configOptions: result.configOptions };
+    if (!record(confirmed) || confirmed.category!=='model' || confirmed.currentValue !== model) throw new Error('Cursor did not confirm the requested model.');
+    this.config = { ...this.config, configOptions: result.configOptions }; this.configurationConfirmed=true; this.appliedEffort=undefined;
+  }
+  private assertConfigurationConfirmed(): void {
+    if (!this.configurationConfirmed) throw new Error('Cursor configuration is unconfirmed. Select a model again.');
+  }
+  assertSelection(model: string|null, effort: string|null, plan: boolean): void {
+    this.assertConfigurationConfirmed();
+    const options=Array.isArray(this.config.configOptions) ? this.config.configOptions : [];
+    const selected=options.find(option=>record(option) && option.category==='model');
+    const validModel=record(selected) && typeof selected.id==='string' && Boolean(selected.id) && typeof selected.currentValue==='string' && Boolean(selected.currentValue);
+    const mode=options.find(option=>record(option) && option.category==='mode');
+    const fail=(message:string):never=>{this.configurationConfirmed=false;throw new Error(message);};
+    if (model!==null && (!validModel || selected.currentValue!==model)) fail('Cursor did not preserve the requested model selection.');
+    if (effort!==null) {
+      const thought=cursorThoughtControl(options);
+      if (!validModel || !this.appliedEffort || this.appliedEffort.model!==selected.currentValue || this.appliedEffort.value!==effort || thought?.id!==this.appliedEffort.configId || thought.currentValue!==effort) fail('Cursor did not preserve the requested reasoning selection.');
+    }
+    if (record(mode) ? mode.currentValue!==(plan?'plan':'agent') : plan) fail('Cursor did not preserve the requested mode selection.');
   }
   get snapshot() { return this.transcript.replica.getSnapshot(); }
   get sessionId() { return this.snapshot.sessionId; }

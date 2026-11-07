@@ -228,7 +228,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
     await rm(path.join(root,'bad-mode-ack'));
     await host.sendPrompt(agent,'hello',{planMode:true,selection:{model:'composer-2.5'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
-    await host.sendPrompt(agent,'again',{planMode:true,selection:{model:'composer-2.5'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
+    await host.sendPrompt(agent,'again',{planMode:true,selection:{model:'auto'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
     expect((await wire()).filter(call=>call.method==='session/set_config_option' && call.params.configId==='mode').map(call=>call.params.value)).toStrictEqual(['plan','plan','plan']);
   });
   it('rejects an empty mode acknowledgment before prompt admission', async () => {
@@ -296,6 +296,91 @@ describe('Cursor ACP host transport boundary', () => {
       if(action!=='release') await vi.waitFor(()=>expect(completions()).toHaveLength(1));
       expect(events.flatMap(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='message.upsert' ? event.payload.event.payload.message.parts : []).filter(part=>part.type==='media')).toStrictEqual([]);
     } finally {resumeRead();vi.mocked(open).mockImplementation(actual.open);await rm(outside,{recursive:true,force:true});}
+  });
+  it('discovers model-specific enum effort and admits only exact native config IDs/values without changing thinking', async () => {
+    await writeFile(path.join(root,'rich-models'),'');
+    const models=await host.listModels!(agent);
+    expect(models.find(model=>model.id==='fixture-alpha')).toMatchObject({defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'extra-high'}]});
+    expect(models.find(model=>model.id==='fixture-thinking')?.supportedReasoningEfforts).toBeUndefined();
+    expect(models.find(model=>model.id==='auto')?.supportedReasoningEfforts).toBeUndefined();
+    await host.sendPrompt(agent,'hello',{selection:{model:'fixture-alpha',reasoningEffort:'extra-high'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    await host.sendPrompt(agent,'hello',{selection:{model:'fixture-beta',reasoningEffort:'xhigh'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
+    await host.sendPrompt(agent,'hello',{selection:{model:'fixture-dual',reasoningEffort:'low'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(3));
+    await expect(host.sendPrompt(agent,'must-not-run',{selection:{model:'fixture-alpha',reasoningEffort:'xhigh'}})).rejects.toThrow(/effort|reasoning/i);
+    const setters=(await wire()).filter(call=>call.method==='session/set_config_option' && !['model','mode'].includes(call.params.configId));
+    expect(setters.map(call=>[call.params.configId,call.params.value])).toStrictEqual([['reasoning','extra-high'],['reasoning_effort','xhigh'],['effort','low']]);
+    expect((await wire()).filter(call=>call.method==='cursor/list_available_models')).toHaveLength(1);
+    const prompts=(await wire()).filter(call=>call.method==='session/prompt').length;
+    await expect(host.sendPrompt(agent,'must-not-run',{selection:{serviceTier:'fast'}})).rejects.toThrow(/tier/i);
+    expect((await wire()).filter(call=>call.method==='session/prompt')).toHaveLength(prompts);
+  });
+  it('clears inherited effort on model changes and honors explicit null without resetting native thought settings', async () => {
+    await writeFile(path.join(root,'rich-models'),'');
+    const defaults={...agent,backendDefaults:{kind:'cursor' as const,model:'fixture-alpha',reasoningEffort:'extra-high'}};
+    await host.sendPrompt(defaults,'hello'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    await host.sendPrompt(defaults,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
+    await host.sendPrompt(defaults,'hello',{selection:{model:'fixture-beta'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(3));
+    await writeFile(path.join(root,'native-thinking-change'),'');
+    const dual={...agent,backendDefaults:{kind:'cursor' as const,model:'fixture-dual'}};
+    await host.sendPrompt(dual,'hello'); await vi.waitFor(()=>expect(completions()).toHaveLength(4));
+    await host.sendPrompt(dual,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(5));
+    expect((await wire()).filter(call=>call.fixture==='prompt-admission').map(call=>({model:call.model,thoughts:call.thoughts}))).toStrictEqual([
+      {model:'fixture-alpha',thoughts:{reasoning:'extra-high'}},{model:'fixture-alpha',thoughts:{reasoning:'extra-high'}},{model:'fixture-beta',thoughts:{reasoning_effort:'medium'}},
+      {model:'fixture-dual',thoughts:{thinking:'false',effort:'high'}},{model:'fixture-dual',thoughts:{thinking:'true',effort:'high'}},
+    ]);
+    expect((await wire()).filter(call=>call.method==='session/set_config_option' && !['model','mode'].includes(call.params.configId)).map(call=>[call.params.configId,call.params.value])).toStrictEqual([['reasoning','extra-high']]);
+  });
+  it.each(['empty','value','config-id','model','model-id','model-category'])('rejects a contradictory %s reasoning acknowledgment before prompt admission', async mismatch => {
+    await writeFile(path.join(root,'rich-models'),'');
+    if(mismatch==='model-id') await writeFile(path.join(root,'missing-live-model-id'),'');
+    const configOptions=mismatch==='empty'?[]:[{...(mismatch==='model-id'?{}:{id:'model'}),category:mismatch==='model-category'?'other':'model',type:'select',currentValue:mismatch==='model'?'fixture-beta':'fixture-alpha',options:[{value:'fixture-alpha',name:'Alpha'}]}, {id:mismatch==='config-id'?'effort':'reasoning',category:'thought_level',type:'select',currentValue:mismatch==='value'?'low':'extra-high',options:[{value:'low',name:'Low'},{value:'extra-high',name:'Extra high'}]}];
+    await writeFile(path.join(root,'effort-ack.json'),JSON.stringify({configOptions}));
+    await expect(host.sendPrompt(agent,'must-not-run',{selection:{...(mismatch==='model-id'?{}:{model:'fixture-alpha'}),reasoningEffort:'extra-high'}})).rejects.toThrow(/effort|reasoning|confirm/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
+  });
+  it('falls back only on method-not-found and derives current-model effort from live configuration', async () => {
+    await writeFile(path.join(root,'rich-models'),''); await writeFile(path.join(root,'catalog-error.json'),JSON.stringify({code:-32601,message:'private-native-detail'}));
+    const models=await host.listModels!(agent);
+    expect(models.find(model=>model.id==='fixture-alpha')).toMatchObject({supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'extra-high'}]});
+    expect(models.find(model=>model.id==='fixture-beta')?.supportedReasoningEfforts).toBeUndefined();
+    await host.sendPrompt(agent,'hello',{selection:{reasoningEffort:'extra-high'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+  });
+  it.each(['rpc','malformed'])('does not hide a %s catalog failure as an old-CLI fallback', async failure => {
+    await writeFile(path.join(root,failure==='rpc'?'catalog-error.json':'catalog-result.json'),JSON.stringify(failure==='rpc'?{code:-32000,message:'private-native-detail'}:{models:[{value:'bad',name:'Bad',configOptions:'invalid'}]}));
+    await expect(host.listModels!(agent)).rejects.toThrow(/Cursor/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain('private-native-detail');
+  });
+  it('cancels held reasoning discovery without attaching an agent snapshot', async () => {
+    await writeFile(path.join(root,'hold-model-catalog'),'');
+    const pending=host.listModels!(agent).catch(error=>error);
+    await vi.waitFor(async()=>expect((await wire()).some(call=>call.method==='cursor/list_available_models')).toBe(true));
+    await host.releaseConversation!(agent.id); expect(await pending).toBeInstanceOf(Error);
+    expect(events.filter(event=>event.type==='cursor.conversationSnapshotChanged')).toStrictEqual([]);
+  });
+  it('keeps a failed effort acknowledgment untrusted until model selection is confirmed again', async () => {
+    await writeFile(path.join(root,'rich-models'),''); await writeFile(path.join(root,'effort-ack.json'),JSON.stringify({configOptions:[]}));
+    await expect(host.sendPrompt(agent,'bad',{selection:{model:'fixture-alpha',reasoningEffort:'extra-high'}})).rejects.toThrow(/reasoning/);
+    await rm(path.join(root,'effort-ack.json'));
+    await expect(host.sendPrompt(agent,'must-not-run')).rejects.toThrow(/confirm|configuration/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
+    await host.sendPrompt(agent,'recovered',{selection:{model:'fixture-alpha',reasoningEffort:'extra-high'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    expect((await wire()).filter(call=>call.method==='session/set_config_option' && call.params.configId==='model')).toHaveLength(1);
+  });
+  it('validates plan mode after effort has changed authoritative mode metadata', async () => {
+    await writeFile(path.join(root,'rich-models'),''); await writeFile(path.join(root,'effort-resets-mode'),'');
+    await host.sendPrompt(agent,'hello',{planMode:true,selection:{model:'fixture-beta',reasoningEffort:'xhigh'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
+    expect((await wire()).filter(call=>call.method==='session/set_config_option').map(call=>[call.params.configId,call.params.value])).toStrictEqual([['model','fixture-beta'],['reasoning_effort','xhigh'],['mode','plan']]);
+  });
+  it.each(['model','effort'])('rejects a final mode acknowledgment that changes the requested %s', async mismatch => {
+    await writeFile(path.join(root,'rich-models'),'');
+    await writeFile(path.join(root,'mode-selection-ack.json'),JSON.stringify({configOptions:[
+      {id:'mode',category:'mode',currentValue:'plan',options:[{value:'plan',name:'Plan'},{value:'agent',name:'Agent'}]},
+      {id:'model',category:'model',currentValue:mismatch==='model'?'fixture-beta':'fixture-alpha',options:[{value:'fixture-alpha',name:'Alpha'}]},
+      {id:'reasoning',category:'thought_level',type:'select',currentValue:mismatch==='effort'?'low':'extra-high',options:[{value:'low',name:'Low'},{value:'extra-high',name:'Extra high'}]},
+    ]}));
+    await expect(host.sendPrompt(agent,'must-not-run',{planMode:true,selection:{model:'fixture-alpha',reasoningEffort:'extra-high'}})).rejects.toThrow(/model|reasoning|selection|confirm/i);
+    expect((await wire()).some(call=>call.method==='session/prompt')).toBe(false);
   });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();

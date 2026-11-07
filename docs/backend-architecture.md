@@ -150,6 +150,17 @@ Per-agent app and
 hosted MCP endpoints use the shared session bridge with identity scoped in each
 child process; this does not establish approval-free native tool execution.
 
+The extended native model catalog supplies per-model enum reasoning choices.
+Values and config identities remain native; independent boolean thinking controls
+are preserved without being relabeled as effort. A model change clears inherited
+app effort. Reusing a confirmed model avoids repeating its setter, protecting
+native thought settings from model-default resets when effort is explicitly null.
+Admission validates the selected model's live controls and setter acknowledgments,
+checks mode after effort, then verifies the complete selection before prompting.
+Failed acknowledgments require confirmed model selection before another prompt.
+Only a typed method-not-found response permits fallback to the session catalog;
+authentication, policy, transport and malformed-catalog failures remain failures.
+
 Cancellation waits for prompt settlement and a bounded, workspace-filtered
 `session/list` round trip before admitting the next prompt. This drains buffered
 cancelled-turn updates without retaining history metadata. The handshake requires

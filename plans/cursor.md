@@ -1,7 +1,7 @@
 # Cursor provider qualification and integration
 
 Status: The desktop integration implements conversations, tools, history,
-model selection, attachments, native Plan mode, scoped MCP, account credits/quota
+model/enum-effort selection, attachments, native Plan mode, scoped MCP, account credits/quota
 and analytics. See the [implementation audit](#full-provider-implementation-audit)
 for current acceptance evidence and provider boundaries. Full native qualification
 remains incomplete: edits can bypass permission callbacks, structured question
@@ -776,6 +776,22 @@ IDs. Missing, contradictory or foreign-config acknowledgments are rejected
 before prompt admission; this validates configuration rather than served-model
 attestation.
 
+The production session adapter discovered the extended native model catalog and
+confirmed exact enum effort changes for two distinct native config IDs, including
+a model with independent boolean thinking. Thinking remained unchanged, parameters
+and the initial model were restored, and no model turn ran.
+Final selection guards also passed native Plan/Agent mode transitions after effort
+selection, with the requested model and effort preserved. The app's rendered
+composer regression selects an exact `extra-high` value and proves the outbound
+execution selection; switching to a model without effort removes inherited effort.
+
+The installed `2026.11.05-86047df` also reproduced the native approval boundary:
+a scratch file changed from its before marker to the requested after marker even
+though the production host granted none of the two app requests received during
+the turn. The native file-change projection reached the conversation. This confirms
+the approval limitation on the installed build rather than relying on Phase 0's
+older CLI evidence; full approvals and automatic review remain disabled.
+
 A production-host native todo request created two synthetic checklist items and
 marked both completed. Both todo snapshots reached the app-owned conversation.
 The installed CLI frames `cursor/update_todos` as a request despite documentation
@@ -794,7 +810,7 @@ cancelled response and missing todo projection before the fix.
 - Image-extension observations are live-only and require contained, bounded
   regular-image reads. Suggested or existing paths do not prove successful
   generation, freshness or historical reconstruction.
-- Served-model/effort behavior, token consumption and API pricing remain unknown.
+- Served-model/effort execution, token consumption and API pricing remain unknown.
   No substitute values are inferred from configuration or timing.
 - App plan review, tool-free auxiliary generation, skill management and native
   subagent controls remain unqualified. Native Plan mode and plan confirmations
@@ -802,6 +818,15 @@ cancelled response and missing todo projection before the fix.
 - Archive, compaction, fork/edit/delete/retry, remote-control and unsupported
   provider controls remain absent rather than inheriting Codex shortcuts.
 
-Final broad gates and the independent review are recorded at handoff. No commit
-in this continuation authorizes a push, deployment, account migration or billing
-change.
+### Verification
+
+| Affected workspace | Full coverage suite | Statements |
+| --- | --- | --- |
+| Backend | 3,047 passed; 9 existing skips | 89.39% |
+| Core | 744 passed | 86.18% |
+| Vue | 2,488 passed | 86.81% |
+
+Repository-wide lint passed. Independent review closed the same-model reset defect
+after prompt-admission assertions verified retained effort and thinking values.
+Native acceptance above remains distinct from subprocess and rendered fixtures.
+Local commits do not authorize push, deployment, account migration or billing changes.
