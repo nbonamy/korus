@@ -26,6 +26,7 @@ export class RunProfileService {
   constructor(filename: string, private readonly git = new AgentGitService(), private readonly ownerAvailable: (agentId: string, folder: string) => boolean = () => true) { this.repositories = new RepositoryStore(filename, git); }
 
   private transaction<T>(action: (store: Store) => Promise<T> | T): Promise<T> {
+    if (this.closed) return Promise.reject(new Error('Run profiles are closed.'));
     const next = this.pending.catch(() => undefined).then(() => this.repositories.transaction(async entries => {
       const store: Store = { repositories: Object.fromEntries(Object.entries(entries).map(([key, entry]) => [key, entry.commands ?? []])) };
       const result = await action(store);
@@ -37,6 +38,7 @@ export class RunProfileService {
   }
 
   private async target(folder: string) {
+    if (this.closed) throw new Error('Run profiles are closed.');
     const identity = await this.git.identity(folder);
     const worktree = await realpath(identity.kind === 'git' ? identity.repositoryRoot : folder);
     const repository = await realpath(identity.kind === 'git' ? identity.primaryWorktreeRoot : folder);

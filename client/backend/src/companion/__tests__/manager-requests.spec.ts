@@ -21,6 +21,16 @@ import type { CompanionGateway } from '../gateway';
 
 // Network admission has its own encrypted-circuit tests. Keep the entire daemon/provider path real.
 const transport = vi.hoisted(() => ({ gateway: null as CompanionGateway | null, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const) }));
+// Provider fixtures never need the operator's login shell to discover their executable.
+vi.mock('@workspace/core/runtime-discovery', async importOriginal => ({
+  ...await importOriginal<typeof import('@workspace/core/runtime-discovery')>(),
+  resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }),
+}));
+// Bind promise-based grace periods to the same controlled clock as other timers.
+vi.mock('node:timers/promises', async importOriginal => ({
+  ...await importOriginal<typeof import('node:timers/promises')>(),
+  setTimeout: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+}));
 vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   connected = false;
   constructor(_key: unknown, gateway: CompanionGateway) { transport.gateway = gateway; }
@@ -29,7 +39,12 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   async stop() { this.connected = false; }
 } }));
 const cleanup: (() => Promise<unknown>)[] = [];
-afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
+afterEach(async () => {
+  try {
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(500);
+    for (const dispose of cleanup.splice(0).reverse()) await dispose();
+  } finally { vi.useRealTimers(); }
+});
 
 async function fixture(driver: AgentBackendDriver, agent: Agent, desktopFocused?: () => Promise<boolean>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-requests-'));
@@ -84,6 +99,7 @@ describe('mobile requests across the owning daemon', () => {
     const sdk = codexSdkFixture(); const agent = { ...sdkAgent(), teamId: 'team-test' };
     const desktopFocused = vi.fn(async () => { if (focused === 'unavailable') throw new Error('No desktop'); return focused === true; });
     const f = await fixture(sdk.driver, agent, desktopFocused);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const other = { ...sdkAgent('other-agent', 'other-conversation'), teamId: agent.teamId };
     f.snapshot.agents.push(other); f.snapshot.teams[0]!.agentIds.push(other.id);
     await f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.clientNavigationSelectAgent,
@@ -95,6 +111,8 @@ describe('mobile requests across the owning daemon', () => {
     await vi.waitFor(() => expect(session.handle.sendMessage).toHaveBeenCalledOnce());
     session.emit({ type: 'turn.started', conversationId: 'conversation-a', turnId: 'turn', seq: 1, occurredAt: '', origin: 'notification', payload: { startedAt: '' } });
     session.emit({ type: 'turn.completed', conversationId: 'conversation-a', turnId: 'turn', seq: 2, occurredAt: '', origin: 'notification', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
+    await vi.waitFor(() => expect(f.snapshot.agents[0]!.readState?.revision).toBe(1), { interval: 1 });
+    await vi.advanceTimersByTimeAsync(500);
     await vi.waitFor(() => expect(desktopFocused).toHaveBeenCalledOnce());
     if (pushes) await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
     else expect(transport.push).not.toHaveBeenCalled();
@@ -158,6 +176,7 @@ describe('mobile requests across the owning daemon', () => {
   ])('pushes unread completions and clears only acknowledged results ($clientId / read=$readOnDesktop / grace=$duringGrace)', async ({ clientId, readOnDesktop, duringGrace, method }) => {
     const sdk = codexSdkFixture(); const agent = { ...sdkAgent(), teamId: 'team-test' };
     const f = await fixture(sdk.driver, agent);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const other = { ...sdkAgent('other-agent', 'other-conversation'), teamId: agent.teamId };
     f.snapshot.agents.push(other); f.snapshot.teams[0]!.agentIds.push(other.id);
     f.snapshot.activeAgentId = other.id;
@@ -174,10 +193,14 @@ describe('mobile requests across the owning daemon', () => {
     await vi.waitFor(() => expect(session.handle.sendMessage).toHaveBeenCalledOnce());
     session.emit({ type: 'turn.started', conversationId: 'conversation-a', turnId: 'turn', seq: 1, occurredAt: '', origin: 'notification', payload: { startedAt: '' } });
     session.emit({ type: 'turn.completed', conversationId: 'conversation-a', turnId: 'turn', seq: 2, occurredAt: '', origin: 'notification', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
-    if (duringGrace) await vi.waitFor(() => expect(f.snapshot.agents[0]!.readState?.revision).toBe(1));
-    else await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(f.snapshot.agents[0]!.readState?.revision).toBe(1), { interval: 1 });
+    if (!duringGrace) {
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
+    }
     if (readOnDesktop) {
       await expect(f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: 'agent/read', params: { agentId: agent.id, revision: 1 } })).resolves.toHaveProperty('result');
+      if (duringGrace) await vi.advanceTimersByTimeAsync(500);
       await vi.waitFor(() => expect(transport.push).toHaveBeenCalledTimes(duringGrace ? 1 : 2));
     }
     expect(transport.push.mock.calls.map(call => call[2])).toStrictEqual((duringGrace ? ['read'] : readOnDesktop ? ['completed', 'read'] : ['completed']).map(kind => expect.objectContaining({
@@ -211,6 +234,7 @@ describe('mobile requests across the owning daemon', () => {
     const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
     const agent: Agent = { ...sdkAgent('claude-phone'), teamId: 'team-test', backend: 'claude', backendSession: undefined };
     const f = await fixture(driver, agent);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const updates = vi.fn(); const failed = vi.fn();
     const subscription = f.gateway.subscribe('phone', updates, failed);
     cleanup.push(async () => subscription.close());
@@ -225,6 +249,7 @@ describe('mobile requests across the owning daemon', () => {
     }, { signal: new AbortController().signal, toolUseID: 'item', requestId: 'request' });
     await vi.waitFor(() => expect(f.snapshot.agentRequests?.[agent.id]).toHaveLength(1));
     expect(f.snapshot.agents[0]!.status.type).toBe('awaitingInput');
+    await vi.advanceTimersByTimeAsync(500);
     await vi.waitFor(() => expect(updates.mock.calls.some(([update]) => update.type === 'notification')).toBe(true));
     expect(transport.push).not.toHaveBeenCalled();
     const notification = updates.mock.calls.find(([update]) => update.type === 'notification')![0].notification;

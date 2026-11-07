@@ -11,6 +11,9 @@ import type { OpenInProvider } from '../open-in';
 import { createOpenInProvider } from '../open-in';
 import { addTestWindow, callPrivate, currentSnapshot, fakeAppLifecycle, createBackendClient, updateSettings } from './app-controller-test-harness';
 
+// Native routing uses explicit backend fixtures, not the operator's login shell.
+vi.mock('../backend-client', () => ({ createRuntimeAppBackendClient: () => null }));
+
 describe('AppController', () => {
   it('enforces the single-instance lock only for packaged builds', () => {
     expect(requiresSingleInstanceLock(true)).toBe(true);

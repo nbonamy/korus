@@ -65,6 +65,7 @@ it('rejects an ambiguous folder instead of changing multiple agents', () => {
     .toThrow(/Expected exactly one Codex agent.*found 2/);
 });
 
+// Creates a real archive and launches the installed recovery command and process guard.
 it.skipIf(process.platform === 'win32').each([
   `/Applications/${product.name}.app/Contents/MacOS/${product.name}`,
   `/usr/local/bin/node /Applications/${product.name}.app/Contents/Resources/daemon/daemon.mjs serve`,
@@ -94,7 +95,7 @@ it.skipIf(process.platform === 'win32').each([
       '/tmp/repo',
     ], {
       encoding: 'utf8',
-      timeout: 5_000,
+      timeout: 1_500,
       env: {
         ...process.env,
         HOME: root,
@@ -114,7 +115,7 @@ it.skipIf(process.platform === 'win32').each([
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
+}, 2_000);
 
 function roster(threadId) {
   return {

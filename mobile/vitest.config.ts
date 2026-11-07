@@ -4,6 +4,8 @@ import path from 'node:path';
 export default defineConfig({
   resolve: { alias: { '@workspace/core': path.resolve(__dirname, '../core/src') } },
   test: {
+    testTimeout: 500,
+    hookTimeout: 500,
     environment: 'node',
     coverage: {
       provider: 'v8',

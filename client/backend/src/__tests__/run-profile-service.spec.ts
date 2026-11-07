@@ -15,11 +15,7 @@ let service: RunProfileService;
 const agent = 'agent-one';
 const profile = { name: 'Dev server', command: 'node server.cjs', directory: '.' };
 const waitFor = async (read: () => Promise<boolean>) => {
-  const until = Date.now() + 8000;
-  while (!await read()) {
-    if (Date.now() > until) throw new Error('Timed out waiting for profile process');
-    await new Promise(resolve => setTimeout(resolve, 30));
-  }
+  await vi.waitFor(async () => expect(await read()).toBe(true), { timeout: 500, interval: 5 });
 };
 
 beforeEach(async () => {
@@ -34,7 +30,8 @@ beforeEach(async () => {
 });
 afterEach(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
 
-describe('repository run profiles', () => {
+// Real Git worktrees and owned child-process shutdown are the integration boundary.
+describe('repository run profiles', { timeout: 2_000 }, () => {
   it('migrates commands from separate clones into one Git identity and resolves each selected worktree locally', async () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:fixture/project.git']);
     const clone = path.join(root, 'second');
@@ -125,8 +122,18 @@ describe('repository run profiles', () => {
     await service.close();
     service = new RunProfileService(path.join(root, 'home', 'repositories.json'));
     expect((await service.get(agent, repo)).runs).toStrictEqual([]);
-    await new Promise(resolve => setTimeout(resolve, 100));
     expect(await readFile(path.join(repo, 'marker'), 'utf8')).toBe('run\n');
+  });
+
+  it('rejects catalog work after shutdown instead of writing into a released fixture', async () => {
+    await service.save(agent, repo, profile);
+    const filename = path.join(root, 'home', 'repositories.json');
+    const saved = await readFile(filename, 'utf8');
+    await service.close();
+    await rm(repo, { recursive: true, force: true });
+    await expect(service.get(agent, repo)).rejects.toThrow('closed');
+    await expect(service.save(agent, repo, profile)).rejects.toThrow('closed');
+    expect(await readFile(filename, 'utf8')).toBe(saved);
   });
 
   it('rejects traversal, absolute paths, symlink escapes and secret environment configuration', async () => {

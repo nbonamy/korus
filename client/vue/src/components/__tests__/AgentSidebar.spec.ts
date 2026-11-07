@@ -164,6 +164,7 @@ describe('AgentSidebar sessions', () => {
     expect(row.find('[aria-label="Working"]').exists()).toBe(true);
   });
 
+  // Integrated sidebar rendering covers groups, statuses, active rows and menus.
   it('renders the selected team name, repository headers, branch sessions, statuses, and active selection', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {
@@ -220,7 +221,7 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__session-title--active').text()).toBe('Dina');
     expect(wrapper.findAll('.agent-sidebar__session-title--active')).toHaveLength(1);
     expect(wrapper.find('[aria-label="Working"]').exists()).toBe(true);
-  });
+  }, 1_000);
 
   it('groups matching worktree branches across repositories and remembers the user choice independently of new agents', async () => {
     const make = (id: string, repo: number, branch: string): Agent => {
@@ -353,6 +354,7 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  // Rendered activity sorting, controlled aging and per-team preferences across remounts.
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
@@ -433,8 +435,9 @@ describe('AgentSidebar sessions', () => {
       expect(restored.find('[data-activity-group="attention"]').exists()).toBe(true);
       restored.unmount();
     } finally { wrapper.unmount(); vi.useRealTimers(); }
-  });
+  }, 1_000);
 
+  // Real popovers exercise repeated sorting and persisted choices across two teams.
   it('sorts only Idle by normal repository order or recent activity and remembers each team’s choice', async () => {
     const items: Agent[] = [
       { ...agents[0]!, id: 'old', name: 'Older', status: { type: 'idle' }, lastActivityAt: '2026-01-01T10:00:00Z' },
@@ -480,7 +483,7 @@ describe('AgentSidebar sessions', () => {
         expect(restored.get('[data-activity-group="idle"]').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['old', 'middle', 'latest']);
       } finally { restored.unmount(); }
     } finally { wrapper.unmount(); }
-  });
+  }, 1_500);
 
   it('collapses and expands a repository by clicking its title', async () => {
     const wrapper = mount(AgentSidebar, {

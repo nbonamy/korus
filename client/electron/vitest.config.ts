@@ -8,6 +8,8 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 500,
+    hookTimeout: 500,
     environment: 'jsdom',
     coverage: {
       provider: 'v8',

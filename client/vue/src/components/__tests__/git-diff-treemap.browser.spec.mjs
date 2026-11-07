@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 
 // Owning rendered workflow: a dense map must preserve churn, scope and file identity
 // while resizing/filtering, and every small or non-textual file must stay reachable.
+// The workflow budget covers cold editor loading, rendering and many screenshot scenes.
 test('diff treemap scales to hundreds of files and drills into the existing diff', { timeout: 90_000 }, async t => {
   const root = fileURLToPath(new URL('../../../../..', import.meta.url));
   const output = process.env.DIFF_TREEMAP_EVIDENCE || await mkdtemp(path.join(os.tmpdir(), 'diff-treemap-'));
@@ -122,15 +123,15 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
   try {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    page.setDefaultTimeout(10_000);
+    page.setDefaultTimeout(1_000);
     // Cold Vite transforms and dependency optimization are fixture setup, not UI latency.
-    page.setDefaultNavigationTimeout(60_000);
+    page.setDefaultNavigationTimeout(15_000);
     // Remote font stylesheets must not hold this local rendering workflow open.
     await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${origin}/diff-map`, { waitUntil: 'domcontentloaded' });
-    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 60_000 });
+    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 15_000 });
     const toggleMap = async () => {
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
@@ -339,9 +340,10 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.locator('.fixture').screenshot({ path: path.join(output, 'viz-empty-460.png') });
     await page.getByRole('button', { name: 'Generate', exact: true }).click();
     const concept = page.getByRole('button', { name: 'Open changes for Profile Sync Service', exact: true });
-    await page.waitForFunction(() => document.querySelector('.diff-viz-canvas__target') || document.querySelector('.diff-viz-canvas__status button'), { timeout: 30_000 });
+    // First polished render loads the editor bundle and fonts on demand.
+    await page.waitForFunction(() => document.querySelector('.diff-viz-canvas__target') || document.querySelector('.diff-viz-canvas__status button'), undefined, { timeout: 15_000 });
     assert.equal(await page.locator('.diff-viz-canvas__status button').count(), 0, (await page.locator('.diff-viz-canvas__status').allTextContents()).join(' '));
-    await concept.waitFor({ state: 'visible', timeout: 30_000 });
+    await concept.waitFor({ state: 'visible' });
     await page.getByRole('heading',{name:'Profile sync persists review activity',exact:true}).waitFor();
     const explanation=await concept.getAttribute('title');
     assert.ok(explanation.includes('Profile activity is saved during synchronization.'));

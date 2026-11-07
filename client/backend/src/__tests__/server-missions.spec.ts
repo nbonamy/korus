@@ -102,6 +102,7 @@ describe('mission backend boundary', () => {
     } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
   });
 
+  // Delivery exercises real merge/push and durable worktree cleanup.
   it.each(['keep', 'delete', 'push', 'legacy missing'])('persists merged delivery and worktree cleanup before removing its builder (%s)', async cleanup => {
     const deleteWorktree = cleanup !== 'keep';
     const exec = promisify(execFile);
@@ -169,7 +170,7 @@ describe('mission backend boundary', () => {
       expect(snapshotFromPersistedState(disk).missions).toStrictEqual([]);
       await expect(access(worktree)).rejects.toThrow();
     } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
-  });
+  }, 3_000);
 
   it.each([
     { preset: 'workflow', deleteWorktrees: true },

@@ -10,6 +10,9 @@ import { createMission, type MissionStage } from '@workspace/core/missions';
 import type { OpenInProvider } from '../open-in';
 import { addTestWindow, setMainWindowSend, createBackendClient } from './app-controller-test-harness';
 
+// Browser routing uses explicit backend fixtures, not the operator's login shell.
+vi.mock('../backend-client', () => ({ createRuntimeAppBackendClient: () => null }));
+
 describe('AppController', () => {
 
   it('routes the Debug message fixture to the active agent through daemon', async () => {

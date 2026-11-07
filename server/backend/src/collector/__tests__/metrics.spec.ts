@@ -315,6 +315,7 @@ it("filters only usage, preserves nulls and replaces removed groups without infl
     ["codex", "unknown"],
   ]);
 });
+// This real PostgreSQL lock-timeout/recovery test must outlive the 2s database deadline.
 it("bounds concurrent reads and database waits with generic recoverable failures", async () => {
   const blocker = await pool.connect();
   await blocker.query("BEGIN; LOCK usage_daily IN ACCESS EXCLUSIVE MODE");
@@ -362,7 +363,7 @@ it("bounds concurrent reads and database waits with generic recoverable failures
     lock.release();
   }
   expect((await get()).status).toBe(200);
-});
+}, 3_000);
 it("uses a read-only database role and bounds failures without exposing SQL or credentials", async () => {
   await pool.query(
     "CREATE ROLE metrics_read LOGIN; GRANT CONNECT ON DATABASE telemetry_test TO metrics_read; GRANT USAGE ON SCHEMA public TO metrics_read; GRANT SELECT ON installs,install_days,usage_daily TO metrics_read",

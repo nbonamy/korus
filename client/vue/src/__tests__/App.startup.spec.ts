@@ -9,13 +9,15 @@ import { deferred } from './app-state-test-harness';
 let App: typeof import('../App.vue')['default'];
 let setElectronTestClient: typeof import('../test/client')['setElectronTestClient'];
 
+// Cold transforms reload the complete app module graph to isolate singleton state.
+// This compilation/setup budget is independent of the 500ms behavior tests.
 beforeEach(async () => {
   vi.resetModules();
   window.sessionStorage.clear();
   // Cold module loading is fixture setup, not part of the startup behavior budget.
   ({ setElectronTestClient } = await import('../test/client'));
   ({ default: App } = await import('../App.vue'));
-});
+}, 10_000);
 afterEach(() => window.sessionStorage.clear());
 
 function mountStartup(api: ReturnType<typeof createClientApiMock>['api']) {

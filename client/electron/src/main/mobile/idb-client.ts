@@ -25,7 +25,7 @@ export class IdbClient {
   private readonly calls = new Set<Call>();
   private closed = false;
 
-  constructor(socket: string, protoPath: string) {
+  constructor(socket: string, protoPath: string, private readonly timeoutMs = 15_000) {
     if (!path.isAbsolute(socket)) throw new Error('iOS bridge requires a private Unix socket.');
     this.methods = loadSync(protoPath, { keepCase: true, longs: Number, defaults: true })[
       'idb.CompanionService'
@@ -194,7 +194,7 @@ export class IdbClient {
         method.path,
         method.requestSerialize,
         method.responseDeserialize,
-        { deadline: Date.now() + 15_000 },
+        { deadline: Date.now() + this.timeoutMs },
       );
       this.calls.add(call);
       let received = 0;
@@ -223,7 +223,7 @@ export class IdbClient {
         method.requestSerialize,
         method.responseDeserialize,
         request,
-        { deadline: Date.now() + 15_000 },
+        { deadline: Date.now() + this.timeoutMs },
         (error, result) => {
           this.calls.delete(call);
           if (error) reject(bridgeError(error));

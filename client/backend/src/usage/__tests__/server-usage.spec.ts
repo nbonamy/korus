@@ -17,6 +17,7 @@ import { createQueryHarness } from "../../claude/__tests__/sdk-query-fixture";
 import { codexExecutionConsumption } from "../../codex/execution-usage";
 import { validConsumption } from "@workspace/core/usage";
 
+// The owning RPC workflow persists and projects measured provider usage.
 it("previews exact local UTF-8 telemetry from persisted provider measurements without leaking local dimensions", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-preview-"));
   const file = path.join(dir, "usage.sqlite");
@@ -276,7 +277,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
     await local.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 2_000);
 it("clears queued statistics through the app contract and keeps them cleared after restart", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-clear-"));
   const file = path.join(dir, "usage.sqlite");

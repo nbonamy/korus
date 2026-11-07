@@ -34,6 +34,7 @@ async function menu(wrapper: ReturnType<typeof view>, action: string) {
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe('AutomationsView', () => {
+  // Composed list/dialog workflow distinguishes Mission teammates from worker agents.
   it('keeps mission source teammates selectable without offering mission workers', async () => {
     const teamSnapshot = createInitialSnapshot();
     const mission = createMission(teamSnapshot, { outcome: 'Ship a feature', workflowType: 'shapeAndShipFeature', teamId: 'team-app', orchestratorMemberId: 'agent-dina' });
@@ -54,8 +55,9 @@ describe('AutomationsView', () => {
     expect(options).not.toContain('Repository worker');
     await wrapper.get('form').trigger('submit'); await flushPromises();
     expect(updateAutomation).toHaveBeenCalledWith(expect.objectContaining({ id: 'auto', target: { kind: 'agent', agentId: 'agent-dina' } }));
-  });
+  }, 1_000);
 
+  // Creates, edits and validates schedules through the rendered view and real editor.
   it('creates and edits scheduled prompts through the real editor', async () => {
     const warnings = vi.spyOn(console, 'warn');
     // Electron IPC rejects reactive proxies, including nested schedule values.
@@ -84,8 +86,9 @@ describe('AutomationsView', () => {
     expect(wrapper.find('form').exists()).toBe(false);
     expect(getComputedStyle(wrapper.get('.automations-view__panel').element).maxWidth).toBe('920px');
     expect(warnings).not.toHaveBeenCalled();
-  });
+  }, 1_000);
 
+  // Full editor exercises host selection, creation and run routing through the client API.
   it('routes remote creation and runs only to the selected host without requiring a work provider', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
@@ -100,7 +103,7 @@ describe('AutomationsView', () => {
     await wrapper.get('textarea').setValue('Remote check');
     await wrapper.get('form').trigger('submit'); await flushPromises();
     expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Remote check', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } } }), { kind: 'remote', remoteConnectionId: 'remote' });
-  });
+  }, 1_000);
 
   it('retains the editor on save failure and shows remote failures without replacing local data', async () => {
     const wrapper = view({ createAutomation: async () => { throw new Error('Save failed'); }, remoteConnections: [remote],

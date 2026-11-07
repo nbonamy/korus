@@ -13,6 +13,9 @@ test('Design pointer hover previews element bounds without changing selection or
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
+    page.setDefaultTimeout(1_000);
+    // Cold module loading belongs to browser startup, not individual interactions.
+    page.setDefaultNavigationTimeout(15_000);
     await page.setContent('<iframe sandbox="allow-scripts" style="width:800px;height:600px;transform:scale(.5);transform-origin:top left;border:0"></iframe>');
     await page.evaluate(() => { window.messages = []; addEventListener('message', event => window.messages.push(event.data)); });
     const html = play => designFrame(board, 'body{font-family:Arial}main{padding:40px}h1{margin:0 0 20px;font-weight:900}.target{padding:12px;border-radius:6px}', 'hover-test', 1, play, 'heading', { width: 'Width', height: 'Height', size: 'Size' });

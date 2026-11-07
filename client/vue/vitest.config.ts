@@ -29,6 +29,8 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 500,
+    hookTimeout: 500,
     environment: 'jsdom',
     css: {
       // Opt in only components with valuable runtime CSS assertions.
@@ -55,8 +57,10 @@ export default defineConfig({
           pool: 'forks',
           include: ['src/**/*.browser.spec.mjs'],
           setupFiles: [],
-          testTimeout: 120_000,
-          hookTimeout: 120_000,
+          // These workflows include cold Vite transforms and Chromium startup.
+          // Individual interactions have their own short bounds.
+          testTimeout: 30_000,
+          hookTimeout: 15_000,
         },
       },
       {

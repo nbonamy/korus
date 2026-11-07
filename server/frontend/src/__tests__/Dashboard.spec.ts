@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { mount, flushPromises } from "@vue/test-utils";
+import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+enableAutoUnmount(afterEach);
 vi.mock("vue-chartjs", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -47,6 +48,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
+// Full router/Element Plus filtering, stale-response and access-revocation workflow.
 it("uses validated old ranges and keeps exact measurements while rejecting stale loads and revoked access", async () => {
   const pending: ((response: Response) => void)[] = [];
   const fetcher = vi.fn(
@@ -294,7 +296,7 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     false,
   );
   wrapper.unmount();
-});
+}, 1_500);
 it("shows recoverable failures without echoing remote diagnostics and bounds date ranges before fetching", async () => {
   const fetcher = vi
     .fn()
@@ -314,21 +316,17 @@ it("shows recoverable failures without echoing remote diagnostics and bounds dat
   wrapper.unmount();
 });
 
-it("requests and labels browser-local days including today at midnight and across DST", async () => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  const fetcher = vi.fn(async (_url: string) => Response.json(metrics()));
-  vi.stubGlobal("fetch", fetcher);
-  try {
-    for (const [zone, now, to, from] of [
-      ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-31", "2026-10-02"],
-      [
-        "Pacific/Kiritimati",
-        "2026-11-01T12:00:00Z",
-        "2026-11-02",
-        "2026-10-04",
-      ],
-      ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-08", "2026-02-07"],
-    ]) {
+it.each([
+  ["America/Chicago", "2026-11-01T03:00:00Z", "2026-10-31", "2026-10-02"],
+  ["Pacific/Kiritimati", "2026-11-01T12:00:00Z", "2026-11-02", "2026-10-04"],
+  ["America/Chicago", "2026-03-09T04:30:00Z", "2026-03-08", "2026-02-07"],
+] as const)(
+  "requests and labels browser-local days including today at midnight and across DST (%s, %s)",
+  async (zone, now, to, from) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fetcher = vi.fn(async (_url: string) => Response.json(metrics()));
+    vi.stubGlobal("fetch", fetcher);
+    try {
       vi.stubEnv("TZ", zone!);
       vi.setSystemTime(new Date(now!));
       const { wrapper } = await renderDashboard();
@@ -353,12 +351,12 @@ it("requests and labels browser-local days including today at midnight and acros
         ).searchParams.get("to"),
       ).toBe(to);
       wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
     }
-  } finally {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
-  }
-});
+  },
+);
 
 it("uses model facets from real data and clears selections absent from a new scope", async () => {
   const requested: string[] = [];

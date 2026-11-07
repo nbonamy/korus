@@ -212,7 +212,7 @@ describe('idb companion wire protocol', () => {
   it('bounds calls with a deadline and does not expose server diagnostics', async () => {
     hanging = true;
     client.close();
-    client = new IdbClient(path.join(directory, 'bridge.sock'), proto);
+    client = new IdbClient(path.join(directory, 'bridge.sock'), proto, 50);
     await expect(client.screenshot()).rejects.toThrow('DEADLINE_EXCEEDED');
     server.removeService(definition);
     server.addService(definition, {
@@ -221,5 +221,5 @@ describe('idb companion wire protocol', () => {
     const error = await client.screenshot().catch((error) => error);
     expect(error.message).toContain('INTERNAL');
     expect(error.message).not.toContain('private app data');
-  }, 20_000);
+  });
 });

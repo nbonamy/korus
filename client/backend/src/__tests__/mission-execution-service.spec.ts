@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,8 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state
 import { FileMissionArtifactStore } from '../mission-artifact-store';
 import { missionStageSkills } from '../bundled-skills/catalog';
 import type { Agent } from '@workspace/core/contracts';
+
+afterEach(() => vi.useRealTimers());
 
 function setup() {
   const snapshot = createInitialSnapshot();
@@ -617,6 +619,7 @@ describe('mission execution', () => {
   });
 
   it('retries completion after a lock release cannot be persisted', async () => {
+    vi.useFakeTimers();
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;
     await h.store.change(h.current().id, mission => {
@@ -631,12 +634,13 @@ describe('mission execution', () => {
     await h.service.acquireCommitLock(run.workerId!);
     h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(h.service.agentFinished(run.workerId!, 'turn-a')).rejects.toThrow('storage unavailable');
-    await vi.waitFor(() => {
-      expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
-      expect(h.current().execution!.runs[0]).toMatchObject({ status: 'running', recoveryAttempts: 1 });
-    }, { timeout: 3000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    await h.service.waitForLaunches();
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
+    expect(h.current().execution!.runs[0]).toMatchObject({ status: 'running', recoveryAttempts: 1 });
   });
   it('releases the old lock after a new provider turn starts during retry', async () => {
+    vi.useFakeTimers();
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;
     await h.store.change(h.current().id, mission => {
@@ -652,7 +656,8 @@ describe('mission execution', () => {
     h.persisted.mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(h.service.agentFinished(run.workerId!, 'old-turn')).rejects.toThrow('storage unavailable');
     h.service.agentStarted(run.workerId!, 'new-turn');
-    await vi.waitFor(() => expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined(), { timeout: 3000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.current().execution!.workspaces![0]!.commitLock).toBeUndefined();
     expect(h.current().execution!.runs[0]!.status).toBe('running');
   });
   it('stops a preparing run while its worker assignment is being persisted', async () => {

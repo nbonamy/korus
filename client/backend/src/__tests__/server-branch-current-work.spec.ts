@@ -12,7 +12,8 @@ import { DurableTaskService } from '../agents/durable-task-service';
 import { createTestSnapshot } from './server-test-fixtures';
 
 const exec = promisify(execFile);
-describe('branch current work app boundary', () => {
+// RPC admission persists and transfers a real Git worktree.
+describe('branch current work app boundary', { timeout: 3_000 }, () => {
   it.each(['success', 'roster failure'] as const)('persists one idle agent without a task or commit, with %s', async scenario => {
     const root = await mkdtemp(join(tmpdir(), 'korus-branch-rpc-'));
     const source = join(root, 'repo');

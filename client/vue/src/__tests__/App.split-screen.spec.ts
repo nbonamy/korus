@@ -21,7 +21,8 @@ async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
   await flushPromises();
 }
 
-describe('split-screen conversations', () => {
+// Mounts the complete app, multiple composers and persisted navigation/layout workflows.
+describe('split-screen conversations', { timeout: 1_000 }, () => {
   it('splits a feature window using only its branch agents without overwriting the team layout', async () => {
     const snapshot = createInitialSnapshot();
     const team = snapshot.teams[0]!;
