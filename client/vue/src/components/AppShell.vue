@@ -271,8 +271,6 @@
         :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
         :show-header="activeSurface !== 'mission'"
-        :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
-        :add-chat-text-annotation="addChatTextAnnotation"
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
         :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
@@ -281,16 +279,7 @@
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
         :update-plan-review="updatePlanReview"
-        :respond-to-thread-flag="respondToThreadFlag"
-        :thread-flag-busy="threadFlagBusy"
-        :conversation-pane-controller="conversationPaneController"
-        :save-prompt-draft="savePromptDraft"
-        :remove-prompt-draft="removePromptDraft"
         :conversation-plan="conversationPlan"
-        :chat-text-annotations="activeChatTextAnnotations"
-        :visualization-annotations="activeVisualizationAnnotations"
-        :code-annotations="activeCodeAnnotations"
-        :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
         :empty-split-pane="activeSurface !== 'mission' && !hasFocusedConversation"
@@ -304,7 +293,6 @@
         :handle-start-work-action="handleStartWorkAction"
         :is-agent-empty="activeSurface !== 'mission' && !cockpitVisible && isAgentEmpty"
         :is-conversation-loading="isConversationLoading"
-        :history-load-failed="isConversationLoadFailed"
         :is-loading="isLoading"
         :is-modal-dialog-visible="isModalDialogVisible"
         :is-right-workspace-visible="isPresentedWorkspaceVisible"
@@ -318,10 +306,6 @@
         :update-agent="props.updateAgent"
         :open-agent-git-diff-preview="openAgentGitDiffPreview"
         :open-agent-in="openAgentIn"
-        :open-attachment-image-annotation="openAttachmentImageAnnotation"
-        :remove-chat-text-annotation="removeChatTextAnnotation"
-        :remove-visualization-annotation="removeVisualizationAnnotation"
-        :remove-code-annotation="removeCodeAnnotation"
         :open-conversation-link="openConversationLink"
         :open-file-preview-for-agent="openFilePreviewForAgent"
         :open-in-applications="openInApplications"
@@ -333,7 +317,6 @@
         :right-workspaces="rightWorkspaces"
         :right-workspace-visible="activeSurface === 'mission' ? missionWorkspaceVisible : rightWorkspaceVisible"
         :read-conversation-messages="readConversationMessages"
-        :retry-conversation-history="props.retryAgentHistory"
         :select-agent-from-shell="selectAgentFromShell"
         :select-right-workspace-tab="selectRightWorkspaceTab"
         :snapshot="snapshot"
@@ -361,7 +344,6 @@
         @expand-sidebar="expandSidebar"
         @install-update="emit('install-update')"
         @remove-work-item-assignment="$emit('remove-work-item-assignment', $event)"
-        @remove-review-finding-attachment="pendingReviewClarification = null"
         @send-prompt="emit('sendPrompt', $event)"
         @open-browser-settings="openSettings('browser')"
         @update:plan-mode="emit('update:planMode', $event)"
@@ -395,32 +377,49 @@
               />
             </template>
             <template #conversation="{ agentId }">
-              <ConversationPane v-if="currentAgent?.id === agentId" ref="missionConversationPane" :controller="conversationPaneController" :agent="currentAgent" :agents="snapshot.agents" :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft" :history-load-failed="props.isConversationLoadFailed" :history-loading="isConversationLoading" :has-visible-messages="conversationMessages.length > 0" :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined" :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined" @retry-history="props.retryAgentHistory">
+              <AgentConversationPanel v-if="currentAgent?.id === agentId && conversationViewFor(agentId)" :key="agentId" :ref="instance => setConversationPanel(agentId, instance)"
+                :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="true"
+                :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
+                :preview-approval="debugApproval?.agentId === agentId ? debugApproval.request : undefined"
+                :mention-groups="agentMentionGroups" :model-menu-items="conversationModelFavoriteMenuItems(agentId)"
+                :select-model-menu-item="item => selectConversationModelMenuItem(agentId, item)"
+                :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
+                :follow-up-behavior="snapshot.general.followUpBehavior"
+                :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined"
+                :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined"
+                :placeholder="selectedMission.stage === 'requirements' && conversationMessages.length === 0 ? t('missions.describeWhatYouWantToBuild') : undefined"
+                :open-link="link => openConversationLink(agentId, link)"
+                :open-image="(image, context) => agentWorkspace?.openConversationImage(image, context, agentId) ?? false"
+                :open-visualization="visualization => agentWorkspace?.openConversationVisualization(visualization, agentId)"
+                @annotation-dialog="conversationAnnotationVisible = $event"
+                @open-review="openRightWorkspaceTab('codeReview', $event)" @composer-command="runConversationMenuCommand">
                 <template #composer-drawers>
                   <MissionDocumentRequest v-if="missionDocuments.pending.value" :request="missionDocuments.pending.value" @open="missionDocuments.confirm" @dismiss="missionDocuments.dismiss" />
                 </template>
                 <template v-if="selectedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
                   <AppMenu class="app-menu--embedded" :ariaLabel="t('missions.chooseIssue')" :items="missionSourceMenuItems" @select="openMissionIssuePicker" />
                 </template>
-              </ConversationPane>
+              </AgentConversationPanel>
             </template>
           </MissionWorkspace>
         </template>
         <template v-else-if="cockpitVisible && !currentAgent" #conversation>
           <p class="app-shell__empty-cockpit">{{ t('sidebar.noConversations') }}</p>
         </template>
-        <template v-else-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
-          <AgentSplitGrid :layout="splitLayout" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
+        <template v-else #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
+          <AgentSplitGrid :layout="splitLayout" :panes="conversationPanes" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
             <template #header="{ agentId, topRight, topLeft }">
-              <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
+              <AgentHeader v-if="splitLayout !== 'single'" v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
             <template #default="{ agentId, focused }">
-              <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :busy="guestBusy ?? false" :control="guestControl" />
+              <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
               <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
-              <AgentConversationPanel v-else-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
-                :view="props.agentConversationFor(agentId)!" :actions="splitActions" :agents="snapshot.agents" :focused="focused"
-                :mention-groups="agentMentionGroups" :model-menu-items="splitModelFavoriteMenuItems(agentId)"
-                :select-model-menu-item="item => selectSplitModelMenuItem(agentId, item)"
+              <AgentConversationPanel v-else-if="conversationViewFor(agentId)" :key="agentId" :ref="instance => setConversationPanel(agentId, instance)"
+                :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="focused"
+                :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
+                :preview-approval="debugApproval?.agentId === agentId ? debugApproval.request : undefined"
+                :mention-groups="agentMentionGroups" :model-menu-items="conversationModelFavoriteMenuItems(agentId)"
+                :select-model-menu-item="item => selectConversationModelMenuItem(agentId, item)"
                 :plan="focused ? plan : null" :plan-visible="planVisible" @close-plan="closePlan"
                 :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
                 :follow-up-behavior="snapshot.general.followUpBehavior"
@@ -428,6 +427,7 @@
                 :open-link="link => openConversationLink(agentId, link)"
                 :open-image="(image, context) => agentWorkspace?.openConversationImage(image, context, agentId) ?? false"
                 :open-visualization="visualization => agentWorkspace?.openConversationVisualization(visualization, agentId)"
+                @annotation-dialog="conversationAnnotationVisible = $event"
                 @open-review="openRightWorkspaceTab('codeReview', $event)"
                 @composer-command="runConversationMenuCommand"
                 @remove-review-finding="pendingReviewClarification = null" />
@@ -585,17 +585,6 @@
       :visible="whatsNewVisible"
       @close="whatsNewVisible = false"
     />
-    <ImageAnnotationDialog
-      :visible="imageAnnotationVisible"
-      :image-src="imageAnnotationImageSource"
-      :fallback-image-src="attachmentAnnotationTarget ? undefined : debugAnnotationScreenshotUrl"
-      :initial-annotations="imageAnnotationInitialAnnotations"
-      :initial-pixel-ratio="imageAnnotationPixelRatio"
-      :file-name="imageAnnotationFileName"
-      @close="closeImageAnnotation"
-      @image-error="handleImageAnnotationError"
-      @save="saveImageAnnotation"
-    />
     <ProvisioningOperationHost />
     <RepositoryDeleteDialog
       v-if="repositoryDeletionAgentId"
@@ -669,9 +658,8 @@ import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
-import debugAnnotationScreenshotUrl from '../../assets/debug-annotation.png?url';
 import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendPermissionModeOption, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -704,7 +692,6 @@ import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
-import ImageAnnotationDialog from './ImageAnnotationDialog.vue';
 import FileQuickOpen from './FileQuickOpen.vue';
 import AgentQuickOpen from './AgentQuickOpen.vue';
 import AutomationsView from './AutomationsView.vue';
@@ -723,14 +710,12 @@ import ConversationShareDialog from './ConversationShareDialog.vue';
 import { useConversationSharePresence } from './use-conversation-share-presence';
 import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
+import { provideConversationAnnotationDrafts } from './conversation-annotation-drafts';
 import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
-import { conversationCommandMenuItems, conversationMenuCommand, type ConversationMenuCommand } from './conversation-command-menu';
-import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { type ConversationMenuCommand } from './conversation-command-menu';
 import type { AgentConversationView } from '../app-state';
 import MissionCodeReview from './MissionCodeReview.vue';
 import MissionShipBoard from './MissionShipBoard.vue';
@@ -744,7 +729,6 @@ import MissionDeleteDialog from './MissionDeleteDialog.vue';
 import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
 import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
-import ConversationPane from './ConversationPane.vue';
 import { useDebugProviderSafetyBlock } from './debug-provider-safety-block';
 import { useDebugWorktreeInitialization } from './debug-worktree-initialization';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -759,11 +743,8 @@ import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigration
 import ModelFavoritesDialog from './ModelFavoritesDialog.vue';
 import type { SettingsTab } from './settings-tabs';
 import {
-  createCodexConversationPaneController,
-  type CodexCapabilities,
   type CodexConversationLink,
   type CodexConversationPaneActions,
-  type CodexConversationPaneState,
   type CodexConversationVisualization,
   type CodexComposerMenuItem,
   type CodexComposerMentionGroup,
@@ -772,11 +753,10 @@ import {
   type CodexNativeAttachment,
   type CodexComposerState,
   type CodexQueuedPromptData as QueuedChatPrompt,
-  type CodexRendererSendMessageOptions,
 } from '@codex-app-sdk/vue';
 import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@codex-app-sdk/core/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
+import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {
   copyModelFavorite,
   modelFavoriteEffortLabel,
@@ -793,10 +773,6 @@ import { useDocumentWorkspaces } from './use-document-workspaces';
 import { useRightWorkspaceState } from './use-right-workspace-state';
 import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { RightWorkspaceTab } from './right-workspace';
-import { useImageAnnotation } from './use-image-annotation';
-import { useChatTextAnnotations } from './use-chat-text-annotations';
-import { useVisualizationAnnotations } from './use-visualization-annotations';
-import { useCodeAnnotations } from './use-code-annotations';
 import { useCockpitBacklog } from './use-cockpit-backlog';
 import { provideBacklogConnections } from './backlog-providers';
 import { useWorkspacePreviews } from './use-workspace-previews';
@@ -1215,13 +1191,6 @@ function expandSidebar(): void {
   else agentSidebarCollapsed.value = false;
 }
 const pendingReviewClarification = ref<PendingReviewClarification | null>(null);
-const missionConversationPane = ref<{ focusComposer(): void; openSavedDraftPicker(): void; saveCurrentDraft(): Promise<void> } | null>(null);
-const activeReviewFindingAttachment = computed(() => {
-  const clarification = pendingReviewClarification.value;
-  return clarification && clarification.agentId === currentAgent.value?.id
-    ? clarification.finding
-    : null;
-});
 const codexResourceSharingMigrationPending = ref(false);
 const agentListCompact = computed(() => props.snapshot.general.agentListCompact);
 const codexResourceSharingBlocked = computed(() => props.snapshot.agents.some((agent) => (
@@ -2022,13 +1991,63 @@ const saveDocumentAs = useDocumentSaveAs({
   workspaceFor: rightWorkspaceState.workspaceFor,
   save: documentWorkspaces.save,
 });
-const splitPanels = new Map<string, InstanceType<typeof AgentConversationPanel>>();
-function setSplitPanel(agentId: string, instance: unknown): void {
-  if (instance) splitPanels.set(agentId, instance as InstanceType<typeof AgentConversationPanel>);
-  else splitPanels.delete(agentId);
+provideConversationAnnotationDrafts();
+const conversationAnnotationVisible = ref(false);
+const conversationPanes = computed(() => compactViewport.value || chromeless.value
+  ? [{ id: split.focusedPane.value.id, agentId: currentAgent.value?.id ?? null }]
+  : split.panes.value);
+function conversationViewFor(agentId: string): AgentConversationView | null {
+  const view = props.agentConversationFor?.(agentId);
+  if (view) return view;
+  const agent = currentAgent.value;
+  if (!agent || agent.id !== agentId) return null;
+  return {
+    agent, codexSnapshot: props.codexConversationSnapshot ?? null, claudeSnapshot: props.claudeConversationSnapshot ?? null,
+    antigravitySnapshot: props.antigravityConversationSnapshot,
+    composerState: props.composerState, attachments: props.composerAttachments,
+    capabilities: props.backendCapabilities, approvals: props.approvals, queuedPrompts: props.queuedPrompts.map(prompt => ({ ...prompt, agentId, text: prompt.text, createdAt: '' })),
+    sending: props.isSending, answeredClientRequestIds: props.answeredClientRequestIds,
+    history: { failed: props.isConversationLoadFailed, hydrating: props.isConversationLoading || props.isLoading,
+      hasOlder: props.historyHasOlder, loadingOlder: props.historyLoadingOlder },
+    composer: {
+      backend: agent.backend, selectionSource: '', models: props.backendModels, modelStatus: props.modelCatalogStatus,
+      modelError: null, skills: props.backendSkills, plugins: props.backendPlugins, skillStatus: props.skillCatalogStatus,
+      skillError: null, files: props.agentFiles, fileStatus: 'loaded', fileError: null,
+      selectedModelId: props.selectedModelId, selectedReasoningEffort: props.selectedReasoningEffort,
+      selectedServiceTier: props.selectedServiceTier, planMode: props.planMode, pendingSelection: null,
+    },
+  };
+}
+const legacyConversationActions: AgentConversationActions = {
+  prepare: () => undefined, retryHistory: () => props.retryAgentHistory?.(),
+  planReview: (id, resolution) => { if (resolution !== 'cancel') emit('update:planMode', resolution === 'revise'); },
+  clearGoal: () => emit('clear-goal'), threadFlag: (_id, response) => props.respondToThreadFlagAction?.(response),
+  loadOlder: id => props.loadOlderAgentHistory?.(id), loadTurn: async (id, turn) => { await props.loadAgentTurnHistory?.(id, turn); },
+  requestSkills: id => props.agentConversationActions?.requestSkills?.(id),
+  send: (_id, text, options) => props.sendPromptAction ? props.sendPromptAction(text, options) : options ? emit('sendPrompt', text, options) : emit('sendPrompt', text),
+  steer: (_id, text, options) => forwardSteerPrompt(text, options), interrupt: () => emit('interrupt-agent'),
+  deleteTurn: (_id, turn) => props.deleteTurnAction ? props.deleteTurnAction(turn) : emit('delete-turn', turn),
+  editTurn: (_id, payload) => props.editTurnAction ? props.editTurnAction(payload) : emit('edit-turn', payload),
+  forkTurn: (_id, turn) => emit('fork-turn', turn), retryTurn: (_id, turn) => props.retryTurnAction ? props.retryTurnAction(turn) : emit('retry-turn', turn),
+  continueInterruptedTurn: () => props.continueInterruptedTurnAction?.(),
+  resolveApproval: (_id, approval, decision, scope) => forwardApprovalResolution(approval, decision, scope),
+  clientResponse: response => { const { agentId: _id, ...answer } = response; emit('client-response', answer); },
+  selectModel: (_id, model) => emit('select-model', model), selectReasoningEffort: (_id, effort) => emit('select-reasoning-effort', effort),
+  selectServiceTier: (_id, tier) => emit('select-service-tier', tier), setPlanMode: (_id, enabled) => emit('update:planMode', enabled),
+  setApprovalPreset: (_id, preset) => emit('select-approval-preset', preset), setPermissionMode: (_id, mode) => emit('select-permission-mode', mode),
+  updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
+  updateAttachments: (agentId, attachments) => emit('update:composerAttachments', { agentId, attachments }),
+  deleteQueuedPrompt: (_id, prompt) => emit('delete-queued-prompt', prompt),
+  updateQueuedPrompt: (_id, prompt, text, options) => options ? emit('update-queued-prompt', prompt, text, options) : emit('update-queued-prompt', prompt, text),
+  steerQueuedPrompt: (_id, prompt, text, options) => options ? emit('steer-queued-prompt', prompt, text, options) : emit('steer-queued-prompt', prompt, text),
+};
+const conversationPanels = new Map<string, InstanceType<typeof AgentConversationPanel>>();
+function setConversationPanel(agentId: string, instance: unknown): void {
+  if (instance) conversationPanels.set(agentId, instance as InstanceType<typeof AgentConversationPanel>);
+  else conversationPanels.delete(agentId);
 }
 function focusedConversationPanel() {
-  return splitLayout.value === 'single' ? agentWorkspace.value : splitPanels.get(split.focusedPane.value.agentId ?? '');
+  return conversationPanels.get((activeSurface.value === 'mission' || splitLayout.value === 'single' ? currentAgent.value?.id : split.focusedPane.value.agentId) ?? '');
 }
 const pendingComposerFocusAgentId = ref<string | null>(null);
 // A cold conversation has no composer until history hydration replaces its loader.
@@ -2056,15 +2075,21 @@ watch([
   });
 }, { flush: 'post' });
 function addFocusedCodeAnnotation(annotation: import('./use-code-annotations').CodeAnnotationInput): void {
-  if (splitLayout.value === 'single') addCodeAnnotation(annotation);
-  else splitPanels.get(currentAgent.value?.id ?? '')?.addCodeAnnotation(annotation);
+  conversationPanels.get(currentAgent.value?.id ?? '')?.addCodeAnnotation(annotation);
 }
 function addFocusedVisualizationAnnotation(annotation: import('./use-visualization-annotations').VisualizationAnnotationInput): void {
-  if (splitLayout.value === 'single') addVisualizationAnnotation(annotation);
-  else splitPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
+  conversationPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
 }
-const splitActions = computed<AgentConversationActions | undefined>(() => props.agentConversationActions ? {
-  ...props.agentConversationActions,
+const conversationActions = computed<AgentConversationActions>(() => ({
+  ...(props.agentConversationActions ?? legacyConversationActions),
+  resolveApproval: (id, approval, decision, scope) => {
+    if (debugApproval.value?.request.id === approval) { debugApproval.value = null; return; }
+    return (props.agentConversationActions ?? legacyConversationActions).resolveApproval(id, approval, decision, scope);
+  },
+  clientResponse: response => {
+    if (debugUserQuestions.value?.requestId === response.id) { debugUserQuestions.value = null; return; }
+    return (props.agentConversationActions ?? legacyConversationActions).clientResponse(response);
+  },
   send: async (agentId, prompt, options) => {
     await backendSwitch.settled();
     const design = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
@@ -2081,9 +2106,9 @@ const splitActions = computed<AgentConversationActions | undefined>(() => props.
       if (pendingReviewClarification.value === clarification) pendingReviewClarification.value = null;
       return;
     }
-    return props.agentConversationActions?.send(agentId, prompt, options);
+    return (props.agentConversationActions ?? legacyConversationActions).send(agentId, prompt, options);
   },
-} : undefined);
+}));
 function openConversationLink(agentId: string, link: CodexConversationLink): void | Promise<void> {
   if (link.kind === 'external') return appPlatformActions.openExternal?.(link.href);
   if (activeSurface.value === 'mission') missionPreviewAgentId.value = agentId;
@@ -2279,62 +2304,7 @@ function openFilePreviewForAgent(agentId: string, path: string): Promise<void> {
 function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget, focusKind?: import('@workspace/core/file-kind').FileKind): Promise<void> {
   return agentId ? openAgentGitDiffForAgent(agentId, target, focusKind) : Promise.resolve();
 }
-const imageAnnotation = useImageAnnotation({
-  composerAttachments: () => props.composerAttachments,
-  composerState: () => props.composerState,
-  currentAgentId: () => currentAgent.value?.id,
-  debugFallbackImageSource: debugAnnotationScreenshotUrl,
-  notifyError: (message) => ElMessage.error(message),
-  updateComposerAttachments: (agentId, attachments) => {
-    emit('update:composerAttachments', { agentId, attachments });
-  },
-  updateComposerState: (agentId, state) => {
-    emit('update:composerState', { agentId, state });
-  },
-});
-const {
-  activeCounts: activeAttachmentAnnotationCounts,
-  close: closeImageAnnotation,
-  fileName: imageAnnotationFileName,
-  forward: forwardCodexPromptWithImageAnnotations,
-  handleError: handleImageAnnotationError,
-  imageSource: imageAnnotationImageSource,
-  initialAnnotations: imageAnnotationInitialAnnotations,
-  openAttachment: openAttachmentImageAnnotation,
-  openDebug: openDebugImageAnnotation,
-  pixelRatio: imageAnnotationPixelRatio,
-  prune: pruneSavedImageAnnotations,
-  save: saveImageAnnotation,
-  target: attachmentAnnotationTarget,
-  visible: imageAnnotationVisible,
-} = imageAnnotation;
-const chatTextAnnotation = useChatTextAnnotations({
-  currentAgentId: () => currentAgent.value?.id,
-});
-const {
-  activeAnnotations: activeChatTextAnnotations,
-  add: addChatTextAnnotation,
-  forward: forwardCodexPromptWithChatTextAnnotations,
-  remove: removeChatTextAnnotation,
-} = chatTextAnnotation;
-const visualizationAnnotation = useVisualizationAnnotations({
-  currentAgentId: () => currentAgent.value?.id,
-});
-const {
-  activeAnnotations: activeVisualizationAnnotations,
-  add: addVisualizationAnnotation,
-  forward: forwardCodexPromptWithVisualizationAnnotations,
-  remove: removeVisualizationAnnotation,
-} = visualizationAnnotation;
-const codeAnnotation = useCodeAnnotations({
-  currentAgentId: () => currentAgent.value?.id,
-});
-const {
-  activeAnnotations: activeCodeAnnotations,
-  add: addCodeAnnotation,
-  forward: forwardCodexPromptWithCodeAnnotations,
-  remove: removeCodeAnnotation,
-} = codeAnnotation;
+function openDebugImageAnnotation(imageDataUrl?: string, pixelRatio?: 1 | 2): void { focusedConversationPanel()?.openDebugImageAnnotation(imageDataUrl, pixelRatio); }
 const cockpitBacklogState = useCockpitBacklog({
   configure: (input) => props.configureWorkBacklog(input),
   confirmLoadAll: async () => {
@@ -2376,16 +2346,6 @@ const {
   selectTag: selectWorkTagForCockpit,
   workBacklog: cockpitWorkBacklog,
 } = cockpitBacklogState;
-const effectiveApprovals = computed(() => {
-  const fixture = debugApproval.value;
-  const providerApprovals = currentAgent.value?.backend === 'codex'
-    ? props.codexConversationSnapshot?.approvals ?? []
-    : props.approvals ?? [];
-  return [
-    ...providerApprovals,
-    ...(fixture && fixture.agentId === currentAgent.value?.id ? [fixture.request] : []),
-  ];
-});
 const currentBackendRuntime = computed<BackendRuntimeStatus>(() => {
   const backend = currentAgent.value?.backend ?? 'codex';
   return props.snapshot.backendRuntimes.find((runtime) => runtime.backend === backend) ?? {
@@ -2396,12 +2356,6 @@ const currentBackendRuntime = computed<BackendRuntimeStatus>(() => {
 const currentAgentGitStatus = computed<AgentGitStatus | null>(() => {
   const agentId = currentAgent.value?.id;
   return agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null;
-});
-const conversationKey = computed(() => {
-  const session = currentAgent.value?.backendSession;
-  if (session?.kind === 'codex') return `codex:${session.threadId}`;
-  if (session) return `${session.kind}:${session.sessionId}`;
-  return currentAgent.value ? `agent:${currentAgent.value.id}` : 'no-agent';
 });
 const providerConversation = computed(() => (
   currentAgent.value?.backend === 'codex'
@@ -2449,73 +2403,7 @@ const conversationPlan = computed(() => (
     ? props.claudeConversationSnapshot?.plan ?? null
     : codexConversationPlan.value ?? currentAgent.value?.plan ?? null
 ));
-const conversationActiveTurnId = computed(() => {
-  if (providerConversation.value) return providerConversation.value.activeTurnId;
-  if (currentAgent.value?.backend === 'codex') return null;
-  if (!props.isSending) return null;
-  for (let index = conversationMessages.value.length - 1; index >= 0; index -= 1) {
-    const turnId = conversationMessages.value[index]?.turnId;
-    if (turnId) return turnId;
-  }
-  return null;
-});
-const conversationCapabilities = computed<CodexCapabilities>(() => ({
-  models: props.backendCapabilities.models,
-  skills: props.backendCapabilities.skills,
-  reasoningEffort: props.backendCapabilities.reasoningEffort,
-  ...(props.backendCapabilities.serviceTier === undefined
-    ? {}
-    : { serviceTier: props.backendCapabilities.serviceTier }),
-  planMode: props.backendCapabilities.planMode !== 'unsupported',
-  goals: props.backendCapabilities.goals,
-  steerPrompt: props.backendCapabilities.steerPrompt,
-  interrupt: props.backendCapabilities.interrupt,
-  history: props.backendCapabilities.history,
-  deleteTurn: props.backendCapabilities.deleteTurn,
-  editTurn: props.backendCapabilities.editTurn,
-  retryTurn: props.backendCapabilities.retryTurn,
-  approvals: props.backendCapabilities.approvals,
-  approvalPresets: props.backendCapabilities.approvalPresets ?? [],
-}));
-const permissionModeMenuItems = computed<CodexComposerMenuItem[]>(() => {
-  const modes = props.backendCapabilities.permissionModes ?? [];
-  if (modes.length === 0) {
-    return [];
-  }
-
-  return [{
-    id: 'backend-permissions',
-    type: 'submenu',
-    label: translate('surface.appShell.permissions'),
-    icon: ShieldCheckIcon,
-    submenuAlignment: 'bottom',
-    submenuWidth: 'wide',
-    items: modes.map((mode) => permissionModeMenuItem(mode, props.permissionMode)),
-  }];
-});
-const currentModelFavorite = computed<ModelFavorite | null>(() => {
-  const agent = currentAgent.value;
-  const model = props.backendModels.find((candidate) => candidate.id === props.selectedModelId)
-    ?? props.backendModels.find((candidate) => candidate.isDefault)
-    ?? props.backendModels[0]
-    ?? null;
-  if (!agent || !model) return null;
-  return {
-    backend: agent.backend,
-    modelId: model.id,
-    reasoningEffort: props.selectedReasoningEffort
-      ?? model.defaultReasoningEffort
-      ?? model.supportedReasoningEfforts?.[0]?.reasoningEffort
-      ?? null,
-    serviceTier: props.selectedServiceTier === 'default' ? null : props.selectedServiceTier,
-  };
-});
-const managedModelFavorites = computed(() => (
-  modelFavoritesDialogBackend.value
-    ? props.snapshot.general.modelFavorites.filter((favorite) => favorite.backend === modelFavoritesDialogBackend.value)
-    : []
-));
-const modelFavoriteMenuItems = computed(() => buildModelFavoriteMenuItems(currentModelFavorite.value, props.backendModels));
+const managedModelFavorites = computed(() => modelFavoritesDialogBackend.value ? props.snapshot.general.modelFavorites.filter(favorite => favorite.backend === modelFavoritesDialogBackend.value) : []);
 function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: BackendModelOption[]): CodexComposerMenuItem[] {
   if (!current) return [];
   const availableModelIds = new Set(models.map(model => model.id));
@@ -2567,8 +2455,8 @@ function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: Back
   }
   return items;
 }
-function splitModelFavoriteMenuItems(agentId: string): CodexComposerMenuItem[] {
-  const view = props.agentConversationFor?.(agentId);
+function conversationModelFavoriteMenuItems(agentId: string): CodexComposerMenuItem[] {
+  const view = conversationViewFor(agentId);
   if (!view) return [];
   const composer = view.composer;
   const model = composer.models.find(model => model.id === composer.selectedModelId)
@@ -2581,148 +2469,10 @@ function splitModelFavoriteMenuItems(agentId: string): CodexComposerMenuItem[] {
     serviceTier: composer.selectedServiceTier === 'default' ? null : composer.selectedServiceTier,
   }, composer.models);
 }
-function selectSplitModelMenuItem(agentId: string, item: Parameters<NonNullable<CodexConversationPaneActions['menuSelect']>>[0]): void | Promise<void> {
+function selectConversationModelMenuItem(agentId: string, item: Parameters<NonNullable<CodexConversationPaneActions['menuSelect']>>[0]): void | Promise<void> {
   const command = modelFavoriteCommand(item.payload);
-  if (command) return handleModelFavoriteCommand(command, agentId);
+  if (command) return handleModelFavoriteCommand(command, props.agentConversationActions ? agentId : undefined);
 }
-const conversationPaneState: CodexConversationPaneState = {
-  identity: {
-    get conversationKey() { return conversationKey.value; },
-    get activeTurnId() { return conversationActiveTurnId.value; },
-    get turns() { return providerConversation.value?.turns; },
-    get messages() { return conversationMessages.value; },
-    get busy() { return providerConversation.value?.busy ?? props.isSending; },
-    get disabled() {
-      return backendSwitch.busy.value || !currentAgent.value || (props.isConversationLoadFailed && conversationMessages.value.length === 0);
-    },
-  },
-  history: {
-    get hasOlder() { return providerConversation.value?.historyState?.hasOlder ?? props.historyHasOlder; },
-    get loading() {
-      return Boolean(currentAgent.value?.backendSession)
-        && conversationMessages.value.length === 0
-        && (providerConversation.value?.historyLoading ?? (props.isLoading || props.isConversationLoading));
-    },
-    get loadingOlder() { return Boolean(providerConversation.value?.historyState?.loadingOlder || props.historyLoadingOlder); },
-  },
-  thread: {
-    get approvals() { return effectiveApprovals.value; },
-    get clientRequests() {
-      if (currentAgent.value?.backend === 'antigravity' && props.antigravityConversationSnapshot) return antigravityPaneClientRequests(props.antigravityConversationSnapshot);
-      return currentAgent.value?.backend === 'codex'
-        ? props.codexConversationSnapshot?.clientRequests ?? []
-        : claudePaneClientRequests(props.claudeConversationSnapshot);
-    },
-    get answeredClientRequestIds() {
-      return providerConversation.value
-        ? new Set(providerConversation.value.answeredClientRequestIds)
-        : currentAgent.value?.backend === 'codex' ? new Set<string>() : props.answeredClientRequestIds;
-    },
-    get goal() {
-      return currentAgent.value?.backend === 'codex'
-        ? props.codexConversationSnapshot?.goal ?? null
-        : props.goal ?? null;
-    },
-    get queuedPrompts() {
-      return props.queuedPrompts;
-    },
-    get contextUsage() { return providerConversation.value?.contextUsage ?? currentAgent.value?.contextUsage ?? null; },
-  },
-  composer: {
-    get followUpBehavior() { return props.snapshot.general.followUpBehavior; },
-    get state() { return props.composerState; },
-    get attachments() { return props.composerAttachments; },
-    get placeholder() {
-      if (!currentAgent.value) return translate('surface.appShell.selectAnAgent');
-      const backend = backendDisplayName(currentAgent.value.backend);
-      if (props.isSending) return `${backend} is working...`;
-      if (activeSurface.value === 'mission' && selectedMission.value?.stage === 'requirements' && conversationMessages.value.length === 0) {
-        return t('missions.describeWhatYouWantToBuild');
-      }
-      return translate('surface.appShell.askForFollowUpChanges');
-    },
-    get suggestedPrompt() { return currentAgent.value?.suggestedPrompt ?? undefined; },
-    get approvalPreset() { return props.approvalPreset; },
-    get leadingMenuItems() { return [...permissionModeMenuItems.value, ...conversationCommandMenuItems()]; },
-    get modelMenuItems() { return modelFavoriteMenuItems.value; },
-    get planMode() { return props.planMode; },
-    get selectedModelId() { return props.selectedModelId; },
-    get selectedReasoningEffort() { return props.selectedReasoningEffort; },
-    get selectedServiceTier() { return props.selectedServiceTier; },
-  },
-  catalogs: {
-    get files() { return props.agentFiles; },
-    get models() { return props.backendModels; },
-    get commands() { return props.backendCommands; },
-    get plugins() { return props.backendPlugins; },
-    get skills() { return props.backendSkills; },
-    get mentionGroups() { return agentMentionGroups.value; },
-    get modelCatalogStatus() { return props.modelCatalogStatus; },
-    get skillCatalogStatus() { return props.skillCatalogStatus; },
-  },
-  get capabilities() { return conversationCapabilities.value; },
-  policy: {
-    get attachEnabled() { return props.backendCapabilities.attachments; },
-    get canDeleteTurn() { return props.backendCapabilities.deleteTurn; },
-    get canEditTurn() { return props.backendCapabilities.editTurn; },
-    get canForkTurn() {
-      const agent = currentAgent.value;
-      return Boolean(agent && forkableAgentIds.value.includes(agent.id));
-    },
-    get canRetryTurn() { return props.backendCapabilities.retryTurn; },
-  },
-};
-const conversationPaneActions: CodexConversationPaneActions = {
-  cancel: () => emit('interrupt-agent'),
-  continueInterruptedTurn: () => props.continueInterruptedTurnAction?.(),
-  clearGoal: () => emit('clear-goal'),
-  clientResponse: (response) => {
-    if (debugUserQuestions.value?.requestId === response.id) {
-      debugUserQuestions.value = null;
-      return;
-    }
-    emit('client-response', response);
-  },
-  deleteTurn: (turnId) => props.deleteTurnAction?.(turnId) ?? emit('delete-turn', turnId),
-  deleteQueuedPrompt: (promptId) => emit('delete-queued-prompt', promptId),
-  editTurn: (payload) => props.editTurnAction?.(payload) ?? emit('edit-turn', payload),
-  forkTurn: (turnId) => emit('fork-turn', turnId),
-  interrupt: () => emit('interrupt-agent'),
-  loadOlderHistory: () => props.loadOlderAgentHistory?.(currentAgent.value?.id ?? ''),
-  loadTurnHistory: (turnId) => props.loadAgentTurnHistory?.(currentAgent.value?.id ?? '', turnId),
-  requestSkills: () => currentAgent.value ? props.agentConversationActions?.requestSkills?.(currentAgent.value.id) : undefined,
-  menuSelect: (item) => {
-    const composerCommand = conversationMenuCommand(item.payload);
-    if (composerCommand && currentAgent.value) return runConversationMenuCommand(currentAgent.value.id, composerCommand);
-    const favoriteCommand = modelFavoriteCommand(item.payload);
-    if (favoriteCommand) {
-      void handleModelFavoriteCommand(favoriteCommand);
-      return;
-    }
-    const command = permissionModeCommand(item.payload);
-    if (command) emit('select-permission-mode', command.mode);
-  },
-  openLink: (link) => currentAgent.value ? openConversationLink(currentAgent.value.id, link) : undefined,
-  openImage: (image, context) => agentWorkspace.value?.openConversationImage(image, context) ?? false,
-  openVisualization: (visualization) => agentWorkspace.value?.openConversationVisualization(visualization),
-  resolveApproval: forwardApprovalResolution,
-  retryTurn: (turnId) => props.retryTurnAction?.(turnId) ?? emit('retry-turn', turnId),
-  sendFollowUp: forwardCodexPrompt,
-  steer: forwardCodexSteerPrompt,
-  steerQueuedPrompt: (promptId, prompt, options) => options ? emit('steer-queued-prompt', promptId, prompt, options) : emit('steer-queued-prompt', promptId, prompt),
-  updateQueuedPrompt: (promptId, prompt, options) => options ? emit('update-queued-prompt', promptId, prompt, options) : emit('update-queued-prompt', promptId, prompt),
-  submit: forwardCodexPrompt,
-  updateAttachments: updateConversationAttachments,
-  updateComposerState: updateConversationComposerState,
-  updateSettings: (settings) => {
-    if (settings.approvalPreset !== undefined) emit('select-approval-preset', settings.approvalPreset);
-    if (settings.modelId !== undefined) emit('select-model', settings.modelId);
-    if (settings.planMode !== undefined) emit('update:planMode', settings.planMode);
-    if (settings.reasoningEffort !== undefined) emit('select-reasoning-effort', settings.reasoningEffort);
-    if (settings.serviceTier !== undefined) emit('select-service-tier', settings.serviceTier);
-  },
-};
-
 const delegatingAgentIds = new Set<string>();
 /** `/delegate` and `/mission` hand the conversation to the model, which carries out the request with a tool. */
 async function sendModelCommand(agentId: string, command: '/delegate' | '/mission'): Promise<void> {
@@ -2733,7 +2483,7 @@ async function sendModelCommand(agentId: string, command: '/delegate' | '/missio
     if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
     if (props.agentConversationActions) await props.agentConversationActions.send(agentId, command);
     else if (currentAgent.value?.id === agentId) {
-      requireConnectedConversation();
+      if (!preferredBackendChoices(props.snapshot, currentAgent.value?.remoteConnectionId).includes(currentAgent.value?.backend ?? 'codex')) throw new Error(t('engineConnection.required'));
       if (props.sendPromptAction) await props.sendPromptAction(command);
       else emit('sendPrompt', command);
     } else throw new Error(t('delegation.agentUnavailable'));
@@ -2809,41 +2559,13 @@ async function updateManagedModelFavorites(favorites: ModelFavorite[]): Promise<
   await props.updateSettings({ general: { modelFavorites: withoutBackend } });
 }
 
-function permissionModeMenuItem(
-  mode: BackendPermissionModeOption,
-  selectedMode: string | null,
-): CodexComposerMenuItem {
-  return {
-    id: `permission-mode:${mode.id}`,
-    type: 'radio',
-    label: localizedText(mode.label, translate) ?? mode.id,
-    description: localizedText(mode.description, translate) ?? '',
-    checked: mode.id === selectedMode,
-    payload: { kind: 'permission-mode', mode: mode.id },
-  };
-}
-
-function permissionModeCommand(payload: unknown): { kind: 'permission-mode'; mode: string } | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const record = payload as Record<string, unknown>;
-  return record.kind === 'permission-mode' && typeof record.mode === 'string'
-    ? { kind: 'permission-mode', mode: record.mode }
-    : null;
-}
-const conversationPaneController = createCodexConversationPaneController({
-  state: conversationPaneState,
-  actions: conversationPaneActions,
-});
-
 function saveActivePromptDraft(): void {
-  if (activeSurface.value === 'mission') void missionConversationPane.value?.saveCurrentDraft();
-  else focusedConversationPanel()?.saveCurrentDraft();
+  void focusedConversationPanel()?.saveCurrentDraft();
 }
 
 function openActiveSavedPromptDrafts(): void {
   void nextTick(() => {
-    if (activeSurface.value === 'mission') missionConversationPane.value?.openSavedDraftPicker();
-    else focusedConversationPanel()?.openSavedDraftPicker();
+    focusedConversationPanel()?.openSavedDraftPicker();
   });
 }
 
@@ -2878,7 +2600,7 @@ const isModalDialogVisible = computed(() => (
   || whatsNewVisible.value
   || keyboardShortcutsVisible.value
   || commandPaletteVisible.value
-  || imageAnnotationVisible.value
+  || conversationAnnotationVisible.value
   || missionDeleteTarget.value !== null
   || debugAgentCreationProgress.value !== null
   || fileQuickOpenVisible.value
@@ -3464,24 +3186,6 @@ async function updatePlanReview(agentId: string, response: import('@workspace/co
   return review;
 }
 
-const threadFlagBusy = ref(false);
-async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
-  if (!props.respondToThreadFlagAction || threadFlagBusy.value) return;
-  threadFlagBusy.value = true;
-  try {
-    const agentId = currentAgent.value?.id;
-    if (agentId && props.agentConversationActions) await props.agentConversationActions.threadFlag(agentId, response);
-    else await props.respondToThreadFlagAction(response);
-    if (response.id === 'ready_for_review' && response.action === 'execute') {
-      openRightWorkspaceTab('codeReview', agentId);
-    }
-  } catch (error) {
-    ElMessage.error(localizedErrorMessage(error, t));
-  } finally {
-    threadFlagBusy.value = false;
-  }
-}
-
 function forwardApprovalResolution(
   approvalId: string,
   decision: BackendApprovalDecision,
@@ -3536,44 +3240,12 @@ function prepareMissionReviewDiscussion(payload: PendingMissionReviewDiscussion)
     agentId: payload.agentId,
     state: { text, selectionStart: text.length, selectionEnd: text.length },
   });
-  void nextTick(() => missionConversationPane.value?.focusComposer());
+  void nextTick(() => focusedConversationPanel()?.focusComposer());
 }
 
 function forwardPrompt(prompt: string, options?: RendererSendPromptOptions): void | Promise<void> {
-  const designCommand = prompt.match(/^\/design(?:\s+([\s\S]*))?$/u);
-  if (designCommand && currentAgent.value) return startDesignForAgent(currentAgent.value.id, designCommand[1]?.trim(), options?.attachments);
-  const visualizeCommand = prompt.match(/^\/visualize(?:\s+([\s\S]*))?$/u);
-  if (visualizeCommand && !options?.attachments?.length && currentAgent.value) {
-    const direction = visualizeCommand[1]?.trim();
-    return startVisualizeForAgent(currentAgent.value.id, direction ? { prompt: direction } : { choose: true });
-  }
-  const reviewCommand = prompt.trim().match(/^\/review(?:\s+([\s\S]*))?$/u);
-  if (reviewCommand && !options?.attachments?.length && currentAgent.value) {
-    return openCodeReviewForAgent(currentAgent.value.id, reviewCommand[1]?.trim());
-  }
-  const clarification = pendingReviewClarification.value;
-  if (
-    clarification
-    && clarification.agentId === currentAgent.value?.id
-    && !options?.attachments?.length
-  ) {
-    return props.discussCodeReviewFinding(clarification.agentId, {
-      sessionId: clarification.sessionId,
-      roundId: clarification.roundId,
-      findingId: clarification.findingId,
-      question: prompt,
-    }).then(() => {
-      if (pendingReviewClarification.value === clarification) {
-        pendingReviewClarification.value = null;
-      }
-    });
-  }
-  if (props.sendPromptAction) return props.sendPromptAction(prompt, options);
-  if (options) {
-    emit('sendPrompt', prompt, options);
-  } else {
-    emit('sendPrompt', prompt);
-  }
+  const agentId = currentAgent.value?.id;
+  if (agentId) return conversationActions.value.send(agentId, prompt, options);
 }
 
 function missionReviewDiscussionPrompt(
@@ -3599,72 +3271,6 @@ function forwardSteerPrompt(prompt: string, options?: RendererSendPromptOptions)
   } else {
     emit('steerPrompt', prompt);
   }
-}
-
-async function forwardCodexPrompt(prompt: string, options?: CodexRendererSendMessageOptions): Promise<void> {
-  const capturedImages = imageAnnotation.capture();
-  await backendSwitch.settled();
-  requireConnectedConversation();
-  await forwardCodexPromptWithVisualizationAnnotations(
-    prompt,
-    options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
-      visualizationPrompt,
-      visualizationOptions,
-      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
-        codePrompt,
-        codeOptions,
-        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-          nextPrompt,
-          nextOptions,
-          forwardPrompt,
-          capturedImages,
-        ),
-      ),
-    ),
-  );
-}
-
-async function forwardCodexSteerPrompt(prompt: string, options?: CodexRendererSendMessageOptions): Promise<void> {
-  const capturedImages = imageAnnotation.capture();
-  requireConnectedConversation();
-  await forwardCodexPromptWithVisualizationAnnotations(
-    prompt,
-    options,
-    (visualizationPrompt, visualizationOptions) => forwardCodexPromptWithCodeAnnotations(
-      visualizationPrompt,
-      visualizationOptions,
-      (codePrompt, codeOptions) => forwardCodexPromptWithChatTextAnnotations(
-        codePrompt,
-        codeOptions,
-        (nextPrompt, nextOptions) => forwardCodexPromptWithImageAnnotations(
-          nextPrompt,
-          nextOptions,
-          forwardSteerPrompt,
-          capturedImages,
-        ),
-      ),
-    ),
-  );
-}
-
-function requireConnectedConversation(): void {
-  const agent = currentAgent.value;
-  if (agent && !preferredBackendChoices(props.snapshot, agent.remoteConnectionId).includes(agent.backend)) {
-    throw new Error(t('engineConnection.required'));
-  }
-}
-
-function updateConversationComposerState(state: CodexComposerState): void {
-  const agentId = currentAgent.value?.id;
-  if (agentId) emit('update:composerState', { agentId, state });
-}
-
-function updateConversationAttachments(attachments: readonly CodexNativeAttachment[]): void {
-  const agentId = currentAgent.value?.id;
-  if (!agentId) return;
-  pruneSavedImageAnnotations(agentId, attachments);
-  emit('update:composerAttachments', { agentId, attachments });
 }
 
 async function openAgentIn(

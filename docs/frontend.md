@@ -112,7 +112,14 @@ Provider dispatch uses the SDK's canonical projection while preserving hidden
 context: selected skills become Markdown references with their canonical names
 and paths, independently of the saved UI labels.
 
-Split layouts hold peer conversation panes, never parent/child agents.
+`AgentConversationPanel` owns the conversation controller, composer actions and
+annotation dialogs for single, split and Mission hosts. `AppShell` routes application
+commands and arranges panels; `AgentWorkspace` supplies headers and artifact panes.
+Annotation drafts live in the workspace's provided store, keyed by agent, so pane
+replacement and layout changes retain unsent comments.
+
+Single view is a one-pane `AgentSplitGrid`. Split layouts hold peer conversation
+panes, never parent/child agents.
 `useSplitWorkspace` owns layout, assignment, focus and split ratios per team,
 persisted in client-local storage so devices retain their own workspace preferences.
 The grid constrains displayed ratios to keep panes usable at the current window size;

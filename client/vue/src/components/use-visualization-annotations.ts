@@ -1,3 +1,4 @@
+import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import type { CodexRendererSendMessageOptions } from '@codex-app-sdk/vue';
 import { computed, reactive } from 'vue';
@@ -23,8 +24,8 @@ export type VisualizationAnnotation = VisualizationAnnotationInput & {
 export function useVisualizationAnnotations(options: {
   currentAgentId: () => string | undefined;
 }) {
-  const draftsByAgentId = reactive<Record<string, VisualizationAnnotation[]>>({});
-  let nextAnnotationId = 0;
+  const draftState = conversationAnnotationDrafts('visualization', () => ({ drafts: reactive<Record<string, VisualizationAnnotation[]>>({}), nextId: 0 }));
+  const draftsByAgentId = draftState.drafts;
 
   const activeAnnotations = computed<readonly VisualizationAnnotation[]>(() => {
     const agentId = options.currentAgentId();
@@ -34,11 +35,11 @@ export function useVisualizationAnnotations(options: {
   function add(input: VisualizationAnnotationInput): void {
     const agentId = options.currentAgentId();
     if (!agentId || input.elements.length === 0) return;
-    nextAnnotationId += 1;
+    draftState.nextId += 1;
     const annotation: VisualizationAnnotation = {
       ...input,
       elements: input.elements.map(element => ({ ...element })),
-      id: `visualization-annotation-${nextAnnotationId}`,
+      id: `visualization-annotation-${draftState.nextId}`,
     };
     draftsByAgentId[agentId] = [...(draftsByAgentId[agentId] ?? []), annotation];
   }

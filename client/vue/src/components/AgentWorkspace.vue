@@ -9,39 +9,7 @@
     <div v-if="$slots['layout-control']" class="app-shell__layout-control">
       <slot name="layout-control" />
     </div>
-    <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor">
-    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
-    <ConversationPane
-      v-else-if="!currentAgent?.sharedConversation"
-      ref="conversationPane"
-      :controller="conversationPaneController"
-      :agent="currentAgent"
-      :agents="snapshot.agents"
-      :saved-prompt-drafts="snapshot.general.savedPromptDrafts"
-      :save-prompt-draft="savePromptDraft"
-      :remove-prompt-draft="removePromptDraft"
-      :attachment-annotation-counts="activeAttachmentAnnotationCounts"
-      :text-annotations="chatTextAnnotations"
-      :visualization-annotations="visualizationAnnotations"
-      :code-annotations="codeAnnotations"
-      :review-finding="reviewFindingAttachment"
-      :plan="currentTurnPlan"
-      :plan-visible="executionPlanVisible"
-      :history-load-failed="historyLoadFailed"
-      :history-loading="isConversationLoading"
-      :has-visible-messages="hasVisibleMessages"
-      :thread-flag-busy="threadFlagBusy"
-      @annotate-attachment="openAttachmentImageAnnotation"
-      @add-text-annotation="addChatTextAnnotation($event.selection, $event.comment)"
-      @close-plan="closeExecutionPlan"
-      @retry-history="retryConversationHistory"
-      @thread-flag="respondToThreadFlag($event)"
-      @remove-text-annotation="removeChatTextAnnotation"
-      @remove-visualization-annotation="removeVisualizationAnnotation"
-      @remove-code-annotation="removeCodeAnnotation"
-      @remove-review-finding="emit('removeReviewFindingAttachment')"
-    />
-    </slot>
+    <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor" />
     </div>
     <WorkspacePreviewHost :dialog="previewDialog" :open="rightWorkspaceVisible" :title="previewTitle" @close="closePreview?.()">
     <PaneTransition v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)" :key="agent.id">
@@ -133,7 +101,6 @@
 </template>
 
 <script setup lang="ts">
-import SharedConversationPane from './SharedConversationPane.vue';
 import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type {
   Agent,
@@ -165,12 +132,9 @@ import type { FileKind } from '@workspace/core/file-kind';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
   CodexConversationLink,
-  CodexConversationPaneController,
   CodexConversationVisualization,
   CodexMessageImage,
   CodexMessageImageContext,
-  CodexNativeAttachment,
-  CodexMessageTextSelection,
 } from '@codex-app-sdk/vue';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';
@@ -182,7 +146,6 @@ import { localizedErrorMessage } from '../i18n/errors';
 import { appApi, appHostCapabilities } from '../platform-api';
 import AgentEmptyState from './AgentEmptyState.vue';
 import AgentHeader from './AgentHeader.vue';
-import ConversationPane from './ConversationPane.vue';
 import RightWorkspacePanel from './RightWorkspacePanel.vue';
 import PaneTransition from '../shared/PaneTransition.vue';
 import WorkspacePreviewHost from './WorkspacePreviewHost.vue';
@@ -190,10 +153,8 @@ import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { useWorkspaceLinkDrag } from './use-workspace-link-drag';
 import { constrainedRightWorkspaceWidth, type AgentRightWorkspaceState } from './use-right-workspace-state';
 import type { SidePanelGitDiffState } from './side-panel';
-import type { ChatTextAnnotation } from './use-chat-text-annotations';
-import type { VisualizationAnnotation, VisualizationAnnotationInput } from './use-visualization-annotations';
-import type { CodeAnnotation, CodeAnnotationInput } from './use-code-annotations';
-import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
+import type { VisualizationAnnotationInput } from './use-visualization-annotations';
+import type { CodeAnnotationInput } from './use-code-annotations';
 import { fileBasename } from './use-workspace-previews';
 import {
   isRightWorkspaceSubagentTab,
@@ -212,8 +173,6 @@ const props = withDefaults(defineProps<{
   guestView?: import('@workspace/core/guest-navigation').GuestJoinView | null;
   guestBusy?: boolean;
   guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
-  activeAttachmentAnnotationCounts: Readonly<Record<string, number>>;
-  addChatTextAnnotation: (selection: CodexMessageTextSelection, comment: string) => void;
   addVisualizationAnnotation: (annotation: VisualizationAnnotationInput) => void;
   addCodeAnnotation: (annotation: CodeAnnotationInput) => void;
   agentFiles: AgentFileSearchItem[];
@@ -221,16 +180,7 @@ const props = withDefaults(defineProps<{
   saveDocumentAs?: (agentId: string, tabId: string) => Promise<void>;
   closeRightWorkspaceTab: (agentId: string, tab: RightWorkspaceTab) => void;
   updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
-  respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
-  threadFlagBusy: boolean;
-  conversationPaneController: CodexConversationPaneController;
-  savePromptDraft: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
-  removePromptDraft: (id: string) => Promise<void>;
   conversationPlan: ThreadPlan | null;
-  chatTextAnnotations: readonly ChatTextAnnotation[];
-  visualizationAnnotations: readonly VisualizationAnnotation[];
-  codeAnnotations: readonly CodeAnnotation[];
-  reviewFindingAttachment?: import('@workspace/core/code-review').CodeReviewFinding | null;
   currentAgent: Agent | null;
   emptySplitPane?: boolean;
   splitHeaders?: boolean;
@@ -246,7 +196,6 @@ const props = withDefaults(defineProps<{
   handleStartWorkAction: (action: import('./start-work-actions').StartWorkAction) => void;
   isAgentEmpty: boolean;
   isConversationLoading: boolean;
-  historyLoadFailed: boolean;
   isLoading: boolean;
   isModalDialogVisible: boolean;
   isRightWorkspaceVisible: (agentId: string) => boolean;
@@ -260,10 +209,6 @@ const props = withDefaults(defineProps<{
   updateAgent: (input: import('@workspace/core/contracts').UpdateAgentInput) => Promise<void>;
   openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind) => Promise<void>;
   openAgentIn: (agentId: string, application: OpenInApplication, filePath?: string) => Promise<void>;
-  openAttachmentImageAnnotation: (attachment: CodexNativeAttachment) => void;
-  removeChatTextAnnotation: (annotationId: string) => void;
-  removeVisualizationAnnotation: (annotationId: string) => void;
-  removeCodeAnnotation: (annotationId: string) => void;
   openConversationLink: (agentId: string, link: CodexConversationLink) => void | Promise<void>;
   openFilePreviewForAgent: (agentId: string, filePath: string) => Promise<void>;
   openInApplications: OpenInApplicationCatalog;
@@ -278,7 +223,6 @@ const props = withDefaults(defineProps<{
     agentId: string,
     location?: AutomationLocation,
   ) => Promise<RendererMessage[]>;
-  retryConversationHistory: () => Promise<void>;
   selectAgentFromShell: (agentId: string) => void;
   selectRightWorkspaceTab: (agentId: string, tab: RightWorkspaceTab) => void;
   snapshot: AppSnapshot;
@@ -324,25 +268,20 @@ const emit = defineEmits<{
 }>();
 
 const {
-  activeAttachmentAnnotationCounts,
   agentFiles,
   saveDocumentAs,
   closeRightWorkspaceTab,
-  conversationPaneController,
   currentAgent,
   forwardPrompt,
   handleStartWorkAction,
   isAgentEmpty,
   isConversationLoading,
-  historyLoadFailed,
   isModalDialogVisible,
   isRightWorkspaceVisible,
   openAgentIn,
-  openAttachmentImageAnnotation,
   openFilePreviewForAgent,
   openInApplications,
   rightWorkspaceVisible,
-  retryConversationHistory,
   selectAgentFromShell,
   selectRightWorkspaceTab,
   snapshot,
@@ -400,7 +339,6 @@ function workspaceWidthFor(agentId: string): number {
     : constrainedRightWorkspaceWidth(preferredWidth, workspaceBodyWidth.value);
 }
 
-const conversationPane = ref<{ focusComposer(): void; openSavedDraftPicker(): void; saveCurrentDraft(): Promise<void> } | null>(null);
 const rightWorkspaces = props.rightWorkspaces;
 const executionPlanStates = reactive<Record<string, { open: boolean; turnId: string }>>({});
 
@@ -781,20 +719,13 @@ function isLocalAgent(agent: Agent): boolean {
 
 function attachVisualizationAnnotation(annotation: VisualizationAnnotationInput): void {
   props.addVisualizationAnnotation(annotation);
-  focusComposer();
 }
 
 function attachCodeAnnotation(annotation: CodeAnnotationInput): void {
   props.addCodeAnnotation(annotation);
-  focusComposer();
 }
 
-function focusComposer(): void {
-  conversationPane.value?.focusComposer();
-}
 
-function openSavedDraftPicker(): void { conversationPane.value?.openSavedDraftPicker(); }
-function saveCurrentDraft(): void { void conversationPane.value?.saveCurrentDraft(); }
 
 function workspaceBodyElement(): HTMLElement | null {
   return workspaceBody.value;
@@ -807,9 +738,6 @@ function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge' | 'con
 defineExpose({
   openRightWorkspaceTabFromMenu,
   getCommandActions: () => agentHeaders.get(props.currentAgent?.id ?? '')?.getCommandActions() ?? [],
-  focusComposer,
-  openSavedDraftPicker,
-  saveCurrentDraft,
   handleBrowserOpenCommand,
   openConversationImage,
   openConversationVisualization,

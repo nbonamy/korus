@@ -723,7 +723,10 @@ describe('Unified backend → mounted application', () => {
     ready.teams[0]!.agentIds.push(reviewer.id);
     ready.teams[0]!.activeAgentId = reviewer.id;
     ready.activeAgentId = reviewer.id;
-    api.startCodeReview.mockResolvedValueOnce(ready);
+    api.startCodeReview.mockImplementationOnce(async () => {
+      api.getSnapshot.mockResolvedValue(ready);
+      return ready;
+    });
     await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 

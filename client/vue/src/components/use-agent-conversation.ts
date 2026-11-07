@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { ShieldCheckIcon } from '../shared/icons/app-icons';
 import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from '@codex-app-sdk/vue';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
@@ -19,6 +20,7 @@ export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
   clearGoal: (agentId: string) => void | Promise<void>;
   threadFlag: (agentId: string, response: ThreadFlagResponse) => void | Promise<void>;
+  retryHistory?: (agentId: string) => void | Promise<void>;
   prepare: (agentId: string) => void | Promise<void>;
   loadOlder: (agentId: string) => void | Promise<void>;
   loadTurn?: (agentId: string, turnId: string) => Promise<void>;
@@ -63,6 +65,9 @@ export function agentConversationState(view: () => AgentConversationView, extens
   followUpBehavior?: () => AppGeneralSettings['followUpBehavior'];
   mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => CodexComposerMenuItem[];
+  placeholder?: () => string | undefined;
+  previewMessage?: () => import('@codex-app-sdk/core/surface').SurfaceMessage | undefined;
+  previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
 } = {}): CodexConversationPaneState {
   const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().antigravitySnapshot;
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
@@ -77,7 +82,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get conversationKey() { const agent = view().agent; const session = agent.backendSession; return session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `${session.kind}:${session.sessionId}` : `agent:${agent.id}`; },
       get activeTurnId() { return provider()?.activeTurnId ?? null; },
       get turns() { return provider()?.turns; },
-      get messages() { return (provider()?.messages ?? []); },
+      get messages() { const messages = provider()?.messages ?? []; const preview = extensions.previewMessage?.(); return preview ? [...messages, preview] : messages; },
       get busy() { return provider()?.busy ?? view().sending; },
       get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },
       get error() { return provider()?.error ?? null; },
@@ -88,7 +93,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
-      get approvals() { return view().codexSnapshot?.approvals ?? view().approvals; },
+      get approvals() { const approvals = view().codexSnapshot?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
       get clientRequests() {
         const antigravity = view().antigravitySnapshot;
         if (antigravity) return antigravityPaneClientRequests(antigravity);
@@ -103,7 +108,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get followUpBehavior() { return extensions.followUpBehavior?.() ?? 'queue'; },
       get state() { return view().composerState; },
       get attachments() { return view().attachments; },
-      get placeholder() { return translate('surface.appShell.askForFollowUpChanges'); },
+      get placeholder() { return extensions.placeholder?.() ?? translate('surface.appShell.askForFollowUpChanges'); },
       get suggestedPrompt() { return view().agent.suggestedPrompt ?? undefined; },
       get approvalPreset() { return approvalPreset(); },
       get leadingMenuItems() { return [...permissionMenuItems(view()), ...conversationCommandMenuItems()]; },
@@ -245,8 +250,8 @@ function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem
   if (!modes.length) return [];
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'),
-    items: modes.map(mode => ({ id: `permission:${mode.id}`, type: 'radio', label: localizedText(mode.label, translate) ?? mode.id, checked: selected === mode.id,
+  return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'), icon: ShieldCheckIcon, submenuAlignment: 'bottom', submenuWidth: 'wide',
+    items: modes.map(mode => ({ id: `permission-mode:${mode.id}`, type: 'radio', label: localizedText(mode.label, translate) ?? mode.id, description: localizedText(mode.description, translate) ?? '', checked: selected === mode.id,
       payload: { kind: 'permission-mode', mode: mode.id } })),
   }];
 }

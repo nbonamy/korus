@@ -6,7 +6,10 @@ import type {
   CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
 import type { CodexSurfaceClientRequest } from '@codex-app-sdk/core/surface';
-import { nextTick, reactive } from 'vue';
+import { nextTick, reactive, shallowReactive } from 'vue';
+import type { AgentConversationView } from '../../app-state';
+import type { AgentConversationActions } from '../use-agent-conversation';
+import { createAgentComposerState } from '../../agent-composer-state';
 import { ElMessageBox, ElRadio, ElRadioGroup } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
@@ -59,6 +62,67 @@ afterEach(() => {
 });
 
 describe('AppShell authentication and conversation', () => {
+  it('keeps permission routing and an annotated draft on the owning conversation across layouts', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.claudeCodeEnabled = true;
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot });
+    const views = snapshot.agents.map(agent => {
+      agent.backend = 'claude';
+      agent.backendDefaults = { kind: 'claude', permissionMode: 'acceptEdits' };
+      return shallowReactive<AgentConversationView>({
+        agent, codexSnapshot: null, claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id }),
+        composer: composer.configurationForAgent(agent.id),
+        composerState: { text: `Draft for ${agent.id}`, selectionStart: 0, selectionEnd: 0 },
+        attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+        queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
+        answeredClientRequestIds: new Set(),
+      });
+    });
+    const actions: AgentConversationActions = {
+      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
+      send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
+      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
+      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
+    };
+    const wrapper = mountShell({ snapshot, realConversationPane: true, stubAgentWorkspace: false });
+    await wrapper.setProps({ agentConversationFor: id => views.find(view => view.agent.id === id) ?? null, agentConversationActions: actions });
+    try {
+      await flushPromises();
+      const selected = views.find(view => view.agent.id === snapshot.activeAgentId)!;
+      const selectPermission = async (pane: ReturnType<typeof wrapper.get>) => {
+        await pane.get('button[aria-label="Composer actions"]').trigger('click');
+        await pane.get('[role="menuitem"][aria-haspopup="menu"]').trigger('mouseenter');
+        const choice = pane.findAll('[role="menuitemradio"]').find(item => item.text().includes("Don't ask"))!;
+        await choice.trigger('click');
+      };
+      await selectPermission(wrapper.get('.conversation-pane'));
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(selected.agent.id, 'dontAsk');
+      expect(wrapper.get('.chat-rich-text-editor').text()).toBe(selected.composerState.text);
+      wrapper.getComponent({ name: 'ConversationPane' }).vm.$emit('add-text-annotation', { selection: { text: 'Quoted text', messageIndex: 0, role: 'assistant' }, comment: 'Check this' });
+      await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', '2-vertical');
+      await flushPromises();
+      const panes = wrapper.findAll('.agent-split-grid__pane');
+      expect(panes).toHaveLength(2);
+      const ownPane = panes.find(pane => pane.attributes('data-agent-id') === selected.agent.id)!;
+      expect(ownPane.findAll('.composer-context-cards__card')).toHaveLength(1);
+      const otherPane = panes.find(pane => pane.attributes('data-agent-id') !== selected.agent.id)!;
+      await selectPermission(otherPane);
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(otherPane.attributes('data-agent-id'), 'dontAsk');
+      expect(otherPane.find('.composer-context-cards__card').exists()).toBe(false);
+      await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', 'single');
+      await flushPromises();
+      expect(wrapper.findAll('.conversation-pane')).toHaveLength(1);
+      expect(wrapper.findAll('.composer-context-cards__card')).toHaveLength(1);
+      await wrapper.get('.chat-rich-text-editor').trigger('keydown', { key: 'Enter' });
+      await flushPromises();
+      expect(actions.send).toHaveBeenCalledWith(selected.agent.id, expect.stringContaining('Quoted text'), undefined);
+      expect(actions.send).toHaveBeenCalledWith(selected.agent.id, expect.stringContaining(selected.composerState.text), undefined);
+    } finally { wrapper.unmount(); window.localStorage.clear(); }
+  });
+
   it.each(['codex', 'claude'] as const)('offers a compact sharing choice at the top of the %s conversation and remembers it', async backend => {
     let enabled: boolean | undefined;
     const getTelemetryConsent = vi.fn(async () => ({ enabled }));
