@@ -130,7 +130,8 @@ file changes, embedded resources and images into a Cursor-owned revisioned repli
 context blocks; the renderer receives only app-owned messages. Quick Chats use
 private working directories. Native plan mode selects a catalog mode before
 prompt admission and restores agent mode for a normal follow-up. Continuation
-uses the saved native session and the same serialized prompt path. Model selection preserves native config values;
+uses the saved native session and the same serialized prompt path. Model selection preserves native config values
+and requires a matching native acknowledgment before prompt admission;
 trusted local attachments become native content blocks. Configured model choice
 is not evidence of the served model or billing. Permission callbacks and plan
 proposals become once-only app tool confirmations; duplicate and stale responses

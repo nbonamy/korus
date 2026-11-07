@@ -770,6 +770,12 @@ The tightened adapter separately validated native mode acknowledgments for
 `plan` and `agent` without starting a model turn. These results do not attest to
 the served model, all native tools, or effective approval enforcement.
 
+A separate no-model-turn probe selected another advertised native model and
+restored the initial value. Both acknowledgments matched their requested model
+IDs. Missing, contradictory or foreign-config acknowledgments are rejected
+before prompt admission; this validates configuration rather than served-model
+attestation.
+
 A production-host native todo request created two synthetic checklist items and
 marked both completed. Both todo snapshots reached the app-owned conversation.
 The installed CLI frames `cursor/update_todos` as a request despite documentation

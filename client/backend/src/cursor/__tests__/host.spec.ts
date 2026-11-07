@@ -100,6 +100,12 @@ describe('Cursor ACP host transport boundary', () => {
   it('uses native model values, rejects unknown models and applies selection before prompt', async () => {
     expect(await host.listModels!(agent)).toMatchObject([{ id: 'auto', displayName: 'Auto' }, { id: 'composer-2.5', displayName: 'Composer' }]);
     await expect(host.sendPrompt(agent, 'bad', { selection: { model: 'invented' } })).rejects.toThrow(/model/i);
+    for (const configOptions of [[], [{id:'model',currentValue:'auto'}], [{id:'another-model',currentValue:'composer-2.5'}]]) {
+      await writeFile(path.join(root,'model-ack.json'),JSON.stringify({configOptions}));
+      await expect(host.sendPrompt(agent,'must-not-run',{selection:{model:'composer-2.5'}})).rejects.toThrow(/model/i);
+      expect((await wire()).some(call => call.method === 'session/prompt')).toBe(false);
+    }
+    await rm(path.join(root,'model-ack.json'));
     await host.sendPrompt(agent, 'hello', { selection: { model: 'composer-2.5' } });
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     const calls = await wire();

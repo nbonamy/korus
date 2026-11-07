@@ -38,7 +38,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   if (value.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: fs.existsSync(path.join(__dirname, 'no-list')) ? {} : { list: {} } }, authMethods: [{ id: 'cursor_login', name: 'Cursor Login' }] });
   else if (value.method === 'authenticate') reply({});
   else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
-  else if (value.method === 'session/set_config_option') { if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'no-mode-ack'))) { reply({configOptions:[]}); return; } if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'bad-mode-ack'))) { reply({configOptions:configOptions.map(option=>({...option,currentValue:option.id==='mode'?'agent':option.currentValue}))}); return; } reply({ configOptions: configOptions.map(option => ({ ...option, currentValue: option.id === value.params.configId ? value.params.value : option.currentValue })) }); }
+  else if (value.method === 'session/set_config_option') {
+    if (value.params.configId === 'model' && fs.existsSync(path.join(__dirname,'model-ack.json'))) { reply(JSON.parse(fs.readFileSync(path.join(__dirname,'model-ack.json'),'utf8'))); return; }
+    if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'no-mode-ack'))) { reply({configOptions:[]}); return; }
+    if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'bad-mode-ack'))) { reply({configOptions:configOptions.map(option=>({...option,currentValue:option.id==='mode'?'agent':option.currentValue}))}); return; }
+    reply({ configOptions: configOptions.map(option => ({ ...option, currentValue: option.id === value.params.configId ? value.params.value : option.currentValue })) });
+  }
   else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }, ...Object.entries(history()).map(([sessionId, value]) => ({sessionId,cwd:value.cwd,title:'Saved conversation'}))] });
   else if (value.method === 'session/load') {
     sessionId = value.params.sessionId;

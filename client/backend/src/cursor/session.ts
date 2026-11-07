@@ -117,6 +117,8 @@ export class CursorSession {
   async setModel(model: string): Promise<void> {
     const result = await this.connection.request('session/set_config_option', { sessionId: this.sessionId, configId: 'model', value: model });
     if (!record(result) || !Array.isArray(result.configOptions)) throw new Error('Invalid Cursor model response.');
+    const confirmed = result.configOptions.find(option => record(option) && option.id === 'model');
+    if (!record(confirmed) || confirmed.currentValue !== model) throw new Error('Cursor did not confirm the requested model.');
     this.config = { ...this.config, configOptions: result.configOptions };
   }
   get snapshot() { return this.transcript.replica.getSnapshot(); }
