@@ -3939,8 +3939,6 @@ export class AppBackendServer {
     await this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
-    this.unsubscribeUsage?.();
-    this.unsubscribeRequestUsage?.();
     await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
@@ -3948,10 +3946,18 @@ export class AppBackendServer {
     this.delegatedWorkReports.close();
     this.agentPrompts.close();
     this.unsubscribeDriverEvents?.();
-    await this.driverRpc?.close();
-    await this.remoteClients.close();
-    await this.options.remoteSnapshotCache?.flush?.();
-    await this.options.usage?.close();
+    try {
+      await this.driverRpc?.close();
+    } finally {
+      this.unsubscribeUsage?.();
+      this.unsubscribeRequestUsage?.();
+      try {
+        await this.remoteClients.close();
+        await this.options.remoteSnapshotCache?.flush?.();
+      } finally {
+        await this.options.usage?.close();
+      }
+    }
   }
 
   emitEvent(event: BackendEvent): void {

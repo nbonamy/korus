@@ -724,12 +724,17 @@ export class BackendDriverRpc {
 
   async close(): Promise<void> {
     for (const job of this.textGenerations.values()) job.controller.abort(new Error('Generation cancelled during shutdown.'));
-    for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
-    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
     }
-    await Promise.all([...this.drivers.values()].map((driver) => driver.close()));
+    const results = await Promise.allSettled([...this.drivers.values()].map(driver => Promise.resolve().then(() => driver.close())));
+    for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
+    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
+    this.unsubscribeUsage.clear();
+    this.unsubscribeRequestUsage.clear();
+    this.unsubscribeDriverEvents.clear();
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   }
 
   tryHandlePromptCommand(agent: Agent, prompt: string): Promise<BackendSendResult> | null {

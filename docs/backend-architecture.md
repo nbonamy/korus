@@ -1069,6 +1069,9 @@ outcomes and local grouping metadata. Configured reasoning effort and service ti
 are captured at turn start and retained through completion and late usage corrections.
 Unsupported measurements remain unknown. Codex consumption can be replaced or
 invalidated after completion.
+Graceful shutdown retains execution and request-usage subscriptions through driver
+teardown, then drains queued observations before closing the ledger. Terminal
+observations emitted during teardown must reach durable storage.
 The local Codex surface enables SDK-owned native-history usage verification so
 resumed executions and compaction charges do not depend solely on a live counter
 baseline. Daemon startup marks persisted open executions interrupted, retaining

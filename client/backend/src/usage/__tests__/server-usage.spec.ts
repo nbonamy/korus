@@ -8,8 +8,10 @@ import type { TelemetryConsentService } from "../../telemetry/consent-service";
 import { openTelemetryConsent } from "../../telemetry/__tests__/settings-fixture";
 import { UsageService } from "../usage-service";
 import { UsageLedger } from "../usage-ledger";
-import type { ExecutionObservation } from "@workspace/core/usage";
-import type { BackendDriverRpc } from "../../driver-rpc";
+import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
+import type { AgentBackendDriver, BackendEvent } from "@workspace/core/backend-driver";
+import { defaultBackendCapabilities } from "@workspace/core/backend-capabilities";
+import { BackendDriverRpc } from "../../driver-rpc";
 import { requestAppBackend } from "@workspace/core/backend-protocol/rpc";
 import { backendMethods } from "@workspace/core/backend-protocol/methods";
 import { ClaudeAgentSdkTransport } from "../../claude/agent-sdk-transport";
@@ -384,6 +386,76 @@ it("queries provider observations through the app contract and unsubscribes on s
     await server.close();
     expect(unsubscribe).toHaveBeenCalledOnce();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each([false, true])('persists shutdown observations before closing the ledger, including when a driver fails (failure=%s)', async failFirst => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'usage-shutdown-'));
+  const file = path.join(dir, 'usage.sqlite'), at = Date.parse('2026-11-07T00:00:00Z');
+  const local = new UsageLedger(file, () => at); await local.load();
+  const usage = new UsageService(local, () => undefined), published = vi.fn();
+  const closingError = new Error('Synthetic driver shutdown failure');
+  const makeDriver = (backend: 'codex' | 'claude') => {
+    const observations = new Set<(event: ExecutionObservation) => void>();
+    const requests = new Set<(event: RequestObservation) => void>();
+    const events = new Set<(event: BackendEvent) => void>();
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const closing = new Promise<void>(resolve => { entered = resolve; });
+    const observation = { provider: backend, agentId: backend, sessionId: backend, turnId: 'running', model: 'gpt-6-sol', at };
+    const request: RequestObservation = {
+      ...observation, requestId: 'final-request', revision: 1, status: 'final', apiProvider: 'openai', modality: 'text', cacheMode: 'implicit',
+      tokens: { input: 1000, output: 100, cacheRead: 0, cacheWrite: {}, reasoning: 10, inputIncludesCacheRead: true, inputIncludesCacheWrite: true, outputIncludesReasoning: true },
+      pricingContext: { context: 1000, region: null }, requestedServiceTier: null, reportedServiceTier: 'standard', reportedMode: null,
+    };
+    const emit = (phase: ExecutionObservation['phase'], turnId = observation.turnId) => observations.forEach(listener => listener({ ...observation, turnId, phase, requestCoverage: 'complete' }));
+    const emitRequest = (value = request) => requests.forEach(listener => listener(value));
+    const emitEvent = () => events.forEach(listener => listener({ agentId: backend, type: 'agent.statusChanged', payload: { type: 'idle' } }));
+    const driver: AgentBackendDriver = {
+      backend, getRuntimeStatus: () => ({ backend, status: 'running' }), getCapabilities: () => defaultBackendCapabilities(backend),
+      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
+      onUsage: listener => { observations.add(listener); return () => { observations.delete(listener); }; },
+      onRequestUsage: listener => { requests.add(listener); return () => { requests.delete(listener); }; },
+      onEvent: listener => { events.add(listener); return () => { events.delete(listener); }; },
+      close: async () => { entered(); await gate; emit('interrupted'); if (backend === 'codex') emitRequest(); emitEvent(); if (failFirst && backend === 'codex') throw closingError; },
+    };
+    return { driver, release, closing, emit, emitRequest, emitEvent, request };
+  };
+  const first = makeDriver('codex'), last = makeDriver('claude');
+  const rpc = new BackendDriverRpc(new Map([['codex', first.driver], ['claude', last.driver]]));
+  const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), driverRpc: rpc, usage, onEvent: published });
+  let shutdown: Promise<unknown> | undefined;
+  try {
+    first.emit('started'); last.emit('started');
+    first.emitRequest({ ...first.request, revision: 0, status: 'provisional', tokens: { ...first.request.tokens, output: 10 } });
+    await usage.drain();
+    expect(local.query({ group: 'provider' }).rows.map(row => row.inProgress)).toStrictEqual([1, 1]);
+    published.mockClear();
+    let settled = false;
+    shutdown = server.close().then(() => undefined, error => error).finally(() => { settled = true; });
+    await Promise.all([first.closing, last.closing]);
+    first.release();
+    await vi.waitFor(() => expect(local.query({ provider: 'codex' }).rows[0]?.interrupted).toBe(1));
+    expect(settled).toBe(false);
+    last.release();
+    expect(await shutdown).toBe(failFirst ? closingError : undefined);
+    // Detached providers cannot reopen the closed ledger or publish phantom UI events.
+    first.emit('started', 'phantom'); first.emitRequest({ ...first.request, turnId: 'phantom', requestId: 'phantom' }); first.emitEvent();
+    await usage.drain();
+    expect(published).not.toHaveBeenCalled();
+    const reopened = new UsageLedger(file, () => at);
+    try {
+      await reopened.load(); // Deliberately no interruptOpenExecutions recovery.
+      expect(reopened.query({ group: 'provider' }).rows.map(({ label, started, interrupted, inProgress }) => ({ label, started, interrupted, inProgress })).sort((a, b) => a.label.localeCompare(b.label))).toStrictEqual([
+        { label: 'claude', started: 1, interrupted: 1, inProgress: 0 },
+        { label: 'codex', started: 1, interrupted: 1, inProgress: 0 },
+      ]);
+      expect(reopened.query({ provider: 'codex' }).cost).toMatchObject({ usd: 0.003, requests: 1, coverage: 'complete' });
+    } finally { await reopened.close(); }
+  } finally {
+    first.release(); last.release();
+    if (shutdown) await shutdown; else await server.close().catch(() => {});
+    await local.close(); await rm(dir, { recursive: true, force: true });
   }
 });
 
