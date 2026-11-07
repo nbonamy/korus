@@ -83,12 +83,23 @@ export type MissionDelivery = {
   mergePendingPush?: true;
   pullRequest?: { number: number; url: string };
 };
+/** Bounded authorization for approved implementation work; order expresses priority. */
+export type MissionDispatchInput = {
+  commandId: string;
+  expectedRevision: number;
+  assignments: { ticketId: string; ticketRevision: number; memberId: string; retryFailedRunId?: string }[];
+  maxConcurrency: number;
+  continuationLimit: number;
+};
+export type MissionDispatchPlan = MissionDispatchInput & { revision: number; leadId: string };
+
 export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
   implementationModel?: ExecutionSelection;
   /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
   parallelImplementation?: boolean;
+  dispatchPlan?: MissionDispatchPlan;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };

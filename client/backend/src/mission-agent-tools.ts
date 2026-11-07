@@ -1,8 +1,9 @@
+import { missionLeadAgentId } from '@workspace/core/mission-attention';
 import { createEntityId } from '@workspace/core/ids';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { isMissionArtifacts, sameMissionTicketWork, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
-import { missionRunTicketIndex, missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionRunTicketIndex, missionRunAssignment, missionDeveloperInstructions, missionLeadSchedulingInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { missionTeamRepositories } from './mission-execution-policy';
 
@@ -64,6 +65,9 @@ export class MissionAgentTools {
     if (!context) return undefined;
     const mission = this.requireMission(context.missionId);
     const run = mission.execution!.runs.find(candidate => candidate.id === context.runId)!;
+    if (mission.stage === 'implementation' && missionLeadAgentId(mission) === agentId) {
+      return missionLeadSchedulingInstructions(mission);
+    }
     if (run.workerId === agentId && !this.ownsWritableRun(mission, run.id, agentId)) return undefined;
     if (run.workerId !== agentId) {
       return missionFindingFixInstructions(mission, (mission.artifacts.review.findings ?? []).filter(finding => (

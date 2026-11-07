@@ -69,6 +69,18 @@ export function missionRunAssignment(mission: Mission, run: MissionRun): Mission
   };
 }
 
+/** The lead retains coordination duties while repository workers own implementation. */
+export function missionLeadSchedulingInstructions(mission: Mission): string {
+  return [
+    `Mission lead: ${mission.outcome} (${mission.id}). Current stage: ${mission.stage}.`,
+    'You own implementation scheduling: after the user approves Tickets, read get-mission-schedule and use set-mission-schedule to persist ordered ticket/member assignments, concurrency and a continuation budget (0 to 2). The daemon executes within that bounded plan.',
+    'Drive approved work to completion: follow up on stalled workers, inspect failures, resolve routine command, test and environment problems, and adapt assignments and priorities when workers discover new information. Authorize a targeted failed-run retry by naming retryFailedRunId when evidence supports it. Each decision authorizes one failed-run retry; do not blindly repeat attempts. Explicit Stop requires user retry.',
+    'Surface blockers to the user only when missing authority, credentials, an unsafe conflict or a genuine product decision prevents progress. Explain the blocker, attempts, preserved progress and smallest action needed. Keep routine coordination within the Mission. Informational updates need no acknowledgment.',
+    "get-mission-schedule exposes all tickets with statuses, dependencies, run evidence, available members and the user's parallelImplementation setting. When false, only one worker per repository worktree may run; when true, your global maxConcurrency still applies. Dependencies remain enforced. Omit tickets to hold them; empty assignments pause future dispatch. Reserved runs keep their assignments.",
+    'Read canonical Requirements and Implementation evidence with read-mission-artifact. The user retains Requirements, Tickets and Review approval, explicit Stop and delivery authorization. Scheduling grants no push, merge, deployment or stage advancement authority.',
+  ].join('\n\n');
+}
+
 export function missionDeveloperInstructions(mission: Mission, run: MissionRun, repositories: string[] = []): string {
   const assignment = missionRunAssignment(mission, run);
   const instructions: Record<MissionStage, string> = {
@@ -96,7 +108,7 @@ export function missionDeveloperInstructions(mission: Mission, run: MissionRun, 
       : '',
     run.stage === 'implementation'
       ? `Persist through ordinary command, test and environment failures: diagnose the cause, try a reasonable alternative and continue toward the assigned ticket. Mission lead agent ID: ${missionLeadAgentId(mission) ?? 'unavailable'}. This assignment authorizes send-message to that lead for a concrete blocker requiring coordination or a human decision: include your agent ID, ticket ID, attempts, preserved progress and the smallest action needed. Do not silently abandon work or claim completion. Honor explicit user Stop and never bypass approvals or unsafe Git boundaries.`
-      : 'The daemon supervisor schedules implementation workers and sends short updates with worker agent IDs in context. Track those assignments and help resolve escalated blockers; do not duplicate scheduling, acknowledge informational updates or silently restart stopped workers.',
+      : missionLeadSchedulingInstructions(mission),
     run.stage !== 'implementation' ? 'As Mission lead, use reopen-mission-stage to return to an earlier reached stage when the user requests revisions. Viewing a stage does not change it. Stop repository workers before backtracking; user approval is still required to advance Requirements, Tickets and Review.' : '',
     run.stage === 'requirements' ? `Requirements always use interactive review. The Mission UI displays the canonical requirements automatically. Do not call display-markdown for requirements or their revisions; use write-mission-artifact and submit-mission-result instead. Write the canonical Mission brief in this format: ${interactiveReviewMarkdownGuidance}` : '',
     run.skills.length ? `Load the assigned procedure through ${product.mcpServerName} MCP before acting: ${run.skills.map(skill => `read-skill with name="${skill.name}"`).join(', ')}.` : 'This stage has no agent-run skill.',

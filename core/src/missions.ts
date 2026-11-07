@@ -142,6 +142,17 @@ export function updateMission(snapshot: AppSnapshot, input: unknown): Mission {
   return mission;
 }
 
+function isMissionDispatchPlan(v: unknown): boolean {
+  return record(v) && text(v.commandId) && !!v.commandId.trim() && v.commandId.length <= 200 && text(v.leadId)
+    && Number.isInteger(v.expectedRevision) && (v.expectedRevision as number) >= 0
+    && Number.isInteger(v.revision) && v.revision === (v.expectedRevision as number) + 1
+    && Number.isInteger(v.maxConcurrency) && (v.maxConcurrency as number) >= 1 && (v.maxConcurrency as number) <= 20
+    && Number.isInteger(v.continuationLimit) && (v.continuationLimit as number) >= 0 && (v.continuationLimit as number) <= 2
+    && Array.isArray(v.assignments) && v.assignments.length <= 200 && v.assignments.every(assignment => record(assignment)
+      && text(assignment.ticketId) && text(assignment.memberId) && (assignment.retryFailedRunId === undefined || text(assignment.retryFailedRunId)) && Number.isInteger(assignment.ticketRevision) && (assignment.ticketRevision as number) >= 0)
+    && new Set(v.assignments.map(assignment => (assignment as { ticketId: string }).ticketId)).size === v.assignments.length;
+}
+
 function isMissionExecution(v: unknown): v is MissionExecution {
   return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
     && (v.debugFixture === undefined || v.debugFixture === true)
@@ -149,6 +160,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
     && (v.supervisorUpdates === undefined || (Array.isArray(v.supervisorUpdates) && v.supervisorUpdates.every(update => record(update)
       && text(update.id) && text(update.runId) && text(update.fromAgentId) && text(update.leadId) && text(update.content)
       && (update.delivered === undefined || update.delivered === true))))
+    && (v.dispatchPlan === undefined || isMissionDispatchPlan(v.dispatchPlan))
     && (v.parallelImplementation === undefined || typeof v.parallelImplementation === 'boolean')
     && (v.implementationModel === undefined || isExecutionSelection(v.implementationModel))
     && (v.workspaceName === undefined || (text(v.workspaceName) && !!v.workspaceName.trim()))

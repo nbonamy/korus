@@ -1,3 +1,4 @@
+import type { MissionDispatchInput } from '@workspace/core/mission-types';
 import { applyExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import type { Agent, AppSnapshot, BackendModelOption, CreateSourceWorktreeInput, SourceWorktree } from '@workspace/core/contracts';
@@ -62,6 +63,61 @@ export class MissionExecutionService {
     }
     this.agentTools = new MissionAgentTools(ports, input => this.execute(input));
     this.workspaces = new MissionWorkspaceService(ports);
+  }
+
+  async schedule(agentId: string, input: MissionDispatchInput): Promise<{ revision: number }> {
+    const mission = this.ports.snapshot.missions?.find(candidate => missionLeadAgentId(candidate) === agentId);
+    if (!mission) throw new Error('Only the Mission lead can schedule work.');
+    let runIds: string[] = [];
+    const revision = await this.ports.missions.changeAsync(mission.id, current => {
+      if (missionLeadAgentId(current) !== agentId || this.isStopped(current, agentId)) throw new Error('Only an active Mission lead can schedule work.');
+      if (current.stage !== 'implementation' || current.status !== 'active') throw new Error('Scheduling requires user-approved Tickets in Implementation.');
+      if (!input || typeof input.commandId !== 'string' || !input.commandId.trim() || input.commandId.length > 200
+        || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 0
+        || !Number.isInteger(input.maxConcurrency) || input.maxConcurrency < 1 || input.maxConcurrency > 20
+        || !Number.isInteger(input.continuationLimit) || input.continuationLimit < 0 || input.continuationLimit > 2
+        || !Array.isArray(input.assignments) || input.assignments.length > 200) throw new Error('Invalid Mission dispatch plan.');
+      const previous = current.execution!.dispatchPlan;
+      const fingerprint = (value: MissionDispatchInput) => JSON.stringify([value.commandId, value.expectedRevision, value.assignments, value.maxConcurrency, value.continuationLimit]);
+      if (previous?.commandId === input.commandId) {
+        if (fingerprint(previous) !== fingerprint(input)) throw new Error('Command ID already used for a different decision.');
+        runIds = current.execution!.runs.filter(run => run.stage === 'implementation' && run.status === 'preparing').map(run => run.id);
+        return previous.revision;
+      }
+      if ((previous?.revision ?? 0) !== input.expectedRevision) throw new Error('The dispatch plan changed. Read it before scheduling.');
+      const ids = new Set<string>();
+      for (const assignment of input.assignments) {
+        const ticket = current.artifacts.tickets.find(ticket => ticket.id === assignment.ticketId);
+        if (!ticket || !ticket.repositoryPath || (ticket.revision ?? 0) !== assignment.ticketRevision
+          || ids.has(assignment.ticketId) || !this.availableMember(current, assignment.memberId)) throw new Error('Invalid or stale ticket assignment.');
+        if (assignment.retryFailedRunId !== undefined && !current.execution!.runs.some(run => run.id === assignment.retryFailedRunId && run.status === 'failed' && !this.isStopped(current, run.workerId) && run.ticketId === assignment.ticketId && missionRunTicketIndex(current, run) !== undefined)) throw new Error('Only a current failed assignment without user Stop can be retried.');
+        ids.add(assignment.ticketId);
+      }
+      current.execution!.dispatchPlan = { ...structuredClone(input), revision: input.expectedRevision + 1, leadId: agentId };
+      runIds = this.enqueueRuns(current, {});
+      return current.execution!.dispatchPlan.revision;
+    });
+    await this.ports.publish();
+    this.launchReservedRuns(mission.id, runIds);
+    return { revision };
+  }
+
+  schedulingContext(agentId: string) {
+    const mission = this.ports.snapshot.missions?.find(candidate => missionLeadAgentId(candidate) === agentId);
+    if (!mission) throw new Error('Only the Mission lead can read scheduling state.');
+    return { missionId: mission.id, stage: mission.stage, revision: mission.execution?.dispatchPlan?.revision ?? 0,
+      plan: mission.execution?.dispatchPlan, memberIds: mission.execution?.memberIds,
+      parallelImplementation: mission.execution?.parallelImplementation ?? false,
+      members: mission.execution?.memberIds.flatMap(id => {
+        const agent = this.agent(id);
+        return agent ? [{ id, name: agent.name, available: this.availableMember(mission, id) }] : [];
+      }),
+      tickets: mission.artifacts.tickets.map((ticket, index) => {
+        const run = mission.execution?.runs.slice().reverse().find(run => missionRunTicketIndex(mission, run) === index);
+        return { ...ticket, status: ticket.done ? 'accepted' : run?.status ?? (missionTicketReady(mission.artifacts.tickets, index) ? 'ready' : 'blocked'),
+          blockedByTicketIds: (ticket.dependsOn ?? []).map(blocker => mission.artifacts.tickets[blocker]?.id),
+          ...(run ? { runId: run.id, workerId: run.workerId } : {}) };
+      }), runs: mission.execution?.runs };
   }
 
   async execute(input: MissionExecutionInput, leadAgentId?: string): Promise<void> {
@@ -343,7 +399,7 @@ export class MissionExecutionService {
           implementationCompleted = this.acceptImplementationResult(current, run);
           await this.persistImplementationArtifact(current);
           this.recordSupervisorUpdate(current, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
-            implementationCompleted ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Wait for the user to continue to Review.' : 'Result accepted; supervisor will schedule ready tickets.');
+            implementationCompleted ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Wait for the user to continue to Review.' : 'Result accepted; the daemon executes ready assignments within your persisted plan.');
         } else {
           if (run.stage === 'tickets' && !workflow.stageReady('tickets', run.proposal)) {
             throw new Error('Assign one represented repository to every ticket before starting implementation.');
@@ -356,6 +412,9 @@ export class MissionExecutionService {
         if (current.stage !== 'implementation' && workflow.stageReady(current.stage, current.artifacts)) {
           current.stage = workflow.stages[workflow.stages.indexOf(current.stage) + 1]!;
           if (current.stage === 'implementation') {
+            const previousPlan = current.execution!.dispatchPlan;
+            if (previousPlan) current.execution!.dispatchPlan = { ...previousPlan, commandId: `approval-${run.id}`,
+              expectedRevision: previousPlan.revision, revision: previousPlan.revision + 1, assignments: [] };
             this.requireAvailableMembers(current);
             await this.workspaces.provisionImplementationWorkspaces(current, reportImplementationStartProgress);
             reportImplementationStartProgress('startingAgents');
@@ -363,8 +422,10 @@ export class MissionExecutionService {
           if (current.stage === 'ship') this.workspaces.prepareDeliveries(current);
         }
         nextRunIds = this.enqueueRuns(current, {});
+        if (startsImplementation) this.recordSupervisorUpdate(current, { ...run, stage: 'implementation' }, 'schedule-required', 'ready for lead scheduling',
+          'The user approved Tickets. Read get-mission-schedule and persist your ordered assignments with set-mission-schedule. No new work starts without your plan.');
       });
-      this.dispatchRuns(input.id, nextRunIds);
+      this.launchReservedRuns(input.id, nextRunIds);
       await this.deliverSupervisorUpdates(input.id);
       return;
     }
@@ -424,7 +485,7 @@ export class MissionExecutionService {
           }
         }
       }, true);
-      if (runId) this.dispatchRuns(input.id, [runId]);
+      if (runId) this.launchReservedRuns(input.id, [runId]);
       return;
     }
     if (input.action !== 'run') throw new Error('Unknown mission command.');
@@ -432,9 +493,9 @@ export class MissionExecutionService {
     await this.change(input, current => {
       if (current.stage !== 'implementation') this.requireNoActiveRun(current);
       runIds = this.enqueueRuns(current, input);
-      if (!runIds.length) throw new Error('No implementation ticket is ready to start.');
+      if (!runIds.length && current.execution?.dispatchPlan) throw new Error('No implementation ticket is ready to start.');
     });
-    this.dispatchRuns(input.id, runIds);
+    this.launchReservedRuns(input.id, runIds);
   }
 
   async recordMerge(agentId: string, sourceFolder: string | null, worktreeDeleted: boolean, pushPending = false): Promise<void> {
@@ -469,6 +530,12 @@ export class MissionExecutionService {
 
   async recoverInterruptedRuns(): Promise<void> {
     for (const mission of this.ports.snapshot.missions ?? []) {
+      if (mission.artifacts.tickets.some(ticket => !ticket.id)) {
+        await this.ports.missions.change(mission.id, current => {
+          for (const [index, ticket] of current.artifacts.tickets.entries()) ticket.id ??= current.execution?.runs.find(run => run.ticketIndex === index && run.ticketId)?.ticketId ?? createEntityId('mission-ticket');
+        });
+        await this.ports.publish();
+      }
       for (const workspace of mission.execution?.workspaces ?? []) {
         await this.recoverCommitLock(mission.id, workspace.repositoryPath);
       }
@@ -497,12 +564,22 @@ export class MissionExecutionService {
         await this.execute({ id: current.id, revision: current.revision, action: 'accept', runId: run.id });
       }
     }
+    for (const mission of this.ports.snapshot.missions ?? []) {
+      if (mission.stage !== 'implementation' || mission.execution?.dispatchPlan || mission.execution?.debugFixture) continue;
+      const leadRun = mission.execution?.runs.slice().reverse().find(run => run.workerId === missionLeadAgentId(mission));
+      if (!leadRun) continue;
+      await this.ports.missions.change(mission.id, current => {
+        this.recordSupervisorUpdate(current, { ...leadRun, stage: 'implementation' }, 'schedule-required', 'needs lead scheduling',
+          'Existing reserved runs retain their assignments. Read get-mission-schedule and authorize future work with set-mission-schedule.');
+      });
+      await this.ports.publish();
+    }
     const interrupted = (this.ports.snapshot.missions ?? []).flatMap(mission => (
       mission.execution?.debugFixture ? [] : mission.execution?.runs
         .filter(run => run.status === 'preparing' || (run.status === 'running' && (!this.agent(run.workerId)?.backendSession || run.recoveryPending)))
         .map(run => ({ missionId: mission.id, runId: run.id })) ?? []
     ));
-    for (const { missionId, runId } of interrupted) this.dispatchRuns(missionId, [runId]);
+    for (const { missionId, runId } of interrupted) this.launchReservedRuns(missionId, [runId]);
     await this.waitForLaunches();
     for (const mission of this.ports.snapshot.missions ?? []) await this.deliverSupervisorUpdates(mission.id);
   }
@@ -620,12 +697,12 @@ export class MissionExecutionService {
         this.recordSupervisorUpdate(mission, run, 'accepted', implementationCompleted ? 'completed; all implementation tickets are complete' : 'completed',
           implementationCompleted
             ? 'Implementation evidence is saved. Read it with read-mission-artifact for stage="implementation". Give the user a concise completion update. Wait for the user to continue to Review.'
-            : `Result accepted. Supervisor scheduled ${nextRunIds.length} ready assignment(s); other workers continue.`, input.summary);
+            : `Result accepted. Your persisted plan authorized ${nextRunIds.length} ready assignment(s); other workers continue.`, input.summary);
       }
     });
     if (commitLockReleased) for (const wake of this.commitLockWaiters) wake();
     await this.ports.publish();
-    this.dispatchRuns(context.missionId, nextRunIds, agentId);
+    this.launchReservedRuns(context.missionId, nextRunIds, agentId);
     await this.deliverSupervisorUpdates(context.missionId);
     return { success: true, status };
   }
@@ -890,16 +967,17 @@ export class MissionExecutionService {
       const eligible = recover && !!turnId && run.stage === 'implementation' && current.stage === 'implementation'
         && current.status === 'active' && index !== undefined && !current.artifacts.tickets[index]!.done
         && this.agent(agentId)?.status.type !== 'awaitingInput' && !current.execution!.debugFixture;
-      if (eligible && (run.recoveryAttempts ?? 0) < 2) {
+      const continuationLimit = current.execution!.dispatchPlan?.continuationLimit ?? 0;
+      if (eligible && (run.recoveryAttempts ?? 0) < continuationLimit) {
         run.recoveryAttempts = (run.recoveryAttempts ?? 0) + 1;
         run.recoveryPending = true; run.status = 'preparing'; delete run.finishedAt;
         recoveryRunId = run.id;
-        this.recordSupervisorUpdate(current, run, `recovery-${run.recoveryAttempts}`, `continuing unfinished work (${run.recoveryAttempts}/2)`,
-          'Supervisor will continue the same worker and assignment from existing progress. No replacement agent is being created.');
+        this.recordSupervisorUpdate(current, run, `recovery-${run.recoveryAttempts}`, `continuing unfinished work (${run.recoveryAttempts}/${continuationLimit})`,
+          'Your authorized plan continues the same worker and assignment from existing progress. No replacement agent is being created.');
       } else {
         run.status = 'failed'; run.error = 'Agent finished without submitting a mission result. Inspect the conversation and rerun with feedback.'; run.finishedAt = new Date().toISOString();
         this.recordSupervisorUpdate(current, run, 'unfinished', 'needs attention',
-          eligible ? 'Automatic recovery budget exhausted (2/2). Inspect the worker conversation and resolve the blocker; do not silently retry.'
+          eligible ? 'Lead-authorized continuation budget exhausted. Inspect the worker conversation and resolve the blocker; do not silently retry.'
             : 'Automatic recovery is unavailable for this completion. Inspect the worker conversation for a blocker or required human decision.');
       }
     });
@@ -960,7 +1038,7 @@ export class MissionExecutionService {
       currentRun.workerId = worker.id;
       if (currentRun.status !== 'cancelled' && !this.isStopped(current, worker.id)) {
         currentRun.status = 'running';
-        if (!currentRun.recoveryPending) this.recordSupervisorUpdate(current, currentRun, 'assigned', 'assigned', reusedWorker ? 'Supervisor is reusing this worker for the next ready ticket.' : 'Supervisor created this worker and will start the assigned ticket.');
+        if (!currentRun.recoveryPending) this.recordSupervisorUpdate(current, currentRun, 'assigned', 'assigned', reusedWorker ? 'Executing your authorized assignment in an existing worker conversation.' : 'Executing your authorized assignment in a worker conversation.');
       }
       current.stageAgentIds[currentRun.stage] = worker.id;
     });
@@ -1042,20 +1120,28 @@ export class MissionExecutionService {
     const activeTickets = new Set(execution.runs
       .filter(run => run.stage === 'implementation' && activeStatuses.includes(run.status) && run.ticketIndex !== undefined)
       .map(run => run.ticketIndex!));
-    const candidates = input.ticketIndex === undefined
-      ? mission.artifacts.tickets.map((_, index) => index)
-      : [input.ticketIndex];
+    const plan = execution.dispatchPlan;
+    if (!plan || plan.leadId !== missionLeadAgentId(mission)) return [];
+    const candidates = plan.assignments.flatMap(assignment => {
+      const index = mission.artifacts.tickets.findIndex(ticket => ticket.id === assignment.ticketId && (ticket.revision ?? 0) === assignment.ticketRevision);
+      return index >= 0 && (input.ticketIndex === undefined || input.ticketIndex === index) ? [index] : [];
+    });
+    const activeCount = execution.runs.filter(run => run.stage === 'implementation' && activeStatuses.includes(run.status)).length;
     const attempts = execution.runs;
     const runIds: string[] = [];
     for (const ticketIndex of candidates) {
+      if (activeCount + runIds.length >= plan.maxConcurrency) break;
       const ticket = mission.artifacts.tickets[ticketIndex];
       const repositoryPath = ticket?.repositoryPath;
       if (!ticket || !repositoryPath || !missionTicketReady(mission.artifacts.tickets, ticketIndex)
         || activeTickets.has(ticketIndex) || (!execution.parallelImplementation && busyRepositories.has(repositoryPath))) continue;
       const previous = attempts.slice().reverse().find(run => run.stage === 'implementation' && missionRunTicketIndex(mission, run) === ticketIndex);
       // A sibling's completion must not undo a user's Stop or silently retry a failure.
-      if (input.ticketIndex === undefined && previous && ['failed', 'cancelled'].includes(previous.status)) continue;
-      const runId = this.enqueueImplementationRun(mission, ticketIndex, repositoryPath, input);
+      const assignment = plan.assignments.find(assignment => assignment.ticketId === ticket.id)!;
+      if (input.ticketIndex === undefined && previous && (previous.status === 'cancelled' || this.isStopped(mission, previous.workerId) || (previous.status === 'failed' && assignment.retryFailedRunId !== previous.id))) continue;
+      const memberId = plan.assignments.find(assignment => assignment.ticketId === ticket.id)!.memberId;
+      if (!this.availableMember(mission, memberId)) continue;
+      const runId = this.enqueueImplementationRun(mission, ticketIndex, repositoryPath, { ...input, memberId });
       runIds.push(runId);
       busyRepositories.add(repositoryPath);
     }
@@ -1072,7 +1158,7 @@ export class MissionExecutionService {
       if (execution.stoppedAgentIds) execution.stoppedAgentIds = execution.stoppedAgentIds.filter(id => id !== previousOrchestratorRun.workerId);
     }
     const memberId = input.memberId ?? (this.availableMember(mission, previousOrchestratorRun?.memberId) ? previousOrchestratorRun!.memberId : execution.memberIds[0]!);
-    if (!this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
+    if (!memberId || !this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
@@ -1114,8 +1200,8 @@ export class MissionExecutionService {
         && execution.runs.slice().reverse().find(candidate => candidate.workerId === run.workerId)?.id === run.id
       ))
       : repositoryWorker;
-    const memberId = input.memberId ?? [reusableWorker?.memberId, repositoryWorker?.memberId, execution.memberIds[ticketIndex % execution.memberIds.length]].find(id => this.availableMember(mission, id))!;
-    if (!this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
+    const memberId = input.memberId;
+    if (!memberId || !this.availableMember(mission, memberId)) throw new Error('The selected team member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     execution.runs.push({
@@ -1123,7 +1209,7 @@ export class MissionExecutionService {
       stage: 'implementation',
       memberId,
       // Reserve an available repository worker; dispatch waits for its provider turn.
-      ...(!(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId ? { workerId: reusableWorker.workerId } : {}),
+      ...(!(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId && (reusableWorker.memberId === memberId || !this.availableMember(mission, reusableWorker.memberId)) ? { workerId: reusableWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
       ...(mission.artifacts.tickets[ticketIndex]!.revision !== undefined ? { ticketRevision: mission.artifacts.tickets[ticketIndex]!.revision } : {}),
@@ -1168,12 +1254,15 @@ export class MissionExecutionService {
       `Ticket: ${assignment ? JSON.stringify(assignment) : run.ticketId ?? run.ticketIndex ?? 'unavailable'}.`,
       `Repository: ${run.repositoryPath ?? assignment?.repositoryPath ?? 'unavailable'}. Worktree: ${this.agent(run.workerId)?.folder ?? 'unavailable'}.`,
       `Outcome: ${outcome}. ${summary ? `Worker summary: ${summary}` : ''}`,
-      `Supervisor decision: ${decision}`,
+      `Execution status: ${decision}`,
       ...(run.error ? [`Error: ${run.error}`] : []),
-      'The supervisor owns scheduling. Keep track of these worker IDs and help resolve escalated blockers. Do not duplicate assignments or automatically restart failed/stopped workers.',
-      'Informational updates need no reply. This message does not authorize Review, stage advancement, push, merge or PR creation. Honor explicit user Stop.',
+      'You own scheduling. Use get-mission-schedule and set-mission-schedule to assign approved tickets, set priorities and adapt the bounded dispatch plan. The daemon executes only that authorization. Resolve escalated blockers and keep approved work moving; never restart stopped work without explicit user retry.',
+      ['unfinished', 'launch-failed', 'schedule-required'].includes(event)
+        ? 'Action required: drive the approved work forward. Inspect the evidence, resolve routine failures, adapt assignments or authorize a targeted failed-run retry. Escalate only blockers requiring user authority or input, with attempts, preserved progress and the smallest decision needed. Never retry explicit Stop.'
+        : 'Informational update: no acknowledgment needed. Continue driving the approved plan; surface a user decision only when necessary.',
+      'This message does not authorize Review, stage advancement, push, merge or PR creation. Honor explicit user Stop.',
     ].join('\n');
-    const visible = `Ticket ${assignment?.ticketNumber ?? (run.ticketIndex ?? 0) + 1}: ${outcome}.`;
+    const visible = event === 'schedule-required' ? `Mission ${outcome}.` : `Ticket ${assignment?.ticketNumber ?? (run.ticketIndex ?? 0) + 1}: ${outcome}.`;
     const fromAgentId = this.agent(run.workerId)?.id ?? this.agent(run.memberId)?.id ?? leadId;
     updates.push({ id, runId: run.id, fromAgentId, leadId,
       content: `${visible}\n\n<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>` });
@@ -1227,14 +1316,23 @@ export class MissionExecutionService {
   }
 
   private agent(id: string | undefined): Agent | undefined { return missionAgent(this.ports.snapshot, id); }
-  private dispatchRuns(missionId: string, runIds: string[], submittingAgentId?: string): void {
+  private launchReservedRuns(missionId: string, runIds: string[], submittingAgentId?: string): void {
     for (const runId of runIds) {
       const run = this.requireMission(missionId).execution!.runs.find(candidate => candidate.id === runId)!;
+      const mission = this.requireMission(missionId);
       const worker = this.agent(run.workerId);
-      // Only the worker being reused must wait for its previous provider turn.
-      if (worker && (worker.id === submittingAgentId || ['working', 'awaitingInput'].includes(worker.status.type))) {
-        const pending = this.postTurnLaunches.get(worker.id)?.runIds ?? [];
-        this.postTurnLaunches.set(worker.id, { missionId, runIds: [...new Set([...pending, runId])] });
+      // A different selected member must also wait for the previous repository
+      // worker's submission turn; accepted evidence does not mean edits have stopped.
+      const repositoryOwner = run.stage === 'implementation' && !mission.execution!.parallelImplementation
+        ? mission.execution!.runs.slice().reverse().find(candidate => candidate.id !== run.id && candidate.stage === 'implementation'
+          && candidate.repositoryPath === run.repositoryPath && candidate.workerId
+          && (candidate.workerId === submittingAgentId || this.activeTurns.has(candidate.workerId)
+            || ['working', 'awaitingInput'].includes(this.agent(candidate.workerId)?.status.type ?? '')))
+        : undefined;
+      const waitingAgentId = repositoryOwner?.workerId ?? (worker && (worker.id === submittingAgentId || ['working', 'awaitingInput'].includes(worker.status.type)) ? worker.id : undefined);
+      if (waitingAgentId) {
+        const pending = this.postTurnLaunches.get(waitingAgentId)?.runIds ?? [];
+        this.postTurnLaunches.set(waitingAgentId, { missionId, runIds: [...new Set([...pending, runId])] });
       } else {
         void this.startLaunch(missionId, runId);
       }

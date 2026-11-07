@@ -145,6 +145,8 @@ export type McpCreateAgentsResponse = {
 };
 
 export type MissionToolPort = {
+  schedule?(agentId: string, input: import('@workspace/core/mission-types').MissionDispatchInput): Promise<{ revision: number }>;
+  schedulingContext?(agentId: string): unknown;
   acquireCommitLock?(agentId: string, signal?: AbortSignal): Promise<{ acquired: boolean }>;
   releaseCommitLock?(agentId: string): Promise<{ released: true }>;
   contextForAgent(agentId: string): MissionToolContext | undefined;
@@ -439,6 +441,18 @@ export class AppMcpAgentCoordinator {
   missionContext(agentId: string): MissionToolContext | undefined {
     this.requireAgent(agentId);
     return this.missionTools?.contextForAgent(agentId);
+  }
+
+  async setMissionSchedule(agentId: string, input: import('@workspace/core/mission-types').MissionDispatchInput) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.schedule) throw new McpToolError('Mission scheduling is unavailable.');
+    return this.missionTools.schedule(agentId, input);
+  }
+
+  getMissionSchedule(agentId: string) {
+    this.requireAgent(agentId);
+    if (!this.missionTools?.schedulingContext) throw new McpToolError('Mission scheduling is unavailable.');
+    return this.missionTools.schedulingContext(agentId);
   }
 
   async reopenMissionStage(agentId: string, stage: MissionStage) {
