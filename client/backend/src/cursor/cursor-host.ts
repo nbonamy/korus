@@ -17,7 +17,7 @@ import { promptWithSelectedReferences } from '../agents/prompt-content';
 import { backendHomeDir } from '../state';
 import { CursorAuthentication } from './authentication';
 import { cursorRuntime, resolveCursorExecutable } from './runtime';
-import { CursorSession } from './session';
+import { CursorSession, isCursorAuthenticationFailure } from './session';
 import { executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import { cursorAttachments } from './attachments';
 import { getCursorAccountUsage } from './account-usage';
@@ -255,7 +255,7 @@ export class CursorHost implements AgentBackendDriver {
     this.opening.set(agent.id, { abort, done }); return done;
   }
   private disconnected(error: Error): void {
-    this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload: { kind: this.backend, connected: false, state: { loggedIn: false, homePath: this.runtime.homePath, error: error.message } } });
+    if (isCursorAuthenticationFailure(error)) this.emit({ type: 'provider.authenticationChanged', backend: this.backend, payload: { kind: this.backend, connected: false, state: { loggedIn: false, homePath: this.runtime.homePath, error: error.message } } });
   }
   private conversationEvent(event: CursorConversationEvent): void {
     const current = this.sessions.get(event.agentId);

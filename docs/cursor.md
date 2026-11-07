@@ -76,6 +76,15 @@ Failed acknowledgments require confirmed model selection before another prompt.
 Only a typed method-not-found response permits fallback to the session catalog;
 authentication, policy, transport and malformed-catalog failures remain failures.
 
+Interactive prompt requests have no wall-clock deadline: long-running execution
+and human approval/review waits settle through completion, explicit interruption
+or process failure. Setup/control requests and cancellation retain bounded
+deadlines. A conversation process/protocol failure closes that session and keeps
+its terminal replica; it does not change the provider's authentication observation.
+A subsequent request validates authentication and reloads the saved session.
+Only native authentication, team-change or ACP-policy failures publish a
+disconnected observation.
+
 Cancellation waits for prompt settlement and a bounded, workspace-filtered
 `session/list` round trip before admitting the next prompt. This drains buffered
 cancelled-turn updates without retaining history metadata. The handshake requires

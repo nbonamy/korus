@@ -596,6 +596,43 @@ describe('Cursor ACP host transport boundary', () => {
       expect(calls[index].params.mcpServers.map((server: {env: {name:string;value:string}[]}) => new URL(server.env.find(env => env.name === 'KORUS_ACP_MCP_URL')!.value).searchParams.get('agentId'))).toStrictEqual([owner, owner]);
     }
   });
+  it('keeps an unanswered native plan alive overnight and settles it only on explicit interruption', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const state = createTestSnapshot(); state.agents = [{ ...agent }];
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'plan', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'extension', options: { planMode: true } } });
+      await vi.waitFor(() => expect(state.agents[0]!.planReview?.status).toBe('pending'));
+      const reference = state.agents[0]!.backendSession;
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+      expect(completions()).toStrictEqual([]);
+      expect(state.providerConnections[0]).toMatchObject({ connected: true });
+      expect(state.agentRequests?.[agent.id]).toHaveLength(1);
+      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: 'agent/interrupt', params: { agentId: agent.id } });
+      expect(state.agents[0]!.planReview?.status).toBe('cancel');
+      expect(state.agentRequests?.[agent.id]).toStrictEqual([]);
+      expect(completions()).toHaveLength(1);
+    } finally { vi.useRealTimers(); await server.close(); }
+  });
+  it('keeps provider authentication connected after a conversation process failure and reloads its saved session on retry', async () => {
+    const state = createTestSnapshot(); state.agents = [{ ...agent }];
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'fail', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'eof' } });
+      await vi.waitFor(() => expect(completions()).toHaveLength(1));
+      const reference = state.agents[0]!.backendSession;
+      expect(events.filter(event => event.type === 'provider.authenticationChanged' && !event.payload.connected)).toStrictEqual([]);
+      expect(state.providerConnections[0]).toMatchObject({ connected: true });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'hello' } });
+      await vi.waitFor(() => expect(completions()).toHaveLength(2));
+      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+      expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
+    } finally { await server.close(); }
+  });
   it('interrupts once, ignores stale completion/chunks, and admits the next prompt', async () => {
     const first = await host.sendPrompt(agent, 'wait');
     await vi.waitFor(() => expect(events.some(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'message.upsert' && JSON.stringify(event.payload.event).includes('Hello'))).toBe(true));
@@ -611,12 +648,13 @@ describe('Cursor ACP host transport boundary', () => {
     expect(JSON.stringify(state)).not.toContain('LATE');
     expect((await wire()).find(call => call.id === 3 && call.result)?.result).toEqual({ outcome: { outcome: 'cancelled' } });
   });
-  it.each(['eof', 'protocol', 'team', 'team-stderr', 'policy', 'policy-stderr', 'invalid-completion'])('turns %s into a terminal replica and a safe disconnected observation', async input => {
+  it.each(['eof', 'protocol', 'auth-rpc', 'team', 'team-stderr', 'policy', 'policy-stderr', 'invalid-completion'])('terminates %s and disconnects authentication only for native auth/policy failures', async input => {
     await host.sendPrompt(agent, input); await vi.waitFor(() => expect(completions()).toHaveLength(1));
     const state = await snapshot();
     expect(state).toMatchObject({ busy: false, turns: [{ status: 'failed' }], error: expect.any(String) });
     expect(host.getRuntimeStatus()).toMatchObject({ status: 'error' });
-    expect(events).toContainEqual(expect.objectContaining({ type: 'provider.authenticationChanged', payload: expect.objectContaining({ kind: 'cursor', connected: false }) }));
+    const disconnected = events.filter(event => event.type === 'provider.authenticationChanged' && !event.payload.connected);
+    expect(disconnected).toHaveLength(input === 'auth-rpc' || input.startsWith('team') || input.startsWith('policy') ? 1 : 0);
     if (input.startsWith('team')) expect(state.error).toContain('Your team has switched');
     if (input.startsWith('policy')) expect(state.error).toMatch(/team policy/i);
     expect(JSON.stringify(events)).not.toContain('private.invalid');

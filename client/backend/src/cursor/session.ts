@@ -15,6 +15,12 @@ import { CursorTranscript } from './transcript';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
+const authenticationRequired = 'Cursor authentication is required. Reconnect Cursor in Settings.';
+
+export function isCursorAuthenticationFailure(error: Error): boolean {
+  return error instanceof AcpError && error.code === -32000 ||
+    [teamSwitched, policyDenied, authenticationRequired].includes(error.message);
+}
 type Options = { agentId: string; cwd: string; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
@@ -47,7 +53,7 @@ export class CursorSession {
         { marker: 'Headless mode is disabled', message: policyDenied }],
       formatRpcError: (code, message) => typeof message === 'string' && /your team has switched/i.test(message) ? teamSwitched
         : typeof message === 'string' && /(?:headless|acp).*(?:disabled|blocked|not allowed|policy)/i.test(message) ? policyDenied
-        : `Cursor ACP request failed (${code}). Reconnect Cursor in Settings.`,
+        : code === -32000 ? authenticationRequired : `Cursor ACP request failed (${code}). Try again in this conversation.`,
     });
     const abort = () => { void session.close(); };
     options.signal.addEventListener('abort', abort, { once: true });
@@ -172,7 +178,9 @@ export class CursorSession {
     const turnId = this.transcript.start(text, metadata, parts);
     const completion = this.journal.append({wireText, text, parts, ...(metadata ? {metadata} : {})}).then(() => {
       if (this.disposed || this.interrupted) throw new Error('Cursor prompt was cancelled before admission.');
-      return this.connection.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: wireText }, ...attachments] }, 30 * 60_000);
+      // Interactive turns may wait for human decisions overnight. Stop, transport
+      // failure and process teardown settle them; cancellation remains bounded.
+      return this.connection.request('session/prompt', { sessionId: this.sessionId, prompt: [{ type: 'text', text: wireText }, ...attachments] }, null);
     }).then(async result => {
       await Promise.allSettled([...this.imageWork]);
       if (!record(result) || typeof result.stopReason !== 'string' || !['end_turn', 'cancelled', 'max_tokens', 'max_turn_requests', 'refusal'].includes(result.stopReason)) throw new Error('Invalid Cursor turn completion.');
@@ -301,7 +309,7 @@ export class CursorSession {
     this.disposed = true;
     const turnId = this.transcript?.replica.getSnapshot().activeTurnId;
     if (turnId) this.transcript.finish(turnId, this.interrupted ? 'interrupted' : 'failed', this.interrupted ? undefined : error.message);
-    if (!this.closing) this.options.disconnected(error);
+    if (!this.closing && isCursorAuthenticationFailure(error)) this.options.disconnected(error);
     void this.connection.close();
   }
 }
