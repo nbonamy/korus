@@ -107,8 +107,9 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
             generateAgentGitMessage:async(id,input)=>{const request=structuredClone(input);window.fixture.generations.push({id,input:request});return {kind:'viz',diagram:request.mode==='fast'?fastDiagram:diagram};}
           }});
           const byKind=Object.fromEntries(['code','test','docs','other'].map(kind=>[kind,{changedFiles:1,addedLines:1,removedLines:1}]));
+          const commits=[25,1234567].map((addedLines,index)=>({sha:String(index).repeat(40),shortSha:String(index).repeat(8),subject:'Keep the complete commit statistics visible beside a long commit subject and its identifier',addedLines,removedLines:index?9876543:7,changedFiles:1}));
           createApp({setup:()=>()=>[
-            h('aside',{style:'position:absolute;right:16px;top:16px'},[h(DiffControl,{agentId:'fixture',gitStatus:{...panel.value.summary,diffCatalog:{uncommitted:{...panel.value.summary,byKind},commits:[]}}})]),
+            h('aside',{style:'position:absolute;right:16px;top:16px'},[h(DiffControl,{agentId:'fixture',gitStatus:{...panel.value.summary,diffCatalog:{uncommitted:{...panel.value.summary,byKind},commits}}})]),
             h('main',{class:'fixture',style:settingsVisible.value?'display:none':undefined},[h(Review,{agent:{id:'fixture',folder:'/repos/korus'},panel:panel.value,onOpenFile:path=>window.fixture.opens.push(path)})]),
             settingsVisible.value?h('div',{class:'settings-fixture',style:'width:650px;height:820px;overflow:auto'},[h(SettingsWorkflowsPanel,{settings:snapshot.general,updateSettings:async input=>{await save(input);}})]):null
           ]}).provide(diffVizSettingsKey,()=>snapshot.general).use(i18n).use(ElementPlus).mount('#app');
@@ -157,6 +158,17 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.getByRole('button', { name: 'Choose repository diff', exact: true }).click();
     const menuColors = await page.locator('.app-menu__color-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
     assert.equal(menuColors.length, 4);
+    await page.getByRole('menuitem', { name: 'Commits', exact: true }).hover();
+    const commitMenu = page.getByRole('menu', { name: 'Commits', exact: true });
+    await commitMenu.waitFor();
+    assert.deepEqual(await commitMenu.locator('.app-menu__value').allTextContents(), ['+25 -7', '+1234567 -9876543']);
+    const statsFit = await commitMenu.locator('.app-menu__value').evaluateAll(values => values.every(value => {
+      const bounds = value.getBoundingClientRect(), row = value.parentElement.getBoundingClientRect();
+      return value.scrollWidth <= value.clientWidth + 1 && bounds.right <= row.right
+        && [...value.children].every(part => part.getBoundingClientRect().right <= bounds.right + 1);
+    }));
+    assert.equal(statsFit, true, 'commit additions and deletions must remain fully visible beside long subjects');
+    await page.screenshot({ path: path.join(output, 'commit-stats.png') });
     await page.keyboard.press('Escape');
     await toggleMap();
     const filterColors = await page.locator('.diff-treemap__filters button i').evaluateAll(dots => dots.slice(1).map(dot => getComputedStyle(dot).backgroundColor));
