@@ -682,7 +682,7 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import debugAnnotationScreenshotUrl from '../../assets/debug-annotation.png?url';
 import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendPermissionModeOption, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -738,6 +738,7 @@ import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
+import { conversationPermissionMenuItems } from './conversation-permission-menu';
 import { conversationCommandMenuItems, conversationMenuCommand, type ConversationMenuCommand } from './conversation-command-menu';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
 import { providerPaneClientRequests } from './provider-pane-client-requests';
@@ -2498,22 +2499,9 @@ const conversationCapabilities = computed<CodexCapabilities>(() => ({
   approvals: props.backendCapabilities.approvals,
   approvalPresets: props.backendCapabilities.approvalPresets ?? [],
 }));
-const permissionModeMenuItems = computed<CodexComposerMenuItem[]>(() => {
-  const modes = props.backendCapabilities.permissionModes ?? [];
-  if (modes.length === 0) {
-    return [];
-  }
-
-  return [{
-    id: 'backend-permissions',
-    type: 'submenu',
-    label: translate('surface.appShell.permissions'),
-    icon: ShieldCheckIcon,
-    submenuAlignment: 'bottom',
-    submenuWidth: 'wide',
-    items: modes.map((mode) => permissionModeMenuItem(mode, props.permissionMode)),
-  }];
-});
+const permissionModeMenuItems = computed(() => conversationPermissionMenuItems(
+  currentAgent.value?.backend, props.backendCapabilities.permissionModes ?? [], props.permissionMode,
+));
 const currentModelFavorite = computed<ModelFavorite | null>(() => {
   const agent = currentAgent.value;
   const model = props.backendModels.find((candidate) => candidate.id === props.selectedModelId)
@@ -2829,20 +2817,6 @@ async function updateManagedModelFavorites(favorites: ModelFavorite[]): Promise<
     : existing.slice(0, firstBackendIndex).filter((favorite) => favorite.backend !== backend).length;
   withoutBackend.splice(insertionIndex, 0, ...favorites.map(copyModelFavorite));
   await props.updateSettings({ general: { modelFavorites: withoutBackend } });
-}
-
-function permissionModeMenuItem(
-  mode: BackendPermissionModeOption,
-  selectedMode: string | null,
-): CodexComposerMenuItem {
-  return {
-    id: `permission-mode:${mode.id}`,
-    type: 'radio',
-    label: localizedText(mode.label, translate) ?? mode.id,
-    description: localizedText(mode.description, translate) ?? '',
-    checked: mode.id === selectedMode,
-    payload: { kind: 'permission-mode', mode: mode.id },
-  };
 }
 
 function permissionModeCommand(payload: unknown): { kind: 'permission-mode'; mode: string } | null {

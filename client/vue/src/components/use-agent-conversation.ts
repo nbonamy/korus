@@ -5,8 +5,6 @@ import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AgentConversationView } from '../app-state';
-import { translate } from '../i18n';
-import { localizedText } from '../i18n/errors';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
@@ -14,6 +12,8 @@ import { useCodeAnnotations } from './use-code-annotations';
 import { claudePaneClientRequests } from './claude-pane-client-requests';
 import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
+import { conversationPermissionMenuItems } from './conversation-permission-menu';
+import { translate } from '../i18n';
 
 export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
@@ -241,14 +241,7 @@ export function useAgentConversation(options: {
 }
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
-  const modes = view.capabilities.permissionModes ?? [];
-  if (!modes.length) return view.agent.backend === 'cursor'
-    ? [{ id: 'backend-permissions', type: 'action', label: translate('surface.appShell.permissions'), value: translate('cursor.managedPermissions'), disabled: true }]
-    : [];
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'),
-    items: modes.map(mode => ({ id: `permission:${mode.id}`, type: 'radio', label: localizedText(mode.label, translate) ?? mode.id, checked: selected === mode.id,
-      payload: { kind: 'permission-mode', mode: mode.id } })),
-  }];
+  return conversationPermissionMenuItems(view.agent.backend, view.capabilities.permissionModes ?? [], selected);
 }

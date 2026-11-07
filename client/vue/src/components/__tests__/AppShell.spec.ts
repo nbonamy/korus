@@ -2066,6 +2066,28 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('select-service-tier')).toStrictEqual([[null]]);
   });
 
+  it('shows read-only Cursor-managed permissions in the main conversation menu', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backend = 'cursor';
+    agent.backendDefaults = { kind: 'cursor' };
+    agent.backendSession = { kind: 'cursor', sessionId: 'cursor-permissions' };
+    const wrapper = mountShell({ snapshot,
+      cursorConversationSnapshot: emptyCursorSnapshot(agent.id, 'cursor-permissions'),
+      realConversationPane: true, stubAgentWorkspace: false });
+    try {
+      await flushPromises();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
+      expect(permissions).toBeDefined();
+      expect(permissions!.text()).toContain('Cursor-managed');
+      expect(permissions!.attributes('disabled')).toBeDefined();
+      await permissions!.trigger('click');
+      expect(wrapper.emitted('select-permission-mode')).toBeUndefined();
+      expect(wrapper.emitted('select-approval-preset')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
+
   it('exposes Claude permission modes as a distinct composer submenu', async () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
