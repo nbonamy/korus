@@ -17,3 +17,8 @@ describe('backend command catalog', () => {
     });
   });
 });
+
+it('offers only supported app commands with Cursor identity instead of Codex native controls', () => {
+  expect(defaultBackendCommands('cursor').map(({id,backend,slashName,submitOnSelect}) => ({id,backend,slashName,submitOnSelect})))
+    .toStrictEqual(['design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,backend:'cursor',slashName:name,submitOnSelect:true})));
+});
