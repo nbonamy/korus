@@ -322,6 +322,8 @@ describe('split-screen conversations', () => {
     }
   });
 
+  // Integration budget: full app and multiple composers, layout-menu interaction,
+  // per-agent artifact panes and diff navigation. The vertical workflow exceeds 2.5s on CI.
   it.each([
     ['Vertical Split', 2, 1],
     ['Horizontal Split', 2, 0],
@@ -391,7 +393,7 @@ describe('split-screen conversations', () => {
       await flushPromises();
       expect(wrapper.findAll('.app-shell__right-workspace').filter(panel => panel.isVisible())).toHaveLength(0);
     }
-  });
+  }, 5_000);
 
   it('keeps the focused composer selection when shared agent mentions refresh in both panes', async () => {
     const snapshot = createInitialSnapshot();
