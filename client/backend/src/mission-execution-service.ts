@@ -1259,7 +1259,7 @@ export class MissionExecutionService {
 
   private recordSupervisorUpdate(mission: Mission, run: MissionRun, event: string, outcome: string, decision: string, summary?: string): void {
     const leadId = missionLeadAgentId(mission);
-    if (run.workerId === leadId && !['schedule-required', 'accepted'].includes(event)) return;
+    if (run.workerId === leadId && !['schedule-required', 'accepted', 'unfinished', 'launch-failed'].includes(event)) return;
     if (!leadId || run.stage !== 'implementation' || mission.execution?.debugFixture) return;
     const updates = mission.execution!.supervisorUpdates ??= [];
     const id = `${run.id}:${event}`;

@@ -287,6 +287,27 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs.at(-1)!.workerId).not.toBe(lead.id);
   });
 
+  it.each(['unfinished', 'launch-failed'] as const)('hands a lead-owned %s failure back to the lead', async failure => {
+    const h = setup(); const lead = h.originalAgents[0]!; const repositoryPath = lead.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.execution!.implementationMode = 'lead';
+      mission.execution!.workspaces = [{ repositoryPath, path: '/shared/checkout', branch: 'mission/test' }];
+      mission.artifacts.tickets = [{ id: 'mission-ticket-a', title: 'Checkout', repositoryPath, done: false }];
+    });
+    if (failure === 'launch-failed') h.ports.refreshWorkspace.mockRejectedValueOnce(new Error('workspace unavailable'));
+    await h.service.schedule(lead.id, { commandId: 'lead-failure', expectedRevision: 0, maxConcurrency: 1, continuationLimit: 0,
+      assignments: [{ ticketId: 'mission-ticket-a', ticketRevision: 0, memberId: lead.id }] });
+    await h.service.waitForLaunches();
+    if (failure === 'unfinished') {
+      h.service.agentStarted(lead.id, 'unfinished-turn');
+      await h.service.agentFinished(lead.id, 'unfinished-turn');
+    }
+    expect(h.current().execution!.runs[0]!.status).toBe('failed');
+    expect(h.ports.sendMessage).toHaveBeenCalledWith(lead.id, lead.id, expect.stringContaining('Action required'));
+    expect(h.current().execution!.runs).toHaveLength(1);
+  });
+
   it('keeps the lead informed and continues an unfinished worker twice in the same conversation', async () => {
     const h = setup();
     const lead = h.originalAgents[0]!;
