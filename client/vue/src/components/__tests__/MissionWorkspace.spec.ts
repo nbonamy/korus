@@ -87,10 +87,11 @@ describe('MissionWorkspace', () => {
       { id: 'mission-ticket-running', title: 'Build UI', done: false },
       { id: 'mission-ticket-review', title: 'Review tests', done: false },
       { id: 'mission-ticket-next', title: 'Write docs', done: false, dependsOn: [0], revision: 1 },
-      { id: 'mission-ticket-blocked', title: 'Blocked UI', done: false, dependsOn: [1] },
+      { id: 'mission-ticket-dependent', title: 'Dependent UI', done: false, dependsOn: [1] },
       { id: 'mission-ticket-failed', title: 'Retry integration', done: false },
+      { id: 'mission-ticket-stopped', title: 'Resume integration', done: false },
     ];
-    for (const [index, status] of [[1, 'running'], [2, 'awaitingReview'], [3, 'failed'], [5, 'failed']] as const) {
+    for (const [index, status] of [[1, 'running'], [2, 'awaitingReview'], [3, 'failed'], [5, 'failed'], [6, 'cancelled']] as const) {
       mission.execution!.runs.push({ id: `run-${index}`, stage: 'implementation', ticketId: mission.artifacts.tickets[index]!.id,
         memberId: 'agent-dina', status, skills: [], feedback: '', startedAt: mission.createdAt });
     }
@@ -100,11 +101,11 @@ describe('MissionWorkspace', () => {
       await row.get(`button[aria-label="${label}"]`).trigger('click', modifiers);
     };
     const cards = () => wrapper.findAll('.mission-implementation__ticket');
-    expect(cards()).toHaveLength(6);
+    expect(cards()).toHaveLength(7);
     await click(statusRow(), 'In progress · 1');
     await click(statusRow(), 'Awaiting review · 1', { metaKey: true });
     expect(cards().map(card => card.text())).toEqual([expect.stringContaining('Build UI'), expect.stringContaining('Review tests')]);
-    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuemax')).toBe('6');
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuemax')).toBe('7');
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('1');
     await wrapper.setProps({ viewedStage: 'tickets' });
     expect(statusRow().get('[aria-label="In progress · 1"]').attributes('aria-pressed')).toBe('true');
@@ -113,22 +114,23 @@ describe('MissionWorkspace', () => {
     await ticket.trigger('click');
     expect(ticketDialogText()).toContain('Build UI');
     await new DOMWrapper(inTicketDialog('[aria-label="Close ticket details"]')!).trigger('click');
-    await click(statusRow(), 'All · 6');
-    expect(wrapper.findAll('.mission-ticket-board__number').map(n => n.text())).toEqual(['01', '02', '03', '04', '05', '06']);
-    await click(statusRow(), 'Up next · 1');
-    expect(wrapper.get('.mission-ticket-board__card').text()).toContain('Write docs');
-    await click(statusRow(), 'Blocked · 2');
-    expect(wrapper.findAll('.mission-ticket-board__card').map(card => card.text())).toEqual([expect.stringContaining('Blocked UI'), expect.stringContaining('Retry integration')]);
+    await click(statusRow(), 'All · 7');
+    expect(wrapper.findAll('.mission-ticket-board__number').map(n => n.text())).toEqual(['01', '02', '03', '04', '05', '06', '07']);
+    await click(statusRow(), 'Up next · 3');
+    expect(wrapper.findAll('.mission-ticket-board__card').map(card => card.text())).toEqual([expect.stringContaining('Write docs'), expect.stringContaining('Dependent UI'), expect.stringContaining('Resume integration')]);
+    expect(wrapper.findAll('.mission-ticket-board__card')[1]!.text()).toContain('After 02');
+    await click(statusRow(), 'Blocked · 1');
+    expect(wrapper.findAll('.mission-ticket-board__card').map(card => card.text())).toEqual([expect.stringContaining('Retry integration')]);
     const completed = structuredClone(mission);
     completed.artifacts.tickets.forEach(ticket => { ticket.done = true; });
     await wrapper.setProps({ mission: completed });
     expect(wrapper.findAll('.mission-ticket-board__card')).toHaveLength(0);
     expect(wrapper.text()).toContain('No tasks match these filters.');
     await wrapper.get('[aria-label="Clear task filters"]').trigger('click');
-    expect(wrapper.findAll('.mission-ticket-board__card')).toHaveLength(6);
-    await click(statusRow(), 'Done · 6');
+    expect(wrapper.findAll('.mission-ticket-board__card')).toHaveLength(7);
+    await click(statusRow(), 'Done · 7');
     await wrapper.setProps({ mission: { ...mission, id: 'another-mission' } });
-    expect(statusRow().get('[aria-label="All · 6"]').attributes('aria-pressed')).toBe('true');
+    expect(statusRow().get('[aria-label="All · 7"]').attributes('aria-pressed')).toBe('true');
     wrapper.unmount();
   });
 
