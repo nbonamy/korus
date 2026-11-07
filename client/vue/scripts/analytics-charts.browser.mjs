@@ -89,6 +89,8 @@ try {
         hasTouch: true,
         timezoneId: "America/Chicago",
       });
+      page.setDefaultTimeout(2_500);
+      page.setDefaultNavigationTimeout(15_000);
       page.on("pageerror", (error) => errors.push(error.message));
       await page.clock.setFixedTime(new Date("2026-11-01T20:00:00Z"));
       for (const scene of [
@@ -105,7 +107,7 @@ try {
             name: scene[0].toUpperCase() + scene.slice(1),
             exact: true,
           })
-          .waitFor();
+          .waitFor({ timeout: 15_000 }); // Cold route/module startup.
         await page
           .getByText("Loading metrics…", { exact: true })
           .waitFor({ state: "hidden" });
@@ -202,6 +204,8 @@ try {
           timezoneId: "America/Chicago",
           hasTouch: true,
         });
+        page.setDefaultTimeout(2_500);
+        page.setDefaultNavigationTimeout(15_000);
         await page.clock.setFixedTime(new Date("2026-11-01T20:00:00Z"));
         page.on("pageerror", (error) => errors.push(error.message));
         for (const scene of [
@@ -217,7 +221,7 @@ try {
           ...(app === "server" ? ["latency"] : []),
         ]) {
           await page.goto(`${origin}/?app=${app}&scene=${scene}`);
-          await page.locator(".capture-frame").waitFor();
+          await page.locator(".capture-frame").waitFor({ timeout: 15_000 }); // Cold route/module startup.
           await page
             .locator('svg[role="img"],canvas[role="img"]')
             .first()

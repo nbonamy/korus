@@ -164,6 +164,7 @@ describe('AgentSidebar sessions', () => {
     expect(row.find('[aria-label="Working"]').exists()).toBe(true);
   });
 
+  // Integrated sidebar rendering covers groups, statuses, active rows and menus.
   it('renders the selected team name, repository headers, branch sessions, statuses, and active selection', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {
@@ -353,6 +354,7 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  // Rendered activity sorting, controlled aging and per-team preferences across remounts.
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
@@ -435,6 +437,7 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 
+  // Real popovers exercise repeated sorting and persisted choices across two teams.
   it('sorts only Idle by normal repository order or recent activity and remembers each team’s choice', async () => {
     const items: Agent[] = [
       { ...agents[0]!, id: 'old', name: 'Older', status: { type: 'idle' }, lastActivityAt: '2026-01-01T10:00:00Z' },

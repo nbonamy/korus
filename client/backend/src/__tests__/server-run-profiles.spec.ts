@@ -30,6 +30,7 @@ async function local(options: Pick<AppBackendServerOptions, 'agentGitService'> =
   return { root, server, runProfiles, start };
 }
 
+// RPC workflows run and stop real owned child processes in Git worktrees.
 describe('run profile app-owned boundary', () => {
   it('reads import candidates through the owning agent boundary without saving or starting them', async () => {
     const f = await local();

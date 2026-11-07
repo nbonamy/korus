@@ -29,6 +29,10 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 2_500,
+    hookTimeout: 2_500,
+    // Vitest schedules groups by array index; negative groups are skipped.
+    sequence: { groupOrder: 2 },
     environment: 'jsdom',
     css: {
       // Opt in only components with valuable runtime CSS assertions.
@@ -51,12 +55,17 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'browser',
+          // Cold Vite/Chromium work must not contend with short DOM behavior tests.
+          sequence: { groupOrder: 1 },
+          fileParallelism: false,
           environment: 'node',
           pool: 'forks',
           include: ['src/**/*.browser.spec.mjs'],
           setupFiles: [],
-          testTimeout: 120_000,
-          hookTimeout: 120_000,
+          // These workflows include cold Vite transforms and Chromium startup.
+          // Individual interactions have their own short bounds.
+          testTimeout: 30_000,
+          hookTimeout: 15_000,
         },
       },
       {

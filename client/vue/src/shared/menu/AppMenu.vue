@@ -450,6 +450,11 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   white-space: nowrap;
 }
 
+.app-menu__value:has(.app-menu__value-added) {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
 .app-menu__info .app-menu__value {
   flex: 0 0 auto;
   max-width: none;

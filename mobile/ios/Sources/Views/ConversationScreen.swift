@@ -6,15 +6,9 @@ struct ConversationScreen: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { proxy in
-                TranscriptView(host: model.transcript)
-                    .ignoresSafeArea()
-                    .accessibilityHidden(model.loadingConversation)
-                    .allowsHitTesting(!model.loadingConversation)
-                    .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
-                        model.transcript.setInsets(top: insets.top, bottom: insets.bottom, leading: insets.leading, trailing: insets.trailing)
-                    }
-            }
+            TranscriptView(host: model.transcript)
+                .accessibilityHidden(model.loadingConversation)
+                .allowsHitTesting(!model.loadingConversation)
             .overlay {
                 if model.showConnectionLost && !model.hasTranscript {
                     ConnectionLostView(reconnect: model.reconnect)
@@ -65,7 +59,7 @@ struct ConversationScreen: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !model.filePreviewOpen {
+                if !model.filePreviewOpen && model.providerBlock == nil {
                 VStack(spacing: 0) {
                     if let request = model.requests.first {
                         HStack(spacing: 0) {

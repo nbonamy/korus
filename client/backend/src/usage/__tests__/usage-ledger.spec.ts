@@ -129,6 +129,7 @@ it("persists turn-start effort and service tier without replacing them on later 
   }
 });
 
+// A real SQLite ledger with more than ten thousand executions exercises retention.
 it("includes every retained execution beyond 10,000 in totals and model breakdowns", async () => {
   const at = Date.parse("2026-10-15T12:00:00Z");
   const ledger = new UsageLedger(":memory:", () => at);
@@ -157,7 +158,7 @@ it("includes every retained execution beyond 10,000 in totals and model breakdow
   } finally {
     await ledger.close();
   }
-});
+}, 3_000);
 
 it("persists only statistics in SQLite and replaces late measurements without inflating daily totals", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "local-analytics-"));

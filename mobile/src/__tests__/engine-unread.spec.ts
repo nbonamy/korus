@@ -3,6 +3,49 @@ import { createEngine } from '../engine';
 import { createDemoConnector } from '../demo-connector';
 
 describe('mobile shared unread activity', () => {
+  it('keeps a reviewed provider block locked while showing Idle, and rejects stale composer sends', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const submit = vi.fn();
+    let update!: NonNullable<import('../companion-port').CompanionSession['onUpdate']> extends (listener: infer T) => unknown ? T : never;
+    let workspace!: import('../companion-port').CompanionWorkspace;
+    const message = 'Conversation blocked by provider. Automatic retries are stopped.\n\nThe provider stopped this request.';
+    connector.connect = async id => {
+      const session = await connect(id);
+      workspace = await session.getWorkspace();
+      workspace.agents = workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent,
+        status: { type: 'error', message }, readState: { revision: 2, readRevision: 1 } } : agent);
+      return { ...session, submit, getWorkspace: async () => workspace,
+        onUpdate(listener) { update = listener; return () => {}; },
+        async markRead(agentId, revision) {
+          workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === agentId
+            ? { ...agent, readState: { revision, readRevision: revision } } : agent) };
+          update(workspace, null);
+        } };
+    };
+    const engine = createEngine({ connector, post: () => {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(engine.snapshot()).toMatchObject({ providerBlock: { details: 'The provider stopped this request.' }, canSend: false, header: { status: 'error' } });
+      await engine.dispatch({ type: 'send', text: 'stale send', requestId: 'stale' });
+      expect(submit).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'read', agentId: 'demo-agent', revision: 2, generation: engine.snapshot().conversationGeneration });
+      expect(engine.snapshot()).toMatchObject({ providerBlock: { details: 'The provider stopped this request.' }, canSend: false, header: { status: 'idle', statusText: 'idle' } });
+      expect(engine.snapshot().groups.flatMap(group => group.sessions).find(chat => chat.agentId === 'demo-agent')).toMatchObject({ status: { type: 'idle' }, isUnread: false });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(engine.snapshot()).toMatchObject({ providerBlock: null, canSend: true });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(engine.snapshot()).toMatchObject({ providerBlock: { details: 'The provider stopped this request.' }, canSend: false, header: { status: 'idle' } });
+      // Ordinary errors retain the editable composer, and a fresh provider stop needs attention again.
+      for (const [nextMessage, blocked] of [['Network error', false], [message, true]] as const) {
+        workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent'
+          ? { ...agent, status: { type: 'error', message: nextMessage }, readState: { revision: 3, readRevision: 2 } } : agent) };
+        update(workspace, null);
+        expect(engine.snapshot().canSend).toBe(!blocked);
+        expect(engine.snapshot().header?.status).toBe('error');
+      }
+    } finally { engine.dispose(); }
+  });
   it('rejects pre-disconnect render receipts after reconnect even when the numeric revision is unchanged', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const markRead = vi.fn(async () => {}); const interrupt = vi.fn(async () => {});

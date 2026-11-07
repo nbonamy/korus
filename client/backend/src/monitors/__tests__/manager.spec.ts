@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { type MonitorEvent, MonitorManager } from '../manager';
 const managers: MonitorManager[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(managers.splice(0).map((manager) => manager.close()));
 });
 function setup() {
@@ -35,6 +36,7 @@ it('collects completion-only output and reports nonzero exit with stderr', async
   expect(() => manager.stop('other', run.id)).toThrow('not found');
 });
 it('delivers progressive events before completion and stops without waking the owner', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const { manager, deliver } = setup();
   const run = manager.start('owner', process.cwd(), {
     command: command("console.log('ready');setInterval(()=>{},1000)"),
@@ -42,7 +44,9 @@ it('delivers progressive events before completion and stops without waking the o
     name: 'watch',
     timeoutSeconds: 10,
   });
-  await vi.waitFor(() => expect(deliver).toHaveBeenCalled());
+  await vi.waitFor(() => expect(manager.list('owner')[0]!.stdout).toBe('ready\n'), { interval: 1 });
+  await vi.advanceTimersByTimeAsync(500);
+  await manager.flush('owner');
   expect(deliver.mock.calls[0]![1]).toMatchObject({
     state: 'running',
     stdout: 'ready\n',
@@ -54,6 +58,7 @@ it('delivers progressive events before completion and stops without waking the o
   expect(deliver).toHaveBeenCalledTimes(1);
 });
 it('delivers progressive output without a trailing newline while the command runs', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const { manager, deliver } = setup();
   const run = manager.start('owner', process.cwd(), {
     command: command("process.stdout.write('ready');setInterval(()=>{},1000)"),
@@ -61,7 +66,9 @@ it('delivers progressive output without a trailing newline while the command run
     name: 'watch',
     timeoutSeconds: 10,
   });
-  await vi.waitFor(() => expect(deliver).toHaveBeenCalled());
+  await vi.waitFor(() => expect(manager.list('owner')[0]!.stdout).toBe('ready'), { interval: 1 });
+  await vi.advanceTimersByTimeAsync(500);
+  await manager.flush('owner');
   expect(deliver.mock.calls[0]![1]).toMatchObject({ state: 'running', stdout: 'ready' });
   manager.stop('owner', run.id);
 });

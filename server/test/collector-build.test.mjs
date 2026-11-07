@@ -1,3 +1,4 @@
+// Builds the real collector and launches its bundled process with private-setting canaries.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -14,7 +15,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-test("standalone collector bundles without operator secrets and emits a structured safe startup failure", async () => {
+test("standalone collector bundles without operator secrets and emits a structured safe startup failure", { timeout: 10_000 }, async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), "collector-build-"));
   try {
@@ -43,7 +44,7 @@ test("standalone collector bundles without operator secrets and emits a structur
     const build = spawnSync(process.execPath, [path.join(temp, "build.mjs")], {
       cwd: temp,
       encoding: "utf8",
-      timeout: 60_000,
+      timeout: 5_000,
     });
     assert.equal(build.status, 0, build.stderr);
     const bundle = path.join(temp, "server/backend/dist/collector.mjs");
@@ -51,7 +52,7 @@ test("standalone collector bundles without operator secrets and emits a structur
     const run = spawnSync(process.execPath, [bundle, "serve", canary], {
       cwd: os.tmpdir(),
       encoding: "utf8",
-      timeout: 10_000,
+      timeout: 2_500,
       env: { ...process.env, TELEMETRY_DATABASE_URL: canary },
     });
     assert.equal(run.status, 1, run.stderr);
@@ -82,7 +83,7 @@ test("standalone collector bundles without operator secrets and emits a structur
       {
         cwd: os.tmpdir(),
         encoding: "utf8",
-        timeout: 10_000,
+        timeout: 2_500,
         env: { ...process.env, TELEMETRY_DATABASE_URL: canary },
       },
     );

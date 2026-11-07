@@ -50,7 +50,8 @@ async function fixture() {
   return { root, source, git, head, agent, provision, service, progress, preview, input };
 }
 
-describe('BranchCurrentWorkService', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
   it.each(['automatic', 'off', 'setup failure'] as const)('initializes an isolated branch through the configured runtime after transfer: %s', async scenario => {
     const f = await fixture();
     // An ignored environment file is not part of the captured Git changes.
@@ -133,7 +134,8 @@ describe('BranchCurrentWorkService', () => {
   });
 });
 
-describe('transfer safety and recovery', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('transfer safety and recovery', { timeout: 3_000 }, () => {
   it.each(['local', 'remote', 'slash-named remote'] as const)('does not mistake an existing %s branch suffix for the requested branch', async scenario => {
     const f = await fixture();
     if (scenario === 'local') await f.git('branch', 'team/fix');
@@ -208,7 +210,9 @@ describe('transfer safety and recovery', () => {
   });
 });
 
-describe('file and checkout boundaries', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('file and checkout boundaries', { timeout: 3_000 }, () => {
+  // Real multi-file Git transfer includes renames, binary patches and staged deletions.
   it('transfers staged additions/deletions, renames, binary content, and literal pathspecs', async () => {
     const f = await fixture();
     await f.git('mv', 'other', 'renamed');
@@ -223,7 +227,7 @@ describe('file and checkout boundaries', () => {
     expect(await readFile(join(result.folder, 'renamed'), 'utf8')).toBe('unrelated\n');
     expect(await f.git('diff', '--cached', '--name-only')).toBe('');
     expect(await readFile(join(f.source, 'other'), 'utf8')).toBe('original\n');
-  });
+  }, 5_000);
 
   it('preserves intent-to-add and exact file bytes under checkout filters', async () => {
     const f = await fixture();
@@ -267,7 +271,8 @@ describe('file and checkout boundaries', () => {
 });
 
 
-describe('source cleanup races', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('source cleanup races', { timeout: 3_000 }, () => {
   it('retains edits through an open file descriptor in the reported recovery copies', async () => {
     const f = await fixture();
     const descriptor = await open(join(f.source, 'mixed'), 'r+');
@@ -282,7 +287,8 @@ describe('source cleanup races', () => {
 });
 
 
-describe('worktree identity', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('worktree identity', { timeout: 3_000 }, () => {
   it('branches from a linked checkout HEAD without changing the primary checkout', async () => {
     const f = await fixture(); const linked = join(f.root, 'linked');
     await f.git('worktree', 'add', '-b', 'source-feature', linked);
@@ -324,7 +330,8 @@ describe('worktree identity', () => {
   });
 });
 
-describe('index lock contention', () => {
+// Real Git subprocesses exercise worktree transfer, index locks and recovery.
+describe('index lock contention', { timeout: 3_000 }, () => {
   it('waits for another git process to release the index lock instead of abandoning the cleanup', async () => {
     const f = await fixture();
     indexLock.busy = 6;

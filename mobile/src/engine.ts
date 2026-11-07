@@ -3,6 +3,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, ref, watch } from 'vue';
 import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
+import { mobileAgentStatus, providerBlockFor } from './provider-block';
 import { missionAgentsAttention, type MissionAttention } from '@workspace/core/mission-attention';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
@@ -62,6 +63,7 @@ export type EngineState = {
   refreshing: boolean;
   conversationGeneration: number;
   canSend: boolean;
+  providerBlock: { details: string } | null;
   composerTarget: CompanionTarget | null;
   goal: { objective: string; status: string } | null;
   goalBusy: boolean;
@@ -286,6 +288,9 @@ export function createEngine(port: EnginePort) {
   const hasConversation = computed(() => Boolean(state.conversation.value));
   function snapshot(): EngineState {
     const agent = state.agent.value;
+    const providerBlock = providerBlockFor(agent);
+    const displayStatus = agent ? mobileAgentStatus(agent).type : 'idle';
+    const displayStatusText = providerBlock ? displayStatus : agent?.statusText ?? displayStatus;
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
@@ -330,9 +335,10 @@ export function createEngine(port: EnginePort) {
       startup: startup.value, connection: state.status.value, error: state.error.value, errorDetail: state.errorDetail.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
-      header: owner && agent && missionTitle ? { title: missionTitle.title, repository: missionTitle.subtitle, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null }
+      providerBlock,
+      header: owner && agent && missionTitle ? { title: missionTitle.title, repository: missionTitle.subtitle, status: displayStatus, statusText: displayStatusText, icon: null }
         : active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
-        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null }
+        status: displayStatus, statusText: displayStatusText, icon: active.group.icon ?? null }
         : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
@@ -365,7 +371,7 @@ export function createEngine(port: EnginePort) {
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
         modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
-        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: capabilities.attachments && !agent?.remoteConnectionId },
+        planMode: capabilities.planMode !== 'unsupported', interrupt: !providerBlock && capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: !providerBlock && capabilities.attachments && !agent?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }

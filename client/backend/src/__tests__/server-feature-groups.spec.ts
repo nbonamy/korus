@@ -37,6 +37,7 @@ async function fixture() {
 }
 
 describe('feature groups through the backend and real Git', () => {
+  // This workflow creates and removes real Git worktrees through RPC.
   it('persists display labels in roster.json without renaming branches and requires fresh confirmed cleanup of every worktree', async () => {
     const f = await fixture();
     try {
@@ -70,7 +71,7 @@ describe('feature groups through the backend and real Git', () => {
       }
       expect((await f.store.load()).teams[0]!.featureLabels?.feat1).toBeUndefined();
     } finally { await f.close(); }
-  });
+  }, 3_000);
 
   it('blocks default branches, changed checkouts and worktrees shared outside the feature before deleting anything', async () => {
     const f = await fixture();

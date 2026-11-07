@@ -95,6 +95,9 @@ try {
     viewport: { width: 1000, height: 900 },
   });
   const page = await context.newPage();
+  page.setDefaultTimeout(2_500);
+  // The first route loads the cold fixture and its modules.
+  page.setDefaultNavigationTimeout(15_000);
   await page.clock.install({time:new Date('2026-11-01T12:00:00Z')});
   await page.clock.pauseAt(new Date('2026-11-01T12:00:01Z'));
   const errors = [];
@@ -108,7 +111,7 @@ try {
     return route.continue();
   });
   await page.goto(`http://127.0.0.1:${address.port}/consent-dom`);
-  await page.waitForFunction(() => Boolean(window.fixture));
+  await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.clock.runFor(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   const notice = page.locator('.telemetry-notice');
@@ -191,14 +194,14 @@ try {
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['enable']);
   await notice.screenshot({path:path.join(output,'notice-after-timeout.png')});
   await page.reload();
-  await page.waitForFunction(() => Boolean(window.fixture));
+  await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.evaluate(() => window.fixture.ready(true));
   await page.clock.runFor(90_000);
   assert.equal(await notice.count(),0);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   await page.evaluate(() => sessionStorage.removeItem('consent'));
   await page.reload();
-  await page.waitForFunction(() => Boolean(window.fixture));
+  await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.evaluate(() => window.fixture.ready(true));
   await notice.waitFor();
   await page.evaluate(() => {window.fixture.failNext=true});
@@ -217,7 +220,7 @@ try {
   // A fresh pending profile takes the independent opt-out path.
   await page.evaluate(() => sessionStorage.removeItem('consent'));
   await page.reload();
-  await page.waitForFunction(() => Boolean(window.fixture));
+  await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.evaluate(() => window.fixture.ready(true));
   await page.clock.runFor(59_999);
   await notice.getByRole('button', {name:'Cancel',exact:true}).click();

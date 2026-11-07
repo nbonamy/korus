@@ -30,7 +30,8 @@ async function fixture() {
   return { root, repo, feature };
 }
 
-describe('merge cleanup with real Git', () => {
+// Real Git merge/push/cleanup workflows include several subprocesses.
+describe('merge cleanup with real Git', { timeout: 3_000 }, () => {
   it('refuses to delete the base upstream of an unpublished worktree branch while allowing local-only cleanup', async () => {
     const { root, repo, feature } = await fixture();
     try {

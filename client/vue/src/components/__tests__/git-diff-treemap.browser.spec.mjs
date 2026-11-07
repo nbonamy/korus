@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 
 // Owning rendered workflow: a dense map must preserve churn, scope and file identity
 // while resizing/filtering, and every small or non-textual file must stay reachable.
+// The workflow budget covers cold editor loading, rendering and many screenshot scenes.
 test('diff treemap scales to hundreds of files and drills into the existing diff', { timeout: 90_000 }, async t => {
   const root = fileURLToPath(new URL('../../../../..', import.meta.url));
   const output = process.env.DIFF_TREEMAP_EVIDENCE || await mkdtemp(path.join(os.tmpdir(), 'diff-treemap-'));
@@ -107,8 +108,9 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
             generateAgentGitMessage:async(id,input)=>{const request=structuredClone(input);window.fixture.generations.push({id,input:request});return {kind:'viz',diagram:request.mode==='fast'?fastDiagram:diagram};}
           }});
           const byKind=Object.fromEntries(['code','test','docs','other'].map(kind=>[kind,{changedFiles:1,addedLines:1,removedLines:1}]));
+          const commits=[25,1234567].map((addedLines,index)=>({sha:String(index).repeat(40),shortSha:String(index).repeat(8),subject:'Keep the complete commit statistics visible beside a long commit subject and its identifier',addedLines,removedLines:index?9876543:7,changedFiles:1}));
           createApp({setup:()=>()=>[
-            h('aside',{style:'position:absolute;right:16px;top:16px'},[h(DiffControl,{agentId:'fixture',gitStatus:{...panel.value.summary,diffCatalog:{uncommitted:{...panel.value.summary,byKind},commits:[]}}})]),
+            h('aside',{style:'position:absolute;right:16px;top:16px'},[h(DiffControl,{agentId:'fixture',gitStatus:{...panel.value.summary,diffCatalog:{uncommitted:{...panel.value.summary,byKind},commits}}})]),
             h('main',{class:'fixture',style:settingsVisible.value?'display:none':undefined},[h(Review,{agent:{id:'fixture',folder:'/repos/korus'},panel:panel.value,onOpenFile:path=>window.fixture.opens.push(path)})]),
             settingsVisible.value?h('div',{class:'settings-fixture',style:'width:650px;height:820px;overflow:auto'},[h(SettingsWorkflowsPanel,{settings:snapshot.general,updateSettings:async input=>{await save(input);}})]):null
           ]}).provide(diffVizSettingsKey,()=>snapshot.general).use(i18n).use(ElementPlus).mount('#app');
@@ -121,15 +123,15 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
   try {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    page.setDefaultTimeout(10_000);
+    page.setDefaultTimeout(2_500);
     // Cold Vite transforms and dependency optimization are fixture setup, not UI latency.
-    page.setDefaultNavigationTimeout(60_000);
+    page.setDefaultNavigationTimeout(15_000);
     // Remote font stylesheets must not hold this local rendering workflow open.
     await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${origin}/diff-map`, { waitUntil: 'domcontentloaded' });
-    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 60_000 });
+    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 15_000 });
     const toggleMap = async () => {
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
@@ -157,6 +159,17 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.getByRole('button', { name: 'Choose repository diff', exact: true }).click();
     const menuColors = await page.locator('.app-menu__color-dot').evaluateAll(dots => dots.map(dot => getComputedStyle(dot).backgroundColor));
     assert.equal(menuColors.length, 4);
+    await page.getByRole('menuitem', { name: 'Commits', exact: true }).hover();
+    const commitMenu = page.getByRole('menu', { name: 'Commits', exact: true });
+    await commitMenu.waitFor();
+    assert.deepEqual(await commitMenu.locator('.app-menu__value').allTextContents(), ['+25 -7', '+1234567 -9876543']);
+    const statsFit = await commitMenu.locator('.app-menu__value').evaluateAll(values => values.every(value => {
+      const bounds = value.getBoundingClientRect(), row = value.parentElement.getBoundingClientRect();
+      return value.scrollWidth <= value.clientWidth + 1 && bounds.right <= row.right
+        && [...value.children].every(part => part.getBoundingClientRect().right <= bounds.right + 1);
+    }));
+    assert.equal(statsFit, true, 'commit additions and deletions must remain fully visible beside long subjects');
+    await page.screenshot({ path: path.join(output, 'commit-stats.png') });
     await page.keyboard.press('Escape');
     await toggleMap();
     const filterColors = await page.locator('.diff-treemap__filters button i').evaluateAll(dots => dots.slice(1).map(dot => getComputedStyle(dot).backgroundColor));
@@ -327,9 +340,10 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     await page.locator('.fixture').screenshot({ path: path.join(output, 'viz-empty-460.png') });
     await page.getByRole('button', { name: 'Generate', exact: true }).click();
     const concept = page.getByRole('button', { name: 'Open changes for Profile Sync Service', exact: true });
-    await page.waitForFunction(() => document.querySelector('.diff-viz-canvas__target') || document.querySelector('.diff-viz-canvas__status button'), { timeout: 30_000 });
+    // First polished render loads the editor bundle and fonts on demand.
+    await page.waitForFunction(() => document.querySelector('.diff-viz-canvas__target') || document.querySelector('.diff-viz-canvas__status button'), undefined, { timeout: 15_000 });
     assert.equal(await page.locator('.diff-viz-canvas__status button').count(), 0, (await page.locator('.diff-viz-canvas__status').allTextContents()).join(' '));
-    await concept.waitFor({ state: 'visible', timeout: 30_000 });
+    await concept.waitFor({ state: 'visible' });
     await page.getByRole('heading',{name:'Profile sync persists review activity',exact:true}).waitFor();
     const explanation=await concept.getAttribute('title');
     assert.ok(explanation.includes('Profile activity is saved during synchronization.'));

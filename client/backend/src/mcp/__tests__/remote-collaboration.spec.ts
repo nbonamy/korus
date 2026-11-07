@@ -17,7 +17,10 @@ import { createTaskToolModuleProvider } from '../task-tools';
 import { WorktreeManager } from '../../worktrees/worktree-manager';
 
 const cleanup: Array<() => Promise<void>> = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+afterEach(async () => {
+  try { for (const close of cleanup.splice(0).reverse()) await close(); }
+  finally { vi.useRealTimers(); }
+});
 
 async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknown, callController?: (input: unknown) => Promise<unknown>, savedTasks: DelegatedTask[] = []) {
   const home = await mkdtemp(path.join(os.tmpdir(), 'cross-host-mcp-'));
@@ -281,17 +284,20 @@ describe('collaboration across daemon ownership boundaries', () => {
 
   it('retries offline remote messages and deduplicates admission after a lost reply', async () => {
     const { owner, workerHost, worker, network, send } = await connectedPair();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const conversation = workerHost.provider.conversation('remote-worker');
     network.online = false;
     expect((await send('Read after reconnect')).isError).toBe(false);
     await vi.waitFor(() => expect(owner.snapshot.queuedPrompts).toStrictEqual([]));
     network.online = true;
-    await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledOnce(), { timeout: 4000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledOnce());
     workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'awaitingInput' } });
     network.loseReply = true;
     expect((await send('Admit exactly once')).isError).toBe(false);
     await vi.waitFor(() => expect(network.loseReply).toBe(false));
-    await vi.waitFor(async () => expect((await workerHost.mcp.callTool(worker.id, 'check-messages', { markAsRead: false })).structuredContent?.messages).toStrictEqual([]), { timeout: 4000 });
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(async () => expect((await workerHost.mcp.callTool(worker.id, 'check-messages', { markAsRead: false })).structuredContent?.messages).toStrictEqual([]));
     expect(workerHost.snapshot.queuedPrompts).toHaveLength(1);
     workerHost.server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
     await vi.waitFor(() => expect(conversation.handle.sendMessage).toHaveBeenCalledTimes(2));
@@ -507,8 +513,14 @@ it.each(['complete', 'cancel'] as const)('retains original task authority throug
   expect((pending.structuredContent?.tasks as DelegatedTask[])).toHaveLength(2);
   pauseReads = true;
   const bounded = workerHost.mcp.callTool(remoteParent.id, 'wait-tasks', { mode: 'all', timeoutMs: 20 });
-  const boundedResult = await Promise.race([bounded, new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 500))]);
-  pauseReads = false; releaseRead();
+  let boundedResult: Awaited<typeof bounded> | undefined;
+  void bounded.then(result => { boundedResult = result; });
+  try {
+    await vi.waitFor(() => expect(boundedResult).toBeDefined(), { timeout: 100, interval: 1 });
+  } finally {
+    pauseReads = false; releaseRead();
+    await bounded;
+  }
   expect(boundedResult?.isError).toBe(true);
   const after = await workerHost.mcp.callTool(workerId, 'wait-tasks', { taskIds: [taskId] });
   expect(after.isError).toBe(false);

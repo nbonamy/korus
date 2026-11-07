@@ -21,6 +21,7 @@ async function choose(wrapper: ReturnType<typeof editor>, label: string, text: s
 async function toggleDay(wrapper: ReturnType<typeof editor>, day: string) {
   await wrapper.get(`button[aria-label="${day}"]`).trigger('click'); await flushPromises();
 }
+// Switches calendar modes and remounts saved schedules through real Element Plus controls.
 it('edits daily, weekday and weekly schedules through calendar controls', async () => {
   const wrapper = editor();
   expect(wrapper.findAll('.form-field__label').map(label => label.text())).toEqual(['Repeat', 'Time']);

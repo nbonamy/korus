@@ -56,6 +56,7 @@ describe('SettingsView', () => {
     wrapper.unmount();
   });
 
+  // Full rendered skill installation, provider synchronization and recovery workflow.
   it('installs a featured skill, offers whole packs, syncs providers and keeps failures visible', async () => {
     const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ backend: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
     const nativeGuidelines = { ...personal, name: 'web-design-guidelines', providers: personal.providers.map(provider => ({ ...provider, status: 'installed' as const })) };

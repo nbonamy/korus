@@ -169,6 +169,8 @@ describe('AppBackendServer', () => {
       snapshot,
       saveSnapshot,
       driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      // This case owns selection/history; never inspect the operator's checkout.
+      agentGitService: { status: vi.fn().mockResolvedValue(null) } as unknown as AgentGitService,
     });
 
     await expect(server.handleMessage({

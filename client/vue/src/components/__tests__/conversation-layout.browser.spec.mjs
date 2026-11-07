@@ -68,6 +68,9 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await server.listen();
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    page.setDefaultTimeout(2_500);
+    // Cold Vite/SFC initialization is setup; user interactions retain the 2.5-second bound.
+    page.setDefaultNavigationTimeout(15_000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -99,6 +102,9 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await page.waitForFunction(() => document.querySelectorAll('.chat-rich-text-editor').length === 1);
     assert.equal(await editor.textContent(), `Draft for ${ids[1]}`);
     await editor.click();
+    await page.getByRole('menu', { name: 'Conversation layout', exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(await editor.evaluate(element => element === document.activeElement), true,
+      'closing the layout menu must preserve focus moved to the composer');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => window.fixture.calls.length === 2);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls[1]), [ids[1], `Draft for ${ids[1]}`]);
@@ -108,4 +114,4 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await server.close();
     await rm(cacheDir, { recursive: true, force: true });
   }
-}, 120_000);
+}, 30_000); // Includes cold app startup and the complete single/split workflow.

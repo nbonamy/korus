@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { mount, flushPromises } from "@vue/test-utils";
+import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
+enableAutoUnmount(afterEach);
 vi.mock("vue-chartjs", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -49,12 +50,13 @@ const render = () => {
     global: { plugins: [router], components: { ElPopover, ElSwitch } },
   });
 };
-it("does not render login or protected data before the session check finishes", async () => {
-  for (const [path, status, heading] of [
-    ["/login?redirect=/models", 204, "Models"],
-    ["/models", 204, "Models"],
-    ["/models", 401, "Sign in"],
-  ] as const) {
+it.each([
+  ["/login?redirect=/models", 204, "Models"],
+  ["/models", 204, "Models"],
+  ["/models", 401, "Sign in"],
+] as const)(
+  "does not render login or protected data before the session check finishes (%s, %s)",
+  async (path, status, heading) => {
     window.history.replaceState({}, "", path);
     let resolve!: (response: Response) => void;
     vi.stubGlobal(
@@ -77,8 +79,8 @@ it("does not render login or protected data before the session check finishes", 
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe(heading);
     wrapper.unmount();
-  }
-});
+  },
+);
 it("recovers session-check outages without presenting login and rejects external return targets", async () => {
   window.history.replaceState(
     {},

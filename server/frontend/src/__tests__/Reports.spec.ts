@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { mount, flushPromises } from "@vue/test-utils";
+import { mount, flushPromises, enableAutoUnmount } from "@vue/test-utils";
 import { afterEach, it, expect, vi } from "vitest";
 import { RouterView, createMemoryHistory } from "vue-router";
 import { createConsoleRouter } from "../router";
 import { createConsoleSession } from "../console-session";
 import { metrics } from "./metrics-fixture";
+enableAutoUnmount(afterEach);
 vi.mock("vue-chartjs", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -23,6 +24,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
+// Full rendered router workflow verifies each report route and its controls.
 it("keeps overview weekly and gives each detail route its own breakdowns", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-01T20:00:00Z"));
@@ -492,4 +494,4 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
   } finally {
     wrapper.unmount();
   }
-});
+}, 5_000);

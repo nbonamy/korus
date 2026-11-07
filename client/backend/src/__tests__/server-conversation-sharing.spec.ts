@@ -375,6 +375,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect((await f.request(server, { action: 'copy', target: f.target })).link === first.link).toBe(true);
     } finally { await server.close(); }
   });
+  // This capacity test durably writes more than fifty independent conversation shares.
   it('does not impose a fifty-conversation limit', async () => {
     const f = await fixture(); const server = f.start();
     try {

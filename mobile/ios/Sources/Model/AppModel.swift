@@ -102,6 +102,7 @@ final class AppModel {
     var approvalPreset: String?
     var approvalPresets: [String] = []
     var canSend = false
+    var providerBlock: EngineState.ProviderBlock?
     var canInterrupt = false
     var sessionAction: String?
     var sessionActionFailed = false
@@ -387,6 +388,8 @@ final class AppModel {
         if state.review?.status == .started { reviewOpen = false }
         set(\.supportsAttachments, state.capabilities.attachments)
         set(\.canSend, state.canSend)
+        set(\.providerBlock, state.providerBlock)
+        if providerBlock != nil { dictation.cancel() }
         set(\.canInterrupt, state.capabilities.interrupt)
         set(\.sessionAction, state.sessionAction)
         set(\.sessionActionFailed, state.sessionActionFailed)

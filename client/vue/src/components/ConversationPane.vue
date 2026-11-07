@@ -114,7 +114,7 @@
           <details>
             <summary><AlertTriangleIcon aria-hidden="true" /><span class="conversation-pane__safety-title">{{ t('backend.providerSafetyBlocked') }}</span><ChevronDownIcon class="conversation-pane__safety-chevron" aria-hidden="true" /></summary>
             <pre>{{ safetyReview?.explanation || safetyBlock }}</pre>
-            <button v-if="safetyReview?.canContinue" class="app-button app-button--secondary safety-review-continue" type="button" :disabled="safetyReviewBusy" @click="continueSafetyReview">{{ t('backend.continueSafetyReview') }}</button>
+            <button v-if="safetyReview?.canContinue && appApi" class="app-button app-button--secondary safety-review-continue" type="button" :disabled="safetyReviewBusy" @click="continueSafetyReview">{{ t('backend.continueSafetyReview') }}</button>
           </details>
         </div>
       </template>

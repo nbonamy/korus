@@ -34,6 +34,7 @@ async function menu(wrapper: ReturnType<typeof view>, action: string) {
 }
 afterEach(() => { vi.restoreAllMocks(); });
 describe('AutomationsView', () => {
+  // Composed list/dialog workflow distinguishes Mission teammates from worker agents.
   it('keeps mission source teammates selectable without offering mission workers', async () => {
     const teamSnapshot = createInitialSnapshot();
     const mission = createMission(teamSnapshot, { outcome: 'Ship a feature', workflowType: 'shapeAndShipFeature', teamId: 'team-app', orchestratorMemberId: 'agent-dina' });
@@ -56,6 +57,7 @@ describe('AutomationsView', () => {
     expect(updateAutomation).toHaveBeenCalledWith(expect.objectContaining({ id: 'auto', target: { kind: 'agent', agentId: 'agent-dina' } }));
   });
 
+  // Creates, edits and validates schedules through the rendered view and real editor.
   it('creates and edits scheduled prompts through the real editor', async () => {
     const warnings = vi.spyOn(console, 'warn');
     // Electron IPC rejects reactive proxies, including nested schedule values.
@@ -86,6 +88,7 @@ describe('AutomationsView', () => {
     expect(warnings).not.toHaveBeenCalled();
   });
 
+  // Full editor exercises host selection, creation and run routing through the client API.
   it('routes remote creation and runs only to the selected host without requiring a work provider', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];

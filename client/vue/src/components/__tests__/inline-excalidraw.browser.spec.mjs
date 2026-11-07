@@ -56,12 +56,15 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
   try {
     await server.listen();
     const page = await browser.newPage();
+    page.setDefaultTimeout(2_500);
+    // Cold module loading belongs to browser startup, not individual interactions.
+    page.setDefaultNavigationTimeout(15_000);
     const errors = [];
     let navigations = 0;
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(server.resolvedUrls.local[0] + 'inline-diagram');
-    await page.waitForFunction(() => typeof window.setDiagram === 'function');
+    await page.waitForFunction(() => typeof window.setDiagram === 'function', undefined, { timeout: 15_000 });
     const initialNavigations = navigations;
     await page.evaluate(() => window.setDiagram('{"elements":[', false));
     const host = page.locator('#host');

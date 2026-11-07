@@ -54,8 +54,9 @@ describe('compressed companion response safety', () => {
     await expect(readEmbeddedConversationImage(`conversation-image:thread:${id}`, () => read({ data: 'eA==', totalBytes: 1, nextOffset: null }))).rejects.toThrow('image data');
     await expect(readConversationDiff('file.txt', { sessionId: '', contentId: id, byteLength: 2, changeKind: 'add' }, () => read({ data: '', totalBytes: 0, nextOffset: null }))).rejects.toThrow('reference');
   });
+  // Native streams expand the real 128 MiB production limit; this is a large-payload integration probe.
   it('rejects expansion beyond the decoded bound even when the compressed frame fits the wire bound', async () => {
-    const payload = gzipSync(Buffer.alloc(companionDecodedResponseLimit + 1, 32));
+    const payload = gzipSync(Buffer.alloc(companionDecodedResponseLimit + 1, 32), { level: 1 });
     expect(payload.byteLength).toBeLessThan(companionResponseLimit);
     await expect(readFirstCompanionResponse(fragmented(payload))).rejects.toThrow('response too large');
   });

@@ -42,6 +42,7 @@ describe('AutomationEditor', () => {
     expect(wrapper.text()).not.toContain('repository');
   });
 
+  // Mounts the full editor and selects existing chats through real Element Plus controls.
   it('offers existing Quick Chats separately and omits fresh-chat model settings when reusing a conversation', async () => {
     const wrapper = editor();
     await wrapper.get('textarea').setValue('Update notes');

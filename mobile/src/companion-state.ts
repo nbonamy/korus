@@ -1,6 +1,7 @@
 import type { AgentRequest } from '@workspace/core/agent-request';
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
+import { providerBlockFor } from './provider-block';
 import { createRemoteList } from './remote-list';
 import { createDraftLedger } from './draft-ledger';
 import { createReceiptReconciler } from './receipts';
@@ -287,6 +288,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
+    && !providerBlockFor(agent.value)
     && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && (!deliveryUnknown.value || unresolvedReceipts[key()] === true));
 
   /** The agent as the laptop identifies it: host, location, team, agent and session. */

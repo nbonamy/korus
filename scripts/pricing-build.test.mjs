@@ -9,10 +9,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pricingHistorySchema } from '../client/backend/src/pricing/schema.ts';
 import { createPricingManifest } from '../client/backend/src/pricing/release-format.ts';
 
-test('standalone and desktop resource bundles price saved usage from bundled and cached catalogs offline', async () => {
+// Builds both distributable boundaries and exercises real offline IPC.
+test('standalone and desktop resource bundles price saved usage from bundled and cached catalogs offline', { timeout: 30_000 }, async t => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const temp = await mkdtemp(path.join(os.tmpdir(), 'pricing-build-'));
   try {
+    const userHome = path.join(temp, 'user');
+    await mkdir(userHome);
     await mkdir(path.join(temp, 'client/backend'), { recursive: true });
     await mkdir(path.join(temp, 'scripts'));
     for (const name of ['core', 'node_modules']) {
@@ -30,7 +33,7 @@ await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: 
 `);
     const run = (args, options = {}) => {
       const result = spawnSync(process.execPath, ['--import', path.join(temp, 'offline.mjs'), ...args], {
-        cwd: temp, env: { ...process.env, CODEX_APP_SDK_SOURCE: '0' }, encoding: 'utf8', timeout: 60_000, maxBuffer: 4 * 1024 * 1024, ...options,
+        cwd: temp, env: { ...process.env, CODEX_APP_SDK_SOURCE: '0' }, encoding: 'utf8', timeout: 5_000, maxBuffer: 4 * 1024 * 1024, ...options,
       });
       assert.equal(result.error, undefined);
       assert.equal(result.status, 0, result.stderr);
@@ -68,10 +71,12 @@ console.log(JSON.stringify(history));
       } finally { db.close(); }
       const query = () => new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['--import', path.join(temp, 'offline.mjs'), '--input-type=module', '-e', `const { main } = await import(${JSON.stringify(url)}); await main(['--stdio']);`], {
-          cwd: temp, env: { ...process.env, APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'],
+          // Usage pricing does not depend on the operator's shell, credentials or providers.
+          cwd: temp, env: { ...process.env, HOME: userHome, USERPROFILE: userHome, SHELL: path.join(temp, 'missing-shell'), APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'], signal: t.signal, killSignal: 'SIGKILL',
         });
-        let buffer = '', stderr = '', result;
-        const deadline = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Offline usage RPC timed out: ' + stderr)); }, 30_000);
+        let buffer = '', stderr = '', result, failure;
+        // Includes cold bundled-daemon initialization, not just the local usage query.
+        const deadline = setTimeout(() => { failure = new Error('Offline usage RPC timed out: ' + stderr); child.kill('SIGKILL'); }, 5_000);
         child.stderr.on('data', chunk => { stderr += chunk; });
         child.stdout.on('data', chunk => {
           buffer += chunk;
@@ -81,10 +86,12 @@ console.log(JSON.stringify(history));
             if (message.id === 1) { result = message; child.stdin.end(); }
           }
         });
-        child.once('error', error => { clearTimeout(deadline); reject(error); });
-        child.once('exit', code => {
+        child.once('error', error => { failure = error; });
+        // Drain the process and its streams before releasing its database/fixture.
+        child.once('close', code => {
           clearTimeout(deadline);
-          if (code !== 0 || !result) reject(new Error('Offline usage RPC failed: ' + stderr));
+          if (failure) reject(failure);
+          else if (code !== 0 || !result) reject(new Error('Offline usage RPC failed: ' + stderr));
           else resolve(result);
         });
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'usage/get', params: {} }) + '\n');

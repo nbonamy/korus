@@ -748,6 +748,8 @@ describe('daemon runtime', () => {
     const isolatedHome = path.join(root, 'app', 'codex-home');
     vi.stubEnv('APP_HOME', path.join(root, 'app'));
     vi.stubEnv('CODEX_HOME', existingHome);
+    // This checks home/plugin state, not the operator's login-shell startup.
+    vi.stubEnv('SHELL', path.join(root, 'no-login-shell'));
     mocks.backendHomeDir.mockReturnValue(path.join(root, 'app'));
     try {
       await mkdir(existingHome);

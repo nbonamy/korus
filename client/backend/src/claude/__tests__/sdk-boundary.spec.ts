@@ -162,6 +162,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages.slice(1).map(message => message.id)).toStrictEqual(expectedIds);
   });
 
+  // Reads and expands a multi-megabyte persisted transcript through the daemon RPC.
   it.each([false, true])('hydrates selected Claude turns through RPC after compaction, interruption and reasoning without leaking other work (recent=%s)', async recent => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-summary-')); homes.push(home);
     const sessionId = '22222222-2222-4222-8222-222222222222';
@@ -327,6 +328,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.turns[0]?.durationMs).toBeNull();
   });
 
+  // Exercises live updates and several durable transcript reloads across turns.
   it.each(['tasks', 'todos'])('projects confirmed native %s into execution plans across completion and history reload', async format => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-tasks-'));
     homes.push(home);
@@ -344,7 +346,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       return replica?.getSnapshot().plan;
     };
     const pending = send('claude-a', 'Implement login');
-    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1), { interval: 1 });
     sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
     await pending;
     let index = 0;
@@ -356,7 +358,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       history.push(call, { ...reply, tool_use_result: undefined, toolUseResult: result });
       sdk.emit(call); sdk.emit(reply);
       await vi.waitFor(() => expect(events.some(frame => frame.type === 'claude.conversationEventReceived' && frame.payload.event.type === 'item.updated'
-        && frame.payload.event.payload.itemId === id && frame.payload.event.payload.status === (failed ? 'failed' : 'completed'))).toBe(true));
+        && frame.payload.event.payload.itemId === id && frame.payload.event.payload.status === (failed ? 'failed' : 'completed'))).toBe(true), { interval: 1 });
     };
     const todos = (status: string) => ({ todos: [{ content: 'Implement login', status, activeForm: 'Implementing login' }] });
     if (format === 'tasks') await tool('TaskCreate', { subject: 'Implement login', description: 'Login', activeForm: 'Implementing login' }, { task: { id: '7', subject: 'Implement login' } });
@@ -377,9 +379,9 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(readPlan()?.steps).toStrictEqual([{ step: 'Implementing login', status: 'inProgress' }]);
     const previousTurnId = readPlan()!.turnId;
     sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
-    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'), { interval: 1 });
     const continuing = send('claude-a', 'Continue login');
-    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(2));
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(2), { interval: 1 });
     sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
     await continuing;
     history.push({ type: 'user', uuid: 'continue', message: { content: 'Continue login' } });
@@ -395,7 +397,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     else await tool('TodoWrite', todos('completed'), { newTodos: todos('completed').todos });
     expect(readPlan()).toMatchObject({ status: 'completed', steps: [{ step: format === 'tasks' ? 'Ship login' : 'Implement login', status: 'completed' }] });
     sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
-    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'), { interval: 1 });
     await writeFile(path.join(project, `${sessionId}.jsonl`), history.map(entry => JSON.stringify({ timestamp: '2026-10-23T12:00:00Z', ...entry })).join('\n'));
     await driver.releaseConversation('claude-a');
     events.length = 0;

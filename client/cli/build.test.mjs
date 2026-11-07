@@ -10,7 +10,8 @@ import product from '../../core/src/product.json' with { type: 'json' };
 import workspace from './package.json' with { type: 'json' };
 const exec = promisify(execFile);
 
-test('the distributable CLI runs in an empty directory without app, daemon, provider dependencies or migrations', async () => {
+// Builds the distributable and launches multiple real Node processes.
+test('the distributable CLI runs in an empty directory without app, daemon, provider dependencies or migrations', { timeout: 10_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'standalone-cli-package-'));
   try {
     const target = path.join(directory, 'package');

@@ -566,47 +566,48 @@ describe('native relay host adapter', () => {
       const failed = expect(session.createChat!(chat)).rejects.toThrow('Branch exists');
       await vi.advanceTimersByTimeAsync(1000);
       await failed;
-    } finally { vi.useRealTimers(); }
-    answers.push({ state: 'success', agentId: 'quick-chat' });
-    transport.response = (method) => method === 'agent.quickChat.create' ? { creationId: 'quick' } : method === 'agent.create.status' ? answers.shift() : {};
-    vi.useFakeTimers();
-    try {
+      answers.push({ state: 'success', agentId: 'quick-chat' });
+      transport.response = (method) => method === 'agent.quickChat.create' ? { creationId: 'quick' } : method === 'agent.create.status' ? answers.shift() : {};
       const quick = session.createQuickChat!({ teamId: 'team', backend: 'claude' });
       await vi.advanceTimersByTimeAsync(1000);
       expect(await quick).toBe('quick-chat');
-    } finally { vi.useRealTimers(); }
-    expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
-    const projectRepositories = [{ id: 'org/repo', name: 'org/repo' }];
-    transport.response = method => method === 'project.github.list' ? projectRepositories : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
-    expect(await session.githubRepositories!('team')).toStrictEqual(projectRepositories);
-    expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team' });
-    const projectBranches = [{ name: 'main', isDefault: true }];
-    transport.response = method => method === 'project.github.branches' ? projectBranches : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
-    expect(await session.githubBranches!('team', 'org/repo')).toStrictEqual(projectBranches);
-    expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team', repositoryId: 'org/repo' });
-    transport.response = method => method === 'project.repositories.list' ? [{ id: 'repo:opaque', name: 'group/subgroup/repo' }] : projectBranches;
-    expect(await session.repositoryCatalog!('team', 'gitlab')).toStrictEqual([{ id: 'repo:opaque', name: 'group/subgroup/repo' }]);
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.list', args: { teamId: 'team', provider: 'gitlab' } });
-    expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
-    transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
-    const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', branch: 'feature/mobile', selection: { backend: 'claude' as const } };
-    expect(await session.createProject!(projectInput)).toBe('project-agent');
-    expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);
-    transport.response = method => method === 'project.local.list' ? [{ id: 'opaque-repository', name: 'Local repository' }]
-      : method === 'project.local.branches' ? projectBranches : method === 'agent.duplicate' ? { agentId: 'duplicate-agent' } : {};
-    expect(await session.localRepositories!('team')).toStrictEqual([{ id: 'opaque-repository', name: 'Local repository' }]);
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.list', args: { teamId: 'team' } });
-    expect(await session.localBranches!('team', 'opaque-repository')).toStrictEqual(projectBranches);
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.branches', args: { teamId: 'team', repositoryId: 'opaque-repository' } });
-    const duplicateTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: agent.id, sessionId: null };
-    expect(await session.duplicateAgent!(duplicateTarget, 'claude')).toBe('duplicate-agent');
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.duplicate', args: { target: duplicateTarget, backend: 'claude' } });
-    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
-    await session.getWorkspace();
-    await session.setBackend!('new-chat', 'claude');
-    expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, backend: 'claude' });
-    await connector.dispose!();
+      expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
+      const projectRepositories = [{ id: 'org/repo', name: 'org/repo' }];
+      transport.response = method => method === 'project.github.list' ? projectRepositories : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
+      expect(await session.githubRepositories!('team')).toStrictEqual(projectRepositories);
+      expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team' });
+      const projectBranches = [{ name: 'main', isDefault: true }];
+      transport.response = method => method === 'project.github.branches' ? projectBranches : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
+      expect(await session.githubBranches!('team', 'org/repo')).toStrictEqual(projectBranches);
+      expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team', repositoryId: 'org/repo' });
+      transport.response = method => method === 'project.repositories.list' ? [{ id: 'repo:opaque', name: 'group/subgroup/repo' }] : projectBranches;
+      expect(await session.repositoryCatalog!('team', 'gitlab')).toStrictEqual([{ id: 'repo:opaque', name: 'group/subgroup/repo' }]);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.list', args: { teamId: 'team', provider: 'gitlab' } });
+      expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
+      transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
+      const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', branch: 'feature/mobile', selection: { backend: 'claude' as const } };
+      const project = session.createProject!(projectInput);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await project).toBe('project-agent');
+      expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);
+      transport.response = method => method === 'project.local.list' ? [{ id: 'opaque-repository', name: 'Local repository' }]
+        : method === 'project.local.branches' ? projectBranches : method === 'agent.duplicate' ? { agentId: 'duplicate-agent' } : {};
+      expect(await session.localRepositories!('team')).toStrictEqual([{ id: 'opaque-repository', name: 'Local repository' }]);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.list', args: { teamId: 'team' } });
+      expect(await session.localBranches!('team', 'opaque-repository')).toStrictEqual(projectBranches);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.branches', args: { teamId: 'team', repositoryId: 'opaque-repository' } });
+      const duplicateTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: agent.id, sessionId: null };
+      expect(await session.duplicateAgent!(duplicateTarget, 'claude')).toBe('duplicate-agent');
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.duplicate', args: { target: duplicateTarget, backend: 'claude' } });
+      transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
+      await session.getWorkspace();
+      await session.setBackend!('new-chat', 'claude');
+      expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, backend: 'claude' });
+    } finally {
+      try { await connector.dispose!(); }
+      finally { vi.useRealTimers(); }
+    }
   });
 });
 

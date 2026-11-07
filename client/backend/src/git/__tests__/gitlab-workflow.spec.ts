@@ -17,6 +17,7 @@ import { AppBackendServer } from '../../server';
 const exec = promisify(execFile);
 const git = async (cwd: string, args: string[]) => exec('git', args, { cwd });
 afterEach(() => vi.restoreAllMocks());
+// Real Git refs, tracking and checkout are part of this provider integration.
 it.each(['git@gitlab.com:group/sub/repo.git', 'https://gitlab.com/group/sub/repo.git', 'https://user:private-token@gitlab.com/group/sub/repo.git'])('routes %s to GitLab, preserves tracking, and prevents duplicate or unverifiable creation', async remote => {
   const root = await mkdtemp(join(tmpdir(), 'korus-mr-workflow-'));
   let server: AppBackendServer | undefined;
@@ -68,7 +69,7 @@ it.each(['git@gitlab.com:group/sub/repo.git', 'https://gitlab.com/group/sub/repo
     await git(root, ['config', 'branch.feature/demo.remote', 'other']); await git(root, ['config', 'branch.feature/demo.merge', 'refs/heads/feature/demo']);
     expect(await service.workflow(root)).toMatchObject({ remote: 'other', repository: 'owner/other', repositoryProvider: 'github' });
   } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
-});
+}, 3_000);
 it.each(['github', 'gitlab'].flatMap(provider => ['current', 'new', 'reuse'].map(mode => ({ provider, mode }))))('checks out the intended $provider request head with worktree mode $mode', async ({ provider, mode }) => {
   const container = await mkdtemp(join(tmpdir(), 'korus-request-ref-'));
   const root = join(container, 'repo');

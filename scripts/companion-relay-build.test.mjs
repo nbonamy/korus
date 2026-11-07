@@ -6,7 +6,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-test('a built daemon carries only public connection settings and preserves telemetry runtime overrides', async () => {
+// Bundles a real daemon and verifies its isolated runtime settings.
+test('a built daemon carries only public connection settings and preserves telemetry runtime overrides', { timeout: 10_000 }, async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), 'companion-build-'));
   const root = fileURLToPath(new URL('../', import.meta.url));
   const directoryLink = process.platform === 'win32' ? 'junction' : 'dir';
@@ -36,7 +37,7 @@ await build({ configFile: ${JSON.stringify(path.join(temp, 'client/backend/vite.
     delete env.APP_COMPANION_RELAY_PEER_ID;
     delete env.APP_TELEMETRY_ENDPOINT;
     const run = (args, cwd, overrides = {}) => {
-      const result = spawnSync(process.execPath, args, { cwd, env: { ...env, ...overrides }, encoding: 'utf8', timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
+      const result = spawnSync(process.execPath, args, { cwd, env: { ...env, ...overrides }, encoding: 'utf8', timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
       assert.equal(result.error, undefined);
       assert.equal(result.status, 0, result.stderr);
       return result.stdout;

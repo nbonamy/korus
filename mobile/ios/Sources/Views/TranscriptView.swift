@@ -1,9 +1,20 @@
 import SwiftUI
 import WebKit
 
-/// Hosts the shared conversation pane. The pane scrolls itself; the app tells it how much room the
-/// header and the composer take.
-struct TranscriptView: UIViewRepresentable {
+/// The native layout bounds the shared pane above the composer, including keyboard and drawer changes.
+struct TranscriptView: View {
+    let host: TranscriptHost
+
+    var body: some View {
+        GeometryReader { proxy in
+            TranscriptWebView(host: host)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+        }
+    }
+}
+
+private struct TranscriptWebView: UIViewRepresentable {
     let host: TranscriptHost
 
     func makeUIView(context: Context) -> WKWebView { host.webView }

@@ -66,6 +66,7 @@ function fixture() {
   const manager = new WorkIntegrationManager(options);
   return { snapshot, tokenStore, driver, cli, options, manager };
 }
+// Hydration, restart and paginated catalogs/branches launch many real CLI processes.
 it('uses CLI-only private subgroup catalogs and branch pages, restores metadata and never exposes CLI tokens or hosted MCP', async () => {
   const { snapshot, manager, tokenStore, options } = fixture();
   await tokenStore.set({ provider: 'github', accessToken: 'github-secret', tokenType: 'Bearer', accountLabel: 'github-user', connectedAt: 'then' });
@@ -158,6 +159,7 @@ it('preserves literal JSON writes, methods, headers, no-content responses and ca
   await expect(cli.send(credential, 'https://gitlab.com/api/v4/projects/123/issues', { method: 'POST', body })).rejects.toThrow('authentication changed');
 });
 
+// Exercises the native child-process authentication timeout (10s), including cleanup/retry.
 it('bounds hung authentication discovery and permits retry', async () => {
   const { manager } = fixture();
   await state({ login: 'alice', hang: true });

@@ -13,30 +13,45 @@ import product from '../../core/src/product.json' with { type: 'json' };
 
 const exec = promisify(execFile);
 function processOutput(child) {
-  let stdout = '', stderr = '';
+  let stdout = '', stderr = '', closed = false;
   const waiters = new Set();
   child.stdout.on('data', chunk => { stdout += chunk; for (const notify of waiters) notify(); });
   child.stderr.on('data', chunk => { stderr += chunk; });
-  const deadline = setTimeout(() => child.kill('SIGTERM'), 15000);
-  const force = setTimeout(() => child.kill('SIGKILL'), 17000);
-  const done = once(child, 'close').then(([code, signal]) => ({ code, signal, stdout, stderr })).finally(() => { clearTimeout(deadline); clearTimeout(force); });
+  const deadline = setTimeout(() => child.kill('SIGTERM'), 1000);
+  const force = setTimeout(() => child.kill('SIGKILL'), 1500);
+  const done = once(child, 'close').then(([code, signal]) => {
+    closed = true;
+    for (const notify of waiters) notify();
+    return { code, signal, stdout, stderr };
+  }).finally(() => { clearTimeout(deadline); clearTimeout(force); });
   return { child, done, waitFor(text) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { waiters.delete(check); reject(new Error(`Missing ${JSON.stringify(text)}: ${stdout}\n${stderr}`)); }, 5000);
-      const check = () => { if (stdout.includes(text)) { clearTimeout(timer); waiters.delete(check); resolve(); } };
+      const fail = () => { clearTimeout(timer); waiters.delete(check); reject(new Error(`Missing ${JSON.stringify(text)}: ${stdout}\n${stderr}`)); };
+      const timer = setTimeout(fail, 1000);
+      const check = () => { if (stdout.includes(text)) { clearTimeout(timer); waiters.delete(check); resolve(); } else if (closed) fail(); };
       waiters.add(check); check();
     });
   } };
 }
 
-test('installed package command and recovery workflows', { timeout: 60000 }, async t => {
+// npm pack/install and the complete installed-package workflow include real processes.
+test('installed package command and recovery workflows', { timeout: 30_000 }, async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'cli-workflows-'));
   const home = path.join(directory, 'state'), userHome = path.join(directory, 'user'), bin = path.join(directory, 'bin');
   const env = { ...process.env, HOME: userHome, USERPROFILE: userHome, APP_HOME: home, KORUS_HOME: '', APP_BACKEND_SOCKET: '',
     PATH: bin, CODEX_HOME: '', CLAUDE_CONFIG_DIR: '', GEMINI_HOME: '', KORUS_APP_PATH: path.join(directory, 'NoApp.app'), NO_COLOR: '1' };
   const children = new Set();
+  let disposing;
+  const dispose = () => disposing ??= (async () => {
+    const closed = [...children].map(child => once(child, 'close'));
+    for (const child of children) child.kill('SIGKILL');
+    await Promise.all(closed);
+    await rm(directory, { recursive: true, force: true });
+  })();
+  t.after(dispose);
   let cli;
   const launch = (args, overrides = {}) => {
+    t.signal.throwIfAborted();
     const child = spawn(process.execPath, [cli, '--timeout', '2500', ...args], { cwd: directory, env: { ...env, ...overrides }, stdio: ['pipe', 'pipe', 'pipe'] });
     children.add(child); child.once('close', () => children.delete(child)); return processOutput(child);
   };
@@ -45,13 +60,14 @@ test('installed package command and recovery workflows', { timeout: 60000 }, asy
   try {
     const target = await buildCli({ outdir: path.join(directory, 'package') });
     const npmCli = process.env.npm_execpath;
-    const npm = args => exec(npmCli ? process.execPath : 'npm', [...(npmCli ? [npmCli] : []), ...args], { cwd: directory });
+    const npm = args => exec(npmCli ? process.execPath : 'npm', [...(npmCli ? [npmCli] : []), ...args], { cwd: directory, signal: t.signal });
     const packed = JSON.parse((await npm(['pack', target, '--ignore-scripts', '--json'])).stdout)[0];
     await npm(['install', '--global', '--prefix', path.join(directory, 'installed'), '--ignore-scripts', '--no-audit', '--no-fund', path.join(directory, packed.filename)]);
     cli = path.join(directory, 'installed', ...(process.platform === 'win32' ? [] : ['lib']), 'node_modules', product.cliPackageName, 'cli.mjs');
     await mkdir(bin); await mkdir(userHome);
 
-    await t.test('help, invalid invocations and fresh-install empty results', async () => {
+    // Each of these installed-CLI workflows launches many separate processes.
+    await t.test('help, invalid invocations and fresh-install empty results', { timeout: 3_000 }, async () => {
       for (const args of [[], ['--help'], ['--version'], ...['doctor', 'triage', 'backend', 'logs', 'support', 'agents', 'missions'].map(command => [command, '--help'])]) assert.equal((await run(args)).code, 0, args.join(' '));
       for (const args of [['doctor', 'extra'], ['logs', 'extra'], ['agents', 'list', 'extra'], ['missions', 'show'], ['missions', 'list', 'extra'], ['backend', 'stop', 'extra'], ['support', 'bundle', 'extra'], ['doctor', '--follow'], ['logs', '--no-launch'], ['agents', 'list', '--yes'], ['triage', '--agent', 'unknown'], ['unknown']]) {
         const result = await run(args); assert.equal(result.code, 2, `${args.join(' ')}: ${result.stderr}`); assert.ok(result.stderr.trim());
@@ -62,12 +78,12 @@ test('installed package command and recovery workflows', { timeout: 60000 }, asy
 
     await mkdir(home, { recursive: true });
     await save('roster.json', { agents: [], missions: [] }); await save('settings.json', { settings: {} });
-    await t.test('a closed output pipe exits cleanly', async () => {
+    await t.test('a closed output pipe exits cleanly', { timeout: 2_500 }, async () => {
       const closed = launch(['--help']); closed.child.stdout.destroy();
       const result = await closed.done; assert.equal(result.code, 0); assert.doesNotMatch(result.stderr, /EPIPE|Unhandled|at Socket/);
     });
 
-    await t.test('doctor, empty lists, missing Missions and corrupt-state exit codes', async () => {
+    await t.test('doctor, empty lists, missing Missions and corrupt-state exit codes', { timeout: 2_500 }, async () => {
       assert.equal((await run(['doctor'])).code, 0);
       for (const command of ['agents', 'missions']) { const result = await run([command, 'list']); assert.equal(result.code, 0); assert.match(result.stdout, /No (agents|missions) found\./); }
       assert.equal((await run(['missions', 'show', 'missing'])).code, 1);
@@ -82,14 +98,14 @@ test('installed package command and recovery workflows', { timeout: 60000 }, asy
       await save('settings.json', { settings: {} });
     });
 
-    await t.test('rejects malformed saved roster data without pretending it is empty', async () => {
+    await t.test('rejects malformed saved roster data without pretending it is empty', { timeout: 2_500 }, async () => {
       await save('roster.json', { agents: [], missions: {} });
       assert.equal((await run(['missions', 'list', '--offline'])).code, 1);
       assert.equal((await run(['doctor', '--json'])).code, 1);
       await save('roster.json', { agents: [], missions: [] });
     });
 
-    if (process.platform !== 'win32' && process.getuid?.() !== 0) await t.test('unreadable state and logs are errors, not empty results', async () => {
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) await t.test('unreadable state and logs are errors, not empty results', { timeout: 2_500 }, async () => {
       const locked = path.join(directory, 'locked'); await mkdir(path.join(locked, 'state'), { recursive: true }); await chmod(locked, 0);
       try { for (const args of [['agents', 'list'], ['doctor']]) assert.equal((await run([...args, '--home', path.join(locked, 'state')])).code, 1); }
       finally { await chmod(locked, 0o700); }
@@ -97,7 +113,7 @@ test('installed package command and recovery workflows', { timeout: 60000 }, asy
       try { assert.equal((await run(['logs'])).code, 1); } finally { await chmod(path.join(home, 'logs'), 0o700); }
     });
 
-    await t.test('socket, unreachable socket and desktop MCP modes', async () => {
+    await t.test('socket, unreachable socket and desktop MCP modes', { timeout: 2_500 }, async () => {
       assert.equal(JSON.parse((await run(['backend', '--json'])).stdout).running, false);
       const server = net.createServer(socket => socket.on('data', data => { const request = JSON.parse(data.toString()); socket.end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: request.method === 'snapshot/get' ? { snapshot: { agents: [], missions: [] } } : { ok: true, version: 'test' } }) + '\n'); }));
       const socket = path.join(directory, 'daemon.sock'); await new Promise(resolve => server.listen(socket, resolve));
@@ -114,7 +130,7 @@ test('installed package command and recovery workflows', { timeout: 60000 }, asy
       } finally { await new Promise(resolve => mcp.close(resolve)); }
     });
 
-    if (process.platform !== 'win32') await t.test('real provider auth, triage priority and provider exit codes', async () => {
+    if (process.platform !== 'win32') await t.test('real provider auth, triage priority and provider exit codes', { timeout: 3_000 }, async () => {
       for (const [id, name] of [['claude', 'claude'], ['codex', 'codex'], ['antigravity', 'agy']]) {
         const code = `#!${process.execPath}\nconst fs=require('node:fs'); const args=process.argv.slice(2); const signed=process.env['TEST_AUTH_${id}']!=='no';
 if(process.env.TEST_HANG && ['auth','login','models'].includes(args[0])){setInterval(()=>{},1000);return;}
@@ -146,7 +162,7 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       const prepared = await run(['triage', '--no-launch', '--json']); assert.equal(prepared.code, 0); assert.match(await readFile(JSON.parse(prepared.stdout).promptPath, 'utf8'), /approval/);
     });
 
-    await t.test('support bundles and finite log output preserve privacy', async () => {
+    await t.test('support bundles and finite log output preserve privacy', { timeout: 2_500 }, async () => {
       const log = path.join(home, 'logs', 'daemon.log');
       await writeFile(log, JSON.stringify({ time: new Date().toISOString(), msg: 'test diagnostic', token: 'PRIVATE_TOKEN', content: 'PRIVATE_CONVERSATION' }) + '\n');
       const logs = await run(['logs', '--json']); assert.equal(logs.code, 0); assert.doesNotMatch(logs.stdout, /PRIVATE_TOKEN|PRIVATE_CONVERSATION/);
@@ -157,7 +173,7 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       }
     });
 
-    await t.test('piped JSON following, complete records, rotation and SIGINT', async () => {
+    await t.test('piped JSON following, complete records, rotation and SIGINT', { timeout: 2_500 }, async () => {
       const log = path.join(home, 'logs', 'daemon.log'); await writeFile(log, '');
       const following = launch(['logs', '--follow', '--json', '--since', '1m']);
       try {
@@ -175,7 +191,7 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       finally { terminated.child.kill('SIGKILL'); }
     });
 
-    if (process.platform === 'darwin') await t.test('background control, declined confirmation and terminal cancellation', async () => {
+    if (process.platform === 'darwin') await t.test('background control, declined confirmation and terminal cancellation', { timeout: 3_000 }, async () => {
       const launchAgents = path.join(userHome, 'Library', 'LaunchAgents'); await mkdir(launchAgents, { recursive: true });
       const file = path.join(launchAgents, `${product.appId}.daemon.plist`), capture = path.join(directory, 'launchctl.jsonl');
       const command = path.join(bin, 'launchctl');
@@ -229,5 +245,5 @@ sys.exit(code if code >= 0 else 128 - code)
       } finally { doctor.child.kill('SIGTERM'); await doctor.done; children.delete(doctor.child); }
 
     });
-  } finally { for (const child of children) child.kill('SIGKILL'); await rm(directory, { recursive: true, force: true }); }
+  } finally { await dispose(); }
 });

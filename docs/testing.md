@@ -128,6 +128,22 @@ builds. A failed, cancelled or skipped required job blocks the aggregate gate.
   Wait for observable DOM, requests or events; control asynchronous responses with
   deferred promises. Exercise debounce and deadline behavior with fake clocks and
   explicit clock advances. Timeouts bound a condition wait; they must not pace a test.
+- Tests and hooks default to 2,500ms. Longer deadlines are
+  exceptions for a specific integration boundary, such as real Git/process
+  workflows, native crypto/encrypted relay traffic, database deadlines, cold
+  module/browser startup, composed app/router workflows or builds. Opt-in
+  live-provider probes also have explicit integration budgets. Declare exceptions on the
+  smallest owning case or suite and explain the boundary beside the override.
+  Browser workflows have separate startup budgets; individual interactions use a
+  2.5-second bound. A workflow deadline must not become the default for its waits.
+  Exercise retry, batching and grace periods with controlled clocks rather than
+  waiting out production delays. Restore clocks in teardown, drain owned work and
+  close processes before releasing fixtures so a timeout cannot contaminate the
+  next test.
+- The Node 22 CLI-package runner applies its command-line timeout to whole files.
+  Its package checks have an outer integration budget; individual fast subtests
+  declare their 2,500ms bounds explicitly. Chromium fixture compilation runs before
+  the DOM suites so it cannot consume their short behavior budgets.
 - Mock external boundaries, never the logic under test.
 - Native Compose effect deadlines use the Compose test clock. Let lifecycle and
   composition updates settle before advancing it; real elapsed waits belong to

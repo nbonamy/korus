@@ -106,6 +106,7 @@ describe('AppShell missions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  // Real app shell, conversation navigation and Markdown/Mermaid document rendering.
   it.each(['README.md', '/workspace/mission/README.md', '/tmp/telemetry-merge3-evidence.json'])('opens a rendered Mission document link in a dialog without hiding the Mission (%s)', async target => {
     const evidence = target.endsWith('.json');
     const path = evidence ? target : 'README.md';
