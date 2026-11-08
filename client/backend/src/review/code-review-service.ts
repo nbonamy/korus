@@ -1090,6 +1090,7 @@ Load korus-reviewer through read-skill before inspection. Cumulative review ledg
 ${JSON.stringify(ledger, null, 2)}
 
 Review ${detailedScope} independently. Do not report findings outside this scope.
+Complete an exhaustive inspection of the entire scope in this round. Continue after initial findings and report all supported actionable issues before finishing. Minimize review/fix rounds through complete inspection; follow-up rounds verify previous fixes and inspect the full scope for regressions and other previously missed issues, reporting any new actionable findings.
 ${session.automation ? 'This is an automatic review inspection: do not modify files, commit, push, or merge. Report every actionable finding, including lower-priority findings; the review workflow owns priority selection and completion.' : ''}
 
 Register all actionable findings with mcp__${mcpServerName}__report_finding and obtain accepted mcp__${mcpServerName}__finish_review_round({ findingCount }) before ending, including zero for a clean inspection. The skill supplies the reporting procedure; confirmation is not approval to ship.

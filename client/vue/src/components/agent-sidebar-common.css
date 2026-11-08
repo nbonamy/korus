@@ -118,22 +118,12 @@
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: none;
   padding: var(--space-3) var(--space-4);
 }
 
 .agent-sidebar__list::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
-}
-
-.agent-sidebar__list::-webkit-scrollbar-thumb {
-  border-radius: var(--radius-full);
-  background: transparent;
-}
-
-.agent-sidebar__list:hover::-webkit-scrollbar-thumb,
-.agent-sidebar__list:has(:focus-visible)::-webkit-scrollbar-thumb {
-  background: var(--color-outline);
+  display: none;
 }
 
 .agent-sidebar__mission-error {

@@ -6,6 +6,7 @@ import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions
 import { randomUUID } from 'node:crypto';
 import type { Agent, AgentWorkspaceIdentity, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
+import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
 
@@ -690,7 +691,9 @@ export class AppMcpAgentCoordinator {
   }
 
   private listVisibleAgents(caller: Agent): McpAgentInfo[] {
-    return this.agentsInSameTeam(caller).map((agent) => this.toAgentInfo(agent));
+    return this.agentsInSameTeam(caller)
+      .filter(agent => agent.status.type !== 'error' || !providerSafetyBlockMessage(agent.status.message))
+      .map((agent) => this.toAgentInfo(agent));
   }
 
   private agentsInSameTeam(caller: Agent): Agent[] {

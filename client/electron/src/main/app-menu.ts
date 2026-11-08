@@ -590,6 +590,10 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
     submenu: [
       ...buildCommandDiscoveryItems(callbacks),
       { type: 'separator' },
+      { role: 'zoomIn', accelerator: 'CommandOrControl+Plus' },
+      { role: 'zoomOut', accelerator: 'CommandOrControl+-' },
+      { role: 'resetZoom', accelerator: 'CommandOrControl+0' },
+      { type: 'separator' },
       {
         label: mainT('menu.changes'),
         accelerator: shortcutAccelerator('review'),

@@ -36,7 +36,7 @@ function registerCollaborationTools(
   }, () => loggedToolResult('list-hosts', { callerAgentId }, () => coordinator.listHosts(callerAgentId)));
 
   server.registerTool('list-agents', {
-    description: 'List all visible agents with their ID, status, name, and folder. A remoteConnectionId identifies the host owning a remote folder; folders without it are local to the controlling daemon.',
+    description: 'List agents in your team, excluding provider-blocked conversations, with their ID, status, name, and folder. A remoteConnectionId identifies the host owning a remote folder; folders without it are local to the controlling daemon.',
     inputSchema: {},
   }, () => loggedToolResult('list-agents', { callerAgentId }, () => coordinator.listAgents(callerAgentId)));
 

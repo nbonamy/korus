@@ -86,19 +86,10 @@ onBeforeUnmount(() => observer?.disconnect());
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: none;
 }
 
-/* Same hairline as the sidebar list: the thumb only shows while hovering. */
 .scroll-hint-rows__scroller::-webkit-scrollbar {
-  width: 3px;
-}
-
-.scroll-hint-rows__scroller::-webkit-scrollbar-thumb {
-  border-radius: var(--radius-full);
-  background: transparent;
-}
-
-.scroll-hint-rows__scroller:hover::-webkit-scrollbar-thumb {
-  background: var(--color-outline);
+  display: none;
 }
 </style>

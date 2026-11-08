@@ -6,7 +6,9 @@ import type {
 } from '@codex-app-sdk/vue';
 import { computed, reactive } from 'vue';
 
-export type ChatTextAnnotation = Omit<CodexMessageTextSelection, 'anchor'> & {
+export type ChatTextSelection = CodexMessageTextSelection & { textStart?: number; textBlockIndex?: number };
+
+export type ChatTextAnnotation = Omit<ChatTextSelection, 'anchor'> & {
   comment: string;
   id: string;
 };
@@ -22,7 +24,7 @@ export function useChatTextAnnotations(options: {
     return agentId ? draftsByAgentId[agentId] ?? [] : [];
   });
 
-  function add(selection: CodexMessageTextSelection, comment: string): void {
+  function add(selection: ChatTextSelection, comment: string): void {
     const agentId = options.currentAgentId();
     const text = selection.text.trim();
     const normalizedComment = comment.trim();
@@ -36,10 +38,19 @@ export function useChatTextAnnotations(options: {
         comment: normalizedComment,
         messageIndex: selection.messageIndex,
         role: selection.role,
+        ...(selection.textStart === undefined ? {} : { textStart: selection.textStart }),
+        ...(selection.textBlockIndex === undefined ? {} : { textBlockIndex: selection.textBlockIndex }),
         ...(selection.messageId ? { messageId: selection.messageId } : {}),
         ...(selection.turnId ? { turnId: selection.turnId } : {}),
       },
     ];
+  }
+
+  function edit(annotationId: string, comment: string): void {
+    const agentId = options.currentAgentId();
+    if (!agentId || !comment.trim()) return;
+    draftsByAgentId[agentId] = (draftsByAgentId[agentId] ?? []).map(annotation =>
+      annotation.id === annotationId ? { ...annotation, comment: comment.trim() } : annotation);
   }
 
   function remove(annotationId: string): void {
@@ -74,6 +85,7 @@ export function useChatTextAnnotations(options: {
   return {
     activeAnnotations,
     add,
+    edit,
     forward,
     remove,
   };

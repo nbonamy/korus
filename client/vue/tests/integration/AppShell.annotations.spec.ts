@@ -83,21 +83,34 @@ describe('AppShell composer annotations', () => {
     const wrapper = mountShell({ snapshot, realConversationPane: true, sendPromptAction });
 
     await saveSelectionComment(wrapper, selection, 'Add a bounded retry.');
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
-    expect(wrapper.text()).not.toContain('Add a bounded retry.');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
+    expect(wrapper.get('.chat-annotation-review .composer-context-cards__open').text()).toBe('Add a bounded retry.');
+    expect(wrapper.get('.chat-annotation-review').text()).toContain('Add a bounded retry.');
+    await wrapper.get('.chat-annotation-review .composer-context-cards__open').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.chat-annotation-editor').exists()).toBe(false);
+    await wrapper.get('.chat-annotation-review .composer-context-cards__edit').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.chat-annotation-editor blockquote').text()).toBe(selection.text);
+    const editInput = wrapper.get<HTMLInputElement>('.chat-annotation-editor input');
+    expect(editInput.element.value).toBe('Add a bounded retry.');
+    await editInput.setValue('Use three attempts.');
+    await wrapper.get('.chat-annotation-editor__save').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.chat-annotation-review').text()).toContain('Use three attempts.');
 
     await wrapper.setProps({ activeAgent: snapshot.agents[1] } as Record<string, unknown>);
     expect(wrapper.getComponent({ name: 'AgentWorkspace' }).props('currentAgent')).toMatchObject({
       id: snapshot.agents[1]!.id,
     });
-    expect(wrapper.find('.composer-context-cards').exists()).toBe(false);
+    expect(wrapper.find('.chat-annotation-review').exists()).toBe(false);
     await wrapper.setProps({ activeAgent: snapshot.agents[0] } as Record<string, unknown>);
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
 
     sendPromptAction.mockRejectedValueOnce(new Error('offline'));
     await expect(conversationControllerActions(wrapper).submit?.('Please update this.', undefined))
       .rejects.toThrow('offline');
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
     sendPromptAction.mockClear();
 
     await conversationControllerActions(wrapper).submit?.('', undefined);
@@ -108,11 +121,11 @@ describe('AppShell composer annotations', () => {
       '1. Assistant message 2',
       'Selected text:',
       '> The request should be retried.',
-      'Comment: Add a bounded retry.',
+      'Comment: Use three attempts.',
       '</context>',
       '1 annotation',
     ].join('\n'), undefined);
-    expect(wrapper.find('.composer-context-cards').exists()).toBe(false);
+    expect(wrapper.find('.chat-annotation-review').exists()).toBe(false);
   });
 });
 
@@ -121,9 +134,24 @@ async function saveSelectionComment(
   nextSelection: CodexMessageTextSelection,
   comment: string,
 ): Promise<void> {
+  const block = document.createElement('div');
+  block.dataset.chatAnnotationMessage = nextSelection.messageId ?? String(nextSelection.messageIndex);
+  const content = document.createElement('div');
+  content.dataset.chatAnnotationContent = '';
+  content.textContent = nextSelection.text;
+  block.append(content);
+  const host = document.createElement('div');
+  host.className = 'conversation-pane';
+  host.append(block);
+  document.body.append(host);
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
   wrapper.getComponent({ name: 'CodexConversationPane' }).vm
     .$emit('messageTextSelectionChange', nextSelection);
   await nextTick();
+  host.remove();
   await wrapper.get('.chat-text-selection-annotation__add').trigger('click');
   const input = document.querySelector<HTMLInputElement>('.annotation-popup__input');
   const form = document.querySelector<HTMLFormElement>('form.annotation-popup');
