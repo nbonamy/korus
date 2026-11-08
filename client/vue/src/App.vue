@@ -3,6 +3,7 @@
   <JoinSharedChatDialog v-if="inviteVisible" :view="guestInviteView" :busy="guestBusy" :failed="guestFailed" :control="runGuest" :save-display-name="saveGuestDisplayName" @close="closeGuestInvite" />
   <AppShell
     v-if="hasLoadedSnapshot"
+    @visible-agents-change="setVisibleAgentIds"
     @join-invite="showGuestInvite"
     :guest-state="guestState" :guest-busy="guestBusy" :guest-control="runGuest"
     :inert="backendRestartInProgress || pendingSessionCompression !== null ? '' : undefined"
@@ -454,6 +455,7 @@ const {
   clearActiveGoal,
   selectAgent,
   setRendererWindowFocused,
+  setVisibleAgentIds,
   markDebugAgentsUnread,
   selectTeam,
   sendPrompt,

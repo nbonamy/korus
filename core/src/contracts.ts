@@ -1098,7 +1098,7 @@ export type AppApi = {
   /** Desktop windows only: tells main what panes this window has open, for new windows, relaunches and a moved Browser. */
   setWindowSetup?(setup: import('./windows').WindowSetup): Promise<void>;
   /** Desktop windows only: tells main which agent this window shows. */
-  setWindowSelection?(agentId: string | null): Promise<void>;
+  setWindowSelection?(agentId: string | null, visibleAgentIds?: string[]): Promise<void>;
   claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;
   releaseNativeResource?(resource: import('./windows').NativeResource, agentId: string): Promise<void>;
   syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;

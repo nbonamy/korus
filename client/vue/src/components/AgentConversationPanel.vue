@@ -181,6 +181,7 @@ function addCodeAnnotation(annotation: CodeAnnotationInput): void {
   pane.value?.focusComposer();
 }
 defineExpose({
+  getElement: (): HTMLElement | null => pane.value?.$el ?? null,
   focusComposer: () => pane.value?.focusComposer(),
   saveCurrentDraft: () => pane.value?.saveCurrentDraft(),
   openDebugImageAnnotation: (...args: Parameters<typeof conversation.imageAnnotation.openDebug>) => conversation.imageAnnotation.openDebug(...args),

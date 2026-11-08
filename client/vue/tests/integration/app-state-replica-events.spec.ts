@@ -171,7 +171,7 @@ describe('useAppState', () => {
     });
   });
 
-  it('plays app-owned celebration events only for the selected agent without adding conversation content', async () => {
+  it('plays app-owned celebration events only for visible agents when celebrations are enabled', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     stubElectronTestWindow({
@@ -184,6 +184,7 @@ describe('useAppState', () => {
       } satisfies Partial<AppApi>,
     });
     const state = useAppState();
+    state.setVisibleAgentIds([remoteSnapshot.activeAgentId!]);
     await state.loadSnapshot();
     listeners[0]?.({
       seq: 1,
@@ -396,6 +397,7 @@ describe('useAppState', () => {
       } satisfies Partial<AppApi>,
     });
     const state = useAppState();
+    state.setVisibleAgentIds([remoteSnapshot.activeAgentId!]);
     await state.loadSnapshot();
 
     listeners[0]?.({
@@ -423,6 +425,7 @@ describe('useAppState', () => {
       } satisfies Partial<AppApi>,
     });
     const state = useAppState();
+    state.setVisibleAgentIds([remoteSnapshot.activeAgentId!]);
     await state.loadSnapshot();
 
     listeners[0]?.({

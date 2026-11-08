@@ -4,10 +4,13 @@ import App from '../../src/App.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../support/backend-fixture';
 import { windowState } from '../../src/window-state';
+import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
 import {
   codexConversationSnapshot,
   codexTextMessage,
 } from '../support/codex-conversation-fixtures';
+
+vi.mock('../../src/shared/confetti/canvas-celebration', () => ({ launchCanvasCelebration: vi.fn() }));
 
 async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
   await wrapper.get('[aria-label="Conversation layout"]').trigger('click');
@@ -23,6 +26,68 @@ async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
 
 // Mounts the complete app, multiple composers and persisted navigation/layout workflows.
 describe('split-screen conversations', () => {
+  it.each(['Backlog', 'Automations', 'Settings'])('drops celebrations while %s covers the selected agent, without replaying them later', async surface => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.providerOnboardingComplete = true;
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const agentId = snapshot.activeAgentId!;
+    const { api, emit, emitAppCommand } = installBackendFixture(snapshot);
+    api.selectAgent.mockResolvedValue(snapshot);
+    const wrapper = mount(App, { attachTo: document.body });
+    const celebrate = () => emit({ type: 'client.celebrationRequested', agentId, payload: { kind: 'confetti' } });
+    try {
+      await flushPromises();
+      expect(wrapper.get(`[data-conversation-agent-id="${agentId}"]`).isVisible()).toBe(true);
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(1);
+      clearConfetti();
+
+      if (surface === 'Settings') emitAppCommand({ type: 'open-settings' });
+      else await wrapper.get(`[aria-label="${surface}"]`).trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-conversation-agent-id]').exists()).toBe(false);
+      expect(wrapper.getComponent({ name: 'AppShell' }).props('snapshot').activeAgentId).toBe(agentId);
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(0);
+
+      emitAppCommand({ type: 'open-agent-composer', agentId }); await flushPromises();
+      expect(wrapper.get(`[data-conversation-agent-id="${agentId}"]`).isVisible()).toBe(true);
+      expect(useConfetti().bursts.value).toHaveLength(0);
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(1);
+    } finally { wrapper.unmount(); clearConfetti(); }
+  });
+
+  it('celebrates an unfocused visible split pane, but not a hidden pane or window', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.providerOnboardingComplete = true;
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const { emit } = installBackendFixture(snapshot);
+    const wrapper = mount(App, { attachTo: document.body });
+    const visibility = vi.spyOn(document, 'visibilityState', 'get');
+    try {
+      await flushPromises();
+      await chooseLayout(wrapper, 'Vertical Split');
+      const pane = wrapper.findAll('.agent-split-grid__pane').find(pane => !pane.classes().includes('agent-split-grid__pane--focused'))!;
+      const agentId = pane.attributes('data-agent-id')!;
+      expect(pane.get('[data-conversation-agent-id]').isVisible()).toBe(true);
+      const celebrate = () => emit({ type: 'client.celebrationRequested', agentId, payload: { kind: 'confetti' } });
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(1);
+      clearConfetti();
+
+      (pane.element as HTMLElement).style.display = 'none';
+      await flushPromises();
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(0);
+      (pane.element as HTMLElement).style.display = '';
+      visibility.mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      celebrate(); await flushPromises();
+      expect(useConfetti().bursts.value).toHaveLength(0);
+    } finally { visibility.mockRestore(); wrapper.unmount(); clearConfetti(); }
+  });
+
   it('splits a feature window using only its branch agents without overwriting the team layout', async () => {
     const snapshot = createInitialSnapshot();
     const team = snapshot.teams[0]!;

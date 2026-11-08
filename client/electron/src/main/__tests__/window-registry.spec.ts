@@ -17,6 +17,19 @@ function registryWith(count: number): { registry: WindowRegistry<FakeWindow>; wi
 }
 
 describe('WindowRegistry', () => {
+  it('keeps actual conversation visibility separate from selection and clears it on renderer reload', () => {
+    const { registry, windows: [first, second] } = registryWith(2);
+    registry.setSelectedAgent(first!, 'agent-a', ['agent-a', 'agent-b']);
+    registry.setSelectedAgent(second!, 'agent-c', ['agent-c']);
+    expect(registry.visibleAgentIdsOf(first)).toEqual(['agent-a', 'agent-b']);
+    registry.setSelectedAgent(first!, 'agent-a', []);
+    expect(registry.selectedAgentOf(first)).toBe('agent-a');
+    expect(registry.visibleAgentIdsOf(first)).toEqual([]);
+    expect(registry.visibleAgentIdsOf(second)).toEqual(['agent-c']);
+    registry.setReady(second!, false);
+    expect(registry.visibleAgentIdsOf(second)).toEqual([]);
+  });
+
   it('targets the focused window, then the last focused, then any live window', () => {
     const { registry, windows: [first, second, third] } = registryWith(3);
     expect(registry.focused()).toBe(third);

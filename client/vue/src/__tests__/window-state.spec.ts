@@ -23,6 +23,17 @@ function setup(context: Awaited<ReturnType<NonNullable<AppApi['getWindowContext'
 }
 
 describe('window state', () => {
+  it('reports visibility changes even when the selected agent stays the same', async () => {
+    const { api, host, state } = setup({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
+    await state.start(host);
+    state.reportSelection(host.api(), 'agent-1', ['agent-2', 'agent-1']);
+    state.reportSelection(host.api(), 'agent-1', ['agent-1', 'agent-2']);
+    state.reportSelection(host.api(), 'agent-1', []);
+    expect(api.setWindowSelection.mock.calls).toEqual([
+      ['agent-1', ['agent-1', 'agent-2']], ['agent-1', []],
+    ]);
+  });
+
   it('owns every native view while no other window holds one', async () => {
     const { host, state } = setup({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
     await state.start(host);

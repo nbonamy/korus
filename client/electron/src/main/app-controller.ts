@@ -159,6 +159,7 @@ export class AppController {
       this.spokenAnnouncements,
       () => ({
         activeAgentId: this.currentSelectedAgentId(),
+        visibleAgentIds: this.windows.visibleAgentIdsOf(this.windows.focused()),
         enabled: this.snapshot?.general.spokenAnnouncementsEnabled === true,
         focused: this.windows.anyFocused(),
         muted: this.snapshot?.general.spokenAnnouncementsMuted === true,
@@ -631,9 +632,10 @@ export class AppController {
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
     ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
     ipc.handle(ipcChannels.setWindowSetup, (event, setup) => this.setWindowSetup(this.windowOf(event), setup));
-    ipc.handle(ipcChannels.setWindowSelection, (event, agentId) => {
+    ipc.handle(ipcChannels.setWindowSelection, (event, agentId, visibleAgentIds) => {
       const window = this.windowOf(event);
-      if (window) this.windows.setSelectedAgent(window, agentId);
+      if (window) this.windows.setSelectedAgent(window, agentId, visibleAgentIds);
+      this.policyAwareSpokenAnnouncements.refresh();
       this.scheduleLayoutSave();
     });
     ipc.handle(ipcChannels.claimNativeResource, (event, resource, agentId, takeOver) => this.claimNativeResource(this.windowOf(event), resource, agentId, takeOver === true));
@@ -904,6 +906,7 @@ export class AppController {
     window.webContents.on('did-start-navigation', (navigation) => {
       if (!navigation.isMainFrame || navigation.isSameDocument) return;
       this.windows.setReady(window, false);
+      this.policyAwareSpokenAnnouncements.refresh();
       this.resetNativeResources(window);
       if (this.debugFlags.delete(window)) this.refreshAppMenu();
     });

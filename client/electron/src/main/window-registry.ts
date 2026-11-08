@@ -12,6 +12,7 @@ type Entry<W extends ManagedWindow> = {
   scope: WindowScope;
   setup: WindowSetup | null;
   selectedAgentId: string | null;
+  visibleAgentIds: string[];
   viewState: WindowViewState | null;
 };
 
@@ -33,7 +34,7 @@ export class WindowRegistry<W extends ManagedWindow> {
 
   add(window: W, viewState: WindowViewState | null = null): void {
     if (this.entryOf(window)) return;
-    this.entries.push({ window, ready: false, scope: viewState?.scope ?? 'workspace', setup: viewState?.setup ?? null, selectedAgentId: viewState?.agentId ?? null, viewState });
+    this.entries.push({ window, ready: false, scope: viewState?.scope ?? 'workspace', setup: viewState?.setup ?? null, selectedAgentId: viewState?.agentId ?? null, visibleAgentIds: [], viewState });
   }
 
   /** Forgets the window and returns the native views it owned. */
@@ -85,7 +86,10 @@ export class WindowRegistry<W extends ManagedWindow> {
 
   setReady(window: W, ready: boolean): void {
     const entry = this.entryOf(window);
-    if (entry) entry.ready = ready;
+    if (entry) {
+      entry.ready = ready;
+      if (!ready) entry.visibleAgentIds = [];
+    }
   }
 
   isReady(window: W): boolean {
@@ -125,9 +129,19 @@ export class WindowRegistry<W extends ManagedWindow> {
     return workspaces.find(window => window.isFocused()) ?? workspaces[workspaces.length - 1];
   }
 
-  setSelectedAgent(window: W, agentId: string | null): void {
+  setSelectedAgent(window: W, agentId: string | null, visibleAgentIds?: unknown): void {
     const entry = this.entryOf(window);
-    if (entry) entry.selectedAgentId = agentId;
+    if (!entry) return;
+    entry.selectedAgentId = agentId;
+    if (visibleAgentIds !== undefined) {
+      entry.visibleAgentIds = Array.isArray(visibleAgentIds) && visibleAgentIds.length <= 4
+        && visibleAgentIds.every(id => typeof id === 'string' && id.length > 0)
+        ? [...new Set(visibleAgentIds)] : [];
+    }
+  }
+
+  visibleAgentIdsOf(window: W | undefined): string[] {
+    return window && !window.isDestroyed() ? [...(this.entryOf(window)?.visibleAgentIds ?? [])] : [];
   }
 
   selectedAgentOf(window: W | undefined): string | null {

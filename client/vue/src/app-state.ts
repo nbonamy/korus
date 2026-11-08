@@ -51,6 +51,7 @@ import { isEmptyComposerDraft, type ComposerDraft } from '@workspace/core/window
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
 
 const snapshot = ref<AppSnapshot>(createEmptySnapshot());
+let visibleAgentIds = new Set<string>();
 const generalPreferences = createGeneralPreferences(() => snapshot.value.general, async general => {
   const api = appApi;
   if (!api?.updateSettings) throw new Error('Settings are unavailable.');
@@ -1971,6 +1972,10 @@ export function useAppState() {
       setRendererWindowFocused(focused);
       if (focused && hasLoadedSnapshot.value && isActiveAgentHistoryFailed.value) void hydrateActiveAgentHistory().catch(() => undefined);
     },
+    setVisibleAgentIds: (agentIds: string[]) => {
+      visibleAgentIds = new Set(agentIds);
+      windowState.reportSelection(appApi, snapshot.value.activeAgentId, [...visibleAgentIds]);
+    },
     markDebugAgentsUnread,
     selectTeam,
     clearActiveGoal,
@@ -2395,7 +2400,7 @@ function handleSnapshotOwnedRendererEffect(event: Exclude<MainToRendererEvent, R
 
 function syncCelebrationFromMainEvent(event: Extract<RendererOnlySnapshotEvent, { type: 'client.celebrationRequested' }>): void {
   if (snapshot.value.general.celebrationsEnabled === false) return;
-  if (event.agentId !== snapshot.value.activeAgentId) return;
+  if (!visibleAgentIds.has(event.agentId)) return;
   useConfetti().celebrate({ kind: event.payload.kind });
 }
 
@@ -2652,13 +2657,13 @@ async function startWindowState(): Promise<void> {
       showTeam: (teamId) => { snapshot.value = selectTeamInSnapshot(snapshot.value, teamId); },
       applyDraft: applySharedComposerDraft,
     });
-    windowState.reportSelection(appApi, snapshot.value.activeAgentId);
+    windowState.reportSelection(appApi, snapshot.value.activeAgentId, [...visibleAgentIds]);
   } catch {
     // Without window context this window behaves as the only one.
   }
 }
 
-watch(() => snapshot.value.activeAgentId, (agentId) => windowState.reportSelection(appApi, agentId));
+watch(() => snapshot.value.activeAgentId, (agentId) => windowState.reportSelection(appApi, agentId, [...visibleAgentIds]));
 
 function markAgentSending(agentId: string, sending: boolean): void {
   const next = new Set(sendingAgentIds.value);

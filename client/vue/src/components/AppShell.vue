@@ -1083,6 +1083,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'visible-agents-change': [agentIds: string[]];
   'join-invite': [];
   'clear-agent-creation-progress': [id: string];
   'background-agent-creation-progress': [id: string];
@@ -2042,10 +2043,58 @@ const legacyConversationActions: AgentConversationActions = {
   steerQueuedPrompt: (_id, prompt, text, options) => options ? emit('steer-queued-prompt', prompt, text, options) : emit('steer-queued-prompt', prompt, text),
 };
 const conversationPanels = new Map<string, InstanceType<typeof AgentConversationPanel>>();
+const visibilityObserver = new MutationObserver(syncVisibleAgents);
+let visibilityDisposed = false;
+let reportedVisibleAgents = '';
 function setConversationPanel(agentId: string, instance: unknown): void {
+  if (conversationPanels.get(agentId) === instance) return;
   if (instance) conversationPanels.set(agentId, instance as InstanceType<typeof AgentConversationPanel>);
   else conversationPanels.delete(agentId);
+  observeConversationVisibility();
+  void nextTick(observeConversationVisibility);
 }
+function isAgentVisible(agentId: string): boolean {
+  if (document.visibilityState !== 'visible' || showOnboardingGate.value || showLoginLanding.value) return false;
+  const root = conversationPanels.get(agentId)?.getElement?.();
+  if (!(root instanceof HTMLElement) || !root.isConnected) return false;
+  // Mounted Mission conversations can be hidden by an expanded workbench.
+  for (let element: HTMLElement | null = root; element; element = element.parentElement) {
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0') return false;
+  }
+  return true;
+}
+function syncVisibleAgents(): void {
+  if (visibilityDisposed) return;
+  const agentIds = [...conversationPanels.keys()].filter(isAgentVisible).sort();
+  const signature = JSON.stringify(agentIds);
+  if (signature === reportedVisibleAgents) return;
+  reportedVisibleAgents = signature;
+  emit('visible-agents-change', agentIds);
+}
+function observeConversationVisibility(): void {
+  if (visibilityDisposed) return;
+  visibilityObserver.disconnect();
+  for (const panel of conversationPanels.values()) {
+    for (let element = panel.getElement?.() ?? null; element; element = element.parentElement) {
+      visibilityObserver.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    }
+  }
+  syncVisibleAgents();
+}
+watch([showOnboardingGate, showLoginLanding], syncVisibleAgents, { flush: 'post' });
+onMounted(() => {
+  observeConversationVisibility();
+  document.addEventListener('visibilitychange', syncVisibleAgents);
+  window.addEventListener('resize', syncVisibleAgents);
+});
+onBeforeUnmount(() => {
+  visibilityDisposed = true;
+  visibilityObserver.disconnect();
+  document.removeEventListener('visibilitychange', syncVisibleAgents);
+  window.removeEventListener('resize', syncVisibleAgents);
+  emit('visible-agents-change', []);
+});
 function focusedConversationPanel() {
   return conversationPanels.get((activeSurface.value === 'mission' || splitLayout.value === 'single' ? currentAgent.value?.id : split.focusedPane.value.agentId) ?? '');
 }

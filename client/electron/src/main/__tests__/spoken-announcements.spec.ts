@@ -129,10 +129,25 @@ describe('SpokenAnnouncementQueue', () => {
 });
 
 describe('PolicyAwareSpokenAnnouncementQueue', () => {
+  it('suppresses and cancels selected-agent speech while its conversation is hidden, preserving all-agent scope', () => {
+    const queuePort = { queue: vi.fn().mockReturnValue({ queued: true }), dispose: vi.fn() };
+    const state = { activeAgentId: 'agent-a', visibleAgentIds: ['agent-a'], enabled: true,
+      focused: true, muted: false, onlyWhenFocused: false, scope: 'selected' as 'selected' | 'all' };
+    const queue = new PolicyAwareSpokenAnnouncementQueue(queuePort, () => state);
+    expect(queue.queue(request('agent-a', 'start'))).toStrictEqual({ queued: true });
+    state.visibleAgentIds = [];
+    queue.refresh();
+    expect(queuePort.dispose).toHaveBeenCalledOnce();
+    expect(queue.queue(request('agent-a', 'finish'))).toStrictEqual({ queued: false, reason: 'suppressed' });
+    state.scope = 'all';
+    expect(queue.queue(request('agent-a', 'finish'))).toStrictEqual({ queued: true });
+  });
+
   it('allows only the selected agent and suppresses muted or unfocused playback', () => {
     const queuePort = { queue: vi.fn().mockReturnValue({ queued: true }), dispose: vi.fn() };
     const state = {
       activeAgentId: 'agent-a',
+      visibleAgentIds: ['agent-a'],
       enabled: true,
       focused: true,
       muted: false,
@@ -155,6 +170,7 @@ describe('PolicyAwareSpokenAnnouncementQueue', () => {
     const queuePort = { queue: vi.fn().mockReturnValue({ queued: true }), dispose: vi.fn() };
     const state = {
       activeAgentId: 'agent-a',
+      visibleAgentIds: ['agent-a'],
       enabled: true,
       focused: true,
       muted: false,

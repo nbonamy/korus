@@ -26,6 +26,7 @@ type QueueOptions = {
 
 export type SpokenAnnouncementPolicyState = {
   activeAgentId: string | null;
+  visibleAgentIds: readonly string[];
   enabled: boolean;
   focused: boolean;
   muted: boolean;
@@ -266,7 +267,7 @@ function canPlaySpokenAnnouncement(
   return state.enabled
     && !state.muted
     && (!state.onlyWhenFocused || state.focused)
-    && (state.scope === 'all' || state.activeAgentId === request.agentId);
+    && (state.scope === 'all' || (state.activeAgentId === request.agentId && state.visibleAgentIds.includes(request.agentId)));
 }
 
 function shouldCancelSpokenAnnouncements(
@@ -277,5 +278,6 @@ function shouldCancelSpokenAnnouncements(
   if (!previous.muted && next.muted) return true;
   if (next.onlyWhenFocused && !next.focused && (previous.focused || !previous.onlyWhenFocused)) return true;
   if (previous.scope === 'all' && next.scope === 'selected') return true;
-  return next.scope === 'selected' && previous.activeAgentId !== next.activeAgentId;
+  return next.scope === 'selected' && (previous.activeAgentId !== next.activeAgentId
+    || (previous.visibleAgentIds.includes(previous.activeAgentId ?? '') && !next.visibleAgentIds.includes(next.activeAgentId ?? '')));
 }

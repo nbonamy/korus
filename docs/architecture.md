@@ -63,7 +63,10 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
   offer to move it, and a closed window gives its views up. Composer drafts are one per
   agent, relayed live through main so every window shows the same text. A window is
   always opened with an initial view state, so New Window and every "Open in New
-  Window" entry share one call.
+  Window" entry share one call. The renderer reports which agent conversations are
+  actually visible separately from logical selection. Celebrations and selected-agent
+  speech use this window-local visibility; queued speech is cancelled when visibility
+  is lost. Visibility is ephemeral and cleared when the renderer reloads.
 - A window has a scope. A workspace window shows everything. A team window shows one
   team with its sidebar and no rail. A feature window is the same for one feature, which
   is a team and a Git branch: its sidebar lists the team's agents on that branch as they
