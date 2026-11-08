@@ -32,7 +32,7 @@ describe('useAppState in one of several windows', () => {
   it('starts on the agent its window was opened with, without changing the daemon’s selection', async () => {
     const { app, state } = await loadWindow({ viewState: { agentId: 'agent-jesse' } });
     expect(state.activeAgent.value?.id).toBe('agent-jesse');
-    expect(app.setWindowSelection).toHaveBeenLastCalledWith('agent-jesse');
+    expect(app.setWindowSelection).toHaveBeenLastCalledWith('agent-jesse', []);
   });
 
   it('keeps the daemon’s selection when the window has no initial view state, and ignores unknown agents', async () => {
@@ -83,7 +83,7 @@ describe('useAppState in one of several windows', () => {
   it('tells main which agent this window shows as the user switches', async () => {
     const { app, state } = await loadWindow();
     await state.selectAgent('agent-jesse');
-    await vi.waitFor(() => expect(app.setWindowSelection).toHaveBeenLastCalledWith('agent-jesse'));
+    await vi.waitFor(() => expect(app.setWindowSelection).toHaveBeenLastCalledWith('agent-jesse', []));
   });
 
   it('shares composer edits as one draft per agent and stops sending when nothing changed', async () => {

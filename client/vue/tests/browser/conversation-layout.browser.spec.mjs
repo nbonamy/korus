@@ -41,10 +41,10 @@ const actions=new Proxy({
  setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,backendDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
  send:(id,prompt)=>calls.push([id,prompt]),
 },{get:(target,key)=>target[key]??(()=>{})});
-window.fixture={calls,ids:views.map(v=>v.agent.id)};
+window.fixture={calls,ids:views.map(v=>v.agent.id),visible:[]};
 createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id===active.value).agent,
  isLoading:false,isSending:false,connectionState:{status:'connected'},agentConversationFor:id=>views.find(v=>v.agent.id===id),
- agentConversationActions:actions,onSelectAgent:id=>active.value=id})}).use(i18n).use(ElementPlus).mount('#app');
+ agentConversationActions:actions,onSelectAgent:id=>active.value=id,onVisibleAgentsChange:ids=>window.fixture.visible=ids})}).use(i18n).use(ElementPlus).mount('#app');
 `;
   const server = await createServer({
     configFile: false, root: path.join(root, 'client/vue'), cacheDir, logLevel: 'error',
@@ -79,6 +79,7 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     const editor = page.locator('.chat-rich-text-editor');
     try { await editor.waitFor({ timeout: 15_000 }); } catch (error) { throw new Error(JSON.stringify({ errors, body: await page.locator('body').innerText() }) + error.message); }
     const ids = await page.evaluate(() => window.fixture.ids);
+    await page.waitForFunction(id => window.fixture.visible.length === 1 && window.fixture.visible[0] === id, ids[0]);
     assert.equal(await editor.textContent(), `Draft for ${ids[0]}`);
     const setLayout = async name => {
       await page.getByRole('button', { name: 'Conversation layout', exact: true }).click();
@@ -86,11 +87,16 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     };
     await setLayout('Vertical Split');
     await page.waitForFunction(() => document.querySelectorAll('.chat-rich-text-editor').length === 2);
+    await page.waitForFunction(() => window.fixture.visible.length === 2);
     const panes = page.locator('.agent-split-grid__pane');
     const first = await panes.nth(0).boundingBox(), second = await panes.nth(1).boundingBox();
     assert.ok(first.width > 280 && second.width > 280);
     assert.ok(Math.abs(first.y - second.y) < 1 && second.x >= first.x + first.width - 1);
     const other = panes.nth(1);
+    await other.evaluate(pane => { pane.style.display = 'none'; });
+    await page.waitForFunction(id => !window.fixture.visible.includes(id), ids[1]);
+    await other.evaluate(pane => { pane.style.display = ''; });
+    await page.waitForFunction(id => window.fixture.visible.includes(id), ids[1]);
     await other.locator('.chat-rich-text-editor').click();
     await page.waitForFunction(id => document.querySelector('.agent-split-grid__pane--focused')?.dataset.agentId === id, ids[1]);
     await other.getByRole('button', { name: 'Composer actions', exact: true }).click();
@@ -108,6 +114,10 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => window.fixture.calls.length === 2);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls[1]), [ids[1], `Draft for ${ids[1]}`]);
+    await page.getByRole('button', { name: 'Backlog', exact: true }).click();
+    await page.waitForFunction(() => window.fixture.visible.length === 0);
+    await page.locator('.team-rail__team').first().click();
+    await page.waitForFunction(id => window.fixture.visible.length === 1 && window.fixture.visible[0] === id, ids[1]);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

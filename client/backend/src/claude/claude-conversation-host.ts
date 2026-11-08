@@ -1,4 +1,5 @@
 import { validConsumption, type Consumption, type ExecutionObservation, type RequestObservation } from '@workspace/core/usage';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import path from 'node:path';
 import { cp, rm } from 'node:fs/promises';
 import { warnMain } from '../log';
@@ -1981,6 +1982,7 @@ function claudeTurnParams(
     cwd: claudeWorkingDirectory(agent),
     prompt: promptWithSelectedReferences(prompt, options.content),
     sessionId: existingSessionId ?? undefined,
+    title: agentDisplayName(agent),
     model: options.selection?.model ?? defaults?.model ?? null,
     effort: claudeEffort(options.selection?.reasoningEffort ?? defaults?.reasoningEffort),
     fastMode: tier === 'fast',

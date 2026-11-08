@@ -185,6 +185,39 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('uses renderer visibility through preload and IPC to suppress and cancel selected-agent announcements', async () => {
+    const fixture = backendFixture();
+    fixture.state.snapshot.general.spokenAnnouncementsEnabled = true;
+    fixture.state.snapshot.general.spokenAnnouncementsOnlyWhenFocused = false;
+    fixture.state.snapshot.general.spokenAnnouncementScope = 'selected';
+    native.factory.mockReturnValue(fixture.backend);
+    const speech = { queue: vi.fn().mockReturnValue({ queued: true }), dispose: vi.fn(), queueWithCompletion: vi.fn() };
+    const controller = new AppController(fixture.state.snapshot, undefined, undefined, undefined, undefined,
+      null, undefined, undefined, undefined, undefined, speech);
+    controllers.push(controller);
+    controller.registerIpcHandlers();
+    await controller.initialize();
+    controller.createWindow();
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    const queue = native.factory.mock.calls[0]![0].spokenAnnouncements;
+    const agentId = fixture.state.snapshot.activeAgentId!;
+    const request = { agentId, phase: 'start' as const, text: 'Starting work.', voice: 'af_heart' as const };
+    await api.setWindowSelection!(agentId, [agentId]);
+    expect(queue.queue(request)).toEqual({ queued: true });
+    speech.dispose.mockClear();
+    await api.setWindowSelection!(agentId, []);
+    expect(speech.dispose).toHaveBeenCalledOnce();
+    expect(queue.queue(request)).toEqual({ queued: false, reason: 'suppressed' });
+    await api.setWindowSelection!(agentId, [agentId]);
+    expect(speech.queue).toHaveBeenCalledOnce();
+    expect(queue.queue(request)).toEqual({ queued: true });
+    speech.dispose.mockClear();
+    native.createWindow.mock.results[0]!.value.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+    expect(speech.dispose).toHaveBeenCalledOnce();
+    expect(queue.queue(request)).toEqual({ queued: false, reason: 'suppressed' });
+  });
+
   it.each([false, true])('allows a conversation-authorized MCP restart without a desktop dialog (window=%s)', async openWindow => {
     const packaged = app.isPackaged;
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });

@@ -39,6 +39,7 @@ export function createWindowState() {
   let initialSetupSeen = false;
   let unsubscribe: Array<() => void> = [];
   let reportedAgentId: string | null | undefined;
+  let reportedVisibleAgentIds: string | undefined;
   // Main learns this window's selection only after the initial view state was applied, or it would overwrite it.
   let started = false;
 
@@ -60,6 +61,7 @@ export function createWindowState() {
     const initialAgentId = context.viewState?.agentId;
     if (initialAgentId && host.agentExists(initialAgentId)) host.showAgent(initialAgentId);
     reportedAgentId = undefined;
+    reportedVisibleAgentIds = undefined;
     started = true;
     if (!initialSetupSeen && context.viewState?.setup) {
       initialSetupPending = context.viewState.setup;
@@ -94,10 +96,17 @@ export function createWindowState() {
   }
 
   /** Tells main which agent this window shows, for the commands and notices that follow the window the user is in. */
-  function reportSelection(api: AppApi | undefined, agentId: string | null): void {
-    if (!started || !api?.setWindowSelection || reportedAgentId === agentId) return;
+  function reportSelection(api: AppApi | undefined, agentId: string | null, visibleAgentIds?: string[]): void {
+    const visible = visibleAgentIds && [...new Set(visibleAgentIds)].sort();
+    const signature = visible && JSON.stringify(visible);
+    if (!started || !api?.setWindowSelection
+      || (reportedAgentId === agentId && (signature === undefined || signature === reportedVisibleAgentIds))) return;
     reportedAgentId = agentId;
-    void api.setWindowSelection(agentId).catch(() => undefined);
+    if (visible === undefined) void api.setWindowSelection(agentId).catch(() => undefined);
+    else {
+      reportedVisibleAgentIds = signature;
+      void api.setWindowSelection(agentId, visible).catch(() => undefined);
+    }
   }
 
   /** True while no other window holds the agent's native view. */

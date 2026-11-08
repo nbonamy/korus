@@ -10,6 +10,8 @@ export type ClaudeTurnParams = {
   /** Ignore cold-resume output until this input is replayed by the SDK. */
   waitForInputReplay?: boolean;
   sessionId?: string;
+  /** Names a new session; Claude otherwise spends a request generating one. */
+  title?: string | null;
   model?: string | null;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
   fastMode?: boolean;

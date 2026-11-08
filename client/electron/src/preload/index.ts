@@ -203,7 +203,9 @@ const api: AppApi = {
   getWindowContext: () => ipc.invoke(ipcChannels.getWindowContext),
   openWindow: (viewState) => ipc.invoke(ipcChannels.openWindow, viewState),
   setWindowSetup: (setup) => ipc.invoke(ipcChannels.setWindowSetup, setup),
-  setWindowSelection: (agentId) => ipc.invoke(ipcChannels.setWindowSelection, agentId),
+  setWindowSelection: (agentId, visibleAgentIds) => visibleAgentIds === undefined
+    ? ipc.invoke(ipcChannels.setWindowSelection, agentId)
+    : ipc.invoke(ipcChannels.setWindowSelection, agentId, visibleAgentIds),
   claimNativeResource: (resource, agentId, takeOver) => ipc.invoke(ipcChannels.claimNativeResource, resource, agentId, takeOver),
   releaseNativeResource: (resource, agentId) => ipc.invoke(ipcChannels.releaseNativeResource, resource, agentId),
   syncComposerDraft: (agentId, draft) => ipc.invoke(ipcChannels.syncComposerDraft, agentId, draft),
