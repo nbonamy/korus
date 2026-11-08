@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { promptContentText } from '@codex-app-sdk/core/surface';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
+import { projectCodexConversation } from '../../provider-conversation-bindings';
+import { codexConversationSnapshot } from '../../test/codex-conversation-fixtures';
 import { resolveConversationControllerValue } from './app-shell-test-harness';
 
 const image: CodexNativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
@@ -49,8 +52,10 @@ describe('useAgentConversation image annotations', () => {
 
 describe('agentConversationState identity', () => {
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
-    const view = { agent: { id: 'restored', backendSession: { kind: 'codex', threadId: 'restored' } },
-      codexSnapshot: { messages: [], historyLoading: false }, history: { hydrating: true } } as unknown as AgentConversationView;
+    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', backendSession: { kind: 'codex' as const, threadId: 'restored' } };
+    const view = { agent,
+      conversation: projectCodexConversation(codexConversationSnapshot([], { activeConversationId: 'restored', historyLoading: false }), agent),
+      history: { hydrating: true } } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);
     expect(state.history!.loading).toBe(true);
     expect(state.identity.disabled).toBe(true);
@@ -59,9 +64,10 @@ describe('agentConversationState identity', () => {
     expect(state.identity.disabled).toBe(false);
   });
   it('hands the pane the same answered-request set until its members change, so message blocks are not re-rendered by every update', () => {
+    const agent = createInitialSnapshot().agents[0]!;
     const answered = ref<ReadonlySet<string>>(new Set(['a']));
     const state = agentConversationState(() => ({
-      codexSnapshot: null, claudeSnapshot: null, antigravitySnapshot: null, answeredClientRequestIds: answered.value,
+      agent, conversation: null, answeredClientRequestIds: answered.value,
     }) as unknown as AgentConversationView);
     const first = state.thread!.answeredClientRequestIds;
 

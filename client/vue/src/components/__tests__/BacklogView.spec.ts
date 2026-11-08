@@ -25,6 +25,7 @@ describe('BacklogView', () => {
     try {
       await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
       const star = wrapper.get<HTMLButtonElement>('[aria-label="Remove a from favorites"]');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
       star.element.focus();
       expect(document.activeElement).toBe(star.element);
       expect(getComputedStyle(star.element).opacity).toBe('1');

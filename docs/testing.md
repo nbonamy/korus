@@ -108,7 +108,11 @@ Node, and Vue tests retain isolated VM workers. The Vue suite setup resets
 evaluated modules before its own imports so per-suite mocks cannot inherit an
 earlier suite's evaluated component graph. The reset is hoisted to keep setup
 hooks and component fixtures on the same app-client and configuration instances.
-Wrapper auto-unmount remains responsible for mounted component cleanup.
+Suite entry also removes Vite-injected styles before the current suite imports
+its styles; fixture-owned styles remain intact. Wrapper auto-unmount remains
+responsible for mounted component cleanup. Full Vue VM runs use at least two
+workers: single-worker batching defers the configured memory-recycling check
+until the entire project finishes. Keep one-worker runs focused.
 
 Quality checks every workspace independently and requires all coverage and lint
 jobs before publishing the aggregate result or coverage badge. Desktop release

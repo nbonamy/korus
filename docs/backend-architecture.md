@@ -1,9 +1,9 @@
 # Backend Architecture
 
 `daemon` is the Korus product backend: a separate Node process that orchestrates
-Codex app-server, Claude Code, Antigravity ACP, the Korus MCP server, git, files,
-automations, work integrations and persistent state behind one app-owned protocol. It is not a
-replacement for Codex app-server. Ownership rules live in
+provider runtimes, the Korus MCP server, git, files, automations, work integrations
+and persistent state behind one app-owned protocol. Providers retain native
+execution and conversation ownership. Ownership rules live in
 [architecture.md](architecture.md); message contracts in [protocol.md](protocol.md).
 
 Provider safety stops are terminal conversation errors. The daemon preserves the

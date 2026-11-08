@@ -8,8 +8,12 @@ import { configureAppClient } from '../platform-api';
 import { installElectronTestClientAccessor, setElectronTestClient } from './client';
 import { elementPlusStubs } from './element-plus-stubs';
 
+// Reused VM suites share a document: discard prior Vite CSS before imports re-inject it.
 // Reset before setup imports so hooks and components share the same app singletons.
-vi.hoisted(() => vi.resetModules());
+vi.hoisted(() => {
+  document.querySelectorAll('style[data-vite-dev-id]').forEach(style => style.remove());
+  vi.resetModules();
+});
 
 beforeEach(() => {
   resetProvisioningOperations();
