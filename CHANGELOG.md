@@ -4,6 +4,26 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.55.0] - 2026-11-08
+
+### New features
+
+- **Mission execution:** Choose whether the Mission lead implements work, one worker handles each repository, or multiple workers work per repository.
+- **Chat annotations:** See annotations on their source text, edit them in the composer, and click one to return to its passage.
+- **Shared chats:** See the number of connected guests and get a notification when someone joins.
+- **Interface zoom:** Zoom in, zoom out, or restore the default size from the View menu or with keyboard shortcuts.
+
+### Improvements and fixes
+
+- **Model selector:** Scroll long model lists while keeping favorites visible.
+- **Missions:** Let the lead coordinate implementation, show dependency-waiting tickets as up next, and continue deleting a Mission in the background.
+- **Analytics:** Exclude time waiting for user input or approval from task duration.
+- **Notifications:** Show celebrations and selected-agent announcements only when the conversation is visible.
+- **Claude:** Name new Claude sessions after their agents and update the Claude integration.
+- **Codex:** Support Codex CLI versions 0.164 through 0.167.
+- **Diffs and sidebar:** Keep change statistics readable in commit menus and hide sidebar scrollbars.
+- **Composer:** Preserve focus when menus close.
+
 ## [0.54.0] - 2026-11-06
 
 ### New features
