@@ -8,6 +8,26 @@ import {
 } from '../agent-coordinator';
 
 describe('AppMcpAgentCoordinator', () => {
+  it.each(['team-app', undefined])('omits provider-blocked conversations from the roster until unblocked (team: %s)', teamId => {
+    const { agents, coordinator } = fixture();
+    agents.forEach(agent => { agent.teamId = teamId; });
+    agents[1]!.isRegistered = true;
+    agents[1]!.status = { type: 'error', message: 'Conversation blocked by provider. Automatic retries are stopped.' };
+    agents.push(agent({ id: 'agent-retry', name: 'Retry', folder: '/tmp/retry', teamId,
+      status: { type: 'error', message: 'Connection lost' } }));
+    agents.push(agent({ id: 'agent-input', name: 'Input', folder: '/tmp/input', teamId,
+      status: { type: 'awaitingInput' } }));
+    agents.push(agent({ id: 'agent-remote-blocked', name: 'Remote blocked', folder: '/tmp/remote', teamId,
+      remoteConnectionId: 'remote-host', status: { type: 'error', message: 'This request was blocked by our safety systems.' } }));
+    agents.push(agent({ id: 'agent-outside', name: 'Outside', folder: '/tmp/outside', teamId: 'another-team' }));
+
+    expect(coordinator.listAgents('agent-dina').agents.map(agent => agent.id))
+      .toStrictEqual(['agent-dina', 'agent-retry', 'agent-input']);
+    agents[1]!.status = { type: 'idle' };
+    expect(coordinator.listAgents('agent-dina').agents.map(agent => agent.id))
+      .toStrictEqual(['agent-dina', 'agent-jesse', 'agent-retry', 'agent-input']);
+  });
+
   it('requires a known caller before exposing or invoking mission capabilities', async () => {
     const { coordinator } = fixture();
     const input = { summary: 'Ready', artifacts: { requirements: { problem: 'Billing', acceptance: 'Pay' }, tickets: [], implementation: { changes: '', tests: '' }, review: { summary: '', pullRequestUrl: '' } } };
