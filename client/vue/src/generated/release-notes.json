@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.55.0",
+  "currentVersion": "0.55.1",
   "releases": [
+    {
+      "version": "0.55.1",
+      "releasedAt": "2026-11-08",
+      "sourceSha256": "74ca741bc53780df4c01be3b4cfc63dbb6a24e84eba581165124053f35a8c042",
+      "markdown": "- **Codex:** Keep connection updates compatible when Codex reports a GCP account.\n- **Telemetry:** Resume sending accumulated usage reports more reliably after time offline."
+    },
     {
       "version": "0.55.0",
       "releasedAt": "2026-11-08",
