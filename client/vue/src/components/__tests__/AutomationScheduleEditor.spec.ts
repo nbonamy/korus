@@ -21,7 +21,7 @@ async function choose(wrapper: ReturnType<typeof editor>, label: string, text: s
 async function toggleDay(wrapper: ReturnType<typeof editor>, day: string) {
   await wrapper.get(`button[aria-label="${day}"]`).trigger('click'); await flushPromises();
 }
-// Switches calendar modes and remounts saved schedules through real Element Plus controls.
+// Switches calendar modes through real Element Plus controls.
 it('edits daily, weekday and weekly schedules through calendar controls', async () => {
   const wrapper = editor();
   expect(wrapper.findAll('.form-field__label').map(label => label.text())).toEqual(['Repeat', 'Time']);
@@ -38,6 +38,10 @@ it('edits daily, weekday and weekly schedules through calendar controls', async 
   const weekly = { ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR;BYHOUR=8;BYMINUTE=0;BYSECOND=0' };
   expect(wrapper.props('modelValue')).toEqual(weekly);
   wrapper.unmount();
+});
+
+it('retains the days of a reopened weekly schedule when switching modes', async () => {
+  const weekly = { ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR;BYHOUR=8;BYMINUTE=0;BYSECOND=0' };
   const reopened = editor(weekly);
   await flushPromises();
   expect(reopened.get('[aria-label="Repeat"]').element.closest('.el-select')?.textContent).toContain('Weekly');
