@@ -594,9 +594,9 @@ describe('ConversationPane', () => {
     };
     await wrapper.setProps({ textAnnotations: [annotation] });
     expect(sdkPane.props('hasComposerContext')).toBe(true);
-    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
     expect(wrapper.get('.chat-annotation-review').text()).toContain('Explain what you found.');
-    expect(wrapper.get('.conversation-pane__annotation-marker').text()).toBe('1');
+
     await wrapper.get('[aria-label="Remove chat annotation"]').trigger('click');
     expect(wrapper.emitted('remove-text-annotation')).toStrictEqual([['annotation-1']]);
   });

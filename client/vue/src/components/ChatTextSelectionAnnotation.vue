@@ -23,23 +23,23 @@
 </template>
 
 <script setup lang="ts">
-import type { CodexMessageTextSelection } from '@codex-app-sdk/vue';
+import type { ChatTextSelection } from './use-chat-text-annotations';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AnnotationPopup from './AnnotationPopup.vue';
 
 const props = defineProps<{
   conversationKey: string;
-  selection: CodexMessageTextSelection | null;
+  selection: ChatTextSelection | null;
 }>();
 
 const emit = defineEmits<{
   dismiss: [];
-  save: [payload: { selection: CodexMessageTextSelection; comment: string }];
+  save: [payload: { selection: ChatTextSelection; comment: string }];
 }>();
 
 const { t } = useI18n();
-const commentingSelection = ref<CodexMessageTextSelection | null>(null);
+const commentingSelection = ref<ChatTextSelection | null>(null);
 const actionStyle = computed(() => {
   const anchor = props.selection?.anchor;
   if (!anchor) return {};

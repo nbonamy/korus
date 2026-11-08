@@ -32,7 +32,7 @@ const composer=createAgentComposerState({getSnapshot:()=>snapshot});
 const views=snapshot.agents.map(agent=>{
  agent.backend='claude';agent.backendDefaults={kind:'claude',permissionMode:'default'};
  return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:{agentId:agent.id,sessionId:'fixture-session',activeTurnId:null,turnIds:['fixture-turn'],turns:[],
- messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The request should be retried.'}]}],
+ messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The **request** should be retried.\\n\\n'+Array.from({length:12},()=> 'More context before the selected passage.').join('\\n\\n')+'\\n\\nThe **request** should be retried.'}]}],
  answeredClientRequestIds:[],busy:false,historyLoading:false,historyState:{hasOlder:false,loadingOlder:false},contextUsage:null,plan:null,error:null},composer:composer.configurationForAgent(agent.id),
  composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeBackendCapabilities,
  approvals:[],sending:false,queuedPrompts:[],history:{failed:false,hydrating:false,hasOlder:false,loadingOlder:false},answeredClientRequestIds:new Set()});
@@ -84,47 +84,145 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     const ids = await page.evaluate(() => window.fixture.ids);
     await page.waitForFunction(id => window.fixture.visible.length === 1 && window.fixture.visible[0] === id, ids[0]);
     assert.equal(await editor.textContent(), `Draft for ${ids[0]}`);
-    const passage = page.locator('p').filter({ hasText: 'The request should be retried.' });
-    await passage.evaluate(element => {
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const selection = window.getSelection();
-      selection.removeAllRanges(); selection.addRange(range);
-      document.dispatchEvent(new Event('selectionchange'));
-      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    });
+    const setLayout = async name => {
+      await page.getByRole('button', { name: 'Conversation layout', exact: true }).click();
+      await page.getByRole('menuitemradio', { name, exact: true }).click();
+    };
+    const firstPane = page.locator('.conversation-pane').first();
+    const passage = firstPane.locator('p strong').last();
+    const selectPassage = async target => {
+      await target.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection();
+        selection.removeAllRanges(); selection.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+    };
+    await passage.scrollIntoViewIfNeeded();
+    await selectPassage(passage);
     await page.getByRole('button', { name: 'Annotate', exact: true }).click();
     await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
     await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
     const marker = page.locator('.conversation-pane__annotation-marker');
     await marker.waitFor();
     assert.equal(await marker.textContent(), '1');
-    const markerBox = await marker.boundingBox(), passageBox = await passage.boundingBox();
-    assert.ok(Math.abs(markerBox.y - passageBox.y) < 100, 'marker stays near its source message');
+    const assertAtPassage = async (badge, target) => {
+      const markerBox = await badge.boundingBox();
+      const endpoint = await target.evaluate(element => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const rects = range.getClientRects(); const rect = rects[rects.length - 1];
+        return { x: rect.right, y: rect.top };
+      });
+      assert.ok(Math.abs(markerBox.x - endpoint.x) < 24 && Math.abs(markerBox.y - endpoint.y) < 24,
+        'marker must sit at the endpoint of the selected occurrence, not at the message header');
+    };
+    await assertAtPassage(marker, passage);
+    const paintedRanges = await page.evaluate(() => [...CSS.highlights.values()].flatMap(highlight => [...highlight].map(range => range.toString())));
+    assert.deepEqual(paintedRanges, ['request']);
+    const card = page.locator('.chat-annotation-review .composer-context-cards__open');
+    assert.equal(await card.innerText(), 'Add a bounded retry.');
+    assert.equal(await card.locator('svg.tabler-icon-message-2').count(), 1);
+    const markerColors = await marker.evaluate(element => {
+      const style = getComputedStyle(element);
+      const probe = document.createElement('span');
+      probe.style.background = 'var(--color-primary)';
+      probe.style.color = 'var(--color-on-primary)';
+      element.append(probe);
+      const expected = getComputedStyle(probe);
+      const matches = style.backgroundColor === expected.backgroundColor && style.color === expected.color;
+      probe.remove();
+      return matches;
+    });
+    assert.ok(markerColors, 'annotation tags use the primary background and its foreground color');
     if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: process.env.ANNOTATION_EVIDENCE });
     await marker.click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor();
-    assert.ok((await dialog.innerText()).includes('The request should be retried.'));
-    assert.equal(await dialog.locator('input').inputValue(), 'Add a bounded retry.');
+    assert.ok((await dialog.innerText()).includes('request'));
+    assert.equal(await dialog.getByText('Chat annotation comment', { exact: true }).count(), 0);
+    assert.equal(await dialog.getByRole('textbox', { name: 'Chat annotation comment', exact: true }).inputValue(), 'Add a bounded retry.');
     await dialog.locator('input').fill('Discard this edit.');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
-    await page.locator('.chat-annotation-review summary').click();
-    await page.locator('.chat-annotation-review__edit').click();
+    await page.locator('.chat-annotation-review .composer-context-cards__open').click();
     await dialog.waitFor();
     assert.equal(await dialog.locator('input').inputValue(), 'Add a bounded retry.');
-    await dialog.locator('input').fill('Use three attempts.');
+    const longComment = 'Use three attempts. '.repeat(20).trim();
+    await dialog.locator('input').fill(longComment);
     await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
-    assert.ok((await page.locator('.chat-annotation-review').innerText()).includes('Use three attempts.'));
+    assert.equal(await card.innerText(), longComment);
+    const chipWidth = await card.evaluate(element => element.closest('article').getBoundingClientRect().width);
+    assert.ok(chipWidth <= 180, 'the entire annotation chip, including icon and remove action, is capped at 180px');
+    const longGeometry = await card.locator('.composer-context-cards__detail').evaluate(element => ({
+      width: element.clientWidth, contentWidth: element.scrollWidth, height: element.getBoundingClientRect().height,
+      overflow: getComputedStyle(element).textOverflow, whiteSpace: getComputedStyle(element).whiteSpace,
+    }));
+    assert.ok(longGeometry.contentWidth > longGeometry.width && longGeometry.width > 0);
+    assert.equal(longGeometry.overflow, 'ellipsis');
+    assert.equal(longGeometry.whiteSpace, 'nowrap');
+    assert.ok(longGeometry.height < 24, 'comment stays on one line');
+    const firstPassage = firstPane.locator('p strong').first();
+    await firstPassage.scrollIntoViewIfNeeded();
+    await selectPassage(firstPassage);
+    await page.getByRole('button', { name: 'Annotate', exact: true }).click();
+    await page.locator('.annotation-popup__input').fill('Keep this separate.');
+    await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.chat-annotation-review .composer-context-cards__open').length === 2);
+    assert.equal(await marker.count(), 2);
+    await assertAtPassage(marker.filter({ hasText: /^2$/ }), firstPassage);
+    await passage.scrollIntoViewIfNeeded();
+    await assertAtPassage(marker.filter({ hasText: /^1$/ }), passage);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await passage.scrollIntoViewIfNeeded();
+    await assertAtPassage(marker.filter({ hasText: /^1$/ }), passage);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await setLayout('Vertical Split');
+    await page.waitForFunction(() => document.querySelectorAll('.chat-rich-text-editor').length === 2);
+    await assertAtPassage(marker.filter({ hasText: /^1$/ }), passage);
+    await setLayout('Single Pane');
+    await page.waitForFunction(() => document.querySelectorAll('.chat-rich-text-editor').length === 1);
+    await passage.scrollIntoViewIfNeeded();
+    await assertAtPassage(marker.filter({ hasText: /^1$/ }), passage);
+    await page.locator('.chat-annotation-review').getByRole('button', { name: 'Remove chat annotation', exact: true }).first().click();
+    await page.waitForFunction(() => document.querySelectorAll('.conversation-pane__annotation-marker').length === 1);
+    assert.equal(await marker.textContent(), '1');
     await page.locator('.chat-annotation-review').getByRole('button', { name: 'Remove chat annotation', exact: true }).click();
     await marker.waitFor({ state: 'hidden' });
     await page.locator('.chat-annotation-review').waitFor({ state: 'hidden' });
-    const setLayout = async name => {
-      await page.getByRole('button', { name: 'Conversation layout', exact: true }).click();
-      await page.getByRole('menuitemradio', { name, exact: true }).click();
-    };
+    assert.equal(await page.evaluate(() => CSS.highlights.size), 0);
+    // A real selection across paragraph boundaries includes rendered line breaks.
+    const multiline = await firstPane.locator('[data-chat-annotation-content]').evaluate(element => {
+      const paragraphs = element.querySelectorAll('p');
+      const range = document.createRange();
+      range.setStart(paragraphs[0].firstChild, 0);
+      range.setEnd(paragraphs[1].firstChild, paragraphs[1].firstChild.textContent.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return { selected: selection.toString(), domText: range.toString() };
+    });
+    assert.ok(multiline.selected.includes('\n'));
+    await page.getByRole('button', { name: 'Annotate', exact: true }).click();
+    await page.locator('.annotation-popup__input').fill('Across paragraphs.');
+    await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
+    await marker.waitFor();
+    const multilineHighlight = await page.evaluate(() => [...CSS.highlights.values()].flatMap(highlight => [...highlight].map(range => range.toString())));
+    assert.deepEqual(multilineHighlight, [multiline.domText]);
+    await assertAtPassage(marker, firstPane.locator('p').nth(1));
+    if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: process.env.ANNOTATION_EVIDENCE });
+    await card.click();
+    await dialog.waitFor();
+    assert.equal(await dialog.locator('blockquote').innerText(), multiline.selected.trim());
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await page.locator('.chat-annotation-review').getByRole('button', { name: 'Remove chat annotation', exact: true }).click();
+    await marker.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => CSS.highlights.size), 0);
+
     await setLayout('Vertical Split');
     await page.waitForFunction(() => document.querySelectorAll('.chat-rich-text-editor').length === 2);
     await page.waitForFunction(() => window.fixture.visible.length === 2);

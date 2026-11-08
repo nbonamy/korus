@@ -24,7 +24,7 @@
       :message-text-selection="true"
       :transform-message="transformConversationMessage"
       :tool-visibility="isAppToolVisible"
-      @message-text-selection-change="messageTextSelection = $event"
+      @message-text-selection-change="messageTextSelection = captureChatTextAnchor($event)"
     >
       <template #empty>
         <div class="conversation-pane__empty">
@@ -35,16 +35,20 @@
           </div>
         </div>
       </template>
-      <template #message-header="{ message, index }">
-        <button
-          v-for="annotation in annotationsForMessage(message, index)"
-          :key="annotation.id"
-          class="conversation-pane__annotation-marker"
-          type="button"
-          :aria-label="t('chat.textAnnotations.edit', { number: textAnnotations.indexOf(annotation) + 1 })"
-          :title="`${annotation.text}\n${annotation.comment}`"
-          @click="annotationReview?.open(annotation.id)"
-        >{{ textAnnotations.indexOf(annotation) + 1 }}</button>
+      <template #message-text="{ block, message, index }">
+        <ChatAnnotatedText
+          :message-key="message.id ?? String(index)"
+          :annotations="annotationsForMessage(message, index).map(annotation => ({ ...annotation, number: textAnnotations.indexOf(annotation) + 1 }))"
+          @edit="annotationReview?.open($event)"
+        >
+          <CodexMessageBlock :block="block" :mention-groups="textCatalogs?.mentionGroups" :plugins="textCatalogs?.plugins" :skills="textCatalogs?.skills">
+            <template #mention="{ item, surface: mentionSurface }">
+              <AgentMention v-if="item.value.startsWith('agent:')" :label="item.label" :surface="mentionSurface" />
+            </template>
+          </CodexMessageBlock>
+        </ChatAnnotatedText>
+      </template>
+      <template #message-header="{ message }">
         <span v-if="guestAuthor(message.id)" class="conversation-pane__message-header">{{ guestAuthor(message.id) }}</span>
         <DeferredConversationContent
           v-if="agent && contentSessionId && message.id && deferredContent(message) && !loadedContent.has(deferredContent(message)!.contentId)"
@@ -187,13 +191,13 @@ import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'v
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
+  CodexMessageBlock,
   defaultCodexChatTranslate,
   provideCodexChatTranslate,
   resolveCodexConversationPaneValue,
   type CodexComposerState,
   type CodexChatMessage,
   type CodexConversationPaneController,
-  type CodexMessageTextSelection,
   type CodexNativeAttachment,
   type SurfaceMessage,
 } from '@codex-app-sdk/vue';
@@ -215,6 +219,9 @@ import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
 import ComposerContextCards, { type ComposerContextCard } from './ComposerContextCards.vue';
+import ChatAnnotatedText from './ChatAnnotatedText.vue';
+import { captureChatTextAnchor } from './chat-text-anchor';
+import type { ChatTextSelection } from './use-chat-text-annotations';
 import ChatAnnotationReview from './ChatAnnotationReview.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
 import ThreadFlagAffordance from './ThreadFlagAffordance.vue';
@@ -328,7 +335,7 @@ provideAppToolPresentation(
 );
 
 const emit = defineEmits<{
-  'add-text-annotation': [payload: { selection: CodexMessageTextSelection; comment: string }];
+  'add-text-annotation': [payload: { selection: ChatTextSelection; comment: string }];
   'annotate-attachment': [attachment: CodexNativeAttachment];
   'close-plan': [];
   'edit-text-annotation': [annotationId: string, comment: string];
@@ -539,7 +546,8 @@ const activeThreadFlags = computed<ThreadFlagId[]>(() => (
   (['ready_for_review', 'work_proposed'] as const)
     .filter((id) => normalizeThreadFlags(props.agent?.threadFlags ?? {})[id] === true)
 ));
-const messageTextSelection = ref<CodexMessageTextSelection | null>(null);
+const textCatalogs = computed(() => resolveCodexConversationPaneValue(props.controller.state).catalogs);
+const messageTextSelection = ref<ChatTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();
 let transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
 watch(conversationKey, () => {
@@ -633,20 +641,6 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
 </script>
 
 <style scoped>
-.conversation-pane__annotation-marker {
-  display: inline-grid;
-  min-width: 22px;
-  height: 22px;
-  margin-inline-end: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  place-items: center;
-  background: var(--color-surface-low);
-  color: var(--color-text);
-  font: 600 var(--font-size-12) / 1 var(--font-family-ui);
-  cursor: pointer;
-}
-
 .conversation-pane {
   position: relative;
   display: flex;

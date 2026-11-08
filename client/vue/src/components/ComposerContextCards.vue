@@ -5,12 +5,19 @@
       :key="item.id"
       class="composer-context-cards__card"
       :title="item.title"
+      :class="{ 'composer-context-cards__card--interactive': item.activateLabel }"
     >
+      <button v-if="item.activateLabel" class="composer-context-cards__open" type="button" :aria-label="item.activateLabel" :disabled="disabled" @click="emit('activate', item.id)">
+        <component :is="item.icon" v-if="item.icon" class="composer-context-cards__icon" :stroke-width="1.5" aria-hidden="true" />
+        <strong class="composer-context-cards__detail">{{ item.detail }}</strong>
+      </button>
+      <template v-else>
       <span class="composer-context-cards__label">
         <component :is="item.icon" v-if="item.icon" class="composer-context-cards__icon" :stroke-width="1.5" aria-hidden="true" />
         {{ item.label }}
       </span>
       <strong v-if="item.detail" class="composer-context-cards__detail">{{ item.detail }}</strong>
+      </template>
       <button
         type="button"
         class="composer-context-cards__remove"
@@ -35,6 +42,7 @@ export type ComposerContextCard = {
   title?: string;
   detail?: string;
   removeLabel: string;
+  activateLabel?: string;
 };
 
 defineProps<{
@@ -45,6 +53,7 @@ defineProps<{
 
 const emit = defineEmits<{
   remove: [itemId: string];
+  activate: [itemId: string];
 }>();
 </script>
 
@@ -78,6 +87,7 @@ const emit = defineEmits<{
 }
 
 .composer-context-cards__icon {
+  flex: 0 0 auto;
   width: 15px;
   height: 15px;
 }
@@ -91,6 +101,32 @@ const emit = defineEmits<{
   font-size: var(--font-size-12);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-context-cards__card--interactive {
+  box-sizing: border-box;
+  max-width: 180px;
+  flex: 0 0 auto;
+}
+
+.composer-context-cards__open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-context-cards__open .composer-context-cards__detail {
+  display: block;
+  margin-inline-start: 0;
 }
 
 .composer-context-cards__remove {

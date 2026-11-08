@@ -83,12 +83,12 @@ describe('AppShell composer annotations', () => {
     const wrapper = mountShell({ snapshot, realConversationPane: true, sendPromptAction });
 
     await saveSelectionComment(wrapper, selection, 'Add a bounded retry.');
-    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
-    await wrapper.get('.chat-annotation-review summary').trigger('click');
-    expect(wrapper.get('.chat-annotation-review').text()).toContain(selection.text);
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
+    expect(wrapper.get('.chat-annotation-review .composer-context-cards__open').text()).toBe('Add a bounded retry.');
     expect(wrapper.get('.chat-annotation-review').text()).toContain('Add a bounded retry.');
-    await wrapper.get('.chat-annotation-review__edit').trigger('click');
+    await wrapper.get('.chat-annotation-review .composer-context-cards__open').trigger('click');
     await flushPromises();
+    expect(wrapper.get('.chat-annotation-editor blockquote').text()).toBe(selection.text);
     const editInput = wrapper.get<HTMLInputElement>('.chat-annotation-editor input');
     expect(editInput.element.value).toBe('Add a bounded retry.');
     await editInput.setValue('Use three attempts.');
@@ -102,12 +102,12 @@ describe('AppShell composer annotations', () => {
     });
     expect(wrapper.find('.chat-annotation-review').exists()).toBe(false);
     await wrapper.setProps({ activeAgent: snapshot.agents[0] } as Record<string, unknown>);
-    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
 
     sendPromptAction.mockRejectedValueOnce(new Error('offline'));
     await expect(conversationControllerActions(wrapper).submit?.('Please update this.', undefined))
       .rejects.toThrow('offline');
-    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
     sendPromptAction.mockClear();
 
     await conversationControllerActions(wrapper).submit?.('', undefined);

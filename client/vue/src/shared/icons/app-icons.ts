@@ -10,6 +10,7 @@ export { default as DuoPoseIcon } from './DuoPoseIcon.vue';
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
 
 export {
+  IconMessage2 as Message2Icon,
   IconArrowForwardUp as ArrowForwardUpIcon,
   IconAffiliate as AffiliateIcon,
   IconAlertTriangle as AlertTriangleIcon,
