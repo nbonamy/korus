@@ -8,6 +8,9 @@ import { configureAppClient } from '../platform-api';
 import { installElectronTestClientAccessor, setElectronTestClient } from './client';
 import { elementPlusStubs } from './element-plus-stubs';
 
+// Reset before setup imports so hooks and components share the same app singletons.
+vi.hoisted(() => vi.resetModules());
+
 beforeEach(() => {
   resetProvisioningOperations();
   localStorage.clear();

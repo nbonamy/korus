@@ -6,7 +6,7 @@ vi.mock("vue-chartjs", async () => {
     Chart: defineComponent({
       props: ["data", "options", "plugins", "type"],
       setup(_props, { attrs }) {
-        return () => h("canvas", attrs);
+        return () => h("canvas", { ...attrs, "data-chart-fixture": "true" });
       },
     }),
   };
@@ -54,6 +54,7 @@ it.each(["unmeasured", "missing-total", "partial", "unavailable"])(
     });
     const wrapper = mount(UsagePanel);
     await flushPromises();
+    expect(wrapper.find('canvas[data-chart-fixture="true"]').exists()).toBe(true);
     expect(
       wrapper
         .get('[aria-label="Analytics totals"]')
