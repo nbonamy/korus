@@ -11,7 +11,7 @@ desktop app: no server/API integration gates). Fakes sit at ownership boundaries
 | App controller / state routing | unified backend fake |
 | Real Codex driver | typed Codex SDK surface (never the real SDK against a fake app-server; that boundary belongs to the SDK repo) |
 | Real Claude driver | fake Claude SDK query |
-| Mounted UI / `App` | `client/vue/src/test/client-api-mock.ts` + `backend-fixture.ts` |
+| Mounted UI / `App` | `client/vue/tests/support/client-api-mock.ts` + `backend-fixture.ts` |
 
 Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
@@ -142,7 +142,9 @@ builds. A failed, cancelled or skipped required job blocks the aggregate gate.
   module/browser startup, composed app/router workflows or builds. Opt-in
   live-provider probes also have explicit integration budgets. Declare exceptions on the
   smallest owning case or suite and explain the boundary beside the override.
-  Browser workflows have separate startup budgets; individual interactions use a
+  Renderer integration suites have a 5,000ms test and hook budget, separate from
+  the 2,500ms logic and isolated-component defaults. Browser workflows have
+  separate startup budgets; individual interactions use a
   2.5-second bound. A workflow deadline must not become the default for its waits.
   Exercise retry, batching and grace periods with controlled clocks rather than
   waiting out production delays. Restore clocks in teardown, drain owned work and
@@ -223,9 +225,23 @@ behavior and renderer-safe errors. Never expose broad Electron or Node primitive
 
 Prefer rendered E2E or integration workflows for UI behavior. If a distinct
 rendering regression cannot be reliably observed there, component isolation may use
-Vue Test Utils, Vitest and jsdom. Co-locate specs in `__tests__/`; use small store
-fakes only when the contract depends on a store; stub IPC at the app boundary, not
-inside the tree; do not use Codex app-server fixtures for visual components. Test
+Vue Test Utils, Vitest and jsdom. Co-locate isolated logic and component specs in
+`src/**/__tests__/`. Put composed application-state, shell and screen workflows in
+`client/vue/tests/integration/`, real Chromium specs and their fixtures in
+`client/vue/tests/browser/`, and shared test infrastructure in
+`client/vue/tests/support/`. Classify by the exercised boundary, not duration: a
+screen driving backend commands and child controls is integration, while a control's
+own rendered/emitted contract stays isolated. A fake backend or mounted shell is
+renderer integration, not end-to-end coverage of the desktop and daemon.
+
+The `logic`, `components`, `integration` and `browser` Vitest projects have disjoint
+collection patterns. `npm test -w @workspace/vue` runs all four; use `--project` for
+a focused run. `npm run test:coverage -w @workspace/vue` retains one 85% statement
+gate over all production renderer source, independent of test location. Moved
+TypeScript tests and fixtures remain part of the renderer typecheck.
+
+Use small store fakes only when the contract depends on a store; stub IPC at the
+app boundary, not inside the tree; do not use Codex app-server fixtures for visual components. Test
 only the states that represent distinct, observable behavior. If isolation is
 necessary, write down the failure modes first.
 
@@ -266,7 +282,7 @@ Scripted, never simulators: `client/backend/src/codex/__tests__/sdk-surface-fixt
 provider's resulting state, so the fixture must not grow a reducer),
 `client/backend/src/claude/__tests__/sdk-query-fixture.ts` (independently controlled query
 iterators; inputs, permissions and failures observable at the SDK boundary), and
-`client/vue/src/test/client-api-mock.ts` (exhaustive typed `AppApi` fake with production
+`client/vue/tests/support/client-api-mock.ts` (exhaustive typed `AppApi` fake with production
 initialization, disposable subscriptions, I/O-free defaults, and throwing
 consequential operations unless scripted). Per-test overrides merge into the complete
 fake; use `stubLegacyElectronTestWindow` only to test missing-method compatibility,

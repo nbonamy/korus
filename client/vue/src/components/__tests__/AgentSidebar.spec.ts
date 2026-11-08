@@ -5,7 +5,7 @@ import { computed, ref } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
 import { describe, expect, it, vi } from 'vitest';
 import AgentSidebar from '../AgentSidebar.vue';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import type { Agent, AgentBackend } from '@workspace/core/contracts';
 
 import { agents } from './agent-sidebar-test-harness';

@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultGeneralSettings } from '@workspace/core/settings';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import SettingsVoicePanel from '../SettingsVoicePanel.vue';
 
 describe('SettingsVoicePanel', () => {

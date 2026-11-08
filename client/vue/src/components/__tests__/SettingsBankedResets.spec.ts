@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import SettingsBankedResets from '../SettingsBankedResets.vue';
 import type { BankedResets, BankedResetDetail } from '@workspace/core/contracts/banked-resets';
 

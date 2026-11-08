@@ -2,7 +2,7 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UsageSummary } from '@workspace/core/usage';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import AgentMoreMenu from '../AgentMoreMenu.vue';
 
 const body = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map(element => new DOMWrapper(element));

@@ -1,6 +1,6 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import SettingsBrowserPanel from '../SettingsBrowserPanel.vue';
 import bitwardenIcon from '../../assets/browser-extensions/bitwarden.svg';
 import onePasswordIcon from '../../assets/browser-extensions/1password.png';

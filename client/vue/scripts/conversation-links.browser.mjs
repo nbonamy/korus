@@ -41,7 +41,7 @@ test('Mission message links reveal a usable document beside the conversation', a
           import { i18n } from '/client/vue/src/i18n/index.ts';
           import { createInitialSnapshot } from '/core/src/snapshot-construction.ts';
           import { createMission } from '/core/src/missions.ts';
-          import { codexConversationSnapshot, codexTextMessage } from '/client/vue/src/test/codex-conversation-fixtures.ts';
+          import { codexConversationSnapshot, codexTextMessage } from '/client/vue/tests/support/codex-conversation-fixtures.ts';
           import AppShell from '/client/vue/src/components/AppShell.vue';
           const snapshot = createInitialSnapshot();
           snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

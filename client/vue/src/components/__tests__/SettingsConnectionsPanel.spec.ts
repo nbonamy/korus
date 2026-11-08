@@ -6,7 +6,7 @@ import type { RemoteConnection, SourceFolderListInput } from '@workspace/core/co
 import type { CompanionControl } from '@workspace/core/companion-protocol';
 import { codexPairingUrl } from '../../device-pairing';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import SettingsConnectionsPanel from '../SettingsConnectionsPanel.vue';
 const installedCodexVersion = '0.159.3';
 

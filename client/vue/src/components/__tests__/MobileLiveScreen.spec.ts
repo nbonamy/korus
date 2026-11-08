@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MobileLiveScreen from '../MobileLiveScreen.vue';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import type { MobileViewRequest, MobileViewResult } from '@workspace/core/mobile-simulator';
 
 function setup(startResult: MobileViewResult = { viewId: 'view' }) {

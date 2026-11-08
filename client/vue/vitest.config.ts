@@ -61,7 +61,7 @@ export default defineConfig({
           fileParallelism: false,
           environment: 'node',
           pool: 'forks',
-          include: ['src/**/*.browser.spec.mjs'],
+          include: ['tests/browser/**/*.browser.spec.mjs'],
           setupFiles: [],
           // These workflows include cold Vite transforms and Chromium startup.
           // Individual interactions have their own short bounds.
@@ -74,9 +74,21 @@ export default defineConfig({
         test: {
           name: 'components',
           sequence: { groupOrder: 2 },
-          include: ['src/**/*.spec.ts'],
+          include: ['src/**/*.spec.ts', 'tests/support/**/*.spec.ts'],
           exclude: logicTestFiles,
-          setupFiles: [path.resolve(__dirname, 'src/test/setup.ts')],
+          setupFiles: [path.resolve(__dirname, 'tests/support/setup.ts')],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          sequence: { groupOrder: 2 },
+          include: ['tests/integration/**/*.spec.ts'],
+          setupFiles: [path.resolve(__dirname, 'tests/support/setup.ts')],
+          // Composed renderer workflows exercise app state, screens and their backend boundary.
+          testTimeout: 5_000,
+          hookTimeout: 5_000,
         },
       },
     ],
@@ -88,7 +100,7 @@ export default defineConfig({
         'src/bootstrap.ts',
         'src/**/*.d.ts',
         'src/**/__tests__/**',
-        'src/test/**',
+        'tests/**',
       ],
       thresholds: {
         statements: 85,

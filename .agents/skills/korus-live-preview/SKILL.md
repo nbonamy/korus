@@ -61,7 +61,7 @@ This launches its own Electron shell and daemon, exercises authored designs,
 writes a check report and screenshots, and cleans up its temporary home. `--live`
 also submits a real provider brief and consumes provider usage.
 
-Browser component fixtures in `client/vue/src/components/__tests__/fixtures/`
+Browser component fixtures in `client/vue/tests/browser/fixtures/`
 remain useful for isolated DOM and layout checks. They do not prove desktop
 preload, daemon, native behavior or provider integration.
 

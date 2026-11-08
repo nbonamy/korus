@@ -7,7 +7,7 @@ import BackendSelector from '../BackendSelector.vue';
 import { provideBackendChoices } from '../backend-selection';
 import { createGeneralPreferences, generalPreferencesKey } from '../../general-preferences';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
-import { deferred } from '../../__tests__/app-state-test-harness';
+import { deferred } from '../../../tests/support/app-state-test-harness';
 
 afterEach(() => localStorage.removeItem('app:preferredEngines'));
 

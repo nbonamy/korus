@@ -5,7 +5,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { WorkItem, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { mockWorkProvider as provider, mockWorkSource, mockWorkItem, registerMockWorkProvider } from '@workspace/core/__tests__/fixtures/mock-work-provider';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { backlogConnectionsKey } from '../backlog-providers';
 import RepositorySessionSourceDialog from '../RepositorySessionSourceDialog.vue';
 import SettingsIntegrationsPanel from '../SettingsIntegrationsPanel.vue';

@@ -6,7 +6,7 @@ import { circuitRelayServer, circuitRelayTransport } from '@libp2p/circuit-relay
 import { identify } from '@libp2p/identify';
 import type { Libp2pOptions } from 'libp2p';
 import { companionResponseLimit, companionUpdatesProtocol, encodeCompanionFrame, readCompanionFrames } from '@workspace/core/companion-protocol';
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/src/test/codex-conversation-fixtures';
+import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 import { cryptoFixture } from './apple-crypto-fixture';
 import { createRelayConnector } from '../relay-connector';
 

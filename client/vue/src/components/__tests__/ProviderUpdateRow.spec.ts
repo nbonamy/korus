@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElMessageBox } from 'element-plus';
 import { ref } from 'vue';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import ProviderUpdateRow from '../ProviderUpdateRow.vue';
 import { providerUpdatePreviewKey } from '../provider-update-preview';
 

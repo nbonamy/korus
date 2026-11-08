@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppApi } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import SettingsCodexPanel from '../SettingsCodexPanel.vue';
 
 describe('SettingsCodexPanel', () => {

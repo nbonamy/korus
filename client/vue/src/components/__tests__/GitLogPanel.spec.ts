@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { isProxy } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, AgentGitLogInput, AgentGitLogPage } from '@workspace/core/contracts';
-import { stubElectronTestWindow } from '../../test/client';
+import { stubElectronTestWindow } from '../../../tests/support/client';
 import GitLogPanel from '../GitLogPanel.vue';
 
 const agent = { id: 'a', teamId: 'team', folder: '/repo', status: { type: 'idle' } } as Agent;

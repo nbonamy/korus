@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamContextMenu from '../TeamContextMenu.vue';
 import type { Team } from '@workspace/core/contracts';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 
 const team: Team = {
   id: 'team-app',

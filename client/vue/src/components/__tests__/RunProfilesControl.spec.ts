@@ -4,7 +4,7 @@ import { ElDialog } from 'element-plus';
 import type { Agent } from '@workspace/core/contracts';
 import type { ProfileRun, RunProfileCatalog } from '@workspace/core/run-profiles';
 import RunProfilesControl from '../RunProfilesControl.vue';
-import { stubElectronTestWindow } from '../../test/client';
+import { stubElectronTestWindow } from '../../../tests/support/client';
 
 const agent = { id: 'one', name: 'One', folder: '/repo/tree', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
 const profile = { id: 'dev', name: 'Dev', command: 'npm run dev', directory: '.', previewUrl: 'http://127.0.0.1:43210' };

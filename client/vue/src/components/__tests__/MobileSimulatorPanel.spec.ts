@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ElSegmented } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MobileSimulatorPanel from '../MobileSimulatorPanel.vue';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import type { MobileDevice, MobileRequest, MobileViewRequest, MobileViewResult } from '@workspace/core/mobile-simulator';
 const attachment = {
   id: 'session',

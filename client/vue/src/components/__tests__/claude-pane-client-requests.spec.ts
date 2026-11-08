@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RendererToolPart } from '@workspace/core/contracts';
-import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import { claudePaneClientRequests } from '../claude-pane-client-requests';
 
 describe('Claude pane client requests', () => {

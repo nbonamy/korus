@@ -4,7 +4,7 @@ import { afterEach, expect, it } from 'vitest';
 import type { AppSnapshot, AutomationLocation } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { backlogConnectionsKey, useBacklogConnections, useBacklogProviders } from '../backlog-providers';
 
 afterEach(() => configureAppClient());

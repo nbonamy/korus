@@ -3,7 +3,7 @@ import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, WorkItem } from '@workspace/core/contracts';
 import RepositoryBacklogPanel from '../RepositoryBacklogPanel.vue';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { appApi, configureAppClient } from '../../platform-api';
 import { backlogConnectionsKey } from '../backlog-providers';
 

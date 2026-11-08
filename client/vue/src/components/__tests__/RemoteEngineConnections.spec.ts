@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock as createBaseClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock as createBaseClientApiMock } from '../../../tests/support/client-api-mock';
 import RemoteEngineConnections from '../RemoteEngineConnections.vue';
 function createClientApiMock() {
   const result = createBaseClientApiMock();

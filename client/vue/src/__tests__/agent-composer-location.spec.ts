@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../agent-composer-state';
-import { stubElectronTestWindow } from '../test/client';
+import { stubElectronTestWindow } from '../../tests/support/client';
 
 describe('composer catalog locations', () => {
   it('uses background agent model settings for its next prompt without changing the main agent', async () => {
