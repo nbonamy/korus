@@ -125,6 +125,8 @@ export type BackendCodeReviewResult = {
 
 /** Provider-owned coordination policy; omitted fields preserve legacy host behavior. */
 export type BackendCoordinationPolicy = {
+  permissionModeScope?: 'provider' | 'conversation';
+  rollbackStorageState?: 'active' | 'archived';
   authentication?: {
     actions?: readonly import('./contracts/provider-setup').ProviderAuthenticationAction['action'][];
     refreshOnAdmission?: boolean;
@@ -133,7 +135,7 @@ export type BackendCoordinationPolicy = {
 };
 
 export function resolveBackendCoordinationPolicy(policy?: BackendCoordinationPolicy) {
-  return { authentication: {
+  return { permissionModeScope: policy?.permissionModeScope ?? 'provider', rollbackStorageState: policy?.rollbackStorageState ?? 'archived', authentication: {
     actions: policy?.authentication?.actions ?? ['check', 'cancel', 'logout'] as const,
     refreshOnAdmission: policy?.authentication?.refreshOnAdmission ?? false,
     enableOnSuccess: policy?.authentication?.enableOnSuccess ?? true,

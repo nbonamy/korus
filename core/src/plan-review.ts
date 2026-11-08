@@ -18,6 +18,7 @@ export type PlanReview = {
   conversationId: string | null;
   turnId: string;
   itemId?: string;
+  /** A live process-local request; approval authority does not survive restart. */
   requestId?: string;
   markdown: string;
   status: 'pending' | PlanReviewResolution;
@@ -39,6 +40,12 @@ export type PlanReviewResponse = {
   draftVersion?: number;
   feedback?: string;
 };
+
+export type PlanReviewDelivery = { kind: 'prompt' } | { kind: 'request'; requestId: string; lifetime: 'process' };
+
+export function planReviewDelivery(review: Pick<PlanReview, 'requestId'>): PlanReviewDelivery {
+  return review.requestId === undefined ? { kind: 'prompt' } : { kind: 'request', requestId: review.requestId, lifetime: 'process' };
+}
 
 export function agentConversationId(agent: Agent): string | null {
   const session = agent.backendSession;

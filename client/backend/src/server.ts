@@ -100,7 +100,7 @@ import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
 import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { agentConversationId, planReviewFromEvent, planReviewFeedback } from '@workspace/core/plan-review';
+import { agentConversationId, planReviewFromEvent, planReviewFeedback, planReviewDelivery } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
 import { AgentConversationService } from './agents/agent-conversation-service';
@@ -833,18 +833,22 @@ export class AppBackendServer {
       },
     });
     this.planReviews = new AgentPlanReviewService({
-      nativeDecision: (agent, review) => agent.backend === 'cursor' && review.requestId ? async response => {
-        const outcome: AgentRequestResponse['outcome'] = response.resolution === 'cancel'
-          ? { kind: 'cancelled' }
-          : {
-              kind: 'decision', decision: response.resolution === 'accept' ? 'allow' : 'deny',
-              ...(response.resolution === 'revise' ? { feedback: response.feedback?.trim() || planReviewFeedback(review) } : {}),
-            };
-        const answer = { agentId: agent.id, id: review.requestId!, outcome };
-        await this.agentRequests.respond(answer, async owner => {
-          await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: answer });
-        });
-      } : undefined,
+      nativeDecision: (agent, review) => {
+        const delivery = planReviewDelivery(review);
+        if (delivery.kind !== 'request') return undefined;
+        return async response => {
+          const outcome: AgentRequestResponse['outcome'] = response.resolution === 'cancel'
+            ? { kind: 'cancelled' }
+            : {
+                kind: 'decision', decision: response.resolution === 'accept' ? 'allow' : 'deny',
+                ...(response.resolution === 'revise' ? { feedback: response.feedback?.trim() || planReviewFeedback(review) } : {}),
+              };
+          const answer = { agentId: agent.id, id: delivery.requestId, outcome };
+          await this.agentRequests.respond(answer, async owner => {
+            await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: answer });
+          });
+        };
+      },
       persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),
@@ -2847,7 +2851,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: previousRef.backend === 'cursor' ? 'active' : 'archived' },
+                  target: { ref: previousRef, storageState: this.coordinationPolicy(previousRef.backend).rollbackStorageState },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -2958,9 +2962,7 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as BackendPermissionModeResult;
           agent.backendDefaults = result.backendDefaults;
-          // Cursor's callback policy is explicit per conversation, not a
-          // standing grant inherited by newly created agents.
-          if (agent.backend !== 'cursor') this.snapshot.general.providerApprovalDefaults = {
+          if (this.coordinationPolicy(agent.backend).permissionModeScope === 'provider') this.snapshot.general.providerApprovalDefaults = {
             ...this.snapshot.general.providerApprovalDefaults, [agent.backend]: mode,
           };
           return this.persistAndEmitSnapshot();
