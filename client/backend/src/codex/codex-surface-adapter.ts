@@ -1972,7 +1972,8 @@ function authenticationFromSurface(
   authentication: CodexSurfaceSnapshot['authentication'],
 ): CodexAuthentication {
   return {
-    account: authentication.account ? { ...authentication.account } : null,
+    // Older clients cannot decode new account variants; retain connection state without exposing an unknown shape.
+    account: authentication.account && authentication.account.type !== 'gcp' ? { ...authentication.account } : null,
     requiresOpenaiAuth: authentication.requiresOpenaiAuth === true,
     login: {
       status: authentication.login.status,

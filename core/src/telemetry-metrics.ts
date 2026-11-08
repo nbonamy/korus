@@ -57,6 +57,8 @@ export type TelemetryMetrics = {
   range: TelemetryMetricsFilter;
   /** Models with recorded usage in the date/provider scope, independent of the selected model. */
   availableModels?: string[];
+  /** Providers with recorded usage, independent of selected provider and model. */
+  availableProviders?: string[];
   availability: {
     firstDay: string | null;
     lastDay: string | null;

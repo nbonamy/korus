@@ -67,7 +67,7 @@ export function createCollectorServer(options: Options) {
     let entered = false;
     let operation: "request" | "telemetry_write" = "request";
     try {
-      if (!["POST", "OPTIONS"].includes(request.method ?? "") || request.url !== "/v1/telemetry/daily")
+      if (request.method !== "POST" || request.url !== "/v1/telemetry/daily")
         throw new Rejection(404, "not_found");
       const peer = normalizedAddress(request.socket.remoteAddress ?? "");
       if (!peer) throw new Rejection(400, "invalid");
@@ -82,16 +82,6 @@ export function createCollectorServer(options: Options) {
       if (sourceRetry) throw new Rejection(429, "limited", sourceRetry);
       if (!admission.enter()) throw new Rejection(429, "limited", 1);
       entered = true;
-      if (request.method === "OPTIONS") {
-        response.setHeader("X-Korus-Telemetry-Version", "1");
-        response.setHeader("X-Korus-Telemetry-Providers", "codex,claude,antigravity,cursor");
-        response.setHeader("Access-Control-Allow-Origin", "*");
-        response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-        response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-        response.setHeader("Access-Control-Expose-Headers", "X-Korus-Telemetry-Version, X-Korus-Telemetry-Providers");
-        reply(response, 204);
-        return;
-      }
       if (
         !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(
           request.headers["content-type"] ?? "",

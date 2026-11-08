@@ -423,17 +423,17 @@ it("sums stored totals without reconstructing missing totals from any provider",
     await ledger.load();
     await ledger.observe({ ...base, provider: "codex", turnId: "codex", model: "gpt-6.1-sol",
       tokens: { input: 80, output: 20, total: 100, cacheRead: 40, cacheWrite: null } }, attribution);
-    for (const provider of ["antigravity", "claude", "codex"] as const) {
-      await ledger.observe({ ...base, provider, turnId: "missing", model: `${provider}-missing`,
-        tokens: { input: 8, output: 2, cacheRead: 4, cacheWrite: 0, reasoning: 1 } }, attribution);
+    for (const provider of ["antigravity", "claude", "codex", "cursor", "custom/harness"] as const) {
+      expect(await ledger.observe({ ...base, provider, turnId: "missing", model: `${provider}-missing`,
+        tokens: { input: 8, output: 2, cacheRead: 4, cacheWrite: 0, reasoning: 1 } }, attribution)).toBe(true);
     }
     for (const group of ["provider", "model"] as const) {
       const summary = ledger.query({ group });
       expect(summary.daily?.map(day => ({
         day: day.day, total: day.tokens?.total,
         groups: day.groups?.map(row => row.tokens?.total),
-      }))).toStrictEqual([{ day: "2026-11-05", total: 100, groups: group === "model" ? [100, 0, 0, 0] : [100, 0, 0] }]);
-      expect(summary.rows.map(row => row.tokens?.total)).toStrictEqual(group === "model" ? [100, 0, 0, 0] : [100, 0, 0]);
+      }))).toStrictEqual([{ day: "2026-11-05", total: 100, groups: group === "model" ? [100, 0, 0, 0, 0, 0] : [100, 0, 0, 0, 0] }]);
+      expect(summary.rows.map(row => row.tokens?.total)).toStrictEqual(group === "model" ? [100, 0, 0, 0, 0, 0] : [100, 0, 0, 0, 0]);
     }
   } finally { await ledger.close(); }
 });

@@ -13,6 +13,7 @@ export function useMetrics(
     model = ref("");
   const groupServiceTiers = ref(false);
   const availableModels = ref<string[]>([]);
+  const availableProviders = ref<string[]>([]);
   const data = ref<TelemetryMetrics | null>(null),
     previousData = ref<TelemetryMetrics | null>(null),
     loading = ref(false),
@@ -93,6 +94,7 @@ export function useMetrics(
         isWeekly ? read(previousParams) : Promise.resolve(null),
       ]);
       if (identity === request) {
+        availableProviders.value = result.availableProviders ?? [...new Set(result.models.map(row=>row.provider))].sort();
         availableModels.value =
           result.availableModels ??
           [
@@ -148,6 +150,7 @@ export function useMetrics(
     provider,
     model,
     availableModels,
+    availableProviders,
     groupServiceTiers,
     data,
     previousData,

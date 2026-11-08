@@ -139,10 +139,9 @@ Cursor live turns emit execution observations to the local usage ledger. The
 daemon measures working time and time to first assistant output; release and
 shutdown settle active executions as interrupted. Snapshot reads do not count as
 executions. Token counts, served models and costs stay unknown without native
-measurements. The ledger projects Cursor rows locally; the uploader sends reports
-containing them only after an identity-free OPTIONS request confirms versioned
-collector support. Older collectors leave those sealed reports pending without
-consuming report POST attempts; reports for existing providers remain compatible.
+measurements. The ledger projects Cursor rows through the shared provider-name
+telemetry contract. Collectors must have the provider-name migration before
+clients send additional providers; uploads do not negotiate provider admission.
 
 Updates inspect native `about --format json` metadata and use native `update`
 through the shared consent and idle scheduler. Child environments explicitly
@@ -193,9 +192,8 @@ subprocess fixture. Native measurements do not attest to every model or tool.
 
 Native plugins, managed skills, subagent control, remote control and turn
 edit/delete/retry/archive remain unavailable. Cursor is desktop-only at companion
-and sharing admission; collector capability negotiation protects older telemetry
-servers. These exclusions are intentional compatibility boundaries, not feature
-implementations.
+and sharing admission. These exclusions are intentional compatibility boundaries,
+not feature implementations.
 
 [cursor-host-tests]: ../client/backend/src/cursor/__tests__/host.spec.ts
 [cursor-auth-tests]: ../client/backend/src/cursor/__tests__/connection.spec.ts

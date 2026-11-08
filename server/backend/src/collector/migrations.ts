@@ -87,7 +87,6 @@ export const telemetryMigrations = [
   {
     version: 8,
     sql: `ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_provider_check;
-      ALTER TABLE usage_daily ADD CONSTRAINT usage_daily_provider_v8_check
-        CHECK (provider IN ('codex','claude','antigravity','cursor'));`,
+      ALTER TABLE usage_daily ADD CONSTRAINT usage_daily_provider_name_check CHECK (length(provider)>0);`,
   },
 ] as const;

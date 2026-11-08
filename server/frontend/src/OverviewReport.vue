@@ -33,10 +33,11 @@
       </div>
     </div>
     <MetricChart
-      title="Weekly turns"
+      title="Weekly tokens"
+      tooltip-order="series"
       :days="days"
       :series="series"
-      measure="count"
+      measure="tokens"
       variant="bar"
       :day-labels="dayLabels"
     />
@@ -217,7 +218,7 @@ const dayLabels = computed(() =>
     : undefined,
 );
 const series = computed(() => {
-  const byDay = new Map(props.data.daily.map((row) => [row.day, row.turns]));
+  const byDay = new Map(props.data.daily.map((row) => [row.day, row.totalTokens]));
   return [
     {
       label: "This week",

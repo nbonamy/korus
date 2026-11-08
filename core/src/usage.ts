@@ -4,7 +4,7 @@ export type ExecutionObservation = {
   agentId: string;
   sessionId: string;
   turnId: string;
-  provider: AgentBackend;
+  provider: string;
   phase: "started" | "completed" | "failed" | "interrupted" | "usage";
   at: number;
   model: string | null;
@@ -57,7 +57,7 @@ export type UsageRecord = Omit<ExecutionObservation, "phase" | "generation"> & {
 /** A model and recorded execution/served-request tier, without changing the provider model ID. */
 export type UsageModelVariant = { model: string | null; serviceTier: string | null };
 export function usageServiceTier(
-  provider: AgentBackend | ApiPricingProvider | null,
+  provider: string | null,
   tier: string | null | undefined,
 ): string | null {
   if (tier == null) return null;
@@ -210,7 +210,7 @@ export type ApiPricingProvider = "openai" | "anthropic" | "google";
  * A final sample cannot be downgraded to provisional. Unknown evidence is null, never zero.
  */
 export type RequestObservation = {
-  provider: AgentBackend;
+  provider: string;
   agentId: string;
   sessionId: string;
   turnId: string;
@@ -346,7 +346,7 @@ export function validRequestObservation(
   const tokens = v.tokens;
   const context = v.pricingContext;
   return (
-    ["codex", "claude", "antigravity"].includes(v.provider as string) &&
+    text(v.provider) &&
     [v.agentId, v.sessionId, v.turnId, v.requestId].every(text) &&
     [v.upstreamRequestId, v.parentToolUseId].every(
       (x) => x === undefined || nullableText(x),

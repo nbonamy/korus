@@ -40,9 +40,9 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
       ...base.totals,
       day,
       turns: String(i + 1),
-      inputTokens: "100",
-      outputTokens: "20",
-      totalTokens: "120",
+      inputTokens: i < 7 ? "500" : "1000",
+      outputTokens: i < 7 ? "100" : "200",
+      totalTokens: i < 7 ? (i === 6 ? "2400" : "600") : "1200",
       estimatedCostUsd: i < 7 ? "1.25" : "2.50",
     })),
     modelDaily: [
@@ -177,7 +177,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     );
     expect(wrapper.findAll(".weekly-card")).toHaveLength(4);
     expect(wrapper.get('[aria-label="Tokens last 7 days"]').text()).toContain(
-      "840",
+      "8.4K",
     );
     expect(wrapper.get('[aria-label="Spend last 7 days"]').text()).toContain(
       "$17.50",
@@ -208,11 +208,14 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     expect(wrapper.find(".weekly-comparison").exists()).toBe(false);
     expect(
       wrapper.findAll(".chart").map((chart) => chart.attributes("aria-label")),
-    ).toEqual(["Weekly turns"]);
-    const trend = wrapper.get('[aria-label="Weekly turns"]');
+    ).toEqual(["Weekly tokens"]);
+    const trend = wrapper.get('[aria-label="Weekly tokens"]');
+    await trend.get("canvas").trigger("keydown", { key: "Home" });
+    expect(trend.findAll(".tooltip-name").map(row=>row.text())).toEqual(["This week","Previous week"]);
     await trend.get("canvas").trigger("keydown", { key: "End" });
-    expect(trend.get('[role="status"]').text()).toContain("This week14");
-    expect(trend.get('[role="status"]').text()).toContain("Previous week7");
+    expect(trend.get('[role="status"]').text()).toContain("This week1.2K");
+    expect(trend.get('[role="status"]').text()).toContain("Previous week2.4K");
+    expect(trend.findAll(".tooltip-name").map(row=>row.text())).toEqual(["This week","Previous week"]);
     await wrapper.get('[aria-label="Weekly active installs"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.path).toBe("/activity");
@@ -249,7 +252,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
     ).toBe("2026-11-01");
     for (const title of ["Total tokens", "Tokens by model"])
       expect(wrapper.find(`[aria-label="${title}"]`).exists()).toBe(true);
-    expect(wrapper.find('[aria-label="Weekly turns"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Weekly tokens"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Measured input"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Cache-read share"]').exists()).toBe(
       false,
@@ -491,6 +494,19 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
         "https://console.test",
       ).searchParams.get("provider"),
     ).toBe("codex");
+    data.models.push({...data.models[0]!,provider:"cursor",model:"cursor/custom"});
+    data.models.push({...data.models[0]!,provider:"custom/harness",model:"custom/model"});
+    await wrapper.get('[aria-label="Refresh metrics"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[aria-label="Provider"]').trigger("click");
+    await flushPromises();
+    const options=Array.from(document.querySelectorAll('[role="option"]'));
+    expect(options.some(option=>option.textContent?.trim()==="Cursor")).toBe(true);
+    const custom=options.find(option=>option.textContent?.trim()==="custom/harness") as HTMLElement;
+    expect(custom).toBeTruthy();
+    custom.click();
+    await flushPromises();
+    expect(new URL(String(fetcher.mock.calls.at(-1)?.[0]),"https://console.test").searchParams.get("provider")).toBe("custom/harness");
   } finally {
     wrapper.unmount();
   }

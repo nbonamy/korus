@@ -1,7 +1,7 @@
 import { computed } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { seriesColor } from "@workspace/core/analytics-palette";
-import { modelLabel } from "./model-label";
+import { modelLabel, providerLabel } from "./model-label";
 import { addAmounts } from "./report-data";
 import {
   modelKey,
@@ -20,11 +20,6 @@ export type ReportGroup = GroupValues & {
   provider: string;
   modelLabel: string | null;
   cachedInputTokens: string | null;
-};
-const providerLabels = {
-  codex: "Codex",
-  claude: "Claude",
-  cursor: "Cursor", antigravity: "Antigravity",
 };
 function totals(rows: readonly ModelValues[]): GroupValues {
   return {
@@ -70,7 +65,7 @@ export function useReportGroups(
         key: id,
         provider: row.provider,
         modelLabel: provider ? null : modelLabel(row),
-        label: provider ? providerLabels[row.provider] : comparisonLabel(row),
+        label: provider ? providerLabel(row.provider) : comparisonLabel(row),
         cachedInputTokens: addAmounts(
           rows.map((item) => item.cachedInputTokens),
         ),

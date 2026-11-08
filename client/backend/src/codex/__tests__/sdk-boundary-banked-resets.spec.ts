@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CodexSurfaceRateLimits } from '@codex-app-sdk/core/surface';
 import { codexSdkFixture, sdkSnapshot } from './sdk-surface-fixture';
 import { BackendDriverRpc } from '../../driver-rpc';
+import { isProviderAuthentication } from '@workspace/core/contracts/provider-setup';
 
 const account = { type: 'chatgpt' as const, email: 'fixture@example.test', planType: 'plus' };
 const credit = { id: 'opaque-secret-reset-id', resetType: 'fiveHour', status: 'available', grantedAt: 100, expiresAt: null, title: null, description: '<b>Plain text</b>' };
@@ -76,6 +77,15 @@ describe('Codex banked reset driver boundary', () => {
       resolve(limits('99', [credit]));
       await expect(pending).rejects.toThrow('account changed');
       expect(f.events).toContainEqual({ backend: 'codex', type: 'provider.authenticationChanged', payload: { kind: 'codex', connected: true, state: { account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } } }, occurredAt: '' });
+    } finally { await f.adapter.close(); }
+  });
+  it('projects an unsupported GCP account without breaking older clients', async () => {
+    const f = fixture();
+    try {
+      const authentication = { ...f.snapshot.authentication, account: { type: 'gcp' as const }, requiresOpenaiAuth: false };
+      f.emit({ seq: 2, type: 'authentication.changed', origin: 'notification', occurredAt: '', payload: { authentication } });
+      expect(f.events).toContainEqual({ backend: 'codex', type: 'provider.authenticationChanged', payload: { kind: 'codex', connected: true, state: { account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } } }, occurredAt: '' });
+      expect(isProviderAuthentication(f.events.at(-1)!.payload)).toBe(true);
     } finally { await f.adapter.close(); }
   });
   it('bounds a stalled SDK read and rejects completions after adapter disposal', async () => {

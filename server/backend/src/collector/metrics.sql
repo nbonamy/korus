@@ -130,6 +130,9 @@ WITH bounds AS (
  ) AS value FROM stats s
 )
 SELECT jsonb_build_object(
+ 'availableProviders',coalesce((SELECT jsonb_agg(provider ORDER BY provider) FROM (
+   SELECT DISTINCT provider FROM daily_usage
+ ) options),'[]'::jsonb),
  'availableModels',coalesce((SELECT jsonb_agg(model ORDER BY model) FROM (
    SELECT DISTINCT model FROM daily_usage
    WHERE ($3::text IS NULL OR provider=$3) AND (turns>0 OR coalesce(input_tokens,0)>0

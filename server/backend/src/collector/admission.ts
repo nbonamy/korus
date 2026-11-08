@@ -40,7 +40,7 @@ export class CollectorAdmission {
     return this.limit(this.sources, address, now, 60_000, 60, true);
   }
   install(id: string, now: number): number {
-    return this.limit(this.installs, id, now, 3_600_000, 30, false);
+    return this.limit(this.installs, id, now, 60_000, 30, false);
   }
   private limit(
     map: Map<string, Window>,

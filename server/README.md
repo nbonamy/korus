@@ -32,28 +32,7 @@ listener/routing configuration and TLS termination belong outside Git. PostgreSQ
 18 or later supplies the transaction deadline used by the connection pool.
 
 The versioned ingestion route accepts only JSON with the shared closed schema.
-Cursor reports count observed executions. Missing model evidence is `unknown`;
-missing token measurements and pricing remain null, with explicit coverage.
-No API price or complete request set is inferred from a Cursor execution.
-
-An identity-free `OPTIONS /v1/telemetry/daily` returns HTTP 204 with
-`X-Korus-Telemetry-Version: 1` and the comma-separated closed provider list in
-`X-Korus-Telemetry-Providers`. Discovery shares source admission limits but carries
-no installation identity or report body. The proxy forwards OPTIONS anonymously;
-capability responses are not cached and expose the headers for CORS discovery.
-Desktop uploads containing Cursor require version 1 and an accepted provider list
-including `cursor`. Missing, malformed, redirected or unavailable capabilities
-retain the sealed report without spending its POST attempt budget. Mixed-provider
-reports wait together; legacy-only reports continue independently, subject to the
-shared request budget and rate-limit backoff. Retries preserve sealed bytes.
-
-Deploy schema migration 8 under the migration role before starting the updated
-collector and read service. Startup refuses a schema without the Cursor provider
-constraint. Deploy the proxy's OPTIONS forwarding and updated console with those
-services. Desktop negotiation safely waits for older collectors; enabling Cursor
-uploads requires the migrated collector and capability route to be available.
-
-The ingestion byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
+Its byte cap applies before UTF-8 decoding or parsing, including chunked bodies.
 Hourly reports are accepted for any historical UTC hour through the current hour.
 Legacy daily reports retain their completed-day contract. There is no historical
 upload cutoff: `install_days`, `usage_daily` and the minimal
@@ -75,11 +54,15 @@ insert is in the same transaction. HTTP success follows commit. A lost
 acknowledgement can be retried without incrementing counts; a failed transaction
 preserves the prior snapshot. SQL stores typed columns, not rollup JSON blobs.
 
+Provider names are nonempty strings and model names retain their exact recorded
+values. Neither depends on a provider or pricing catalog. Collector and read
+services require the provider-name schema migration before serving requests.
+
 Admission uses the socket peer unless it exactly matches an operator-configured
 proxy; only then is a single validated `X-Real-IP` trusted. Forwarding lists and
 missing/invalid trusted-proxy addresses are rejected. Source limits are 60 requests
 per rolling minute with a ten-request burst, independently of the thirty requests
-per installation per rolling hour. Rate-limit maps each hold at most 4096 live
+per installation per rolling minute. Rate-limit maps each hold at most 4096 live
 keyed hashes with a process-random key; only expired entries can be reclaimed.
 Nothing exports or persists this state. There are at most twenty in-flight request
 handlers and 128 connections, with bounded body, statement, lock and transaction
@@ -157,7 +140,7 @@ Origin must exactly match. The explicit
 console origin in isolated local tests; production leaves it unset or zero.
 
 The read endpoint accepts inclusive `from`/`to` calendar days, an optional IANA
-`timeZone` (UTC when omitted), driver `provider` and exact full-name `model` filters and a boolean
+`timeZone` (UTC when omitted), exact full-name `provider` and `model` filters and a boolean
 `groupServiceTiers` option. The console supplies the viewer browser timezone and
 includes today by default, using reports received so far. It rejects
 unknown/duplicate filters, future viewer days and ranges longer than 3,660 days

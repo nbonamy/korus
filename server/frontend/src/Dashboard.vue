@@ -125,12 +125,7 @@
           >
             <ElOption label="All providers" value="" />
             <ElOption
-              v-for="item in [
-                { value: 'codex', label: 'Codex' },
-                { value: 'claude', label: 'Claude' },
-                { value: 'antigravity', label: 'Antigravity' },
-                { value: 'cursor', label: 'Cursor' },
-              ]"
+              v-for="item in availableProviders"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -352,7 +347,7 @@ import {
 import { analyticsDay } from "@workspace/core/analytics-chart";
 import { weekDays } from "./report-data";
 import { consolePages, type ConsolePage } from "./console-pages";
-import { modelLabel } from "./model-label";
+import { modelLabel, providerLabel } from "./model-label";
 import { modelValue, type ModelMeasure } from "./use-model-comparison";
 import { useMetrics } from "./use-metrics";
 import {
@@ -405,6 +400,7 @@ const {
   provider,
   model,
   availableModels,
+  availableProviders: providerNames,
   groupServiceTiers,
   data,
   previousData,
@@ -415,6 +411,10 @@ const {
 } = useMetrics(
   () => emit("sessionExpired"),
   () => props.page === "overview",
+);
+const availableProviders = computed(() =>
+  [...new Set([...providerNames.value,
+    ...(provider.value ? [provider.value] : [])])].sort().map(value => ({value, label:providerLabel(value)})),
 );
 const { groups: modelGroups } = useReportGroups(
   () => data.value,

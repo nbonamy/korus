@@ -36,7 +36,7 @@ export function metricsFilter(
     model = params.get("model");
   if (
     provider !== null &&
-    !["codex", "claude", "antigravity", "cursor"].includes(provider)
+    provider.length === 0
   )
     return null;
   if (model !== null && model.length === 0) return null;

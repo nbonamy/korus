@@ -127,7 +127,7 @@ afterEach(async () => {
 it.each([
   ['00000000-0000-4000-8000-000000000030', 0],
   ['00000000-0000-4000-8000-00000000002f', 59],
-] as const)("uploads at UUID minute %s/%i, keeping its slot across restart", async (installId, minute) => {
+] as const)("drains immediately at startup and restart, then uses UUID minute %s/%i for regular uploads", async (installId, minute) => {
   const store = new AppStateStore(directory);
   await store.saveTelemetrySettings(await store.load(), {installId, enabled:true, enabledAt:epoch-3600000});
   consent = await openTelemetryConsent(directory, {now});
@@ -144,30 +144,32 @@ it.each([
     scheduler.start();
   };
   await start();
-  if (minute) {
-    await advance(minute*60000-1);
-    expect(fetcher).not.toHaveBeenCalled();
-    await advance(1);
-  } else await advance(0);
+  await advance(0);
   await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(1));
   await upload!.tick();
   await upload!.tick();
   expect(fetcher).toHaveBeenCalledTimes(1);
   await eventually(async()=>expect((await stored()).days[0].status).toBe('done'));
-  await advance(60000);
-  scheduler!.stop();
-  await upload!.close();
+  await eventually(()=>expect(vi.getTimerCount()).toBe(1));
   usage.observe({provider:'codex', agentId:'a', sessionId:'s', turnId:'second', model:'gpt-6-sol', phase:'started', at:clock});
   await usage.drain();
-  await start();
-  await advance(59*60000-1);
+  await advance((minute || 60)*60000-1);
   expect(fetcher).toHaveBeenCalledTimes(1);
   await advance(1);
   await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(2));
-  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).usage[0].turns).toBe(minute===59 ? 1 : 2);
+  expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).usage[0].turns).toBe(2);
+  scheduler!.stop();
+  await upload!.close();
+  usage.observe({provider:'codex', agentId:'a', sessionId:'s', turnId:'third', model:'gpt-6-sol', phase:'started', at:clock});
+  await usage.drain();
+  await start();
+  await eventually(()=>expect(vi.getTimerCount()).toBeGreaterThan(0));
+  await advance(2100);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(3));
+  expect(JSON.parse(fetcher.mock.calls[2]![1]!.body as string).usage[0].turns).toBe(minute===59 ? 3 : 1);
   await consent.change('disable');
   await advance(3600000);
-  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(3);
 });
 
 it("makes no telemetry requests off or without an endpoint, and never turns daemon time into activity", async () => {
@@ -670,8 +672,8 @@ it.each([true, false, undefined])("migrates a legacy sharing choice %s and insta
   await expect(readFile(legacy)).rejects.toMatchObject({code:'ENOENT'});
 });
 
-// This disk-backed backlog exercise writes 225 observations and repeatedly persists uploads across restarts.
-it("catches up more than 200 historical hours with a persisted request budget and silent network failures", async () => {
+// One private disk-backed workflow covers draining, pacing, restart and throttling.
+it("drains the whole backlog sequentially, continuing after restart and throttling without waiting for another hourly slot", async () => {
   // A long-enabled profile catches up after shutdown, without a seven-day cutoff.
   const present = clock;
   clock -= 501 * 3600000;
@@ -695,39 +697,74 @@ it("catches up more than 200 historical hours with a persisted request budget an
       { teamId: null, repository: null },
     );
   }
-  fetcher.mockRejectedValueOnce(new Error("PRIVATE_NETWORK_ERROR"));
+  await usage.local.observe({
+    provider:"codex",agentId:"a",sessionId:"s",turnId:"latest",model:"gpt-6-sol",
+    at:clock,phase:"started",tokens:{input:99,output:1,cacheRead:0,cacheWrite:null},
+  },{teamId:null,repository:null});
+  const failedAt = new Date(clock - 300 * 3600000);
+  let projectionFails = true;
+  const project = usage.previewTelemetry.bind(usage);
+  vi.spyOn(usage, "previewTelemetry").mockImplementation(async (...args) => {
+    if (projectionFails && args[0].day === failedAt.toISOString().slice(0,10) && args[0].hour === failedAt.getUTCHours())
+      throw new Error("PRIVATE_PROJECTION_ERROR");
+    return project(...args);
+  });
+  const attemptTimes:number[]=[];
+  fetcher.mockImplementation(async()=>{
+    attemptTimes.push(now());
+    return new Response(null,{status:204});
+  });
+  fetcher.mockImplementationOnce(async()=>{
+    attemptTimes.push(now());
+    throw new Error("PRIVATE_NETWORK_ERROR");
+  }).mockImplementationOnce(async()=>{
+    attemptTimes.push(now());
+    return new Response(null,{status:429,headers:{"Retry-After":"120"}});
+  });
   await open();
-  await expect(upload!.flush()).resolves.toBeUndefined();
-  expect(fetcher).toHaveBeenCalledTimes(10); // Respect source burst admission.
-  expect((await stored()).days).toHaveLength(225);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(fetcher.mock.calls[0]![1]!.body as string)).toMatchObject({day:day(),hour:12});
+  await eventually(()=>expect(vi.getTimerCount()).toBeGreaterThan(0));
+  await advance(2100);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+  await eventually(async()=>expect((await stored()).retryAt).toBe(clock+120_000));
+  expect((await stored()).days).toHaveLength(226);
   scheduler!.stop();
   await upload!.close();
   await open();
-  await upload!.flush();
-  expect(fetcher).toHaveBeenCalledTimes(10); // Restart also preserves the source burst budget.
-  clock += 10_000;
-  vi.setSystemTime(clock);
-  await upload!.flush();
-  clock += 10_000;
-  vi.setSystemTime(clock);
-  await upload!.flush();
+  scheduler!.stop();
+  scheduler=new RuntimeScheduler();
+  scheduler.register({id:"telemetry-upload",intervalMs:60000,runOnStart:true,run:()=>upload!.tick()});
+  scheduler.start();
+  await advance(119_999);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await advance(60_001);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(3));
+  expect(fetcher.mock.calls[2]![1]!.body).toBe(fetcher.mock.calls[0]![1]!.body); // Frozen retry bytes.
+  scheduler.stop();
   await upload!.close();
   await open();
-  await upload!.flush();
-  expect(fetcher).toHaveBeenCalledTimes(30); // Restart cannot reset admission.
-  fetcher.mockResolvedValueOnce(
-    new Response(null, { status: 429, headers: { "Retry-After": "3600" } }),
-  );
-  await advance(3600000);
-  await eventually(() => expect(fetcher).toHaveBeenCalledTimes(31));
-  await upload!.flush();
-  expect(fetcher).toHaveBeenCalledTimes(31); // One 429 pauses the whole backlog.
-  scheduler!.stop();
-  for (let i = 0; i < 24; i++) {
-    clock += 3600000;
-    vi.setSystemTime(clock);
-    await upload!.flush();
+  await eventually(()=>expect(vi.getTimerCount()).toBeGreaterThan(0));
+  await advance(2099);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  await advance(1);
+  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(4));
+  for(let i=0;i<230;i++){
+    await eventually(async()=>{
+      if((await stored()).days.filter((r:{status:string})=>r.status!=='done').length===1)return;
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+    });
+    if((await stored()).days.filter((r:{status:string})=>r.status!=='done').length===1)break;
+    await advance(2100);
   }
+  expect((await stored()).days.filter((r:{status:string})=>r.status!=='done')).toHaveLength(1);
+  expect(new Set(fetcher.mock.calls.map(call=>{
+    const p=JSON.parse(call[1]!.body as string);return `${p.day}/${p.hour}`;
+  })).size).toBe(225);
+  projectionFails = false;
+  const recovered=upload!.flush();
+  await advance(2100);
+  await recovered;
   expect(
     new Set(
       fetcher.mock.calls.map((call) => {
@@ -735,12 +772,14 @@ it("catches up more than 200 historical hours with a persisted request budget an
         return `${p.day}/${p.hour}`;
       }),
     ).size,
-  ).toBe(225);
+  ).toBe(226);
   expect(
     (await stored()).days.every(
       (row: { status: string }) => row.status === "done",
     ),
   ).toBe(true);
+  expect(now()-present).toBeLessThan(15*60000);
+  expect(attemptTimes.slice(1).every((at,index)=>at-attemptTimes[index]!>=2100)).toBe(true);
   const sent = fetcher.mock.calls.length;
   clock += 366 * DAY;
   vi.setSystemTime(clock);
@@ -832,99 +871,18 @@ it("waits for a complete reporting hour after a mid-hour enable instead of rewri
   expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).hour).toBe(13);
 });
 
-// An older collector must never receive Cursor bytes or exhaust their delivery budget.
-it.each([undefined, "bad", "1"])("negotiates Cursor uploads and retains frozen reports against capability version %s", async version => {
+
+it.each(["cursor", "future-provider"])("uploads %s without provider negotiation and preserves unknown measurements", async provider => {
   await open();
   scheduler!.stop();
   await consent.change("enable");
-  await usage.local.observe({provider:"cursor",agentId:"PRIVATE_CANARY",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"}, {teamId:null,repository:null});
-  fetcher.mockImplementation(async (_url, init) => init?.method === "OPTIONS"
-    ? new Response(null, {status:204,headers:{"X-Korus-Telemetry-Providers":"codex,claude,antigravity,cursor",...(version ? {"X-Korus-Telemetry-Version":version} : {})}})
-    : new Response(null,{status:204}));
+  await usage.local.observe({provider,agentId:"PRIVATE_CANARY",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"}, {teamId:null,repository:null});
   await upload!.flush();
-  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"OPTIONS",redirect:"manual",credentials:"omit"});
-  expect(fetcher.mock.calls[0]![1]!.body).toBeUndefined();
-  expect(fetcher.mock.calls[0]![1]!.headers).toBeUndefined();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"POST",redirect:"manual",credentials:"omit"});
   const frozen = (await upload!.sealedReport(day(),12))!.body;
-  expect(JSON.parse(frozen).usage).toStrictEqual([{provider:"cursor",model:"unknown",serviceTier:"unknown",turns:1,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
+  expect(fetcher.mock.calls[0]![1]!.body).toBe(frozen);
+  expect(JSON.parse(frozen).usage).toStrictEqual([{provider,model:"unknown",serviceTier:"unknown",turns:1,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
   expect(frozen).not.toContain("PRIVATE_CANARY");
-  if (version !== "1") {
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect((await stored()).days[0]).toMatchObject({status:"pending",attempts:0});
-    await upload!.close();
-    clock += 3600000;
-    vi.setSystemTime(clock);
-    fetcher.mockImplementation(async (_url, init) => new Response(null,{status:204,headers:init?.method === "OPTIONS" ? {"X-Korus-Telemetry-Version":"1","X-Korus-Telemetry-Providers":"codex,claude,antigravity,cursor"} : {}}));
-    await open();
-    scheduler!.stop();
-    await upload!.flush();
-  }
-  const posts = fetcher.mock.calls.filter(([,init])=>init?.method === "POST");
-  expect(posts).toHaveLength(1);
-  expect(posts[0]![1]!.body).toBe(frozen);
   expect((await stored()).days[0]).toMatchObject({status:"done",attempts:1});
-});
-
-it.each([
-  {status:404, providers:"codex,claude,antigravity,cursor"},
-  {status:302, providers:"codex,claude,antigravity,cursor"},
-  {status:204, providers:"cursor,cursor"},
-  {status:204, providers:"cursor,unrecognized"},
-  {status:204, providers:"codex,claude,antigravity"},
-])("fails closed on capability status $status and provider list $providers", async ({status,providers}) => {
-  await open();
-  scheduler!.stop();
-  await consent.change("enable");
-  await usage.local.observe({provider:"cursor",agentId:"a",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"},{teamId:null,repository:null});
-  fetcher.mockResolvedValue(new Response(null,{status,headers:{"X-Korus-Telemetry-Version":"1","X-Korus-Telemetry-Providers":providers,Location:"https://other.invalid"}}));
-  await upload!.flush();
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"OPTIONS",redirect:"manual"});
-  expect((await stored()).days[0]).toMatchObject({status:"pending",attempts:0});
-  expect((await stored()).days[0].body).toContain('"provider":"cursor"');
-});
-
-it.each([204,429])("retains a mixed seal while legacy-only reports respect discovery status %s", async status => {
-  await open();
-  scheduler!.stop();
-  clock -= 3600000;
-  vi.setSystemTime(clock);
-  await consent.change("enable");
-  clock += 3600000;
-  vi.setSystemTime(clock);
-  for (const [provider,turnId,at] of [["cursor","cursor",clock],["codex","mixed",clock],["codex","legacy",clock-3600000]] as const)
-    await usage.local.observe({provider,turnId,at,agentId:"a",sessionId:"s",model:null,phase:"started"},{teamId:null,repository:null});
-  fetcher.mockImplementation(async (_url,init) => new Response(null,{status:init?.method === "OPTIONS" ? status : 204,headers:status === 429 ? {"Retry-After":"7200"} : {}}));
-  await upload!.flush();
-  const state = await stored();
-  expect(state.days.find((row: {hour:number})=>row.hour === 12)).toMatchObject({status:"pending",attempts:0});
-  const mixed = JSON.parse(state.days.find((row: {hour:number})=>row.hour === 12).body);
-  expect(mixed.usage.map((row: {provider:string})=>row.provider)).toStrictEqual(["codex","cursor"]);
-  const posts = fetcher.mock.calls.filter(([,init])=>init?.method === "POST");
-  expect(posts).toHaveLength(status === 429 ? 0 : 1);
-  if (status === 429) {
-    expect(state.retryAt).toBe(clock+7200000);
-    clock += 3600000;
-    vi.setSystemTime(clock);
-    await upload!.flush();
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  } else expect(JSON.parse(posts[0]![1]!.body as string).usage[0].provider).toBe("codex");
-});
-
-it("aborts identity-free discovery on opt-out without posting the sealed report", async () => {
-  await open();
-  scheduler!.stop();
-  await consent.change("enable");
-  await usage.local.observe({provider:"cursor",agentId:"a",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"},{teamId:null,repository:null});
-  fetcher.mockImplementation(async () => new Promise<Response>(()=>{}));
-  const flushing = upload!.flush();
-  await eventually(()=>expect(fetcher).toHaveBeenCalledTimes(1));
-  const init = fetcher.mock.calls[0]![1]!;
-  expect(init.method).toBe("OPTIONS");
-  expect(init.body).toBeUndefined();
-  await consent.change("disable");
-  await flushing;
-  expect(init.signal!.aborted).toBe(true);
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  expect((await stored()).days).toStrictEqual([]);
 });

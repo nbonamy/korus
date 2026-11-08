@@ -377,6 +377,7 @@ it("uses model facets from real data and clears selections absent from a new sco
       const selected = new URL(url, "https://console.invalid").searchParams;
       return Response.json({
         ...metrics(),
+        availableProviders: ["codex", "claude"],
         availableModels:
           selected.get("provider") === "claude"
             ? ["unknown"]
@@ -425,6 +426,7 @@ it("filters Cursor usage and displays unknown tokens and spend without inventing
   data.models = [cursor];
   data.modelDaily = [{...cursor,day:data.range.to}];
   data.availableModels = ["unknown"];
+  data.availableProviders = ["cursor"];
   const fetcher = vi.fn(async (_url: string) => Response.json(data));
   vi.stubGlobal("fetch",fetcher);
   const {wrapper,router} = await renderDashboard("/models");

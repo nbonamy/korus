@@ -22,7 +22,7 @@ const hashOf = (label: string) =>
   [...label].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0);
 export function seriesColor(label: string, group: UsageGrouping): string {
   if (label === "Unknown") return "var(--color-text-muted)";
-  if (group === "provider") return slot(providerSlots[label] ?? 4);
+  if (group === "provider") return slot(Object.hasOwn(providerSlots, label) ? providerSlots[label]! : 4);
   const hash = hashOf(label);
   // Repositories stay off the provider hues (1-3) so a colour never suggests a provider.
   if (group === "repository")
