@@ -1,7 +1,11 @@
 import { mount } from "@vue/test-utils";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import UsageActivity from "../UsageActivity.vue";
 import { ACTIVITY_WEEKS, activityWindow } from "../usage-chart";
+
+// Freeze the reader's calendar without replacing DOM/event-loop timers.
+beforeEach(() => vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 1, 12) }));
+afterEach(() => vi.useRealTimers());
 
 const day = (offset: number) =>
   new Date(Date.parse(activityWindow().to) + offset * 86400000)
@@ -138,13 +142,18 @@ it("shows the longest task and the longest streak of consecutive active days", a
   wrapper.unmount();
 });
 
-it("switches to a weekly view that stacks squares by each week's share of the busiest week", async () => {
+it.each([
+  "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29",
+  "2026-10-30", "2026-10-31", "2026-11-01",
+])("stacks weekly activity relative to the busiest week on %s", async (today) => {
+  vi.setSystemTime(new Date(`${today}T12:00:00`));
   const wrapper = mount(UsageActivity, {
     props: {
       days: [
-        { day: day(-14), tokens: 100 },
-        { day: day(-13), tokens: 100 },
-        { day: day(0), tokens: 1000 },
+        // Monday and Tuesday two calendar weeks before every tested reader date.
+        { day: "2026-10-12", tokens: 100 },
+        { day: "2026-10-13", tokens: 100 },
+        { day: today, tokens: 1000 },
       ],
     },
   });
