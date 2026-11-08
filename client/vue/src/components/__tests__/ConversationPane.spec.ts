@@ -568,7 +568,16 @@ describe('ConversationPane', () => {
 
     expect(sdkPane.props('messageTextSelection')).toBe(true);
     expect(sdkPane.props('hasComposerContext')).toBe(false);
+    const host = document.createElement('div');
+    host.className = 'conversation-pane';
+    host.innerHTML = '<div data-chat-annotation-message="message-assistant"><div data-chat-annotation-content>Looking now.</div></div>';
+    document.body.append(host);
+    const range = document.createRange();
+    range.selectNodeContents(host.querySelector('[data-chat-annotation-content]')!);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
     sdkPane.vm.$emit('messageTextSelectionChange', selection);
+    host.remove();
     await nextTick();
     await wrapper.get('.chat-text-selection-annotation__add').trigger('click');
     const input = document.querySelector<HTMLInputElement>('.annotation-popup__input');
@@ -580,7 +589,7 @@ describe('ConversationPane', () => {
     await nextTick();
 
     expect(wrapper.emitted('add-text-annotation')).toStrictEqual([[
-      { selection, comment: 'Explain what you found.' },
+      { selection: { ...selection, textStart: 0, textBlockIndex: 0 }, comment: 'Explain what you found.' },
     ]]);
 
     const annotation: ChatTextAnnotation = {
@@ -594,8 +603,9 @@ describe('ConversationPane', () => {
     };
     await wrapper.setProps({ textAnnotations: [annotation] });
     expect(sdkPane.props('hasComposerContext')).toBe(true);
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
-    expect(wrapper.text()).not.toContain('Explain what you found.');
+    expect(wrapper.findAll('.chat-annotation-review .composer-context-cards__open')).toHaveLength(1);
+    expect(wrapper.get('.chat-annotation-review').text()).toContain('Explain what you found.');
+
     await wrapper.get('[aria-label="Remove chat annotation"]').trigger('click');
     expect(wrapper.emitted('remove-text-annotation')).toStrictEqual([['annotation-1']]);
   });

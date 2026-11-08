@@ -32,6 +32,7 @@
     @add-text-annotation="
       conversation.chatTextAnnotation.add($event.selection, $event.comment)
     "
+    @edit-text-annotation="conversation.chatTextAnnotation.edit"
     @remove-text-annotation="conversation.chatTextAnnotation.remove"
     @remove-visualization-annotation="
       conversation.visualizationAnnotation.remove

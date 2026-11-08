@@ -22,9 +22,10 @@
       :escape-interrupt="keyboardActive"
       :has-composer-context="textAnnotations.length > 0 || visualizationAnnotations.length > 0 || codeAnnotations.length > 0"
       :message-text-selection="true"
+      :render-strategy="annotationRenderAll ? 'eager' : 'lazy'"
       :transform-message="transformConversationMessage"
       :tool-visibility="isAppToolVisible"
-      @message-text-selection-change="messageTextSelection = $event"
+      @message-text-selection-change="messageTextSelection = captureChatTextAnchor($event)"
     >
       <template #empty>
         <div class="conversation-pane__empty">
@@ -34,6 +35,20 @@
             <slot name="empty-actions" />
           </div>
         </div>
+      </template>
+      <template #message-text="{ block, message, index }">
+        <ChatAnnotatedText
+          :message-key="message.id ?? String(index)"
+          :focus-request="annotationFocusRequest"
+          :annotations="annotationsForMessage(message, index).map(annotation => ({ ...annotation, number: textAnnotations.indexOf(annotation) + 1 }))"
+          @edit="annotationReview?.open($event)"
+        >
+          <CodexMessageBlock :block="block" :mention-groups="textCatalogs?.mentionGroups" :plugins="textCatalogs?.plugins" :skills="textCatalogs?.skills">
+            <template #mention="{ item, surface: mentionSurface }">
+              <AgentMention v-if="item.value.startsWith('agent:')" :label="item.label" :surface="mentionSurface" />
+            </template>
+          </CodexMessageBlock>
+        </ChatAnnotatedText>
       </template>
       <template #message-header="{ message }">
         <span v-if="guestAuthor(message.id)" class="conversation-pane__message-header">{{ guestAuthor(message.id) }}</span>
@@ -131,6 +146,15 @@
         </div>
       </template>
       <template #composer-context="{ disabled }">
+        <ChatAnnotationReview
+          :key="conversationKey"
+          ref="annotationReview"
+          :annotations="textAnnotations"
+          :disabled="disabled"
+          @reveal="revealTextAnnotation"
+          @edit="(id, comment) => emit('edit-text-annotation', id, comment)"
+          @remove="emit('remove-text-annotation', $event)"
+        />
         <ComposerContextCards
           v-if="composerContextCards.length > 0"
           :context-label="t('chat.composerContext.label')"
@@ -170,13 +194,13 @@ import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'v
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
+  CodexMessageBlock,
   defaultCodexChatTranslate,
   provideCodexChatTranslate,
   resolveCodexConversationPaneValue,
   type CodexComposerState,
   type CodexChatMessage,
   type CodexConversationPaneController,
-  type CodexMessageTextSelection,
   type CodexNativeAttachment,
   type SurfaceMessage,
 } from '@codex-app-sdk/vue';
@@ -198,6 +222,10 @@ import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
 import ComposerContextCards, { type ComposerContextCard } from './ComposerContextCards.vue';
+import ChatAnnotatedText from './ChatAnnotatedText.vue';
+import { captureChatTextAnchor } from './chat-text-anchor';
+import type { ChatTextSelection } from './use-chat-text-annotations';
+import ChatAnnotationReview from './ChatAnnotationReview.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
 import ThreadFlagAffordance from './ThreadFlagAffordance.vue';
 import BackendSelector from './BackendSelector.vue';
@@ -310,9 +338,10 @@ provideAppToolPresentation(
 );
 
 const emit = defineEmits<{
-  'add-text-annotation': [payload: { selection: CodexMessageTextSelection; comment: string }];
+  'add-text-annotation': [payload: { selection: ChatTextSelection; comment: string }];
   'annotate-attachment': [attachment: CodexNativeAttachment];
   'close-plan': [];
+  'edit-text-annotation': [annotationId: string, comment: string];
   'remove-text-annotation': [annotationId: string];
   'remove-visualization-annotation': [annotationId: string];
   'remove-code-annotation': [annotationId: string];
@@ -484,12 +513,26 @@ async function restoreSavedDraft(selection: { id: string; keep: boolean }): Prom
     catch (error) { ElMessage.error(`${t('chat.savedDrafts.restoreFailed')}: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
+const annotationFocusRequest = ref<{ id: string } | null>(null);
+const annotationRenderAll = ref(false);
+async function revealTextAnnotation(id: string): Promise<void> {
+  const marker = [...(loadTimingRoot.value?.querySelectorAll<HTMLElement>('[data-annotation-id]') ?? [])]
+    .find(element => element.dataset.annotationId === id);
+  if (!marker) {
+    annotationRenderAll.value = true;
+    await nextTick();
+    await nextTick();
+  }
+  annotationFocusRequest.value = { id };
+}
+
+const annotationReview = ref<InstanceType<typeof ChatAnnotationReview> | null>(null);
+function annotationsForMessage(message: { id?: string; role: string }, index: number): readonly ChatTextAnnotation[] {
+  return props.textAnnotations.filter(annotation => annotation.messageId
+    ? annotation.messageId === message.id
+    : annotation.messageIndex === index && annotation.role === message.role);
+}
 const composerContextCards = computed<ComposerContextCard[]>(() => [
-  ...props.textAnnotations.map((annotation) => ({
-    id: `annotation:${annotation.id}`,
-    label: t('chat.textAnnotations.annotation'),
-    removeLabel: t('chat.textAnnotations.remove'),
-  })),
   ...props.visualizationAnnotations.map((annotation) => ({
     id: `visualization-annotation:${annotation.id}`,
     label: t('chat.composerContext.visualizationAnnotation'),
@@ -519,10 +562,13 @@ const activeThreadFlags = computed<ThreadFlagId[]>(() => (
   (['ready_for_review', 'work_proposed'] as const)
     .filter((id) => normalizeThreadFlags(props.agent?.threadFlags ?? {})[id] === true)
 ));
-const messageTextSelection = ref<CodexMessageTextSelection | null>(null);
+const textCatalogs = computed(() => resolveCodexConversationPaneValue(props.controller.state).catalogs);
+const messageTextSelection = ref<ChatTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();
 let transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
 watch(conversationKey, () => {
+  annotationFocusRequest.value = null;
+  annotationRenderAll.value = false;
   messageTextSelection.value = null;
   collaborationMessagePresentations.clear();
   transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
@@ -563,10 +609,6 @@ function requestAttachmentAnnotation(attachment: CodexNativeAttachment | undefin
 function removeComposerContextCard(itemId: string): void {
   if (itemId === 'review-finding') {
     emit('remove-review-finding');
-    return;
-  }
-  if (itemId.startsWith('annotation:')) {
-    emit('remove-text-annotation', itemId.slice('annotation:'.length));
     return;
   }
   if (itemId.startsWith('visualization-annotation:')) {
