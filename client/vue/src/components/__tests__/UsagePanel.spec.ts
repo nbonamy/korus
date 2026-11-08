@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 vi.mock("vue-chartjs", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -20,6 +20,10 @@ import {
   localDay,
   shiftDay,
 } from "../usage-chart";
+
+// Keep request fixtures and rendered ranges on one calendar day across async loads.
+beforeEach(() => vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 1, 12) }));
+afterEach(() => vi.useRealTimers());
 
 it.each(["unmeasured", "missing-total", "partial", "unavailable"])(
   "shows only the known token total for %s activity",

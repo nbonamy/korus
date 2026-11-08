@@ -23,7 +23,6 @@ function mountNavigation(snapshot = createInitialSnapshot(), renderSidebar = fal
       currentAgent: snapshot.agents[0] ?? null,
       forkableAgentIds: [],
       listRepositorySessionBranches: vi.fn().mockResolvedValue([]),
-      loadRemoteTeams: vi.fn().mockResolvedValue([]),
       openInApplications: { defaultApplication: 'finder', applications: [] },
       quickAgentShortcutsVisible: false,
       settingsVisible: false,

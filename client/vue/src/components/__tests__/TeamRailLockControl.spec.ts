@@ -2,7 +2,6 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
 import type { ComputerUseLockHold } from '@workspace/core/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ElementPlus from 'element-plus';
 import TeamRailLockControl from '../TeamRailLockControl.vue';
 import { computerUseLockKey, nextMorning } from '../computer-use-lock';
 
@@ -12,7 +11,7 @@ function mountControl(visible: boolean, hold: ComputerUseLockHold = false) {
   const setHold = vi.fn().mockResolvedValue(undefined);
   const wrapper = mount(TeamRailLockControl, {
     attachTo: document.body,
-    global: { plugins: [ElementPlus], provide: { [computerUseLockKey as symbol]: { state: computed(() => ({ visible, hold })), setHold } } },
+    global: { provide: { [computerUseLockKey as symbol]: { state: computed(() => ({ visible, hold })), setHold } } },
   });
   return { wrapper, setHold };
 }
@@ -23,7 +22,7 @@ afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ''; });
 describe('rail lock control', () => {
   it('is absent unless Computer Use is on and set to On demand, and without a provider', () => {
     expect(mountControl(false).wrapper.find('button').exists()).toBe(false);
-    expect(mount(TeamRailLockControl, { global: { plugins: [ElementPlus] } }).find('button').exists()).toBe(false);
+    expect(mount(TeamRailLockControl).find('button').exists()).toBe(false);
   });
 
   it('offers one hour, the next morning or until turned off, and stores each as a hold', async () => {
