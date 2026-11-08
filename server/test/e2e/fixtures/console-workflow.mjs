@@ -152,6 +152,7 @@ export async function dashboardWorkflow({
     }
     await signIn();
     await page.getByRole("region", { name: "Weekly overview" }).waitFor();
+    await page.getByRole("region", { name: "Weekly tokens", exact: true }).getByRole("img").waitFor();
     await page.addInitScript(() => {
       window.__loginFormRendered = false;
       new MutationObserver(() => {
