@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
-import { deferred } from './app-state-test-harness';
+import { deferred } from '../../tests/support/app-state-test-harness';
 import { createAntigravityConversationState } from '../antigravity-conversation-state';
 
 it('recovers revision gaps, replaces history atomically, and evicts frames after identity changes', async () => {

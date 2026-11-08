@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { WorkItem } from '@workspace/core/contracts';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { backendChoicesKey } from '../backend-selection';
 import { useWorkItemRouting } from '../use-work-item-routing';
 import { useRepositorySession } from '../use-repository-session';

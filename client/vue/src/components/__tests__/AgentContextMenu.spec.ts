@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import AgentContextMenu from '../AgentContextMenu.vue';
 import { ViewportShortIcon } from '../../shared/icons/app-icons';
 import type { Team } from '@workspace/core/contracts';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 
 let mountedWrappers: ReturnType<typeof mount>[] = [];
 

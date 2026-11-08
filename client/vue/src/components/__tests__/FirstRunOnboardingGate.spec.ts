@@ -1,7 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import FirstRunOnboardingGate from '../FirstRunOnboardingGate.vue';
 
 function mountGate(overrides: Partial<InstanceType<typeof FirstRunOnboardingGate>['$props']> = {}) {

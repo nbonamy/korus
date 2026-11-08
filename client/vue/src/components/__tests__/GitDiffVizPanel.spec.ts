@@ -4,7 +4,7 @@ import { defineComponent, reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import type { UpdateSettingsInput } from '@workspace/core/contracts';
-import { stubElectronTestWindow } from '../../test/client';
+import { stubElectronTestWindow } from '../../../tests/support/client';
 import { diffVizSettingsKey } from '../diff-viz-settings';
 import GitReviewPanel from '../GitReviewPanel.vue';
 import type { SidePanelGitDiffState } from '../side-panel';

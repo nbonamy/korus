@@ -1,4 +1,4 @@
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/src/test/codex-conversation-fixtures';
+import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';

@@ -5,8 +5,8 @@ import AgentHeader from '../AgentHeader.vue';
 import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from '../conversation-share-state';
 import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
-import { setElectronTestClient } from '../../test/client';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { setElectronTestClient } from '../../../tests/support/client';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import '../../styles/base.css';
 // Menus open in a popper attached to the body.
 const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setElectronTestClient } from '../test/client';
+import { setElectronTestClient } from '../../tests/support/client';
 import { downloadAgentFile } from '../download-agent-file';
 
 afterEach(() => {

@@ -16,13 +16,13 @@ import ConversationPane from '../ConversationPane.vue';
 import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
 import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import { antigravityBackendCapabilities, claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
-import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import { translate } from '../../i18n';
 import { configureAppClient } from '../../platform-api';
 

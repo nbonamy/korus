@@ -4,7 +4,7 @@ import { ElMessageBox, ElSegmented, ElSwitch } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonStatus, SystemPermissionsStatus } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import SettingsGeneralPanel from '../SettingsGeneralPanel.vue';
 
 describe('SettingsGeneralPanel', () => {

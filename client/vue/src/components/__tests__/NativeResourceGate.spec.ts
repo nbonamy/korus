@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent } from 'vue';
 import NativeResourceGate from '../NativeResourceGate.vue';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 import { windowState } from '../../window-state';
 import type { AppApi } from '@workspace/core/contracts';
 

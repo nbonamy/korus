@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { mountProvisioningHost } from './provisioning-host';
+import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { activeProvisioningOperation, backgroundProvisioningOperation } from '../provisioning-operations';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BranchCurrentWorkDialog from '../BranchCurrentWorkDialog.vue';

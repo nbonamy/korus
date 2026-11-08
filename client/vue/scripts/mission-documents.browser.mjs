@@ -38,7 +38,7 @@ test('Mission documents use a request drawer and centered viewer without replaci
           import {createInitialSnapshot} from '/core/src/snapshot-construction.ts';
           import {createMission} from '/core/src/missions.ts';
           import {applyMissionDebugFixture} from '/client/backend/src/mission-debug-fixtures.ts';
-          import {codexTextMessage} from '/client/vue/src/test/codex-conversation-fixtures.ts';
+          import {codexTextMessage} from '/client/vue/tests/support/codex-conversation-fixtures.ts';
           import MissionWorkspace from '/client/vue/src/components/MissionWorkspace.vue';
           import ConversationPane from '/client/vue/src/components/ConversationPane.vue';
           import WorkspacePreviewHost from '/client/vue/src/components/WorkspacePreviewHost.vue';

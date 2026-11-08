@@ -76,7 +76,9 @@
     "client/vue": {
       "entry": [
         "scripts/*.browser.mjs",
-        "src/**/*.browser.spec.mjs"
+        "tests/browser/**/*.browser.spec.mjs",
+        "tests/browser/fixtures/**/preview.ts",
+        "tests/support/**/*.ts"
       ],
       "ignore": [
         "scripts/fixtures/**"

@@ -1,4 +1,4 @@
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/src/test/codex-conversation-fixtures';
+import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompanionReset, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';

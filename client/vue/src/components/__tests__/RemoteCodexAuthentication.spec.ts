@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodexAuthentication, RemoteConnection } from '@workspace/core/contracts';
 import RemoteCodexAuthentication from '../RemoteCodexAuthentication.vue';
-import { configureElectronTestClient } from '../../test/client';
+import { configureElectronTestClient } from '../../../tests/support/client';
 
 const connection: RemoteConnection = { id: 'wall-e', host: 'wall-e', name: 'wall-e', kind: 'ssh', status: 'ready', createdAt: '', updatedAt: '' };
 const signedOut: CodexAuthentication = { account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } };

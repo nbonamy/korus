@@ -6,7 +6,7 @@ import { computerUseLockKey } from '../computer-use-lock';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamRail from '../TeamRail.vue';
 import type { AccountRateLimits, AgentBackend, RemoteConnection, Team } from '@workspace/core/contracts';
-import { setElectronTestClient } from '../../test/client';
+import { setElectronTestClient } from '../../../tests/support/client';
 
 let mountedWrappers: ReturnType<typeof mount>[] = [];
 

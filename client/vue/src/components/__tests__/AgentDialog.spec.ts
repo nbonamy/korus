@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { mountProvisioningHost } from './provisioning-host';
+import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick } from 'vue';
 import { backendChoicesKey } from '../backend-selection';

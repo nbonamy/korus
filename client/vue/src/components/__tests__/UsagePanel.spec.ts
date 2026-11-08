@@ -11,7 +11,7 @@ vi.mock("vue-chartjs", async () => {
     }),
   };
 });
-import { setElectronTestClient } from "../../test/client";
+import { setElectronTestClient } from "../../../tests/support/client";
 import UsagePanel from "../UsagePanel.vue";
 import { ElMessageBox } from "element-plus";
 import {

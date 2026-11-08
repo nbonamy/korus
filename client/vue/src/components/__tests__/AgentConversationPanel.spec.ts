@@ -6,7 +6,7 @@ import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities'
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
-import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
 import { backendChoicesKey } from '../backend-selection';

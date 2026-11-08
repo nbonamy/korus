@@ -12,7 +12,7 @@ const output = process.argv[2];
 if (!output || !path.isAbsolute(output)) throw new Error('Pass an absolute output directory outside the repository.');
 if (path.resolve(output).startsWith(path.resolve(repository))) throw new Error('Capture output must be outside the repository.');
 await mkdir(output, { recursive: true });
-const server = await createServer({ configFile: false, root: `${repository}/client/vue/src/components/__tests__/fixtures/conversation-sharing`, resolve: { alias: { '@workspace/core': `${repository}/core/src` }, dedupe: ['vue'] }, plugins: [vue()], server: { host: '127.0.0.1', port: 0, fs: { allow: [repository] } }, logLevel: 'error' });
+const server = await createServer({ configFile: false, root: `${repository}/client/vue/tests/browser/fixtures/conversation-sharing`, resolve: { alias: { '@workspace/core': `${repository}/core/src` }, dedupe: ['vue'] }, plugins: [vue()], server: { host: '127.0.0.1', port: 0, fs: { allow: [repository] } }, logLevel: 'error' });
 let browser;
 try {
   await server.listen(); browser = await chromium.launch();

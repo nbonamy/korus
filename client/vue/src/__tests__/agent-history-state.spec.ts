@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppSnapshot, AppApi } from '@workspace/core/contracts';
 import { createAgentHistoryState } from '../agent-history-state';
-import { stubElectronTestWindow } from '../test/client';
-import { deferred } from './app-state-test-harness';
+import { stubElectronTestWindow } from '../../tests/support/client';
+import { deferred } from '../../tests/support/app-state-test-harness';
 
 describe('createAgentHistoryState', () => {
   it('does not infer an empty transcript from a successful request before its provider frame arrives', async () => {

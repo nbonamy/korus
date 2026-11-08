@@ -1,5 +1,5 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
-import { mountProvisioningHost } from './provisioning-host';
+import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { ElMessage } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
@@ -12,7 +12,7 @@ import type { CommandPaletteAction } from '../command-palette-actions';
 import type { Agent, AgentGitStatus, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
 import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
-import { stubElectronTestWindow } from '../../test/client';
+import { stubElectronTestWindow } from '../../../tests/support/client';
 import '../../styles/base.css';
 
 const agent = { id: 'agent-1', name: 'Dina', avatar: 'DI', folder: '/repo/worktree', backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;

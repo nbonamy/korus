@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SourceBranch, WorkItem } from '@workspace/core/contracts';
 import '../../styles/base.css';
 import RepositorySessionSourceDialog from '../RepositorySessionSourceDialog.vue';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { appApi, configureAppClient } from '../../platform-api';
 import { backendSnapshotKey } from '../backend-selection';
 

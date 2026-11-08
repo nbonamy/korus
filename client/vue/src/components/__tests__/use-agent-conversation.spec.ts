@@ -4,7 +4,7 @@ import { promptContentText } from '@codex-app-sdk/core/surface';
 import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
-import { resolveConversationControllerValue } from './app-shell-test-harness';
+import { resolveConversationControllerValue } from '../../../tests/support/app-shell-test-harness';
 
 const image: CodexNativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
   mimeType: 'image/png', size: 10, previewUrl: 'data:image/png;base64,c2hvdA==' };

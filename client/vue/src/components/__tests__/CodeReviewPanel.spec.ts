@@ -10,7 +10,7 @@ import { codeReviewSettingsKey } from '../code-review-settings';
 import { codeReviewUncommittedPreviewKey } from '../code-review-preview';
 import type { CodeReviewPreferences } from '@workspace/core/code-review';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock } from '../../test/client-api-mock';
+import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import '../../styles/base.css';
 
 function finding(overrides: Partial<CodeReviewFinding> = {}): CodeReviewFinding {

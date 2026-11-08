@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppSnapshot } from '@workspace/core/contracts';
-import { createClientApiMock } from '../test/client-api-mock';
+import { createClientApiMock } from '../../tests/support/client-api-mock';
 import { configureAppClient } from '../platform-api';
 import { createWorkProviderState } from '../work-provider-state';
 import { clearConfetti, useConfetti } from '../shared/confetti/use-confetti';

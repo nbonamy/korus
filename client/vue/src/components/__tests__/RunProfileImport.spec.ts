@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunProfile, RunProfileCatalog, RunProfileInput } from '@workspace/core/run-profiles';
 import RunProfileImport from '../RunProfileImport.vue';
-import { stubElectronTestWindow } from '../../test/client';
+import { stubElectronTestWindow } from '../../../tests/support/client';
 
 const actions = [
   { name: 'dev', command: 'npm run dev', directory: 'app', source: 'app/package.json' },

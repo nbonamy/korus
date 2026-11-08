@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mountProvisioningHost } from './provisioning-host';
+import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { activeProvisioningOperation } from '../provisioning-operations';
 import type { SourceRepository } from '@workspace/core/contracts';
 import NewSourceWorktreeDialog from '../NewSourceWorktreeDialog.vue';
