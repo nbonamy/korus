@@ -111,15 +111,10 @@ it.each(['cancel', 'denied', 'expired', 'start failure', 'missing configuration'
   expect(await tokenStore.get('gitlab')).toBeNull();
   manager.close();
 });
-it('refuses changed CLI identity before catalog or writes, including hydration, and permits explicit reconnection', async () => {
-  const { manager, snapshot } = fixture();
+it('follows the account glab has now', async () => {
+  const { manager } = fixture();
   await manager.hydrateConnections();
   await state({ login: 'mallory' });
-  await expect(manager.listSources('gitlab')).rejects.toThrow('authentication changed');
-  await manager.hydrateConnections();
-  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')).toMatchObject({ status: 'error', accountLabel: 'alice' });
-  expect((await calls()).every(call => call.args[1] === 'user')).toBe(true);
-  await manager.disconnect('gitlab');
   expect(await manager.listSources('gitlab')).toHaveLength(2);
   manager.close();
 });
@@ -155,8 +150,6 @@ it('preserves literal JSON writes, methods, headers, no-content responses and ca
   expect((await cli.send(credential, 'https://gitlab.com/api/v4/projects/123/issues/1', { method: 'DELETE' })).status).toBe(204);
   await expect(cli.send(credential, 'https://evil.test/api/v4/user')).rejects.toThrow('Invalid GitLab');
   await expect(cli.send(credential, 'https://gitlab.com/api/v4/projects', { signal: AbortSignal.abort() })).rejects.toThrow(/GitLab CLI/);
-  await state({ login: 'mallory' });
-  await expect(cli.send(credential, 'https://gitlab.com/api/v4/projects/123/issues', { method: 'POST', body })).rejects.toThrow('authentication changed');
 });
 
 // Exercises the native child-process authentication timeout (10s), including cleanup/retry.

@@ -165,13 +165,13 @@ it('preserves a saved API account and refuses CLI fallback after that API login 
   manager.close();
 });
 
-it('refuses an externally switched CLI account and keeps process diagnostics out of application errors', async () => {
+it('returns what the active gh account sees, and keeps process diagnostics out of application errors', async () => {
   const { manager } = fixture();
   await manager.hydrateConnections();
   await writeFile(path.join(root, 'state.json'), JSON.stringify({ login: 'mallory' }));
-  await expect(manager.createPullRequest('org/repo', { branch: 'feature', title: 'Change', body: '' })).rejects.toThrow('authentication changed');
+  expect(await manager.listBranches('github', 'org/repo')).toStrictEqual([{ name: 'main', isDefault: true }, { name: 'feature', isDefault: false }]);
   await writeFile(path.join(root, 'state.json'), JSON.stringify({ login: 'alice', fail: true }));
-  await expect(manager.listSources('github')).rejects.toThrow('authentication changed');
-  expect((await readFile(path.join(root, 'calls.jsonl'), 'utf8')).split('\n').filter(Boolean).map(line => JSON.parse(line)).every(call => call.args[0] === 'auth')).toBe(true);
+  const failure = await manager.listSources('github').catch(error => error as Error);
+  expect((failure as Error).message).toBe('GitHub CLI request failed. Check CLI authentication and repository access.');
   manager.close();
 });

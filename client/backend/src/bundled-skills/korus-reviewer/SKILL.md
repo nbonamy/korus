@@ -18,6 +18,9 @@ If tools are deferred or lack input schemas, load them with ToolSearch or your p
 ## Inspect
 
 - Use provider repository tools. Review the fixed baseline plus subsequent review commits/working changes.
+- Make each round exhaustive within the agreed scope. Inspect every changed file and relevant surrounding code, callers, contracts, tests and failure paths before finishing.
+- Minimize review/fix rounds through complete inspection. Continue after finding issues and report all supported actionable findings in the same round; do not defer uninspected areas to a later pass.
+- On follow-ups, verify prior fixes and inspect the full current scope for regressions and other previously missed issues. Report any new actionable findings; keep every finding evidence-backed.
 - If the branch is behind main, mention it only in your final summary. Do not report findings for features or changes present only on main and absent from this branch; findings must identify defects introduced by the reviewed changes.
 - Ledger is cumulative: respect exclusions unless materially new evidence; discussion records expected behavior.
 - Register every actionable P0–P3 issue with {{mcpServerName}}.report_finding: evidence, imperative title ≤80 characters, one Markdown paragraph explaining impact. Native findings do not enter this ledger.
