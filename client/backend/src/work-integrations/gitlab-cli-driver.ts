@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { resolveRuntimeLaunch } from '@workspace/core/runtime-discovery';
 import { GitLabWorkProviderDriver } from './gitlab-driver';
-import { WorkProviderCliAuthenticationError, type WorkProviderCliCredential, type WorkProviderCredential } from './types';
+import type { WorkProviderCliCredential, WorkProviderCredential } from './types';
 
 /** Uses the owning host's authenticated glab; never reads or copies its token. */
 export class GitLabCliWorkProviderDriver extends GitLabWorkProviderDriver {
@@ -21,8 +21,6 @@ export class GitLabCliWorkProviderDriver extends GitLabWorkProviderDriver {
     const target = new URL(url);
     if (target.origin !== 'https://gitlab.com' || !target.pathname.startsWith('/api/v4/') || target.username || target.password || target.hash) throw new Error('Invalid GitLab API endpoint.');
     if (!('kind' in credential) || credential.provider !== 'gitlab') throw new Error('GitLab CLI access requires its own connection.');
-    const current = await this.detectConnection();
-    if (!current || current.accountLabel !== credential.accountLabel) throw new WorkProviderCliAuthenticationError('GitLab CLI authentication changed or is unavailable. Check glab auth login --hostname gitlab.com, then reconnect GitLab in Settings.');
     return this.request(`${target.pathname.slice('/api/v4/'.length)}${target.search}`, init);
   }
 
