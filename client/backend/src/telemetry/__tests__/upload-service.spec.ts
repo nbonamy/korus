@@ -670,6 +670,7 @@ it.each([true, false, undefined])("migrates a legacy sharing choice %s and insta
   await expect(readFile(legacy)).rejects.toMatchObject({code:'ENOENT'});
 });
 
+// This disk-backed backlog exercise writes 225 observations and repeatedly persists uploads across restarts.
 it("catches up more than 200 historical hours with a persisted request budget and silent network failures", async () => {
   // A long-enabled profile catches up after shutdown, without a seven-day cutoff.
   const present = clock;
@@ -746,7 +747,7 @@ it("catches up more than 200 historical hours with a persisted request budget an
   await usage.local.load();
   await upload!.flush();
   expect(fetcher).toHaveBeenCalledTimes(sent); // Retention must not overwrite old server totals with empty projections.
-});
+}, 10_000);
 
 it("starts a new sharing window on re-enable and never uploads the disabled interval, including after restart", async () => {
   const observe = async (turnId: string, at: number, input: number) => {
