@@ -11,6 +11,7 @@ export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
 
 export {
   IconMessage2 as Message2Icon,
+  IconForms as FormsIcon,
   IconArrowForwardUp as ArrowForwardUpIcon,
   IconAffiliate as AffiliateIcon,
   IconAlertTriangle as AlertTriangleIcon,

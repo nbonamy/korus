@@ -20,6 +20,7 @@ import '@codex-app-sdk/vue/styles.css';
 import '/src/styles/variables.css';
 import '/src/styles/base.css';
 import {i18n} from '/src/i18n/index.ts';
+import {applyAppTheme} from '/src/theme/apply-theme.ts';
 import Shell from '/src/components/AppShell.vue';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
 import {claudeBackendCapabilities} from '@workspace/core/backend-capabilities';
@@ -32,7 +33,7 @@ const composer=createAgentComposerState({getSnapshot:()=>snapshot});
 const views=snapshot.agents.map(agent=>{
  agent.backend='claude';agent.backendDefaults={kind:'claude',permissionMode:'default'};
  return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:{agentId:agent.id,sessionId:'fixture-session',activeTurnId:null,turnIds:['fixture-turn'],turns:[],
- messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The **request** should be retried.\\n\\n'+Array.from({length:12},()=> 'More context before the selected passage.').join('\\n\\n')+'\\n\\nThe **request** should be retried.'}]}],
+ messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The **request** should be retried.\\n\\n'+Array.from({length:40},()=> 'More context before the selected passage.').join('\\n\\n')+'\\n\\nThe **request** should be retried.'}]}],
  answeredClientRequestIds:[],busy:false,historyLoading:false,historyState:{hasOlder:false,loadingOlder:false},contextUsage:null,plan:null,error:null},composer:composer.configurationForAgent(agent.id),
  composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeBackendCapabilities,
  approvals:[],sending:false,queuedPrompts:[],history:{failed:false,hydrating:false,hasOlder:false,loadingOlder:false},answeredClientRequestIds:new Set()});
@@ -44,7 +45,7 @@ const actions=new Proxy({
  setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,backendDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
  send:(id,prompt)=>calls.push([id,prompt]),
 },{get:(target,key)=>target[key]??(()=>{})});
-window.fixture={calls,ids:views.map(v=>v.agent.id),visible:[]};
+window.fixture={calls,ids:views.map(v=>v.agent.id),visible:[],applyTheme:mode=>applyAppTheme({id:'app-'+mode,mode,uiFontSize:14,chatFontSize:15,codeFontSize:13})};
 createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id===active.value).agent,
  isLoading:false,isSending:false,connectionState:{status:'connected'},agentConversationFor:id=>views.find(v=>v.agent.id===id),
  agentConversationActions:actions,onSelectAgent:id=>active.value=id,onVisibleAgentsChange:ids=>window.fixture.visible=ids})}).use(i18n).use(ElementPlus).mount('#app');
@@ -90,7 +91,18 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     };
     const firstPane = page.locator('.conversation-pane').first();
     const passage = firstPane.locator('p strong').last();
+    const revealPassage = async target => {
+      await target.evaluate(element => new Promise(resolve => {
+        let scroller = element.parentElement;
+        while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+        const before = scroller?.scrollTop;
+        element.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        if (!scroller || scroller.scrollTop === before) resolve();
+        else scroller.addEventListener('scroll', () => resolve(), { once: true });
+      }));
+    };
     const selectPassage = async target => {
+      await revealPassage(target);
       await target.evaluate(element => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -100,7 +112,6 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
         element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       });
     };
-    await passage.scrollIntoViewIfNeeded();
     await selectPassage(passage);
     await page.getByRole('button', { name: 'Annotate', exact: true }).click();
     await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
@@ -121,6 +132,44 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await assertAtPassage(marker, passage);
     const paintedRanges = await page.evaluate(() => [...CSS.highlights.values()].flatMap(highlight => [...highlight].map(range => range.toString())));
     assert.deepEqual(paintedRanges, ['request']);
+    const annotationOpacity = {};
+    for (const mode of ['dark', 'light']) {
+      await page.evaluate(mode => window.fixture.applyTheme(mode), mode);
+      const colors = await passage.evaluate(element => {
+        const original = getComputedStyle(element).color;
+        const highlighted = getComputedStyle(element, '::highlight(chat-annotations)');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.fillStyle = highlighted.backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        const opacity = context.getImageData(0, 0, 1, 1).data[3] / 255;
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--color-shell-main)';
+        element.append(probe);
+        context.fillStyle = getComputedStyle(probe).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        probe.remove();
+        context.fillStyle = highlighted.backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        const background = [...context.getImageData(0, 0, 1, 1).data];
+        context.fillStyle = original;
+        context.fillRect(0, 0, 1, 1);
+        const foreground = [...context.getImageData(0, 0, 1, 1).data];
+        const luminance = rgb => rgb.slice(0, 3).map(channel => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+        const first = luminance(foreground), second = luminance(background);
+        return { original, annotated: highlighted.color, opacity,
+          contrast: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05) };
+      });
+      annotationOpacity[mode] = colors.opacity;
+      assert.equal(colors.annotated, colors.original, `${mode} annotation highlighting preserves the original text color`);
+      assert.ok(colors.contrast >= 4.5, `${mode} annotated text meets normal-text contrast: ${colors.contrast}`);
+      if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: `${process.env.ANNOTATION_EVIDENCE}.${mode}.png` });
+    }
+    assert.ok(annotationOpacity.dark > annotationOpacity.light, 'dark mode uses a stronger fill than light mode');
+
     const card = page.locator('.chat-annotation-review .composer-context-cards__open');
     assert.equal(await card.innerText(), 'Add a bounded retry.');
     assert.equal(await card.locator('svg.tabler-icon-message-2').count(), 1);
@@ -146,7 +195,9 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await dialog.locator('input').fill('Discard this edit.');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
-    await page.locator('.chat-annotation-review .composer-context-cards__open').click();
+    const editButton = page.locator('.chat-annotation-review .composer-context-cards__edit');
+    assert.equal(await editButton.locator('svg.tabler-icon-forms').count(), 1);
+    await editButton.click();
     await dialog.waitFor();
     assert.equal(await dialog.locator('input').inputValue(), 'Add a bounded retry.');
     const longComment = 'Use three attempts. '.repeat(20).trim();
@@ -165,7 +216,6 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     assert.equal(longGeometry.whiteSpace, 'nowrap');
     assert.ok(longGeometry.height < 24, 'comment stays on one line');
     const firstPassage = firstPane.locator('p strong').first();
-    await firstPassage.scrollIntoViewIfNeeded();
     await selectPassage(firstPassage);
     await page.getByRole('button', { name: 'Annotate', exact: true }).click();
     await page.locator('.annotation-popup__input').fill('Keep this separate.');
@@ -194,6 +244,7 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await page.locator('.chat-annotation-review').waitFor({ state: 'hidden' });
     assert.equal(await page.evaluate(() => CSS.highlights.size), 0);
     // A real selection across paragraph boundaries includes rendered line breaks.
+    await revealPassage(firstPane.locator('p').first());
     const multiline = await firstPane.locator('[data-chat-annotation-content]').evaluate(element => {
       const paragraphs = element.querySelectorAll('p');
       const range = document.createRange();
@@ -214,7 +265,19 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     assert.deepEqual(multilineHighlight, [multiline.domText]);
     await assertAtPassage(marker, firstPane.locator('p').nth(1));
     if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: process.env.ANNOTATION_EVIDENCE });
+    await passage.scrollIntoViewIfNeeded();
+    assert.ok((await marker.boundingBox()).y < 0, 'source passage starts outside the viewport');
+    await page.clock.install();
     await card.click();
+    await page.waitForFunction(() => CSS.highlights.has('chat-annotation-focus'));
+    await dialog.waitFor({ state: 'hidden' });
+    const revealed = await marker.boundingBox();
+    assert.ok(revealed.y >= 0 && revealed.y + revealed.height < 1000, 'chip click reveals its annotated passage');
+    if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: process.env.ANNOTATION_EVIDENCE });
+    await page.clock.fastForward(2100);
+    await page.waitForFunction(() => !CSS.highlights.has('chat-annotation-focus'));
+    assert.deepEqual(await page.evaluate(() => [...CSS.highlights.get('chat-annotations')].map(range => range.toString())), [multiline.domText]);
+    await page.locator('.chat-annotation-review .composer-context-cards__edit').click();
     await dialog.waitFor();
     assert.equal(await dialog.locator('blockquote').innerText(), multiline.selected.trim());
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();

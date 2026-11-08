@@ -4,6 +4,7 @@
     <button
       v-for="marker in markers"
       :key="marker.annotation.id"
+      :data-annotation-id="marker.annotation.id"
       class="conversation-pane__annotation-marker"
       type="button"
       :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
@@ -21,12 +22,14 @@ import { useI18n } from 'vue-i18n';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import { textRange, updateChatTextHighlights } from './chat-text-anchor';
 
-const props = defineProps<{ messageKey: string; annotations: readonly (ChatTextAnnotation & { number: number })[] }>();
+const props = defineProps<{ messageKey: string; focusRequest?: { id: string } | null; annotations: readonly (ChatTextAnnotation & { number: number })[] }>();
 const emit = defineEmits<{ edit: [id: string] }>();
 const { t } = useI18n();
 const root = ref<HTMLElement | null>(null);
 const content = ref<HTMLElement | null>(null);
 const markers = ref<{ annotation: ChatTextAnnotation & { number: number }; x: number; y: number }[]>([]);
+const focusedAnnotationId = ref<string | null>(null);
+let focusTimer: ReturnType<typeof setTimeout> | undefined;
 const highlightOwner = Symbol('chat-annotation-highlight');
 let resize: ResizeObserver | undefined;
 let mutation: MutationObserver | undefined;
@@ -38,16 +41,36 @@ function measure(): void {
   const index = blocks.indexOf(root.value);
   const bounds = root.value.getBoundingClientRect();
   const ranges: Range[] = [];
+  const focusedRanges: Range[] = [];
   markers.value = props.annotations.flatMap(annotation => {
     if ((annotation.textBlockIndex ?? 0) !== index) return [];
     const range = textRange(content.value!, annotation.text, annotation.textStart);
-    if (range) ranges.push(range);
+    if (range) (annotation.id === focusedAnnotationId.value ? focusedRanges : ranges).push(range);
     const rects = range?.getClientRects?.();
     const rect = rects?.[rects.length - 1];
     return rect ? [{ annotation, x: rect.right - bounds.left, y: rect.top - bounds.top }] : [];
   });
-  updateChatTextHighlights(highlightOwner, ranges);
+  updateChatTextHighlights(highlightOwner, ranges, focusedRanges);
 }
+function clearFocus(): void {
+  if (focusTimer !== undefined) clearTimeout(focusTimer);
+  focusTimer = undefined;
+  focusedAnnotationId.value = null;
+  measure();
+}
+function reveal(id: string): void {
+  clearFocus();
+  const marker = [...(root.value?.querySelectorAll<HTMLElement>('[data-annotation-id]') ?? [])]
+    .find(element => element.dataset.annotationId === id);
+  if (!marker) return;
+  marker.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+  focusedAnnotationId.value = id;
+  measure();
+  focusTimer = setTimeout(clearFocus, 2000);
+}
+watch(() => props.focusRequest, request => {
+  void nextTick(() => { if (request) reveal(request.id); else clearFocus(); });
+});
 function observe(): void {
   resize?.disconnect();
   mutation?.disconnect();
@@ -63,13 +86,17 @@ function observe(): void {
 }
 watch(() => props.annotations, () => { void nextTick(observe); });
 onMounted(observe);
-onBeforeUnmount(() => { resize?.disconnect(); mutation?.disconnect(); updateChatTextHighlights(highlightOwner, []); });
+onBeforeUnmount(() => { if (focusTimer !== undefined) clearTimeout(focusTimer); resize?.disconnect(); mutation?.disconnect(); updateChatTextHighlights(highlightOwner, []); });
 </script>
 
 <style scoped>
 :global(::highlight(chat-annotations)) {
-  background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
-  color: var(--color-primary);
+  background-color: var(--color-annotation-background);
+}
+
+:global(::highlight(chat-annotation-focus)) {
+  background-color: var(--color-annotation-focus);
+  color: var(--color-on-annotation-focus);
 }
 
 .chat-annotated-text {

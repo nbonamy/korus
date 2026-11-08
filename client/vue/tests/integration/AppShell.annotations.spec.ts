@@ -88,6 +88,9 @@ describe('AppShell composer annotations', () => {
     expect(wrapper.get('.chat-annotation-review').text()).toContain('Add a bounded retry.');
     await wrapper.get('.chat-annotation-review .composer-context-cards__open').trigger('click');
     await flushPromises();
+    expect(wrapper.find('.chat-annotation-editor').exists()).toBe(false);
+    await wrapper.get('.chat-annotation-review .composer-context-cards__edit').trigger('click');
+    await flushPromises();
     expect(wrapper.get('.chat-annotation-editor blockquote').text()).toBe(selection.text);
     const editInput = wrapper.get<HTMLInputElement>('.chat-annotation-editor input');
     expect(editInput.element.value).toBe('Add a bounded retry.');

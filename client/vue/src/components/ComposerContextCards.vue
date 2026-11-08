@@ -18,6 +18,9 @@
       </span>
       <strong v-if="item.detail" class="composer-context-cards__detail">{{ item.detail }}</strong>
       </template>
+      <button v-if="item.editLabel" class="composer-context-cards__edit" type="button" :aria-label="item.editLabel" :title="item.editLabel" :disabled="disabled" @click="emit('edit', item.id)">
+        <FormsIcon aria-hidden="true" />
+      </button>
       <button
         type="button"
         class="composer-context-cards__remove"
@@ -33,7 +36,7 @@
 
 <script setup lang="ts">
 import type { Component } from 'vue';
-import { X } from '../shared/icons/app-icons';
+import { FormsIcon, X } from '../shared/icons/app-icons';
 
 export type ComposerContextCard = {
   id: string;
@@ -43,6 +46,7 @@ export type ComposerContextCard = {
   detail?: string;
   removeLabel: string;
   activateLabel?: string;
+  editLabel?: string;
 };
 
 defineProps<{
@@ -54,6 +58,7 @@ defineProps<{
 const emit = defineEmits<{
   remove: [itemId: string];
   activate: [itemId: string];
+  edit: [itemId: string];
 }>();
 </script>
 
@@ -129,6 +134,7 @@ const emit = defineEmits<{
   margin-inline-start: 0;
 }
 
+.composer-context-cards__edit,
 .composer-context-cards__remove {
   display: grid;
   width: 24px;
@@ -144,16 +150,19 @@ const emit = defineEmits<{
   cursor: pointer;
 }
 
+.composer-context-cards__edit:hover:not(:disabled),
 .composer-context-cards__remove:hover:not(:disabled) {
   background: var(--color-surface-low);
   color: var(--color-text);
 }
 
+.composer-context-cards__edit:disabled,
 .composer-context-cards__remove:disabled {
   cursor: default;
   opacity: 0.5;
 }
 
+.composer-context-cards__edit svg,
 .composer-context-cards__remove svg {
   width: 15px;
   height: 15px;

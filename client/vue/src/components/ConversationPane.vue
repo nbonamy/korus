@@ -38,6 +38,7 @@
       <template #message-text="{ block, message, index }">
         <ChatAnnotatedText
           :message-key="message.id ?? String(index)"
+          :focus-request="annotationFocusRequest"
           :annotations="annotationsForMessage(message, index).map(annotation => ({ ...annotation, number: textAnnotations.indexOf(annotation) + 1 }))"
           @edit="annotationReview?.open($event)"
         >
@@ -149,6 +150,7 @@
           ref="annotationReview"
           :annotations="textAnnotations"
           :disabled="disabled"
+          @reveal="annotationFocusRequest = { id: $event }"
           @edit="(id, comment) => emit('edit-text-annotation', id, comment)"
           @remove="emit('remove-text-annotation', $event)"
         />
@@ -510,6 +512,7 @@ async function restoreSavedDraft(selection: { id: string; keep: boolean }): Prom
     catch (error) { ElMessage.error(`${t('chat.savedDrafts.restoreFailed')}: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
+const annotationFocusRequest = ref<{ id: string } | null>(null);
 const annotationReview = ref<InstanceType<typeof ChatAnnotationReview> | null>(null);
 function annotationsForMessage(message: { id?: string; role: string }, index: number): readonly ChatTextAnnotation[] {
   return props.textAnnotations.filter(annotation => annotation.messageId
@@ -551,6 +554,7 @@ const messageTextSelection = ref<ChatTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();
 let transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
 watch(conversationKey, () => {
+  annotationFocusRequest.value = null;
   messageTextSelection.value = null;
   collaborationMessagePresentations.clear();
   transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();

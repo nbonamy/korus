@@ -5,7 +5,8 @@
     :context-label="t('chat.textAnnotations.contextLabel')"
     :items="cards"
     :disabled="disabled"
-    @activate="open"
+    @activate="emit('reveal', $event)"
+    @edit="open"
     @remove="emit('remove', $event)"
   />
   <FormDialog :model-value="!!editing" :title="t('chat.textAnnotations.edit', { number: editingIndex + 1 })" teleported compact @update:model-value="!$event && (editingId = null)">
@@ -29,7 +30,7 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 
 const props = defineProps<{ annotations: readonly ChatTextAnnotation[]; disabled?: boolean }>();
-const emit = defineEmits<{ edit: [id: string, comment: string]; remove: [id: string] }>();
+const emit = defineEmits<{ edit: [id: string, comment: string]; remove: [id: string]; reveal: [id: string] }>();
 const { t } = useI18n();
 const cards = computed(() => props.annotations.map((annotation, index) => ({
   id: annotation.id,
@@ -37,7 +38,8 @@ const cards = computed(() => props.annotations.map((annotation, index) => ({
   detail: annotation.comment,
   icon: Message2Icon,
   title: `${annotation.text}\n${annotation.comment}`,
-  activateLabel: t('chat.textAnnotations.edit', { number: index + 1 }),
+  activateLabel: t('chat.textAnnotations.show', { number: index + 1 }),
+  editLabel: t('chat.textAnnotations.edit', { number: index + 1 }),
   removeLabel: t('chat.textAnnotations.remove'),
 })));
 const editingId = ref<string | null>(null);

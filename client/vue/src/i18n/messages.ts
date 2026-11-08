@@ -1151,6 +1151,7 @@ export const messages = {
         commentPlaceholder: 'What should change?',
         contextLabel: 'Chat annotations',
         edit: 'Edit annotation {number}',
+        show: 'Show annotation {number}',
         saveChanges: 'Save changes',
         cancel: 'Cancel',
         remove: 'Remove chat annotation',

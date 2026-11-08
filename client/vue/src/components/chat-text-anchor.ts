@@ -67,14 +67,17 @@ export function textRange(content: HTMLElement, text: string, start?: number): R
 
 // One highlight paints the ranges from all mounted conversation panes. Owners
 // release their ranges on removal or unmount so detached DOM is never retained.
-const highlightedRanges = new Map<symbol, readonly Range[]>();
-export function updateChatTextHighlights(owner: symbol, ranges: readonly Range[]): void {
+const highlightedRanges = new Map<symbol, { ranges: readonly Range[]; focusedRanges: readonly Range[] }>();
+export function updateChatTextHighlights(owner: symbol, ranges: readonly Range[], focusedRanges: readonly Range[] = []): void {
   if (typeof CSS === 'undefined' || !CSS.highlights || typeof Highlight === 'undefined') return;
-  if (ranges.length) highlightedRanges.set(owner, ranges);
+  if (ranges.length || focusedRanges.length) highlightedRanges.set(owner, { ranges, focusedRanges });
   else highlightedRanges.delete(owner);
-  if (highlightedRanges.size) {
-    CSS.highlights.set('chat-annotations', new Highlight(...[...highlightedRanges.values()].flat()));
-  } else {
-    CSS.highlights.delete('chat-annotations');
+  const all = [...highlightedRanges.values()];
+  for (const [name, painted] of [
+    ['chat-annotations', all.flatMap(entry => [...entry.ranges])],
+    ['chat-annotation-focus', all.flatMap(entry => [...entry.focusedRanges])],
+  ] as const) {
+    if (painted.length) CSS.highlights.set(name, new Highlight(...painted));
+    else CSS.highlights.delete(name);
   }
 }
