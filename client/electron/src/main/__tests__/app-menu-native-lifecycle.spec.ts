@@ -10,7 +10,7 @@ import { build } from 'vite';
 
 // macOS keeps the application menu after closing the last window. Exercise real
 // Electron so a mocked IPC sender cannot hide a destroyed BrowserWindow getter.
-describe.skipIf(process.platform !== 'darwin')('native Quit lifecycle', () => {
+describe.skipIf(process.platform !== 'darwin')('native app menu', () => {
   let folder: string;
   const require = createRequire(import.meta.url);
   const root = fileURLToPath(new URL('../../../../../', import.meta.url));
@@ -49,6 +49,26 @@ describe.skipIf(process.platform !== 'darwin')('native Quit lifecycle', () => {
         const { installAppMenu } = await import('./app-menu.mjs');
         const window = new BrowserWindow({ show: false });
         installAppMenu(window, { debugMode: false });
+        if (scenario === 'zoom') {
+          await window.loadURL('data:text/html,<input autofocus value="Zoom while editing"><p>Interface text</p>');
+          const items = Menu.getApplicationMenu().items.flatMap(item => item.submenu?.items ?? []);
+          const levels = [window.webContents.getZoomLevel()];
+          for (const [role, accelerator] of [
+            ['zoomin', 'CommandOrControl+Plus'], ['zoomin', 'CommandOrControl+Plus'],
+            ['zoomout', 'CommandOrControl+-'], ['zoomout', 'CommandOrControl+-'],
+            ['zoomout', 'CommandOrControl+-'], ['resetzoom', 'CommandOrControl+0'],
+          ]) {
+            const item = items.find(item => item.role === role);
+            if (!item || item.accelerator !== accelerator) throw new Error('Missing zoom shortcut: ' + role);
+            item.click({}, window, window.webContents);
+            levels.push(window.webContents.getZoomLevel());
+          }
+          result.levels = levels;
+          result.text = await window.webContents.executeJavaScript('document.querySelector("input").value');
+          save();
+          app.quit();
+          return;
+        }
         const find = items => {
           for (const item of items) {
             if (scenario === 'file-closed' ? item.label === 'Quit' : item.label.startsWith('Quit ')) return item;
@@ -67,7 +87,7 @@ describe.skipIf(process.platform !== 'darwin')('native Quit lifecycle', () => {
   });
   afterAll(async () => { if (folder) await rm(folder, { recursive: true, force: true }); });
 
-  it.each(['app-closed', 'file-closed', 'app-live'])('quits through native shutdown without a renderer (%s)', async scenario => {
+  it.each(['app-closed', 'file-closed', 'app-live', 'zoom'])('executes native menu actions (%s)', async scenario => {
     const executable = path.join(path.dirname(require.resolve('electron')), 'dist/Electron.app/Contents/MacOS/Electron');
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -80,7 +100,10 @@ describe.skipIf(process.platform !== 'darwin')('native Quit lifecycle', () => {
     }
     expect(child.error).toBeUndefined();
     expect(result).not.toHaveProperty('error');
-    expect(result).toMatchObject({ beforeQuit: true, willQuit: true, windowDestroyed: scenario !== 'app-live' });
+    expect(result).toMatchObject({ beforeQuit: true, willQuit: true, ...(scenario === 'zoom' ? {} : { windowDestroyed: scenario !== 'app-live' }) });
     expect(child.status, child.stderr).toBe(0);
+    if (scenario === 'zoom') {
+      expect(result).toMatchObject({ levels: [0, 0.5, 1, 0.5, 0, -0.5, 0], text: 'Zoom while editing' });
+    }
   }, 20000);
 });
