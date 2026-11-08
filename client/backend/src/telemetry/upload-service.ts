@@ -18,8 +18,9 @@ const DAY = 86_400_000;
 const BACKOFF = [60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, DAY];
 const MAX_BODY = 64 * 1024;
 const MAX_REPORTS = 10_000; // More than a full year of retained hourly buckets.
-const MAX_PROJECTIONS = 100;
 const HOUR = 3_600_000;
+const REQUEST_WINDOW = 60_000;
+const REQUEST_INTERVAL = 2100;
 const fingerprint = (body: string) => createHash("sha256").update(body).digest("hex");
 type Binding = { installId: string; enabledAt?: number };
 type Report = {
@@ -66,6 +67,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
   private again = false;
   private generation = 0;
   private scheduledBucket: string | undefined;
+  private firstTick = true;
   private readonly endpoint: string | null;
   private constructor(private readonly options: Options) {
     let endpoint: URL | undefined;
@@ -206,12 +208,19 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     }
     return before !== this.store.days.length;
   }
-  /** The common scheduler checks each minute; UUID modulo 60 spreads clients
+  /** Minute checks resume due retries; UUID modulo 60 spreads regular uploads
    * across the hour without changing their slot on restart or using local time. */
   tick(): Promise<void> {
     if (!this.valid(this.generation)) return Promise.resolve();
+    if (this.firstTick) {
+      this.firstTick = false;
+      return this.flush();
+    }
     const owner = this.authority()!;
     const now = this.now();
+    if (this.endpoint && (this.store.retryAt ?? 0) <= now && this.store.days.some(
+      row => row.status === "pending" && row.nextAttemptAt <= now,
+    )) return this.flush();
     const minute = Number(BigInt(`0x${owner.installId.replaceAll('-', '')}`) % 60n);
     if (Math.floor(now / 60_000) % 60 !== minute) return Promise.resolve();
     const bucket = `${owner.installId}:${owner.enabledAt}:${Math.floor(now / HOUR)}`;
@@ -269,9 +278,8 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       }
     }
     await this.persist();
-    let projections = 0;
     let pending = this.store.days.filter(row => row.status === "pending").length;
-    let sent = 0;
+    let deferred = false;
     const currentHour = Math.floor(this.now() / HOUR) * HOUR;
     const priority = (row: Report) => {
       if (row.hour !== undefined && startOfDay(row.day) + row.hour * HOUR === currentHour) return 0;
@@ -280,26 +288,30 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     for (const row of [...this.store.days].sort((a, b) =>
       priority(a) - priority(b) ||
       (a.status === "done" && b.status === "done" ? (a.checkedAt ?? 0) - (b.checkedAt ?? 0) : 0) ||
-      a.day.localeCompare(b.day) || (a.hour ?? -1) - (b.hour ?? -1),
+      b.day.localeCompare(a.day) || (b.hour ?? -1) - (a.hour ?? -1),
     )) {
       if (!this.valid(generation)) return;
       if (row.hour === undefined && row.status === 'done') continue;
       if (row.hour === undefined && startOfDay(row.day) + DAY > this.now()) continue;
-      if (sent >= 10) break; // Match the collector source burst allowance.
-      this.store.attempts = (this.store.attempts ?? []).filter(at => at > this.now() - HOUR);
-      if ((this.store.retryAt ?? 0) > this.now() || this.store.attempts.length >= 30 || this.store.attempts.filter(at => at > this.now() - 10_000).length >= 10) break;
+      if ((this.store.retryAt ?? 0) > this.now()) break;
       if (row.status !== 'pending') {
-        if (pending >= 200) continue;
+        if (pending >= 200) { deferred = true; continue; }
         // A missing retained source bucket is not evidence of zero usage.
         if (row.status === "done" && !observed.has(`${row.day}/${row.hour}`)) continue;
-        if (++projections > MAX_PROJECTIONS) break;
         row.checkedAt = this.now();
-        const sealed = await this.options.usage.previewTelemetry(
-          { installId: this.store.owner!.installId, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
-          this.options.version,
-          this.options.platform,
-          Math.ceil(this.store.owner!.enabledAt! / HOUR) * HOUR,
-        );
+        let sealed: SealedTelemetryBody;
+        try {
+          sealed = await this.options.usage.previewTelemetry(
+            { installId: this.store.owner!.installId, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
+            this.options.version,
+            this.options.platform,
+            Math.ceil(this.store.owner!.enabledAt! / HOUR) * HOUR,
+          );
+        } catch {
+          // Keep this bucket retryable; one unavailable projection must not
+          // prevent delivery of independent hours. Never replace it with zero.
+          continue;
+        }
         if (!this.valid(generation)) return;
         if (!this.reportEligible(row)) {
           this.prune();
@@ -333,10 +345,11 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         await this.persist();
         continue;
       }
+      if (!await this.pace(generation)) return;
+      if (!this.reportEligible(row)) continue;
       // Consume the attempt durably BEFORE transport. A crash/lost ACK can retry
       // these same bytes, but cannot exceed the total persisted attempt budget.
-      ++sent;
-      this.store.attempts.push(this.now());
+      this.store.attempts!.push(this.now());
       ++row.attempts;
       row.nextAttemptAt = this.now() + this.delay(row.attempts);
       await this.persist();
@@ -357,6 +370,33 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
       if (result.limited) break;
     }
     await this.persist();
+    if (deferred && pending < 200 && this.endpoint && this.valid(generation)) this.again = true;
+  }
+  /** Pace the full drain without abandoning reports at a batch boundary. */
+  private async pace(generation: number): Promise<boolean> {
+    while (this.valid(generation)) {
+      const now = this.now();
+      const attempts = this.store.attempts = (this.store.attempts ?? []).filter(at => at > now - REQUEST_WINDOW);
+      const next = Math.max(
+        (attempts.at(-1) ?? -REQUEST_INTERVAL) + REQUEST_INTERVAL,
+        attempts.length >= 30 ? attempts[0]! + REQUEST_WINDOW : 0,
+      );
+      if (next <= now) return true;
+      const controller = new AbortController();
+      this.attempt = controller;
+      await new Promise<void>(resolve => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", finish);
+          if (this.attempt === controller) this.attempt = null;
+          resolve();
+        };
+        const timer = setTimeout(finish, next - now);
+        timer.unref?.();
+        controller.signal.addEventListener("abort", finish, {once:true});
+      });
+    }
+    return false;
   }
   private delay(attempt: number): number {
     const random = Math.min(

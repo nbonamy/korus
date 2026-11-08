@@ -481,7 +481,7 @@ describe("daily ingestion into disposable Postgres", () => {
       payload({ day: "2026-02-30" }),
       payload({ appVersion: "1.2.3-private-canary" }),
       payload({ os: "private-canary" as never }),
-      payload({ usage: [{ ...row, provider: "private-canary" as never }] }),
+      payload({ usage: [{ ...row, provider: "" }] }),
       payload({ usage: [{ ...row, model: "" }] }),
       payload({ usage: [{ ...row, turns: -1 }] }),
       payload({ usage: [{ ...row, inputTokens: 0.5 }] }),
@@ -513,7 +513,7 @@ describe("daily ingestion into disposable Postgres", () => {
     }
   });
 
-  it("accepts measured zero, null, safe maxima, all driver/OS enums and 256 distinct full model names", async () => {
+  it("accepts measured zero, null, safe maxima, all OS enums, arbitrary providers and 256 distinct full model names", async () => {
     for (const os of ["macos", "windows", "linux", "unknown"] as const)
       expect(
         (
@@ -535,7 +535,7 @@ describe("daily ingestion into disposable Postgres", () => {
       ).toBe(204);
     const groups = Array.from({length:256}, (_, index) => ({
       ...row,
-      provider: ["antigravity", "claude", "codex"][index % 3],
+      provider: ["antigravity", "claude", "codex", "cursor", "custom/é-harness 'quoted'"][index % 5],
       model: `custom/model-${index}`,
     })) as DailyTelemetryPayload["usage"];
     expect(groups).toHaveLength(256);
@@ -821,16 +821,20 @@ describe("bounded anonymous admission", () => {
     expect((await send(payload({ installId: randomUUID() }))).status).toBe(204);
   });
 
-  it("separates trusted proxy sources and applies an independent install-hour limit with bounded Retry-After", async () => {
+  it("separates trusted proxy sources and permits paced backlog delivery with an independent install-minute limit", async () => {
     for (let i = 0; i < 30; i++) expect((await send()).status).toBe(204);
     expect(await send()).toStrictEqual({
       status: 429,
       body: '{"error":"limited"}',
-      retry: "3600",
+      retry: "60",
     });
     expect((await send(payload({ installId: randomUUID() }))).status).toBe(204);
-    clock += 3_600_000;
+    clock += 60_000;
     expect((await send()).status).toBe(204);
+    for (let i = 0; i < 35; i++) {
+      clock += 2100;
+      expect((await send()).status).toBe(204);
+    }
     for (const address of ["", "192.0.2.1, 192.0.2.2", "private-canary"])
       expect(
         (await send(payload(), { headers: { "X-Real-IP": address } })).status,

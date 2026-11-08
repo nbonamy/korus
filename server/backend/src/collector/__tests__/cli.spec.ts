@@ -48,6 +48,15 @@ it("runs explicit migrations and serves independently with supplied runtime conf
   expect(await runCollector(["migrate"], env, log)).toBeUndefined();
   const admin = createTelemetryPool(database.url);
   try {
+    // A collector must not start against the provider-restricting schema.
+    await admin.query(`ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_provider_name_check;
+      ALTER TABLE usage_daily ADD CONSTRAINT usage_daily_provider_check CHECK (provider IN ('codex','claude','antigravity'));
+      DELETE FROM telemetry_migrations WHERE version=8`);
+    await expect((async()=>{
+      const stale=await runCollector(["serve",config],env,log);
+      await stale?.close();
+    })()).rejects.toThrow("Collector startup failed.");
+    expect(await runCollector(["migrate"],env,log)).toBeUndefined();
     // A deployed v6 database has tables but cannot accept coverage-aware writes.
     await admin.query(`ALTER TABLE usage_daily DROP COLUMN measured_turns, DROP COLUMN cost_coverage;
       DELETE FROM telemetry_migrations WHERE version=7`);
@@ -145,8 +154,13 @@ it("runs explicit migrations and serves independently with supplied runtime conf
       event: "startup_failed",
       operation: "database_readiness",
       reason: "database_schema_mismatch",
-      code: "42703",
+      code: "SCHEMA_NOT_READY",
       message: expect.any(String),
+    },
+    {
+      timestamp: expect.any(String), level: "error", service: "collector",
+      event: "startup_failed", operation: "database_readiness",
+      reason: "database_schema_mismatch", code: "42703", message: expect.any(String),
     },
     {
       timestamp: expect.any(String),

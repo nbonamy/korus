@@ -182,7 +182,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.equal(
       await ledger.observe(
         {
-          provider: "codex",
+          provider: "cursor",
           agentId: canary,
           sessionId: canary,
           turnId: canary,
@@ -197,7 +197,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.equal(
       await ledger.observe(
         {
-          provider: "codex",
+          provider: "cursor",
           agentId: canary,
           sessionId: canary,
           turnId: canary,
@@ -233,7 +233,7 @@ export async function desktopStackWorkflow(endpoint: string) {
     assert.equal(sealed.body.includes(canary), false);
     assert.deepEqual(JSON.parse(sealed.body).usage, [
       {
-        provider: "codex",
+        provider: "cursor",
         model: "custom/é-model-alias",
         serviceTier: "unknown",
         turns: 1,

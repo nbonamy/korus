@@ -33,6 +33,7 @@ export function diagnosticService(mode: string | undefined): Service {
 // Only recognized codes and authored descriptions reach the output. Error
 // messages, stacks and PostgreSQL details can embed credentials or request data.
 const causes: Record<string, readonly [string, string]> = {
+  SCHEMA_NOT_READY: ["database_schema_mismatch", "Database schema is incompatible; apply server migrations."],
   ENOENT: ["file_missing", "Required operator file does not exist."],
   EACCES: [
     "permission_denied",

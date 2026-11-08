@@ -377,6 +377,7 @@ it("uses model facets from real data and clears selections absent from a new sco
       const selected = new URL(url, "https://console.invalid").searchParams;
       return Response.json({
         ...metrics(),
+        availableProviders: ["codex", "claude"],
         availableModels:
           selected.get("provider") === "claude"
             ? ["unknown"]

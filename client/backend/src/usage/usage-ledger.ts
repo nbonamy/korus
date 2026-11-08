@@ -107,7 +107,7 @@ export class UsageLedger {
   private valid(value: ExecutionObservation): boolean {
     return (
       !!value &&
-      ["codex", "claude", "antigravity"].includes(value.provider) &&
+      (typeof value.provider === "string" && value.provider.length > 0) &&
       ["started", "completed", "failed", "interrupted", "usage"].includes(
         value.phase,
       ) &&

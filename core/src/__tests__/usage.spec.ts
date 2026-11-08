@@ -49,6 +49,8 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
   expect(JSON.parse(body).usage).toStrictEqual([zero, group]);
   for (const model of ["gpt-6.1-terra", "private-alias", "provider/é-model 'β'"])
     expect(JSON.parse(serializeDailyTelemetry({ ...payload, usage: [{ ...group, model }] }).body).usage[0].model).toBe(model);
+  for (const provider of ["cursor", "opencode", "custom/é-harness 'quoted'"])
+    expect(JSON.parse(serializeDailyTelemetry({ ...payload, usage: [{ ...group, provider }] }).body).usage[0].provider).toBe(provider);
   expect(
     serializeDailyTelemetry({ ...payload, usage: [zero, group] }).body,
   ).toBe(body);
@@ -76,7 +78,9 @@ it("seals only the closed telemetry contract in canonical order and preserves nu
     { usage: [{ ...group, model: "" }] },
     { usage: [{ ...group, model: null }] },
     { usage: [{ ...group, model: 123 }] },
-    { usage: [{ ...group, provider: "proxy-alias" }] },
+    { usage: [{ ...group, provider: "" }] },
+    { usage: [{ ...group, provider: null }] },
+    { usage: [{ ...group, provider: 123 }] },
     { usage: [{ ...group, path: "CANARY" }] },
     { usage: [{ ...group, inputTokens: 1, cachedInputTokens: 2 }] },
     { usage: [{ ...group, turns: Number.MAX_SAFE_INTEGER + 1 }] },
@@ -155,6 +159,8 @@ it("validates request measurements without accepting content, unsafe counts or a
     },
   };
   expect(validRequestObservation(value)).toBe(true);
+  for (const provider of ["cursor", "custom/harness"]) expect(validRequestObservation({...value,provider})).toBe(true);
+  for (const provider of ["",null,123]) expect(validRequestObservation({...value,provider})).toBe(false);
   expect(
     validRequestObservation({
       ...value,
@@ -166,7 +172,7 @@ it("validates request measurements without accepting content, unsafe counts or a
   ).toBe(true);
   for (const patch of [
     { prompt: "content" },
-    { provider: "unknown" },
+    { provider: "" },
     { requestId: "" },
     { revision: -1 },
     { revision: 1.5 },

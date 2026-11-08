@@ -1234,8 +1234,10 @@ known subtotals with a measured-turn count; an entirely unmeasured group remains
 null. Estimated costs retain the known subtotal with separate complete, partial
 or unavailable coverage. Missing measurements never erase measured contributions.
 
-Model names are uploaded exactly as recorded locally, including custom aliases,
-independently of the pricing catalog. Missing names become `unknown`.
+Provider and model names are uploaded exactly as recorded locally, including
+custom aliases, independently of the pricing catalog. Missing model names become
+`unknown`. Provider names are nonempty strings, independent of the installed
+provider catalog.
 The serializer rejects extra fields, constructs every wire field explicitly, sorts
 provider/model/tier groups and returns immutable canonical JSON text. Hourly
 reports include a UTC hour; daily previews and legacy reports omit it. Its UTF-8 bytes are
@@ -1273,8 +1275,9 @@ The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
 send, schedule or manage a queue. One backend `TelemetryUploadService` per local
 installation runtime owns sealing, the private durable queue, telemetry HTTP,
 acknowledgements and cancellation. RuntimeScheduler checks delivery each minute.
-Each installation uploads at the UTC minute given by its UUID modulo 60, once
-per hour; startup respects the same slot. The stable slot spreads clients across
+Startup immediately drains the eligible backlog. Subsequent regular uploads start
+at the UTC minute given by the installation UUID modulo 60, once per hour. The
+stable slot spreads clients across
 the hour independently of local timezone and restarts. It discovers reporting
 hours from the local ledger, including
 all unsent retained history inside the current sharing window. Electron also signals observed
@@ -1287,10 +1290,12 @@ Delivery state is bound to the installation UUID. It retains the local ledger's
 year of hourly buckets, with a 10,000-bucket bound. Frozen pending bodies survive
 until delivery finishes; older acknowledgements keep a digest for unchanged-total
 comparison. Discovery never reconstructs zero totals from expired source data.
-Each flush sends at most ten reports, prioritizing the current hour before older
-unsent history. A persisted 30-attempt rolling-hour budget survives restart, and
-a 429 pauses the whole backlog. A bounded rotating scan checks acknowledged
-buckets for late corrections. Queue writes are atomic and private;
+Each flush drains eligible reports sequentially, prioritizing the current hour and
+recent unsent history. Requests are spaced by at least 2.1 seconds, with a
+persisted 30-attempt rolling-minute budget that survives restart. A 429 pauses
+the whole backlog; minute checks resume due retries outside the hourly slot.
+A failed projection leaves its bucket retryable without blocking other hours.
+Acknowledged buckets are checked for late corrections. Queue writes are atomic and private;
 attempts are recorded before transport. Restart preserves frozen bodies and the
 six-attempt budget. A lost acknowledgement may cause identical physical retries;
 pending reports retry their original bytes. After acknowledgment, a changed

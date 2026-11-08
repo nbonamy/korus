@@ -491,6 +491,19 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
         "https://console.test",
       ).searchParams.get("provider"),
     ).toBe("codex");
+    data.models.push({...data.models[0]!,provider:"cursor",model:"cursor/custom"});
+    data.models.push({...data.models[0]!,provider:"custom/harness",model:"custom/model"});
+    await wrapper.get('[aria-label="Refresh metrics"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[aria-label="Provider"]').trigger("click");
+    await flushPromises();
+    const options=Array.from(document.querySelectorAll('[role="option"]'));
+    expect(options.some(option=>option.textContent?.trim()==="Cursor")).toBe(true);
+    const custom=options.find(option=>option.textContent?.trim()==="custom/harness") as HTMLElement;
+    expect(custom).toBeTruthy();
+    custom.click();
+    await flushPromises();
+    expect(new URL(String(fetcher.mock.calls.at(-1)?.[0]),"https://console.test").searchParams.get("provider")).toBe("custom/harness");
   } finally {
     wrapper.unmount();
   }

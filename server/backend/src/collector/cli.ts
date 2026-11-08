@@ -125,6 +125,10 @@ export async function runCollector(
         "SELECT measured_turns, cost_coverage FROM usage_daily LIMIT 0",
       ),
     ]);
+    const providerSchema = await pool.query(`SELECT 1 FROM pg_constraint
+      WHERE conrelid='usage_daily'::regclass AND conname='usage_daily_provider_name_check'`);
+    if (providerSchema.rowCount !== 1)
+      throw Object.assign(new Error("Server migrations required."), {code:"SCHEMA_NOT_READY"});
     operation = "credentials";
     server =
       "accessTokenFile" in config

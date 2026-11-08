@@ -365,7 +365,8 @@ it("keeps entity hues stable across desktop and console grouping and theme chang
   expect(seriesColor("Unknown", "model")).toBe("var(--color-text-muted)");
   expect(providerColorForModel("Unknown")).toBe("var(--color-text-muted)");
   expect(seriesColor("codex", "provider")).toBe("var(--chart-1)");
-  expect(seriesColor("custom", "provider")).toBe("var(--chart-4)");
+  for (const name of ["custom", "cursor", "constructor", "__proto__"])
+    expect(seriesColor(name, "provider")).toBe("var(--chart-4)");
   expect(seriesColor("/src/project", "repository")).not.toMatch(
     /--chart-[123]\)/,
   );

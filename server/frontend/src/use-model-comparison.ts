@@ -1,6 +1,6 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
-import { modelLabel } from "./model-label";
+import { modelLabel, providerLabel } from "./model-label";
 import { seriesColor } from "@workspace/core/analytics-palette";
 export type ModelRow = TelemetryMetrics["models"][number];
 export type ModelMeasure =
@@ -14,7 +14,7 @@ export const modelKey = (
   row: Pick<ModelRow, "provider" | "model" | "serviceTier">,
 ) => JSON.stringify([row.provider, row.model, row.serviceTier ?? null]);
 export const comparisonLabel = (row: ModelRow) =>
-  `${{ codex: "Codex", claude: "Claude", antigravity: "Antigravity" }[row.provider]} / ${modelLabel(row)}`;
+  `${providerLabel(row.provider)} / ${modelLabel(row)}`;
 export function descending(a: string | null, b: string | null) {
   if (a === b) return 0;
   if (a === null) return 1;

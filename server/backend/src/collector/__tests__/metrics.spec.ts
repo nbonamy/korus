@@ -70,7 +70,7 @@ it('retains measured subtotals through hourly ingestion, daily coalescing and id
   await new Promise<void>(r=>collector.listen(0,'127.0.0.1',r));
   const url = `http://127.0.0.1:${(collector.address() as AddressInfo).port}/v1/telemetry/daily`;
   const payload = {installId:'00000000-0000-4000-8000-000000000001',day:'2026-10-24',hour:12,appVersion:'0.49.1',os:'macos',usage:[{
-    provider:'codex',model:"custom/é-model 'quoted' @preview",serviceTier:'fast',turns:2,measuredTurns:1,
+    provider:"custom/é-harness 'quoted'",model:"custom/é-model 'quoted' @preview",serviceTier:'fast',turns:2,measuredTurns:1,
     inputTokens:100,cachedInputTokens:80,outputTokens:20,estimatedCostUsd:0.5,costCoverage:'partial',
   }]};
   const send = async (body:unknown) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -88,10 +88,11 @@ it('retains measured subtotals through hourly ingestion, daily coalescing and id
     expect(result.models[0].model).toBe(payload.usage[0].model);
     expect(result.modelDaily?.[0].model).toBe(payload.usage[0].model);
     expect(result.availableModels).toStrictEqual([payload.usage[0].model]);
-    const filtered = await get(range + '&model=' + encodeURIComponent(payload.usage[0].model));
+    expect(result.availableProviders).toStrictEqual([payload.usage[0].provider]);
+    const filtered = await get(range + '&model=' + encodeURIComponent(payload.usage[0].model)+'&provider='+encodeURIComponent(payload.usage[0].provider));
     expect(filtered.status).toBe(200);
     expect(((await filtered.json()) as TelemetryMetrics).totals).toStrictEqual(result.totals);
-    expect(result.modelDaily?.[0]).toMatchObject({provider:'codex',estimatedCostUsd:'0.5'});
+    expect(result.modelDaily?.[0]).toMatchObject({provider:payload.usage[0].provider,estimatedCostUsd:'0.5'});
     const corrected = {...payload,usage:[{...payload.usage[0],measuredTurns:2,inputTokens:200,cachedInputTokens:160,outputTokens:40,estimatedCostUsd:1,costCoverage:'complete'}]};
     expect((await send(corrected)).status).toBe(204);
     result = await (await get()).json() as TelemetryMetrics;
@@ -120,7 +121,7 @@ it("requires private access and exact configured origins; rejects invalid and un
     range + "&timeZone=Invalid/Zone",
     range + "&timeZone=UTC&timeZone=UTC",
     range + "&timeZone=%2B05:00",
-    range + "&provider=custom",
+    range + "&provider=",
     range + "&model=",
     range + "&model=first&model=second",
     range + "&groupServiceTiers=yes",
@@ -128,7 +129,6 @@ it("requires private access and exact configured origins; rejects invalid and un
     range + "&from=2026-10-18",
     "from=2020-01-01&to=2026-10-26",
     "from=2000-01-01&to=2026-10-24",
-    range + "&provider=%27%3Bdrop+table+installs",
   ]) {
     const r = await get(query);
     expect(r.status, query).toBe(400);
@@ -150,6 +150,9 @@ it("agrees with executable SQL across global activity, known token subtotals, sp
   expect(body.availableModels).toStrictEqual(["claude-sonnet-4-6", "unknown"]);
   const selectedModel = await (await get(range + "&model=unknown")).json() as TelemetryMetrics;
   expect(selectedModel.availableModels).toStrictEqual(body.availableModels);
+  const quotedProvider = await (await get(range + "&provider=%27%3Bdrop+table+installs")).json() as TelemetryMetrics;
+  expect(quotedProvider.totals.turns).toBe("0");
+  expect((await (await get()).json() as TelemetryMetrics).overview.dau).not.toBe("0");
   const providerModels = await (await get(range + "&provider=codex")).json() as TelemetryMetrics;
   expect(providerModels.availableModels).toStrictEqual(["unknown"]);
   const noUsageModels = await (await get(range + "&provider=antigravity")).json() as TelemetryMetrics;

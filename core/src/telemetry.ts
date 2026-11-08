@@ -1,6 +1,6 @@
 import { isUtcDay } from "./usage";
 
-export type TelemetryProvider = "codex" | "claude" | "antigravity";
+export type TelemetryProvider = string;
 export const telemetryServiceTiers = [
   "standard",
   "fast",
@@ -175,7 +175,7 @@ export function serializeDailyTelemetry(
           ...(Object.hasOwn(row, "serviceTier") ? ["serviceTier"] : []),
           ...(Object.hasOwn(row, "performance") ? ["performance"] : []),
         ]) ||
-        !["codex", "claude", "antigravity"].includes(row.provider) ||
+        (typeof row.provider !== "string" || row.provider.length === 0) ||
         (typeof row.model !== "string" || row.model.length === 0) ||
         (Object.hasOwn(row, "serviceTier") &&
           !(telemetryServiceTiers as readonly unknown[]).includes(

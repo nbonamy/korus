@@ -84,4 +84,9 @@ export const telemetryMigrations = [
       ADD CONSTRAINT measured_cost_coverage CHECK (cost_coverage IS NULL OR
         ((cost_coverage='unavailable') = (estimated_cost_usd IS NULL)));`,
   },
+  {
+    version: 8,
+    sql: `ALTER TABLE usage_daily DROP CONSTRAINT usage_daily_provider_check;
+      ALTER TABLE usage_daily ADD CONSTRAINT usage_daily_provider_name_check CHECK (length(provider)>0);`,
+  },
 ] as const;
