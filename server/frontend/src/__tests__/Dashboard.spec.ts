@@ -48,8 +48,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
-// Full router/Element Plus filtering, stale-response and access-revocation workflow.
-it("uses validated old ranges and keeps exact measurements while rejecting stale loads and revoked access", async () => {
+// Shared loaded dashboard for report navigation and filtering workflows.
+async function loadedDashboard() {
   const pending: ((response: Response) => void)[] = [];
   const fetcher = vi.fn(
     (_url: string, _options: RequestInit) =>
@@ -84,6 +84,11 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
     }),
   );
   await flushPromises();
+  return { wrapper, router, fetcher, pending };
+}
+
+it("renders exact measurements and preserves data while navigating reports", async () => {
+  const { wrapper, router, fetcher } = await loadedDashboard();
   expect(wrapper.get(".brand").text()).toContain("Console");
   expect(wrapper.get(".brand img").attributes("alt")).toBe("");
   expect(wrapper.text()).not.toMatch(
@@ -205,6 +210,11 @@ it("uses validated old ranges and keeps exact measurements while rejecting stale
   await router.push("/tokens");
   await flushPromises();
   expect(fetcher).toHaveBeenCalledTimes(1);
+  wrapper.unmount();
+});
+
+it("validates old ranges, rejects stale loads, and handles revoked access", async () => {
+  const { wrapper, router, fetcher, pending } = await loadedDashboard();
   await wrapper.get('input[aria-label="From day"]').setValue("2020-01-01");
   await wrapper.get('input[aria-label="To day"]').setValue("2020-01-01");
   await wrapper.get('input[aria-label="From day"]').trigger("change");
