@@ -35,7 +35,16 @@
           </div>
         </div>
       </template>
-      <template #message-header="{ message }">
+      <template #message-header="{ message, index }">
+        <button
+          v-for="annotation in annotationsForMessage(message, index)"
+          :key="annotation.id"
+          class="conversation-pane__annotation-marker"
+          type="button"
+          :aria-label="t('chat.textAnnotations.edit', { number: textAnnotations.indexOf(annotation) + 1 })"
+          :title="`${annotation.text}\n${annotation.comment}`"
+          @click="annotationReview?.open(annotation.id)"
+        >{{ textAnnotations.indexOf(annotation) + 1 }}</button>
         <span v-if="guestAuthor(message.id)" class="conversation-pane__message-header">{{ guestAuthor(message.id) }}</span>
         <DeferredConversationContent
           v-if="agent && contentSessionId && message.id && deferredContent(message) && !loadedContent.has(deferredContent(message)!.contentId)"
@@ -131,6 +140,14 @@
         </div>
       </template>
       <template #composer-context="{ disabled }">
+        <ChatAnnotationReview
+          :key="conversationKey"
+          ref="annotationReview"
+          :annotations="textAnnotations"
+          :disabled="disabled"
+          @edit="(id, comment) => emit('edit-text-annotation', id, comment)"
+          @remove="emit('remove-text-annotation', $event)"
+        />
         <ComposerContextCards
           v-if="composerContextCards.length > 0"
           :context-label="t('chat.composerContext.label')"
@@ -198,6 +215,7 @@ import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
 import ComposerContextCards, { type ComposerContextCard } from './ComposerContextCards.vue';
+import ChatAnnotationReview from './ChatAnnotationReview.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
 import ThreadFlagAffordance from './ThreadFlagAffordance.vue';
 import BackendSelector from './BackendSelector.vue';
@@ -313,6 +331,7 @@ const emit = defineEmits<{
   'add-text-annotation': [payload: { selection: CodexMessageTextSelection; comment: string }];
   'annotate-attachment': [attachment: CodexNativeAttachment];
   'close-plan': [];
+  'edit-text-annotation': [annotationId: string, comment: string];
   'remove-text-annotation': [annotationId: string];
   'remove-visualization-annotation': [annotationId: string];
   'remove-code-annotation': [annotationId: string];
@@ -484,12 +503,13 @@ async function restoreSavedDraft(selection: { id: string; keep: boolean }): Prom
     catch (error) { ElMessage.error(`${t('chat.savedDrafts.restoreFailed')}: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
+const annotationReview = ref<InstanceType<typeof ChatAnnotationReview> | null>(null);
+function annotationsForMessage(message: { id?: string; role: string }, index: number): readonly ChatTextAnnotation[] {
+  return props.textAnnotations.filter(annotation => annotation.messageId
+    ? annotation.messageId === message.id
+    : annotation.messageIndex === index && annotation.role === message.role);
+}
 const composerContextCards = computed<ComposerContextCard[]>(() => [
-  ...props.textAnnotations.map((annotation) => ({
-    id: `annotation:${annotation.id}`,
-    label: t('chat.textAnnotations.annotation'),
-    removeLabel: t('chat.textAnnotations.remove'),
-  })),
   ...props.visualizationAnnotations.map((annotation) => ({
     id: `visualization-annotation:${annotation.id}`,
     label: t('chat.composerContext.visualizationAnnotation'),
@@ -565,10 +585,6 @@ function removeComposerContextCard(itemId: string): void {
     emit('remove-review-finding');
     return;
   }
-  if (itemId.startsWith('annotation:')) {
-    emit('remove-text-annotation', itemId.slice('annotation:'.length));
-    return;
-  }
   if (itemId.startsWith('visualization-annotation:')) {
     emit('remove-visualization-annotation', itemId.slice('visualization-annotation:'.length));
     return;
@@ -617,6 +633,20 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
 </script>
 
 <style scoped>
+.conversation-pane__annotation-marker {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  margin-inline-end: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  place-items: center;
+  background: var(--color-surface-low);
+  color: var(--color-text);
+  font: 600 var(--font-size-12) / 1 var(--font-family-ui);
+  cursor: pointer;
+}
+
 .conversation-pane {
   position: relative;
   display: flex;

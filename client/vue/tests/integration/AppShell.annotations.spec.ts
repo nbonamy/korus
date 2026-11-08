@@ -83,21 +83,31 @@ describe('AppShell composer annotations', () => {
     const wrapper = mountShell({ snapshot, realConversationPane: true, sendPromptAction });
 
     await saveSelectionComment(wrapper, selection, 'Add a bounded retry.');
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
-    expect(wrapper.text()).not.toContain('Add a bounded retry.');
+    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
+    await wrapper.get('.chat-annotation-review summary').trigger('click');
+    expect(wrapper.get('.chat-annotation-review').text()).toContain(selection.text);
+    expect(wrapper.get('.chat-annotation-review').text()).toContain('Add a bounded retry.');
+    await wrapper.get('.chat-annotation-review__edit').trigger('click');
+    await flushPromises();
+    const editInput = wrapper.get<HTMLInputElement>('.chat-annotation-editor input');
+    expect(editInput.element.value).toBe('Add a bounded retry.');
+    await editInput.setValue('Use three attempts.');
+    await wrapper.get('.chat-annotation-editor__save').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.chat-annotation-review').text()).toContain('Use three attempts.');
 
     await wrapper.setProps({ activeAgent: snapshot.agents[1] } as Record<string, unknown>);
     expect(wrapper.getComponent({ name: 'AgentWorkspace' }).props('currentAgent')).toMatchObject({
       id: snapshot.agents[1]!.id,
     });
-    expect(wrapper.find('.composer-context-cards').exists()).toBe(false);
+    expect(wrapper.find('.chat-annotation-review').exists()).toBe(false);
     await wrapper.setProps({ activeAgent: snapshot.agents[0] } as Record<string, unknown>);
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
+    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
 
     sendPromptAction.mockRejectedValueOnce(new Error('offline'));
     await expect(conversationControllerActions(wrapper).submit?.('Please update this.', undefined))
       .rejects.toThrow('offline');
-    expect(wrapper.get('.composer-context-cards__card').text()).toBe('Annotation');
+    expect(wrapper.get('.chat-annotation-review summary').text()).toBe('1 annotation');
     sendPromptAction.mockClear();
 
     await conversationControllerActions(wrapper).submit?.('', undefined);
@@ -108,11 +118,11 @@ describe('AppShell composer annotations', () => {
       '1. Assistant message 2',
       'Selected text:',
       '> The request should be retried.',
-      'Comment: Add a bounded retry.',
+      'Comment: Use three attempts.',
       '</context>',
       '1 annotation',
     ].join('\n'), undefined);
-    expect(wrapper.find('.composer-context-cards').exists()).toBe(false);
+    expect(wrapper.find('.chat-annotation-review').exists()).toBe(false);
   });
 });
 

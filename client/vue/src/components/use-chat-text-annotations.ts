@@ -42,6 +42,13 @@ export function useChatTextAnnotations(options: {
     ];
   }
 
+  function edit(annotationId: string, comment: string): void {
+    const agentId = options.currentAgentId();
+    if (!agentId || !comment.trim()) return;
+    draftsByAgentId[agentId] = (draftsByAgentId[agentId] ?? []).map(annotation =>
+      annotation.id === annotationId ? { ...annotation, comment: comment.trim() } : annotation);
+  }
+
   function remove(annotationId: string): void {
     const agentId = options.currentAgentId();
     if (!agentId) return;
@@ -74,6 +81,7 @@ export function useChatTextAnnotations(options: {
   return {
     activeAnnotations,
     add,
+    edit,
     forward,
     remove,
   };

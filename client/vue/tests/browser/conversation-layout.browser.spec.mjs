@@ -31,12 +31,15 @@ snapshot.providerConnections=[{backend:'claude',installed:true,connected:true,ch
 const composer=createAgentComposerState({getSnapshot:()=>snapshot});
 const views=snapshot.agents.map(agent=>{
  agent.backend='claude';agent.backendDefaults={kind:'claude',permissionMode:'default'};
- return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:null,composer:composer.configurationForAgent(agent.id),
+ return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:{agentId:agent.id,sessionId:'fixture-session',activeTurnId:null,turnIds:['fixture-turn'],turns:[],
+ messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The request should be retried.'}]}],
+ answeredClientRequestIds:[],busy:false,historyLoading:false,historyState:{hasOlder:false,loadingOlder:false},contextUsage:null,plan:null,error:null},composer:composer.configurationForAgent(agent.id),
  composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeBackendCapabilities,
  approvals:[],sending:false,queuedPrompts:[],history:{failed:false,hydrating:false,hasOlder:false,loadingOlder:false},answeredClientRequestIds:new Set()});
 });
 const active=ref(snapshot.activeAgentId), calls=[];
 const actions=new Proxy({
+ prepare:()=>{},
  updateComposerState:(id,state)=>views.find(v=>v.agent.id===id).composerState=state,
  setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,backendDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
  send:(id,prompt)=>calls.push([id,prompt]),
@@ -81,6 +84,43 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     const ids = await page.evaluate(() => window.fixture.ids);
     await page.waitForFunction(id => window.fixture.visible.length === 1 && window.fixture.visible[0] === id, ids[0]);
     assert.equal(await editor.textContent(), `Draft for ${ids[0]}`);
+    const passage = page.locator('p').filter({ hasText: 'The request should be retried.' });
+    await passage.evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByRole('button', { name: 'Annotate', exact: true }).click();
+    await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
+    await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
+    const marker = page.locator('.conversation-pane__annotation-marker');
+    await marker.waitFor();
+    assert.equal(await marker.textContent(), '1');
+    const markerBox = await marker.boundingBox(), passageBox = await passage.boundingBox();
+    assert.ok(Math.abs(markerBox.y - passageBox.y) < 100, 'marker stays near its source message');
+    if (process.env.ANNOTATION_EVIDENCE) await page.screenshot({ path: process.env.ANNOTATION_EVIDENCE });
+    await marker.click();
+    const dialog = page.getByRole('dialog');
+    await dialog.waitFor();
+    assert.ok((await dialog.innerText()).includes('The request should be retried.'));
+    assert.equal(await dialog.locator('input').inputValue(), 'Add a bounded retry.');
+    await dialog.locator('input').fill('Discard this edit.');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await page.locator('.chat-annotation-review summary').click();
+    await page.locator('.chat-annotation-review__edit').click();
+    await dialog.waitFor();
+    assert.equal(await dialog.locator('input').inputValue(), 'Add a bounded retry.');
+    await dialog.locator('input').fill('Use three attempts.');
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.ok((await page.locator('.chat-annotation-review').innerText()).includes('Use three attempts.'));
+    await page.locator('.chat-annotation-review').getByRole('button', { name: 'Remove chat annotation', exact: true }).click();
+    await marker.waitFor({ state: 'hidden' });
+    await page.locator('.chat-annotation-review').waitFor({ state: 'hidden' });
     const setLayout = async name => {
       await page.getByRole('button', { name: 'Conversation layout', exact: true }).click();
       await page.getByRole('menuitemradio', { name, exact: true }).click();
