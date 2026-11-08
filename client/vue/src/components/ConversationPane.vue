@@ -22,6 +22,7 @@
       :escape-interrupt="keyboardActive"
       :has-composer-context="textAnnotations.length > 0 || visualizationAnnotations.length > 0 || codeAnnotations.length > 0"
       :message-text-selection="true"
+      :render-strategy="annotationRenderAll ? 'eager' : 'lazy'"
       :transform-message="transformConversationMessage"
       :tool-visibility="isAppToolVisible"
       @message-text-selection-change="messageTextSelection = captureChatTextAnchor($event)"
@@ -150,7 +151,7 @@
           ref="annotationReview"
           :annotations="textAnnotations"
           :disabled="disabled"
-          @reveal="annotationFocusRequest = { id: $event }"
+          @reveal="revealTextAnnotation"
           @edit="(id, comment) => emit('edit-text-annotation', id, comment)"
           @remove="emit('remove-text-annotation', $event)"
         />
@@ -513,6 +514,18 @@ async function restoreSavedDraft(selection: { id: string; keep: boolean }): Prom
   }
 }
 const annotationFocusRequest = ref<{ id: string } | null>(null);
+const annotationRenderAll = ref(false);
+async function revealTextAnnotation(id: string): Promise<void> {
+  const marker = [...(loadTimingRoot.value?.querySelectorAll<HTMLElement>('[data-annotation-id]') ?? [])]
+    .find(element => element.dataset.annotationId === id);
+  if (!marker) {
+    annotationRenderAll.value = true;
+    await nextTick();
+    await nextTick();
+  }
+  annotationFocusRequest.value = { id };
+}
+
 const annotationReview = ref<InstanceType<typeof ChatAnnotationReview> | null>(null);
 function annotationsForMessage(message: { id?: string; role: string }, index: number): readonly ChatTextAnnotation[] {
   return props.textAnnotations.filter(annotation => annotation.messageId
@@ -555,6 +568,7 @@ const collaborationMessagePresentations = new Map<string, CollaborationMessagePr
 let transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
 watch(conversationKey, () => {
   annotationFocusRequest.value = null;
+  annotationRenderAll.value = false;
   messageTextSelection.value = null;
   collaborationMessagePresentations.clear();
   transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();

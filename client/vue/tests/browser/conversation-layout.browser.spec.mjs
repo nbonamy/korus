@@ -22,6 +22,8 @@ import '/src/styles/base.css';
 import {i18n} from '/src/i18n/index.ts';
 import {applyAppTheme} from '/src/theme/apply-theme.ts';
 import Shell from '/src/components/AppShell.vue';
+import ConversationPane from '/src/components/ConversationPane.vue';
+import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
 import {claudeBackendCapabilities} from '@workspace/core/backend-capabilities';
 import {createAgentComposerState} from '/src/agent-composer-state.ts';
@@ -45,7 +47,20 @@ const actions=new Proxy({
  setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,backendDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
  send:(id,prompt)=>calls.push([id,prompt]),
 },{get:(target,key)=>target[key]??(()=>{})});
-window.fixture={calls,ids:views.map(v=>v.agent.id),visible:[],applyTheme:mode=>applyAppTheme({id:'app-'+mode,mode,uiFontSize:14,chatFontSize:15,codeFontSize:13})};
+window.fixture={
+ calls,ids:views.map(v=>v.agent.id),visible:[],
+ applyTheme:mode=>applyAppTheme({id:'app-'+mode,mode,uiFontSize:14,chatFontSize:15,codeFontSize:13}),
+ mountLong:()=>{
+  const host=document.createElement('div'); host.id='long-fixture'; document.body.append(host);
+  const messages=Array.from({length:80},(_,i)=>({id:'long-'+i,agentId:snapshot.agents[0].id,
+   role:'assistant',status:'complete',turnId:'turn-'+i,createdAt:'2026-11-08T00:00:00Z',
+   parts:[{type:'text',text:'Long history passage '+i}]}));
+  const controller=createCodexConversationPaneController({state:{identity:{conversationKey:'long-fixture',messages},composer:{}},actions:{}});
+  const textAnnotations=[{id:'long-annotation',messageId:'long-0',messageIndex:0,role:'assistant',
+   text:'Long history passage 0',textStart:0,textBlockIndex:0,comment:'Check old passage.'}];
+  createApp({render:()=>h(ConversationPane,{agent:snapshot.agents[0],controller,textAnnotations})}).use(i18n).use(ElementPlus).mount(host);
+ },
+};
 createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id===active.value).agent,
  isLoading:false,isSending:false,connectionState:{status:'connected'},agentConversationFor:id=>views.find(v=>v.agent.id===id),
  agentConversationActions:actions,onSelectAgent:id=>active.value=id,onVisibleAgentsChange:ids=>window.fixture.visible=ids})}).use(i18n).use(ElementPlus).mount('#app');
@@ -113,7 +128,12 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
       });
     };
     await selectPassage(passage);
-    await page.getByRole('button', { name: 'Annotate', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Annotate', exact: true }).click();
+    await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
+    await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
+    const marker = page.locator('.conversation-pane__annotation-marker');
+    await marker.waitFor();
+    assert.equal(await marker.textContent(), '1');
     // The SDK permits a selection elsewhere in the same message; it must not
     // offer an annotation that cannot be located in a text block.
     await passage.evaluate(element => {
@@ -130,14 +150,6 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await page.locator('.chat-text-selection-annotation__add').count(), 0);
-    await selectPassage(passage);
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    await page.getByRole('button', { name: 'Annotate', exact: true }).click();
-    await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
-    await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
-    const marker = page.locator('.conversation-pane__annotation-marker');
-    await marker.waitFor();
-    assert.equal(await marker.textContent(), '1');
     const assertAtPassage = async (badge, target) => {
       const markerBox = await badge.boundingBox();
       const endpoint = await target.evaluate(element => {
@@ -338,6 +350,13 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     await page.waitForFunction(() => window.fixture.visible.length === 0);
     await page.locator('.team-rail__team').first().click();
     await page.waitForFunction(id => window.fixture.visible.length === 1 && window.fixture.visible[0] === id, ids[1]);
+    await page.evaluate(() => window.fixture.mountLong());
+    const longPane = page.locator('#long-fixture');
+    const oldText = longPane.getByText('Long history passage 0', { exact: true });
+    assert.equal(await oldText.count(), 0, 'old message starts outside the rendered window');
+    await longPane.locator('.chat-annotation-review .composer-context-cards__open').click();
+    await oldText.waitFor();
+    await page.waitForFunction(() => CSS.highlights.has('chat-annotation-focus'));
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
