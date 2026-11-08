@@ -42,27 +42,43 @@ describe('AutomationEditor', () => {
     expect(wrapper.text()).not.toContain('repository');
   });
 
-  // Mounts the full editor and selects existing chats through real Element Plus controls.
-  it('offers existing Quick Chats separately and omits fresh-chat model settings when reusing a conversation', async () => {
+  // Each target owns its submit contract; keep real controls without combining
+  // unrelated selections and catalog remounts under one behavior deadline.
+  it.each([
+    ['Daily notes', { kind: 'quickChat', agentId: 'quick' }],
+    ['Dina @ agent-workspace', { kind: 'agent', agentId: 'agent-dina' }],
+  ] as const)('reuses %s without fresh-chat model settings', async (label, target) => {
     const wrapper = editor();
     await wrapper.get('textarea').setValue('Update notes');
-    await choose(wrapper, 'Conversation', 'Daily notes');
+    // Switching from a reused Quick Chat must replace its target kind as well as its id.
+    if (target.kind === 'agent') await choose(wrapper, 'Conversation', 'Daily notes');
+    await choose(wrapper, 'Conversation', label);
     expect(wrapper.find('[aria-label="Model"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Effort"]').exists()).toBe(false);
     expect(wrapper.findAll('.form-section h3').map(label => label.text())).toEqual(['Run in', 'Schedule']);
     expect(wrapper.text()).toContain('Uses this conversation’s context');
     await wrapper.get('form').trigger('submit');
-    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ target: { kind: 'quickChat', agentId: 'quick' } });
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ target });
+  });
+
+  it('restores fresh-chat model settings after reusing a conversation', async () => {
+    const wrapper = editor();
+    await wrapper.get('textarea').setValue('Update notes');
     await choose(wrapper, 'Conversation', 'Dina @ agent-workspace');
-    await wrapper.get('form').trigger('submit');
-    expect(wrapper.emitted('submit')?.[1]?.[0]).toMatchObject({ target: { kind: 'agent', agentId: 'agent-dina' } });
     await choose(wrapper, 'Conversation', 'New Quick Chat each run');
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(true);
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ target: { kind: 'newQuickChat' } });
+  });
+
+  it('keeps a new Quick Chat available after all existing conversations are removed', async () => {
+    const wrapper = editor();
+    await wrapper.get('textarea').setValue('Update notes');
     await wrapper.setProps({ agents: [] });
     await choose(wrapper, 'Conversation', 'New Quick Chat each run');
     await wrapper.get('form').trigger('submit');
-    expect(wrapper.emitted('submit')?.[2]?.[0]).toMatchObject({ target: { kind: 'newQuickChat' } });
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ target: { kind: 'newQuickChat' } });
   });
 
   it('retains configured model and effort on edit, and surfaces catalog and save errors', async () => {

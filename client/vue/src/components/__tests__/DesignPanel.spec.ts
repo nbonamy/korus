@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { expect, it, vi } from 'vitest';
-import ElementPlus from 'element-plus';
+import { ElTree } from 'element-plus';
 import type { DesignRequest, DesignResult, DesignWorkspace } from '@workspace/core/design';
 import DesignPanel from '../DesignPanel.vue';
 
@@ -26,7 +26,7 @@ it('fits once and preserves zoom through sidebar resizes until the next explicit
     disconnect() {}
   });
   const workspace = editableWorkspace();
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { components: { ElTree } } });
   const width = () => wrapper.get('.design-canvas__artboard').attributes('style');
   const fit = async (label: string) => {
     await wrapper.get('button[aria-label="Zoom"]').trigger('click');
@@ -73,7 +73,7 @@ it('fits once and preserves zoom through sidebar resizes until the next explicit
 it('resizes and drags the inspector closed without losing drafts or its restored width', async () => {
   vi.useFakeTimers();
   const workspace = editableWorkspace();
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { components: { ElTree } } });
   try {
     vi.spyOn(wrapper.get('.design-panel__body').element, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect);
     await typeText(wrapper, 'Keep this draft');
@@ -111,7 +111,7 @@ it('clears element selection from the canvas background and on entering Pan', as
     if (request.type === 'select') { workspace.selectedArtboardId = request.artboardId; workspace.selectedNodeId = request.nodeId; }
     return { workspace: structuredClone(workspace) };
   });
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { components: { ElTree } } });
   try {
     await wrapper.get('.design-canvas').trigger('click');
     await flushPromises();
@@ -135,7 +135,7 @@ it('fills applied properties without saving them and only persists fields edited
   let resolve!: (result: DesignResult) => void;
   const pending = new Promise<DesignResult>(done => { resolve = done; });
   const execute = vi.fn(async () => pending);
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { components: { ElTree } } });
   const field = (label: string) => wrapper.get<HTMLInputElement>(`input[aria-label="${label}"]`);
   const inspect = (properties: Record<string, string>) => {
     const frame = wrapper.get('iframe');
@@ -188,7 +188,7 @@ it.each([true, false])('preserves edits typed during autosave and recovers after
     }
     return { workspace: structuredClone(workspace) };
   }).mockImplementationOnce(() => pending);
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { components: { ElTree } } });
   try {
     expect(wrapper.find('[data-action="apply"]').exists()).toBe(false);
     await typeText(wrapper, 'First edit');
@@ -224,7 +224,7 @@ it('edits a stable selected node, retains conflicting drafts, routes comments an
     document: { id: 'design-a', revision: 1, content: { title: 'Page', css: '', comments: [], chosenArtboardId: 'desktop', artboards: [{ id: 'desktop', title: 'Desktop', notes: 'Proposal details stay out of the review bar.', width: 800, height: 600, root: { id: 'page', tag: 'main', children: [{ id: 'heading', tag: 'h1', text: 'Hello' }] } }] } },
   };
   const execute = vi.fn(async () => ({ workspace: structuredClone(workspace) }));
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { components: { ElTree } } });
   expect(wrapper.get('.design-review-bar__actions').findAll('button')).toHaveLength(2);
   expect(wrapper.find('[aria-label="Chosen"]').exists()).toBe(false);
   expect(wrapper.get('.design-review-bar__summary').text()).toBe('Desktop');
@@ -289,7 +289,7 @@ it('edits generated color and numeric controls while rejecting invalid values', 
     }
     return { workspace: structuredClone(workspace) };
   });
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace, execute }, global: { components: { ElTree } } });
   try {
     await wrapper.findAll('.el-tabs__item').find(tab => tab.text() === 'Tweaks')!.trigger('click');
     const hex = wrapper.get('input[aria-label="Chart accent hex color"]');
@@ -324,7 +324,7 @@ it('returns rejected coding handoffs to review and confirms the latest saved dir
     }
     return { workspace: structuredClone(workspace) };
   });
-  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace: structuredClone(workspace), execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { props: { agentId: 'designer', workspace: structuredClone(workspace), execute }, global: { components: { ElTree } } });
   try {
     const review = async () => { await wrapper.get('[data-action="build"]').trigger('click'); await flushPromises(); };
     const send = async () => { await wrapper.get('[data-action="implement"]').trigger('click'); await flushPromises(); };
@@ -358,7 +358,7 @@ it('undoes and redoes from the client\'s own history, including agent edits, by 
     if (request.type !== 'replace') throw new Error(`Unexpected ${request.type}`);
     return { workspace: { ...first, document: { ...first.document!, revision: request.expectedRevision + 1, content: request.content } } };
   });
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: first, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: first, execute }, global: { components: { ElTree } } });
   const undo = () => wrapper.get('button[aria-label="Undo"]');
   const redo = () => wrapper.get('button[aria-label="Redo"]');
   try {
@@ -391,7 +391,7 @@ it('records one undo step for a text field edited across several autosaves', asy
     }
     return { workspace: saved };
   });
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { components: { ElTree } } });
   try {
     for (const value of ['Hel', 'Hello wor', 'Hello world']) {
       await typeText(wrapper, value);
@@ -420,7 +420,7 @@ it('records separate undo steps for a text edit followed by a color edit', async
     }
     return { workspace: saved };
   });
-  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { plugins: [ElementPlus] } });
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace: original, execute }, global: { components: { ElTree } } });
   try {
     await typeText(wrapper, 'New headline');
     await vi.advanceTimersByTimeAsync(450);

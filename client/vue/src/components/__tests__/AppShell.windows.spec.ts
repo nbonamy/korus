@@ -114,7 +114,11 @@ describe('AppShell in a window that shows less than the workspace', () => {
       const teamId = snapshot.teams[0]!.id;
       snapshot.agents.forEach((agent, index) => {
         agent.teamId = teamId;
-        agent.workspace = { kind: 'git', branch: index === 0 ? 'feat1' : 'feat2' } as never;
+        agent.workspace = {
+          kind: 'git', branch: index === 0 ? 'feat1' : 'feat2', folder: agent.folder!,
+          repositoryName: 'agent-workspace', repositoryRoot: agent.folder!, primaryWorktreeRoot: agent.folder!,
+          isLinkedWorktree: true, updatedAt: agent.updatedAt,
+        };
       });
       windowState.scope.value = 'feature';
       windowState.teamId.value = teamId;
@@ -160,7 +164,12 @@ describe('AppShell in a window that shows less than the workspace', () => {
       const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true, snapshot });
       expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
 
-      const added = (id: string, branch: string) => ({ ...structuredClone(snapshot.agents[0]!), id, name: id, workspace: { kind: 'git', branch } as never });
+      const added = (id: string, branch: string) => {
+        const agent = { ...structuredClone(snapshot.agents[0]!), id, name: id };
+        if (agent.workspace?.kind !== 'git') throw new Error('Expected a Git workspace fixture');
+        agent.workspace.branch = branch;
+        return agent;
+      };
       const next = structuredClone(snapshot);
       next.agents.push(added('agent-other', 'feat2'));
       next.teams[0]!.agentIds.push('agent-other');

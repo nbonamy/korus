@@ -1,4 +1,5 @@
 import { nextTick, ref } from 'vue';
+import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useCodeSelection } from '../use-code-selection';
 
@@ -22,7 +23,12 @@ function build(lines: { number: number; text: string; side?: 'old' | 'new'; pref
   }
   host.append(container);
   document.body.append(host);
-  selection = useCodeSelection(ref(container));
+  mount({
+    setup() {
+      selection = useCodeSelection(ref(container));
+      return () => null;
+    },
+  });
   return container;
 }
 const row = (container: HTMLElement, index: number) => container.querySelectorAll<HTMLElement>('[data-code-line]')[index]!;
