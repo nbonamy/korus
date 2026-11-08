@@ -34,6 +34,7 @@
     </div>
     <MetricChart
       title="Weekly tokens"
+      tooltip-order="series"
       :days="days"
       :series="series"
       measure="tokens"

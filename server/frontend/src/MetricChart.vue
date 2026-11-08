@@ -148,6 +148,7 @@ const props = defineProps<{
   area?: "gradient" | "solid" | "none";
   totalLabel?: string;
   hideLegend?: boolean;
+  tooltipOrder?: "value" | "series";
 }>();
 const stage = ref<HTMLElement | null>(null),
   chart = ref<{ chart: ChartJS | null } | null>(null),
@@ -215,7 +216,7 @@ const tooltipRows = computed(() =>
     }))
     .filter((row) => row.value !== null && row.observed)
     .sort((a, b) =>
-      props.measure === "milliseconds"
+      props.tooltipOrder === "series" ? 0 : props.measure === "milliseconds"
         ? Number(a.value) - Number(b.value)
         : Number(b.value) - Number(a.value),
     ),

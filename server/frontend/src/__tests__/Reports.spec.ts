@@ -42,7 +42,7 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
       turns: String(i + 1),
       inputTokens: i < 7 ? "500" : "1000",
       outputTokens: i < 7 ? "100" : "200",
-      totalTokens: i < 7 ? "600" : "1200",
+      totalTokens: i < 7 ? (i === 6 ? "2400" : "600") : "1200",
       estimatedCostUsd: i < 7 ? "1.25" : "2.50",
     })),
     modelDaily: [
@@ -210,9 +210,12 @@ it("keeps overview weekly and gives each detail route its own breakdowns", async
       wrapper.findAll(".chart").map((chart) => chart.attributes("aria-label")),
     ).toEqual(["Weekly tokens"]);
     const trend = wrapper.get('[aria-label="Weekly tokens"]');
+    await trend.get("canvas").trigger("keydown", { key: "Home" });
+    expect(trend.findAll(".tooltip-name").map(row=>row.text())).toEqual(["This week","Previous week"]);
     await trend.get("canvas").trigger("keydown", { key: "End" });
     expect(trend.get('[role="status"]').text()).toContain("This week1.2K");
-    expect(trend.get('[role="status"]').text()).toContain("Previous week600");
+    expect(trend.get('[role="status"]').text()).toContain("Previous week2.4K");
+    expect(trend.findAll(".tooltip-name").map(row=>row.text())).toEqual(["This week","Previous week"]);
     await wrapper.get('[aria-label="Weekly active installs"]').trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.path).toBe("/activity");
