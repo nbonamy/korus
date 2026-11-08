@@ -53,6 +53,7 @@
   />
 </template>
 <script setup lang="ts">
+import { conversationForView } from '../provider-conversation-bindings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { translate } from '../i18n';
@@ -117,7 +118,7 @@ const emit = defineEmits<{
 }>();
 const pane = ref<InstanceType<typeof ConversationPane> | null>(null);
 const provider = computed(
-  () => props.view.codexSnapshot ?? props.view.claudeSnapshot ?? props.view.cursorSnapshot ?? props.view.antigravitySnapshot,
+  () => conversationForView(props.view),
 );
 const state = agentConversationState(() => props.view, {
   followUpBehavior: () => props.followUpBehavior ?? 'queue',

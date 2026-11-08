@@ -1,5 +1,5 @@
+import { bindConversation, projectCodexConversation, projectClaudeConversation, projectCursorConversation, projectAntigravityConversation, type NativeConversationSources, type ConversationPresentation } from './provider-conversation-bindings';
 import { createCursorConversationState } from './cursor-conversation-state';
-import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
@@ -137,6 +137,26 @@ const cursorConversations = createCursorConversationState(async agentId => {
 const antigravityConversations = createAntigravityConversationState(async agentId => {
   await recoverConversation(agentId);
 });
+const conversationBindings = {
+  codex: bindConversation(agent => {
+    const session = agent.backendSession, frame = codexConversationFramesByAgentId.value[agent.id];
+    return session?.kind === 'codex' && frame?.threadId === session.threadId ? frame.snapshot : null;
+  }, projectCodexConversation, agent => {
+    const session = agent.backendSession, frame = codexConversationFramesByAgentId.value[agent.id];
+    return session?.kind === 'codex' && (frame?.threadId !== session.threadId || frame.revision === AWAITING_RECOVERY_REVISION);
+  }),
+  claude: bindConversation(agent => {
+    const frame = claudeConversationFramesByAgentId.value[agent.id];
+    const sessionId = agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : null;
+    return frame && (!sessionId || frame.snapshot.sessionId === sessionId) ? frame.snapshot : null;
+  }, projectClaudeConversation, agent => {
+    const session = agent.backendSession, frame = claudeConversationFramesByAgentId.value[agent.id];
+    return session?.kind === 'claude' && (frame?.snapshot.sessionId !== session.sessionId || frame.revision === AWAITING_RECOVERY_REVISION);
+  }),
+  cursor: bindConversation(cursorConversations.select, projectCursorConversation, agent => !cursorConversations.select(agent)),
+  antigravity: bindConversation(antigravityConversations.select, projectAntigravityConversation,
+    agent => !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agent.id)),
+};
 let agentSelectionRequestId = 0;
 let unsubscribeMainEvents: (() => void) | null = null;
 let bufferedMainEvents: MainToRendererEvent[] | null = null;
@@ -250,12 +270,9 @@ const {
   statusFor: agentHistoryStatusFor,
 } = agentHistory;
 
-export type AgentConversationView = {
+export type AgentConversationView = NativeConversationSources & {
   agent: Agent;
-  codexSnapshot: CodexConversationSnapshot | null;
-  claudeSnapshot: ClaudeConversationSnapshot | null;
-  cursorSnapshot?: CursorConversationSnapshot | null;
-  antigravitySnapshot?: AntigravityConversationSnapshot | null;
+  conversation?: ConversationPresentation | null;
   composer: AgentComposerConfiguration;
   composerState: CodexComposerState;
   attachments: readonly CodexNativeAttachment[];
@@ -423,32 +440,19 @@ export function useAppState() {
   const activeBackendCommands = computed<BackendCommandSummary[]>(() => defaultBackendCommands(activeAgent.value?.backend ?? 'codex'));
   const activeCodexConversationSnapshot = computed(() => {
     const agent = activeAgent.value;
-    if (!agent || agent.backend !== 'codex' || agent.backendSession?.kind !== 'codex') return null;
-    const frame = codexConversationFramesByAgentId.value[agent.id];
-    return frame?.threadId === agent.backendSession.threadId ? frame.snapshot : null;
+    return agent?.backend === 'codex' ? conversationBindings.codex.selectNative(agent) : null;
   });
   const activeClaudeConversationSnapshot = computed(() => {
     const agent = activeAgent.value;
-    if (!agent || agent.backend !== 'claude') return null;
-    const frame = claudeConversationFramesByAgentId.value[agent.id];
-    const sessionId = agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : null;
-    return !frame || (sessionId && frame.snapshot.sessionId !== sessionId) ? null : frame.snapshot;
+    return agent?.backend === 'claude' ? conversationBindings.claude.selectNative(agent) : null;
   });
 
   function agentConversationFor(agentId: string): AgentConversationView | null {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
     if (!agent) return null;
-    const codexFrame = codexConversationFramesByAgentId.value[agentId];
-    const claudeFrame = claudeConversationFramesByAgentId.value[agentId];
-    const sessionId = agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : null;
     return {
       agent,
-      cursorSnapshot: cursorConversations.select(agent),
-      antigravitySnapshot: antigravityConversations.select(agent),
-      codexSnapshot: agent.backend === 'codex' && agent.backendSession?.kind === 'codex' && codexFrame?.threadId === agent.backendSession.threadId
-        ? codexFrame.snapshot : null,
-      claudeSnapshot: agent.backend === 'claude' && claudeFrame && (!sessionId || claudeFrame.snapshot.sessionId === sessionId)
-        ? claudeFrame.snapshot : null,
+      conversation: conversationBindings[agent.backend].select(agent),
       composer: configurationForAgent(agentId),
       composerState: composerStatesByAgentId.value[agentId] ?? emptyComposerState(),
       attachments: composerAttachmentsByAgentId.value[agentId] ?? [],
@@ -1800,6 +1804,7 @@ export function useAppState() {
     activeBackendCommands,
     activeCodexConversationSnapshot,
     activeClaudeConversationSnapshot,
+    activeConversationPresentation: computed(() => activeAgent.value ? conversationBindings[activeAgent.value.backend].select(activeAgent.value) : null),
     activeCursorConversationSnapshot: computed(() => activeAgent.value ? cursorConversations.select(activeAgent.value) : null),
     agentConversationFor,
     activeAntigravityConversationSnapshot: computed(() => activeAgent.value ? antigravityConversations.select(activeAgent.value) : null),
@@ -2575,15 +2580,7 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent?.backendSession) return false;
-  if (agent.backendSession.kind === 'cursor') return !cursorConversations.select(agent);
-  // A retained frame still awaiting its recovery replay is not hydrated yet.
-  if (agent.backendSession.kind === 'antigravity') return !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agentId);
-  if (agent.backendSession.kind === 'codex') {
-    const frame = codexConversationFramesByAgentId.value[agentId];
-    return frame?.threadId !== agent.backendSession.threadId || frame.revision === AWAITING_RECOVERY_REVISION;
-  }
-  const frame = claudeConversationFramesByAgentId.value[agentId];
-  return frame?.snapshot.sessionId !== agent.backendSession.sessionId || frame.revision === AWAITING_RECOVERY_REVISION;
+  return conversationBindings[agent.backend].needsHistory(agent);
 }
 
 async function refreshTeamSelection(

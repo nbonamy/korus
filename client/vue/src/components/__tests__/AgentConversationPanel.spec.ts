@@ -6,6 +6,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAgentComposerState } from '../../agent-composer-state';
+import { projectCursorConversation } from '../../provider-conversation-bindings';
 import type { AgentConversationView } from '../../app-state';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 import type { AgentConversationActions } from '../use-agent-conversation';
@@ -30,6 +31,7 @@ describe('AgentConversationPanel', () => {
     const sent = vi.fn();
     const view = shallowReactive<AgentConversationView>({
       agent, codexSnapshot: null, claudeSnapshot: null, cursorSnapshot: null,
+      get conversation() { return projectCursorConversation(this.cursorSnapshot, this.agent); },
       composer: composer.configurationForAgent(agent.id),
       composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities,
       approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
@@ -104,6 +106,9 @@ describe('AgentConversationPanel', () => {
           { type: 'media', itemId: 'cursor-tool:tool:0', media: { url: imageUrl, mimeType: 'image/png', alt: 'Image' } }] } } });
       view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
       await flushPromises();
+      // A retained frame from an old provider must never win over the registered binding.
+      view.claudeSnapshot = claudeConversationSnapshot([], { agentId: agent.id });
+      await flushPromises();
       expect(wrapper.text()).toContain('Cursor streamed reply');
       const fileLink = wrapper.get('a.chat-tool-call__title-target--link');
       expect(fileLink.text()).toBe('synthetic.txt');
@@ -128,9 +133,13 @@ describe('AgentConversationPanel', () => {
 
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
+      view.agent = { ...view.agent, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
       view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
-        id: 'sidebar-plan', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'create_plan', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false } },
+        id: 'sidebar-plan', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'native-provider', integrationName: 'Provider', toolName: 'native_plan_request', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false } },
       }] };
+      await flushPromises();
+      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Review Cursor plan');
+      view.agent = { ...view.agent, planReview: { ...view.agent.planReview!, conversationId: 'session' } };
       await flushPromises();
       expect(wrapper.find('.chat-tool-confirmation').exists()).toBe(false);
       view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{

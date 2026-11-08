@@ -23,6 +23,7 @@ import { useConfetti } from '../../shared/confetti/use-confetti';
 import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../onboarding-session';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
+import { projectCodexConversation } from '../../provider-conversation-bindings';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
 import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
@@ -1337,7 +1338,7 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        codexConversationSnapshot: providerSnapshot,
+        conversationPresentation: projectCodexConversation(providerSnapshot, activeAgent),
         isLoading: false,
         isSending: true,
       },

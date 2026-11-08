@@ -198,6 +198,7 @@
         :cancel-codex-login="cancelChatGptLogin"
         :active-tab="settingsActiveTab"
         :general-settings="snapshot.general"
+        :provider-setup="displayProviderSetup"
         :settings="snapshot.theme"
         :source-folder="snapshot.sourceFolder"
         :work-backlog-connections="snapshot.workBacklog.connections"
@@ -653,6 +654,7 @@
 </template>
 
 <script setup lang="ts">
+import { conversationForView, conversationPlanForAgent, legacyConversationPresentation, type ConversationPresentation } from '../provider-conversation-bindings';
 import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
@@ -670,7 +672,7 @@ import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, ThreadPlan, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -820,6 +822,7 @@ const props = withDefaults(defineProps<{
   backendPlugins?: BackendPluginSummary[];
   backendSkills?: BackendSkillSummary[];
   backendCapabilities?: BackendCapabilities;
+  conversationPresentation?: ConversationPresentation | null;
   codexConversationSnapshot?: CodexConversationSnapshot | null;
   claudeConversationSnapshot?: ClaudeConversationSnapshot | null;
   cursorConversationSnapshot?: import('@workspace/core/contracts/cursor-conversation').CursorConversationSnapshot | null;
@@ -2020,8 +2023,7 @@ function conversationViewFor(agentId: string): AgentConversationView | null {
   const agent = currentAgent.value;
   if (!agent || agent.id !== agentId) return null;
   return {
-    agent, codexSnapshot: props.codexConversationSnapshot ?? null, claudeSnapshot: props.claudeConversationSnapshot ?? null,
-    cursorSnapshot: props.cursorConversationSnapshot, antigravitySnapshot: props.antigravityConversationSnapshot,
+    agent, conversation: props.conversationPresentation !== undefined ? props.conversationPresentation : legacyConversationPresentation(agent, props),
     composerState: props.composerState, attachments: props.composerAttachments,
     capabilities: props.backendCapabilities, approvals: props.approvals, queuedPrompts: props.queuedPrompts.map(prompt => ({ ...prompt, agentId, text: prompt.text, createdAt: '' })),
     sending: props.isSending, answeredClientRequestIds: props.answeredClientRequestIds,
@@ -2081,7 +2083,7 @@ watch([
     const id = pendingComposerFocusAgentId.value;
     const view = id ? props.agentConversationFor?.(id) : null;
     return view
-      ? view.history.hydrating || (view.codexSnapshot ?? view.claudeSnapshot)?.historyLoading
+      ? view.history.hydrating || conversationForView(view)?.historyLoading
       : props.isConversationLoading;
   },
 ], ([requestedId, activeId, loading]) => {
@@ -2375,55 +2377,28 @@ const currentAgentGitStatus = computed<AgentGitStatus | null>(() => {
   const agentId = currentAgent.value?.id;
   return agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null;
 });
-const providerConversation = computed(() => (
-  currentAgent.value?.backend === 'codex'
-    ? props.codexConversationSnapshot ?? null
-    : currentAgent.value?.backend === 'claude'
-      ? props.claudeConversationSnapshot ?? null
-      : currentAgent.value?.backend === 'cursor'
-        ? props.cursorConversationSnapshot ?? null
-        : currentAgent.value?.backend === 'antigravity' ? props.antigravityConversationSnapshot ?? null : null
-));
+const providerConversation = computed(() => {
+  const agent = currentAgent.value;
+  const view = agent ? conversationViewFor(agent.id) : null;
+  return view ? conversationForView(view) : null;
+});
 const conversationMessages = computed(() => {
   const messages = providerConversation.value?.messages ?? [];
   const fixture = debugUserQuestions.value;
   if (!fixture || fixture.agentId !== currentAgent.value?.id) return messages;
   return [...messages, fixture.message];
 });
-const conversationLatestTurnId = computed(() => providerConversation.value?.turns.at(-1)?.id ?? null);
+const conversationLatestTurnId = computed(() => providerConversation.value?.latestTurnId ?? null);
 function latestTurnIdForAgent(agentId: string): string | null {
   const view = props.agentConversationFor?.(agentId);
-  return (view?.codexSnapshot ?? view?.claudeSnapshot)?.turnIds.at(-1)
-    ?? (view?.cursorSnapshot ?? view?.antigravitySnapshot)?.turns.at(-1)?.id ?? null;
+  return view ? conversationForView(view)?.latestTurnId ?? null : null;
 }
 const conversationHasRunningPlanTool = computed(() => conversationMessages.value.some(
   (message) => message.parts.some(
     (part) => part.type === 'tool' && part.status === 'running' && part.metadata?.planProgress === true,
   ),
 ));
-const codexConversationPlan = computed<ThreadPlan | null>(() => {
-  const providerSnapshot = props.codexConversationSnapshot;
-  const executionPlan = providerSnapshot?.executionPlan;
-  if (!providerSnapshot || !executionPlan) return null;
-  return {
-    threadId: providerSnapshot.activeConversationId,
-    turnId: executionPlan.turnId,
-    kind: 'execution',
-    status: executionPlan.steps.length > 0
-      && executionPlan.steps.every((step) => step.status === 'completed')
-      ? 'completed'
-      : 'inProgress',
-    explanation: executionPlan.explanation ?? '',
-    steps: executionPlan.steps.map((step) => ({ ...step })),
-    markdown: executionPlan.markdown,
-    updatedAt: executionPlan.updatedAt,
-  };
-});
-const conversationPlan = computed(() => (
-  currentAgent.value?.backend === 'claude'
-    ? props.claudeConversationSnapshot?.plan ?? null
-    : codexConversationPlan.value ?? currentAgent.value?.plan ?? null
-));
+const conversationPlan = computed(() => currentAgent.value ? conversationPlanForAgent(currentAgent.value, providerConversation.value) : null);
 const managedModelFavorites = computed(() => modelFavoritesDialogBackend.value ? props.snapshot.general.modelFavorites.filter(favorite => favorite.backend === modelFavoritesDialogBackend.value) : []);
 function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: BackendModelOption[]): CodexComposerMenuItem[] {
   if (!current) return [];

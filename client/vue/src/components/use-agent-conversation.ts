@@ -1,3 +1,4 @@
+import { conversationForView, conversationKeyForAgent } from '../provider-conversation-bindings';
 import { ref } from 'vue';
 import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from '@codex-app-sdk/vue';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
@@ -9,8 +10,6 @@ import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
-import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { providerPaneClientRequests } from './provider-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
 import { conversationPermissionMenuItems } from './conversation-permission-menu';
 import { translate } from '../i18n';
@@ -68,7 +67,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   previewMessage?: () => import('@codex-app-sdk/core/surface').SurfaceMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
 } = {}): CodexConversationPaneState {
-  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().cursorSnapshot ?? view().antigravitySnapshot;
+  const provider = () => conversationForView(view());
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
   const approvalPreset = () => {
@@ -78,7 +77,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   };
   return {
     identity: {
-      get conversationKey() { const agent = view().agent; const session = agent.backendSession; return session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `${session.kind}:${session.sessionId}` : `agent:${agent.id}`; },
+      get conversationKey() { return conversationKeyForAgent(view().agent); },
       get activeTurnId() { return provider()?.activeTurnId ?? null; },
       get turns() { return provider()?.turns; },
       get messages() { const messages = provider()?.messages ?? []; const preview = extensions.previewMessage?.(); return preview ? [...messages, preview] : messages; },
@@ -92,14 +91,10 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
-      get approvals() { const approvals = view().codexSnapshot?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
-      get clientRequests() {
-        const structured = view().cursorSnapshot ?? view().antigravitySnapshot;
-        if (structured) return providerPaneClientRequests(structured);
-        return view().codexSnapshot?.clientRequests ?? claudePaneClientRequests(view().claudeSnapshot);
-      },
+      get approvals() { const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
+      get clientRequests() { return provider()?.clientRequests ?? []; },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
-      get goal() { return view().codexSnapshot?.goal ?? view().agent.goal ?? null; },
+      get goal() { return provider()?.goal ?? view().agent.goal ?? null; },
       get queuedPrompts() { return view().queuedPrompts; },
       get contextUsage() { return provider()?.contextUsage ?? view().agent.contextUsage ?? null; },
     },

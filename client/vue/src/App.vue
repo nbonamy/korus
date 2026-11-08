@@ -15,10 +15,7 @@
     @background-agent-creation-progress="backgroundAgentCreationProgress"
     :active-agent="activeAgent"
     :unread-agent-ids="unreadAgentIds"
-    :codex-conversation-snapshot="activeCodexConversationSnapshot"
-    :claude-conversation-snapshot="activeClaudeConversationSnapshot"
-    :cursor-conversation-snapshot="activeCursorConversationSnapshot"
-    :antigravity-conversation-snapshot="activeAntigravityConversationSnapshot"
+    :conversation-presentation="activeConversationPresentation"
     :is-loading="isLoading"
     :is-conversation-loading="isHydratingActiveAgentHistory"
     :is-conversation-load-failed="isActiveAgentHistoryFailed"
@@ -305,10 +302,7 @@ const {
   loadAgentFiles,
   backendModels,
   activeBackendCommands,
-  activeCodexConversationSnapshot,
-  activeClaudeConversationSnapshot,
-  activeAntigravityConversationSnapshot,
-  activeCursorConversationSnapshot,
+  activeConversationPresentation,
   agentConversationFor,
   prepareAgentConversation,
   backendPlugins,
