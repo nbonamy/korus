@@ -45,6 +45,7 @@ export type AppMenuCallbacks = {
   getDebugReviewUncommitted?: () => boolean;
   setDebugReviewUncommitted?: (enabled: boolean) => void;
   reload(): void;
+  zoom?(direction: -1 | 0 | 1): void;
   sendAppCommand(command: AppCommand): void;
   toggleDeveloperTools(): void;
 };
@@ -69,6 +70,12 @@ export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptio
     focusWindow,
     cycleWindow,
     reload: () => current()?.webContents.reload(),
+    zoom: (direction) => {
+      const contents = current()?.webContents;
+      if (contents && !contents.isDestroyed()) {
+        contents.setZoomLevel(direction === 0 ? 0 : Math.max(-7, Math.min(8, contents.getZoomLevel() + direction * 0.5)));
+      }
+    },
     sendAppCommand: (command) => {
       const window = current();
       if (window) sendAppCommand(window.webContents, command);
@@ -590,9 +597,9 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
     submenu: [
       ...buildCommandDiscoveryItems(callbacks),
       { type: 'separator' },
-      { role: 'zoomIn', accelerator: 'CommandOrControl+Plus' },
-      { role: 'zoomOut', accelerator: 'CommandOrControl+-' },
-      { role: 'resetZoom', accelerator: 'CommandOrControl+0' },
+      { label: mainT('menu.zoomIn'), accelerator: 'CommandOrControl+Plus', click: () => callbacks.zoom?.(1) },
+      { label: mainT('menu.zoomOut'), accelerator: 'CommandOrControl+-', click: () => callbacks.zoom?.(-1) },
+      { label: mainT('menu.resetZoom'), accelerator: 'CommandOrControl+0', click: () => callbacks.zoom?.(0) },
       { type: 'separator' },
       {
         label: mainT('menu.changes'),

@@ -225,6 +225,9 @@ describe('app menu', () => {
     expect(menuLabels(submenu(menu, 'View'))).toStrictEqual([
       'Command Palette…',
       'Keyboard Shortcuts…',
+      'Zoom In',
+      'Zoom Out',
+      'Actual Size',
       'Changes',
       'Browser',
       'Go to Agent...',
@@ -514,6 +517,9 @@ describe('app menu', () => {
     expect(menuLabels(submenu(debugMenu, 'View'))).toStrictEqual([
       'Command Palette…',
       'Keyboard Shortcuts…',
+      'Zoom In',
+      'Zoom Out',
+      'Actual Size',
       'Changes',
       'Browser',
       'Go to Agent...',
