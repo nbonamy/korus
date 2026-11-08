@@ -51,8 +51,8 @@
             <template v-else>
             <span v-if="!missing('codex') && updatingProvider === 'codex'" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="codexConnected || detected('codex')"><CheckIcon aria-hidden="true" /> {{ t(codexConnected ? 'auth.connected' : 'auth.detected') }}</span>
-            <ProviderInstallActions v-if="missing('codex')" backend="codex" :busy="updatingProvider === 'codex'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'codex')" />
-            <button v-else-if="detected('codex') && updatingProvider !== 'codex'" type="button" :disabled="loading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'codex')">{{ t('auth.customize') }}</button>
+            <ProviderInstallActions v-if="missing('codex')" backend="codex" :capabilities="setupCapabilities('codex')" :busy="updatingProvider === 'codex'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'codex')" @install="emit('install-provider', 'codex')" />
+            <button v-else-if="canCustomize('codex') && detected('codex') && updatingProvider !== 'codex'" type="button" :disabled="loading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'codex')">{{ t('auth.customize') }}</button>
             </template>
           </div>
           </div>
@@ -64,8 +64,8 @@
           <div class="codex-login__detection">
             <span v-if="!missing('claude') && (updatingProvider === 'claude' || claudeLoading)" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="claudeConnected || detected('claude')"><CheckIcon aria-hidden="true" /> {{ t(claudeConnected ? 'auth.connected' : 'auth.detected') }}</span>
-            <ProviderInstallActions v-if="missing('claude')" backend="claude" :busy="updatingProvider === 'claude'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'claude')" />
-            <button v-else-if="detected('claude') && updatingProvider !== 'claude' && !claudeLoading" type="button" :disabled="continuing || Boolean(updatingProvider)" @click="emit('customize', 'claude')">{{ t('auth.customize') }}</button>
+            <ProviderInstallActions v-if="missing('claude')" backend="claude" :capabilities="setupCapabilities('claude')" :busy="updatingProvider === 'claude'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'claude')" @install="emit('install-provider', 'claude')" />
+            <button v-else-if="canCustomize('claude') && detected('claude') && updatingProvider !== 'claude' && !claudeLoading" type="button" :disabled="continuing || Boolean(updatingProvider)" @click="emit('customize', 'claude')">{{ t('auth.customize') }}</button>
           </div>
           </div>
           <div v-if="antigravityAvailable" class="codex-login__provider">
@@ -74,12 +74,12 @@
               {{ t(antigravityConnected ? (antigravityEnabled ? 'antigravity.connected' : 'antigravity.enable') : 'antigravity.connect') }}
             </el-button>
             <div class="codex-login__detection">
-              <ProviderInstallActions v-if="missing('antigravity')" backend="antigravity" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" @install="emit('install-provider', 'antigravity')" />
+              <ProviderInstallActions v-if="missing('antigravity')" backend="antigravity" :capabilities="setupCapabilities('antigravity')" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" @install="emit('install-provider', 'antigravity')" />
               <button v-else-if="antigravityPending" class="codex-login__cancel" type="button" @click="emit('cancel-antigravity')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'antigravity' || antigravityLoading" role="status">{{ t('auth.checking') }}</span>
                 <span v-else-if="antigravityConnected || detected('antigravity')"><CheckIcon aria-hidden="true" /> {{ t(antigravityConnected ? 'auth.connected' : 'auth.detected') }}</span>
-                <button type="button" :disabled="antigravityLoading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'antigravity')">{{ t('auth.customize') }}</button>
+                <button v-if="canCustomize('antigravity')" type="button" :disabled="antigravityLoading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'antigravity')">{{ t('auth.customize') }}</button>
               </template>
             </div>
           </div>
@@ -89,7 +89,7 @@
               {{ t(cursorConnected ? (cursorEnabled ? 'cursor.connected' : 'cursor.enable') : 'cursor.connect') }}
             </el-button>
             <div class="codex-login__detection">
-              <ProviderInstallActions v-if="missing('cursor')" backend="cursor" :busy="updatingProvider === 'cursor'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'cursor')" @install="emit('install-provider', 'cursor')" />
+              <ProviderInstallActions v-if="missing('cursor')" backend="cursor" :capabilities="setupCapabilities('cursor')" :busy="updatingProvider === 'cursor'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'cursor')" @install="emit('install-provider', 'cursor')" />
               <button v-else-if="cursorPending" class="codex-login__cancel" type="button" @click="emit('cancel-cursor')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'cursor' || cursorLoading" role="status">{{ t('auth.checking') }}</span>
@@ -120,6 +120,7 @@ import ProviderInstallActions from './ProviderInstallActions.vue';
 import { CheckIcon } from '../shared/icons/app-icons';
 import type { AgentBackend } from '@workspace/core/contracts';
 import type { ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 
 const appIconUrl = new URL('../../assets/icon.png', import.meta.url).href;
 
@@ -161,6 +162,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ cancel: []; login: []; 'connect-claude': []; 'connect-cursor': []; 'cancel-cursor': []; 'connect-antigravity': []; 'cancel-antigravity': []; continue: []; customize: [backend: AgentBackend]; 'refresh-provider': [backend: AgentBackend]; 'install-provider': [backend: AgentBackend] }>();
 const { t } = useI18n();
 const detected = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && setup.installed);
+const setupCapabilities = (backend: AgentBackend) => resolveProviderSetupCapabilities(backend, props.providerSetup?.find(setup => setup.backend === backend)?.capabilities);
+const canCustomize = (backend: AgentBackend) => { const policy = setupCapabilities(backend); return policy.homeSelection || policy.skillSharing; };
 const cursorAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'cursor') ?? false);
 const antigravityAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'antigravity') ?? false);
 const missing = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && !setup.installed);

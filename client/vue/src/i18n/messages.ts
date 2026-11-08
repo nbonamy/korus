@@ -1064,6 +1064,7 @@ export const messages = {
       notDetected: 'Not detected',
       checkAgain: 'Check again',
       installProvider: 'Install',
+      installNamedProvider: 'Install {provider}',
       saveSetup: 'Save',
       settingUp: 'Setting up…',
       connectingTitle: 'Getting your workspace ready.',

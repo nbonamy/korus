@@ -41,6 +41,8 @@
         <SettingsPersonalizationPanel v-else-if="activeTab === 'personalization'" />
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'codex')?.capabilities"
+          @install="installProvider?.('codex')"
           :connected="codexConnected"
           :remote-connection-id="remoteConnectionId"
           :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
@@ -59,6 +61,8 @@
         />
         <SettingsCursorPanel
           v-else-if="activeTab === 'cursor'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'cursor')?.capabilities"
+          @install="installProvider?.('cursor')"
           :installed="providerConnections?.find(engine => engine.backend === 'cursor')?.installed ?? false"
           :connected="providerConnections?.some(engine => engine.backend === 'cursor' && engine.connected)"
           :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
@@ -77,6 +81,7 @@
         />
         <SettingsAntigravityPanel
           v-else-if="activeTab === 'antigravity'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'antigravity')?.capabilities"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
           @install="installProvider?.('antigravity')"
@@ -95,6 +100,8 @@
         />
         <SettingsClaudeCodePanel
           v-else-if="activeTab === 'claude-code'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'claude')?.capabilities"
+          @install="installProvider?.('claude')"
           :connected="claudeConnected"
           :installed="providerConnections?.find(engine => engine.backend === 'claude')?.installed ?? false"
           @refresh="refreshProvider?.('claude')"
@@ -190,7 +197,7 @@ import SettingsSkillsPanel from './SettingsSkillsPanel.vue';
 import SettingsSidebar from './SettingsSidebar.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
-import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
+import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import type { AgentBackend } from '@workspace/core/contracts';
 import { appHostCapabilities } from '../platform-api';
 import appPackage from '../../package.json';
@@ -201,6 +208,7 @@ const props = withDefaults(defineProps<{
   codexConnected?: boolean;
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
+  providerSetup?: ProviderSetupStatus[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
   installProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;

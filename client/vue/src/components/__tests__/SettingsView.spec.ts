@@ -10,6 +10,27 @@ import { setElectronTestClient } from '../../test/client';
 import { curatedSkills, type SkillManagerState } from '@workspace/core/skill-manager';
 
 describe('SettingsView', () => {
+  it('applies provider setup capabilities to settings without provider-specific customization rules', async () => {
+    const customizeProvider = vi.fn();
+    const installProvider = vi.fn();
+    const setup = { backend: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
+      capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: true } } };
+    const wrapper = mount(SettingsView, { props: { activeTab: 'claude-code', settings: defaultThemeSettings,
+      generalSettings: defaultGeneralSettings, claudeConnected: true, providerSetup: [setup], customizeProvider, installProvider,
+      providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }],
+    } });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('Customize');
+    await wrapper.setProps({ providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, homeSelection: true } }] });
+    await wrapper.findAll('button').find(button => button.text() === 'Customize')!.trigger('click');
+    expect(customizeProvider).toHaveBeenCalledExactlyOnceWith('claude');
+    await wrapper.setProps({ providerConnections: [{ backend: 'claude', installed: false, connected: false, checking: false }],
+      providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, installation: { managed: true } } }] });
+    await wrapper.get('[aria-label="Install Claude Code"]').trigger('click');
+    expect(installProvider).toHaveBeenCalledExactlyOnceWith('claude');
+    wrapper.unmount();
+  });
+
   it('shows Cursor authentication separately from enablement and offers no home customization', async () => {
     const setProviderEnabled = vi.fn().mockResolvedValue(undefined);
     const connectCursor = vi.fn().mockResolvedValue(undefined);

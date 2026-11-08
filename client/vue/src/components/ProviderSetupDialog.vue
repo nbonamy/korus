@@ -7,19 +7,21 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <div v-else class="app-form-dialog">
-      <FormField :label="t('auth.conversations')" :help="setup?.backend === 'cursor' ? setup.homePath : t('auth.separateExplanation')">
-        <el-radio-group v-if="setup?.backend !== 'cursor'" v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
-          <el-radio :value="false">{{ t('auth.existingSetup') }}</el-radio>
-          <el-radio :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
-          <el-checkbox v-if="isolated" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
-        </el-radio-group>
+      <FormField :label="t('auth.conversations')" :help="capabilities?.homeSelection ? t('auth.separateExplanation') : setup?.homePath">
+        <div class="provider-setup__choices">
+          <el-radio-group v-if="capabilities?.homeSelection" v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
+            <el-radio :value="false">{{ t('auth.existingSetup') }}</el-radio>
+            <el-radio :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
+          </el-radio-group>
+          <el-checkbox v-if="isolated && capabilities?.skillSharing" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
+        </div>
       </FormField>
       <p v-if="setup?.locked && !allowReset">{{ t('auth.setupLocked') }}</p>
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">{{ t(confirming ? 'common.cancel' : 'surface.remoteClaudeAuth.close') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || setup?.backend === 'cursor' || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
+      <button class="app-button app-button--primary" type="button" :disabled="busy || !configurable || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
     </template>
   </FormDialog>
 </template>
@@ -29,11 +31,14 @@ import { computed, ref, watch } from 'vue';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { useI18n } from 'vue-i18n';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
 const props = defineProps<{ setup: ProviderSetupStatus | null; busy: boolean; error: string | null; allowReset?: boolean }>();
 const providerName = computed(() => props.setup ? backendDisplayName(props.setup.backend) : '');
+const capabilities = computed(() => props.setup ? resolveProviderSetupCapabilities(props.setup.backend, props.setup.capabilities) : undefined);
+const configurable = computed(() => capabilities.value?.homeSelection || capabilities.value?.skillSharing);
 const emit = defineEmits<{ close: []; save: [choice: ProviderSetupChange] }>();
 const { t } = useI18n();
 const isolated = ref(true);
@@ -42,12 +47,12 @@ const confirming = ref(false);
 const acknowledged = ref(false);
 watch(() => props.setup, setup => {
   isolated.value = setup?.isolated ?? true;
-  shareSkills.value = setup?.backend === 'cursor' ? false : setup?.shareSkills ?? true;
+  shareSkills.value = setup?.shareSkills ?? true;
   confirming.value = false;
   acknowledged.value = false;
 }, { immediate: true });
 function save() {
-  if (props.busy || props.setup?.backend === 'cursor') return;
+  if (props.busy || !props.setup || !configurable.value) return;
   const changesHome = props.setup && isolated.value !== props.setup.isolated;
   if (changesHome && props.setup?.locked && props.allowReset) {
     if (!confirming.value) { confirming.value = true; return; }

@@ -1,13 +1,13 @@
 <template>
   <span class="provider-install-actions">
-    <code v-if="backend === 'cursor'">{{ cursorInstallCommand }}</code>
-    <button v-if="backend !== 'cursor' && (automated || backend === 'antigravity')" type="button" :aria-label="backend === 'antigravity' ? $t('antigravity.install') : $t('auth.installProvider')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+    <code v-if="installation.command">{{ installation.command }}</code>
+    <button v-if="installation.managed" type="button" :aria-label="$t('auth.installNamedProvider', { provider: backendDisplayName(backend) })" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
       <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
       {{ $t('auth.installProvider') }}
     </button>
-    <a v-else :href="url" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(url)">{{ $t('auth.installProvider') }}</a>
-    <button v-if="backend !== 'antigravity' || !busy" type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
-      <ElIcon :size="12" :class="{ 'is-loading': busy && backend !== 'antigravity' }" aria-hidden="true"><RefreshIcon /></ElIcon>
+    <a v-else-if="installation.instructionsUrl" :href="installation.instructionsUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(installation.instructionsUrl!)">{{ $t('auth.installProvider') }}</a>
+    <button v-if="!installation.managed || !busy" type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
+      <ElIcon :size="12" :class="{ 'is-loading': busy }" aria-hidden="true"><RefreshIcon /></ElIcon>
     </button>
   </span>
 </template>
@@ -16,15 +16,14 @@
 import { computed } from 'vue';
 import { ElIcon } from 'element-plus';
 import type { AgentBackend } from '@workspace/core/contracts';
+import { backendDisplayName } from '@workspace/core/backend-driver';
+import { resolveProviderSetupCapabilities, type ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { appPlatformActions } from '../platform-api';
 import { RefreshIcon } from '../shared/icons/app-icons';
 
-const cursorInstallCommand = 'curl https://cursor.com/install -fsS | bash';
-const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean; automated?: boolean }>();
+const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean; automated?: boolean; capabilities?: ProviderSetupCapabilities }>();
 const emit = defineEmits<{ refresh: []; install: [] }>();
-const url = computed(() => props.backend === 'cursor' ? 'https://cursor.com/docs/cli/installation' : props.backend === 'codex'
-  ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started'
-  : 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code');
+const installation = computed(() => resolveProviderSetupCapabilities(props.backend, props.capabilities, props.automated).installation);
 </script>
 
 <style scoped>

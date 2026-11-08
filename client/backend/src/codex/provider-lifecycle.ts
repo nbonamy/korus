@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,7 @@ export function createCodexLifecycle(): ProviderLifecycle {
   const paths = providerHomePaths('codex', process.env.CODEX_HOME);
   const resources = (homePath: string) => ({ appCodexHome: homePath, userCodexHome: paths.existing });
   return {
+    capabilities: resolveProviderSetupCapabilities('codex'),
     skillDirectories: home => [path.join(home.homePath, 'skills')],
     skillDiscoveryDirectories: () => [path.join(homedir(), '.agents', 'skills')],
     home(snapshot, choice) {

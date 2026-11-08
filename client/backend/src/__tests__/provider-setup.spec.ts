@@ -70,6 +70,24 @@ function addRosterLinks(snapshot: import('@workspace/core/contracts').AppSnapsho
 }
 
 describe('provider onboarding setup', () => {
+  it('publishes setup/install policy over RPC and preserves a saved private Cursor home', async () => {
+    const snapshot = createTestSnapshot();
+    const saved = { isolated: true, shareSkills: false, homePath: path.join(root, 'saved-cursor') };
+    snapshot.general.providerHomes = { cursor: saved };
+    const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), vi.fn());
+    await setup.initialize();
+    const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
+    try {
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/setup/get' })).toMatchObject({ result: expect.arrayContaining([
+        expect.objectContaining({ backend: 'cursor', ...saved, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } }),
+        expect.objectContaining({ backend: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: true } } }),
+      ]) });
+      await expect(setup.configure('cursor', { isolated: false, shareSkills: false })).rejects.toThrow('setup');
+      expect((await loadBackendSnapshot()).general.providerHomes?.cursor).toEqual(saved);
+      await expect(setup.configure('cursor', { isolated: true, shareSkills: false })).rejects.toThrow('separate setup');
+      await expect(setup.install('cursor')).rejects.toThrow('official instructions');
+    } finally { await server.close(); }
+  });
   it('reuses CLI homes by default and preserves an explicit isolated choice across restart', async () => {
     const snapshot = createTestSnapshot();
     const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), vi.fn());
@@ -287,7 +305,8 @@ describe('provider onboarding setup', () => {
     const reconnect = vi.fn();
     const setup = new ProviderSetup(snapshot, vi.fn(), reconnect, new Map([['claude', lifecycle]]));
     await setup.initialize();
-    expect(setup.list()).toEqual([{ backend: 'claude', installed: false, locked: false, affectedAgentIds: [], homePath: '/engine-owned/home', isolated: true, shareSkills: false }]);
+    expect(setup.list()).toEqual([{ backend: 'claude', installed: false, locked: false, affectedAgentIds: [], homePath: '/engine-owned/home', isolated: true, shareSkills: false,
+      capabilities: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code' } } }]);
     const clearedBefore = cli.cacheCleared;
     expect(await setup.refresh('claude')).toMatchObject({ installed: false });
     expect(cli.cacheCleared).toBe(clearedBefore + 1); // a refresh asks the shell afresh

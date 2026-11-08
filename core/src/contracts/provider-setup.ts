@@ -63,9 +63,37 @@ export type ProviderSetupChoice = { isolated: boolean; shareSkills: boolean };
 /** Destructive setup changes must name the exact local roster shown in the confirmation. */
 export type ProviderSetupChange = ProviderSetupChoice & { removeAgentIds?: string[] };
 export type ProviderHomeSettings = ProviderSetupChoice & { homePath: string };
+/** App-owned setup policy; provider-native objects never enter setup controls. */
+export type ProviderSetupCapabilities = {
+  homeSelection: boolean;
+  skillSharing: boolean;
+  installation: {
+    managed: boolean;
+    /** A remote controller may supply its own installer, separately from the local lifecycle. */
+    allowControllerInstall?: boolean;
+    instructionsUrl?: string;
+    command?: string;
+  };
+};
+
+/** Static registration also preserves setup behavior with older daemons lacking metadata. */
+const providerSetupDefaults: Record<AgentBackend, ProviderSetupCapabilities> = {
+  codex: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://learn.chatgpt.com/docs/codex/cli#getting-started' } },
+  claude: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code' } },
+  antigravity: { homeSelection: true, skillSharing: true, installation: { managed: true } },
+  cursor: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } },
+};
+
+export function resolveProviderSetupCapabilities(backend: AgentBackend, observed?: ProviderSetupCapabilities, automated = false): ProviderSetupCapabilities {
+  const policy = observed ?? providerSetupDefaults[backend];
+  return { ...policy, installation: { ...policy.installation, managed: policy.installation.managed || (automated && policy.installation.allowControllerInstall === true) } };
+}
+
 export type ProviderSetupStatus = ProviderHomeSettings & {
   backend: AgentBackend;
   installed: boolean;
   locked: boolean;
   affectedAgentIds?: string[];
+  /** Absent on older daemons; use the registered compatibility defaults. */
+  capabilities?: ProviderSetupCapabilities;
 };

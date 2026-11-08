@@ -13,6 +13,20 @@ function mountLanding(props: InstanceType<typeof CodexLoginLanding>['$props'] = 
 }
 
 describe('CodexLoginLanding', () => {
+  it('uses provider setup policy for onboarding customization', async () => {
+    const setup = { backend: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
+      capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: true } } };
+    const wrapper = mountLanding({ providerSetup: [setup] });
+    expect(wrapper.findAll('button').some(button => button.text() === 'Customize')).toBe(false);
+    await wrapper.setProps({ providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, homeSelection: true } }] });
+    await wrapper.findAll('button').find(button => button.text() === 'Customize')!.trigger('click');
+    expect(wrapper.emitted('customize')).toStrictEqual([['claude']]);
+    await wrapper.setProps({ providerSetup: [{ ...setup, installed: false, capabilities: { ...setup.capabilities, installation: { managed: true } } }] });
+    await wrapper.get('[aria-label="Install Claude Code"]').trigger('click');
+    expect(wrapper.emitted('install-provider')).toStrictEqual([['claude']]);
+    wrapper.unmount();
+  });
+
   it('offers Cursor browser login and keeps the enabled state separate when continuing', async () => {
     const wrapper = mountLanding({ cursorConnected: false, cursorEnabled: false, providerSetup: [
       { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },

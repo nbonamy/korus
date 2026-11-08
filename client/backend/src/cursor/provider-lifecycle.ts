@@ -1,4 +1,5 @@
 import type { ProviderLifecycle } from '../provider-lifecycle';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { cursorHome, resolveCursorExecutable } from './runtime';
 
 export function createCursorLifecycle(): ProviderLifecycle {
@@ -7,6 +8,7 @@ export function createCursorLifecycle(): ProviderLifecycle {
     if (choice.shareSkills) throw new Error('Cursor skill sharing is not supported.');
   };
   return {
+    capabilities: resolveProviderSetupCapabilities('cursor'),
     validateChoice,
     home: (_snapshot, choice) => {
       if (choice) validateChoice(choice);
