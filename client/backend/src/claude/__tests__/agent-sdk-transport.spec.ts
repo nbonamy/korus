@@ -296,6 +296,32 @@ describe('ClaudeAgentSdkTransport', () => {
     } finally { await transport.close(); }
   });
 
+  it('names a new session so Claude skips its own title request, and leaves resumed sessions alone', async () => {
+    const harness = createQueryHarness();
+    const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+    const params = { cwd: '/tmp/project', prompt: 'hello', title: 'Release notes' };
+    let sessionId = '';
+    try {
+      const first = transport.startTurn(params, () => undefined);
+      await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+      sessionId = harness.options[0]!.sessionId as string;
+      expect(harness.options[0]).toMatchObject({ title: 'Release notes' });
+      harness.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+      await first.done;
+    } finally { await transport.close(); }
+    // A later process resumes the stored session; its persisted title wins.
+    const resumedHarness = createQueryHarness();
+    const resumed = new ClaudeAgentSdkTransport({ createQuery: resumedHarness.createQuery });
+    try {
+      const turn = resumed.startTurn({ ...params, sessionId, prompt: 'again' }, () => undefined);
+      await vi.waitFor(() => expect(resumedHarness.inputs).toHaveLength(1));
+      expect(resumedHarness.options[0]).toMatchObject({ resume: sessionId });
+      expect(resumedHarness.options[0]).not.toHaveProperty('title');
+      resumedHarness.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+      await turn.done;
+    } finally { await resumed.close(); }
+  });
+
   it.each(['cli', 'sdk-cli', 'sdk-ts', 'custom-launcher'])('attributes resumed sessions from a %s parent', async entrypoint => {
     const harness = createQueryHarness();
     const env = { PATH: '/usr/local/bin', CLAUDE_CODE_ENTRYPOINT: entrypoint };

@@ -721,7 +721,7 @@ function claudeQueryOptions(
     ...(params.effort ? { effort: params.effort } : {}),
     ...(permissionMode ? { permissionMode } : {}),
     ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
-    ...(resumeSessionId ? { resume: resumeSessionId } : { sessionId }),
+    ...(resumeSessionId ? { resume: resumeSessionId } : { sessionId, ...(params.title ? { title: params.title } : {}) }),
     ...(params.mcpServerUrl || Object.keys(params.hostedMcpServerUrls ?? {}).length > 0
       ? {
           mcpServers: {
