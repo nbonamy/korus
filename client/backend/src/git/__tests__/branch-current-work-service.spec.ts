@@ -26,21 +26,34 @@ import type { Agent } from '@workspace/core/contracts';
 const exec = promisify(execFile);
 const roots: string[] = [];
 afterEach(async () => { indexLock.busy = 0; await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function fixture() {
+async function fixture(purpose: 'transfer' | 'initialization' = 'transfer') {
   const root = await mkdtemp(join(tmpdir(), 'korus-branch-test-')); roots.push(root);
   const source = join(root, 'source');
   await exec('git', ['init', '-b', 'main', source]);
   const git = async (...args: string[]) => (await exec('git', args, { cwd: source })).stdout.trim();
   await git('config', 'user.name', 'Branch Tester'); await git('config', 'user.email', 'branch@example.test');
-  for (const file of ['staged', 'mixed', 'deleted', 'other']) await writeFile(join(source, file), 'original\n');
+  const mixed = purpose === 'initialization' ? 'package.json' : 'mixed';
+  const content = (state: string) => purpose === 'initialization'
+    ? JSON.stringify({ name: 'fixture', private: true, description: state }) + '\n' : state + '\n';
+  for (const file of purpose === 'initialization' ? [mixed] : ['staged', 'mixed', 'deleted', 'other']) {
+    await writeFile(join(source, file), content('original'));
+  }
   await writeFile(join(source, '.gitignore'), 'ignored\n');
   await git('add', '.'); await git('commit', '-m', 'initial');
   const head = await git('rev-parse', 'HEAD');
-  await writeFile(join(source, 'staged'), 'staged\n'); await writeFile(join(source, 'mixed'), 'indexed\n');
-  await git('add', 'staged', 'mixed'); await writeFile(join(source, 'mixed'), 'final\n');
-  await rm(join(source, 'deleted')); await writeFile(join(source, 'other'), 'unrelated\n');
-  await writeFile(join(source, 'new file'), 'new\n'); await writeFile(join(source, 'ignored'), 'ignored\n');
+  await writeFile(join(source, mixed), content('indexed'));
+  if (purpose === 'transfer') {
+    await writeFile(join(source, 'staged'), 'staged\n');
+    await rm(join(source, 'deleted')); await writeFile(join(source, 'other'), 'unrelated\n');
+    await writeFile(join(source, 'new file'), 'new\n');
+  }
+  await git('add', ...(purpose === 'transfer' ? ['staged', mixed] : [mixed]));
+  await writeFile(join(source, mixed), content('final'));
+  await writeFile(join(source, 'ignored'), 'ignored\n');
   await writeFile(join(source, '.env'), 'synthetic-secret\n');
+  if (purpose === 'initialization') {
+    await writeFile(join(source, '.git', 'info', 'exclude'), '.env\n');
+  }
   const agent = { id: 'parent', folder: source } as Agent;
   const provision = vi.fn(async (_agent: Agent, _input: BranchWorkInput, _folder: string, _agentId: string) => undefined);
   const progress = vi.fn();
@@ -53,11 +66,10 @@ async function fixture() {
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
 describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
   it.each(['automatic', 'off', 'setup failure'] as const)('initializes an isolated branch through the configured runtime after transfer: %s', async scenario => {
-    const f = await fixture();
-    // An ignored environment file is not part of the captured Git changes.
-    await writeFile(join(f.source, '.git', 'info', 'exclude'), '.env\n');
-    await writeFile(join(f.source, 'package.json'), '{"name":"fixture","private":true}');
-    const input = { ...f.input, snapshotId: (await f.service.preview(f.source)).snapshotId };
+    // The manifest itself carries both staged and unstaged edits, alongside an
+    // ignored environment file. Transfer tests own the larger file-type matrix.
+    const f = await fixture('initialization');
+    const input = f.input;
     const staged = await f.git('diff', '--cached', '--binary');
     const unstaged = await f.git('diff', '--binary');
     const snapshot = createInitialSnapshot();
@@ -67,7 +79,9 @@ describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
     snapshot.general.worktreeInitializationMode = scenario === 'off' ? 'off' : 'automatic';
     const runCommand = vi.fn<NonNullable<WorktreeManagerOptions['runCommand']>>(async (_command, _args, options) => {
       expect(await f.git('status', '--porcelain')).toBe('');
-      expect(await readFile(join(options.cwd, 'package.json'), 'utf8')).toContain('fixture');
+      const manifest = await readFile(join(options.cwd, 'package.json'), 'utf8');
+      expect(manifest).toContain('fixture');
+      expect(JSON.parse(manifest).description).toBe('final');
       if (scenario === 'setup failure') throw new Error('setup failed');
       return {};
     });
