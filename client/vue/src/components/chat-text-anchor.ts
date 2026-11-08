@@ -3,12 +3,12 @@ import type { ChatTextSelection } from './use-chat-text-annotations';
 // The text slot is owned by Korus; SDK markup and message DOM are not inspected.
 export function captureChatTextAnchor(selection: ChatTextSelection | null): ChatTextSelection | null {
   const current = window.getSelection();
-  if (!selection || !current?.rangeCount) return selection;
+  if (!selection || !current?.rangeCount) return null;
   const range = current.getRangeAt(0);
   const element = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
   const content = element?.closest<HTMLElement>('[data-chat-annotation-content]');
   const block = content?.parentElement;
-  if (!content || !block || !content.contains(range.endContainer)) return selection;
+  if (!content || !block || !content.contains(range.endContainer)) return null;
   const prefix = document.createRange();
   prefix.selectNodeContents(content);
   prefix.setEnd(range.startContainer, range.startOffset);

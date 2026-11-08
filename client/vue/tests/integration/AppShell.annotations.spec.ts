@@ -134,9 +134,24 @@ async function saveSelectionComment(
   nextSelection: CodexMessageTextSelection,
   comment: string,
 ): Promise<void> {
+  const block = document.createElement('div');
+  block.dataset.chatAnnotationMessage = nextSelection.messageId ?? String(nextSelection.messageIndex);
+  const content = document.createElement('div');
+  content.dataset.chatAnnotationContent = '';
+  content.textContent = nextSelection.text;
+  block.append(content);
+  const host = document.createElement('div');
+  host.className = 'conversation-pane';
+  host.append(block);
+  document.body.append(host);
+  const range = document.createRange();
+  range.selectNodeContents(content);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
   wrapper.getComponent({ name: 'CodexConversationPane' }).vm
     .$emit('messageTextSelectionChange', nextSelection);
   await nextTick();
+  host.remove();
   await wrapper.get('.chat-text-selection-annotation__add').trigger('click');
   const input = document.querySelector<HTMLInputElement>('.annotation-popup__input');
   const form = document.querySelector<HTMLFormElement>('form.annotation-popup');

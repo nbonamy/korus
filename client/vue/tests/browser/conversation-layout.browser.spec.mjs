@@ -113,6 +113,25 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
       });
     };
     await selectPassage(passage);
+    await page.getByRole('button', { name: 'Annotate', exact: true }).waitFor();
+    // The SDK permits a selection elsewhere in the same message; it must not
+    // offer an annotation that cannot be located in a text block.
+    await passage.evaluate(element => {
+      const entry = element.closest('[data-codex-message-index]');
+      const extra = document.createElement('span');
+      extra.textContent = 'Reasoning outside the text block';
+      entry.append(extra);
+      const range = document.createRange();
+      range.selectNodeContents(extra);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      extra.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.locator('.chat-text-selection-annotation__add').count(), 0);
+    await selectPassage(passage);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await page.getByRole('button', { name: 'Annotate', exact: true }).click();
     await page.locator('.annotation-popup__input').fill('Add a bounded retry.');
     await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
