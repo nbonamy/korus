@@ -368,9 +368,9 @@ describe('daemon runtime', () => {
     };
     const replacement = { backend, onEvent: () => () => {}, loadConversation: vi.fn(async () => { events.push('restored'); }) };
     const claude = { backend: 'claude', onEvent: () => () => {}, close: vi.fn() };
-    const installation = { executable: '/test/codex', version: backend === 'codex' ? '1.0.0' : '2026.11.04-old', latestVersion: backend === 'codex' ? '1.1.0' : '2026.11.05-new', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
+    const installation = { status: 'available' as 'available' | 'current', executable: '/test/codex', version: backend === 'codex' ? '1.0.0' : '2026.11.04-old', latestVersion: backend === 'codex' ? '1.1.0' : '2026.11.05-new', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
     const inspect = vi.spyOn(ProviderUpdateRuntime.prototype, 'inspect').mockImplementation(async () => installation);
-    const upgrade = vi.spyOn(ProviderUpdateRuntime.prototype, 'upgrade').mockImplementation(async () => { events.push('upgraded'); installation.version = installation.latestVersion; });
+    const upgrade = vi.spyOn(ProviderUpdateRuntime.prototype, 'upgrade').mockImplementation(async () => { events.push('upgraded'); installation.version = installation.latestVersion; installation.status = 'current'; });
     mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
     mocks.useRealDriverRpc = true;
     mocks.drivers.clear();
