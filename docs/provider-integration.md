@@ -15,6 +15,7 @@ are an admission boundary, not acceptance evidence.
 
 | Check | Provider mechanism and acceptance boundary |
 | --- | --- |
+| [ ] Registration and policy | Declare driver coordination policy, lifecycle setup/install capabilities, normalized update inspection and renderer cache/presentation binding. Shared coordinators and controls consume these contracts rather than provider-name exceptions; prove policy with another registered provider fixture. |
 | [ ] Runtime and authentication | Discovery, supported versions, explicit login/logout/cancel, account changes, updates and cleanup; no silent installation or account switching. |
 | [ ] Instructions and MCP | Deliver app instructions and per-agent scoped app/hosted MCP endpoints; concurrent sessions cannot borrow another agent's identity. Qualify preapproval separately from connectivity. |
 | [ ] Execution lifecycle | Stream and serialize turns; interrupt settles execution and pending requests before another turn starts. Steering changes the active turn only when supported; queueing or interrupt-and-resend is not native steering. |

@@ -28,10 +28,21 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 - Provider setup follows the same split: `ProviderLifecycle` adapters own
   executable detection, home preparation and resource sharing;
   `ProviderSetup` owns locking, serialization, persistence and driver replacement.
+  Setup capabilities describe mutable home/skill choices and installation policy.
+  A controller-provided installer needs an explicit grant; local installation
+  support alone does not grant remote installation. Shared controls consume this
+  policy, with registered compatibility defaults for older daemons.
   Authentication enters through the optional `AgentBackendDriver.authenticate`
   capability; the server caches the app-owned result and never interprets
-  credentials or probes provider CLIs itself.
-- Provider updates are backend-owned, per installation and host. Version checks
+  credentials or probes provider CLIs itself. `AgentBackendDriver.coordinationPolicy`
+  declares authentication freshness and enablement, permission-default scope and
+  rollback storage semantics. Shared coordination follows resolved policy rather
+  than provider names. Settings changes refresh published capabilities from live
+  drivers without starting providers.
+- Provider updates are backend-owned, per installation and host. Registered
+  inspection adapters own native version comparison, installation identity,
+  environment selection and upgrade execution; the coordinator consumes normalized
+  installation status and never interprets native version formats. Version checks
   never install software; explicit consent is tied to a checked installation and
   target version. Waiting upgrades are process-local and cancellable. The runtime
   scheduler starts them only when the provider is idle; admission is blocked while
@@ -53,6 +64,10 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 - Queued prompt delivery removes an item only after backend acceptance; transport
   failure keeps the FIFO head and retries with bounded backoff, without duplicate
   user messages.
+- Plan review delivery follows app-owned request identity, not provider identity.
+  A request-backed decision settles the registered live request; its approval
+  authority is process-local and is invalidated on restore. Saved plan content and
+  feedback remain available. Prompt-backed reviews use the shared follow-up workflow.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
 - Short text utilities use `driver/text/generate` with the initiating agent's
