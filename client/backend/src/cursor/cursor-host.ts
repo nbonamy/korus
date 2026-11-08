@@ -47,7 +47,7 @@ export class CursorHost implements AgentBackendDriver {
   private readonly runtime;
   private readonly authentication;
   constructor(private readonly options: BackendDriverRegistryOptions = {}) {
-    this.runtime = cursorRuntime(options.generalSettings?.providerHomes?.cursor);
+    this.runtime = cursorRuntime(this.generalSettings()?.providerHomes?.cursor);
     this.authentication = new CursorAuthentication(payload => {
       const identity = JSON.stringify([payload.connected,payload.state.account?.email ?? null,payload.state.team ?? null]);
       if (this.observedIdentity !== undefined && identity !== this.observedIdentity) {
@@ -72,7 +72,8 @@ export class CursorHost implements AgentBackendDriver {
     const live = [...this.sessions.values()].some(session => !session.isClosed);
     return { backend: this.backend, status: !resolveCursorExecutable() ? 'notConfigured' as const : live ? 'running' as const : this.sessions.size ? 'error' as const : 'starting' as const, capabilities: this.getCapabilities() };
   }
-  getCapabilities() { return { ...cursorBackendCapabilities, steerPrompt: this.options.cursorSteeringFallbackEnabled?.() === true }; }
+  private generalSettings() { return this.options.getGeneralSettings?.() ?? this.options.generalSettings; }
+  getCapabilities() { return { ...cursorBackendCapabilities, steerPrompt: this.generalSettings()?.cursorSteeringFallbackEnabled === true }; }
   getAccountRateLimits() { return getCursorAccountUsage(this.runtime); }
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }

@@ -18,6 +18,7 @@ import { AutoResumeService } from './agents/auto-resume-service';
 import { previewRepositoryDeletion, removeRepositoryFolders } from './repository-deletion';
 import { BrowserExtensionPackages } from './browser-extension-packages';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -3320,11 +3321,14 @@ export class AppBackendServer {
         if (policy.general && 'providerHomes' in policy.general) throw new Error('Provider homes must be changed through provider setup.');
         if (Object.keys(preferences).length) throw new Error('Presentation settings must use client/preferences/update.');
         updateSettingsInSnapshot(this.snapshot, policy);
-        if (policy.general?.cursorSteeringFallbackEnabled !== undefined && this.driverRpc) {
-          const runtime = this.snapshot.backendRuntimes.find(runtime => runtime.backend === 'cursor');
-          const agent = this.snapshot.agents.find(agent => agent.backend === 'cursor' && !this.remoteTeams.connectionIdForAgent(agent));
-          if (runtime && agent) this.applyAndEmitBackendEvent({ type: 'backend.statusChanged', backend: 'cursor',
-            payload: { ...runtime, capabilities: this.driverRpc.getCapabilities(agent) } });
+        if (policy.general && this.driverRpc) {
+          for (const runtime of this.snapshot.backendRuntimes) {
+            const agent = this.snapshot.agents.find(agent => agent.backend === runtime.backend && !this.remoteTeams.connectionIdForAgent(agent));
+            if (!agent) continue;
+            const capabilities = this.driverRpc.getCapabilities(agent);
+            if (!isDeepStrictEqual(runtime.capabilities, capabilities)) this.applyAndEmitBackendEvent({ type: 'backend.statusChanged', backend: runtime.backend,
+              payload: { ...runtime, capabilities } });
+          }
         }
         if (policy.general?.providerEnabled) this.providerConnections?.updateEnabled();
         if (policy.general?.codexBinaryPath !== undefined) {

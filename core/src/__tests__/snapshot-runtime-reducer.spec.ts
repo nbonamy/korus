@@ -31,6 +31,8 @@ describe('snapshot runtime reducer', () => {
         status: 'running',
         detail: 'connected',
         capabilities: {
+          nativeMonitor: true,
+          codeReview: false,
           approvalPresets: ['ask-for-approval', 'not-a-preset'],
           permissionModes: [
             { id: 'default', label: 'Default', description: 'Ask when needed.' },
@@ -50,6 +52,8 @@ describe('snapshot runtime reducer', () => {
       status: 'running',
       detail: 'connected',
       capabilities: {
+        nativeMonitor: true,
+        codeReview: false,
         approvalPresets: ['ask-for-approval'],
         permissionModes: [{ id: 'default', label: 'Default', description: 'Ask when needed.' }],
         conversationFork: true,

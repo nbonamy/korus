@@ -506,12 +506,13 @@ describe('daemon runtime', () => {
       generalSettings: mocks.snapshot.general,
       pluginSettings: expect.any(Function),
     }));
-    const steeringOptions = mocks.createDefaultBackendDrivers.mock.calls[0]![0] as import('../driver-rpc').BackendDriverRegistryOptions;
-    expect(steeringOptions.cursorSteeringFallbackEnabled!()).toBe(false);
+    const liveSettingsOptions = mocks.createDefaultBackendDrivers.mock.calls[0]![0] as import('../driver-rpc').BackendDriverRegistryOptions;
+    expect(liveSettingsOptions.getGeneralSettings!().cursorSteeringFallbackEnabled === true).toBe(false);
     mocks.snapshot.general = { ...mocks.snapshot.general, cursorSteeringFallbackEnabled: true };
-    expect(steeringOptions.cursorSteeringFallbackEnabled!()).toBe(true);
+    expect(liveSettingsOptions.getGeneralSettings!()).toBe(mocks.snapshot.general);
+    expect(liveSettingsOptions.getGeneralSettings!().cursorSteeringFallbackEnabled === true).toBe(true);
     mocks.snapshot.general = { ...mocks.snapshot.general, cursorSteeringFallbackEnabled: false };
-    expect(steeringOptions.cursorSteeringFallbackEnabled!()).toBe(false);
+    expect(liveSettingsOptions.getGeneralSettings!().cursorSteeringFallbackEnabled === true).toBe(false);
     expect(mocks.hydrateConnections).toHaveBeenCalledOnce();
     expect(mocks.schedulerStart).toHaveBeenCalledOnce();
     expect(mocks.schedulerTasks).toEqual([

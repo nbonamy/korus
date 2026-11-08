@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { companionSessionId } from '@workspace/core/companion-protocol';
+import { defaultGeneralSettings } from '@workspace/core/settings';
 import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
 import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
@@ -30,7 +31,7 @@ beforeEach(async () => {
   await writeFile(path.join(root, 'version'), '2026.11.05-86047df');
   agent = { ...createInitialSnapshot().agents[0]!, id: 'steering', backend: 'cursor', backendDefaults: { kind: 'cursor' }, backendSession: undefined, folder: root };
   enabled = undefined; events = []; preflight.mockReset();
-  host = createBackendDriver('cursor', { cursorSteeringFallbackEnabled: () => enabled === true });
+  host = createBackendDriver('cursor', { getGeneralSettings: () => ({ ...defaultGeneralSettings, cursorSteeringFallbackEnabled: enabled }) });
   host.onEvent(event => events.push(event));
   rpc = new BackendDriverRpc(new Map([['cursor', host]]), undefined, preflight);
 });
@@ -48,6 +49,13 @@ async function start() {
 const steer = (options?: unknown) => rpc.handle('driver/prompt/steer', { agent, prompt: 'Correction', expectedSessionId: companionSessionId(agent), options }) as Promise<BackendSendResult>;
 
 describe('opt-in Cursor interrupt-and-resend steering', () => {
+  it('uses construction settings when no live general-settings getter is supplied', async () => {
+    await rpc.close();
+    host = createBackendDriver('cursor', { generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: true } });
+    rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    expect(rpc.getCapabilities(agent).steerPrompt).toBe(true);
+    expect(await wire()).toStrictEqual([]);
+  });
   it.each([undefined, false])('rejects disabled steering before preflight or native work (enabled=%s)', async value => {
     enabled = value;
     if (value === undefined) {

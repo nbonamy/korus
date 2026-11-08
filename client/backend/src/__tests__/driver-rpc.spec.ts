@@ -260,6 +260,7 @@ describe('BackendDriverRpc', () => {
   });
   it('uses the selected Codex home and replaces only the configured provider driver', async () => {
     expect(appSurfaceOptions({ generalSettings: { ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/existing/codex' } } } }).codexHome).toBe('/existing/codex');
+    expect(appSurfaceOptions({ getGeneralSettings: () => ({ ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/getter/codex' } } }) }).codexHome).toBe('/getter/codex');
     const unsubscribe = vi.fn();
     const previous = createDriver({ onEvent: vi.fn(() => unsubscribe) });
     const next = createDriver();

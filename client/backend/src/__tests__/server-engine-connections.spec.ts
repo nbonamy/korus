@@ -12,6 +12,37 @@ import { BackendDriverRpc } from '../driver-rpc';
 vi.mock('../claude/authentication', () => ({ getLocalClaudeAuthentication: vi.fn(), logoutLocalClaude: vi.fn() }));
 
 describe('connected engine admission', () => {
+  it('refreshes changed local runtime capabilities for any provider while retaining status and detail', async () => {
+    const snapshot = createTestSnapshot(); snapshot.general.celebrationsEnabled = false;
+    const base = { teamId: 'team-test', folder: '/synthetic', status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
+    snapshot.agents = [
+      { ...base, id: 'remote-claude', name: 'Remote Claude', backend: 'claude', remoteConnectionId: 'connection-devbox' },
+      { ...base, id: 'local-claude', name: 'Local Claude', backend: 'claude' },
+      { ...base, id: 'remote-only', name: 'Remote only', backend: 'antigravity', remoteConnectionId: 'connection-devbox' },
+    ];
+    snapshot.remoteConnections.connections = [readyRemoteConnection()];
+    const capabilities = () => ({ ...defaultBackendCapabilities('claude'), codeReview: false, steerPrompt: snapshot.general.celebrationsEnabled });
+    const runtime = { backend: 'claude' as const, status: 'error' as const, detail: 'Preserved status detail', capabilities: capabilities() };
+    const remoteOnly = { backend: 'antigravity' as const, status: 'starting' as const, detail: 'Preserved remote-only runtime', capabilities: defaultBackendCapabilities('antigravity') };
+    snapshot.backendRuntimes = [runtime, remoteOnly];
+    const getCapabilities = vi.fn(capabilities), onEvent = vi.fn();
+    const driver: AgentBackendDriver = { backend: 'claude', getCapabilities, getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }), sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} };
+    const server = new AppBackendServer({ version: 'test', snapshot, onEvent, driverRpc: new BackendDriverRpc(new Map([['claude', driver]])) });
+    const update = (enabled: boolean) => server.handleMessage({ jsonrpc: '2.0', id: 'settings', method: 'settings/update', params: { input: { general: { celebrationsEnabled: enabled } } } });
+    try {
+      await update(true);
+      expect(snapshot.backendRuntimes[0]).toStrictEqual({ ...runtime, capabilities: capabilities() });
+      expect(snapshot.backendRuntimes[1]).toStrictEqual(remoteOnly);
+      expect(getCapabilities).toHaveBeenLastCalledWith(snapshot.agents[1]);
+      expect(onEvent.mock.calls.filter(([event]) => event.type === 'backend.statusChanged')).toHaveLength(1);
+      await update(true);
+      expect(onEvent.mock.calls.filter(([event]) => event.type === 'backend.statusChanged')).toHaveLength(1);
+      await update(false);
+      expect(snapshot.backendRuntimes[0]).toStrictEqual({ ...runtime, capabilities: capabilities() });
+      expect(onEvent.mock.calls.filter(([event]) => event.type === 'backend.statusChanged')).toHaveLength(2);
+      expect(driver.sendPrompt).not.toHaveBeenCalled();
+    } finally { await server.close(); }
+  });
   it.each([false, true])('uses registered authentication policy rather than backend identity (declared=%s)', async declared => {
     const snapshot = createTestSnapshot(); snapshot.general.providerEnabled = { claude: false };
     let connected = true;

@@ -58,7 +58,7 @@ describe('Cursor ACP host transport boundary', () => {
   it('refreshes published steering availability immediately when the host setting changes without starting Cursor', async () => {
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
     await host.close();
-    host = createBackendDriver('cursor', { cursorSteeringFallbackEnabled: () => state.general.cursorSteeringFallbackEnabled === true });
+    host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
     state.backendRuntimes = [{ backend: 'cursor', status: 'running', detail: 'Existing conversation', capabilities: host.getCapabilities(agent) }];
     const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
     try {

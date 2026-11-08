@@ -39,9 +39,9 @@ export type BackendDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
   hostedMcpServerUrls?: () => Readonly<Record<string, string>>;
   generalSettings?: AppGeneralSettings;
+  getGeneralSettings?: () => AppGeneralSettings;
   pluginSettings?: () => AppPluginSettings;
   celebrationsEnabled?: () => boolean;
-  cursorSteeringFallbackEnabled?: () => boolean;
   additionalDeveloperInstructions?: (agent: Agent) => string | undefined;
 };
 
@@ -74,19 +74,20 @@ export function createBackendDriver(backend: AgentBackend, options: BackendDrive
 }
 
 export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): AppSurfaceOptions {
+  const generalSettings = options.getGeneralSettings?.() ?? options.generalSettings;
   return {
     autoSelectFirstConversation: false,
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
-    codexHome: options.generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
+    codexHome: generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     conversationDefaults: codexConversationDefaults,
     loadingStrategy: 'lazy',
     historyItemsView: 'summary',
     originalHistoryImages: true,
     originalHistoryUsage: true,
     transport: {
-      ...resolveCodexLaunch(options.generalSettings?.codexBinaryPath),
+      ...resolveCodexLaunch(generalSettings?.codexBinaryPath),
       configOverrides: buildAppMcpConfigOverrides(
-        options.pluginSettings?.() ?? options.generalSettings?.plugins,
+        options.pluginSettings?.() ?? generalSettings?.plugins,
       ),
     },
     extensions: [{
@@ -97,9 +98,9 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
         return buildAppThreadConfig(
           agent,
           reviewMcpServerUrl ?? options.appMcpServerUrl ?? null,
-          options.pluginSettings?.() ?? options.generalSettings?.plugins,
+          options.pluginSettings?.() ?? generalSettings?.plugins,
           {
-            celebrationsEnabled: options.celebrationsEnabled?.() ?? options.generalSettings?.celebrationsEnabled,
+            celebrationsEnabled: options.celebrationsEnabled?.() ?? generalSettings?.celebrationsEnabled,
             developerInstructions: options.additionalDeveloperInstructions?.(agent),
           },
           reviewMcpServerUrl ? {} : options.hostedMcpServerUrls?.() ?? {},
