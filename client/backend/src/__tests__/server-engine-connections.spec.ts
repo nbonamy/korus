@@ -4,10 +4,51 @@ import { getLocalClaudeAuthentication, logoutLocalClaude } from '../claude/authe
 import { ClaudeBackendDriver } from '../claude/claude-driver';
 import { createTestSnapshot, readyRemoteConnection } from './server-test-fixtures';
 import { normalizeGeneralSettings } from '@workspace/core/settings';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import { resolveBackendCoordinationPolicy } from '@workspace/core/backend-driver';
+import { BackendDriverRpc } from '../driver-rpc';
 
 vi.mock('../claude/authentication', () => ({ getLocalClaudeAuthentication: vi.fn(), logoutLocalClaude: vi.fn() }));
 
 describe('connected engine admission', () => {
+  it.each([false, true])('uses registered authentication policy rather than backend identity (declared=%s)', async declared => {
+    const snapshot = createTestSnapshot(); snapshot.general.providerEnabled = { claude: false };
+    let connected = true;
+    const authenticate = vi.fn(async () => ({ kind: 'claude' as const, connected, state: { loggedIn: connected } }));
+    const driver: AgentBackendDriver = {
+      backend: 'claude',
+      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } } } : {}),
+      authenticate, getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }), getCapabilities: () => defaultBackendCapabilities('claude'),
+      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {},
+    };
+    const rpc = new BackendDriverRpc(new Map([['claude', driver]]));
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: rpc,
+      providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/synthetic/claude' }] } as never });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'auth', method: 'claude/authentication/get', params: {} });
+      expect(snapshot.general.providerEnabled?.claude).toBe(!declared);
+      if (declared) await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { backend: 'claude', enabled: true } });
+      const checks = authenticate.mock.calls.length;
+      await expect(Promise.all([server.requireConnectedEngine('claude'), server.requireConnectedEngine('claude')])).resolves.toStrictEqual(['claude', 'claude']);
+      expect(authenticate).toHaveBeenCalledTimes(checks + (declared ? 1 : 0));
+      connected = false;
+      if (declared) await expect(server.requireConnectedEngine()).rejects.toThrow('Connect a coding engine');
+      else await expect(server.requireConnectedEngine()).resolves.toBe('claude');
+      connected = true;
+      const beforeLogin = authenticate.mock.calls.length;
+      const login = server.handleMessage({ jsonrpc: '2.0', id: 'login', method: 'provider/authenticate', params: { backend: 'claude', action: 'login' } });
+      if (declared) {
+        expect(await login).toMatchObject({ result: { kind: 'claude', connected: true } });
+        expect(authenticate).toHaveBeenCalledTimes(beforeLogin + 1);
+        expect(authenticate).toHaveBeenLastCalledWith({ action: 'login' });
+      } else {
+        await expect(login).rejects.toThrow('Unsupported native authentication action');
+        expect(authenticate).toHaveBeenCalledTimes(beforeLogin);
+        await expect(rpc.handle('driver/provider/authentication', { backend: 'claude', action: 'login' })).rejects.toThrow('Invalid authentication action');
+      }
+    } finally { await server.close(); }
+  });
   it.each(['disconnect', 'disable', 'account'])('discards an in-flight quota response after provider %s', async change => {
     const snapshot = createTestSnapshot();
     snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false, enabled: true,
@@ -39,7 +80,7 @@ describe('connected engine admission', () => {
     let recordConnections = false;
     const server = new AppBackendServer({ version: 'test', snapshot,
       onEvent: event => { if (recordConnections && event.type === 'snapshot.updated') observedConnections.push(event.payload.providerConnections?.find(provider => provider.backend === 'cursor')?.connected ?? false); },
-      driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
+      driverRpc: { handle, getCoordinationPolicy: () => resolveBackendCoordinationPolicy({ authentication: { refreshOnAdmission: true, enableOnSuccess: false } }), onEvent: () => () => {}, close: async () => {} } as never,
       providerSetup: { isChanging: () => false, list: () => [{ backend: 'cursor', installed: true, homePath: '/cursor' }] } as never,
     });
     try {

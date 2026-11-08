@@ -28,6 +28,7 @@ import { parseQuotaMessage } from './quota';
 
 export class AntigravityHost implements AgentBackendDriver {
   readonly backend = 'antigravity' as const;
+  readonly coordinationPolicy = { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const } };
   private readonly sessions = new Map<string, AcpSession>();
   private readonly opening = new Map<string, Promise<AcpSession>>();
   private readonly generations = new Map<string, number>();

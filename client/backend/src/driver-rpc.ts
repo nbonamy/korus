@@ -13,7 +13,7 @@ import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
+import { resolveBackendCoordinationPolicy, unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
@@ -188,6 +188,7 @@ export class BackendDriverRpc {
   isBusy(backend: AgentBackend): boolean { return (this.inFlight.get(backend) ?? 0) > 0; }
 
   getCapabilities(agent: Agent) { return this.requireDriver(agent.backend).getCapabilities(agent); }
+  getCoordinationPolicy(backend: AgentBackend) { return resolveBackendCoordinationPolicy(this.drivers.get(backend)?.coordinationPolicy); }
 
   async refreshConversationContext(agent: Agent): Promise<void> {
     const driver = this.requireDriver(agent.backend);
@@ -219,8 +220,8 @@ export class BackendDriverRpc {
         const backend = requireBackend(record.backend);
         const driver = this.requireDriver(backend);
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
-        const action = record.action;
-        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && (backend === 'antigravity' || backend === 'cursor'))) throw new Error('Invalid authentication action.');
+        const action = record.action as import('@workspace/core/contracts/provider-setup').ProviderAuthenticationAction['action'];
+        if (!this.getCoordinationPolicy(backend).authentication.actions.includes(action)) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
       case backendMethods.driverBankedResetsGet: {

@@ -19,6 +19,14 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
+  it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
+    const rpc = new BackendDriverRpc(new Map([['cursor', createBackendDriver('cursor')], ['antigravity', createBackendDriver('antigravity')]]));
+    try {
+      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+      expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
+      expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    } finally { await rpc.close(); }
+  });
   it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
     const cursor = createBackendDriver('cursor');
     const other = createDriver();

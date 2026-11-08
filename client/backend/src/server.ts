@@ -63,7 +63,7 @@ import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guard
 import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, BackendModelOption, BackendConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { backendDisplayName, resolveBackendCoordinationPolicy } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendApprovalPresetResult, BackendConversationForkResult, BackendConversationResumeResult, BackendEvent, BackendGoalResult, BackendPermissionModeResult, BackendSendResult, BackendConversationReplacementResult } from '@workspace/core/backend-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
@@ -1333,11 +1333,11 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
-    const recheckCursor = !backend && this.snapshot.providerConnections?.some(provider => provider.backend === 'cursor' && provider.connected);
-    if (backend === 'cursor') await this.providerConnections?.recheck('cursor');
+    const rechecks = !backend ? this.snapshot.providerConnections?.filter(provider => provider.connected && this.coordinationPolicy(provider.backend).authentication.refreshOnAdmission) ?? [] : [];
+    if (backend && this.coordinationPolicy(backend).authentication.refreshOnAdmission) await this.providerConnections?.recheck(backend);
     else {
       await this.providerConnections?.refreshDisconnected(backend);
-      if (recheckCursor) await this.providerConnections?.recheck('cursor');
+      await Promise.all(rechecks.map(provider => this.providerConnections?.recheck(provider.backend)));
     }
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     const selected = resolveAgentBackend(this.snapshot, backend);
@@ -1348,9 +1348,13 @@ export class AppBackendServer {
     return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, { backend, action, ...(loginId ? { loginId } : {}) }) as ProviderAuthentication;
   }
 
+  private coordinationPolicy(backend: Agent['backend']) {
+    return this.driverRpc?.getCoordinationPolicy?.(backend) ?? resolveBackendCoordinationPolicy();
+  }
+
   private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
     const { kind: backend, connected } = authentication;
-    if (connected && backend !== 'cursor') {
+    if (connected && this.coordinationPolicy(backend).authentication.enableOnSuccess) {
       this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [backend]: true };
     }
     this.providerConnections?.observe(backend, connected, authentication);
@@ -3384,7 +3388,7 @@ export class AppBackendServer {
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
         const backend = requireAgentBackend(params.backend);
-        if ((backend !== 'antigravity' && backend !== 'cursor') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
+        if (!this.coordinationPolicy(backend).authentication.actions.includes('login') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
         const authentication = await this.authenticateProvider(backend, params.action);
         this.providerConnections?.observe(backend, authentication.connected, authentication);
         await this.persistAndEmitSnapshot();

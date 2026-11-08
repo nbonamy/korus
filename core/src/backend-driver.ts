@@ -123,8 +123,26 @@ export type BackendCodeReviewResult = {
   reviewerSession: BackendSession;
 };
 
+/** Provider-owned coordination policy; omitted fields preserve legacy host behavior. */
+export type BackendCoordinationPolicy = {
+  authentication?: {
+    actions?: readonly import('./contracts/provider-setup').ProviderAuthenticationAction['action'][];
+    refreshOnAdmission?: boolean;
+    enableOnSuccess?: boolean;
+  };
+};
+
+export function resolveBackendCoordinationPolicy(policy?: BackendCoordinationPolicy) {
+  return { authentication: {
+    actions: policy?.authentication?.actions ?? ['check', 'cancel', 'logout'] as const,
+    refreshOnAdmission: policy?.authentication?.refreshOnAdmission ?? false,
+    enableOnSuccess: policy?.authentication?.enableOnSuccess ?? true,
+  } };
+}
+
 export type AgentBackendDriver = {
   readonly backend: AgentBackend;
+  readonly coordinationPolicy?: BackendCoordinationPolicy;
   onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
