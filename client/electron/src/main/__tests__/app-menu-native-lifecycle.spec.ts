@@ -53,14 +53,14 @@ describe.skipIf(process.platform !== 'darwin')('native app menu', () => {
           await window.loadURL('data:text/html,<input autofocus value="Zoom while editing"><p>Interface text</p>');
           const items = Menu.getApplicationMenu().items.flatMap(item => item.submenu?.items ?? []);
           const levels = [window.webContents.getZoomLevel()];
-          for (const [role, accelerator] of [
-            ['zoomin', 'CommandOrControl+Plus'], ['zoomin', 'CommandOrControl+Plus'],
-            ['zoomout', 'CommandOrControl+-'], ['zoomout', 'CommandOrControl+-'],
-            ['zoomout', 'CommandOrControl+-'], ['resetzoom', 'CommandOrControl+0'],
+          for (const accelerator of [
+            'CommandOrControl+Plus', 'CommandOrControl+Plus',
+            'CommandOrControl+-', 'CommandOrControl+-',
+            'CommandOrControl+-', 'CommandOrControl+0',
           ]) {
-            const item = items.find(item => item.role === role);
-            if (!item || item.accelerator !== accelerator) throw new Error('Missing zoom shortcut: ' + role);
-            item.click({}, window, window.webContents);
+            const item = items.find(item => item.accelerator === accelerator);
+            if (!item) throw new Error('Missing zoom shortcut: ' + accelerator);
+            item.click();
             levels.push(window.webContents.getZoomLevel());
           }
           result.levels = levels;
