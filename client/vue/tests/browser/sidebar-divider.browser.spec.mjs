@@ -21,6 +21,7 @@ test('sidebar hover highlight stays on the pane edge without moving content', as
       .shell { display: flex; height: 400px; }
       .content { flex: 1; }
     </style><div class="shell"><aside class="agent-sidebar">
+      <nav class="agent-sidebar__list" tabindex="0"><div style="height: 1200px">Agents</div></nav>
       <div class="agent-sidebar__resize-handle" role="separator" tabindex="0"></div>
     </aside><main class="content">Conversation</main></div>`);
     const sidebar = page.locator('.agent-sidebar');
@@ -36,6 +37,16 @@ test('sidebar hover highlight stays on the pane edge without moving content', as
     assert.equal(lineRight, before[1].x, 'hover line ends at the conversation edge');
     await handle.focus();
     assert.deepEqual([await sidebar.boundingBox(), await content.boundingBox()], before);
+    const list = page.locator('.agent-sidebar__list');
+    assert.ok(await list.evaluate(el => el.scrollHeight > el.clientHeight));
+    await list.hover();
+    await page.mouse.wheel(0, 220);
+    await page.waitForFunction(el => el.scrollTop > 0, await list.elementHandle());
+    await page.keyboard.press('Tab');
+    await list.focus();
+    assert.equal(await list.evaluate(el => el.matches(':focus-visible')), true);
+    assert.equal(await list.evaluate(el => getComputedStyle(el).scrollbarWidth), 'none');
+    assert.equal(await list.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').display), 'none');
   } finally {
     await browser.close();
   }
