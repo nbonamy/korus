@@ -105,6 +105,34 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
+  it('finishes deleting a worktree that an earlier attempt left half removed', async () => {
+    const snapshot = createTestSnapshot();
+    const base = { teamId: 'team-test', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
+    const closing = { ...base, id: 'closing', name: 'Closing', folder: '/repo-feature', workspace: { ...gitWorkspace('/repo-feature', 'repo', 'feature'), primaryWorktreeRoot: '/repo', isLinkedWorktree: true } };
+    snapshot.agents = [closing];
+    snapshot.teams[0]!.agentIds = [closing.id];
+    const validateLinkedWorktreeDeletion = vi.fn().mockRejectedValue(new Error('fatal: not a git repository: (null)'));
+    const deleteLinkedWorktree = vi.fn();
+    const isLeftoverWorktree = vi.fn().mockResolvedValue(true);
+    const deleteLeftoverWorktree = vi.fn().mockResolvedValue(undefined);
+    const server = new AppBackendServer({ version: 'test', snapshot,
+      agentGitService: { validateLinkedWorktreeDeletion, deleteLinkedWorktree, isLeftoverWorktree, deleteLeftoverWorktree } as unknown as AgentGitService });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'close', method: backendMethods.agentDelete,
+        params: { agentId: closing.id, input: { deleteWorktree: true, confirmed: true } } });
+      expect(isLeftoverWorktree).toHaveBeenCalledWith('/repo-feature', '/repo');
+      expect(deleteLeftoverWorktree).toHaveBeenCalledExactlyOnceWith('/repo-feature', '/repo', 'feature');
+      expect(deleteLinkedWorktree).not.toHaveBeenCalled();
+      expect(snapshot.agents.some(agent => agent.id === closing.id)).toBe(false);
+      // A refusal for any other reason is still reported.
+      snapshot.agents = [closing];
+      snapshot.teams[0]!.agentIds = [closing.id];
+      isLeftoverWorktree.mockResolvedValue(false);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'close-again', method: backendMethods.agentDelete,
+        params: { agentId: closing.id, input: { deleteWorktree: true, confirmed: true } } })).rejects.toThrow('not a git repository');
+    } finally { await server.close(); }
+  });
+
   it('browses directory levels without hiding later folders, pages large folders, and searches unloaded files', async () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'korus-explorer-'));
     const snapshot = createTestSnapshot();

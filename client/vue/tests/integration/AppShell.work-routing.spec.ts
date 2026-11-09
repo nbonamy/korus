@@ -93,6 +93,51 @@ describe('AppShell work routing', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('starts one agent on a new branch of the chosen repository, in a worktree made for it', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const createAgent = vi.fn().mockResolvedValue({ id: 'agent-1' });
+    const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true }]);
+    const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
+    const wrapper = mountShell({ snapshot, createAgent, listSourceBranches, createSourceWorktree });
+    try {
+      wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-feature-agent', [
+        { agentId: 'api', repositoryName: 'api', repositoryRoot: '/src/api' },
+        { agentId: 'web', repositoryName: 'web', repositoryRoot: '/src/web' },
+      ]);
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'FeatureWorktreeDialog' });
+      expect(dialog.props('mode')).toBe('agent');
+      expect(dialog.getComponent({ name: 'ElSelect' }).props('modelValue')).toBe('/src/api');
+      expect(dialog.findAllComponents({ name: 'ElSelect' })[1]!.props('modelValue')).toBe('main');
+      dialog.findAllComponents({ name: 'ElSelect' })[1]!.vm.$emit('update:modelValue', '__new_branch__');
+      await flushPromises();
+      await dialog.get('input#feature-worktree-branch').setValue('feature/search');
+      await dialog.findAll('button').find(button => button.text() === 'Create')!.trigger('click');
+      await flushPromises();
+      expect(createSourceWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/api', branchName: 'feature/search', baseBranch: 'main', requireNewBranch: true });
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: null, folder: '/src/api-search', teamId: snapshot.activeTeamId }), { select: true });
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens the new agent dialog on a feature\'s branch', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const createAgent = vi.fn().mockResolvedValue({ id: 'agent-1' });
+    const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true }]);
+    const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
+    const wrapper = mountShell({ snapshot, createAgent, listSourceBranches, createSourceWorktree });
+    try {
+      wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-feature-agent', [{ agentId: 'api', repositoryName: 'api', repositoryRoot: '/src/api' }], 'feature/search');
+      await flushPromises();
+      const dialog = wrapper.getComponent({ name: 'FeatureWorktreeDialog' });
+      expect(dialog.props('fixedBranch')).toBe('feature/search');
+      await dialog.findAll('button').find(button => button.text() === 'Create')!.trigger('click');
+      await flushPromises();
+      expect(createSourceWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/api', branchName: 'feature/search', baseBranch: 'main', requireNewBranch: true });
+    } finally { wrapper.unmount(); }
+  });
+
   it('retries only failed repositories after partial worktree creation', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

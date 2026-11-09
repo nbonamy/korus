@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { CreateSourceWorktreeInput, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
@@ -32,6 +33,14 @@ export function suggestedSourceWorktreePath(repoPath: string, branchName: string
     path.dirname(repoPath),
     `${path.basename(repoPath)}-${slug(branchName)}`,
   );
+}
+
+/** A folder left behind by an earlier checkout blocks `git worktree add`; take the next free name instead of failing. */
+async function freeWorktreePath(suggested: string): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
+    const candidate = attempt === 1 ? suggested : `${suggested}-${attempt}`;
+    if (!(await readdir(candidate).then(entries => entries.length > 0, () => false))) return candidate;
+  }
 }
 
 export async function createSourceWorktree(
@@ -75,7 +84,7 @@ async function createGitWorktreeUnlocked(
     if (existing) return { worktree: existing, created: false };
   }
 
-  const worktreePath = input.destinationPath?.trim() || suggestedSourceWorktreePath(repoPath, branchName);
+  const worktreePath = input.destinationPath?.trim() || await freeWorktreePath(suggestedSourceWorktreePath(repoPath, branchName));
   const localBranch = await branchExists(runner, repoPath, `refs/heads/${branchName}`);
   if (localBranch && input.requireNewBranch) throw new Error('That branch already exists.');
   if (localBranch) {

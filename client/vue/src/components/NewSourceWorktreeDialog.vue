@@ -328,11 +328,6 @@ async function refreshSuggestedDestinationPath(): Promise<void> {
   padding-right: var(--space-2);
 }
 
-.new-source-worktree-dialog__folder-input {
-  min-width: 0;
-  color: var(--color-text-muted);
-}
-
 .new-source-worktree-dialog__folder-picker {
   flex: 0 0 auto;
   display: inline-flex;

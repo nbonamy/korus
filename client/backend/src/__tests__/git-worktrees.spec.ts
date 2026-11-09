@@ -1,6 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
@@ -109,6 +109,29 @@ describe('git worktree operations', () => {
     ], {
       cwd: '/Users/nbonamy/src/agent-workspace',
     });
+  });
+
+  it('picks the next free folder when the suggested one is already taken', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'worktree-taken-'));
+    try {
+      const repo = path.join(root, 'repo');
+      // A leftover checkout that git no longer knows about, and an empty folder that git can reuse.
+      await mkdir(path.join(root, 'repo-feat-test'));
+      await writeFile(path.join(root, 'repo-feat-test', '.git'), 'gitdir: gone');
+      await mkdir(path.join(root, 'repo-feat-empty'));
+      const runner = { run: vi.fn(async (_command: string, args: string[]) => {
+        if (args[0] === 'show-ref') throw new Error('missing');
+        return { stdout: '' };
+      }) };
+      const taken = await createGitWorktree({ repoPath: repo, branchName: 'feat/test', reuseExisting: true }, runner);
+      expect(taken.worktree.path).toBe(path.join(root, 'repo-feat-test-2'));
+      expect(runner.run).toHaveBeenCalledWith('git', expect.arrayContaining(['worktree', 'add', path.join(root, 'repo-feat-test-2')]), { cwd: repo });
+      const reusable = await createGitWorktree({ repoPath: repo, branchName: 'feat/empty' }, runner);
+      expect(reusable.worktree.path).toBe(path.join(root, 'repo-feat-empty'));
+      // A destination the caller chose is never replaced.
+      const explicit = await createGitWorktree({ repoPath: repo, branchName: 'feat/test', destinationPath: path.join(root, 'repo-feat-test') }, runner);
+      expect(explicit.worktree.path).toBe(path.join(root, 'repo-feat-test'));
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 
   it('reuses local and remote branches when creating worktrees', async () => {

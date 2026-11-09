@@ -119,6 +119,7 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @create-feature-agent="openFeatureAgentDialog"
       @create-feature-worktree="openFeatureWorktreeDialog"
       @open-on-remote="openOnRemote"
       @create-quick-chat="createQuickChat"
@@ -608,6 +609,8 @@
     <FeatureGroupDialog v-if="featureDialog && activeTeam" :key="`${activeTeam.id}:${featureDialog.branch}:${featureDialog.mode}`" :feature="{ ...featureDialog, teamId: activeTeam.id }" :mode="featureDialog.mode" :request="featureControl" @close="featureDialog = null" />
     <FeatureWorktreeDialog
       v-if="featureWorktreeRequest"
+      :mode="featureWorktreeRequest.mode"
+      :fixed-branch="featureWorktreeRequest.branch"
       :repositories="featureWorktreeRequest.repositories"
       :team-id="featureWorktreeRequest.teamId"
       :create-agent="createAgent"
@@ -1389,9 +1392,12 @@ async function loadRepositoryDeletionPreview(agentId: string) {
 }
 
 const featureDialog = ref<{ branch: string; label: string; mode: 'rename' | 'delete' } | null>(null);
-const featureWorktreeRequest = ref<{ teamId: string; repositories: SidebarRepositoryTarget[] } | null>(null);
+const featureWorktreeRequest = ref<{ mode: 'worktree' | 'agent'; teamId: string; repositories: SidebarRepositoryTarget[]; branch?: string } | null>(null);
 function openFeatureWorktreeDialog(repositories: SidebarRepositoryTarget[]): void {
-  if (activeTeam.value) featureWorktreeRequest.value = { teamId: activeTeam.value.id, repositories };
+  if (activeTeam.value) featureWorktreeRequest.value = { mode: 'worktree', teamId: activeTeam.value.id, repositories };
+}
+function openFeatureAgentDialog(repositories: SidebarRepositoryTarget[], branch?: string): void {
+  if (activeTeam.value) featureWorktreeRequest.value = { mode: 'agent', teamId: activeTeam.value.id, repositories, ...(branch ? { branch } : {}) };
 }
 function featureWorktreeBackend(remoteConnectionId?: string): import('@workspace/core/contracts').AgentBackend | undefined {
   return preferredBackendChoices(props.snapshot, remoteConnectionId)[0];

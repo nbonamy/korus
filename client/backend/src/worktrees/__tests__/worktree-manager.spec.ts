@@ -279,6 +279,24 @@ describe('WorktreeManager', () => {
     } finally { release?.(); await manager.close(); }
   });
 
+  it('stops setup that is still running when its worktree is about to be removed', async () => {
+    await writeFile(path.join(worktreePath, 'package.json'), '{}');
+    await writeFile(path.join(worktreePath, 'package-lock.json'), '{}');
+    let stopped = false;
+    const runCommand: NonNullable<WorktreeManagerOptions['runCommand']> = vi.fn((_command, _args, options) => new Promise<Record<string, never>>((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => { stopped = true; reject(new Error('aborted')); });
+    }));
+    const manager = createManager({ runCommand, mode: 'automatic' });
+    try {
+      await manager.create(createInput(), { backgroundInitialization: true });
+      await vi.waitFor(() => expect(runCommand).toHaveBeenCalledOnce());
+      await manager.cancelInitialization(worktreePath);
+      expect(stopped).toBe(true);
+      expect(manager.getInitializationState(worktreePath)).toBeUndefined();
+      await expect(manager.cancelInitialization(worktreePath)).resolves.toBeUndefined();
+    } finally { await manager.close(); }
+  });
+
   function createManager(options: {
     listSourceBranches?: WorktreeManagerOptions['listSourceBranches'];
     mode?: 'automatic' | 'repository' | 'off';

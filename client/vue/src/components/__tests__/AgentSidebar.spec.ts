@@ -336,6 +336,25 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-only'); }
   });
 
+  it('offers a new agent for each feature, on that feature\'s branch', async () => {
+    localStorage.setItem('app:agentOrganization:feature-agent', 'worktree');
+    const source = agents[0]!;
+    if (source.workspace?.kind !== 'git') throw new Error('Expected Git fixture');
+    const feature = { ...source, id: 'feature-agent', name: null, workspace: { ...source.workspace, branch: 'feat1', isLinkedWorktree: true } };
+    const wrapper = mount(AgentSidebar, { attachTo: document.body,
+      props: { agents: [source, feature], teams: [{ id: 'feature-agent', name: 'Team', agentIds: [source.id, feature.id] }], teamId: 'feature-agent', teamName: 'Team', activeAgentId: source.id } });
+    try {
+      const group = wrapper.findAll('[data-group-kind="worktree"]').find(section => section.get('header strong').text() === 'feat1')!;
+      await group.get('button[aria-label="New agent"]').trigger('click');
+      await flushPromises();
+      const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New agent…']);
+      items[0]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('create-feature-agent')?.[0]).toMatchObject([[{ repositoryName: 'id8' }], 'feat1']);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:feature-agent'); }
+  });
+
   it('offers new worktrees from the default branch group for all team repositories', async () => {
     localStorage.setItem('app:agentOrganization:feature-create', 'worktree');
     const wrapper = mount(AgentSidebar, { attachTo: document.body,
@@ -345,13 +364,20 @@ describe('AgentSidebar sessions', () => {
       await main.get('button[aria-label="New worktree"]').trigger('click');
       await flushPromises();
       const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-      expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New worktree…']);
-      items[0]!.click();
-      await flushPromises();
-      expect(wrapper.emitted('create-feature-worktree')?.[0]?.[0]).toMatchObject([
+      expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New agent…', 'New worktree…']);
+      const targets = [
         { repositoryName: 'id8', repositoryRoot: '~/src/id8' },
         { repositoryName: 'multi-llm-ts', repositoryRoot: '~/src/multi-llm-ts' },
-      ]);
+      ];
+      items[0]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('create-feature-agent')?.[0]?.[0]).toMatchObject(targets);
+      expect(wrapper.emitted('create-feature-worktree')).toBeUndefined();
+      await main.get('button[aria-label="New worktree"]').trigger('click');
+      await flushPromises();
+      [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')][1]!.click();
+      await flushPromises();
+      expect(wrapper.emitted('create-feature-worktree')?.[0]?.[0]).toMatchObject(targets);
     } finally { wrapper.unmount(); }
   });
 

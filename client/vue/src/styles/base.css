@@ -396,6 +396,21 @@ button,
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
+/* A value that is shown but cannot be changed: a muted surface and no focus ring. */
+.app-form-dialog__input-control:has(.app-form-dialog__text-input[readonly]) {
+  background: var(--color-surface-low);
+}
+
+.app-form-dialog__input-control:has(.app-form-dialog__text-input[readonly]):focus-within {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.app-form-dialog__text-input[readonly] {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
 .app-form-dialog__control .el-select {
   width: 100%;
   font-size: var(--font-size-14);

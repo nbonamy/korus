@@ -186,13 +186,13 @@
               </button>
             </el-tooltip>
             <AppMenuButton
-              v-if="group.protected && !phoneScope && !featureOnly"
-              :ariaLabel="t('features.newWorktree')"
-              :items="[{ id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon }]"
-              @select="emit('create-feature-worktree', featureRepositoryTargets)"
+              v-if="!phoneScope && !featureOnly"
+              :ariaLabel="group.protected ? t('features.newWorktree') : t('features.newAgent')"
+              :items="featureMenuItems(group)"
+              @select="selectFeatureMenuItem(group, $event)"
             >
               <template #trigger="{ attrs }">
-                <button v-bind="attrs" type="button" :aria-label="t('features.newWorktree')" :title="t('features.newWorktree')">
+                <button v-bind="attrs" type="button" :aria-label="group.protected ? t('features.newWorktree') : t('features.newAgent')" :title="group.protected ? t('features.newWorktree') : t('features.newAgent')">
                   <PlusIcon aria-hidden="true" />
                 </button>
               </template>
@@ -332,6 +332,7 @@ import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
@@ -345,6 +346,18 @@ function hasReadSafetyBlock(session: WorkspaceSidebarSession): boolean {
 }
 
 const props = defineProps<{ model: AgentSidebarModel }>();
+// The default-branch group starts anything new; a feature only gains agents on its own branch.
+function featureMenuItems(group: WorkspaceSidebarGroup): AppMenuItem[] {
+  const agent: AppMenuItem = { id: 'new-agent', type: 'action', label: t.value('sidebar.newAgent'), icon: MessageIcon };
+  return group.protected ? [agent, { id: 'new-worktree', type: 'action', label: t.value('sidebar.newWorktree'), icon: GitForkIcon }] : [agent];
+}
+
+function selectFeatureMenuItem(group: WorkspaceSidebarGroup, itemId: string): void {
+  if (itemId !== 'new-agent') emit.value('create-feature-worktree', featureRepositoryTargets.value);
+  else if (group.protected || !group.branch) emit.value('create-feature-agent', featureRepositoryTargets.value);
+  else emit.value('create-feature-agent', featureRepositoryTargets.value, group.branch);
+}
+
 function worktreeGroupKind(group: WorkspaceSidebarGroup): 'main' | 'branch' | 'worktree' {
   if (group.protected) return 'main';
   return group.sessions.some(session => session.kind === 'worktree') ? 'worktree' : 'branch';
