@@ -1,6 +1,7 @@
 import type { AgentBackend, BackendCapabilities } from './contracts';
 
 export const codexBackendCapabilities: BackendCapabilities = {
+  reportsTokens: true,
   codeReview: true,
   planReview: true,
   questions: true,
@@ -30,6 +31,7 @@ export const codexBackendCapabilities: BackendCapabilities = {
 };
 
 export const claudeBackendCapabilities: BackendCapabilities = {
+  reportsTokens: true,
   nativeMonitor: true,
   codeReview: true,
   planReview: true,
@@ -95,6 +97,7 @@ export function defaultBackendCapabilities(backend: AgentBackend): BackendCapabi
 
 // Keep unimplemented app workflows unavailable until their owning integration is qualified.
 export const antigravityBackendCapabilities: BackendCapabilities = {
+  reportsTokens: true,
   codeReview: true, planReview: true, questions: true, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
   remoteControl: false, conversationShare: true, attachments: true, models: true, skills: false,
@@ -110,6 +113,7 @@ export const antigravityBackendCapabilities: BackendCapabilities = {
 
 // Cursor enables only capabilities implemented and verified by its host.
 export const cursorBackendCapabilities: BackendCapabilities = {
+  reportsTokens: false,
   codeReview: true, planReview: true, questions: false, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
   remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,

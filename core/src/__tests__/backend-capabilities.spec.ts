@@ -8,6 +8,7 @@ import {
 describe('backend capabilities', () => {
   it('enables implemented Cursor execution and cold history controls', () => {
     expect(defaultBackendCapabilities('cursor')).toStrictEqual({
+      reportsTokens: false,
       codeReview: true, planReview: true, questions: false, plugins: false,
       conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
       remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,

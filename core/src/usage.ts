@@ -120,6 +120,8 @@ export type UsageSummary = {
     cost?: UsageCost;
     /** Same grouping as rows, retaining each day's observed contributions. */
     groups?: {
+      /** Whether any contributing provider reports tokens. Absent retains legacy support. */
+      reportsTokens?: boolean;
       label: string;
       key?: string;
       modelVariant?: UsageModelVariant;
@@ -135,6 +137,8 @@ export type UsageSummary = {
   recordedSince: number;
   retainedSince: number;
   rows: {
+    /** Whether any contributing provider reports tokens. Absent retains legacy support. */
+    reportsTokens?: boolean;
     label: string;
     key?: string;
     modelVariant?: UsageModelVariant;

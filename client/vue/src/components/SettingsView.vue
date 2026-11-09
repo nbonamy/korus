@@ -14,7 +14,7 @@
 
     <main class="settings-view__content">
       <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
-        <UsagePanel v-if="activeTab === 'usage'" />
+        <UsagePanel v-if="activeTab === 'usage'" :token-unavailable-providers="tokenUnavailableProviders" />
         <SettingsBrowserPanel v-else-if="activeTab === 'browser' && appHostCapabilities.embeddedBrowser" />
         <SettingsGeneralPanel
           v-else-if="activeTab === 'general'"
@@ -200,7 +200,9 @@ import SettingsDictationPanel from './SettingsDictationPanel.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
 import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { AgentBackend, BackendRuntimeStatus } from '@workspace/core/contracts';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { backendDisplayName } from '@workspace/core/backend-driver';
 import { appHostCapabilities } from '../platform-api';
 import appPackage from '../../package.json';
 
@@ -210,6 +212,7 @@ const props = withDefaults(defineProps<{
   codexConnected?: boolean;
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
+  backendRuntimes?: BackendRuntimeStatus[];
   providerSetup?: ProviderSetupStatus[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
   installProvider?: (backend: AgentBackend) => Promise<void>;
@@ -313,6 +316,12 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   selectTab: [tab: SettingsTab];
 }>();
+
+const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [])
+  .filter(engine => engine.installed && engine.enabled !== false && props.generalSettings.providerEnabled?.[engine.backend] !== false)
+  .filter(engine => (props.backendRuntimes?.find(runtime => runtime.backend === engine.backend)?.capabilities?.reportsTokens
+    ?? defaultBackendCapabilities(engine.backend).reportsTokens) === false)
+  .map(engine => backendDisplayName(engine.backend)));
 
 const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.backend === 'antigravity') ? 'general' : props.activeTab);
 const busyIntegrationProviders = ref<WorkProviderKind[]>([]);

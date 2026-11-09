@@ -347,7 +347,8 @@ it("queries provider observations through the app contract and unsubscribes on s
     handle: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
   } as unknown as BackendDriverRpc;
-  const server = new AppBackendServer({ version: "test", snapshot: createTestSnapshot(), usage, driverRpc: driver });
+  const snapshot = createTestSnapshot();
+  const server = new AppBackendServer({ version: "test", snapshot, usage, driverRpc: driver });
   const call = (method: string, params: unknown = {}) => server.handleMessage({ jsonrpc: "2.0", id: 1, method, params });
   const event = { provider: "codex" as const, agentId: "a", sessionId: "s", turnId: "t", model: null, at: Date.now() };
   try {
@@ -381,6 +382,25 @@ it("queries provider observations through the app contract and unsubscribes on s
         { label: 'gpt-6.1-sol', started: 2, speed: { outputTokens: 200, generationMs: 15000 } },
       ],
       daily: [{ groups: [{ label: 'Unknown' }, { label: 'gpt-6.1-sol', started: 2 }] }],
+    } });
+    snapshot.backendRuntimes = [{ backend: 'codex', status: 'running', capabilities: { reportsTokens: false } }];
+    expect(await call('usage/get', { filter: { group: 'model' } })).toMatchObject({ result: {
+      rows: [{ reportsTokens: false, tokens: null }, { reportsTokens: false, tokens: null }, { reportsTokens: false, tokens: null }],
+      daily: [{ groups: [{ reportsTokens: false }, { reportsTokens: false }, { reportsTokens: false }] }],
+    } });
+    const claude = { ...event, provider: 'claude', sessionId: 'claude-session' };
+    observe({ ...claude, phase: 'started' });
+    observe({ ...claude, phase: 'completed', tokens: { input: 3, output: 2, cacheRead: 0, cacheWrite: null, total: 5 } });
+    // Shared model groups retain supported contributions and all providers' turns.
+    expect(await call('usage/get', { filter: { group: 'model' } })).toMatchObject({ result: {
+      rows: [{ label: 'Unknown', reportsTokens: true, started: 2, tokens: { total: 5 } }, {}, {}],
+    } });
+    const cursor = { ...event, provider: 'cursor', sessionId: 'cursor-session', model: 'grok-4.5' };
+    observe({ ...cursor, phase: 'started' });
+    observe({ ...cursor, phase: 'completed' });
+    expect(await call('usage/get', { filter: { provider: 'cursor', group: 'model' } })).toMatchObject({ result: {
+      rows: [{ label: 'grok-4.5', reportsTokens: false, started: 1, completed: 1 }],
+      daily: [{ groups: [{ reportsTokens: false }] }],
     } });
     expect(await call('usage/get', { filter: { group: 'model', groupServiceTiers: 'true' } })).toHaveProperty('error');
   } finally {

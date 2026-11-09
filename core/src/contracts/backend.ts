@@ -86,6 +86,8 @@ export type AccountRateLimits = {
 export type BackendPlanModeSupport = 'native' | 'prompted' | 'unsupported';
 
 export type BackendCapabilities = {
+  /** Supplies token counters for analytics; absent retains legacy support. */
+  reportsTokens?: boolean;
   /** The harness supplies its own background monitor tool; absent means false. */
   nativeMonitor?: boolean;
   codeReview?: boolean;

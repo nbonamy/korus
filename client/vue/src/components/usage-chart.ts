@@ -98,13 +98,16 @@ export const inputRatio = (
 export const chartValue = (
   row: {
     started: number;
+    reportsTokens?: boolean;
     tokens: UsageSummary["rows"][number]["tokens"];
     cost?: UsageCost;
     speed?: Speed;
   },
   measure: UsageMeasure | "speed",
 ) =>
-  measure === "speed"
+  row.reportsTokens === false && measure !== "turns" && measure !== "cost"
+    ? null
+    : measure === "speed"
     ? tokensPerSecond(row.speed)
     : measure === "cost"
       ? (row.cost?.usd ?? null)
@@ -149,13 +152,13 @@ export function modelUsageLabel(
       : row.label;
   const { model, serviceTier } = row.modelVariant;
   const name = model ?? translate("analytics.unknownModel");
-  if (serviceTier === "standard") return name;
+  if (serviceTier === null || serviceTier === "standard") return name;
   const tiers: Record<string, string> = {
     fast: translate("analytics.fastTier"),
     ultrafast: translate("analytics.ultrafastTier"),
     flex: translate("analytics.flexTier"),
   };
-  return `${name} · ${serviceTier === null ? translate("analytics.unknownServiceTier") : (tiers[serviceTier] ?? serviceTier)}`;
+  return `${name} · ${tiers[serviceTier] ?? serviceTier}`;
 }
 export function chartSeries(
   summary: UsageSummary | undefined,
@@ -167,7 +170,7 @@ export function chartSeries(
       ? repositoryLabels((summary?.rows ?? []).map((row) => row.label))
       : undefined;
   return sortUsageValues(
-    (summary?.rows ?? []).map((row) => {
+    (summary?.rows ?? []).filter(row => measure === "turns" || measure === "cost" || row.reportsTokens !== false).map((row) => {
       return {
         key: usageRowKey(row),
         label:

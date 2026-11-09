@@ -172,6 +172,7 @@
         v-if="settingsVisible"
         :codex-connected="!debugMissingEngines && codexConnected"
         :provider-connections="displayProviderConnections"
+        :backend-runtimes="snapshot.backendRuntimes"
         :refresh-provider="refreshProvider"
         :install-provider="installProvider"
         :provider-setup-error="setupError"

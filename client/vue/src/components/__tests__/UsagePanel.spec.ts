@@ -13,6 +13,9 @@ vi.mock("vue-chartjs", async () => {
 });
 import { setElectronTestClient } from "../../../tests/support/client";
 import UsagePanel from "../UsagePanel.vue";
+import type { UsageSummary } from "@workspace/core/usage";
+import SettingsView from "../SettingsView.vue";
+import { defaultGeneralSettings, defaultThemeSettings } from "@workspace/core/settings";
 import { ElMessageBox } from "element-plus";
 import {
   activityWindow,
@@ -24,6 +27,34 @@ import {
 // Keep request fixtures and rendered ranges on one calendar day across async loads.
 beforeEach(() => vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 1, 12) }));
 afterEach(() => vi.useRealTimers());
+
+it("warns for enabled providers whose driver does not report tokens", async () => {
+  setElectronTestClient({ getUsage: vi.fn(async () => ({ recordedSince: 1, retainedSince: 1, rows: [], daily: [] })) });
+  const connection = { backend: "cursor" as const, installed: true, connected: false, checking: false, enabled: true };
+  const wrapper = mount(SettingsView, { props: { activeTab: "usage", settings: defaultThemeSettings, generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: false } }, providerConnections: [connection] } });
+  await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  await wrapper.setProps({ generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: true } } });
+  const warning = () => wrapper.get('[role="alert"]');
+  expect(warning().text()).toBe("Cursor turns are reported, but token usage is unavailable.");
+  expect(warning().classes()).toContain("el-alert--warning");
+  expect(warning().find(".el-alert__close-btn").exists()).toBe(false);
+  await wrapper.get("#usage-tab-performance").trigger("click");
+  expect(warning().isVisible()).toBe(true);
+  await wrapper.setProps({ providerConnections: [{ ...connection, enabled: false }] });
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  await wrapper.setProps({ providerConnections: [{ ...connection, installed: false }] });
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  await wrapper.setProps({
+    generalSettings: { ...defaultGeneralSettings, providerEnabled: { claude: true } },
+    providerConnections: [{ ...connection, backend: "claude" }],
+    backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: false } }],
+  });
+  expect(warning().text()).toBe("Claude Code turns are reported, but token usage is unavailable.");
+  await wrapper.setProps({ backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: true } }] });
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  wrapper.unmount();
+});
 
 it.each(["unmeasured", "missing-total", "partial", "unavailable"])(
   "shows only the known token total for %s activity",
@@ -245,9 +276,8 @@ it("plots service-tier model rates without stacking or treating missing measurem
     expect(
       wrapper.find('canvas[aria-label="Output speed over time"]').exists(),
     ).toBe(false);
-    expect(
-      wrapper.get('[aria-label="Output speed over time"]').text(),
-    ).toContain("N/A");
+    expect(wrapper.find('[aria-label="Output speed over time"]').exists())
+      .toBe(false);
   } finally {
     wrapper.unmount();
   }
@@ -644,13 +674,15 @@ it("scales model behavior bars by value and uses each model provider color", asy
   wrapper.unmount();
 });
 
-it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
-  const summary = {
+it("keeps TTFT models while omitting unmeasured speed and absent tiers", async () => {
+  const summary: UsageSummary = {
     recordedSince: 1,
     retainedSince: 1,
     rows: [
       {
-        label: "gpt-6-luna",
+        label: "grok-4.5",
+        reportsTokens: false,
+        modelVariant: { model: "grok-4.5", serviceTier: null },
         started: 1,
         completed: 1,
         failed: 0,
@@ -659,16 +691,24 @@ it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
         measuredTurns: 0,
         tokens: null,
         speed: {
-          turns: 0,
-          outputTokens: 0,
-          generationMs: 0,
+          turns: 1,
+          outputTokens: 100,
+          generationMs: 1000,
           ttftMs: 56800,
           ttftTurns: 1,
         },
       },
     ],
   };
-  setElectronTestClient({ getUsage: vi.fn(async () => summary) });
+  summary.rows.push({
+    ...summary.rows[0]!,
+    label: "gemini-3.8-flash",
+    reportsTokens: true,
+    modelVariant: { model: "gemini-3.8-flash", serviceTier: null },
+    speed: { turns: 0, outputTokens: 0, generationMs: 0, ttftMs: 0, ttftTurns: 0 },
+  });
+  const getUsage = vi.fn(async () => summary);
+  setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await flushPromises();
   await wrapper
@@ -677,20 +717,42 @@ it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
     .trigger("click");
   await flushPromises();
   const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
-  const speed = wrapper.get('[aria-label="Output Speed"]');
   expect(
     ttft
       .findAll("tbody tr")[0]
       ?.findAll("td")
       .map((cell) => cell.text()),
-  ).toStrictEqual(["gpt-6-luna", "56.8"]);
-  expect(
-    speed
-      .findAll("tbody tr")[0]
-      ?.findAll("td")
-      .map((cell) => cell.text()),
-  ).toStrictEqual(["gpt-6-luna", "N/A"]);
-  expect(speed.text()).not.toContain("A turn is timed only");
+  ).toStrictEqual(["grok-4.5", "56.8"]);
+  expect(ttft.findAll("tbody tr")).toHaveLength(1);
+  expect(ttft.text()).not.toContain("gemini-3.8-flash");
+  expect(wrapper.text()).not.toContain("Unknown tier");
+  expect(wrapper.text()).not.toContain("Output Speed");
+  expect(wrapper.text()).not.toContain("Output speed over time");
+  expect(wrapper.get('[aria-label="Analytics totals"]').findAll(".usage-stat")).toHaveLength(1);
+
+  // A measured provider remains comparable without adding empty Cursor rows.
+  getUsage.mockResolvedValue({
+    ...summary,
+    rows: [...summary.rows, {
+      ...summary.rows[0]!,
+      label: "gpt-6-luna",
+      reportsTokens: true,
+      modelVariant: { model: "gpt-6-luna", serviceTier: "fast" },
+      speed: { turns: 1, outputTokens: 100, generationMs: 2000, ttftMs: 1000, ttftTurns: 1 },
+    }],
+  });
+  await wrapper.get('[aria-label="Refresh"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[aria-label="Time to First Token (TTFT)"]').text())
+    .toContain("grok-4.5");
+  expect(wrapper.get('[aria-label="Output Speed"] tbody').findAll("tr")
+    .map(row => row.findAll("td").map(cell => cell.text())))
+    .toStrictEqual([["gpt-6-luna · fast", "50"]]);
+  await wrapper.get("#usage-tab-usage").trigger("click");
+  const share = wrapper.get('[aria-label="Usage share"]');
+  expect(share.text()).not.toContain("grok-4.5");
+  await choose(wrapper, "#usage-measure", "Turns");
+  expect(share.text()).toContain("grok-4.5");
   wrapper.unmount();
 });
 
@@ -1196,7 +1258,8 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
     ]);
     expect(wrapper.find(".cost-coverage").exists()).toBe(false);
     await wrapper.get("#usage-tab-performance").trigger("click");
-    expect(wrapper.find('[aria-label="Output Speed"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Time to First Token (TTFT)"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Output Speed"]').exists()).toBe(false);
     await wrapper.get("#usage-tab-usage").trigger("click");
     expect(wrapper.get(".hero-number strong").text()).toBe("20");
   } finally {

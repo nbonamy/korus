@@ -168,9 +168,12 @@ being charged to the next turn. Incomplete cache breakdowns remain unknown.
 This counter convention matches the cumulative ACP integration; protocol variants
 with per-turn usage require explicit qualification rather than automatic inference.
 The qualified native CLI supplies no usage fields, so its analytics retain unknown
-token counts. Optional handler coverage does not establish native emission.
-Served model, billable request coverage and API cost remain unknown from session
-totals; context occupancy and cumulative USD cost never become billable requests.
+token counts. The driver declares `reportsTokens: false`; analytics retains turns and measured TTFT, and omits token and output-speed entries. Optional handler coverage does not establish native emission.
+Timing measurements are attributed to the native-acknowledged model selection
+captured at prompt admission, including its native default when no override is supplied.
+That selection remains stable for the turn even if later native configuration changes.
+It does not establish the served model or billing tier. Billable request coverage
+and API cost remain unknown from session totals; context occupancy and cumulative USD cost never become billable requests.
 The ledger projects Cursor rows through the shared provider-name
 telemetry contract. Collectors must have the provider-name migration before
 clients send additional providers; uploads do not negotiate provider admission.

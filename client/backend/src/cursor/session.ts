@@ -25,6 +25,7 @@ type Options = { agentId: string; cwd: string; permissionMode?: 'default' | 'ful
 export class CursorSession {
   private connection!: AcpConnection;
   private readonly usageCounter: CursorUsageCounter;
+  private readonly turnModels = new Map<string, string | null>();
   private transcript!: CursorTranscript;
   private readonly imageWork = new Set<Promise<void>>();
   private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown; permission?: { options: unknown } }>();
@@ -76,12 +77,12 @@ export class CursorSession {
       if (!record(created) || (!options.sessionId && (typeof created.sessionId !== 'string' || !created.sessionId)) || (options.sessionId && created.sessionId !== undefined && created.sessionId !== options.sessionId)) throw new Error('Invalid Cursor session identity.');
       session.config = created;
       session.journal ??= await CursorPromptJournal.open(options.runtime?.homePath ?? cursorRuntime().homePath, created.sessionId as string);
-      if (!options.sessionId) session.transcript = new CursorTranscript(options.agentId, created.sessionId as string, event => { if (!session.loading) options.changed(event); },undefined,options.cwd);
+      if (!options.sessionId) session.transcript = new CursorTranscript(options.agentId, created.sessionId as string, event => { if (!session.loading) session.changed(event); },undefined,options.cwd);
       // Rebind replay without publishing its synthetic lifecycle as live execution.
       if (options.sessionId) {
         session.transcript.finishReplay();
         const replay = session.snapshot;
-        session.transcript = new CursorTranscript(options.agentId, options.sessionId, options.changed,undefined,options.cwd);
+        session.transcript = new CursorTranscript(options.agentId, options.sessionId, event => session.changed(event),undefined,options.cwd);
         session.transcript.replica.replace(replay);
       }
       for (const params of session.startupUpdates) session.notification('session/update', params);
@@ -107,6 +108,11 @@ export class CursorSession {
       });
     } finally { options.signal.removeEventListener('abort', abort); await session.close(); }
   }
+  private changed(event: CursorConversationEvent): void {
+    if (event.type === 'turn.started') this.turnModels.set(event.turnId, this.models.find(model => model.isDefault)?.id ?? null);
+    this.options.changed(event);
+  }
+  modelForTurn(turnId: string): string | null { return this.turnModels.get(turnId) ?? null; }
   get models() { return cursorModels(this.config,this.modelCatalog); }
   async setReasoningEffort(value: string): Promise<void> {
     const model=Array.isArray(this.config.configOptions) ? this.config.configOptions.find(option=>record(option) && option.category==='model') : undefined;

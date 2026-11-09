@@ -139,6 +139,12 @@ async function review(text,reply) {
     update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
     update({sessionUpdate:'future_session_update',payload:{}});
     update({sessionUpdate:'agent_message_chunk',content:{type:'future_block',value:1}});
+    if (mode === 'performance') {
+      configOptions = configOptions.map(option => option.id === 'model' ? { ...option, currentValue: 'auto' } : option);
+      update({sessionUpdate:'config_option_update',configOptions});
+      update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Performance fixture complete.'}});
+      reply({stopReason:'end_turn'}); return;
+    }
     // Synthetic optional ACP usage: no installed native build is claimed to emit it.
     if (mode === 'usage') {
       const sample = JSON.parse(fs.readFileSync(path.join(__dirname, 'usage-response.json'), 'utf8'));

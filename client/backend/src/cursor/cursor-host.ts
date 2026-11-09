@@ -410,7 +410,7 @@ export class CursorHost implements AgentBackendDriver {
   private observeTokens(agentId: string, sample: { sessionId: string; turnId: string; tokens: Consumption }): void {
     const session = this.sessions.get(agentId);
     if (session?.sessionId !== sample.sessionId || !session.snapshot.turns.some(turn => turn.id === sample.turnId)) return;
-    const observation: ExecutionObservation = { provider: this.backend, agentId, ...sample, phase: 'usage', at: Date.now(), model: null,
+    const observation: ExecutionObservation = { provider: this.backend, agentId, ...sample, phase: 'usage', at: Date.now(), model: session.modelForTurn(sample.turnId),
       requestCoverage: 'partial', requestCoverageReason: 'acp-request-evidence-unavailable' };
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observer isolation. */ } }
   }
@@ -418,7 +418,7 @@ export class CursorHost implements AgentBackendDriver {
     const turn = this.sessions.get(event.agentId)?.snapshot.turns.find(turn => turn.id === event.turnId);
     const observation: ExecutionObservation = {
       provider: this.backend, agentId: event.agentId, sessionId: event.sessionId, turnId: event.turnId,
-      phase, at: Date.parse(event.occurredAt), model: null, ...(phase === 'started' ? { tokens: null } : {}),
+      phase, at: Date.parse(event.occurredAt), model: this.sessions.get(event.agentId)?.modelForTurn(event.turnId) ?? null, ...(phase === 'started' ? { tokens: null } : {}),
       ...(phase !== 'started' && turn?.durationMs != null ? { durationMs: turn.durationMs } : {}),
     };
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observer isolation. */ } }

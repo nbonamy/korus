@@ -18,6 +18,7 @@ import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversa
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
+import { TurnClock } from '../../usage/turn-clock';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
 vi.mock('node:fs/promises', async importOriginal => { const actual = await importOriginal<typeof import('node:fs/promises')>(); return {...actual,open:vi.fn(actual.open),realpath:vi.fn(actual.realpath)}; });
 let root: string, host: AgentBackendDriver;
@@ -369,6 +370,32 @@ describe('Cursor ACP host transport boundary', () => {
     await host.respondToAgentRequest({ agentId: manual.id, id: pending.payload.request.id, outcome: { kind: 'decision', decision: 'deny' } });
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
   });
+  it('attributes TTFT to each acknowledged model even without token counts or after a native model change', async () => {
+    const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
+    let now = 0;
+    const usage = new UsageService(ledger, () => agent, new TurnClock(() => now), () => now);
+    await ledger.load();
+    const offUsage = host.onUsage!(event => usage.observe(event));
+    const offEvents = host.onEvent(event => {
+      if (event.type === 'cursor.conversationEventReceived') {
+        if (event.payload.event.type === 'message.upsert' && event.payload.event.payload.message.role === 'assistant') now = 1200;
+        if (event.payload.event.type === 'turn.completed') now = 4000;
+      }
+      usage.observeEvent(event as never);
+    });
+    try {
+      await host.sendPrompt(agent, 'performance', { selection: { model: 'composer-2.5' } });
+      await vi.waitFor(() => expect(completions()).toHaveLength(1));
+      now = 0;
+      await host.sendPrompt(agent, 'hello', { selection: { model: 'auto' } });
+      await vi.waitFor(() => expect(completions()).toHaveLength(2));
+      await usage.drain();
+      const rows = ledger.query({ provider: 'cursor', group: 'model' }).rows;
+      expect(rows.map(row => row.modelVariant?.model).sort()).toEqual(['auto', 'composer-2.5']);
+      for (const row of rows) expect(row).toMatchObject({ started: 1, completed: 1, tokens: null,
+        speed: { ttftMs: 1200, ttftTurns: 1, outputTokens: 0 }, cost: { usd: null, coverage: 'unavailable' } });
+    } finally { offUsage(); offEvents(); await usage.close(); }
+  });
   it('reports cumulative ACP tokens once, retains cache categories and excludes resumed history from execution accounting', async () => {
     const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
     const usage = new UsageService(ledger, () => agent);
@@ -406,7 +433,7 @@ describe('Cursor ACP host transport boundary', () => {
         cost: { usd: null, coverage: 'unavailable' },
       });
       expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toMatchObject([{
-        provider: 'cursor', model: 'unknown', turns: 7, measuredTurns: 5, inputTokens: 12, cachedInputTokens: 4, outputTokens: 4, estimatedCostUsd: null,
+        provider: 'cursor', model: 'auto', turns: 7, measuredTurns: 5, inputTokens: 12, cachedInputTokens: 4, outputTokens: 4, estimatedCostUsd: null,
       }]);
       await usage.close();
       const restored = new UsageLedger(path.join(root, 'usage.sqlite'));
@@ -465,7 +492,7 @@ describe('Cursor ACP host transport boundary', () => {
         cost: { usd: null, coverage: 'unavailable' },
       }]);
       // Projection is local; the uploader negotiates collector acceptance.
-      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toMatchObject([{provider: 'cursor', model: 'unknown', turns: 4, measuredTurns: 0, inputTokens: null, outputTokens: null, estimatedCostUsd: null, costCoverage: 'unavailable'}]);
+      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toMatchObject([{provider: 'cursor', model: 'auto', turns: 4, measuredTurns: 0, inputTokens: null, outputTokens: null, estimatedCostUsd: null, costCoverage: 'unavailable'}]);
       await usage.close();
       const restored = new UsageLedger(path.join(root, 'usage.sqlite'));
       try {

@@ -31,6 +31,7 @@ describe('snapshot runtime reducer', () => {
         status: 'running',
         detail: 'connected',
         capabilities: {
+          reportsTokens: false,
           nativeMonitor: true,
           codeReview: false,
           approvalPresets: ['ask-for-approval', 'not-a-preset'],
@@ -52,6 +53,7 @@ describe('snapshot runtime reducer', () => {
       status: 'running',
       detail: 'connected',
       capabilities: {
+        reportsTokens: false,
         nativeMonitor: true,
         codeReview: false,
         approvalPresets: ['ask-for-approval'],

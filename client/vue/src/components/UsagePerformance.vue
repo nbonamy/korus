@@ -1,6 +1,6 @@
 <template>
   <UsageTileGrid
-    style="--usage-tile-columns: 2"
+    :style="{ '--usage-tile-columns': 2, gridTemplateColumns: speed === null ? 'minmax(0, 1fr)' : undefined }"
     :aria-label="$t('analytics.totals')"
   >
     <UsageStatTile
@@ -13,12 +13,13 @@
       :unit="ttft === null ? undefined : $t('analytics.secondsUnit')"
     />
     <UsageStatTile
+      v-if="speed !== null"
       :label="$t('analytics.tokenSpeed')"
       :value="performanceValue(speed)"
       :unit="speed === null ? undefined : $t('analytics.tokensPerSecond')"
     />
   </UsageTileGrid>
-  <UsageCard>
+  <UsageCard v-if="speedSeries.length">
     <UsageTrend
       :daily="summary.daily ?? []"
       :series="speedSeries"
@@ -28,7 +29,7 @@
       :subtitle="$t('analytics.tokensPerSecond')"
     />
   </UsageCard>
-  <div class="performance-grid">
+  <div class="performance-grid" :class="{ 'performance-grid--single': !speedRanking.length }">
     <UsageCard
       as="section"
       class="behavior-card"
@@ -73,6 +74,7 @@
     </UsageCard>
 
     <UsageCard
+      v-if="speedRanking.length"
       as="section"
       class="behavior-card"
       :aria-label="$t('analytics.tokenSpeed')"
@@ -142,7 +144,7 @@ const speedSeries = computed(() =>
     props.summary.daily?.some((day) =>
       day.groups?.some(
         (group) =>
-          usageRowKey(group) === series.key && tokensPerSecond(group.speed) !== null,
+          group.reportsTokens !== false && usageRowKey(group) === series.key && tokensPerSecond(group.speed) !== null,
       ),
     ),
   ),
@@ -151,7 +153,7 @@ const overall = computed(() =>
   sumSpeed(props.summary.rows.map((row) => row.speed)),
 );
 const ttft = computed(() => averageTtftSeconds(overall.value));
-const speed = computed(() => tokensPerSecond(overall.value));
+const speed = computed(() => tokensPerSecond(sumSpeed(props.summary.rows.filter(row => row.reportsTokens !== false).map(row => row.speed))));
 const performanceValue = (value: number | null): string =>
   value === null
     ? translate("analytics.notAvailable")
@@ -166,7 +168,7 @@ const rows = computed(() => {
     label: modelUsageLabel(row),
     color: providerColorForModel(row.label),
     ttft: averageTtftSeconds(row.speed),
-    speed: tokensPerSecond(row.speed),
+    speed: row.reportsTokens === false ? null : tokensPerSecond(row.speed),
   }));
 });
 const maximumTtft = computed(() =>
@@ -175,9 +177,9 @@ const maximumTtft = computed(() =>
 const maximumSpeed = computed(() =>
   Math.max(0, ...rows.value.map((row) => row.speed ?? 0)),
 );
-/** Fastest first token first; models without a sample sort last. */
+/** Fastest measured first token first. */
 const ttftRanking = computed(() =>
-  [...rows.value].sort(
+  rows.value.filter(row => row.ttft !== null).sort(
     (a, b) =>
       (a.ttft ?? Number.POSITIVE_INFINITY) -
         (b.ttft ?? Number.POSITIVE_INFINITY) ||
@@ -189,7 +191,7 @@ const ttftRanking = computed(() =>
 );
 /** Highest provider-reported generation rate first. */
 const speedRanking = computed(() =>
-  sortUsageValues(rows.value, row => row.speed).map((row) => ({
+  sortUsageValues(rows.value.filter(row => row.speed !== null), row => row.speed).map((row) => ({
     ...row,
     speedWidth: relativeWidth(row.speed, maximumSpeed.value),
   })),
@@ -200,6 +202,9 @@ const speedRanking = computed(() =>
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-8);
+}
+.performance-grid--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 .behavior-card {
   min-width: 0;
