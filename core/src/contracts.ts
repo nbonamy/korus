@@ -1054,6 +1054,8 @@ export type AppApi = {
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
+  getDictationSettings?(): Promise<import('./dictation').DictationSettings>;
+  updateDictationSettings?(input: import('./dictation').DictationSettingsInput): Promise<import('./dictation').DictationSettings>;
   previewSpokenAnnouncementVoice(voice: SpokenAnnouncementVoice): Promise<SpokenAnnouncementQueueResult>;
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;
   setCodexResourceSharing(input: SetCodexResourceSharingInput): Promise<AppSnapshot>;
