@@ -291,7 +291,9 @@ it.each(["completed", "interrupted", "failed"] as const)(
       const reopened = new UsageLedger(file, () => at + 10000);
       try {
         await reopened.load();
-        expect(reopened.query()).toStrictEqual(summary);
+        // Capability metadata is projected on read, rather than persisted in the ledger.
+        // Reapply the Codex token-reporting policy used by usage/get.
+        expect(reopened.query({}, () => true)).toStrictEqual(summary);
       } finally {
         await reopened.close();
       }
