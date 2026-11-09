@@ -139,6 +139,13 @@ async function review(text,reply) {
     update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
     update({sessionUpdate:'future_session_update',payload:{}});
     update({sessionUpdate:'agent_message_chunk',content:{type:'future_block',value:1}});
+    // Synthetic optional ACP usage: no installed native build is claimed to emit it.
+    if (mode === 'usage') {
+      const sample = JSON.parse(fs.readFileSync(path.join(__dirname, 'usage-response.json'), 'utf8'));
+      for (const frame of sample.updates ?? []) update(frame);
+      update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Usage fixture complete.'}});
+      reply({stopReason:'end_turn',...sample.result}); return;
+    }
     if (mode === 'rich-output') { richOutput(false); reply({stopReason:'end_turn'}); return; }
     // Source-backed generate_image request shape; notification variant is compatibility coverage.
     if (mode === 'image-observation') {

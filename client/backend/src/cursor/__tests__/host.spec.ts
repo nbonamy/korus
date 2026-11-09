@@ -9,6 +9,7 @@ import { CodeReviewService } from '../../review/code-review-service';
 import { AgentCreationService } from '../../agents/agent-creation-service';
 import { AppMcpService } from '../../mcp/service';
 import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
+import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentInSnapshot, createQuickChatInSnapshot } from '@workspace/core/agent-manager';
@@ -367,6 +368,76 @@ describe('Cursor ACP host transport boundary', () => {
     if (pending.type !== 'agentRequest.created') throw new Error('Expected manual permission');
     await host.respondToAgentRequest({ agentId: manual.id, id: pending.payload.request.id, outcome: { kind: 'decision', decision: 'deny' } });
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
+  });
+  it('reports cumulative ACP tokens once, retains cache categories and excludes resumed history from execution accounting', async () => {
+    const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
+    const usage = new UsageService(ledger, () => agent);
+    await ledger.load();
+    const off = host.onUsage!(event => usage.observe(event));
+    const counts = (n: number) => ({ totalTokens: n * 4, inputTokens: n, outputTokens: n, cachedReadTokens: n, cachedWriteTokens: n, thoughtTokens: n });
+    let current: Agent = { ...agent };
+    const sample = async (n: number, stopReason = 'end_turn') => {
+      await writeFile(path.join(root, 'usage-response.json'), JSON.stringify({ result: { stopReason, usage: counts(n) } }));
+      const before = completions().length;
+      const sent = await host.sendPrompt(current, 'usage');
+      current = { ...current, backendSession: sent.backendSession };
+      await vi.waitFor(() => expect(completions()).toHaveLength(before + 1));
+      await usage.drain();
+    };
+    try {
+      await sample(1); await sample(2); await sample(2, 'cancelled');
+      expect(ledger.query({ provider: 'cursor' }).rows[0]).toMatchObject({
+        started: 3, completed: 2, interrupted: 1, measuredTurns: 3,
+        tokens: { total: 8, input: 6, output: 2, cacheRead: 2, cacheWrite: 2, reasoning: 2 },
+        cost: { usd: null, coverage: 'unavailable' },
+      });
+      await host.releaseConversation!(current.id);
+      const before = completions().length;
+      const saved = current.backendSession;
+      if (saved?.kind !== 'cursor') throw new Error('Expected Cursor session');
+      await host.resumeConversation!(current, { ref: { backend: 'cursor', folder: root, sessionId: saved.sessionId }, storageState: 'active' });
+      await usage.drain();
+      expect(completions()).toHaveLength(before);
+      await sample(4); // A cold resume's first cumulative sample establishes a baseline, not new work.
+      await sample(5);
+      await sample(1); await sample(2); // A decreasing counter resets the baseline without clamping or charging history.
+      expect(ledger.query({ provider: 'cursor' }).rows[0]).toMatchObject({
+        started: 7, measuredTurns: 5, tokens: { total: 16, input: 12, output: 4, cacheRead: 4, cacheWrite: 4, reasoning: 4 },
+        cost: { usd: null, coverage: 'unavailable' },
+      });
+      expect(ledger.projectDailyTelemetry({ day: new Date().toISOString().slice(0, 10) })).toMatchObject([{
+        provider: 'cursor', model: 'unknown', turns: 7, measuredTurns: 5, inputTokens: 12, cachedInputTokens: 4, outputTokens: 4, estimatedCostUsd: null,
+      }]);
+      await usage.close();
+      const restored = new UsageLedger(path.join(root, 'usage.sqlite'));
+      try { await restored.load(); expect(restored.query({ provider: 'cursor' }).rows[0]?.tokens?.total).toBe(16); }
+      finally { await restored.close(); }
+    } finally { off(); await usage.close(); }
+  });
+  it.each([
+    undefined,
+    { totalTokens: 100 },
+    { totalTokens: 4, inputTokens: -1, outputTokens: 1, cachedReadTokens: 1, cachedWriteTokens: 1 },
+    { totalTokens: 4, inputTokens: 1.5, outputTokens: 1, cachedReadTokens: 1, cachedWriteTokens: 1 },
+    { totalTokens: 999, inputTokens: 1, outputTokens: 1, cachedReadTokens: 1, cachedWriteTokens: 1 },
+    { totalTokens: 12, inputTokens: 0, outputTokens: 1, cachedReadTokens: 1, cachedWriteTokens: 10 },
+  ])('leaves absent/invalid ACP usage unknown and never counts context occupancy or cumulative USD cost as tokens (%j)', async invalid => {
+    const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));
+    const usage = new UsageService(ledger, () => agent);
+    await ledger.load();
+    const off = host.onUsage!(event => usage.observe(event));
+    const counts = (n: number) => ({ totalTokens: n * 4, inputTokens: n, outputTokens: n, cachedReadTokens: n, cachedWriteTokens: n });
+    try {
+      for (const native of [counts(1), invalid, counts(3), counts(4)]) {
+        await writeFile(path.join(root, 'usage-response.json'), JSON.stringify({ result: { usage: native }, updates: [{ sessionUpdate: 'usage_update', used: 99999, size: 100000, cost: { amount: 123, currency: 'USD' } }] }));
+        const before = completions().length;
+        await host.sendPrompt(agent, 'usage');
+        await vi.waitFor(() => expect(completions()).toHaveLength(before + 1));
+      }
+      await usage.drain();
+      expect(ledger.query({ provider: 'cursor' }).rows[0]).toMatchObject({ started: 4, completed: 4, measuredTurns: 2,
+        tokens: { total: 8, input: 6, output: 2, cacheRead: 2, cacheWrite: 2 }, cost: { usd: null, coverage: 'unavailable' } });
+    } finally { off(); await usage.close(); }
   });
   it('records completed, interrupted and failed native executions without inventing tokens or costs or counting snapshot reads', async () => {
     const ledger = new UsageLedger(path.join(root, 'usage.sqlite'));

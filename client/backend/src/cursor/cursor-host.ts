@@ -10,7 +10,7 @@ import type { Agent, BackendSession, SendPromptOptions, ConversationListInput, C
 import type { AgentBackendDriver, BackendEvent, BackendCodeReviewInput, BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
-import type { ExecutionObservation } from '@workspace/core/usage';
+import type { Consumption, ExecutionObservation } from '@workspace/core/usage';
 import type { BackendDriverRegistryOptions } from '../driver-rpc';
 import { appDeveloperInstructions } from '../mcp/agent-prompts';
 import { promptWithSelectedReferences } from '../agents/prompt-content';
@@ -254,7 +254,7 @@ export class CursorHost implements AgentBackendDriver {
     const done = (async () => {
       const auth = await this.authenticate({ action: 'check' });
       if (!auth.connected) throw new Error('Cursor is disconnected.');
-      const next = await CursorSession.open({ permissionMode: this.permissionMode(agent), agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error) });
+      const next = await CursorSession.open({ permissionMode: this.permissionMode(agent), agentId: agent.id, cwd: this.workingDirectory(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId, signal: abort.signal, changed: event => this.conversationEvent(event), usage: sample => this.observeTokens(agent.id, sample), disconnected: error => this.disconnected(error) });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
       const previous = this.sessions.get(agent.id); await previous?.close();
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
@@ -359,7 +359,7 @@ export class CursorHost implements AgentBackendDriver {
       const cwd = this.workingDirectory(agent);
       if (!agent.folder) await mkdir(cwd, { recursive: true, mode: 0o700 });
       const session = await CursorSession.open({ agentId: agent.id, cwd, permissionMode: this.permissionMode(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent, reviewUrl), appMcpServerName: (reviewUrl || this.options.appMcpServerUrl) ? product.mcpServerName : undefined, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
-        changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
+        changed: event => this.conversationEvent(event), usage: sample => this.observeTokens(agent.id, sample), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }
       this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); this.publishRuntime(); return session;
@@ -407,11 +407,18 @@ export class CursorHost implements AgentBackendDriver {
     if (event.type === 'turn.completed') this.emit({ ...identity, type: 'agent.statusChanged', payload: event.payload.turn.status === 'failed' ? { type: 'error', message: event.payload.error ?? 'Cursor turn failed.' } : { type: 'idle' } });
     if (event.type === 'turn.completed') this.observeUsage(event, event.payload.turn.status);
   }
+  private observeTokens(agentId: string, sample: { sessionId: string; turnId: string; tokens: Consumption }): void {
+    const session = this.sessions.get(agentId);
+    if (session?.sessionId !== sample.sessionId || !session.snapshot.turns.some(turn => turn.id === sample.turnId)) return;
+    const observation: ExecutionObservation = { provider: this.backend, agentId, ...sample, phase: 'usage', at: Date.now(), model: null,
+      requestCoverage: 'partial', requestCoverageReason: 'acp-request-evidence-unavailable' };
+    for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observer isolation. */ } }
+  }
   private observeUsage(event: CursorConversationEvent, phase: ExecutionObservation['phase']): void {
     const turn = this.sessions.get(event.agentId)?.snapshot.turns.find(turn => turn.id === event.turnId);
     const observation: ExecutionObservation = {
       provider: this.backend, agentId: event.agentId, sessionId: event.sessionId, turnId: event.turnId,
-      phase, at: Date.parse(event.occurredAt), model: null, tokens: null,
+      phase, at: Date.parse(event.occurredAt), model: null, ...(phase === 'started' ? { tokens: null } : {}),
       ...(phase !== 'started' && turn?.durationMs != null ? { durationMs: turn.durationMs } : {}),
     };
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observer isolation. */ } }

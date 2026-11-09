@@ -158,8 +158,20 @@ diagnostics and URLs are discarded.
 Cursor live turns emit execution observations to the local usage ledger. The
 daemon measures working time and time to first assistant output; release and
 shutdown settle active executions as interrupted. Snapshot reads do not count as
-executions. Token counts, served models and costs stay unknown without native
-measurements. The ledger projects Cursor rows through the shared provider-name
+executions. Optional final ACP `usage` is interpreted as cumulative session
+consumption, separately from `usage_update` context occupancy and account billing.
+Validated input, output and cache buckets become execution deltas; cached input
+is included once, and reasoning remains a subset of output. Repeated counters
+add no tokens. A cold resume, missing/invalid sample or decreasing counter requires
+a new baseline before attribution, preventing replay or an unmeasured gap from
+being charged to the next turn. Incomplete cache breakdowns remain unknown.
+This counter convention matches the cumulative ACP integration; protocol variants
+with per-turn usage require explicit qualification rather than automatic inference.
+The qualified native CLI supplies no usage fields, so its analytics retain unknown
+token counts. Optional handler coverage does not establish native emission.
+Served model, billable request coverage and API cost remain unknown from session
+totals; context occupancy and cumulative USD cost never become billable requests.
+The ledger projects Cursor rows through the shared provider-name
 telemetry contract. Collectors must have the provider-name migration before
 clients send additional providers; uploads do not negotiate provider admission.
 
@@ -207,7 +219,7 @@ subprocess fixture. Native measurements do not attest to every model or tool.
 | [ ] | Native structured questions | Adapter, exact ID validation and daemon responses are implemented in [host tests][cursor-host-tests]; native emission is unqualified and the capability stays disabled. Plan-sidebar choices remain usable. |
 | [x] | Auth, transport and policy failures | Safe terminal errors, pending-request settlement, identity invalidation and bounded shutdown; [host tests][cursor-host-tests] and [authentication tests][cursor-auth-tests]. Quota normalization is the separate partial item above. |
 | [x] | Account quota and billing reads | Validated included/on-demand balances, reset metadata and stale-account protection; [account tests][cursor-billing-tests]. These are account observations, not per-turn cost. |
-| [ ] | Token/context/pricing measurements | Partial: executions and timings reach the ledger/telemetry pipeline; tokens, context consumption, served model and API cost remain unknown. [Host execution tests][cursor-host-tests]. |
+| [ ] | Token/context/pricing measurements | Partial: executions/timings and optional validated cumulative token deltas reach the ledger/telemetry pipeline. The qualified native CLI emits no token measurements; context occupancy, served model and request pricing remain unknown. [Host execution tests][cursor-host-tests]. |
 | [x] | Structured code review | Shared manual and automatic review workflows report findings through scoped MCP, retain discussion and remediation in the native conversation, and clean up reviewer sessions. [Owning workflows][cursor-host-tests]. |
 | [ ] | Isolated utility generation | No Cursor isolated text/image generation or enforced tool-free utility path. |
 

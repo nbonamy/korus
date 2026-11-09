@@ -12,16 +12,19 @@ import { cursorQuestion } from './questions';
 import { CursorPromptJournal } from './prompt-journal';
 import { cursorModelCatalog, cursorModels, cursorThoughtControl, type CursorCatalogModel } from './catalog';
 import { CursorTranscript } from './transcript';
+import { CursorUsageCounter } from './usage';
+import type { Consumption } from '@workspace/core/usage';
 import { cursorRpcErrorMessage, isCursorAuthenticationFailure, isCursorQuotaFailure } from './rpc-errors';
 export { isCursorAuthenticationFailure } from './rpc-errors';
 
 const teamSwitched = 'Your team has switched. Reconnect Cursor in Settings.';
 const policyDenied = 'Cursor ACP is blocked by your team policy. Contact your administrator.';
-type Options = { agentId: string; cwd: string; permissionMode?: 'default' | 'full-access'; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void };
+type Options = { agentId: string; cwd: string; permissionMode?: 'default' | 'full-access'; runtime?: CursorRuntime; sessionId?: string; catalogOnly?: boolean; mcpServers?: unknown[]; appMcpServerName?: string; signal: AbortSignal; changed(event: CursorConversationEvent): void; disconnected(error: Error): void; usage?(sample: { sessionId: string; turnId: string; tokens: Consumption }): void };
 
 /** One agent/session; framing, request deadlines and process teardown remain in the shared transport. */
 export class CursorSession {
   private connection!: AcpConnection;
+  private readonly usageCounter: CursorUsageCounter;
   private transcript!: CursorTranscript;
   private readonly imageWork = new Set<Promise<void>>();
   private readonly pending = new Map<string, { resolve(value: unknown): void; answer(response: AgentRequestResponse): unknown; permission?: { options: unknown } }>();
@@ -38,7 +41,7 @@ export class CursorSession {
   private active?: Promise<void>;
   private readonly startupUpdates: unknown[] = [];
   private permissionMode: 'default' | 'full-access';
-  private constructor(private readonly options: Options) { this.permissionMode = options.permissionMode ?? 'default'; }
+  private constructor(private readonly options: Options) { this.permissionMode = options.permissionMode ?? 'default'; this.usageCounter = new CursorUsageCounter(Boolean(options.sessionId)); }
   static async open(options: Options): Promise<CursorSession> {
     const session = new CursorSession(options);
     const command = resolveCursorExecutable();
@@ -186,9 +189,12 @@ export class CursorSession {
         // cancellation output before the next prompt; no history is retained.
         await this.connection.request('session/list', { cwd: this.options.cwd }, 5_000);
       }
+      const tokens = this.usageCounter.finish(result.usage);
+      if (tokens) this.options.usage?.({ sessionId: this.sessionId, turnId, tokens });
       this.cancelRequests();
       this.transcript.finish(turnId, status, status === 'failed' ? `Cursor stopped: ${result.stopReason}.` : undefined);
     }).catch(error => {
+      this.usageCounter.invalidate();
       if (this.interrupted) { this.transcript.finish(turnId, 'interrupted'); if (!this.closing) this.failed(error instanceof Error ? error : new Error('Cursor cancellation failed.')); }
       else if (error instanceof Error && isCursorQuotaFailure(error)) {
         // A rejected turn is not a dead transport or an expired login. Keep the
