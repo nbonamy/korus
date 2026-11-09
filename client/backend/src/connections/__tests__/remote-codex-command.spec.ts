@@ -29,20 +29,32 @@ describe('remote Codex version discovery', () => {
     return { root, install, probe };
   }
 
-  it('ignores leftover app-managed binaries and detects the user CLI on PATH', () => {
+  it('ignores leftover app-managed binaries when no user CLI is on PATH', () => {
     const { install, probe } = fixture();
     install(`${product.homeDirectory}/codex/0.159.3/bin/codex`, '0.159.3');
     expect(probe()).toMatchObject({ status: 0, stdout: '' });
+  });
+
+  it('detects the user CLI on PATH despite leftover app-managed binaries', () => {
+    const { install, probe } = fixture();
+    install(`${product.homeDirectory}/codex/0.159.3/bin/codex`, '0.159.3');
     install('bin/codex', '0.160.0');
     expect(probe()).toMatchObject({ status: 0, stdout: 'codex-cli 0.160.0\n' });
   });
 
-  it('honors a custom executable with spaces and does not hide a broken override with PATH', () => {
+  it('honors a custom executable with spaces', () => {
     const { root, install, probe } = fixture();
     install('bin/codex', '0.160.0');
     const custom = install('custom tools/codex', '0.100.0');
     writeFileSync(path.join(root, product.homeDirectory, 'settings.json'), JSON.stringify({ data: { settings: { codexBinaryPath: custom } } }));
     expect(probe()).toMatchObject({ status: 0, stdout: 'codex-cli 0.100.0\n' });
+  });
+
+  it('does not hide a broken custom override with the CLI on PATH', () => {
+    const { root, install, probe } = fixture();
+    install('bin/codex', '0.160.0');
+    const custom = install('custom tools/codex', '0.100.0');
+    writeFileSync(path.join(root, product.homeDirectory, 'settings.json'), JSON.stringify({ data: { settings: { codexBinaryPath: custom } } }));
     rmSync(custom);
     expect(probe().status).not.toBe(0);
   });

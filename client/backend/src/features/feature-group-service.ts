@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AgentGitWorkflow, AppSnapshot } from '@workspace/core/contracts';
-import { featureLabel, isDefaultFeatureBranch, setFeatureLabel, type FeatureGroupPreview, type FeatureGroupRequest, type FeatureGroupResult } from '@workspace/core/feature-groups';
+import { featureLabel, isDefaultFeatureBranch, reorderFeature, setFeatureLabel, type FeatureGroupPreview, type FeatureGroupRequest, type FeatureGroupResult } from '@workspace/core/feature-groups';
 
 export class FeatureGroupService {
   private readonly deleting = new Set<string>();
@@ -14,6 +14,13 @@ export class FeatureGroupService {
   async execute(input: FeatureGroupRequest): Promise<FeatureGroupResult> {
     const key = JSON.stringify([input.teamId, input.branch]);
     if (this.deleting.has(key)) throw new Error('This feature is already being deleted.');
+    if (input.type === 'reorder') {
+      const team = this.snapshot.teams.find(team => team.id === input.teamId);
+      const previous = team?.featureOrder;
+      reorderFeature(this.snapshot, input.teamId, input.branch, input.beforeBranch);
+      try { return { kind: 'updated', snapshot: await this.ports.save() }; }
+      catch (error) { team!.featureOrder = previous; throw error; }
+    }
     if (input.type === 'rename') {
       const team = this.snapshot.teams.find(team => team.id === input.teamId);
       if (!team) throw new Error('Team not found.');
@@ -50,6 +57,7 @@ export class FeatureGroupService {
       const team = this.snapshot.teams.find(team => team.id === input.teamId)!;
       const { [input.branch]: _label, ...labels } = team.featureLabels ?? {};
       team.featureLabels = labels;
+      team.featureOrder = team.featureOrder?.filter(branch => branch !== input.branch);
       return { kind: 'updated', snapshot: await this.ports.save() };
     } finally { this.deleting.delete(key); }
   }

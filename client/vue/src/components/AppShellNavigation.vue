@@ -54,6 +54,7 @@
       @open-feature="$emit('open-feature', $event)"
       @open-feature-window="$emit('open-feature-window', $event)"
       @rename-feature="$emit('rename-feature', $event)"
+      @reorder-feature="$emit('reorder-feature', $event)"
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
@@ -194,6 +195,7 @@ const emit = defineEmits<{
   'open-feature-window': [branch: string];
   'open-team-window': [teamId: string];
   'rename-feature': [feature: { branch: string; label: string }];
+  'reorder-feature': [feature: { branch: string; beforeBranch: string | null }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];
@@ -239,7 +241,7 @@ const teamSidebarAgents = computed(() => (props.cockpitVisible ? props.snapshot.
   .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
 // A feature window lists its agents in the order the team's own sidebar shows them.
 const sidebarAgents = computed(() => props.featureAgentIds
-  ? orderAgentsLikeWorktreeSidebar(teamSidebarAgents.value, props.featureAgentIds)
+  ? orderAgentsLikeWorktreeSidebar(teamSidebarAgents.value, props.featureAgentIds, props.snapshot.teams.find(team => team.id === props.snapshot.activeTeamId)?.featureOrder)
   : teamSidebarAgents.value);
 const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
 const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));

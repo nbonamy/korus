@@ -486,6 +486,7 @@ describe('SettingsView', () => {
       'Analytics',
       'Appearance',
       'Browser',
+      'Dictation',
       'Voice',
       'Personalization',
       'Screenshots',
@@ -503,6 +504,8 @@ describe('SettingsView', () => {
     expect(wrapper.text()).not.toContain('Enable Claude Code');
     expect(wrapper.text()).not.toContain('Theme');
     const menuItems = wrapper.findAll('.el-menu-item');
+    expect(menuItems.find(item => item.text() === 'Dictation')!.find('.tabler-icon-microphone').exists()).toBe(true);
+    expect(menuItems.find(item => item.text() === 'Voice')!.find('.tabler-icon-volume').exists()).toBe(true);
     for (const label of ['Codex', 'Claude Code']) {
       const item = menuItems.find((item) => item.text() === label)!;
       const icon = item.get('.backend-icon');

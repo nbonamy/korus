@@ -21,10 +21,14 @@
       <circle class="settings-illustration__surface" cx="51" cy="15" r="6" />
       <circle class="settings-illustration__surface" cx="32" cy="55" r="6" />
     </template>
-    <template v-else-if="kind === 'voice'">
+    <template v-else-if="kind === 'dictation'">
       <rect class="settings-illustration__accent-surface" x="23" y="8" width="18" height="30" rx="9" />
       <path class="settings-illustration__accent" d="M14 30a18 18 0 0 0 36 0M32 48v8" />
       <path class="settings-illustration__line" d="M5 24v8M59 24v8M10 20v16M54 20v16" />
+    </template>
+    <template v-else-if="kind === 'voice'">
+      <path class="settings-illustration__accent-surface" d="M8 24h12L34 12v40L20 40H8z" />
+      <path class="settings-illustration__accent" d="M43 23a14 14 0 0 1 0 18M50 14a26 26 0 0 1 0 36" />
     </template>
     <template v-else-if="kind === 'appearance'">
       <circle class="settings-illustration__surface" cx="32" cy="32" r="23" />

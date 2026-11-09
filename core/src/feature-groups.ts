@@ -2,6 +2,7 @@ import type { Agent, AppSnapshot } from './contracts';
 
 export type FeatureGroupRequest = { teamId: string; branch: string } & (
   | { type: 'rename'; label: string }
+  | { type: 'reorder'; beforeBranch: string | null }
   | { type: 'preview-delete' }
   | { type: 'delete'; fingerprint: string; confirmed: true }
 );
@@ -37,4 +38,22 @@ export function setFeatureLabel(snapshot: AppSnapshot, teamId: string, branch: s
     const { [branch]: _label, ...labels } = team.featureLabels ?? {};
     team.featureLabels = labels;
   }
+}
+/** Branches in the team's saved order; the ones it does not list follow as they come. */
+export function orderFeatureBranches(branches: readonly string[], order: readonly string[] | undefined): string[] {
+  const listed = (order ?? []).filter(branch => branches.includes(branch));
+  return [...new Set([...listed, ...branches])];
+}
+/** Moves a feature before another one, or to the end; the default branch is never part of the order. */
+export function reorderFeature(snapshot: AppSnapshot, teamId: string, branch: string, beforeBranch: string | null): void {
+  const team = snapshot.teams.find(team => team.id === teamId);
+  if (!team) throw new Error('Team not found.');
+  const agents = team.agentIds.flatMap(id => snapshot.agents.find(agent => agent.id === id) ?? []);
+  const branches = agents.flatMap(agent => agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && agent.workspace.branch && !isDefaultFeatureBranch(agent.workspace.branch, agents) ? [agent.workspace.branch] : []);
+  const features = orderFeatureBranches([...new Set(branches)], team.featureOrder);
+  if (!features.includes(branch) || (beforeBranch !== null && !features.includes(beforeBranch))) throw new Error('Feature not found.');
+  if (beforeBranch === branch) return;
+  const rest = features.filter(feature => feature !== branch);
+  rest.splice(beforeBranch === null ? rest.length : rest.indexOf(beforeBranch), 0, branch);
+  team.featureOrder = rest;
 }

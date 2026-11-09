@@ -190,6 +190,26 @@ describe('AgentSidebar actions', () => {
     ]]);
   });
 
+  it('lets a feature move before another one in the worktree view, but never the default branch group', async () => {
+    localStorage.setItem('app:agentOrganization:team-app', 'worktree');
+    const feature = (id: string, branch: string) => ({ ...agents[0]!, id, name: id, workspace: { ...agents[0]!.workspace!, branch, isLinkedWorktree: true } });
+    const rows = [agents[0]!, feature('one', 'feat/one'), feature('two', 'feat/two')];
+    const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: rows, activeAgentId: rows[0]!.id, teamId: 'team-app', teamName: 'Team' }, global: { components: { ElPopover } } });
+    try {
+      const groups = wrapper.findAll('[data-group-kind="worktree"]');
+      const header = (index: number) => groups[index]!.get('.agent-sidebar__workspace-header');
+      expect(header(0).attributes('draggable')).toBeUndefined();
+      expect(header(1).attributes('draggable')).toBe('true');
+      mockRect(groups[1]!.element, { top: 100, height: 96 });
+
+      header(2).element.dispatchEvent(dragEvent('dragstart', 0));
+      groups[1]!.element.dispatchEvent(dragEvent('dragover', 108));
+      groups[1]!.element.dispatchEvent(dragEvent('drop', 108));
+
+      expect(wrapper.emitted('reorder-feature')).toStrictEqual([[{ branch: 'feat/two', beforeBranch: 'feat/one' }]]);
+    } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:team-app'); }
+  });
+
   it('does not emit agent reorder drops without a team id', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {

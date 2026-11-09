@@ -120,18 +120,18 @@
         v-for="group in workspaceGroups"
         :key="group.id"
         class="agent-sidebar__workspace-group"
-        :class="clientRepositoryOrderUpdate.dropTargetClass(group.id)"
+        :class="groupReorder(group)?.dropTargetClass(group.id)"
         :data-group-kind="group.kind"
-        @dragover="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragOver(group.id, $event)"
-        @dragleave="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragLeave(group.id, $event)"
-        @drop="group.kind === 'repository' && clientRepositoryOrderUpdate.onDrop(group.id, $event)"
+        @dragover="groupReorder(group)?.onDragOver(group.id, $event)"
+        @dragleave="groupReorder(group)?.onDragLeave(group.id, $event)"
+        @drop="groupReorder(group)?.onDrop(group.id, $event)"
       >
         <header
           class="agent-sidebar__workspace-header"
           :data-motion-id="group.id"
-          v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
-          @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
-          @dragend="clientRepositoryOrderUpdate.onDragEnd"
+          v-bind="groupReorder(group)?.dragItemAttributes(group.id)"
+          @dragstart="groupReorder(group)?.onDragStart(group.id, $event)"
+          @dragend="groupReorder(group)?.onDragEnd()"
           @contextmenu="openWorkspaceMenu(group, $event)"
         >
           <MessageIcon
@@ -384,7 +384,7 @@ const {
   missionDotStatus,
   workspaceGroups,
   featureRepositoryTargets,
-  clientRepositoryOrderUpdate,
+  groupReorder,
   openWorkspaceMenu,
   isWorkspaceCollapsed,
   repositoryIcon,

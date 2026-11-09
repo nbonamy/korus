@@ -28,6 +28,7 @@
           :update-settings="updateSettings"
         />
         <SettingsWorkflowsPanel v-else-if="activeTab === 'workflows'" :settings="generalSettings" :update-settings="updateSettings" />
+        <SettingsDictationPanel v-else-if="activeTab === 'dictation'" />
         <SettingsVoicePanel
           v-else-if="activeTab === 'voice'"
           :settings="generalSettings"
@@ -195,6 +196,7 @@ import SettingsIntegrationsPanel from './SettingsIntegrationsPanel.vue';
 import SettingsPluginsPanel from './SettingsPluginsPanel.vue';
 import SettingsSkillsPanel from './SettingsSkillsPanel.vue';
 import SettingsSidebar from './SettingsSidebar.vue';
+import SettingsDictationPanel from './SettingsDictationPanel.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
 import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';

@@ -1,3 +1,5 @@
+import { DictationSettingsStore } from './dictation-settings';
+import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
 import type { AgentBackend, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { mobileRuntimePaths } from './mobile/runtime';
@@ -13,7 +15,7 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { encodedAppError } from '@workspace/core/app-error';
 import { mainT } from './i18n';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell } from 'electron';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
@@ -69,6 +71,10 @@ type PendingBrowserOpen = {
 };
 
 export class AppController {
+  private dictationSettingsStore: DictationSettingsStore | undefined;
+  private dictationSettings(): DictationSettingsStore {
+    return this.dictationSettingsStore ??= new DictationSettingsStore(app.getPath('userData'), safeStorage, process.platform);
+  }
   private extensionService: BrowserExtensions | null = null;
   private extensions(): BrowserExtensions {
     return this.extensionService ??= new BrowserExtensions({
@@ -223,10 +229,16 @@ export class AppController {
     this.nativeIpcUnregister?.();
     this.nativeIpcUnregister = registerCodexNativeIpc(
       { clipboard, dialog, ipcMain, shell },
-      {},
+      {
+        prepareSpeechSession: (input, onEvent, options) => createDictationSpeechPreparer(this.dictationSettings())(input, onEvent, options),
+        startSpeechSession: (input, onEvent, options) => createDictationSpeechStarter(this.dictationSettings())(input, onEvent, options),
+      },
       this.nativeAttachmentRegistry,
     );
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
+    ipc.handle(ipcChannels.getDictationSettings, () => this.dictationSettings().get());
+    ipc.handle(ipcChannels.getDictationApiKey, () => this.dictationSettings().apiKey() ?? null);
+    ipc.handle(ipcChannels.updateDictationSettings, (_event, input) => this.dictationSettings().update(input));
     ipc.handle(ipcChannels.getSnapshot, () => this.getSnapshot());
     ipc.handle(ipcChannels.browserExtensions, (_event, agentId, action, id, browserId) => {
       if (agentId !== null && !this.snapshot?.agents.some(agent => agent.id === agentId)) throw new Error('Agent not found.');

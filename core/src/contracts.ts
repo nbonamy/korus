@@ -318,6 +318,8 @@ export type Team = {
   collaborationOwnerId?: string;
   /** Display labels for branch groups; Git branch names remain unchanged. */
   featureLabels?: Record<string, string>;
+  /** Display order of feature branch groups; the default branch group is not part of it. */
+  featureOrder?: string[];
   agentIds: string[];
   activeAgentId?: string;
 };
@@ -1058,6 +1060,10 @@ export type AppApi = {
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
+  getDictationSettings?(): Promise<import('./dictation').DictationSettings>;
+  /** Explicit desktop-only credential reveal; never part of settings or shared snapshots. */
+  getDictationApiKey?(): Promise<string | null>;
+  updateDictationSettings?(input: import('./dictation').DictationSettingsInput): Promise<import('./dictation').DictationSettings>;
   previewSpokenAnnouncementVoice(voice: SpokenAnnouncementVoice): Promise<SpokenAnnouncementQueueResult>;
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;
   setCodexResourceSharing(input: SetCodexResourceSharingInput): Promise<AppSnapshot>;
