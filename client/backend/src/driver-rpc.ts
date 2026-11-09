@@ -1,4 +1,6 @@
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
+import { randomUUID } from 'node:crypto';
+import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
 import { CursorHost } from './cursor/cursor-host';
@@ -131,6 +133,22 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
+  private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
+  private closing = false;
+
+  private async presentPrompt<T>(agent: Agent, prompt: string, send: () => Promise<T>, options?: SendPromptOptions, steering = false): Promise<T> {
+    if (options?.recordUserMessage === false || !prompt.trim()) return send();
+    const pending: PendingConversationPrompt = { id: `pending-prompt-${randomUUID()}`, text: prompt, createdAt: new Date().toISOString(), ...(steering ? { steering: true } : {}) };
+    const entries = [...(this.pendingPrompts.get(agent.id) ?? []), pending];
+    this.pendingPrompts.set(agent.id, entries);
+    this.emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, pendingPrompts: entries } });
+    try { return await send(); }
+    finally {
+      const remaining = (this.pendingPrompts.get(agent.id) ?? []).filter(entry => entry.id !== pending.id);
+      if (remaining.length) this.pendingPrompts.set(agent.id, remaining); else this.pendingPrompts.delete(agent.id);
+      if (!this.closing) this.emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, pendingPrompts: remaining } });
+    }
+  }
   private readonly textGenerations = new Map<string, { controller: AbortController; done: Promise<void>; finish: () => void }>();
   private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
   private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
@@ -364,12 +382,13 @@ export class BackendDriverRpc {
         if (!driver.runCodeReview || !driver.getCapabilities(agent).codeReview) {
           throw unsupportedBackendFeature(agent, 'code review');
         }
-        return driver.runCodeReview(agent, {
+        const input = {
           prompt: requireString(record.prompt, 'prompt'),
           cwd: requireString(record.cwd, 'cwd'),
           reviewMcpServerUrl: requireString(record.reviewMcpServerUrl, 'reviewMcpServerUrl'),
           ...(record.reviewerSession ? { reviewerSession: record.reviewerSession as BackendSession } : {}),
-        });
+        };
+        return this.presentPrompt(agent, input.prompt, () => driver.runCodeReview!(agent, input));
       }
       case backendMethods.driverCodeReviewDispose: {
         const { agent } = requireAgentParams(params);
@@ -392,7 +411,8 @@ export class BackendDriverRpc {
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
-        return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
+        const options = record.options as SendPromptOptions | undefined;
+        return this.presentPrompt(agent, prompt, () => driver.sendPrompt(agent, prompt, options), options);
       }
       case backendMethods.driverConversationReplaceWithSummary: {
         const { agent } = requireAgentParams(params);
@@ -596,9 +616,9 @@ export class BackendDriverRpc {
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
-        return options
-          ? driver.steerPrompt(agent, prompt, options)
-          : driver.steerPrompt(agent, prompt);
+        return this.presentPrompt(agent, prompt, () => options
+          ? driver.steerPrompt!(agent, prompt, options)
+          : driver.steerPrompt!(agent, prompt), options, true);
       }
       case backendMethods.driverTurnDelete: {
         const { agent } = requireAgentParams(params);
@@ -725,6 +745,7 @@ export class BackendDriverRpc {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     for (const job of this.textGenerations.values()) job.controller.abort(new Error('Generation cancelled during shutdown.'));
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
@@ -735,6 +756,7 @@ export class BackendDriverRpc {
     this.unsubscribeUsage.clear();
     this.unsubscribeRequestUsage.clear();
     this.unsubscribeDriverEvents.clear();
+    this.pendingPrompts.clear();
     const failure = results.find(result => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
   }

@@ -8,6 +8,18 @@ import {
 } from '../snapshot-guards';
 
 describe('snapshot guards', () => {
+  it('accepts optional pending prompt presentation and rejects malformed records', () => {
+    const snapshot = createInitialSnapshot();
+    const pending = { id: 'injected', text: 'Implement the ticket', createdAt: '2026-11-09T00:00:00.000Z' };
+    snapshot.agents[0]!.pendingPrompts = [pending];
+    expect(isAppSnapshot(snapshot)).toBe(true);
+    for (const invalid of [null, { ...pending, text: null }, { ...pending, createdAt: 'invalid' }, { ...pending, steering: 'yes' }]) {
+      const malformed = structuredClone(snapshot);
+      Object.assign(malformed.agents[0]!, { pendingPrompts: [invalid] });
+      expect(isAppSnapshot(malformed)).toBe(false);
+    }
+  });
+
   it('decodes valid empty, seeded, JSON, and fully populated snapshots', () => {
     const empty = createEmptySnapshot();
     const seeded = createInitialSnapshot();

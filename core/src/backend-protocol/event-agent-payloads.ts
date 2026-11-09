@@ -1,4 +1,5 @@
 import { isProviderSafetyReview } from '../provider-safety-block';
+import { isPendingConversationPrompt } from '../pending-conversation-prompt';
 import { isRateLimitPause } from '../auto-resume';
 import { isWorktreeInitializationState } from '../worktree-initialization';
 import { isAgentReadState } from '../agent-read-state';
@@ -220,6 +221,8 @@ function expectPullRequest(value: unknown, path: string): void {
 function expectAgentUpdate(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
+  expectOptional(value, 'pendingPrompts', path, (candidate, at) => expectArray(candidate, at,
+    (prompt, promptPath) => expectKnownShape(prompt, promptPath, isPendingConversationPrompt, 'pending conversation prompt')));
   expectOptional(value, 'rateLimitPause', path, (candidate, at) => { if (candidate !== null && !isRateLimitPause(candidate)) throw new Error(`${at}: invalid rate-limit pause`); });
   expectOptional(value, 'delegationContext', path, (candidate, candidatePath) => {
     if (!isDelegationContext(candidate)) throw new Error(`${candidatePath}: invalid delegation context`);

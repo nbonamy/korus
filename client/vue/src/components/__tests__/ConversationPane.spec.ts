@@ -73,6 +73,38 @@ const executionPlan: ThreadPlan = {
 const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendererApi };
 
 describe('ConversationPane', () => {
+  it('keeps pending steering outside the transcript while the same assistant message continues streaming', async () => {
+    const snapshot = createInitialSnapshot();
+    const owner = { ...snapshot.agents[0]!, backend: 'claude' as const, pendingPrompts: [] as NonNullable<Agent['pendingPrompts']> };
+    const streaming = { ...messages[1]!, id: 'streaming', status: 'streaming' as const, parts: [{ type: 'text' as const, text: 'Still working' }] };
+    const view = shallowReactive<AgentConversationView>({ agent: owner, codexSnapshot: null,
+      claudeSnapshot: claudeConversationSnapshot([streaming], { busy: true, activeTurnId: 'turn-1' }),
+      composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: claudeBackendCapabilities,
+      approvals: [], sending: false, queuedPrompts: [], answeredClientRequestIds: new Set(),
+      history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
+    });
+    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: {} });
+    const wrapper = mountPane({ controller, agent: owner });
+    const assistant = wrapper.get('.chat-message--assistant').element;
+    view.agent = { ...owner, pendingPrompts: [{ id: 'steering', text: '<context>Private steering instructions</context>Consider this later', createdAt: '2026-11-09T00:00:00Z', steering: true }] };
+    await wrapper.setProps({ agent: view.agent });
+    await flushPromises();
+    expect(wrapper.findAll('.chat-message--user')).toHaveLength(0);
+    expect(wrapper.get('.chat-message--assistant').element).toBe(assistant);
+    expect(wrapper.get('.conversation-pane__pending-steering').text()).toContain('Steering pending');
+    expect(wrapper.text()).not.toContain('Private steering instructions');
+    view.claudeSnapshot = claudeConversationSnapshot([{ ...streaming, parts: [{ type: 'text', text: 'Still working, with another streamed chunk' }] }], { busy: true, activeTurnId: 'turn-1' });
+    await flushPromises();
+    expect(wrapper.get('.chat-message--assistant').element).toBe(assistant);
+    expect(wrapper.get('.chat-message--assistant').text()).toContain('another streamed chunk');
+    view.agent = { ...owner, pendingPrompts: [] };
+    await wrapper.setProps({ agent: view.agent });
+    await flushPromises();
+    expect(wrapper.find('.conversation-pane__pending-steering').exists()).toBe(false);
+    expect(wrapper.get('.chat-message--assistant').element).toBe(assistant);
+  });
+
   it.each([false, true])('records initial render timing only when the host enables tracing (%s)', async enabled => {
     configureAppClient({ api: window.app!, platform: 'desktop', traceConversationLoad: enabled });
     const frames: FrameRequestCallback[] = [];

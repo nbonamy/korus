@@ -540,6 +540,13 @@ describe(`${product.name} backend event decoder`, () => {
     const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1', pullRequest: tracking } };
     expect(decodeAppBackendEvent(event)).toStrictEqual(event);
   });
+  it('round-trips transient prompt presentation and its empty acknowledgment', () => {
+    const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1',
+      pendingPrompts: [{ id: 'pending', text: 'Implement the ticket', createdAt: occurredAt }] } };
+    expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
+    expect(decodeAppBackendEvent({ ...event, payload: { id: 'agent-1', pendingPrompts: [] } })).toMatchObject({ payload: { pendingPrompts: [] } });
+    expect(() => decodeAppBackendEvent({ ...event, payload: { id: 'agent-1', pendingPrompts: [{ id: 'pending', text: null }] } })).toThrow();
+  });
   it('accepts one representative for every typed event key without cloning it', () => {
     const fixtures = createFixtures();
 

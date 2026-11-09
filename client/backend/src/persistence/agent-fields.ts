@@ -12,6 +12,7 @@ const agentFieldPolicy = {
   handoff: 'persisted',
   teamId: 'derived',
   remoteConnectionId: 'runtime',
+  pendingPrompts: 'runtime',
   delegatedByAgentId: 'persisted',
   delegationContext: 'persisted',
   userDelegationOverrides: 'persisted',

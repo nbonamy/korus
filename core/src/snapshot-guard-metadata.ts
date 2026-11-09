@@ -20,6 +20,7 @@ import { spokenAnnouncementVoices } from './contracts';
 import { isPlanReview } from './plan-review';
 import { isVisualization, isVisualizeSession } from './visualize';
 import { isCodeReviewSession, isCodeReviewPreferences } from './code-review';
+import { isPendingConversationPrompt } from './pending-conversation-prompt';
 import {
   isSubagentActivityKind,
   isSubagentOperationKind,
@@ -116,6 +117,7 @@ function isTeam(value: unknown): boolean {
 
 function isAgent(value: unknown): boolean {
   return isRecord(value) &&
+    optional(value, 'pendingPrompts', candidate => isArrayOf(candidate, isPendingConversationPrompt)) &&
     typeof value.id === 'string' &&
     optional(value, 'teamId', isString) &&
     optional(value, 'remoteConnectionId', isString) &&

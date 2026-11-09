@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -19,6 +20,46 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
+  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('presents direct %s injections without interrupting native steering or losing overlapping submissions', async backend => {
+    let accept!: () => void;
+    let reject!: (error: Error) => void;
+    const sending = new Promise<void>(resolve => { accept = resolve; });
+    const steering = new Promise<void>((_resolve, fail) => { reject = fail; });
+    const agent = { ...createAgent(), backend };
+    const reference = backend === 'codex' ? { kind: backend, threadId: 'thread' } : backend === 'claude'
+      ? { kind: backend, sessionId: 'session', transport: 'stdio' as const } : { kind: backend, sessionId: 'session' };
+    const driver = createDriver({ backend, getCapabilities: () => ({ ...codexBackendCapabilities, steerPrompt: true }),
+      sendPrompt: vi.fn(async () => { await sending; return { backendSession: reference }; }),
+      steerPrompt: vi.fn(async () => { await steering; return { backendSession: reference }; }),
+    });
+    const rpc = new BackendDriverRpc(new Map([[backend, driver]]));
+    const events: import('@workspace/core/backend-driver').BackendEvent[] = [];
+    rpc.onEvent(event => { events.push(structuredClone(event)); });
+    const sent = rpc.handle('driver/prompt/send', { agent, prompt: 'Injected work' });
+    const options = { selection: { model: 'selected-model' } };
+    const steered = rpc.handle('driver/prompt/steer', { agent, prompt: 'Consider this later', options }).catch(error => error);
+    try {
+      await vi.waitFor(() => expect(driver.steerPrompt).toHaveBeenCalledOnce());
+      expect(events.at(-1)).toMatchObject({ type: 'agent.updated', agentId: agent.id, payload: { pendingPrompts: [
+        expect.objectContaining({ text: 'Injected work' }), expect.objectContaining({ text: 'Consider this later', steering: true }),
+      ] } });
+      expect(driver.interrupt).not.toHaveBeenCalled();
+      expect(driver.steerPrompt).toHaveBeenCalledExactlyOnceWith(agent, 'Consider this later', options);
+      expect(events.every(event => event.type === 'agent.updated')).toBe(true);
+      accept(); await sent;
+      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [expect.objectContaining({ text: 'Consider this later' })] } });
+      reject(new Error('Native steering rejected'));
+      expect(await steered).toBeInstanceOf(Error);
+      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [] } });
+      const eventCount = events.length;
+      await rpc.handle('driver/prompt/send', { agent, prompt: 'Internal provider instructions', options: { recordUserMessage: false } });
+      const attachments = [{ type: 'file', path: '/tmp/notes.txt', name: 'notes.txt' }];
+      await rpc.handle('driver/prompt/send', { agent, prompt: '', options: { attachments } });
+      expect(driver.sendPrompt).toHaveBeenLastCalledWith(agent, '', { attachments });
+      expect(events).toHaveLength(eventCount);
+    } finally { accept(); reject(new Error('Cleanup')); await Promise.allSettled([sent, steered]); await rpc.close(); }
+  });
+
   it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
     const rpc = new BackendDriverRpc(new Map([['cursor', createBackendDriver('cursor')], ['antigravity', createBackendDriver('antigravity')]]));
     try {

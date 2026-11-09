@@ -1,4 +1,4 @@
-import { conversationForView, conversationKeyForAgent } from '../provider-conversation-bindings';
+import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
 import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from '@codex-app-sdk/vue';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
@@ -68,6 +68,11 @@ export function agentConversationState(view: () => AgentConversationView, extens
   previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
 } = {}): CodexConversationPaneState {
   const provider = () => conversationForView(view());
+  const pendingMessages = (): import('@workspace/core/contracts').RendererMessage[] =>
+    pendingConversationPrompts(view().agent.pendingPrompts ?? [], provider()?.messages ?? [])
+      .filter(prompt => !prompt.steering)
+      .map(prompt => ({ id: prompt.id, agentId: view().agent.id, role: 'user', status: 'complete', createdAt: prompt.createdAt,
+        parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
   const approvalPreset = () => {
@@ -80,14 +85,19 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get conversationKey() { return conversationKeyForAgent(view().agent); },
       get activeTurnId() { return provider()?.activeTurnId ?? null; },
       get turns() { return provider()?.turns; },
-      get messages() { const messages = provider()?.messages ?? []; const preview = extensions.previewMessage?.(); return preview ? [...messages, preview] : messages; },
-      get busy() { return provider()?.busy ?? view().sending; },
+      get messages() {
+        const pending = pendingMessages();
+        const messages = pending.length ? [...(provider()?.messages ?? []), ...pending] : provider()?.messages ?? [];
+        const preview = extensions.previewMessage?.();
+        return preview ? [...messages, preview] : messages;
+      },
+      get busy() { return pendingMessages().length > 0 || (provider()?.busy ?? view().sending); },
       get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },
       get error() { return provider()?.error ?? null; },
     },
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
-      get loading() { return Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
+      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {

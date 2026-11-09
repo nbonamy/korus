@@ -52,8 +52,10 @@ describe('companion workspace projection', () => {
   });
   it('includes the same read revision used by the desktop', () => {
     const readState = { revision: 7, readRevision: 5 };
-    const projected = projectCompanionWorkspace({ teams, agents: [agent('readable', { readState })] });
+    const projected = projectCompanionWorkspace({ teams, agents: [agent('readable', { readState,
+      pendingPrompts: [{ id: 'local', text: 'Private injected prompt', createdAt: now }] })] });
     expect(projected.agents[0]!.readState).toStrictEqual(readState);
+    expect(projected.agents[0]).not.toHaveProperty('pendingPrompts');
   });
   it('includes pending requests only for agents visible to the phone', () => {
     const request = { id: 'approval', conversationId: 'thread', kind: 'approval' as const,

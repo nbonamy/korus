@@ -666,6 +666,7 @@ export class AppBackendServer {
     this.version = options.version;
     this.pid = options.pid ?? process.pid;
     this.snapshot = options.snapshot ?? createEmptySnapshot();
+    for (const agent of this.snapshot.agents) delete agent.pendingPrompts;
     for (const agent of this.snapshot.agents) this.documentWorkspaceAgents.add(agent.id);
     if (options.providerSetup) {
       this.providerConnections = new ProviderConnections({

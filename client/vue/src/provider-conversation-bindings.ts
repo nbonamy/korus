@@ -15,6 +15,22 @@ export type NativeConversationSources = {
   antigravitySnapshot?: AntigravityConversationSnapshot | null;
 };
 type NativeSnapshot = NonNullable<NativeConversationSources[keyof NativeConversationSources]>;
+
+/** Pending controls remain presentation metadata until their provider-owned message arrives. */
+export function pendingConversationPrompts(
+  pending: readonly import('@workspace/core/pending-conversation-prompt').PendingConversationPrompt[],
+  messages: readonly { id?: string; role: string; createdAt?: string; content?: string; parts?: readonly { type: string; text?: string }[] }[],
+) {
+  const previewIds = new Set(pending.map(prompt => prompt.id));
+  const acknowledged = new Set<string | undefined>();
+  return pending.filter(prompt => {
+    const accepted = messages.find(message => message.role === 'user' && !previewIds.has(message.id ?? '') && !acknowledged.has(message.id)
+      && Date.parse(message.createdAt ?? '') >= Date.parse(prompt.createdAt)
+      && (message.content ?? message.parts?.filter(part => part.type === 'text').map(part => part.text).join('') ?? '') === prompt.text);
+    if (accepted) acknowledged.add(accepted.id);
+    return !accepted;
+  });
+}
 export type ConversationPresentation = Pick<NativeSnapshot,
   'messages' | 'turns' | 'activeTurnId' | 'busy' | 'error' | 'historyLoading' | 'historyState' | 'contextUsage' | 'answeredClientRequestIds'
 > & {

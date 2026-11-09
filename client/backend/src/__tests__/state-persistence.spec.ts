@@ -802,6 +802,7 @@ describe('state persistence', () => {
         updatedAt: 1_780_000_030,
       },
       isRegistered: true,
+      pendingPrompts: [{ id: 'runtime-injection', text: 'Private injected prompt', createdAt: '2026-11-09T00:00:00.000Z' }],
       mcpSessionId: 'mcp-session',
       statusText: 'Registered',
       status: { type: 'working', detail: 'busy' },
@@ -839,6 +840,7 @@ describe('state persistence', () => {
     });
     expect(writtenAgent).not.toHaveProperty('backend');
     expect(writtenAgent).not.toHaveProperty('teamId');
+    expect(writtenAgent).not.toHaveProperty('pendingPrompts');
     expect(writtenAgent.openInApplication).toBe('xcode');
     expect(writtenAgent).not.toHaveProperty('codexThreadId');
     expect(writtenAgent.contextUsage).toStrictEqual({
