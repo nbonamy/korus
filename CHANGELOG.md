@@ -4,6 +4,21 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.56.0] - 2026-11-09
+
+### New features
+
+- **Cursor:** Run Cursor agents alongside your other engines, including Missions, code reviews, and automations. Cursor turns are recorded, but token usage and cost are unavailable.
+- **Dictation:** Choose Apple Speech Analyzer or OpenAI in Settings, with optional live transcription and a show/hide API-key field.
+- **Feature groups:** Create agents directly inside a feature and drag feature groups to reorder the Worktree sidebar.
+- **Suggested prompts:** Double-click an empty composer to accept its suggested prompt without sending it.
+
+### Improvements and fixes
+
+- **Worktrees:** Avoid occupied folders during creation and recover more reliably from interrupted setup or deletion.
+- **Model selection:** Keep an agent's chosen model after restarting Korus.
+- **Follow-up prompts:** Show new suggested follow-ups immediately.
+
 ## [0.55.1] - 2026-11-08
 
 - **Codex:** Keep connection updates compatible when Codex reports a GCP account.

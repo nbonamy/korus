@@ -14,7 +14,7 @@
     "test:package": "node --test --test-concurrency=2 --test-timeout=45000 build.test.mjs package-workflows.test.mjs"
   },
   "dependencies": {
-    "@workspace/core": "0.55.1"
+    "@workspace/core": "0.56.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

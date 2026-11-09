@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.55.1",
+  "currentVersion": "0.56.0",
   "releases": [
+    {
+      "version": "0.56.0",
+      "releasedAt": "2026-11-09",
+      "sourceSha256": "fad031f37488510c7471e858b0c76891b3c94c7f1888573a0dae3d97edd5374d",
+      "markdown": "### New features\n\n- **Cursor:** Run Cursor agents alongside your other engines, including Missions, code reviews, and automations. Cursor turns are recorded, but token usage and cost are unavailable.\n- **Dictation:** Choose Apple Speech Analyzer or OpenAI in Settings, with optional live transcription and a show/hide API-key field.\n- **Feature groups:** Create agents directly inside a feature and drag feature groups to reorder the Worktree sidebar.\n- **Suggested prompts:** Double-click an empty composer to accept its suggested prompt without sending it.\n\n### Improvements and fixes\n\n- **Worktrees:** Avoid occupied folders during creation and recover more reliably from interrupted setup or deletion.\n- **Model selection:** Keep an agent's chosen model after restarting Korus.\n- **Follow-up prompts:** Show new suggested follow-ups immediately."
+    },
     {
       "version": "0.55.1",
       "releasedAt": "2026-11-08",
