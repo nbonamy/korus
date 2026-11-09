@@ -4,6 +4,11 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.55.1] - 2026-11-08
+
+- **Codex:** Keep connection updates compatible when Codex reports a GCP account.
+- **Telemetry:** Resume sending accumulated usage reports more reliably after time offline.
+
 ## [0.55.0] - 2026-11-08
 
 ### New features
