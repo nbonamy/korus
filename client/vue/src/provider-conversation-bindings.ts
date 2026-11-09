@@ -16,7 +16,7 @@ export type NativeConversationSources = {
 };
 type NativeSnapshot = NonNullable<NativeConversationSources[keyof NativeConversationSources]>;
 
-/** Pending controls remain presentation metadata until their provider-owned message arrives. */
+/** Injected prompts remain presentation metadata until their provider-owned message arrives. */
 export function pendingConversationPrompts(
   pending: readonly import('@workspace/core/pending-conversation-prompt').PendingConversationPrompt[],
   messages: readonly { id?: string; role: string; createdAt?: string; content?: string; parts?: readonly { type: string; text?: string }[] }[],
@@ -24,6 +24,8 @@ export function pendingConversationPrompts(
   const previewIds = new Set(pending.map(prompt => prompt.id));
   const acknowledged = new Set<string | undefined>();
   return pending.filter(prompt => {
+    // Ignore metadata from a daemon still running the removed steering preview.
+    if ('steering' in prompt && prompt.steering === true) return false;
     const accepted = messages.find(message => message.role === 'user' && !previewIds.has(message.id ?? '') && !acknowledged.has(message.id)
       && Date.parse(message.createdAt ?? '') >= Date.parse(prompt.createdAt)
       && (message.content ?? message.parts?.filter(part => part.type === 'text').map(part => part.text).join('') ?? '') === prompt.text);

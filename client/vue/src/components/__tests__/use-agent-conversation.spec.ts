@@ -75,6 +75,9 @@ describe('agentConversationState identity', () => {
     expect(state.identity.messages).toHaveLength(1);
     agent.pendingPrompts = [];
     expect(state.identity.messages).toHaveLength(0);
+    const obsoleteSteeringPreview = { ...pendingPrompt, steering: true };
+    agent.pendingPrompts = [obsoleteSteeringPreview];
+    expect(state.identity.messages).toHaveLength(0);
   });
 
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {

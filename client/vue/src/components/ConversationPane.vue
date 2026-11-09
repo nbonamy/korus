@@ -99,9 +99,6 @@
       </template>
       <template #composer-drawers>
         <GithubStarPrompt v-if="appClientPlatform === 'desktop' && keyboardActive" />
-        <CodexComposerDrawer v-if="pendingSteeringCount" class="conversation-pane__pending-steering" role="status">
-          <CodexComposerDrawerRow>{{ t('chat.steeringPending', { count: pendingSteeringCount }) }}</CodexComposerDrawerRow>
-        </CodexComposerDrawer>
         <slot name="composer-drawers" />
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
@@ -187,7 +184,6 @@ import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
 import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
 import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
 import ConversationShareActivity from './ConversationShareActivity.vue';
-import { pendingConversationPrompts } from '../provider-conversation-bindings';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
 import GithubStarPrompt from './GithubStarPrompt.vue';
 import { appApi, appClientPlatform, traceConversationLoad } from '../platform-api';
@@ -199,8 +195,6 @@ import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'v
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
-  CodexComposerDrawer,
-  CodexComposerDrawerRow,
   CodexMessageBlock,
   defaultCodexChatTranslate,
   provideCodexChatTranslate,
@@ -306,8 +300,6 @@ const props = withDefaults(defineProps<{
 });
 const safetyBlockPreview = inject(providerSafetyBlockPreviewKey, null);
 const safetyReviewBusy = ref(false);
-const pendingSteeringCount = computed(() => pendingConversationPrompts(props.agent?.pendingPrompts ?? [],
-  resolveCodexConversationPaneValue(props.controller.state).identity.messages).filter(prompt => prompt.steering).length);
 const safetyReview = computed(() => safetyBlockPreview?.value?.agentId === props.agent?.id ? undefined
   : props.agent?.status.type === 'error' ? props.agent.status.safetyReview : undefined);
 async function continueSafetyReview(): Promise<void> {

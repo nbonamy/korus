@@ -55,8 +55,6 @@ weight and predictable geometry over decorative cards or explanatory copy.
   injected work, including reviews and Missions. Conversation presentation overlays
   those previews until provider acknowledgment; provider transcripts, persisted
   history and companion projections retain their existing ownership.
-  Pending steering appears beside the composer. Only provider events insert
-  steering into the transcript or change the active streamed response.
 - **Composables:** reusable stateful behavior (async loading, caching, request
   lifecycle, mutations). `AppShell` delegates multi-step workflows (onboarding,
   repository acquisition, work-item routing, per-agent right workspace, annotation) to

@@ -601,8 +601,7 @@ describe('AppBackendServer', () => {
       attachments: [{ type: 'file', path: '/tmp/notes.txt', name: 'notes.txt' }],
     });
     expect(interrupt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
-    // Pending/settled presentation updates also pass through the runtime snapshot owner.
-    expect(saveSnapshot).toHaveBeenCalledTimes(4);
+    expect(saveSnapshot).toHaveBeenCalledTimes(2);
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
     await server.close();
   });

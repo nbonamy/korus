@@ -136,9 +136,9 @@ export class BackendDriverRpc {
   private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
   private closing = false;
 
-  private async presentPrompt<T>(agent: Agent, prompt: string, send: () => Promise<T>, options?: SendPromptOptions, steering = false): Promise<T> {
+  private async presentPrompt<T>(agent: Agent, prompt: string, send: () => Promise<T>, options?: SendPromptOptions): Promise<T> {
     if (options?.recordUserMessage === false || !prompt.trim()) return send();
-    const pending: PendingConversationPrompt = { id: `pending-prompt-${randomUUID()}`, text: prompt, createdAt: new Date().toISOString(), ...(steering ? { steering: true } : {}) };
+    const pending: PendingConversationPrompt = { id: `pending-prompt-${randomUUID()}`, text: prompt, createdAt: new Date().toISOString() };
     const entries = [...(this.pendingPrompts.get(agent.id) ?? []), pending];
     this.pendingPrompts.set(agent.id, entries);
     this.emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, pendingPrompts: entries } });
@@ -616,9 +616,9 @@ export class BackendDriverRpc {
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
-        return this.presentPrompt(agent, prompt, () => options
-          ? driver.steerPrompt!(agent, prompt, options)
-          : driver.steerPrompt!(agent, prompt), options, true);
+        return options
+          ? driver.steerPrompt(agent, prompt, options)
+          : driver.steerPrompt(agent, prompt);
       }
       case backendMethods.driverTurnDelete: {
         const { agent } = requireAgentParams(params);

@@ -70,7 +70,6 @@ export function agentConversationState(view: () => AgentConversationView, extens
   const provider = () => conversationForView(view());
   const pendingMessages = (): import('@workspace/core/contracts').RendererMessage[] =>
     pendingConversationPrompts(view().agent.pendingPrompts ?? [], provider()?.messages ?? [])
-      .filter(prompt => !prompt.steering)
       .map(prompt => ({ id: prompt.id, agentId: view().agent.id, role: 'user', status: 'complete', createdAt: prompt.createdAt,
         parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.

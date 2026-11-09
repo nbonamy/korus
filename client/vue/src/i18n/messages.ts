@@ -1089,7 +1089,6 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
-      steeringPending: 'Steering pending ({count})',
       composerActions: { design: 'Design', visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
       quickChatContext: 'Ask about this team’s projects. Other conversations aren’t included.',

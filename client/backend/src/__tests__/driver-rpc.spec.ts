@@ -20,7 +20,7 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
-  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('presents direct %s injections without interrupting native steering or losing overlapping submissions', async backend => {
+  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('presents direct %s injections while leaving steering presentation to the provider', async backend => {
     let accept!: () => void;
     let reject!: (error: Error) => void;
     const sending = new Promise<void>(resolve => { accept = resolve; });
@@ -41,16 +41,18 @@ describe('BackendDriverRpc', () => {
     try {
       await vi.waitFor(() => expect(driver.steerPrompt).toHaveBeenCalledOnce());
       expect(events.at(-1)).toMatchObject({ type: 'agent.updated', agentId: agent.id, payload: { pendingPrompts: [
-        expect.objectContaining({ text: 'Injected work' }), expect.objectContaining({ text: 'Consider this later', steering: true }),
+        expect.objectContaining({ text: 'Injected work' }),
       ] } });
+      expect(events).toHaveLength(1);
       expect(driver.interrupt).not.toHaveBeenCalled();
       expect(driver.steerPrompt).toHaveBeenCalledExactlyOnceWith(agent, 'Consider this later', options);
       expect(events.every(event => event.type === 'agent.updated')).toBe(true);
       accept(); await sent;
-      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [expect.objectContaining({ text: 'Consider this later' })] } });
+      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [] } });
       reject(new Error('Native steering rejected'));
       expect(await steered).toBeInstanceOf(Error);
       expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [] } });
+      expect(events).toHaveLength(2);
       const eventCount = events.length;
       await rpc.handle('driver/prompt/send', { agent, prompt: 'Internal provider instructions', options: { recordUserMessage: false } });
       const attachments = [{ type: 'file', path: '/tmp/notes.txt', name: 'notes.txt' }];

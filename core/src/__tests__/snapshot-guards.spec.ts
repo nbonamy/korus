@@ -13,7 +13,7 @@ describe('snapshot guards', () => {
     const pending = { id: 'injected', text: 'Implement the ticket', createdAt: '2026-11-09T00:00:00.000Z' };
     snapshot.agents[0]!.pendingPrompts = [pending];
     expect(isAppSnapshot(snapshot)).toBe(true);
-    for (const invalid of [null, { ...pending, text: null }, { ...pending, createdAt: 'invalid' }, { ...pending, steering: 'yes' }]) {
+    for (const invalid of [null, { ...pending, text: null }, { ...pending, createdAt: 'invalid' }]) {
       const malformed = structuredClone(snapshot);
       Object.assign(malformed.agents[0]!, { pendingPrompts: [invalid] });
       expect(isAppSnapshot(malformed)).toBe(false);

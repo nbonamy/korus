@@ -209,10 +209,7 @@ describe('AppBackendServer', () => {
     expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true });
     expect(snapshot.agents[0]?.suggestedPrompt).toBe('Review the diff');
     expect(snapshot.agents[0]?.userDelegationOverrides?.instructions).toBe('Existing user directions');
-    expect(events.filter(event => event.type === 'agent.updated')).toEqual([
-      expect.objectContaining({ payload: { id: 'agent-dina', pendingPrompts: [expect.objectContaining({ steering: true })] } }),
-      expect.objectContaining({ payload: { id: 'agent-dina', pendingPrompts: [] } }),
-    ]);
+    expect(events.some(event => event.type === 'agent.updated')).toBe(false);
 
     const response = await server.handleMessage(request('accepted'));
     expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toBeUndefined();
