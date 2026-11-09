@@ -192,7 +192,7 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
-  it('round-trips write-only dictation credentials through preload and desktop IPC without touching the daemon', async () => {
+  it('stores dictation credentials and reveals them explicitly through desktop IPC without touching the daemon', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'desktop-dictation-'));
     native.dataDirectory = directory;
     try {
@@ -206,9 +206,11 @@ describe('controller desktop lifecycle', () => {
         engine: 'openai', openaiLiveTranscription: false, appleAvailable: process.platform === 'darwin', hasApiKey: true, secureStorageAvailable: true,
       });
       expect((await api.getDictationSettings!()).hasApiKey).toBe(true);
+      expect(await api.getDictationApiKey!()).toBe('test-secret');
       expect(await readFile(path.join(directory, 'dictation-openai-key.bin'), 'utf8')).not.toContain('test-secret');
       await api.updateDictationSettings!({ apiKey: null });
       expect((await api.getDictationSettings!()).hasApiKey).toBe(false);
+      expect(await api.getDictationApiKey!()).toBeNull();
       expect(backend.request).not.toHaveBeenCalled();
     } finally {
       native.dataDirectory = '/test/data';

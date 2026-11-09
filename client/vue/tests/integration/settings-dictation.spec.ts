@@ -7,7 +7,23 @@ const initial = { engine: 'apple' as const, openaiLiveTranscription: false, appl
 describe('Dictation settings', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
-  it('switches engines, autosaves a masked credential and removes it when cleared', async () => {
+  it('shows and hides the real saved key without changing it', async () => {
+    const getDictationApiKey = vi.fn(async () => 'test-secret');
+    const updateDictationSettings = vi.fn();
+    setElectronTestClient({ getDictationSettings: async () => ({ ...initial, engine: 'openai', hasApiKey: true }), getDictationApiKey, updateDictationSettings });
+    const wrapper = mount(SettingsDictationPanel);
+    await flushPromises();
+    expect(getDictationApiKey).toHaveBeenCalledOnce();
+    await wrapper.get('button[aria-label="Show API key"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('input[type="text"]').element as HTMLInputElement).value).toBe('test-secret');
+    await wrapper.get('button[aria-label="Hide API key"]').trigger('click');
+    expect((wrapper.get('input[type="password"]').element as HTMLInputElement).value).toBe('test-secret');
+    wrapper.unmount();
+    await flushPromises();
+    expect(updateDictationSettings).not.toHaveBeenCalled();
+  });
+  it('switches engines, autosaves a credential and removes it when cleared', async () => {
     const updateDictationSettings = vi.fn().mockImplementation(async input => ({ ...initial, engine: 'openai', hasApiKey: typeof input.apiKey === 'string', openaiLiveTranscription: input.openaiLiveTranscription ?? false }));
     setElectronTestClient({ getDictationSettings: async () => initial, updateDictationSettings });
     const wrapper = mount(SettingsDictationPanel);
@@ -34,7 +50,7 @@ describe('Dictation settings', () => {
     await input.trigger('blur');
     await flushPromises();
     expect(updateDictationSettings).toHaveBeenLastCalledWith({ apiKey: 'test-secret' });
-    expect((input.element as HTMLInputElement).value).toBe('••••••••');
+    expect((input.element as HTMLInputElement).value).toBe('test-secret');
     expect(wrapper.text()).not.toContain('API key saved');
     await input.setValue('');
     await vi.advanceTimersByTimeAsync(5000);
@@ -67,21 +83,17 @@ describe('Dictation settings', () => {
     expect(updateDictationSettings).toHaveBeenCalledWith({ apiKey: 'sk-abcdef' });
     wrapper.unmount();
   });
-  it('shows a saved credential as a mask, ignores partial mask edits and clears it only when emptied', async () => {
-    const updateDictationSettings = vi.fn().mockImplementation(async input => ({ ...initial, engine: 'openai', hasApiKey: typeof input.apiKey === 'string', openaiLiveTranscription: input.openaiLiveTranscription ?? false }));
-    setElectronTestClient({ getDictationSettings: async () => ({ ...initial, engine: 'openai', hasApiKey: true }), updateDictationSettings });
+  it('edits a saved key as ordinary text and removes it only when cleared', async () => {
+    const updateDictationSettings = vi.fn(async input => ({ ...initial, engine: 'openai' as const, hasApiKey: typeof input.apiKey === 'string' }));
+    setElectronTestClient({ getDictationSettings: async () => ({ ...initial, engine: 'openai', hasApiKey: true }), getDictationApiKey: async () => 'test-secret', updateDictationSettings });
     const wrapper = mount(SettingsDictationPanel);
     await flushPromises();
     const input = wrapper.get('input[type="password"]');
-    expect((input.element as HTMLInputElement).value).toBe('••••••••');
+    expect((input.element as HTMLInputElement).value).toBe('test-secret');
     await input.trigger('blur');
-    await input.setValue('•••••••');
-    await input.trigger('blur');
-    await vi.advanceTimersByTimeAsync(5000);
     await flushPromises();
     expect(updateDictationSettings).not.toHaveBeenCalled();
-    expect((input.element as HTMLInputElement).value).toBe('••••••••');
-    await input.setValue('••••••••replacement');
+    await input.setValue('replacement');
     await input.trigger('blur');
     await flushPromises();
     expect(updateDictationSettings).toHaveBeenLastCalledWith({ apiKey: 'replacement' });

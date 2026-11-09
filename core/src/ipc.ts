@@ -2,6 +2,7 @@ import type { AppCommand, AppApi, MainToRendererEvent } from './contracts';
 
 export const ipcChannels = {
   getDictationSettings: 'dictation:settings:get',
+  getDictationApiKey: 'dictation:key:get',
   updateDictationSettings: 'dictation:settings:update',
   browserExtensions: 'browser:extensions',
   getUsage: 'usage:get',

@@ -237,6 +237,7 @@ export class AppController {
     );
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
     ipc.handle(ipcChannels.getDictationSettings, () => this.dictationSettings().get());
+    ipc.handle(ipcChannels.getDictationApiKey, () => this.dictationSettings().apiKey() ?? null);
     ipc.handle(ipcChannels.updateDictationSettings, (_event, input) => this.dictationSettings().update(input));
     ipc.handle(ipcChannels.getSnapshot, () => this.getSnapshot());
     ipc.handle(ipcChannels.browserExtensions, (_event, agentId, action, id, browserId) => {

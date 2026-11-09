@@ -1057,6 +1057,8 @@ export type AppApi = {
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
   getDictationSettings?(): Promise<import('./dictation').DictationSettings>;
+  /** Explicit desktop-only credential reveal; never part of settings or shared snapshots. */
+  getDictationApiKey?(): Promise<string | null>;
   updateDictationSettings?(input: import('./dictation').DictationSettingsInput): Promise<import('./dictation').DictationSettings>;
   previewSpokenAnnouncementVoice(voice: SpokenAnnouncementVoice): Promise<SpokenAnnouncementQueueResult>;
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;

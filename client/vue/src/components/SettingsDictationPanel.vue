@@ -16,7 +16,7 @@
       <template v-if="settings.engine === 'openai'">
         <FormRow :title="$t('dictation.apiKey')">
           <template #control>
-            <el-input class="settings-dictation__control" :model-value="apiKey" @update:model-value="updateApiKey" @blur="commitApiKey" @keydown.enter="commitApiKey" type="password" autocomplete="off" :aria-label="$t('dictation.apiKey')" :placeholder="$t('dictation.enter')" :disabled="!settings.secureStorageAvailable && !settings.hasApiKey" />
+            <InputObfuscated class="settings-dictation__control" v-model="apiKey" @blur="commitApiKey" @commit="commitApiKey" :show-label="$t('dictation.showKey')" :hide-label="$t('dictation.hideKey')" :aria-label="$t('dictation.apiKey')" :placeholder="$t('dictation.enter')" :disabled="!keyLoaded || !settings.secureStorageAvailable" />
           </template>
         </FormRow>
         <FormRow :title="$t('dictation.live')">
@@ -40,25 +40,32 @@ import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import FormRow from '../shared/form/FormRow.vue';
+import InputObfuscated from '../shared/form/InputObfuscated.vue';
 
 const settings = ref<DictationSettings>();
-// A presence marker, never the stored credential. It can be replaced or cleared.
-const savedKeyMask = '••••••••';
 const apiKey = ref('');
+const keyLoaded = ref(false);
+let savedKey = '';
+let disposed = false;
 const loadError = ref('');
 const { schedule, flush, saving: busy, error: saveError } = useDebouncedSave(async (input: DictationSettingsInput) => {
   try {
     if (!appApi?.updateDictationSettings) throw new Error('Unavailable');
     settings.value = await appApi.updateDictationSettings(input);
-    if (typeof input.apiKey === 'string' && apiKey.value.trim() === input.apiKey) apiKey.value = savedKeyMask;
+    if (input.apiKey !== undefined) savedKey = input.apiKey ?? '';
   } catch { throw new Error(translate('dictation.failed')); }
 });
 onMounted(async () => {
   try {
     if (!appApi?.getDictationSettings) throw new Error('Unavailable');
     settings.value = await appApi.getDictationSettings();
-    apiKey.value = settings.value.hasApiKey ? savedKeyMask : '';
-  } catch { loadError.value = translate('dictation.unavailable'); }
+    if (settings.value.hasApiKey && !appApi.getDictationApiKey) throw new Error('Unavailable');
+    const key = settings.value.hasApiKey ? await appApi.getDictationApiKey!() : null;
+    if (disposed) return;
+    savedKey = key ?? '';
+    apiKey.value = savedKey;
+    keyLoaded.value = true;
+  } catch { if (!disposed) loadError.value = translate('dictation.unavailable'); }
 });
 async function setLive(value: unknown): Promise<void> {
   if (typeof value !== 'boolean' || !await flush()) return;
@@ -71,25 +78,12 @@ async function selectEngine(engine: unknown): Promise<void> {
   schedule({ engine });
   await flush();
 }
-function updateApiKey(value: string): void {
-  // Typing never saves or rewrites the field; the key is committed on blur or Enter.
-  apiKey.value = value;
-}
 function commitApiKey(): void {
-  const raw = apiKey.value;
-  if (raw === '') {
-    // Clearing the field on purpose removes the saved key.
-    if (settings.value?.hasApiKey) { schedule({ apiKey: null }); void flush(); }
-    return;
-  }
-  // Placeholder characters must never be saved; a partly erased marker is not a clear.
-  const typed = raw.replaceAll('•', '').trim();
-  if (!typed) { apiKey.value = settings.value?.hasApiKey ? savedKeyMask : ''; return; }
-  apiKey.value = typed;
-  schedule({ apiKey: typed });
+  if (!keyLoaded.value || apiKey.value.trim() === savedKey) return;
+  schedule({ apiKey: apiKey.value.trim() || null });
   void flush();
 }
-onBeforeUnmount(commitApiKey);
+onBeforeUnmount(() => { disposed = true; commitApiKey(); });
 </script>
 
 <style scoped>

@@ -165,6 +165,7 @@ const api: AppApi = {
   manageSkills: input => ipc.invoke(ipcChannels.manageSkills, input),
   saveEngineInstructions: (input) => ipc.invoke(ipcChannels.saveEngineInstructions, input),
   getDictationSettings: () => ipc.invoke(ipcChannels.getDictationSettings),
+  getDictationApiKey: () => ipc.invoke(ipcChannels.getDictationApiKey),
   updateDictationSettings: (input) => ipc.invoke(ipcChannels.updateDictationSettings, input),
   previewSpokenAnnouncementVoice: (voice: SpokenAnnouncementVoice) => ipc.invoke(ipcChannels.previewSpokenAnnouncementVoice, voice),
   getCodexResourceSharingStatus: () => ipc.invoke(ipcChannels.getCodexResourceSharingStatus),

@@ -74,7 +74,8 @@ weight and predictable geometry over decorative cards or explanatory copy.
 - Desktop dictation engine selection and API credentials belong to Electron main,
   separate from daemon settings and mobile snapshots. Credentials use OS-backed
   `safeStorage` encryption in a separate private file; Linux `basic_text` storage
-  is rejected. Settings reads expose only credential presence. The SDK owns audio
+  is rejected. Settings reads expose only credential presence; the desktop key
+  control separately loads the decrypted value for editing and show/hide. The SDK owns audio
   capture and streaming sessions; main chooses the engine once per recording.
   Microphone setup and host connection preparation run concurrently; audio starts
   after both are ready, using the microphone's resolved sample rate. Cancellation
@@ -231,6 +232,7 @@ Search by behavior first.
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
+| Obfuscated text with show/hide and ordinary editing | `InputObfuscated` | `client/vue/src/shared/form/InputObfuscated.vue` |
 | Single-line text with an inline clear action | `ClearableTextInput` | `client/vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `client/vue/src/shared/` |
 | Voice multiline input | `VoiceTextarea` | `client/vue/src/shared/` |

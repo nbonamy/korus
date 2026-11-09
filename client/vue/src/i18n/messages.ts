@@ -8,6 +8,7 @@ export const messages = {
       introTitle: 'Turn speech into text',
       introDescription: 'Use your voice to write prompts and comments.',
       enter: 'Enter your API key', live: 'Live transcription',
+      showKey: 'Show API key', hideKey: 'Hide API key',
       locked: 'Secure storage is unavailable. Unlock your system keychain to save an API key.',
       unavailable: 'Dictation settings are available in the desktop app.', failed: 'Could not save dictation settings. Try again.',
     },

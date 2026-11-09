@@ -189,6 +189,7 @@ export function createClientApiMock(
     manageSkills: unscripted<'manageSkills'>('manageSkills'),
     saveEngineInstructions: unscripted<'saveEngineInstructions'>('saveEngineInstructions'),
     getDictationSettings: unscripted<'getDictationSettings'>('getDictationSettings'),
+    getDictationApiKey: unscripted<'getDictationApiKey'>('getDictationApiKey'),
     updateDictationSettings: unscripted<'updateDictationSettings'>('updateDictationSettings'),
     previewSpokenAnnouncementVoice: unscripted<'previewSpokenAnnouncementVoice'>('previewSpokenAnnouncementVoice'),
     getCodexResourceSharingStatus: unscripted<'getCodexResourceSharingStatus'>('getCodexResourceSharingStatus'),
