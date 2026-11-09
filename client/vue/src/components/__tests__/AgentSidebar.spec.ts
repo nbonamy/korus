@@ -242,7 +242,7 @@ describe('AgentSidebar sessions', () => {
       option!.click();
       await flushPromises();
       const group = (branch: string) => wrapper.findAll('[data-group-kind="worktree"]').find(section => section.find('header strong').text() === branch)!;
-      expect(group('feat1').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['api-one', 'web-one']);
+      expect(group('feat1').findAll('[data-reorder-id]:not(header)').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['api-one', 'web-one']);
       expect(group('feat1').find('button[aria-label=\"Open feature in split view\"]').exists()).toBe(true);
       expect(group('feat1').text()).toContain('id8');
       expect(group('feat1').text()).toContain('multi-llm-ts');
@@ -250,7 +250,7 @@ describe('AgentSidebar sessions', () => {
       await group('feat2').get('[data-reorder-id="api-two"]').trigger('click');
       expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['api-two']);
       await wrapper.setProps({ agents: [...rows, make('web-two', 1, 'feat2')] });
-      expect(group('feat2').findAll('[data-reorder-id]')).toHaveLength(2);
+      expect(group('feat2').findAll('[data-reorder-id]:not(header)')).toHaveLength(2);
       wrapper.unmount();
       wrapper = mount(AgentSidebar, { attachTo: document.body, props });
       expect(group('feat1').exists()).toBe(true);

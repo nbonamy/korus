@@ -27,6 +27,25 @@ describe('ordering a feature like the worktree sidebar', () => {
   });
 });
 
+describe('ordering features in the worktree sidebar', () => {
+  const agents = [
+    gitAgent('main', null, '/src/app', 'main', false, '/src/app'),
+    gitAgent('a', null, '/src/app-a', 'feat/a', true, '/src/app'),
+    gitAgent('b', null, '/src/app-b', 'feat/b', true, '/src/app'),
+    gitAgent('c', null, '/src/app-c', 'feat/c', true, '/src/app'),
+  ];
+  const branches = (order?: string[]) => projectWorktreeSidebar(projectSidebar({ agents, activeAgentId: null }), undefined, order).map(group => group.branch);
+
+  it('shows features in the saved order and keeps the default branch where it is', () => {
+    expect(branches()).toStrictEqual(['main', 'feat/a', 'feat/b', 'feat/c']);
+    expect(branches(['feat/c', 'feat/a'])).toStrictEqual(['main', 'feat/c', 'feat/a', 'feat/b']);
+  });
+
+  it('numbers quick-switch shortcuts and feature windows in that order', () => {
+    expect(orderAgentsLikeWorktreeSidebar(agents, ['a', 'c'], ['feat/c']).map(agent => agent.id)).toStrictEqual(['c', 'a']);
+  });
+});
+
 describe('workspace sidebar projection', () => {
   it('groups exact branch names across repositories without losing quick chats, detached or folder agents', () => {
     const api = gitAgent('api', null, '/src/api-feature', 'feat/one', true, '/src/api');

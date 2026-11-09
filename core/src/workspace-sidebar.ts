@@ -1,5 +1,5 @@
 import { fileRepositoryKey, repositoryIconAliases, workspaceRepositoryKey } from './repository-key';
-import { featureLabel } from './feature-groups';
+import { featureLabel, orderFeatureBranches } from './feature-groups';
 import type { Agent, AgentPullRequestTracking, AgentStatus } from './contracts';
 import { agentDisplayName } from './agent-display';
 import { repositoryIconKeyForRemote } from './git-remote';
@@ -179,7 +179,7 @@ export function projectWorkspaceSidebar(input: {
 }
 
 /** Worktree view groups the exact Git branch across repositories, independently of folder names. */
-export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSidebarGroup[], labels?: Readonly<Record<string, string>>): WorkspaceSidebarGroup[] {
+export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSidebarGroup[], labels?: Readonly<Record<string, string>>, featureOrder?: readonly string[]): WorkspaceSidebarGroup[] {
   const groups = new Map<string, WorkspaceSidebarGroup>();
   for (const repository of repositoryGroups) {
     for (const session of repository.sessions) {
@@ -196,8 +196,14 @@ export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSideb
       } : session);
     }
   }
+  const ordered = [...groups.values()];
+  // Features take the places features already have, so the default branch group and the others stay where they are.
+  const features = ordered.filter(group => group.kind === 'worktree' && !group.protected);
+  const byBranch = new Map(features.map(group => [group.branch!, group]));
+  const reordered = orderFeatureBranches(features.map(group => group.branch!), featureOrder).map(branch => byBranch.get(branch)!);
+  ordered.forEach((group, i) => { if (features.includes(group)) ordered[i] = reordered.shift()!; });
   let index = 0;
-  return [...groups.values()].map(group => {
+  return ordered.map(group => {
     const labels = disambiguateLabels(group.sessions.map(session => ({ agentId: session.agentId, label: session.displayTitle })));
     return { ...group, sessions: group.sessions.map((session, i) => ({ ...session, displayTitle: labels[i]!.label, quickSwitchIndex: index++ })) };
   });
@@ -207,10 +213,10 @@ export function projectWorktreeSidebar(repositoryGroups: readonly WorkspaceSideb
  * `agents` restricted to `ids`, in the order the worktree sidebar of the whole list shows them. A subset listed
  * on its own would group its repositories by their first appearance among fewer agents, and come out in another order.
  */
-export function orderAgentsLikeWorktreeSidebar<T extends Agent>(agents: readonly T[], ids: readonly string[]): T[] {
+export function orderAgentsLikeWorktreeSidebar<T extends Agent>(agents: readonly T[], ids: readonly string[], featureOrder?: readonly string[]): T[] {
   const wanted = new Set(ids);
   const byId = new Map(agents.map(agent => [agent.id, agent]));
-  return projectWorktreeSidebar(projectWorkspaceSidebar({ agents, activeAgentId: null, quickChatsLabel: '' }))
+  return projectWorktreeSidebar(projectWorkspaceSidebar({ agents, activeAgentId: null, quickChatsLabel: '' }), undefined, featureOrder)
     .flatMap(group => group.sessions.map(session => session.agentId))
     .filter(id => wanted.has(id))
     .flatMap(id => byId.get(id) ?? []);

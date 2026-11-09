@@ -71,6 +71,7 @@ export type AgentSidebarEvents = {
   'open-feature': [agentIds: string[]];
   'open-feature-window': [branch: string];
   'rename-feature': [feature: { branch: string; label: string }];
+  'reorder-feature': [feature: { branch: string; beforeBranch: string | null }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
   'select-mission': [id: string];

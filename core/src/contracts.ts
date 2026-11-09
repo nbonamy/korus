@@ -318,6 +318,8 @@ export type Team = {
   collaborationOwnerId?: string;
   /** Display labels for branch groups; Git branch names remain unchanged. */
   featureLabels?: Record<string, string>;
+  /** Display order of feature branch groups; the default branch group is not part of it. */
+  featureOrder?: string[];
   agentIds: string[];
   activeAgentId?: string;
 };
