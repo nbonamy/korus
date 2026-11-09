@@ -9,6 +9,7 @@ export function useAgentSidebarOrganization(options: {
   agents: () => Agent[];
   repositoryGroups: () => WorkspaceSidebarGroup[];
   featureLabels?: () => Readonly<Record<string, string>> | undefined;
+  featureOrder?: () => readonly string[] | undefined;
   label: (activity: SidebarActivity) => string;
   activityOnly?: () => boolean;
 }) {
@@ -41,7 +42,7 @@ export function useAgentSidebarOrganization(options: {
 
   const groups = computed<SidebarGroup[]>(() => {
     if (mode.value === 'repository') return options.repositoryGroups();
-    if (mode.value === 'worktree') return projectWorktreeSidebar(options.repositoryGroups(), options.featureLabels?.());
+    if (mode.value === 'worktree') return projectWorktreeSidebar(options.repositoryGroups(), options.featureLabels?.(), options.featureOrder?.());
     return projectActivitySidebar({ agents: options.agents(), repositoryGroups: options.repositoryGroups(),
       now: Math.max(now.value, Date.now()), label: options.label, idleSort: idleSort.value });
   });

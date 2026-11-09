@@ -80,6 +80,7 @@
       @create-agent-in-mission-worktree="createAgentInMissionWorktree"
       @open-feature="openFeatureAgents"
       @rename-feature="showFeatureDialog('rename', $event)"
+      @reorder-feature="reorderFeature"
       @delete-feature="showFeatureDialog('delete', $event)"
       @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
@@ -1387,6 +1388,9 @@ function openFeatureAgentDialog(repositories: SidebarRepositoryTarget[], branch?
 function featureWorktreeBackend(remoteConnectionId?: string): import('@workspace/core/contracts').AgentBackend | undefined {
   return preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
 }
+function reorderFeature(feature: { branch: string; beforeBranch: string | null }): void {
+  if (activeTeam.value) void props.featureControl({ type: 'reorder', teamId: activeTeam.value.id, ...feature }).catch(() => undefined);
+}
 function showFeatureDialog(mode: 'rename' | 'delete', feature: { branch: string; label: string }): void {
   if (activeTeam.value) featureDialog.value = { ...feature, mode };
 }
@@ -2679,7 +2683,7 @@ const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
-    activeTeamAgents: () => featureWindow.value ? orderAgentsLikeWorktreeSidebar(activeTeamAgents.value, featureAgents.value) : activeTeamAgents.value,
+    activeTeamAgents: () => featureWindow.value ? orderAgentsLikeWorktreeSidebar(activeTeamAgents.value, featureAgents.value, activeTeam.value?.featureOrder) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,

@@ -72,6 +72,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     activityOnly: () => props.allTeams ?? false,
     teamId: () => props.teamId, agents: () => props.agents, repositoryGroups: () => repositoryGroups.value,
     featureLabels: () => props.teams?.find(team => team.id === props.teamId)?.featureLabels,
+    featureOrder: () => props.teams?.find(team => team.id === props.teamId)?.featureOrder,
     label: activity => t(`sidebar.activityGroups.${activity}`),
   });
   const organizationMode = organization.mode;
@@ -217,6 +218,21 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       });
     },
   });
+  const clientFeatureOrderUpdate = useListReorderDrag<string>({
+    itemIds: () => workspaceGroups.value.filter(isFeatureGroup).map((group) => group.id),
+    onDrop: ({ draggedId, beforeId }) => {
+      const branch = workspaceGroups.value.find((group) => group.id === draggedId)?.branch;
+      if (!branch) return;
+      emit('reorder-feature', { branch, beforeBranch: workspaceGroups.value.find((group) => group.id === beforeId)?.branch ?? null });
+    },
+  });
+  /** Repositories and, in the worktree view, features are dragged to reorder; the default branch group stays first. */
+  function groupReorder(group: WorkspaceSidebarGroup) {
+    return group.kind === 'repository' ? clientRepositoryOrderUpdate : isFeatureGroup(group) ? clientFeatureOrderUpdate : null;
+  }
+  function isFeatureGroup(group: WorkspaceSidebarGroup): boolean {
+    return group.kind === 'worktree' && !group.protected && Boolean(group.branch);
+  }
   const sidebarStyle = computed<Record<string, string>>(() => ({
     '--agent-sidebar-width': `${currentWidth.value}px`,
     '--agent-sidebar-min-width': `${minWidth.value}px`,
@@ -529,7 +545,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     missionDotStatus,
     workspaceGroups,
     featureRepositoryTargets,
-    clientRepositoryOrderUpdate,
+    groupReorder,
     openWorkspaceMenu,
     isWorkspaceCollapsed,
     repositoryIcon,

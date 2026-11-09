@@ -73,6 +73,21 @@ describe('feature groups through the backend and real Git', () => {
     } finally { await f.close(); }
   }, 3_000);
 
+  it('saves the order of features in roster.json and refuses features it does not know', async () => {
+    const f = await fixture();
+    try {
+      for (const branch of ['feat2', 'feat3']) {
+        const base = f.snapshot.agents[0]!;
+        f.snapshot.agents.push({ ...base, id: branch, workspace: { ...base.workspace!, branch } as never });
+        f.snapshot.teams[0]!.agentIds.push(branch);
+      }
+      await f.call({ branch: 'feat3', type: 'reorder', beforeBranch: 'feat1' });
+      expect((await f.store.load()).teams[0]!.featureOrder).toStrictEqual(['feat3', 'feat1', 'feat2']);
+      await expect(f.call({ branch: 'feat3', type: 'reorder', beforeBranch: 'missing' })).rejects.toThrow('Feature not found.');
+      await expect(f.call({ branch: 'feat3', type: 'reorder', beforeBranch: 3 })).rejects.toThrow('Invalid feature position.');
+    } finally { await f.close(); }
+  });
+
   it('blocks default branches, changed checkouts and worktrees shared outside the feature before deleting anything', async () => {
     const f = await fixture();
     try {
