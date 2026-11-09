@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -671,6 +671,50 @@ describe('agent git service parsers', () => {
     const removal = runGit.mock.calls.findIndex(([, args]) => args[0] === 'worktree' && args[1] === 'remove');
     expect(removal).toBeGreaterThanOrEqual(0);
     expect(cancelInitialization.mock.invocationCallOrder[0]).toBeLessThan(runGit.mock.invocationCallOrder[removal]!);
+  });
+
+  describe('a worktree left half removed by an earlier delete', () => {
+    const listing = 'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /repo-fix-gh-22\nHEAD def\nbranch refs/heads/fix/gh-22\n';
+    const gitFor = (options: { recognized: boolean; registered?: boolean; branchExists?: boolean }) => vi.fn(async (folder: string, args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel' && !options.recognized) throw new Error('fatal: not a git repository: (null)');
+      if (args[0] === 'worktree' && args[1] === 'list') return { stdout: options.registered === false ? 'worktree /repo\n' : listing };
+      if (args[0] === 'rev-parse' && args[1] === '--verify' && options.branchExists === false) throw new Error('missing');
+      return { stdout: folder === '/repo-fix-gh-22' ? '/repo-fix-gh-22' : '' };
+    });
+
+    it.each([
+      ['git no longer recognizes the folder but still lists it as a worktree', { recognized: false }, true],
+      ['git still recognizes the folder', { recognized: true }, false],
+      ['the main repository does not list the folder', { recognized: false, registered: false }, false],
+    ] as const)('is a leftover only when %s', async (_name, options, expected) => {
+      const service = new AgentGitService(() => new Date(), gitFor(options));
+      expect(await service.isLeftoverWorktree('/repo-fix-gh-22', '/repo')).toBe(expected);
+    });
+
+    it('removes the husk, the stale registration and the local branch', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'leftover-worktree-'));
+      try {
+        const husk = join(root, 'repo-fix-gh-22');
+        await mkdir(join(husk, 'node_modules'), { recursive: true });
+        await writeFile(join(husk, 'node_modules', 'left.txt'), 'still here');
+        const runGit = vi.fn(async (_folder: string, _args: string[]) => ({ stdout: '' }));
+        const service = new AgentGitService(() => new Date(), runGit);
+        await service.deleteLeftoverWorktree(husk, '/repo', 'fix/gh-22');
+        await expect(stat(husk)).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(runGit.mock.calls.map(([folder, args]) => [folder, args[0], args[1]])).toStrictEqual([
+          ['/repo', 'worktree', 'prune'],
+          ['/repo', 'rev-parse', '--verify'],
+          ['/repo', 'branch', '-D'],
+        ]);
+      } finally { await rm(root, { recursive: true, force: true }); }
+    });
+
+    it('leaves out the branch when it is already gone', async () => {
+      const runGit = gitFor({ recognized: false, branchExists: false });
+      const service = new AgentGitService(() => new Date(), runGit);
+      await service.deleteLeftoverWorktree('/missing-folder', '/repo', 'fix/gh-22');
+      expect(runGit.mock.calls.some(([, args]) => args[0] === 'branch')).toBe(false);
+    });
   });
 
   it('refuses to delete a linked worktree with uncommitted changes', async () => {

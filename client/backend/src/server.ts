@@ -2320,17 +2320,25 @@ export class AppBackendServer {
                 throw new Error(`Keep the remote branch when cleaning up a ${requestName} that was closed without merging.`);
               }
             }
+            let leftoverWorktree: { primaryRoot: string; branch: string | null } | undefined;
             if (input?.deleteWorktree) {
               const folder = requireAgentFolder(existingAgent);
               const sharedAgent = this.snapshot.agents.find((agent) => agent.id !== agentId && agent.folder === folder);
               if (sharedAgent) throw new Error(`The worktree is also used by ${sharedAgent.name}.`);
-              await this.agentGitService.validateLinkedWorktreeDeletion(
-                folder,
-                input.deleteRemoteBranch === true,
-                finishedPullRequest?.headSha,
-                input.discardChanges === true,
-                ...expectedCleanup,
-              );
+              try {
+                await this.agentGitService.validateLinkedWorktreeDeletion(
+                  folder,
+                  input.deleteRemoteBranch === true,
+                  finishedPullRequest?.headSha,
+                  input.discardChanges === true,
+                  ...expectedCleanup,
+                );
+              } catch (error) {
+                // A first attempt that stopped partway leaves a folder git no longer recognizes; the second one finishes the job.
+                const workspace = existingAgent.workspace;
+                if (workspace?.kind !== 'git' || !await this.agentGitService.isLeftoverWorktree(folder, workspace.primaryWorktreeRoot)) throw error;
+                leftoverWorktree = { primaryRoot: workspace.primaryWorktreeRoot, branch: workspace.branch };
+              }
             }
             await this.runProfiles.stopAgent(agentId);
             if (existingAgent.backendSession) {
@@ -2358,7 +2366,8 @@ export class AppBackendServer {
               removeAgentFromRoster(this.snapshot, agentId);
               try {
                 await this.persistAndEmitSnapshot();
-                await this.agentGitService.deleteLinkedWorktree(
+                if (leftoverWorktree) await this.agentGitService.deleteLeftoverWorktree(requireAgentFolder(existingAgent), leftoverWorktree.primaryRoot, leftoverWorktree.branch);
+                else await this.agentGitService.deleteLinkedWorktree(
                   requireAgentFolder(existingAgent),
                   input.deleteRemoteBranch === true,
                   finishedPullRequest?.headSha,

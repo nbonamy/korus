@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises';
+import { realpath, rm } from 'node:fs/promises';
 import { fileRepositoryKey, gitRepositoryKey } from '@workspace/core/repository-key';
 import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
 import { summarizeLockfiles } from '@workspace/core/diff-lockfiles';
@@ -505,6 +505,26 @@ export class AgentGitService {
     }
     await this.runGit(target.path, ['worktree', 'remove', ...(discardChanges ? ['--force'] : []), current.folder]);
     await this.runGit(target.path, ['branch', '-D', current.branch!]);
+  }
+
+  /**
+   * A delete can stop partway (setup still writing into the folder) and leave a folder git no longer
+   * recognizes while the main repository still lists it. Nothing in it is managed by git any more.
+   */
+  async isLeftoverWorktree(folder: string, primaryRoot: string): Promise<boolean> {
+    try { await this.runGit(folder, ['rev-parse', '--show-toplevel']); return false; } catch { /* Not a work tree any more. */ }
+    const listing = await this.runGit(primaryRoot, ['worktree', 'list', '--porcelain']).then(result => result.stdout, () => '');
+    const targets = new Set([resolve(folder), await realpath(folder).catch(() => resolve(folder))]);
+    return listing.split(/\r?\n/u).some(line => line.startsWith('worktree ') && targets.has(line.slice('worktree '.length)));
+  }
+
+  /** Finishes a delete that was interrupted: the husk folder, the stale registration and the local branch. */
+  async deleteLeftoverWorktree(folder: string, primaryRoot: string, branch?: string | null): Promise<void> {
+    await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await this.runGit(primaryRoot, ['worktree', 'prune']);
+    if (branch && await this.runGit(primaryRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).then(() => true, () => false)) {
+      await this.runGit(primaryRoot, ['branch', '-D', branch]);
+    }
   }
 
   async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>, expectedBranch?: string): Promise<void> {
