@@ -122,6 +122,36 @@ describe('Cursor ACP host transport boundary', () => {
     } finally { await server.close(); }
   });
 
+  it('reopens a catalog-only Cursor child after ACP exit without attaching until the first prompt', async () => {
+    const state = createInitialSnapshot(); state.agents = [{ ...agent }];
+    const current = state.agents[0]!;
+    state.general.providerEnabled = { cursor: true };
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    await host.close(); host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
+    host.onEvent(event => events.push(event));
+    const boundAtStart: unknown[] = [];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state,
+      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])), onEvent: event => {
+        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.backendSession));
+      } });
+    try {
+      await host.listModels!(current);
+      expect(current.backendSession).toBeUndefined();
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+      const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged');
+      if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing catalog snapshot');
+      const pid = Number(String(frame.payload.snapshot.sessionId).replace(/^session-/, ''));
+      process.kill(pid);
+      await vi.waitFor(() => expect(host.getRuntimeStatus().status).toBe('error'));
+      expect(current.backendSession).toBeUndefined();
+      await server.handleMessage({ jsonrpc: '2.0', id: 'first', method: 'agent/prompt/send', params: { agentId: current.id, prompt: 'hello' } });
+      await vi.waitFor(async () => expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1));
+      expect(boundAtStart).toStrictEqual([expect.objectContaining({ kind: 'cursor' })]);
+      expect(current.backendSession).toMatchObject({ kind: 'cursor' });
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(2);
+    } finally { await server.close(); }
+  });
+
   it.each(['complete', 'invalid-model'] as const)('steers a live review without losing its saved session, tool scope or completion (%s)', async outcome => {
     const state = createInitialSnapshot(); state.agents = [{ ...agent }];
     state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;

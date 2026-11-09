@@ -9,7 +9,7 @@ import { product } from '@workspace/core/product';
 import { createMobileSimulatorToolModuleProvider } from '../mobile-simulator-tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { antigravityBackendCapabilities, codexBackendCapabilities, cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { Agent, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { createMission } from '@workspace/core/missions';
@@ -976,6 +976,103 @@ describe('AppMcpService', () => {
       expect.stringContaining('Check the failing test.'),
     );
     expect(events.some((event) => event.type === 'agent.promptQueued')).toBe(false);
+  });
+
+  it.each(['cursor', 'antigravity'] as const)('steers teammate messages when live %s steerPrompt is enabled even if defaults disable it', async backend => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
+    recipient.backend = backend;
+    recipient.backendDefaults = { kind: backend };
+    recipient.status = { type: 'working' };
+    recipient.backendSession = { kind: backend, sessionId: 'live-session' };
+    const events: any[] = [];
+    const steerPrompt = vi.fn().mockResolvedValue({ backendSession: recipient.backendSession, turnId: 'turn-steer' });
+    const defaults = backend === 'cursor' ? cursorBackendCapabilities : antigravityBackendCapabilities;
+    expect(defaults.steerPrompt).toBe(false);
+    service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
+    service.setDriverRpc(new BackendDriverRpc(new Map([[backend, createDriver({
+      backend,
+      getRuntimeStatus: () => ({ backend, status: 'running' }),
+      getCapabilities: () => ({ ...defaults, steerPrompt: true }),
+      steerPrompt,
+    })]])));
+    const url = await service.start();
+    await postJson(agentUrl(url, 'agent-dina'), {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'send-message', arguments: { to: 'agent-jesse', content: 'Check the failing test.' } },
+    });
+    await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledOnce());
+    expect(steerPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'agent-jesse', backendSession: recipient.backendSession }),
+      expect.stringContaining('Check the failing test.'),
+    );
+    expect(recipient.backendSession).toEqual({ kind: backend, sessionId: 'live-session' });
+    expect(events.some(event => event.type === 'agent.promptQueued')).toBe(false);
+  });
+
+  it('queues teammate messages when live Cursor steerPrompt stays disabled', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
+    recipient.backend = 'cursor';
+    recipient.backendDefaults = { kind: 'cursor' };
+    recipient.status = { type: 'working' };
+    recipient.backendSession = { kind: 'cursor', sessionId: 'live-session' };
+    const events: any[] = [];
+    const steerPrompt = vi.fn();
+    service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['cursor', createDriver({
+      backend: 'cursor',
+      getRuntimeStatus: () => ({ backend: 'cursor', status: 'running' }),
+      getCapabilities: () => ({ ...cursorBackendCapabilities, steerPrompt: false }),
+      steerPrompt,
+    })]])));
+    const url = await service.start();
+    await postJson(agentUrl(url, 'agent-dina'), {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'send-message', arguments: { to: 'agent-jesse', content: 'Wait until idle.' } },
+    });
+    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({
+      agentId: 'agent-jesse', type: 'agent.promptQueued',
+      payload: expect.objectContaining({ text: expect.stringContaining('Wait until idle.') }),
+    })));
+    expect(steerPrompt).not.toHaveBeenCalled();
+  });
+
+  it('keeps teammate messages unread when live Cursor steering fails', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
+    recipient.backend = 'cursor';
+    recipient.backendDefaults = { kind: 'cursor' };
+    recipient.status = { type: 'working' };
+    recipient.backendSession = { kind: 'cursor', sessionId: 'live-session' };
+    const events: any[] = [];
+    const steerPrompt = vi.fn()
+      .mockRejectedValueOnce(new Error('Cursor turn changed during steering.'))
+      .mockRejectedValue(new Error('Cursor turn changed during steering.'));
+    service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['cursor', createDriver({
+      backend: 'cursor',
+      getRuntimeStatus: () => ({ backend: 'cursor', status: 'running' }),
+      getCapabilities: () => ({ ...cursorBackendCapabilities, steerPrompt: true }),
+      steerPrompt,
+    })]])));
+    const url = await service.start();
+    await postJson(agentUrl(url, 'agent-dina'), {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'send-message', arguments: { to: 'agent-jesse', content: 'First correction.' } },
+    });
+    await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledOnce());
+    await postJson(agentUrl(url, 'agent-dina'), {
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'send-message', arguments: { to: 'agent-jesse', content: 'Second correction.' } },
+    });
+    await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledTimes(2));
+    expect(steerPrompt.mock.calls[1]?.[1]).toEqual(expect.stringContaining('First correction.'));
+    expect(steerPrompt.mock.calls[1]?.[1]).toEqual(expect.stringContaining('Second correction.'));
+    expect(events.filter(event => event.type === 'agent.promptQueued')).not.toHaveLength(0);
   });
 
   it('shows busy teammate messages in the backend-owned queue until it reports dequeue', async () => {

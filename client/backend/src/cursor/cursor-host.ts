@@ -330,7 +330,11 @@ export class CursorHost implements AgentBackendDriver {
   }
   private async ensure(agent: Agent, reviewUrl?: string): Promise<CursorSession> {
     if (this.closed) throw new Error('Cursor host is closed.');
-    const current = this.sessions.get(agent.id);
+    let current = this.sessions.get(agent.id);
+    if (current?.isClosed && !agent.backendSession && current.snapshot.turns.length === 0) {
+      await this.releaseConversation(agent.id);
+      current = this.sessions.get(agent.id);
+    }
     if (current) {
       if (current.isClosed) {
         if (!agent.backendSession) throw new Error('Cursor connection closed. A saved session reference is required.');
