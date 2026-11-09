@@ -36,7 +36,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
     await wrapper.find('.app-button--primary').trigger('click');
     await flushPromises();
     expect(props.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/id8', branchName: 'feature/login', baseBranch: 'main', requireNewBranch: true });
-    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login', sourceRepositoryName: 'id8', teamId: 'team' }), { select: false });
+    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login', sourceRepositoryName: 'id8', teamId: 'team' }), { select: true });
   });
 
   it('starts in the default branch\'s checkout straight away', async () => {
@@ -44,7 +44,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
     await wrapper.find('.app-button--primary').trigger('click');
     await flushPromises();
     expect(props.createWorktree).not.toHaveBeenCalled();
-    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/src/id8' }), { select: false });
+    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/src/id8' }), { select: true });
   });
 
   it('starts in the worktree an existing branch already has, without creating one', async () => {
@@ -55,7 +55,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
     await wrapper.find('.app-button--primary').trigger('click');
     await flushPromises();
     expect(props.createWorktree).not.toHaveBeenCalled();
-    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/develop' }), { select: false });
+    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/develop' }), { select: true });
   });
 
   it('adds a worktree for an existing branch that has none', async () => {
@@ -65,7 +65,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
     await wrapper.find('.app-button--primary').trigger('click');
     await flushPromises();
     expect(props.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/id8', branchName: 'release', reuseExisting: true });
-    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login' }), { select: false });
+    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login' }), { select: true });
   });
 
   it.each([
@@ -80,7 +80,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
     await flushPromises();
     if (worktreeCall) expect(props.createWorktree).toHaveBeenCalledExactlyOnceWith(worktreeCall);
     else expect(props.createWorktree).not.toHaveBeenCalled();
-    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder }), { select: false });
+    expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder }), { select: true });
   });
 
   describe('for a feature branch', () => {
@@ -97,7 +97,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
       await wrapper.find('.app-button--primary').trigger('click');
       await flushPromises();
       expect(props.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/id8', branchName: 'feature/x', baseBranch: 'main', requireNewBranch: true });
-      expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login' }), { select: false });
+      expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/feature-login' }), { select: true });
     });
 
     it('starts in the branch\'s worktree where the repository already has it', async () => {
@@ -105,7 +105,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
       await wrapper.find('.app-button--primary').trigger('click');
       await flushPromises();
       expect(props.createWorktree).not.toHaveBeenCalled();
-      expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/develop' }), { select: false });
+      expect(props.createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/work/develop' }), { select: true });
     });
   });
 

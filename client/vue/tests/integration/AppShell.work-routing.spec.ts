@@ -116,7 +116,7 @@ describe('AppShell work routing', () => {
       await dialog.findAll('button').find(button => button.text() === 'Create')!.trigger('click');
       await flushPromises();
       expect(createSourceWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/src/api', branchName: 'feature/search', baseBranch: 'main', requireNewBranch: true });
-      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: null, folder: '/src/api-search', teamId: snapshot.activeTeamId }), { select: false });
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: null, folder: '/src/api-search', teamId: snapshot.activeTeamId }), { select: true });
     } finally { wrapper.unmount(); }
   });
 

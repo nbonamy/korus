@@ -175,7 +175,7 @@ async function create(): Promise<void> {
           teamId: props.teamId,
           ...(repository.remoteConnectionId ? { remoteConnectionId: repository.remoteConnectionId } : {}),
           selection: { backend },
-        }, { select: false });
+        }, { select: agentMode.value });
         if (result === null) throw new Error(t('features.creationFailed'));
         completed.value.add(key);
         updateProgress(key, { state: 'success', ...(result ? { agentId: result.id } : {}) });
