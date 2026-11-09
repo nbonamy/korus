@@ -164,6 +164,16 @@ export class WorktreeManager {
     return state;
   }
 
+  /** Stops background setup in this folder and waits for its command to end, so the folder can be removed. */
+  async cancelInitialization(folder: string): Promise<void> {
+    const key = path.resolve(folder);
+    const job = this.initializationJobs.get(key);
+    if (!job) return;
+    job.controller.abort();
+    await job.completion;
+    this.initializationStates.delete(key);
+  }
+
   async close(): Promise<void> {
     const jobs = [...this.initializationJobs.values()];
     for (const job of jobs) job.controller.abort();

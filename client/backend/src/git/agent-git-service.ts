@@ -43,6 +43,7 @@ export class AgentGitService {
     private readonly now: AgentGitServiceClock = () => new Date(),
     private readonly runGit: AgentGitRunner = git,
     private readonly createWorktree?: AgentGitWorktreeCreator,
+    private readonly cancelWorktreeInitialization?: (folder: string) => Promise<void>,
   ) { this.pruning = new GitPruneService(runGit); }
 
   async identity(folder: string): Promise<AgentWorkspaceIdentity> {
@@ -492,6 +493,8 @@ export class AgentGitService {
 
   async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>, expectedBranch?: string): Promise<void> {
     const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity, expectedBranch);
+    // Setup still running in the folder must end before the folder and its branch go.
+    await this.cancelWorktreeInitialization?.(current.folder);
 
     if (deleteRemoteBranch) {
       const branch = current.upstream!.slice(current.remote!.length + 1);

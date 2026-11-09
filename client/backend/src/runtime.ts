@@ -128,6 +128,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     undefined,
     undefined,
     async (input) => (await worktreeManager.create(input)).worktree,
+    folder => worktreeManager.cancelInitialization(folder),
   );
   const agentCreation = new AgentCreationService(snapshot, folder => worktreeManager.getInitializationState(folder));
   const workIntegrations = new WorkIntegrationManager({

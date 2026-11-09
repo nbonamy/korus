@@ -656,6 +656,23 @@ describe('agent git service parsers', () => {
     ]);
   });
 
+  it('stops worktree setup before removing the worktree and its branch', async () => {
+    const runGit = vi.fn(async (_folder: string, args: string[]) => ({
+      stdout: args[0] === 'worktree' && args[1] === 'list' ? 'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /repo-fix-gh-22\nHEAD def\nbranch refs/heads/fix/gh-22\n' : '',
+    }));
+    const cancelInitialization = vi.fn().mockResolvedValue(undefined);
+    const service = new AgentGitService(() => new Date(), runGit, undefined, cancelInitialization);
+    vi.spyOn(service, 'workflow').mockResolvedValue({
+      repository: 'owner/repo', folder: '/repo-fix-gh-22', isLinkedWorktree: true, branch: 'fix/gh-22', detached: false,
+      remote: 'origin', upstream: 'origin/fix/gh-22', ahead: 0, behind: 0, files: [], stagedFiles: [], unstagedFiles: [],
+    });
+    await service.deleteLinkedWorktree('/repo-fix-gh-22');
+    expect(cancelInitialization).toHaveBeenCalledExactlyOnceWith('/repo-fix-gh-22');
+    const removal = runGit.mock.calls.findIndex(([, args]) => args[0] === 'worktree' && args[1] === 'remove');
+    expect(removal).toBeGreaterThanOrEqual(0);
+    expect(cancelInitialization.mock.invocationCallOrder[0]).toBeLessThan(runGit.mock.invocationCallOrder[removal]!);
+  });
+
   it('refuses to delete a linked worktree with uncommitted changes', async () => {
     const runGit = vi.fn();
     const service = new AgentGitService(() => new Date(), runGit);
