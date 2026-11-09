@@ -56,6 +56,36 @@ describe('SettingsView', () => {
     wrapper.unmount();
   });
 
+  it('keeps Cursor credits and on-demand details in backend settings and clears them on account changes', async () => {
+    const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: true, unlimited: false, usedUsd: 1, limitUsd: 50, remainingUsd: 49 } };
+    const getProviderUsage = vi.fn().mockResolvedValue({ billing });
+    setElectronTestClient({ getProviderUsage });
+    const connections = (email: string) => [{ backend: 'cursor' as const, installed: true, connected: true, checking: false,
+      authentication: { kind: 'cursor' as const, connected: true, state: { loggedIn: true, homePath: '/cursor', account: { type: 'subscription' as const, email } } } }];
+    const wrapper = mount(SettingsView, { props: { activeTab: 'cursor', settings: defaultThemeSettings,
+      generalSettings: defaultGeneralSettings, providerConnections: connections('first@example.test') } });
+    try {
+      await flushPromises();
+      expect(getProviderUsage).toHaveBeenCalledWith('cursor');
+      const section = () => wrapper.get('section[aria-labelledby="settings-cursor-billing-title"]');
+      expect(section().text()).toContain('Credits');
+      expect(section().text()).toContain('$15.00');
+      expect(section().text()).toContain('$49.00');
+      getProviderUsage.mockResolvedValue({ billing: { includedBalanceUsd: '0.00', onDemand: { ...billing.onDemand, unlimited: true, limitUsd: null, remainingUsd: null } } });
+      await section().get('[aria-label="Refresh billing"]').trigger('click'); await flushPromises();
+      expect(section().text()).toContain('$0.00');
+      expect(section().text()).toContain('No limit');
+      let complete!: (value: unknown) => void;
+      getProviderUsage.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; })).mockRejectedValueOnce(new Error('unavailable'));
+      await section().get('[aria-label="Refresh billing"]').trigger('click');
+      await wrapper.setProps({ providerConnections: connections('second@example.test') }); await flushPromises();
+      expect(section().text()).not.toMatch(/\$0.00|No limit/);
+      expect(section().text()).toContain('Couldn’t load usage');
+      complete({ billing }); await flushPromises();
+      expect(section().text()).not.toContain('$15.00');
+    } finally { wrapper.unmount(); }
+  });
+
   it('keeps Cursor steering fallback off by default and saves both toggle directions', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsView, { props: {

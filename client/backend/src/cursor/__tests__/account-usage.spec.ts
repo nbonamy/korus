@@ -45,6 +45,25 @@ it('reads native subscription balance and billing-cycle quota through the driver
   } finally { await driver.close(); }
 });
 
+it.each([0, 1])('reports the native weekly percentage %s without requiring a dollar allowance', async percentage => {
+  const normal = io.fetch.getMockImplementation()!;
+  io.fetch.mockImplementation((url: string) => url.endsWith('/GetCurrentPeriodUsage')
+    ? new Response(JSON.stringify({ billingCycleStart: '1794182400000', billingCycleEnd: '1794787200000', planUsage: { totalPercentUsed: percentage } })) : normal(url));
+  const driver = createBackendDriver('cursor');
+  try {
+    expect((await driver.getAccountRateLimits!())?.primary).toStrictEqual({ label: null, usedPercent: percentage, resetsAt: 1794787200, windowDurationMins: 10_080 });
+  } finally { await driver.close(); }
+});
+
+it('uses native included spend rather than total spend when the percentage is absent', async () => {
+  const normal = io.fetch.getMockImplementation()!;
+  io.fetch.mockImplementation((url: string) => url.endsWith('/GetCurrentPeriodUsage')
+    ? new Response(JSON.stringify({ planUsage: { includedSpend: 100, totalSpend: 500, limit: 1000 } })) : normal(url));
+  const driver = createBackendDriver('cursor');
+  try { expect((await driver.getAccountRateLimits!())?.primary?.usedPercent).toBe(10); }
+  finally { await driver.close(); }
+});
+
 it.each([0, 2147483647])('preserves Free and disabled usage-based billing with hard limit %s without granting unlimited quota', async hardLimit => {
   io.fetch.mockImplementation(async (url: string) => new Response(JSON.stringify(url.endsWith('/GetPlanInfo')
     ? { planInfo: { planName: 'Free', price: 'Free' } }
@@ -53,7 +72,7 @@ it.each([0, 2147483647])('preserves Free and disabled usage-based billing with h
   const driver = createBackendDriver('cursor');
   try {
     expect(await driver.getAccountRateLimits!()).toMatchObject({
-      planType: 'Free', primary: null, secondary: null,
+      planType: 'Free', primary: { usedPercent: 0 }, secondary: null,
       credits: { hasCredits: false, unlimited: false, balance: '0.00' },
       individualLimit: { enabled: false, limitUsd: 0 },
       billing: { includedBalanceUsd: '0.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } },

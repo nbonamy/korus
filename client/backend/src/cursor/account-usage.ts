@@ -63,7 +63,7 @@ export async function getCursorAccountUsage(runtime: CursorRuntime = cursorRunti
   const start = timestamp(usage.billingCycleStart), end = timestamp(usage.billingCycleEnd);
   const duration = start !== null && end !== null && end > start ? (end - start) / 60_000 : null;
   const includedLimit = included ? amount(included.limit) : null;
-  const includedUsed = included ? amount(included.totalSpend) : null;
+  const includedUsed = included ? amount(included.includedSpend) : null;
   const remaining = included ? amount(included.remaining) : null;
   const individualLimit = spend && spend.individualLimit !== undefined ? amount(spend.individualLimit) : null;
   const hardLimit = amount(hard.hardLimit);
@@ -78,9 +78,9 @@ export async function getCursorAccountUsage(runtime: CursorRuntime = cursorRunti
   const onDemand = { enabled, unlimited, usedUsd: used === null ? null : used / 100, limitUsd: limit === null ? null : limit / 100,
     remainingUsd: enabled && used !== null && limit !== null ? Math.max(0, limit - used) / 100 : enabled ? null : 0 };
   function window(label: string, used: number | null, limit: number | null, percent?: unknown): AccountRateLimitWindow | null {
-    if (used === null || limit === null || limit <= 0) return null;
     if (percent !== undefined && (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0)) throw new Error(unavailable);
-    return { label, usedPercent: typeof percent === 'number' ? percent : used / limit * 100, windowDurationMins: duration, resetsAt: end === null ? null : end / 1000 };
+    if (percent === undefined && (used === null || limit === null || limit <= 0)) return null;
+    return { label: duration === 10_080 && label === 'Included' ? null : label, usedPercent: typeof percent === 'number' ? percent : used! / limit! * 100, windowDurationMins: duration, resetsAt: end === null ? null : end / 1000 };
   }
   return {
     limitId: 'cursor', limitName: null,

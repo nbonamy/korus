@@ -181,25 +181,8 @@ const usageGroups = computed(() => quotaBackends.value.map(backend => {
     rateLimitRow(limits?.primary ?? null, translate('surface.settingsMenu.usage')),
     ...(isAccountBilling(limits?.billing) ? [] : [rateLimitRow(limits?.secondary ?? null, translate('surface.settingsMenu.weekly'))]),
   ].filter((row): row is RateLimitRow => Boolean(row));
-  if (isAccountBilling(limits?.billing)) {
-    const billing = limits.billing;
-    const row = (key: string, value: string): RateLimitRow => ({ label: translate(`surface.settingsMenu.${key}`), remaining: value, valueLabel: value, detail: true, reset: '', level: null, pace: null,
-      title: `${translate(`surface.settingsMenu.${key}`)}: ${value}` });
-    if (limits.planType) rows.unshift(row('plan', limits.planType));
-    rows.push(row('credits', billing.includedBalanceUsd === null ? translate('surface.settingsMenu.unknown') : usd(billing.includedBalanceUsd)));
-    const demand = billing.onDemand;
-    const value = demand.enabled === false ? translate('surface.settingsMenu.billingOff')
-      : demand.enabled === true && demand.unlimited ? translate('surface.settingsMenu.noLimit')
-        : demand.enabled === true && demand.remainingUsd !== null ? usd(demand.remainingUsd) : translate('surface.settingsMenu.unknown');
-    rows.push({ ...row('onDemand', value),
-      ...(demand.enabled === true && !demand.unlimited ? { valueLabel: translate('surface.settingsMenu.remainingValue', { value }) } : {}) });
-  }
   return { backend, name: translate(`surface.settingsMenu.engine.${backend}`), rows, failed: usageErrors.value[backend] && !rows.length };
 }).filter(group => group.rows.length > 0 || group.failed));
-
-function usd(value: string | number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
-}
 
 function rateLimitRow(window: AccountRateLimitWindow | null, fallbackLabel: string): RateLimitRow | null {
   if (!window) {
