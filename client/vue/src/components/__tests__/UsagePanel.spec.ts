@@ -36,7 +36,7 @@ it("warns for enabled providers whose driver does not report tokens", async () =
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   await wrapper.setProps({ generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: true } } });
   const warning = () => wrapper.get('[role="alert"]');
-  expect(warning().text()).toBe("Cursor turns are reported, but token usage is unavailable.");
+  expect(warning().text()).toBe("Cursor turns are reported, but token usage and cost are unavailable.");
   expect(warning().classes()).toContain("el-alert--warning");
   expect(warning().find(".el-alert__close-btn").exists()).toBe(false);
   await wrapper.get("#usage-tab-performance").trigger("click");
@@ -50,7 +50,7 @@ it("warns for enabled providers whose driver does not report tokens", async () =
     providerConnections: [{ ...connection, backend: "claude" }],
     backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: false } }],
   });
-  expect(warning().text()).toBe("Claude Code turns are reported, but token usage is unavailable.");
+  expect(warning().text()).toBe("Claude Code turns are reported, but token usage and cost are unavailable.");
   await wrapper.setProps({ backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: true } }] });
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   wrapper.unmount();

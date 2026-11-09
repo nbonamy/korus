@@ -136,7 +136,7 @@ export const messages = {
     modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
-      tokenReportingWarning: '{providers} turns are reported, but token usage is unavailable.',
+      tokenReportingWarning: '{providers} turns are reported, but token usage and cost are unavailable.',
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',
       costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
       title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',
