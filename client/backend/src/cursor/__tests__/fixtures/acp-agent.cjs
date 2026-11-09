@@ -52,6 +52,7 @@ const richOutput = replay => {
   update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Rich output complete'}});
 };
 async function review(text,reply) {
+ if(fs.existsSync(path.join(__dirname,'hold-review')) && !text.includes('STEER_REVIEW_FINAL')) {update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Holding original review.'}});log({fixture:'review-held'});return;}
  const server=mcpServers.find(server=>server.name==='korus');
  if(!server) throw new Error('Missing korus server');
  const child=require('node:child_process').spawn(server.command,server.args,{env:{...process.env,...Object.fromEntries(server.env.map(item=>[item.name,item.value]))},stdio:['pipe','pipe','ignore']});

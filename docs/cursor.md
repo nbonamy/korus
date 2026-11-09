@@ -79,6 +79,8 @@ reviewer skill loading and finding reporting. Normal application and hosted MCP
 endpoints are replaced for the review scope and restored for normal conversation.
 The native conversation reference, model and reasoning selection are retained;
 cancellation, permissions and execution accounting use the normal Cursor turn path.
+With steering fallback enabled, the pending review follows the replacement turn
+in the same review scope; an interrupted segment does not finish the review.
 Review scope limits Korus MCP access; permission callbacks use the conversation's
 Ask/Full access choice. Native filesystem access is not isolated by review scope.
 
@@ -89,7 +91,11 @@ explicit, default-off opt-in to interrupt-and-resend. The host cancels and fence
 the running turn before submitting the update, attachments and selection as a
 new turn in the same saved session. The interrupted turn remains visible.
 Opt-out, session/account/workspace changes and release are revalidated before
-resend admission; concurrent steering cannot replace that operation. Capability
+resend admission; concurrent steering cannot replace that operation. Every Cursor
+conversation publishes its native session reference on first prompt admission,
+before streamed turn events, so steering uses the saved live session in workspace
+threads, Quick Chats and reviewer conversations. Catalog reads do not attach a
+conversation. Capability
 updates reach existing conversations when the host setting changes.
 
 ## Conversation approval policy

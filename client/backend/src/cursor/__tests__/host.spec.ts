@@ -12,6 +12,7 @@ import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentInSnapshot, createQuickChatInSnapshot } from '@workspace/core/agent-manager';
+import { companionSessionId } from '@workspace/core/companion-protocol';
 import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversation-guards';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { UsageLedger } from '../../usage/usage-ledger';
@@ -91,6 +92,84 @@ describe('Cursor ACP host transport boundary', () => {
       await vi.waitFor(() => expect(state.agents).toStrictEqual([owner]));
       expect(dispose).toHaveBeenCalledOnce(); expect(commit).not.toHaveBeenCalled();
     } finally { await rpc.close(); await mcp.stop(); }
+  });
+
+  it.each(['workspace', 'quickChat'] as const)('attaches the first %s prompt before streaming and steers within that saved session', async kind => {
+    const state = createInitialSnapshot(); state.agents = [{ ...agent, ...(kind === 'quickChat' ? { folder: null, sessionKind: 'quickChat' as const } : {}) }];
+    const current = state.agents[0]!;
+    state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    await host.close(); host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
+    const boundAtStart: unknown[] = [];
+    let persisted: ReturnType<typeof persistedStateFromSnapshot> | undefined;
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state,
+      saveSnapshot: async value => { persisted = JSON.parse(JSON.stringify(persistedStateFromSnapshot(value))); },
+      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])), onEvent: event => {
+        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.backendSession));
+      } });
+    try {
+      await host.listModels!(current);
+      expect(current.backendSession).toBeUndefined();
+      await server.handleMessage({ jsonrpc: '2.0', id: 'first', method: 'agent/prompt/send', params: { agentId: current.id, prompt: 'wait' } });
+      await vi.waitFor(async () => expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1));
+      expect(boundAtStart).toStrictEqual([expect.objectContaining({ kind: 'cursor' })]);
+      const saved = structuredClone(current.backendSession);
+      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === current.id)?.backendSession).toStrictEqual(saved));
+      await server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: current.id, prompt: 'Correction', expectedSessionId: companionSessionId(current) } });
+      await vi.waitFor(async () => { await host.loadConversation!(current); expect(boundAtStart).toHaveLength(2); });
+      expect(current.backendSession).toStrictEqual(saved);
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+    } finally { await server.close(); }
+  });
+
+  it.each(['complete', 'invalid-model'] as const)('steers a live review without losing its saved session, tool scope or completion (%s)', async outcome => {
+    const state = createInitialSnapshot(); state.agents = [{ ...agent }];
+    state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const mcp = new AppMcpService({ snapshot: state }); const url = await mcp.start();
+    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: url, getGeneralSettings: () => state.general });
+    const usage: import('@workspace/core/usage').ExecutionObservation[] = [];
+    host.onEvent(event => events.push(event)); host.onUsage!(event => usage.push(event));
+    let persisted: ReturnType<typeof persistedStateFromSnapshot> | undefined;
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, codeReviewTools: mcp,
+      saveSnapshot: async value => { persisted = JSON.parse(JSON.stringify(persistedStateFromSnapshot(value))); },
+      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    await writeFile(path.join(root, 'hold-review'), '');
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'review', method: 'agent/codeReview/start', params: { agentId: agent.id, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
+      await vi.waitFor(async () => expect((await wire()).some(call => call.fixture === 'review-held')).toBe(true));
+      const reviewer = state.agents.find(candidate => candidate.codeReview)!;
+      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === reviewer.id)?.backendSession).toMatchObject({ kind: 'cursor' }));
+      const steer = (prompt: string, options?: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: reviewer.id, prompt,
+        expectedSessionId: companionSessionId(reviewer), options } });
+      if (outcome === 'invalid-model') {
+        await expect(steer('STEER_REVIEW_FINAL', { selection: { model: 'missing-model' } })).rejects.toThrow(/Unknown Cursor model/);
+        await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('failed'));
+        expect(reviewer.codeReview?.rounds[0]?.error).toMatch(/Unknown Cursor model/);
+        expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
+        const retry = await host.runCodeReview!(reviewer, { prompt: 'Retry inspection', cwd: root, reviewerSession: reviewer.backendSession, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
+        expect(retry.text).toBe('Hello Cursor');
+      } else {
+        await steer('STEER_REVIEW_WAIT');
+        expect(reviewer.backend).toBe('cursor');
+        expect(reviewer.backendSession).toMatchObject({ kind: 'cursor' });
+        const saved = structuredClone(reviewer.backendSession);
+        await vi.waitFor(async () => expect((await wire()).filter(call => call.fixture === 'review-held')).toHaveLength(2));
+        expect(reviewer.codeReview?.status).toBe('reviewing');
+        await steer('STEER_REVIEW_FINAL');
+        await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
+        expect(reviewer.backendSession).toStrictEqual(saved);
+        expect(reviewer.codeReview?.rounds[0]).toMatchObject({ summary: 'Review turn complete.', inspectionCompletion: { findingCount: 1 }, reviewerSession: saved });
+        await host.loadConversation!(reviewer);
+        const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged' && event.agentId === reviewer.id).at(-1);
+        if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing review snapshot');
+        expect(frame.payload.snapshot.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'interrupted', 'completed']);
+        expect(JSON.stringify(frame.payload.snapshot.messages)).not.toContain('LATE');
+        expect(usage.filter(event => event.agentId === reviewer.id).map(event => event.phase)).toStrictEqual(['started', 'interrupted', 'started', 'interrupted', 'started', 'completed']);
+        expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+        expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(0);
+      }
+    } finally { await server.close(); await mcp.stop(); }
   });
 
   it('preserves the native conversation and selected model while entering and leaving a scoped review', async () => {

@@ -22,9 +22,13 @@ import { executionSelectionForAgent, resolveExecutionSelection } from '@workspac
 import { cursorAttachments } from './attachments';
 import { getCursorAccountUsage } from './account-usage';
 
+type CursorSubmission = { backendSession: BackendSession; turnId: string; completion: Promise<void>; session: CursorSession };
+type RunningReview = { replacement?: Promise<CursorSubmission> };
+
 export class CursorHost implements AgentBackendDriver {
   readonly backend = 'cursor' as const;
   readonly coordinationPolicy = { permissionModeScope: 'provider' as const, rollbackStorageState: 'active' as const, authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } };
+  private readonly runningReviews = new Map<string, RunningReview>();
   private readonly reviewScopes = new Map<string, string>();
   private readonly sessions = new Map<string, CursorSession>();
   private readonly opening = new Map<string, { abort: AbortController; done: Promise<CursorSession> }>();
@@ -82,7 +86,7 @@ export class CursorHost implements AgentBackendDriver {
     const { backendSession, turnId } = await this.sendPromptInScope(agent, prompt, options, admissionGuard);
     return { backendSession, turnId };
   }
-  private async sendPromptInScope(agent: Agent, prompt: string, options?: SendPromptOptions, admissionGuard?: () => void, reviewUrl?: string) {
+  private async sendPromptInScope(agent: Agent, prompt: string, options?: SendPromptOptions, admissionGuard?: () => void, reviewUrl?: string): Promise<CursorSubmission> {
     const agentId = agent.id;
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
     if (this.steering.has(agent.id) && !admissionGuard) throw new Error('Finish the current Cursor steering operation first.');
@@ -120,6 +124,10 @@ export class CursorHost implements AgentBackendDriver {
         celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
       });
       const wire = `${promptWithSelectedReferences(prompt, content)}\n\n<context id="${randomUUID()}">\n${instructions}\n</context>`;
+      if (agent.backendSession?.kind !== this.backend || agent.backendSession.sessionId !== session.sessionId) {
+        this.emit({ type: 'agent.conversationAttached', backend: this.backend, agentId: agent.id,
+          conversationId: session.sessionId, backendSessionId: session.sessionId, payload: { cwd: session.cwd } });
+      }
       this.planModes.set(agent.id, options?.planMode === true);
       const turn = session.prompt(content === undefined ? prompt : promptContentText(content), wire, content === undefined ? undefined : { promptContent: content }, attachments, (options?.attachments ?? []).map(attachment => ({ type: 'attachment', attachment: { kind: attachment.type, name: attachment.name ?? path.basename(attachment.path), path: attachment.path, ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}), ...('previewUrl' in attachment && attachment.previewUrl ? { url: attachment.previewUrl } : {}) } })));
       void turn.completion.finally(settle);
@@ -128,14 +136,25 @@ export class CursorHost implements AgentBackendDriver {
   }
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {
     if (input.reviewerSession && input.reviewerSession.kind !== this.backend) throw new Error('Cursor cannot continue another provider review.');
-    const reviewer = { ...agent, folder: input.cwd, backendSession: input.reviewerSession };
-    const started = await this.sendPromptInScope(reviewer, input.prompt, undefined, undefined, input.reviewMcpServerUrl);
-    await started.completion;
-    const snapshot = started.session.snapshot;
-    if (snapshot.turns.find(turn => turn.id === started.turnId)?.status !== 'completed') throw new Error(snapshot.error ?? 'Cursor review was interrupted.');
-    const text = snapshot.messages.filter(message => message.turnId === started.turnId && message.role === 'assistant')
-      .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n');
-    return { text, reviewerSession: started.backendSession };
+    if (this.runningReviews.has(agent.id)) throw new Error('Cursor review is already running.');
+    const review: RunningReview = {};
+    this.runningReviews.set(agent.id, review);
+    try {
+      const reviewer = { ...agent, folder: input.cwd, backendSession: input.reviewerSession };
+      let started = await this.sendPromptInScope(reviewer, input.prompt, undefined, undefined, input.reviewMcpServerUrl);
+      for (;;) {
+        await started.completion;
+        const replacement = review.replacement;
+        if (!replacement) break;
+        review.replacement = undefined;
+        started = await replacement;
+      }
+      const snapshot = started.session.snapshot;
+      if (snapshot.turns.find(turn => turn.id === started.turnId)?.status !== 'completed') throw new Error(snapshot.error ?? 'Cursor review was interrupted.');
+      const text = snapshot.messages.filter(message => message.turnId === started.turnId && message.role === 'assistant')
+        .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n');
+      return { text, reviewerSession: started.backendSession };
+    } finally { if (this.runningReviews.get(agent.id) === review) this.runningReviews.delete(agent.id); }
   }
   async disposeCodeReview(agent: Agent, reviewerSession: BackendSession): Promise<void> {
     if (reviewerSession.kind !== this.backend) throw new Error('Cursor cannot dispose another provider review.');
@@ -153,19 +172,27 @@ export class CursorHost implements AgentBackendDriver {
     const turnId = session.snapshot.activeTurnId;
     if (!turnId) throw new Error('Cursor steering requires a running turn.');
     const generation = this.generations.get(agentId) ?? 0, identity = this.observedIdentity, folder = agent.folder;
+    const reviewUrl = this.reviewScopes.get(agentId);
     const assertIdentity = () => {
       if (!this.getCapabilities().steerPrompt) throw new Error('Cursor prompt steering fallback is disabled.');
       if (this.closed || session.isClosed || this.sessions.get(agentId) !== session || generation !== (this.generations.get(agentId) ?? 0) || identity !== this.observedIdentity) throw new Error('Cursor steering session was released or its identity changed.');
       if (agent.id !== agentId || agent.backend !== this.backend || agent.backendSession?.kind !== this.backend || agent.backendSession.sessionId !== session.sessionId || agent.folder !== folder || path.resolve(this.workingDirectory(agent)) !== path.resolve(session.cwd)) throw new Error('Cursor steering conversation identity or workspace changed.');
+      if (this.reviewScopes.get(agentId) !== reviewUrl) throw new Error('Cursor steering scope changed.');
       if (session.snapshot.activeTurnId || session.snapshot.turns.at(-1)?.id !== turnId) throw new Error('Cursor turn changed during steering.');
     };
     this.steering.add(agentId);
     try {
-      // ACP cancellation settles callbacks and fences late frames before a distinct prompt is admitted.
-      await session.interrupt(turnId);
-      assertIdentity();
-      if (this.queues.has(agentId)) throw new Error('Finish the current Cursor operation before steering.');
-      return await this.sendPrompt(agent, prompt, options, assertIdentity);
+      // Register the review handoff before cancellation settles the interrupted turn.
+      const next = Promise.resolve().then(async () => {
+        await session.interrupt(turnId);
+        assertIdentity();
+        if (this.queues.has(agentId)) throw new Error('Finish the current Cursor operation before steering.');
+        return this.sendPromptInScope(agent, prompt, options, assertIdentity, reviewUrl);
+      });
+      const review = this.runningReviews.get(agentId);
+      if (review) review.replacement = next;
+      const { backendSession, turnId: nextTurnId } = await next;
+      return { backendSession, turnId: nextTurnId };
     } finally { this.steering.delete(agentId); }
   }
   async continueInterruptedTurn(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendTurnActionResult> {
