@@ -44,6 +44,7 @@ export type AgentSidebarEvents = {
   'create-agent-from-repository': [payload: SidebarRepositoryTarget];
   'create-agent-on-branch': [payload: SidebarRepositoryTarget & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: SidebarRepositoryTarget];
+  'create-feature-agent': [repositories: SidebarRepositoryTarget[], branch?: string];
   'create-feature-worktree': [repositories: SidebarRepositoryTarget[]];
   'open-on-remote': [payload: { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string }];
   'duplicate-agent': [agentId: string];

@@ -580,7 +580,7 @@ export const messages = {
     },
     features: {
       rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
-      newWorktree: 'New worktree', repositories: 'Repositories', branch: 'New branch', retry: 'Retry',
+      newWorktree: 'New worktree', newAgent: 'New agent', repositories: 'Repositories', repository: 'Repository', branch: 'New branch', branchSelect: 'Branch', branchName: 'Branch name', retry: 'Retry',
       noBackend: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
       openInNewWindow: 'Open in New Window',
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
@@ -608,6 +608,7 @@ export const messages = {
       loadingDefaultBranch: 'Loading default branch…',
       newSession: 'New session',
       newSessionIn: 'New session in {repository}',
+      newAgent: 'New agent…',
       newWorktree: 'New worktree…',
       onRemoteMachine: 'On a remote machine',
       remoteUnavailable: '{host} is not connected',

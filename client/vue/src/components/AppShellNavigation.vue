@@ -79,6 +79,7 @@
       @create-agent-from-repository="openRepositorySessionSource"
       @create-agent-on-branch="createRepositorySessionOnBranch"
       @create-agent-worktree-in-repository="openRepositorySessionWorktree"
+      @create-feature-agent="(repositories, branch) => $emit('create-feature-agent', repositories, branch)"
       @create-feature-worktree="$emit('create-feature-worktree', $event)"
       @open-on-remote="$emit('open-on-remote', $event)"
       :remote-connections="snapshot.remoteConnections.connections"
@@ -180,6 +181,7 @@ const emit = defineEmits<{
   'create-agent-from-repository': [payload: RepositorySessionPayload];
   'create-agent-on-branch': [payload: RepositorySessionPayload & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: RepositorySessionPayload];
+  'create-feature-agent': [repositories: import('./agent-sidebar-contracts').SidebarRepositoryTarget[], branch?: string];
   'create-feature-worktree': [repositories: import('./agent-sidebar-contracts').SidebarRepositoryTarget[]];
   'open-on-remote': [payload: OpenOnRemotePayload];
   'create-quick-chat': [];
