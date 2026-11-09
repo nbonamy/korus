@@ -1,21 +1,14 @@
-import type { AgentBackend, BackendPermissionModeOption } from '@workspace/core/contracts';
+import type { BackendPermissionModeOption } from '@workspace/core/contracts';
 import type { CodexComposerMenuItem } from '@codex-app-sdk/vue';
 import { ShieldCheckIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 
 export function conversationPermissionMenuItems(
-  backend: AgentBackend | undefined,
   modes: readonly BackendPermissionModeOption[],
   selectedMode?: string | null,
 ): CodexComposerMenuItem[] {
-  if (modes.length === 0) {
-    return backend === 'cursor' ? [{
-      id: 'backend-permissions', type: 'action',
-      label: translate('surface.appShell.permissions'), value: translate('cursor.managedPermissions'),
-      icon: ShieldCheckIcon, disabled: true,
-    }] : [];
-  }
+  if (modes.length === 0) return [];
 
   return [{
     id: 'backend-permissions',

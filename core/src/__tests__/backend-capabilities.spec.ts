@@ -10,7 +10,7 @@ describe('backend capabilities', () => {
     expect(defaultBackendCapabilities('cursor')).toStrictEqual({
       codeReview: true, planReview: true, questions: false, plugins: false,
       conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
-      remoteControl: false, attachments: true, models: true, skills: false,
+      remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
       reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
       goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
       deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,

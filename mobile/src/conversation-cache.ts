@@ -3,7 +3,7 @@ import { createCodexConversationReplica } from '@codex-app-sdk/core/conversation
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import { isConversationReset, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { isCompanionConversationFrame, isConversationReset, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 type Replica = { apply(event: never): unknown; getSnapshot(): unknown };
@@ -67,8 +67,7 @@ export class ConversationCache {
     return entry.loading ?? (entry.subscribed && entry.frame ? entry.frame : this.load(entry));
   }
   receive(frame: ProviderConversationFrame) {
-    // Cursor frames are desktop-only until companion support is negotiated.
-    if (frame.backend === 'cursor') return;
+    if (!isCompanionConversationFrame(frame)) return;
     const entry = this.entries.get(frame.agentId);
     if (!entry?.subscribed) return;
     if (frame.backend === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;

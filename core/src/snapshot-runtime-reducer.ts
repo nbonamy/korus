@@ -273,7 +273,7 @@ type BackendRuntimeCapabilities = NonNullable<AppSnapshot['backendRuntimes'][num
 
 function backendCapabilities(value: Record<string, unknown>): Partial<BackendRuntimeCapabilities> {
   return {
-    ...Object.fromEntries(['nativeMonitor', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl']
+    ...Object.fromEntries(['nativeMonitor', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare']
       .filter((key) => typeof value[key] === 'boolean').map((key) => [key, value[key]])),
     ...(typeof value.attachments === 'boolean' ? { attachments: value.attachments } : {}),
     ...(typeof value.models === 'boolean' ? { models: value.models } : {}),

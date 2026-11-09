@@ -3331,7 +3331,12 @@ export class AppBackendServer {
         if (Object.keys(preferences).length) throw new Error('Presentation settings must use client/preferences/update.');
         updateSettingsInSnapshot(this.snapshot, policy);
         if (policy.general && this.driverRpc) {
-          for (const runtime of this.snapshot.backendRuntimes) {
+          const runtimes = new Map(this.snapshot.backendRuntimes.map(runtime => [runtime.backend, runtime]));
+          for (const agent of this.snapshot.agents) {
+            if (this.remoteTeams.connectionIdForAgent(agent) || runtimes.has(agent.backend)) continue;
+            runtimes.set(agent.backend, { backend: agent.backend, status: 'notConfigured' });
+          }
+          for (const runtime of runtimes.values()) {
             const agent = this.snapshot.agents.find(agent => agent.backend === runtime.backend && !this.remoteTeams.connectionIdForAgent(agent));
             if (!agent) continue;
             const capabilities = this.driverRpc.getCapabilities(agent);

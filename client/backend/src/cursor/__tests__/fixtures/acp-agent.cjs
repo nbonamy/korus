@@ -137,6 +137,8 @@ async function review(text,reply) {
     update({sessionUpdate:'session_info_update',title:'Synthetic conversation'});
     update({sessionUpdate:'subagent_spawned',agentId:'synthetic-child'});
     update({sessionUpdate:'subagent_state_update',agentId:'synthetic-child',state:'completed'});
+    update({sessionUpdate:'future_session_update',payload:{}});
+    update({sessionUpdate:'agent_message_chunk',content:{type:'future_block',value:1}});
     if (mode === 'rich-output') { richOutput(false); reply({stopReason:'end_turn'}); return; }
     // Source-backed generate_image request shape; notification variant is compatibility coverage.
     if (mode === 'image-observation') {

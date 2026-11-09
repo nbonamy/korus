@@ -18,7 +18,8 @@ export function cursorContent(block: unknown): {text?:string;media?:Media} {
     return {text:block.resource.uri};
   }
   if (block.type === 'resource_link' && typeof block.uri === 'string') return {text:[typeof block.name === 'string' ? block.name : '',block.uri].filter(Boolean).join('\n')};
-  throw new Error('Unsupported Cursor content block.');
+  if (typeof block.type === 'string') return {};
+  throw new Error('Invalid Cursor content block.');
 }
 
 export function cursorToolContent(content: unknown[], kind: string): {body:string;changes:FileChange[];media:Media[]} {

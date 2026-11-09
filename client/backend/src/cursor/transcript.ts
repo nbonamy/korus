@@ -58,7 +58,7 @@ export class CursorTranscript {
       case 'session_info_update': case 'subagent_spawned': case 'subagent_state_update': return;
       case 'plan': this.progress(update); return;
       case 'user_message_chunk': case 'config_option_update': case 'available_commands_update': case 'usage_update': case 'current_mode_update': return;
-      default: throw new Error('Unsupported Cursor session update.');
+      default: return;
     }
   }
   replay(update: Record<string, unknown>): void {

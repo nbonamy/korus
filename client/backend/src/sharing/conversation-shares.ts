@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { GuestParticipant } from '@workspace/core/guest-conversation';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { conversationShareTarget, decodeConversationInvitation, encodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
 
@@ -209,8 +210,7 @@ export class ConversationShares {
   }
   control(input: ConversationShareControl): Promise<ConversationShareResult> {
     return this.serial(async () => {
-      // Sharing has its own closed provider contract, independent of desktop references.
-      if (input?.target?.backend === 'cursor') throw new Error('Conversation sharing is unavailable for this provider.');
+      if (input?.target && defaultBackendCapabilities(input.target.backend).conversationShare === false) throw new Error('Conversation sharing is unavailable for this provider.');
       const parsed = controlSchema.safeParse(input);
       if (!parsed.success) throw new Error('Invalid share operation.');
       const action = parsed.data;

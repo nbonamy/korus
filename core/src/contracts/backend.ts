@@ -96,6 +96,7 @@ export type BackendCapabilities = {
   conversationResume?: boolean;
   conversationReplaceWithSummary?: boolean;
   remoteControl?: boolean;
+  conversationShare?: boolean;
   attachments: boolean;
   models: boolean;
   skills: boolean;

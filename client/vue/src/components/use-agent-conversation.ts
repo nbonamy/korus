@@ -242,5 +242,5 @@ export function useAgentConversation(options: {
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return conversationPermissionMenuItems(view.agent.backend, view.capabilities.permissionModes ?? [], selected);
+  return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
 }

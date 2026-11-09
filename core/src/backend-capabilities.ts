@@ -9,6 +9,7 @@ export const codexBackendCapabilities: BackendCapabilities = {
   conversationResume: true,
   conversationReplaceWithSummary: true,
   remoteControl: true,
+  conversationShare: true,
   attachments: true,
   models: true,
   skills: true,
@@ -38,6 +39,7 @@ export const claudeBackendCapabilities: BackendCapabilities = {
   conversationResume: true,
   conversationReplaceWithSummary: false,
   remoteControl: false,
+  conversationShare: true,
   attachments: true,
   models: true,
   skills: true,
@@ -95,7 +97,7 @@ export function defaultBackendCapabilities(backend: AgentBackend): BackendCapabi
 export const antigravityBackendCapabilities: BackendCapabilities = {
   codeReview: true, planReview: true, questions: true, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
-  remoteControl: false, attachments: true, models: true, skills: false,
+  remoteControl: false, conversationShare: true, attachments: true, models: true, skills: false,
   reasoningEffort: false, serviceTier: false, thinkingBudget: false,
   planMode: 'native', goals: false, steerPrompt: false, interrupt: true, history: true,
   conversationFork: false, deleteTurn: false, editTurn: false, retryTurn: false,
@@ -110,7 +112,7 @@ export const antigravityBackendCapabilities: BackendCapabilities = {
 export const cursorBackendCapabilities: BackendCapabilities = {
   codeReview: true, planReview: true, questions: false, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
-  remoteControl: false, attachments: true, models: true, skills: false,
+  remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
   reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
   goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
   deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,

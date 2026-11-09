@@ -305,7 +305,7 @@ export class CursorHost implements AgentBackendDriver {
     this.opening.get(agentId)?.abort.abort();
     const session = this.sessions.get(agentId);
     await session?.close();
-    if (this.sessions.get(agentId) === session) this.sessions.delete(agentId);
+    if (this.sessions.get(agentId) === session) { this.sessions.delete(agentId); this.publishRuntime(); }
     await this.opening.get(agentId)?.done.catch(() => {});
     this.reviewScopes.delete(agentId);
     this.planModes.delete(agentId);
@@ -358,7 +358,7 @@ export class CursorHost implements AgentBackendDriver {
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }
-      this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); return session;
+      this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); this.publishRuntime(); return session;
     })().catch(error => { this.disconnected(error instanceof Error ? error : new Error('Cursor session failed.')); throw error; }).finally(() => this.opening.delete(agent.id));
     if (reviewUrl) this.reviewScopes.set(agent.id, reviewUrl); else this.reviewScopes.delete(agent.id);
     this.opening.set(agent.id, { abort, done }); return done;
@@ -415,6 +415,9 @@ export class CursorHost implements AgentBackendDriver {
   private publishSnapshot(agentId: string, session: CursorSession): void {
     this.emit({ backend: this.backend, agentId, backendSessionId: session.sessionId, conversationId: session.sessionId,
       type: 'cursor.conversationSnapshotChanged', payload: { revision: this.nextRevision(agentId), snapshot: structuredClone(session.snapshot) } });
+  }
+  private publishRuntime(): void {
+    this.emit({ backend: this.backend, type: 'backend.statusChanged', payload: this.getRuntimeStatus() });
   }
   private reference(session: CursorSession): BackendSession { return { kind: this.backend, sessionId: session.sessionId }; }
   private nextRevision(agentId: string) { const revision = (this.revisions.get(agentId) ?? 0) + 1; this.revisions.set(agentId, revision); return revision; }

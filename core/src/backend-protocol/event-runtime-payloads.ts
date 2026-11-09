@@ -41,7 +41,7 @@ function expectBackendCapabilities(value: unknown, path: string): void {
     'interrupt',
     'history',
     'conversationFork',
-    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl',
+    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare',
     'deleteTurn',
     'editTurn',
     'retryTurn',

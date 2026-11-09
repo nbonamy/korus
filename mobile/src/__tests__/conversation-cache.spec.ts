@@ -1,6 +1,6 @@
 import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CompanionReset, CompanionTarget } from '@workspace/core/companion-protocol';
+import { supportsCompanionBackend, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import { ConversationCache } from '../conversation-cache';
 const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'claude', sessionId }) });
@@ -119,6 +119,16 @@ describe('recent mobile conversations', () => {
       expect(f.cache.peek(target('b'))).toBeUndefined();
       expect(f.request).toHaveBeenCalledWith('conversation.subscribe', target('a', 'replacement'), null);
       expect(f.cache.peek(target('a'))).toBeUndefined();
+    } finally { f.cache.close(); }
+  });
+  it('drops companion-unsupported provider frames without poisoning a subscribed chat', async () => {
+    const f = fixture();
+    try {
+      await f.cache.select(target('a'));
+      expect(supportsCompanionBackend('cursor')).toBe(false);
+      f.cache.receive({ type: 'cursor.conversationSnapshotChanged', agentId: 'a', backend: 'cursor', seq: 2, occurredAt: 'now', payload: { revision: 2, snapshot: {} } } as unknown as ProviderConversationFrame);
+      expect(f.changed).toHaveBeenCalledTimes(1);
+      expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
     } finally { f.cache.close(); }
   });
 });

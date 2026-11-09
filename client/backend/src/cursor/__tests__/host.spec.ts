@@ -250,12 +250,11 @@ describe('Cursor ACP host transport boundary', () => {
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
     await host.close();
     host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
-    state.backendRuntimes = [{ backend: 'cursor', status: 'running', detail: 'Existing conversation', capabilities: host.getCapabilities(agent) }];
     const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
     try {
       for (const enabled of [true, false]) {
         const result = await server.handleMessage({ jsonrpc: '2.0', id: 'setting', method: 'settings/update', params: { input: { general: { cursorSteeringFallbackEnabled: enabled } } } });
-        expect(result).toMatchObject({ result: { backendRuntimes: [{ backend: 'cursor', status: 'running', detail: 'Existing conversation', capabilities: { steerPrompt: enabled } }] } });
+        expect(result).toMatchObject({ result: { backendRuntimes: expect.arrayContaining([expect.objectContaining({ backend: 'cursor', capabilities: expect.objectContaining({ steerPrompt: enabled }) })]) } });
       }
       await expect(access(path.join(root, 'wire.jsonl'))).rejects.toThrow();
     } finally { await server.close(); }
