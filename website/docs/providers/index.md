@@ -10,11 +10,12 @@ Korus can run different coding engines in the same team. Each engine has its own
 | --- | --- |
 | [Codex](./codex) | Uses an installed CLI, or ChatGPT's runtime on macOS; browser sign-in from Korus |
 | [Claude Code](./claude-code) | Uses an installed CLI or Korus's bundled runtime; sign-in through a command copied from Korus |
+| [Cursor](#cursor) | Uses the installed Cursor CLI and its existing setup; sign in from Korus |
 | [Antigravity](#antigravity) | Install its runtime from Korus; native Google sign-in |
 
 ## Choose where each engine keeps its setup
 
-Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected, or **Customize** beneath it to choose a separate setup. Later, open its Settings page and select **Customize** beside **Location**.
+Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex, Claude Code, and Cursor, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected. For Codex, Claude Code, and Antigravity, use **Customize** to choose a separate setup, either beneath the engine during connection or beside **Location** in Settings. Cursor uses its existing setup.
 
 There are two choices under **Conversations**:
 
@@ -42,7 +43,7 @@ Uncheck **Reuse my existing skills** if you want to manage those resources separ
 ## Connect and verify
 
 1. Install the engine if needed, choose its conversation setup, then **Save**.
-2. Follow the [Codex](./codex#connect-codex), [Claude Code](./claude-code#connect-claude-code), or [Antigravity](#antigravity) sign-in steps. **Detected** means the runtime is available; **Connected** means Korus recognizes the selected setup's authentication.
+2. Follow the [Codex](./codex#connect-codex), [Claude Code](./claude-code#connect-claude-code), [Cursor](#cursor), or [Antigravity](#antigravity) sign-in steps. **Detected** means the runtime is available; **Connected** means Korus recognizes the selected setup's authentication.
 3. Connect at least one engine, then select **Continue** on the first connection screen.
 4. In the engine's Settings page, check that **Account** shows **Connected** and **Enable engine** is on.
 5. Start a small conversation and check that the engine can respond before assigning a larger task.
@@ -52,6 +53,32 @@ Uncheck **Reuse my existing skills** if you want to manage those resources separ
 Authentication, model availability, and usage limits belong to the selected provider. Connecting an account to Korus does not create a new model subscription or transfer one provider's access to another. Claude subscription sign-in and Anthropic Console API billing are separate choices in its connection dialog.
 
 For usage recorded by Korus, open [Settings → Analytics](../features/workspace#understand-usage-and-performance). These local statistics are separate from your provider's remaining quota, credits, and billing.
+
+## Cursor
+
+Run Cursor agents in the same team as your other engines. Use them for conversations, delegation, Missions, code reviews, and automations.
+
+### Connect Cursor
+
+1. Install the [Cursor CLI](https://cursor.com/docs/cli/installation) if needed. Korus detects `agent` or `cursor-agent`; the Cursor editor alone does not provide the CLI. Use the refresh icon to recheck detection.
+2. Open **Settings → Cursor → Connect**, or connect Cursor on the first-run screen, and complete its sign-in flow. Korus uses your existing `~/.cursor` setup and account; it does not offer a separate Cursor home.
+3. Check that the account is connected and **Enable engine** is on. Select Cursor when creating an agent, then choose a model from its live catalog. Reasoning choices depend on the model.
+
+Cursor supports native Plan mode and Korus's interactive plan review. Add comments or choices, request a revision, then approve implementation. Text and image attachments are supported. Saved conversations can be reopened and continued in the same workspace.
+
+### Permissions and configuration
+
+Use the composer's **Permissions** menu to choose **Ask for approval** or **Full access**. Ask for approval shows permission requests reported by Cursor; Full access approves those requests automatically. Plan approval remains a separate explicit decision in either mode. Cursor can perform native file edits without reporting a permission request, so Ask for approval does not guarantee approval before every edit. Use an isolated worktree and review the resulting changes.
+
+Korus saves the permission choice on the agent and as the default for new Cursor conversations. Existing conversations keep their own choice. Switching to Full access also resolves pending tool-permission requests; switching back restores prompts for subsequent requests. These choices are Korus settings and do not rewrite your shared Cursor configuration.
+
+Queue a follow-up or interrupt before changing direction. The optional **Settings → Cursor → Steering fallback** setting lets Korus interrupt the current turn and send your update as a new turn in the same conversation; it starts off.
+
+Cursor conversations are available on desktop. Use Codex, Claude Code, or Antigravity for companion-app access or conversation sharing. Forking, goal mode, and editing or retrying old turns depend on the selected engine and are not offered for Cursor.
+
+### Usage
+
+Cursor's Settings page shows account billing and quota information when available. [Analytics](../features/workspace#understand-usage-and-performance) records turns and measured timing; token counts, output speed, and per-turn cost are unavailable for Cursor. Account balances are separate from those execution statistics.
 
 ## Antigravity
 

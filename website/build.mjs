@@ -152,7 +152,7 @@ await writeFile(
         name: product.name,
         url: `${product.websiteUrl}/`,
         description:
-          "A harness orchestrator for Codex, Claude Code, and Antigravity.",
+          "A harness orchestrator for Codex, Claude Code, Cursor, and Antigravity.",
         applicationCategory: "DeveloperApplication",
         operatingSystem: ["macOS", "Windows", "Linux"],
         image: `${product.websiteUrl}/assets/og.png?v=mark-2`,

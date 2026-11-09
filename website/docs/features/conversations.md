@@ -22,13 +22,25 @@ Choose a model in the composer before sending when you need a particular provide
 
 The composer's **+** menu includes **Design**, **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. Use [Design](./design) to compare and refine interfaces, [Visualize](./visualize) for diagrams, [worktree delegation](../workflows/worktrees#delegate-implementation) for separate implementation, [Code Review](../workflows/code-review) for existing changes, or a [Mission](../workflows/missions) for a staged feature. The corresponding slash commands remain available.
 
-After a response, the empty composer may suggest a follow-up. Press **Enter**, **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. The first Enter fills the draft; press Enter again to send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
+After a response, the empty composer may suggest a follow-up. Double-click the empty composer, or press **Enter**, **Tab**, **Right Arrow**, or **Space**, to accept it into the draft, then edit or send it. The first Enter fills the draft; press Enter again to send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
 
 Use **Image Gen** in the skill picker when you want a Claude or other non-Codex agent to generate or edit an image through Codex. A connected Codex setup supplies that image capability. Manage reusable workflows in [Settings → Skills](../providers/#manage-agent-skills).
 
+## Dictate a prompt or comment
+
+Use the microphone where available to turn speech into a draft, then review and edit the text before sending. Desktop settings are under **Settings → Dictation**:
+
+- **Apple Speech Analyzer** is the default on macOS and processes speech on your Mac. It requires macOS 26 or later.
+- **OpenAI** is available as an alternative on macOS and is the default on Windows and Linux. Add your own OpenAI API key. Audio is sent to OpenAI for transcription; this uses your API account independently of your coding-agent subscription.
+- Enable **Live transcription** with OpenAI to see text as you speak. Both OpenAI modes send audio during recording; the final transcript is available when you finish.
+
+Use **Show API key** and **Hide API key** to inspect the saved key. Korus saves it encrypted using the operating system's secure storage; if secure storage is unavailable, unlock your system keychain before saving it. Remove the key by clearing the field.
+
+These desktop settings do not change the companion apps' on-device dictation. See the [dictation privacy disclosure](__PRODUCT_PRIVACY_URL__#desktop-dictation) for how audio is handled.
+
 ## Share a conversation
 
-Invite someone to follow a conversation and suggest prompts while you keep control of what the agent runs. Sharing works across coding providers and also supports Quick Chats.
+Invite someone to follow a conversation and suggest prompts while you keep control of what the agent runs. Use Codex, Claude Code, or Antigravity to share a conversation, including a Quick Chat.
 
 1. Right-click a local agent and choose **Share with guests**.
 2. Choose **Share** to create and copy its invitation link. Share the link privately with the people you want to invite.

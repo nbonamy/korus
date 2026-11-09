@@ -16,6 +16,12 @@ Activity view groups agents into **Needs input**, **Done**, **Working**, and **I
 
 Unread updates show a dot in place of the elapsed-time indicator. Each section scrolls independently; use **Show more** to reach additional agents. In **Idle**, open **Sort idle agents** and choose **Repository** or **Recent activity**. Each team remembers its view and idle sorting choices.
 
+### Group agents by feature
+
+Choose **Worktree** in **Agent view** to group agents by their feature branch across repositories. Open a feature in split view to follow its agents side by side.
+
+Use the **+** beside a feature to add an agent to that feature's worktrees. Drag feature groups to put the work you want to follow first; the default-branch group stays at the top.
+
 ### Follow all teams in Cockpit
 
 Open **Cockpit** from the left rail to follow activity across teams without switching between them. Its shared sidebar groups agents by activity and shows Mission progress. Select an agent or Mission to open its conversation and work; local and SSH-hosted agents appear together, with host connection indicators for remote work.
@@ -190,7 +196,7 @@ Model comparisons separate service tiers, so you can compare the same model at d
 
 Cost estimates use recorded usage and historical model prices. Korus checks for pricing updates in the background, independently of app updates, and keeps its last valid prices when offline. The calculations stay on your computer; pricing downloads do not upload your usage. Totals and shares include priced usage only; **Unavailable** means there is not enough pricing evidence, rather than that the work was free. These are API-price estimates, not your subscription charges or an invoice.
 
-Statistics cover recorded activity in Korus rather than importing earlier provider history; different providers may report different token details. Check your provider's account page for remaining quota and billing.
+Statistics cover recorded activity in Korus rather than importing earlier provider history; different providers may report different token details. Check your provider's account page for remaining quota and billing. Cursor records turns and measured timing, with token counts, output speed, and per-turn cost unavailable. Its account billing and quota appear separately in **Settings → Cursor**.
 
 The local ledger is retained for up to a year, subject to a record limit, and does not include conversation text. **Refresh** reloads the view. **Clear** asks for confirmation before deleting local statistics; it does not delete conversations, change provider quotas, stop agents, disable sharing, or remotely delete accepted reports.
 

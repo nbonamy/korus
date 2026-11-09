@@ -11,8 +11,8 @@ description: Download Korus for your computer and iPhone.
 1. Open [Downloads](__PRODUCT_DOWNLOAD_URL__) and choose the macOS DMG for Apple silicon.
 2. Open the DMG and double-click Korus. It installs in Applications and launches. If an installed copy needs replacing, confirm **Replace**; your chats and settings are kept.
 3. If Korus asks you to use Finder, choose **Open Applications**, drag Korus there from the DMG, and approve the installation in Finder. Then open Korus from Applications.
-4. The first-run screen checks your coding engines. Detected engines offer **Connect** and **Customize**. If one is missing, use **Install** and follow its setup flow; the refresh icon rechecks detection.
-5. Choose how each engine should store its setup before connecting it. Follow the steps below, then open a repository.
+4. The first-run screen checks your coding engines. Detected engines offer **Connect**, with **Customize** for engines that support separate setups. If one is missing, use **Install** and follow its setup flow; the refresh icon rechecks detection.
+5. Check your engine's setup before connecting it. Follow the steps below, then open a repository.
 
 ## Install on Windows
 
@@ -41,7 +41,7 @@ Korus uses your existing Codex and Claude Code setup by default, including their
 | **Separate Korus chats** | You want Korus's chats and provider sign-in kept in a separate setup environment. |
 | **Use existing setup** | You want Korus to use the provider environment already configured on this computer. |
 
-This choice is independent for each engine. Selecting an existing setup or signing in to one engine does not configure or authenticate the others.
+Choose independently for Codex, Claude Code, and Antigravity. Cursor uses the existing Cursor CLI setup; it does not offer a separate home. Selecting an existing setup or signing in to one engine does not configure or authenticate the others.
 
 Follow the [provider setup overview](../providers/) before changing an existing setup. It explains skills and plugin sharing, the selected provider location, and what happens to Korus conversations when you switch locations later.
 

@@ -1,13 +1,13 @@
 ---
 title: Korus documentation
-description: Use Korus, a harness orchestrator for Codex, Claude Code, and Antigravity, to delegate tasks, coordinate agents, and review code.
+description: Use Korus, a harness orchestrator for Codex, Claude Code, Cursor, and Antigravity, to delegate tasks, coordinate agents, and review code.
 ---
 
 # Korus documentation
 
 <p class="docs-lead">Set up your coding agents, coordinate the work, and review the results in one workspace.</p>
 
-Korus is a harness orchestrator for AI coding agents. Run Codex, Claude Code, and Antigravity together, with conversations, repositories, browser previews, plans, and diffs beside the work.
+Korus is a harness orchestrator for AI coding agents. Run Codex, Claude Code, Cursor, and Antigravity together, with conversations, repositories, browser previews, plans, and diffs beside the work.
 
 <div class="docs-grid">
   <a class="docs-card" href="./getting-started/quickstart.html"><strong>Quickstart →</strong><span>Install Korus and take your first task through to a reviewed diff.</span></a>

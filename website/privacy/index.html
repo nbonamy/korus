@@ -61,7 +61,7 @@
     </header>
     <main class="policy shell">
       <h1>Privacy policy</h1>
-      <p class="policy-date">Effective November 1, 2026</p>
+      <p class="policy-date">Effective November 9, 2026</p>
       <p>
         This policy covers __PRODUCT_NAME__ for macOS, Windows, and Linux, its
         iPhone and Android companion __PRODUCT_COMPANION_NAME__, and this
@@ -101,7 +101,8 @@
         attachments, tool results, and other context may be sent to your
         selected coding provider, such as
         <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>,
-        <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, or
+        <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>,
+        <a href="https://cursor.com/privacy">Cursor</a>, or
         <a href="https://policies.google.com/privacy">Google</a>. Connected
         tools, MCP servers, websites,
         <a
@@ -203,8 +204,17 @@
           QR code when you open the scanner. Sent attachments travel to your
           paired computer and may be passed to your selected coding provider.
         </li>
-        <li>
-          <strong>Dictation:</strong> dictation uses on-device recognition and
+        <li id="desktop-dictation">
+          <strong>Desktop dictation:</strong> choose Apple Speech Analyzer on
+          macOS or OpenAI in Settings. Apple speech processing runs on your Mac.
+          With OpenAI selected, microphone audio is sent directly to OpenAI
+          during recording using your API key, whether live transcription is
+          on or off. The key is saved encrypted using
+          your operating system's secure storage. Recognized text enters your
+          draft; sending the prompt passes it to the selected coding provider.
+        </li>
+        <li id="mobile-dictation">
+          <strong>Mobile dictation:</strong> dictation uses on-device recognition and
           requires microphone permission, plus speech-recognition permission on
           iPhone. Android requires an available on-device recognizer and does
           not fall back to cloud dictation. Dictation audio stays on the phone;

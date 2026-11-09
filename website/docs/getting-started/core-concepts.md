@@ -24,7 +24,7 @@ The start-work menu can create a new project, open an existing folder, browse Gi
 
 ## Provider setup and accounts
 
-Each coding engine has a selected setup environment, including its authentication and configuration. Korus's **Customize** flow lets you keep that environment separate or use an existing provider setup. Configure each engine independently.
+Each coding engine has a setup environment, including its authentication and configuration. For Codex, Claude Code, and Antigravity, Korus's **Customize** flow lets you keep that environment separate or use an existing provider setup. Cursor uses its existing CLI setup. Configure and connect each engine independently.
 
 A provider home is different from an agent's working folder. The home controls the engine's setup; the working folder controls where the agent reads and changes project files.
 

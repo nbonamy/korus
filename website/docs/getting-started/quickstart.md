@@ -12,7 +12,7 @@ Start with one repository, one agent, and a small change you can review.
 
 ## Choose your provider's setup
 
-Korus uses your existing Codex and Claude Code setup by default. Install your chosen engine if it is not detected. To keep Korus chats separate, select **Customize** beneath that engine and choose **Separate Korus chats**.
+Korus uses your existing Codex and Claude Code setup by default. Cursor uses its existing CLI setup. Install your chosen engine if it is not detected. For engines that offer **Customize**, choose **Separate Korus chats** to keep their Korus conversations separate.
 
 If your engine already shows **Connected**, select **Continue**. Otherwise, select **Connect** and complete its authentication steps first. You can manage each engine's setup later in Settings.
 

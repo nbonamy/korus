@@ -49,6 +49,29 @@ test("the public privacy URL has a standalone policy and a discoverable contact"
       ),
     );
     assert.match(policyText, /Android Keystore/);
+    assert.ok(document.querySelector('a[href="https://cursor.com/privacy"]'));
+    const desktopDictation = document.querySelector("#desktop-dictation");
+    assert.ok(
+      desktopDictation,
+      "Desktop audio processing has its own disclosure",
+    );
+    assert.match(
+      desktopDictation.textContent.replace(/\s+/g, " "),
+      /audio is sent directly to OpenAI/,
+    );
+    assert.match(
+      desktopDictation.textContent.replace(/\s+/g, " "),
+      /during recording.*whether live transcription is on or off/,
+    );
+    const mobileDictation = document.querySelector("#mobile-dictation");
+    assert.ok(
+      mobileDictation,
+      "Mobile on-device dictation stays separately scoped",
+    );
+    assert.match(
+      mobileDictation.textContent.replace(/\s+/g, " "),
+      /audio stays on the phone/,
+    );
     const analytics = document.querySelector("#optional-sharing");
     assert.ok(analytics, "Optional sharing has a linkable disclosure");
     const disclosure = [];
