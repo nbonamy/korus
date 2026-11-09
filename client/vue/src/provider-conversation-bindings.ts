@@ -53,12 +53,18 @@ export const projectClaudeConversation: Project<ClaudeConversationSnapshot> = sn
 } : null;
 export const projectCursorConversation: Project<CursorConversationSnapshot> = (snapshot, agent) => {
   if (!snapshot) return null;
+  // Keep native thoughts in the replica, but out of the SDK's activity headings.
+  const messages = snapshot.messages.some(message => message.parts.some(part => part.type === 'reasoning'))
+    ? snapshot.messages.flatMap(message => {
+      const parts = message.parts.filter(part => part.type !== 'reasoning');
+      return parts.length === message.parts.length ? [message] : parts.length ? [{ ...message, parts }] : [];
+    }) : snapshot.messages;
   const review = agent.planReview;
   const delivery = review ? planReviewDelivery(review) : null;
   const sidebarRequestId = review?.status === 'pending' && review.conversationId === snapshot.sessionId
     && review.turnId === snapshot.activeTurnId && delivery?.kind === 'request' ? delivery.requestId : undefined;
   return {
-    ...common(snapshot), latestTurnId: snapshot.turns.at(-1)?.id ?? null,
+    ...common(snapshot), messages, latestTurnId: snapshot.turns.at(-1)?.id ?? null,
     clientRequests: providerPaneClientRequests(snapshot).filter(request => request.id !== sidebarRequestId),
   };
 };

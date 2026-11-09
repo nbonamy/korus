@@ -124,10 +124,19 @@ describe('AgentConversationPanel', () => {
       expect(wrapper.findAll('.chat-tool-call__body pre').at(-1)!.text()).toBe(diffBody);
       rawDetails.value = false;
       view.cursorSnapshot = {...view.cursorSnapshot!, messages:[...view.cursorSnapshot!.messages,{id:'coordination',agentId:agent.id,turnId:'turn',role:'assistant',status:'complete',createdAt:identity.occurredAt,
-        parts:['set-status','send-message','finish_turn'].map(tool=>({type:'tool' as const,id:tool,kind:'mcp',title:`korus: ${tool}`,status:'completed' as const,input:{to:'other-agent'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool}}))}]};
+        parts:[{type:'reasoning',itemId:'thought-1',summaryIndex:0,summary:'Checking status first. Then launching System Settings with a lengthy explanation of each planned tool call.'},
+          ...['set-status','send-message','finish_turn'].map(tool=>({type:'tool' as const,id:tool,kind:'mcp',title:`korus: ${tool}`,status:'completed' as const,input:{to:'other-agent'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool}}))]},
+        {id:'thought-only',agentId:agent.id,turnId:'turn',role:'assistant',status:'streaming',createdAt:identity.occurredAt,
+          parts:[{type:'reasoning',itemId:'thought-2',summaryIndex:0,summary:'More internal explanation without a tool or assistant message yet.'}]}]};
       await flushPromises();
       for (const header of wrapper.findAll('button.chat-tool-group__header')) await header.trigger('click');
       expect(wrapper.text()).toContain('Sent message to Other Agent');
+      expect(wrapper.text()).toContain('Cursor streamed reply');
+      expect(wrapper.text()).not.toContain('Checking status first.');
+      expect(wrapper.text()).not.toContain('More internal explanation');
+      expect(view.conversation!.messages.some(message => message.id === 'thought-only')).toBe(false);
+      expect(view.cursorSnapshot!.messages.find(message => message.id === 'coordination')!.parts[0]).toMatchObject({type:'reasoning',summary:expect.stringContaining('Checking status first.')});
+      expect(view.cursorSnapshot!.messages.find(message => message.id === 'thought-only')!.parts).toHaveLength(1);
       expect(wrapper.text()).not.toContain('korus: set-status');
       expect(wrapper.text()).not.toContain('korus: finish_turn');
 
