@@ -16,7 +16,7 @@
       <template v-if="settings.engine === 'openai'">
         <FormRow :title="$t('dictation.apiKey')">
           <template #control>
-            <el-input class="settings-dictation__control" :model-value="apiKey" @update:model-value="updateApiKey" type="password" autocomplete="off" :aria-label="$t('dictation.apiKey')" :placeholder="$t('dictation.enter')" :disabled="busy || (!settings.secureStorageAvailable && !settings.hasApiKey)" />
+            <el-input class="settings-dictation__control" :model-value="apiKey" @update:model-value="updateApiKey" @blur="commitApiKey" @keydown.enter="commitApiKey" type="password" autocomplete="off" :aria-label="$t('dictation.apiKey')" :placeholder="$t('dictation.enter')" :disabled="!settings.secureStorageAvailable && !settings.hasApiKey" />
           </template>
         </FormRow>
         <FormRow :title="$t('dictation.live')">
@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { DictationSettings, DictationSettingsInput } from '@workspace/core/dictation';
 import { useDebouncedSave } from '../shared/use-debounced-save';
 import { appApi } from '../platform-api';
@@ -72,10 +72,24 @@ async function selectEngine(engine: unknown): Promise<void> {
   await flush();
 }
 function updateApiKey(value: string): void {
-  // Editing the marker replaces it; placeholder characters must never be saved.
-  apiKey.value = value.replaceAll('•', '');
-  schedule({ apiKey: apiKey.value.trim() || null });
+  // Typing never saves or rewrites the field; the key is committed on blur or Enter.
+  apiKey.value = value;
 }
+function commitApiKey(): void {
+  const raw = apiKey.value;
+  if (raw === '') {
+    // Clearing the field on purpose removes the saved key.
+    if (settings.value?.hasApiKey) { schedule({ apiKey: null }); void flush(); }
+    return;
+  }
+  // Placeholder characters must never be saved; a partly erased marker is not a clear.
+  const typed = raw.replaceAll('•', '').trim();
+  if (!typed) { apiKey.value = settings.value?.hasApiKey ? savedKeyMask : ''; return; }
+  apiKey.value = typed;
+  schedule({ apiKey: typed });
+  void flush();
+}
+onBeforeUnmount(commitApiKey);
 </script>
 
 <style scoped>

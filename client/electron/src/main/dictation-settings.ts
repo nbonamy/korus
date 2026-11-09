@@ -18,12 +18,19 @@ export class DictationSettingsStore {
   get(): DictationSettings {
     let engine: DictationSettings['engine'] = this.platform === 'darwin' ? 'apple' : 'openai';
     let openaiLiveTranscription = false;
-    try {
-      const saved = JSON.parse(readFileSync(this.file('dictation.json'), 'utf8'));
-      if (saved.engine === 'openai' || (saved.engine === 'apple' && this.platform === 'darwin')) engine = saved.engine;
-      openaiLiveTranscription = saved.openaiLiveTranscription === true;
-    } catch (error) {
+    let text: string | undefined;
+    try { text = readFileSync(this.file('dictation.json'), 'utf8'); }
+    catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Unable to read dictation settings.');
+    }
+    if (text !== undefined) {
+      // A corrupt document falls back to defaults so the next save can repair it.
+      let saved: { engine?: unknown; openaiLiveTranscription?: unknown } | undefined;
+      try { saved = JSON.parse(text); } catch { saved = undefined; }
+      if (saved && typeof saved === 'object') {
+        if (saved.engine === 'openai' || (saved.engine === 'apple' && this.platform === 'darwin')) engine = saved.engine;
+        openaiLiveTranscription = saved.openaiLiveTranscription === true;
+      }
     }
     return { engine, openaiLiveTranscription, appleAvailable: this.platform === 'darwin', hasApiKey: existsSync(this.file('dictation-openai-key.bin')), secureStorageAvailable: this.secure() };
   }

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,5 +50,12 @@ describe('desktop dictation settings', () => {
     crypto.getSelectedStorageBackend = () => 'basic_text';
     const store = new DictationSettingsStore(directory, crypto, 'linux');
     expect(() => store.update({ apiKey: 'test-secret' })).toThrow('Secure storage');
+  });
+  it.each(['{not json', 'null', '[]', '"text"'])('falls back to defaults and repairs a corrupt settings file (%s)', content => {
+    const { store, directory } = setup();
+    writeFileSync(path.join(directory, 'dictation.json'), content);
+    expect(store.get()).toMatchObject({ engine: 'apple', openaiLiveTranscription: false });
+    expect(store.update({ engine: 'openai' }).engine).toBe('openai');
+    expect(JSON.parse(readFileSync(path.join(directory, 'dictation.json'), 'utf8'))).toStrictEqual({ engine: 'openai', openaiLiveTranscription: false });
   });
 });
