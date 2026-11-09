@@ -23,6 +23,15 @@
         <RefreshIcon :size="14" />{{ $t("analytics.refresh") }}
       </button>
     </template>
+    <template v-if="tokenUnavailableProviders?.length" #banner>
+      <ElAlert
+        class="analytics-token-warning"
+        :title="$t('analytics.tokenReportingWarning', { providers: tokenUnavailableProviders?.join(', ') })"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
+    </template>
     <UsageActivity
       v-if="activityLoaded"
       class="analytics-header"
@@ -97,6 +106,7 @@
   </SettingsPanelFrame>
 </template>
 <script setup lang="ts">
+import { ElAlert } from "element-plus";
 import { RefreshIcon } from "../shared/icons/app-icons";
 import SettingsPanelFrame from "./SettingsPanelFrame.vue";
 import UsageActivity from "./UsageActivity.vue";
@@ -108,6 +118,7 @@ import UsageStatTiles from "./UsageStatTiles.vue";
 import UsageToolbar from "./UsageToolbar.vue";
 import { measureLabel } from "./usage-chart";
 import { useUsageAnalytics } from "./use-usage-analytics";
+defineProps<{ tokenUnavailableProviders?: string[] }>();
 const {
   view,
   measure,
@@ -139,6 +150,12 @@ const {
 <style scoped>
 .analytics {
   font-variant-numeric: tabular-nums;
+}
+.analytics-token-warning.el-alert {
+  background-color: var(--color-warning-container);
+  color: var(--color-on-warning-container);
+  margin-top: calc(-1 * var(--space-6));
+  margin-bottom: calc(-1 * var(--space-12));
 }
 .analytics-refresh {
   display: inline-flex;

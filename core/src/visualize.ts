@@ -158,7 +158,7 @@ function isVisualizationContent(value: unknown): value is VisualizationContent {
 function isConversationRef(value: unknown): value is BackendConversationRef {
   if (!record(value)) return false;
   return (value.backend === 'codex' && typeof value.threadId === 'string')
-    || ((value.backend === 'claude' || value.backend === 'antigravity') && typeof value.folder === 'string' && typeof value.sessionId === 'string');
+    || ((value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor') && (typeof value.folder === 'string' || value.folder === null) && typeof value.sessionId === 'string');
 }
 
 function record(value: unknown): value is Record<string, unknown> {

@@ -13,6 +13,46 @@ afterEach(() => {
 });
 
 describe('SettingsMenu', () => {
+  it('shows Cursor included usage and reset alongside other quotas, without billing rows', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-09T00:00:00Z'));
+    const getProviderUsage = vi.fn().mockResolvedValue({ limitId: 'cursor', primary: { label: null, usedPercent: 1, resetsAt: Date.parse('2026-11-16T00:00:00Z') / 1000, windowDurationMins: 10_080 },
+      secondary: { label: 'On-demand', usedPercent: 2, resetsAt: null, windowDurationMins: null }, planType: 'Premium',
+      billing: { includedBalanceUsd: '0.00', onDemand: { enabled: true, unlimited: true, usedUsd: 1, limitUsd: null, remainingUsd: null } } });
+    setElectronTestClient({ getProviderUsage });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['cursor'] });
+    try {
+      await openMenu(wrapper); await flushPromises();
+      expect(getProviderUsage).toHaveBeenCalledWith('cursor');
+      const group = wrapper.get('[aria-label="Cursor"]');
+      expect(group.get('[aria-label="Weekly"]').text()).toContain('99%');
+      expect(group.get('[aria-label="Weekly"]').text()).toContain('7d 0h');
+      expect(group.findAll('.settings-menu__rate-limit')).toHaveLength(1);
+      expect(group.text()).not.toMatch(/Credits|On-demand|Premium|\$/);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('drops persisted and late billing from the previous provider account while the menu stays open', async () => {
+    const limits: AccountRateLimits = { limitId: 'cursor', limitName: null, primary: { usedPercent: 99, windowDurationMins: 10_080, resetsAt: null }, secondary: null, credits: null, individualLimit: null,
+      planType: 'Old plan', rateLimitReachedType: null, billing: { includedBalanceUsd: '99.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } } };
+    const connections = (email: string): AppSnapshot['providerConnections'] => [{ backend: 'cursor', installed: true, connected: true, checking: false,
+      authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', account: { type: 'subscription', email } } } }];
+    let completeOld!: (value: AccountRateLimits) => void;
+    const getProviderUsage = vi.fn().mockImplementationOnce(() => new Promise(done => { completeOld = done; }))
+      .mockResolvedValueOnce({ ...limits, primary: { usedPercent: 25, windowDurationMins: 10_080, resetsAt: null }, planType: 'New plan', billing: { ...limits.billing!, includedBalanceUsd: '5.00' } });
+    setElectronTestClient({ getProviderUsage });
+    const wrapper = mountMenu(undefined, { enabledBackends: ['cursor'], providerConnections: connections('old@example.test'), backendRateLimits: { cursor: limits } });
+    try {
+      await openMenu(wrapper); await flushPromises();
+      expect(wrapper.text()).not.toContain('1%');
+      await wrapper.setProps({ providerConnections: connections('new@example.test') }); await flushPromises();
+      expect(wrapper.get('[aria-label="Weekly"]').text()).toContain('75%');
+      completeOld(limits); await flushPromises();
+      expect(wrapper.text()).not.toContain('Old plan');
+      expect(wrapper.text()).not.toContain('1%');
+    } finally { wrapper.unmount(); }
+  });
+
   it('loads subscription usage on opening without requiring a conversation, and hides API billing on reopening', async () => {
     const getProviderUsage = vi.fn().mockResolvedValue({
       limitId: 'claude', primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: null },
@@ -318,7 +358,7 @@ describe('SettingsMenu', () => {
   });
 });
 
-function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledBackends?: AgentBackend[]; backendRateLimits?: AppSnapshot['backendAccountRateLimits'] } = {}, realTooltips = false) {
+function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledBackends?: AgentBackend[]; backendRateLimits?: AppSnapshot['backendAccountRateLimits']; providerConnections?: AppSnapshot['providerConnections'] } = {}, realTooltips = false) {
   return mount(SettingsMenu, {
     attachTo: document.body,
     props: {

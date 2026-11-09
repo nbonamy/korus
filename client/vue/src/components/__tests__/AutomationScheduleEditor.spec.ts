@@ -5,6 +5,7 @@ import type { AutomationSchedule } from '@workspace/core/contracts';
 import AutomationScheduleEditor from '../AutomationScheduleEditor.vue';
 
 const daily = { rrule: 'FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYSECOND=0', timeZone: 'America/Chicago' };
+const weekly = { ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR;BYHOUR=8;BYMINUTE=0;BYSECOND=0' };
 function editor(modelValue: AutomationSchedule = daily) {
   const wrapper = mount(AutomationScheduleEditor, { attachTo: document.body, props: { modelValue,
     'onUpdate:modelValue': value => { void wrapper.setProps({ modelValue: value }); } },
@@ -21,7 +22,7 @@ async function choose(wrapper: ReturnType<typeof editor>, label: string, text: s
 async function toggleDay(wrapper: ReturnType<typeof editor>, day: string) {
   await wrapper.get(`button[aria-label="${day}"]`).trigger('click'); await flushPromises();
 }
-// Switches calendar modes through real Element Plus controls.
+// Switch and restore calendar modes independently through real Element Plus controls.
 it('edits daily, weekday and weekly schedules through calendar controls', async () => {
   const wrapper = editor();
   expect(wrapper.findAll('.form-field__label').map(label => label.text())).toEqual(['Repeat', 'Time']);
@@ -35,13 +36,11 @@ it('edits daily, weekday and weekly schedules through calendar controls', async 
   await toggleDay(wrapper, 'Wednesday');
   expect(wrapper.props('modelValue')).toEqual({ ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE;BYHOUR=8;BYMINUTE=0;BYSECOND=0' });
   await toggleDay(wrapper, 'Friday');
-  const weekly = { ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR;BYHOUR=8;BYMINUTE=0;BYSECOND=0' };
   expect(wrapper.props('modelValue')).toEqual(weekly);
   wrapper.unmount();
 });
 
-it('retains the days of a reopened weekly schedule when switching modes', async () => {
-  const weekly = { ...daily, rrule: 'FREQ=WEEKLY;BYDAY=WE,FR;BYHOUR=8;BYMINUTE=0;BYSECOND=0' };
+it('restores a saved weekly schedule and retains its days across repeat-mode changes', async () => {
   const reopened = editor(weekly);
   await flushPromises();
   expect(reopened.get('[aria-label="Repeat"]').element.closest('.el-select')?.textContent).toContain('Weekly');

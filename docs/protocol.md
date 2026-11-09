@@ -3,7 +3,7 @@
 The app-owned JSON-RPC 2.0 protocol between clients (Electron main, companion
 clients, SSH peers) and `daemon`, one JSON message per line over stdio, the local
 Unix socket and SSH stdio. Provider protocols (Codex app-server, Claude stream
-messages, Antigravity ACP, MCP) never cross it.
+messages, Antigravity and Cursor ACP, MCP) never cross it.
 
 **The catalog is the code.** Methods are in `core/src/backend-protocol/methods.ts`,
 typed params/results in the shared request map, error codes in
@@ -125,14 +125,14 @@ framing keeps each transport's own error and reconnect policy.
   untargeted response is accepted only when its request ID is unambiguous.
   Codex snapshots reconcile pending client requests, including missed resolutions;
   question lifecycle decisions remain in the provider runtime and are not persisted by Korus.
-  Antigravity native questions/approvals use app-owned answered/decision/cancelled
+  Antigravity and Cursor native questions/approvals use app-owned answered/decision/cancelled
   outcomes; clients never interpret ACP frames.
 - **Plan review** persists proposal identity, content and decision status
   (`Agent.planReview`). Replaying a completion never reopens a resolved proposal;
   the response command rejects stale or conflicting decisions, accepts an identical
   one idempotently, and stays pending until prompt acceptance succeeds. Cancel
   submits nothing.
-- **Provider authentication:** `provider/authenticate` routes explicit Antigravity
+- **Provider authentication:** `provider/authenticate` routes explicit Antigravity and Cursor
   native login/cancellation to the owning daemon. Connection observations remain
   separate from saved enablement.
 - **Provider usage:** quota events update per-engine state; remote quota stays on

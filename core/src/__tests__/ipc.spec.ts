@@ -183,7 +183,7 @@ describe('ipc channels', () => {
       keyof AgentScopedEventContext
     >>().toEqualTypeOf<AgentScopedEventContext>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'plan.readyForReview' }>['payload']>()
-      .toEqualTypeOf<{ markdown: string; itemId?: string }>();
+      .toEqualTypeOf<{ markdown: string; itemId?: string; requestId?: string }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'client.celebrationRequested' }>['payload']>()
       .toEqualTypeOf<{ kind: CelebrationKind }>();
     expectTypeOf<Pick<

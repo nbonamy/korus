@@ -1,6 +1,6 @@
 # Choosing The Coding Agent
 
-How Korus picks Codex, Claude Code or Antigravity for new work.
+How Korus picks Codex, Claude Code, Antigravity or Cursor for new work.
 
 ## Rules
 
@@ -88,6 +88,14 @@ approval settings provider-scoped. Sending waits for an outstanding switch, and 
 catalog responses from the former provider are ignored. Antigravity effort is encoded
 in native model IDs; separate effort, thinking-budget and service-tier settings do
 not apply.
+
+Cursor model and enum reasoning choices preserve native catalog values and require
+matching acknowledgments before prompt admission. Independent native thinking
+toggles retain their provider settings. Native Plan mode and normal follow-ups
+select their corresponding native modes. History loading and explicit resume
+validate the native session against its workspace. Provider-specific controls
+follow the owning host's capabilities; selecting a provider does not grant
+controls that its host has not implemented.
 
 ## Connection State
 

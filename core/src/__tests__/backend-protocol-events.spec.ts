@@ -1,3 +1,4 @@
+import { emptyCursorSnapshot } from '../cursor-conversation-replica';
 import { product } from '../product';
 import { emptyAntigravitySnapshot } from '../antigravity-conversation-replica';
 import { approvalAgentRequest, approvalOutcome } from '@workspace/core/agent-request';
@@ -111,6 +112,14 @@ function createFixtures(): EventFixtures {
       proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],
       authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
     } },
+    'cursor.conversationSnapshotChanged': {
+      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-1', 'session-1') },
+    },
+    'cursor.conversationEventReceived': {
+      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
+    },
     'antigravity.conversationSnapshotChanged': {
       ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
@@ -502,10 +511,41 @@ function createFixtures(): EventFixtures {
 }
 
 describe(`${product.name} backend event decoder`, () => {
+  it('accepts optional monetary billing while preserving legacy quota frames and rejects malformed balances', () => {
+    const event = createFixtures()['account.rateLimitsUpdated'];
+    expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+    const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } };
+    const frame = { ...event, backend: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
+    expect(decodeAppBackendEvent(frame)).toStrictEqual(frame);
+    for (const invalid of [{ ...billing, includedBalanceUsd: 'private' }, { ...billing, onDemand: { ...billing.onDemand, usedUsd: -1 } }, { ...billing, onDemand: { ...billing.onDemand, enabled: 'false' } }]) {
+      expect(() => decodeAppBackendEvent({ ...frame, payload: { rateLimits: { ...frame.payload.rateLimits, billing: invalid } } })).toThrow();
+    }
+  });
+  it('decodes Cursor identity, session and authentication in app-owned envelopes', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.backend = 'cursor';
+    snapshot.agents[0]!.backendSession = { kind: 'cursor', sessionId: 'cursor-session' };
+    snapshot.agents[0]!.backendDefaults = { kind: 'cursor', permissionMode: 'allowlist' };
+    const authentication = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
+    snapshot.providerConnections = [{ backend: 'cursor', installed: false, connected: false, checking: false, authentication }];
+    const event = { seq: 1, occurredAt, type: 'snapshot.updated', payload: snapshot };
+    expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
+    const authEvent = { seq: 2, occurredAt, type: 'provider.authenticationChanged', payload: authentication };
+    expect(decodeAppBackendEvent(authEvent)).toStrictEqual(authEvent);
+    expect(() => decodeAppBackendEvent({ ...authEvent, payload: { ...authentication, state: { loggedIn: 'no', homePath: '/cursor' } } })).toThrow();
+  });
+
   it.each(['github', 'gitlab'] as const)('decodes %s merged tracking updates without losing provider identity', provider => {
     const tracking = { provider, repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo', branch: 'feature', number: 7, title: 'Work', url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7', draft: false, headSha: 'head', state: 'merged', mergedAt: occurredAt, createdAt: occurredAt, updatedAt: occurredAt };
     const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1', pullRequest: tracking } };
     expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+  });
+  it('round-trips transient prompt presentation and its empty acknowledgment', () => {
+    const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1',
+      pendingPrompts: [{ id: 'pending', text: 'Implement the ticket', createdAt: occurredAt }] } };
+    expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
+    expect(decodeAppBackendEvent({ ...event, payload: { id: 'agent-1', pendingPrompts: [] } })).toMatchObject({ payload: { pendingPrompts: [] } });
+    expect(() => decodeAppBackendEvent({ ...event, payload: { id: 'agent-1', pendingPrompts: [{ id: 'pending', text: null }] } })).toThrow();
   });
   it('accepts one representative for every typed event key without cloning it', () => {
     const fixtures = createFixtures();

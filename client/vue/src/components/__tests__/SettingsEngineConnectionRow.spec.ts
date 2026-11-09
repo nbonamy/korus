@@ -5,12 +5,30 @@ import { ElMessageBox, ElSwitch } from 'element-plus';
 import SettingsEngineConnectionRow from '../SettingsEngineConnectionRow.vue';
 
 describe('SettingsEngineConnectionRow', () => {
-  it('renders a connected Antigravity account without inventing account metadata', () => {
-    const wrapper = mount(SettingsEngineConnectionRow, { props: { backend: 'antigravity', title: 'Antigravity', connected: true, enabled: true,
-      authentication: { kind: 'antigravity', connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
+  it('keeps an external-only installation external in the compact overflow control', async () => {
+    const wrapper = mount(SettingsEngineConnectionRow, { props: {
+      backend: 'codex', installed: false, compact: true, overflow: true, installable: true,
+      capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://example.com/install', command: 'official-install' } },
+    } });
+    expect(wrapper.get('code').text()).toBe('official-install');
+    expect(wrapper.get('a').attributes('href')).toBe('https://example.com/install');
+    expect(wrapper.find('button[aria-label="Install Codex"]').exists()).toBe(false);
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
+    expect(wrapper.emitted('refresh')).toEqual([[]]);
+    expect(wrapper.emitted('install')).toBeUndefined();
+    wrapper.unmount();
+  });
+  it.each([{ backend: 'antigravity', title: 'Antigravity' }, { backend: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', async ({ backend, title }) => {
+    const wrapper = mount(SettingsEngineConnectionRow, { props: { backend, title, connected: true, enabled: true,
+      authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
     expect(wrapper.text()).not.toContain('/private/home');
+    expect(wrapper.find('.engine-hero__account').exists()).toBe(false);
+    if (backend === 'cursor') {
+      await wrapper.setProps({ authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home', account: { type: 'subscription' as const, email: 'user@example.com' } } } });
+      expect(wrapper.get('.engine-hero__account').text()).toBe('user@example.com');
+    }
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true');
-    expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe('Enable Antigravity');
+    expect(wrapper.get('[role="switch"]').attributes('aria-label')).toBe(`Enable ${title}`);
   });
   afterEach(async () => {
     ElMessageBox.close();

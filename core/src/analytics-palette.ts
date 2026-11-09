@@ -4,6 +4,7 @@ const providerSlots: Record<string, number> = {
   codex: 1,
   claude: 2,
   antigravity: 3,
+  cursor: 4,
 };
 // Models take their provider's hue, shaded per model, so a model list reads
 // as families; unrecognized models fall on the remaining slots.

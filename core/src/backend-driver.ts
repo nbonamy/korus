@@ -123,8 +123,28 @@ export type BackendCodeReviewResult = {
   reviewerSession: BackendSession;
 };
 
+/** Provider-owned coordination policy; omitted fields preserve legacy host behavior. */
+export type BackendCoordinationPolicy = {
+  permissionModeScope?: 'provider' | 'conversation';
+  rollbackStorageState?: 'active' | 'archived';
+  authentication?: {
+    actions?: readonly import('./contracts/provider-setup').ProviderAuthenticationAction['action'][];
+    refreshOnAdmission?: boolean;
+    enableOnSuccess?: boolean;
+  };
+};
+
+export function resolveBackendCoordinationPolicy(policy?: BackendCoordinationPolicy) {
+  return { permissionModeScope: policy?.permissionModeScope ?? 'provider', rollbackStorageState: policy?.rollbackStorageState ?? 'archived', authentication: {
+    actions: policy?.authentication?.actions ?? ['check', 'cancel', 'logout'] as const,
+    refreshOnAdmission: policy?.authentication?.refreshOnAdmission ?? false,
+    enableOnSuccess: policy?.authentication?.enableOnSuccess ?? true,
+  } };
+}
+
 export type AgentBackendDriver = {
   readonly backend: AgentBackend;
+  readonly coordinationPolicy?: BackendCoordinationPolicy;
   onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
@@ -189,7 +209,7 @@ export function unsupportedBackendFeature(agent: Agent, feature: string): Error 
 }
 
 export function backendDisplayName(backend: AgentBackend): string {
-  return { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' }[backend];
+  return { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity', cursor: 'Cursor' }[backend];
 }
 
 export function backendRuntimeFromSnapshot(snapshot: AppSnapshot, backend: AgentBackend): BackendRuntimeStatus {

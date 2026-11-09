@@ -76,6 +76,15 @@ function session(): CodeReviewSession {
 }
 
 describe('code review ledger', () => {
+  it('decodes a saved review ledger with a Cursor reviewer session', () => {
+    const review = session();
+    review.rounds[0]!.reviewerSession = { kind: 'cursor', sessionId: 'cursor-review' };
+    const restored = JSON.parse(JSON.stringify(review));
+    expect(isCodeReviewSession(restored)).toBe(true);
+    expect(restored).toStrictEqual(review);
+    restored.rounds[0].reviewerSession.sessionId = 12;
+    expect(isCodeReviewSession(restored)).toBe(false);
+  });
   it('preserves optional inspection summaries through serialization and rejects malformed summaries', () => {
     const review = session();
     review.rounds[0]!.summary = 'Found an authorization defect.';

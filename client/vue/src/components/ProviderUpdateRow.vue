@@ -52,7 +52,7 @@ const versionSummary = computed(() => {
       : !state.value && loading.value ? t('auth.checking') : '');
   return [state.value?.installedVersion, detail].filter(Boolean).join(' · ') || '—';
 });
-const instructionsUrl = computed(() => props.backend === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
+const instructionsUrl = computed(() => props.backend === 'cursor' ? 'https://cursor.com/docs/cli/installation#updates' : props.backend === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
 const updateMenuItems = computed<AppMenuItem[]>(() => {
   if (props.enabled === false || props.backend === 'antigravity') return [];
   const items: AppMenuItem[] = [{ id: 'check-updates', type: 'action', label: t('providerUpdate.check'), icon: SearchIcon, disabled: loading.value || pending.value }];

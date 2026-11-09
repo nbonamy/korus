@@ -42,6 +42,7 @@ it("keeps an entity's colour across filters and groups models by provider hue", 
     "provider",
   );
   expect(together.find((s) => s.key === "claude")!.color).toBe(alone[0]!.color);
+  expect(chartSeries(summary(['cursor']), 'turns', 'provider')[0]).toMatchObject({ label: 'Cursor', color: 'var(--chart-4)' });
   const models = chartSeries(
     summary(["claude-opus-4-6", "gpt-5.4", "Unknown"]),
     "turns",

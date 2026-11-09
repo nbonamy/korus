@@ -97,7 +97,7 @@ const tokenOptions = computed(() => [
 ]);
 const totalOf = (summary: UsageSummary | null | undefined) => {
   if (props.measure === "ratio") {
-    const tokens = summary?.rows.flatMap(row => row.tokens?.total && row.tokens.total > 0 ? [row.tokens] : []) ?? [];
+    const tokens = summary?.rows.flatMap(row => row.reportsTokens !== false && row.tokens?.total && row.tokens.total > 0 ? [row.tokens] : []) ?? [];
     return inputRatio({ input: tokens.reduce((n, row) => n + row.input, 0),
       total: tokens.reduce((n, row) => n + row.total!, 0) });
   }

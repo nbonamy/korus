@@ -1,17 +1,170 @@
+import { provideCodexToolCallDetails } from '@codex-app-sdk/vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, shallowReactive } from 'vue';
+import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAgentComposerState } from '../../agent-composer-state';
+import { projectCursorConversation } from '../../provider-conversation-bindings';
 import type { AgentConversationView } from '../../app-state';
 import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
 import { backendChoicesKey } from '../backend-selection';
+import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
 
 describe('AgentConversationPanel', () => {
+  it('renders Cursor model/effort selection, file links and media with interrupt, confirm and continue', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = { ...snapshot.agents[0]!, backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
+    snapshot.agents[0] = agent;
+    const capabilities = { ...cursorBackendCapabilities, reasoningEffort: true };
+    snapshot.backendRuntimes = [{ backend: 'cursor', status: 'running', capabilities }];
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot });
+    composer.handleMainEvent({ type: 'models.changed', backend: 'cursor', seq: 1, occurredAt: '', payload: { models: [
+      { id: 'native-plain', model: 'native-plain', displayName: 'Cursor Plain', isDefault: true },
+      { id: 'native-enum', model: 'native-enum', displayName: 'Cursor Enum', defaultReasoningEffort: 'low',
+        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'extra-high', description: '' }] },
+    ] } });
+    const sent = vi.fn();
+    const view = shallowReactive<AgentConversationView>({
+      agent, codexSnapshot: null, claudeSnapshot: null, cursorSnapshot: null,
+      get conversation() { return projectCursorConversation(this.cursorSnapshot, this.agent); },
+      composer: composer.configurationForAgent(agent.id),
+      composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities,
+      approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
+    });
+    const actions: AgentConversationActions = {
+      planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(async (id, text, options) => { sent(id, text, composer.resolvePromptOptions(id, text, options)); }), steer: vi.fn(), interrupt: vi.fn(),
+      deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, backendDefaults: { kind: 'cursor', permissionMode: mode } }; }),
+      updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
+    };
+    const rawDetails = ref(false);
+    const openLink = vi.fn();
+    const wrapper = mount({ setup() {
+      provideCodexToolCallDetails(rawDetails);
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink, openImage: vi.fn(), openVisualization: vi.fn(),
+    });
+    } }, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
+    try {
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
+      expect(permissions).toBeDefined();
+      await permissions!.trigger('mouseenter');
+      const choices = wrapper.findAll('[role="menuitemradio"]');
+      expect(choices.map(choice => choice.text())).toEqual([expect.stringContaining('Ask for approval'), expect.stringContaining('Full access')]);
+      expect(choices[0]!.attributes('aria-checked')).toBe('true');
+      await choices[1]!.trigger('click');
+      expect(actions.setPermissionMode).toHaveBeenCalledExactlyOnceWith(agent.id, 'full-access');
+      expect(actions.setApprovalPreset).not.toHaveBeenCalled();
+      await flushPromises();
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
+      const updatedChoices = wrapper.findAll('[role="menuitemradio"]');
+      expect(updatedChoices.map(choice => choice.attributes('aria-checked'))).toEqual(['false', 'true']);
+      await updatedChoices[0]!.trigger('click');
+      await flushPromises();
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(agent.id, 'default');
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
+      expect(wrapper.findAll('[role="menuitemradio"]').map(choice => choice.attributes('aria-checked'))).toEqual(['true', 'false']);
+      await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
+      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Cursor Enum'))!.trigger('mouseenter');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Extra High')!.trigger('click');
+      await flushPromises();
+      expect(actions.selectModel).toHaveBeenCalledExactlyOnceWith(agent.id, 'native-enum');
+      expect(actions.selectReasoningEffort).toHaveBeenCalledExactlyOnceWith(agent.id, 'extra-high');
+      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).toContain('Extra High');
+      await wrapper.get('form').trigger('submit'); await flushPromises();
+      expect(sent).toHaveBeenLastCalledWith(agent.id, 'Hello Cursor', { selection: { model: 'native-enum', reasoningEffort: 'extra-high' }, planMode: false });
+      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Cursor Plain')!.trigger('click');
+      await flushPromises();
+      expect(actions.selectModel).toHaveBeenLastCalledWith(agent.id, 'native-plain');
+      expect(actions.selectReasoningEffort).toHaveBeenCalledTimes(1);
+      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).not.toContain('Extra High');
+      view.composerState = { text: 'Plain Cursor', selectionStart: 12, selectionEnd: 12 };
+      await flushPromises();
+      await wrapper.get('form').trigger('submit'); await flushPromises();
+      expect(sent).toHaveBeenLastCalledWith(agent.id, 'Plain Cursor', { selection: { model: 'native-plain' }, planMode: false });
+      const replica = createCursorConversationReplica(emptyCursorSnapshot(agent.id, 'session'));
+      const identity = { agentId: agent.id, sessionId: 'session', turnId: 'turn', occurredAt: '2026-11-03T12:00:00Z' };
+      replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
+      const diffBody = 'File: synthetic.txt\nBefore:\nBEFORE\nAfter:\nAFTER\n\nfile:///observed.txt\nObserved resource contents';
+      const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMfcAAAAASUVORK5CYII=';
+      view.cursorSnapshot = replica.apply({ ...identity, type: 'message.upsert', payload: { message: { id: 'answer', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt,
+        parts: [{ type: 'text', text: 'Cursor streamed reply' },
+          { type: 'tool', id: 'tool', kind: 'fileChange', title: 'Edit synthetic.txt', status: 'completed', statusText: JSON.stringify({ source: 'cursor', action: 'edit', phase: 'completed', params: { target: 'synthetic.txt' } }), body: diffBody, metadata: { cwd: '/workspace', changes: [{ path: 'synthetic.txt', kind: 'update', oldText: 'BEFORE', newText: 'AFTER' }] } },
+          { type: 'media', itemId: 'cursor-tool:tool:0', media: { url: imageUrl, mimeType: 'image/png', alt: 'Image' } }] } } });
+      view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
+      await flushPromises();
+      // A retained frame from an old provider must never win over the registered binding.
+      view.claudeSnapshot = claudeConversationSnapshot([], { agentId: agent.id });
+      await flushPromises();
+      expect(wrapper.text()).toContain('Cursor streamed reply');
+      const fileLink = wrapper.get('a.chat-tool-call__title-target--link');
+      expect(fileLink.text()).toBe('synthetic.txt');
+      expect(fileLink.attributes('href')).toBe('/workspace/synthetic.txt');
+      await fileLink.trigger('click');
+      expect(openLink).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: 'file', path: '/workspace/synthetic.txt', action: 'edit' }));
+      expect(wrapper.get('.chat-media-block img').attributes()).toMatchObject({ src: imageUrl, alt: 'Image' });
+      expect(wrapper.find('.chat-tool-call__details-toggle').exists()).toBe(false);
+      rawDetails.value = true;
+      await flushPromises();
+      await wrapper.get('.chat-tool-call__details-toggle').trigger('click');
+      await flushPromises();
+      expect(wrapper.findAll('.chat-tool-call__body pre').at(-1)!.text()).toBe(diffBody);
+      rawDetails.value = false;
+      view.cursorSnapshot = {...view.cursorSnapshot!, messages:[...view.cursorSnapshot!.messages,{id:'coordination',agentId:agent.id,turnId:'turn',role:'assistant',status:'complete',createdAt:identity.occurredAt,
+        parts:[{type:'reasoning',itemId:'thought-1',summaryIndex:0,summary:'Checking status first. Then launching System Settings with a lengthy explanation of each planned tool call.'},
+          ...['set-status','send-message','finish_turn'].map(tool=>({type:'tool' as const,id:tool,kind:'mcp',title:`korus: ${tool}`,status:'completed' as const,input:{to:'other-agent'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool}}))]},
+        {id:'thought-only',agentId:agent.id,turnId:'turn',role:'assistant',status:'streaming',createdAt:identity.occurredAt,
+          parts:[{type:'reasoning',itemId:'thought-2',summaryIndex:0,summary:'More internal explanation without a tool or assistant message yet.'}]}]};
+      await flushPromises();
+      for (const header of wrapper.findAll('button.chat-tool-group__header')) await header.trigger('click');
+      expect(wrapper.text()).toContain('Sent message to Other Agent');
+      expect(wrapper.text()).toContain('Cursor streamed reply');
+      expect(wrapper.text()).not.toContain('Checking status first.');
+      expect(wrapper.text()).not.toContain('More internal explanation');
+      expect(view.conversation!.messages.some(message => message.id === 'thought-only')).toBe(false);
+      expect(view.cursorSnapshot!.messages.find(message => message.id === 'coordination')!.parts[0]).toMatchObject({type:'reasoning',summary:expect.stringContaining('Checking status first.')});
+      expect(view.cursorSnapshot!.messages.find(message => message.id === 'thought-only')!.parts).toHaveLength(1);
+      expect(wrapper.text()).not.toContain('korus: set-status');
+      expect(wrapper.text()).not.toContain('korus: finish_turn');
+
+      await wrapper.get('button[title="Interrupt"]').trigger('click');
+      expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
+      view.agent = { ...view.agent, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
+      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
+        id: 'sidebar-plan', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'native-provider', integrationName: 'Provider', toolName: 'native_plan_request', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false } },
+      }] };
+      await flushPromises();
+      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Review Cursor plan');
+      view.agent = { ...view.agent, planReview: { ...view.agent.planReview!, conversationId: 'session' } };
+      await flushPromises();
+      expect(wrapper.find('.chat-tool-confirmation').exists()).toBe(false);
+      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
+        id: 'cursor-permission', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'Shell', summary: 'Run tests?', argumentsPreview: 'npm test', allowAlways: false, allowConversation: false } },
+      }] };
+      await flushPromises();
+      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Run tests?');
+      await wrapper.get('.codex-conversation-pane__footer').findAll('button').find(button => button.text() === 'Deny')!.trigger('click');
+      expect(actions.clientResponse).toHaveBeenCalledWith({ agentId: agent.id, id: 'cursor-permission', payload: { decision: 'deny' } });
+      view.cursorSnapshot = { ...view.cursorSnapshot!, busy: false, activeTurnId: null, clientRequests: [],
+        turns: view.cursorSnapshot!.turns.map(turn => ({ ...turn, status: 'interrupted' })) };
+      await flushPromises();
+      await wrapper.get('button[aria-label="Continue"]').trigger('click');
+      expect(actions.continueInterruptedTurn).toHaveBeenCalledExactlyOnceWith(agent.id);
+    } finally { wrapper.unmount(); }
+  });
   it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[1]!;

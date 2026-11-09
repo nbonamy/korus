@@ -944,7 +944,7 @@ describe('useAppState', () => {
     await state.restartAgent(first.id);
     expect(state.activeAgent.value?.backendSession).toBeUndefined();
     expect(state.activeAntigravityConversationSnapshot.value).toBeNull();
-    expect(state.agentConversationFor(second.id)?.antigravitySnapshot?.messages).toHaveLength(1);
+    expect(state.agentConversationFor(second.id)?.conversation?.messages).toHaveLength(1);
   });
 
   it('clears the visible Claude conversation when restarting', async () => {
@@ -971,7 +971,7 @@ describe('useAppState', () => {
 
     expect(state.activeAgent.value?.backendSession).toBeUndefined();
     expect(state.activeClaudeConversationSnapshot.value).toBeNull();
-    expect(state.agentConversationFor(agent.id)?.claudeSnapshot).toBeNull();
+    expect(state.agentConversationFor(agent.id)?.conversation).toBeNull();
   });
 
   it('loads the conversation of a freshly forked Claude agent', async () => {

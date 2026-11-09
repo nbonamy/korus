@@ -131,6 +131,7 @@ const providers = [
   ["codex", 1],
   ["claude", 2],
   ["antigravity", 3],
+  ["cursor", 4],
 ] as const;
 const tabs = computed(() => [
   { name: "usage" as const, label: translate("analytics.usageOverview") },

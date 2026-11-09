@@ -20,6 +20,7 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), ...(useSource ? sdkSourceAliases : {}) }, dedupe: ['vue'] },
     optimizeDeps: {
       // Lazy editor imports must not trigger an optimizer reload mid-interaction.
+      entries: [path.join(root, 'client/vue/src/components/InlineExcalidrawBlock.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')],
       include: ['@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client'],
       ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}),
     },
@@ -59,9 +60,12 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     // Cold module loading belongs to browser startup, not individual interactions.
     page.setDefaultNavigationTimeout(15_000);
     const errors = [];
+    let navigations = 0;
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(server.resolvedUrls.local[0] + 'inline-diagram');
     await page.waitForFunction(() => typeof window.setDiagram === 'function', undefined, { timeout: 15_000 });
+    const initialNavigations = navigations;
     await page.evaluate(() => window.setDiagram('{"elements":[', false));
     const host = page.locator('#host');
     await host.getByText('Diagram is rendering…', { exact: true }).waitFor({ state: 'visible' });
@@ -80,7 +84,8 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
       { id: 'label', type: 'text', x: 20, y: 20, width: 180, height: 30, text: 'Small diagram', fontSize: 20, fontFamily: 2 },
     ] })));
     const image = host.getByRole('img', { name: 'Diagram', exact: true });
-    await image.waitFor({ state: 'visible' });
+    try { await image.waitFor({ state: 'visible' }); }
+    catch (error) { throw new Error(`${error.message}\nBrowser errors: ${JSON.stringify(errors)}\nRendered host: ${await host.textContent()}`); }
     await page.waitForFunction(() => document.querySelector('#host .inline-diagram img')?.naturalWidth > 0);
     assert.ok((await image.boundingBox()).height <= 320);
     assert.ok(decodeURIComponent(await image.getAttribute('src')).includes('Small diagram'));
@@ -95,6 +100,7 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
     assert.equal(await host.locator('details').getAttribute('open'), '');
     assert.ok((await host.locator('pre').textContent()).includes('{broken'));
     assert.deepEqual(errors, []);
+    assert.equal(navigations, initialNavigations, 'Lazy rendering must preserve the page and its scene');
     await page.screenshot({ path: '/tmp/korus-inline-diagram-fallback.png' });
   } finally { await browser.close(); await server.close(); await rm(cacheDir, { recursive: true, force: true }); }
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { claudeBackendCapabilities, codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
+import type { Agent } from '@workspace/core/contracts';
+import { claudeBackendCapabilities, codexBackendCapabilities, defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
@@ -10,6 +12,40 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it.each(['accept', 'revise', 'cancel'] as const)('delivers %s to a non-Cursor request-backed plan without submitting a prompt', async resolution => {
+    const snapshot = createTestSnapshot();
+    const agent: Agent = { id: 'plan-agent', teamId: 'team-test', name: 'Plan', folder: '/synthetic', backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' };
+    snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    let publish!: (event: BackendEvent) => void;
+    const identity = { backend: 'claude' as const, agentId: agent.id, conversationId: 'session', turnId: 'turn' };
+    const proposal = (id: string) => {
+      publish({ ...identity, type: 'agentRequest.created', payload: { request: { id, conversationId: 'session', turnId: 'turn', kind: 'toolConfirmation', confirmation: { toolName: 'native_plan', integrationId: 'fixture', integrationName: 'Fixture', summary: 'Review plan', argumentsPreview: '# Plan' } } } });
+      publish({ ...identity, type: 'plan.readyForReview', payload: { markdown: '# Plan', itemId: id, requestId: id } });
+    };
+    const respondToAgentRequest = vi.fn<AgentBackendDriver['respondToAgentRequest']>(async response => {
+      publish({ ...identity, type: 'agentRequest.resolved', payload: { id: response.id, outcome: response.outcome } });
+      if (resolution === 'revise') proposal('revised-request');
+    });
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: agent.backendSession, turnId: 'unexpected-prompt' });
+    const driver: AgentBackendDriver = { backend: 'claude', getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }), getCapabilities: () => claudeBackendCapabilities,
+      respondToAgentRequest, sendPrompt, interrupt: vi.fn(), onEvent: listener => { publish = listener; return () => {}; }, close: async () => {} };
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['claude', driver]])) });
+    try {
+      proposal('native-request');
+      const reviewId = agent.planReview!.id;
+      const response = { reviewId, resolution, ...(resolution === 'revise' ? { feedback: 'Keep the original file.' } : {}) };
+      const call = () => server.handleMessage({ jsonrpc: '2.0', id: 'respond', method: backendMethods.agentPlanReviewRespond, params: { agentId: agent.id, response } });
+      await call();
+      expect(respondToAgentRequest).toHaveBeenCalledExactlyOnceWith({ agentId: agent.id, id: 'native-request', outcome: resolution === 'cancel' ? { kind: 'cancelled' } : { kind: 'decision', decision: resolution === 'accept' ? 'allow' : 'deny', ...(resolution === 'revise' ? { feedback: 'Keep the original file.' } : {}) } });
+      expect(sendPrompt).not.toHaveBeenCalled();
+      if (resolution === 'revise') {
+        expect(agent.planReview).toMatchObject({ requestId: 'revised-request', status: 'pending' });
+        await expect(call()).rejects.toThrow('no longer');
+      } else { expect(agent.planReview?.status).toBe(resolution); await call(); }
+      expect(respondToAgentRequest).toHaveBeenCalledTimes(1);
+    } finally { await server.close(); }
+  });
 
   it('reconciles unowned Codex conversations once before serving snapshots', async () => {
     const snapshot = createTestSnapshot();
@@ -76,23 +112,29 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it('restores the previous provider session when persisting a switch fails', async () => {
+  it.each(['codex', 'cursor', 'antigravity'] as const)('restores the previous %s session when persisting a switch fails', async backend => {
     const snapshot = createTestSnapshot();
+    const oldSession = backend === 'codex' ? { kind: backend, threadId: 'thread-old' } : { kind: backend, sessionId: 'session-old' };
+    const newSession = backend === 'codex' ? { kind: backend, threadId: 'thread-new' } : { kind: backend, sessionId: 'session-new' };
+    const oldRef = backend === 'codex' ? { backend, threadId: 'thread-old' } : { backend, folder: '/repo', sessionId: 'session-old' };
+    const newRef = backend === 'codex' ? { backend, threadId: 'thread-new' } : { backend, folder: '/repo', sessionId: 'session-new' };
+    const storageState = backend === 'codex' ? 'archived' : 'active';
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
-      id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', backend: 'codex',
-      backendSession: { kind: 'codex', threadId: 'thread-old' }, status: { type: 'idle' },
+      id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', backend,
+      backendSession: oldSession, status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const resumeConversation = vi.fn()
-      .mockResolvedValueOnce({ backendSession: { kind: 'codex', threadId: 'thread-new' } })
-      .mockResolvedValueOnce({ backendSession: { kind: 'codex', threadId: 'thread-old' } });
+      .mockResolvedValueOnce({ backendSession: newSession })
+      .mockResolvedValueOnce({ backendSession: oldSession });
     const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-old' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-old' } }),
+      backend,
+      ...(backend === 'codex' ? {} : { coordinationPolicy: { rollbackStorageState: 'active' as const } }),
+      getRuntimeStatus: () => ({ backend, status: 'running' }),
+      getCapabilities: () => defaultBackendCapabilities(backend),
+      sendPrompt: async () => ({ backendSession: oldSession }),
+      interrupt: async () => ({ backendSession: oldSession }),
       respondToAgentRequest: async () => undefined,
       resumeConversation,
       reconcileConversations: async () => undefined,
@@ -101,23 +143,24 @@ describe('AppBackendServer', () => {
     };
     const server = new AppBackendServer({
       version: 'test-version', snapshot, saveSnapshot: vi.fn().mockRejectedValue(new Error('Disk full')),
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
     });
 
+    expect(conversationRefFromAgent(snapshot.agents[0]!)).toStrictEqual(oldRef);
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'resume-agent', method: 'agent/conversation/resume',
       params: {
         agentId: 'agent-dina',
-        target: { ref: { backend: 'codex', threadId: 'thread-new' }, storageState: 'archived' },
+        target: { ref: newRef, storageState },
       },
     })).rejects.toThrow('Disk full');
 
-    expect(snapshot.agents[0]?.backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-old' });
+    expect(snapshot.agents[0]?.backendSession).toStrictEqual(oldSession);
     expect(resumeConversation).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      backendSession: { kind: 'codex', threadId: 'thread-new' },
+      backendSession: newSession,
     }), {
-      ref: { backend: 'codex', threadId: 'thread-old' },
-      storageState: 'archived',
+      ref: oldRef,
+      storageState,
     });
     await server.close();
   });
@@ -428,7 +471,7 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it('persists Claude permission modes independently of Codex approval presets', async () => {
+  it.each(['provider', 'conversation'] as const)('persists Claude permission modes with %s default scope', async permissionModeScope => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval' };
     snapshot.teams[0]!.agentIds = ['agent-claude'];
@@ -448,6 +491,7 @@ describe('AppBackendServer', () => {
     });
     const driver: AgentBackendDriver = {
       backend: 'claude',
+      ...(permissionModeScope === 'conversation' ? { coordinationPolicy: { permissionModeScope } } : {}),
       getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }),
       getCapabilities: () => claudeBackendCapabilities,
       setPermissionMode,
@@ -481,7 +525,7 @@ describe('AppBackendServer', () => {
     });
 
     expect(setPermissionMode).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-claude' }), 'bypassPermissions');
-    expect(snapshot.general.providerApprovalDefaults).toEqual({ codex: 'ask-for-approval', claude: 'bypassPermissions' });
+    expect(snapshot.general.providerApprovalDefaults).toStrictEqual(permissionModeScope === 'provider' ? { codex: 'ask-for-approval', claude: 'bypassPermissions' } : { codex: 'ask-for-approval' });
     expect(snapshot.agents[0]?.backendSession).toBeUndefined();
     expect(saveSnapshot).toHaveBeenCalledOnce();
     await server.close();

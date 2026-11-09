@@ -467,3 +467,22 @@ it("prices Antigravity executions from reported token categories as a Google API
     expect(ledger.query({ group: "apiProvider" }).rows.map(row => row.label)).toContain("google");
   } finally { await ledger.close(); }
 });
+
+it("retains Cursor lifecycle counts across reload and projects unknown usage without a model or API price", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(),"cursor-usage-"));
+  const file = path.join(directory,"usage.sqlite"), at = Date.parse("2026-10-15T12:00Z");
+  let ledger = new UsageLedger(file,()=>at);
+  try {
+    await ledger.load();
+    for (const [turnId,phase] of [["a","completed"],["b","failed"],["c","interrupted"]] as const) {
+      const event = {provider:"cursor" as const,agentId:"a",sessionId:"s",turnId,model:null,at};
+      await ledger.observe({...event,phase:"started"},{teamId:null,repository:null});
+      await ledger.observe({...event,phase},{teamId:null,repository:null});
+    }
+    await ledger.close();
+    ledger = new UsageLedger(file,()=>at);
+    await ledger.load();
+    expect(ledger.query({provider:"cursor"}).rows[0]).toMatchObject({started:3,completed:1,failed:1,interrupted:1,tokens:null,measuredTurns:0,cost:{usd:null,coverage:"unavailable"}});
+    expect(ledger.projectDailyTelemetry({day:"2026-10-15",hour:12})).toStrictEqual([{provider:"cursor",model:"unknown",serviceTier:"unknown",turns:3,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
+  } finally { await ledger.close(); await rm(directory,{recursive:true,force:true}); }
+});

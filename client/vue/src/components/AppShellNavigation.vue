@@ -15,6 +15,7 @@
     :rate-limits="snapshot.accountRateLimits"
     :enabled-backends="enabledAgentBackends(snapshot)"
     :backend-rate-limits="snapshot.backendAccountRateLimits"
+    :provider-connections="snapshot.providerConnections"
     :account="authentication?.account ?? null"
     :phone-scope="phoneScope"
     class="app-shell__team-rail"

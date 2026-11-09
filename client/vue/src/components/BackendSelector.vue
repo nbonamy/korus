@@ -12,7 +12,7 @@
       <BackendIcon v-if="backend" :backend="backend" />
     </template>
     <el-option
-      v-for="choice in choices"
+      v-for="choice in displayChoices"
       :key="choice"
       :value="choice"
       :label="backendDisplayName(choice)"
@@ -27,9 +27,10 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AgentBackend } from '@workspace/core/contracts';
+import { agentBackends } from '@workspace/core/contracts/shared';
 import { useBackendChoices, useConnectEngine, useRememberBackend } from './backend-selection';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import BackendIcon from './BackendIcon.vue';
@@ -43,6 +44,7 @@ const props = withDefaults(defineProps<{
 }>(), { size: 'default', disabled: false });
 const backend = defineModel<AgentBackend>();
 const choices = useBackendChoices(() => props.remoteConnectionId);
+const displayChoices = computed(() => agentBackends.filter(backend => choices.value.includes(backend)));
 const rememberBackend = useRememberBackend(() => props.remoteConnectionId);
 const connectEngine = useConnectEngine();
 const { t } = useI18n();

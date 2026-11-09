@@ -419,3 +419,30 @@ it("uses model facets from real data and clears selections absent from a new sco
   ).toBe(false);
   wrapper.unmount();
 });
+
+it("filters Cursor usage and displays unknown tokens and spend without inventing measurements", async () => {
+  const data: import("@workspace/core/telemetry-metrics").TelemetryMetrics = metrics();
+  const cursor = {...data.models[0]!,provider:"cursor" as const,model:"unknown",serviceTier:"unknown" as const,turns:"2",inputTokens:null,cachedInputTokens:null,outputTokens:null,totalTokens:null,estimatedCostUsd:null,costCoverage:"unavailable" as const};
+  data.models = [cursor];
+  data.modelDaily = [{...cursor,day:data.range.to}];
+  data.availableModels = ["unknown"];
+  data.availableProviders = ["cursor"];
+  const fetcher = vi.fn(async (_url: string) => Response.json(data));
+  vi.stubGlobal("fetch",fetcher);
+  const {wrapper,router} = await renderDashboard("/models");
+  await flushPromises();
+  expect(wrapper.text()).toContain("Cursor / unknown");
+  expect(wrapper.text()).not.toContain("undefined /");
+  await wrapper.get('[aria-label="Provider"]').trigger("click");
+  await flushPromises();
+  const option = Array.from(document.querySelectorAll('[role="option"]')).find(o=>o.textContent?.trim() === "Cursor") as HTMLElement;
+  expect(option).toBeDefined();
+  option.click();
+  await flushPromises();
+  expect(fetcher.mock.calls.at(-1)?.[0]).toContain("provider=cursor");
+  await router.push("/spend");
+  await flushPromises();
+  expect(wrapper.text()).toContain("Cursor");
+  expect(wrapper.get('[aria-label="Spend by provider"]').text()).toContain("Unavailable");
+  wrapper.unmount();
+});

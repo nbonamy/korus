@@ -7,11 +7,31 @@ import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confet
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { snapshotEventOwnership } from '@workspace/core/snapshot-event-ownership';
+import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 describe('useAppState', () => {
   afterEach(() => {
     clearConfetti();
     clearFirstRunOnboardingStage();
     vi.useRealTimers();
+  });
+  it('routes Cursor frames into its own conversation without reducing transcript into the app snapshot', async () => {
+    let receive!: (event: MainToRendererEvent) => void;
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backend = 'cursor'; agent.backendDefaults = { kind: 'cursor' }; agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native' };
+    stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(snapshot), onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } satisfies Partial<AppApi> });
+    const state = useAppState(); await state.loadSnapshot();
+    const before = state.snapshot.value;
+    const identity = { agentId: agent.id, backend: 'cursor' as const, backendSessionId: 'cursor-native', occurredAt: '2026-11-03T12:00:00Z' };
+    receive({ ...identity, seq: 1, type: 'cursor.conversationSnapshotChanged', payload: { revision: 1, snapshot: emptyCursorSnapshot(agent.id, 'cursor-native') } });
+    const eventIdentity = { agentId: agent.id, sessionId: 'cursor-native', turnId: 'turn', occurredAt: identity.occurredAt };
+    receive({ ...identity, seq: 2, type: 'cursor.conversationEventReceived', payload: { revision: 2, event: { ...eventIdentity, type: 'turn.started', payload: { turn: { id: 'turn' } } } } });
+    receive({ ...identity, seq: 3, type: 'cursor.conversationEventReceived', payload: { revision: 3, event: { ...eventIdentity, type: 'message.upsert', payload: { message: { agentId: agent.id, id: 'answer', turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt, parts: [{ type: 'text', text: 'Native Cursor reply' }] } } } } });
+    expect(state.agentConversationFor(agent.id)?.conversation?.messages[0]?.parts).toEqual([{ type: 'text', text: 'Native Cursor reply' }]);
+    expect(state.activeCursorConversationSnapshot.value?.messages).toBe(state.agentConversationFor(agent.id)?.conversation?.messages);
+    expect(state.activeCursorConversationSnapshot.value?.activeTurnId).toBe('turn');
+    expect(state.agentConversationFor(agent.id)?.conversation?.latestTurnId).toBe('turn');
+    expect(state.snapshot.value).toBe(before);
   });
 
   it('publishes validated file activity for inactive and active agents', async () => {
@@ -470,6 +490,8 @@ describe('useAppState', () => {
       'agentCreation.progress',
       'antigravity.conversationEventReceived',
       'antigravity.conversationSnapshotChanged',
+      'cursor.conversationEventReceived',
+      'cursor.conversationSnapshotChanged',
       'browser.annotationCreated',
       'client.celebrationRequested',
       'claude.conversationEventReceived',

@@ -317,7 +317,7 @@ export class AppMcpService {
       return;
     }
 
-    if (agent.status.type === 'working' && defaultBackendCapabilities(agent.backend).steerPrompt) {
+    if (agent.status.type === 'working' && this.driverRpc.getCapabilities(agent).steerPrompt) {
       try {
         const prompt = agentMessagesPrompt(messages);
         const result = await this.driverRpc.handle(backendMethods.driverPromptSteer, { agent, prompt }) as BackendSendResult;

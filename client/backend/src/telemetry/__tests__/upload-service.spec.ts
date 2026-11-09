@@ -870,3 +870,19 @@ it("waits for a complete reporting hour after a mid-hour enable instead of rewri
   expect(fetcher).toHaveBeenCalledTimes(2);
   expect(JSON.parse(fetcher.mock.calls[1]![1]!.body as string).hour).toBe(13);
 });
+
+
+it.each(["cursor", "future-provider"])("uploads %s without provider negotiation and preserves unknown measurements", async provider => {
+  await open();
+  scheduler!.stop();
+  await consent.change("enable");
+  await usage.local.observe({provider,agentId:"PRIVATE_CANARY",sessionId:"s",turnId:"t",model:null,at:clock,phase:"started"}, {teamId:null,repository:null});
+  await upload!.flush();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0]![1]).toMatchObject({method:"POST",redirect:"manual",credentials:"omit"});
+  const frozen = (await upload!.sealedReport(day(),12))!.body;
+  expect(fetcher.mock.calls[0]![1]!.body).toBe(frozen);
+  expect(JSON.parse(frozen).usage).toStrictEqual([{provider,model:"unknown",serviceTier:"unknown",turns:1,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
+  expect(frozen).not.toContain("PRIVATE_CANARY");
+  expect((await stored()).days[0]).toMatchObject({status:"done",attempts:1});
+});

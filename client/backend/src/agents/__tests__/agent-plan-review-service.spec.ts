@@ -64,6 +64,21 @@ describe('agent plan review lifecycle', () => {
     expect(f.agent.planReview?.status).toBe('pending');
     expect(f.emit).not.toHaveBeenCalled();
   });
+  it('keeps an immediate replacement proposal when a native revision resolves its live request', async () => {
+    const f = fixture();
+    f.agent.backend = 'cursor';
+    f.agent.backendSession = { kind: 'cursor', sessionId: 'conversation-1' };
+    f.agent.planReview!.requestId = 'native-request';
+    const nativeDecision = vi.fn(() => async () => {
+      applyMainEventToSnapshot(f.snapshot, { ...f.ready, payload: { markdown: '# Revised plan', requestId: 'next-request' } });
+    });
+    const service = new AgentPlanReviewService({ submit: f.submit, emit: f.emit, persist: f.persist, nativeDecision });
+    await expect(service.respond(f.agent, { reviewId: f.reviewId, resolution: 'revise', feedback: 'Keep English.' })).resolves.toBeUndefined();
+    expect(f.agent.planReview).toMatchObject({ markdown: '# Revised plan', requestId: 'next-request', status: 'pending' });
+    expect(f.submit).not.toHaveBeenCalled();
+    expect(f.emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'plan.reviewResolved', payload: { reviewId: f.reviewId, resolution: 'revise' } }));
+  });
+
   it('accepts a targeted review once and does not reopen on replay', async () => {
     const f = fixture();
     await f.service.respond(f.agent, { reviewId: f.reviewId, resolution: 'accept' });

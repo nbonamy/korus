@@ -1,20 +1,18 @@
+import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { ShieldCheckIcon } from '../shared/icons/app-icons';
 import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from '@codex-app-sdk/vue';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AgentConversationView } from '../app-state';
-import { translate } from '../i18n';
-import { localizedText } from '../i18n/errors';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
-import { claudePaneClientRequests } from './claude-pane-client-requests';
-import { antigravityPaneClientRequests } from './antigravity-pane-client-requests';
 import { conversationCommandMenuItems } from './conversation-command-menu';
+import { conversationPermissionMenuItems } from './conversation-permission-menu';
+import { translate } from '../i18n';
 
 export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
@@ -69,7 +67,11 @@ export function agentConversationState(view: () => AgentConversationView, extens
   previewMessage?: () => import('@codex-app-sdk/core/surface').SurfaceMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
 } = {}): CodexConversationPaneState {
-  const provider = () => view().codexSnapshot ?? view().claudeSnapshot ?? view().antigravitySnapshot;
+  const provider = () => conversationForView(view());
+  const pendingMessages = (): import('@workspace/core/contracts').RendererMessage[] =>
+    pendingConversationPrompts(view().agent.pendingPrompts ?? [], provider()?.messages ?? [])
+      .map(prompt => ({ id: prompt.id, agentId: view().agent.id, role: 'user', status: 'complete', createdAt: prompt.createdAt,
+        parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
   const approvalPreset = () => {
@@ -79,28 +81,29 @@ export function agentConversationState(view: () => AgentConversationView, extens
   };
   return {
     identity: {
-      get conversationKey() { const agent = view().agent; const session = agent.backendSession; return session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `${session.kind}:${session.sessionId}` : `agent:${agent.id}`; },
+      get conversationKey() { return conversationKeyForAgent(view().agent); },
       get activeTurnId() { return provider()?.activeTurnId ?? null; },
       get turns() { return provider()?.turns; },
-      get messages() { const messages = provider()?.messages ?? []; const preview = extensions.previewMessage?.(); return preview ? [...messages, preview] : messages; },
-      get busy() { return provider()?.busy ?? view().sending; },
+      get messages() {
+        const pending = pendingMessages();
+        const messages = pending.length ? [...(provider()?.messages ?? []), ...pending] : provider()?.messages ?? [];
+        const preview = extensions.previewMessage?.();
+        return preview ? [...messages, preview] : messages;
+      },
+      get busy() { return pendingMessages().length > 0 || (provider()?.busy ?? view().sending); },
       get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },
       get error() { return provider()?.error ?? null; },
     },
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
-      get loading() { return Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
+      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
-      get approvals() { const approvals = view().codexSnapshot?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
-      get clientRequests() {
-        const antigravity = view().antigravitySnapshot;
-        if (antigravity) return antigravityPaneClientRequests(antigravity);
-        return view().codexSnapshot?.clientRequests ?? claudePaneClientRequests(view().claudeSnapshot);
-      },
+      get approvals() { const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
+      get clientRequests() { return provider()?.clientRequests ?? []; },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
-      get goal() { return view().codexSnapshot?.goal ?? view().agent.goal ?? null; },
+      get goal() { return provider()?.goal ?? view().agent.goal ?? null; },
       get queuedPrompts() { return view().queuedPrompts; },
       get contextUsage() { return provider()?.contextUsage ?? view().agent.contextUsage ?? null; },
     },
@@ -246,12 +249,7 @@ export function useAgentConversation(options: {
 }
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
-  const modes = view.capabilities.permissionModes ?? [];
-  if (!modes.length) return [];
   const defaults = view.agent.backendDefaults;
   const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return [{ id: 'backend-permissions', type: 'submenu', label: translate('surface.appShell.permissions'), icon: ShieldCheckIcon, submenuAlignment: 'bottom', submenuWidth: 'wide',
-    items: modes.map(mode => ({ id: `permission-mode:${mode.id}`, type: 'radio', label: localizedText(mode.label, translate) ?? mode.id, description: localizedText(mode.description, translate) ?? '', checked: selected === mode.id,
-      payload: { kind: 'permission-mode', mode: mode.id } })),
-  }];
+  return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
 }

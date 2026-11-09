@@ -3,7 +3,7 @@ import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 
 // Exhaustive keys keep RPC and tool validation in step with the application contract.
 const fields = {
-  backend: z.enum(['codex', 'claude', 'antigravity']),
+  backend: z.enum(['codex', 'claude', 'antigravity', 'cursor']),
   model: z.string().trim().min(1).max(200).nullable(),
   reasoningEffort: z.string().trim().min(1).max(40).nullable(),
   serviceTier: z.string().trim().min(1).max(200).nullable(),

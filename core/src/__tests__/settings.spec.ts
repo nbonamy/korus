@@ -1,3 +1,5 @@
+import { applyExecutionSelection, executionSelectionForAgent, isExecutionSelection } from '../execution-selection';
+import type { Agent } from '../contracts';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '../delegation-context';
 import { describe, expect, it } from 'vitest';
 import { createEmptySnapshot } from '../snapshot';
@@ -33,6 +35,39 @@ describe('settings contracts', () => {
     expect(invalid.preferredProviders).toBeUndefined();
     expect(invalid.gitMergeCleanup).toBeUndefined();
   });
+  it('keeps Cursor steering fallback off unless explicitly enabled and preserves the normalized setting roundtrip', () => {
+    expect(defaultGeneralSettings.cursorSteeringFallbackEnabled).toBe(false);
+    for (const value of [undefined, 'true', 1, {}, null]) {
+      expect(normalizeGeneralSettings({ cursorSteeringFallbackEnabled: value }).cursorSteeringFallbackEnabled).toBe(false);
+    }
+    const snapshot = createEmptySnapshot();
+    for (const enabled of [true, false]) {
+      updateSettingsInSnapshot(snapshot, { general: { cursorSteeringFallbackEnabled: enabled } });
+      expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(snapshot.general))).cursorSteeringFallbackEnabled).toBe(enabled);
+    }
+  });
+
+  it('normalizes Cursor settings without leaking execution defaults across providers', () => {
+    const home = { homePath: '/cursor', isolated: false, shareSkills: false };
+    const selection = { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } as const;
+    const settings = normalizeGeneralSettings({
+      providerEnabled: { codex: true, cursor: false },
+      providerHomes: { cursor: home },
+      providerModelDefaults: { cursor: selection },
+    });
+    expect(settings.providerEnabled).toStrictEqual({ codex: true, cursor: false });
+    expect(settings.providerHomes).toStrictEqual({ cursor: home });
+    expect(settings.providerModelDefaults).toStrictEqual({ cursor: selection });
+    expect(isExecutionSelection(selection)).toBe(true);
+    const agent = { backend: 'cursor', backendDefaults: { kind: 'codex', model: 'codex-only' } } as Pick<Agent, 'backend' | 'backendDefaults'>;
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'cursor', model: null, reasoningEffort: null, serviceTier: null });
+    applyExecutionSelection(agent, selection);
+    expect(agent.backendDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null });
+    agent.backend = 'claude';
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'claude', model: null, reasoningEffort: null, serviceTier: null });
+    expect(() => applyExecutionSelection(agent, selection)).toThrow('does not match');
+  });
+
   it('defaults interactive planning on and preserves an explicit opt-out', () => {
     expect(normalizeGeneralSettings({}).useInteractivePlans).toBe(true);
     expect(defaultGeneralSettings.useInteractivePlans).toBe(true);
@@ -107,6 +142,7 @@ describe('settings contracts', () => {
       missionInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
+      cursorSteeringFallbackEnabled: false,
       celebrationsEnabled: false,
       followUpBehavior: 'queue',
       spokenAnnouncementsEnabled: true,
@@ -218,6 +254,7 @@ describe('settings contracts', () => {
       missionInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
+      cursorSteeringFallbackEnabled: false,
       celebrationsEnabled: true,
       followUpBehavior: 'queue',
       spokenAnnouncementsEnabled: false,
@@ -438,9 +475,9 @@ describe('settings contracts', () => {
   });
 
   it('loads supported approval defaults without accepting malformed or unknown modes', () => {
-    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'ask-for-approval', claude: 'acceptEdits', other: 'ignored' } }).providerApprovalDefaults)
-      .toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits' });
-    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'invalid', claude: 'invalid' } }).providerApprovalDefaults).toStrictEqual({});
+    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'ask-for-approval', claude: 'acceptEdits', cursor: 'full-access', other: 'ignored' } }).providerApprovalDefaults)
+      .toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits', cursor: 'full-access' });
+    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'invalid', claude: 'invalid', cursor: 'invalid' } }).providerApprovalDefaults).toStrictEqual({});
   });
 
   it('retains review defaults across settings normalization without retaining invalid automatic authorization', () => {

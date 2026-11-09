@@ -1,4 +1,5 @@
 import { GuestJoins } from '../sharing/guest-joins';
+import { ConversationShares } from '../sharing/conversation-shares';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -408,4 +409,18 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect(saved).toHaveBeenCalled();
     } finally { await server.close(); }
   });
+});
+
+it('rejects Cursor sharing at daemon admission without creating invitation state', async () => {
+  const f = await fixture({kind:'cursor',sessionId:'cursor-session'});
+  const endpoint = vi.fn(async () => ({ownerId,relay}));
+  const changed = vi.fn();
+  const shares = new ConversationShares({directory:f.directory,endpoint},()=>f.snapshot,changed);
+  const target = {agentId:'agent',backend:'cursor' as const,sessionId:'cursor-session',conversation:{backend:'cursor' as const,sessionId:'cursor-session',folder:'/fixture'}};
+  try {
+    await expect(shares.control({action:'create',target})).rejects.toThrow('Conversation sharing is unavailable for this provider.');
+    expect(endpoint).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    await expect(stat(path.join(f.directory,'collaboration.json'))).rejects.toMatchObject({code:'ENOENT'});
+  } finally { await shares.close(); }
 });

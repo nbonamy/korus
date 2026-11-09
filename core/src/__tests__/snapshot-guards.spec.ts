@@ -8,6 +8,18 @@ import {
 } from '../snapshot-guards';
 
 describe('snapshot guards', () => {
+  it('accepts optional pending prompt presentation and rejects malformed records', () => {
+    const snapshot = createInitialSnapshot();
+    const pending = { id: 'injected', text: 'Implement the ticket', createdAt: '2026-11-09T00:00:00.000Z' };
+    snapshot.agents[0]!.pendingPrompts = [pending];
+    expect(isAppSnapshot(snapshot)).toBe(true);
+    for (const invalid of [null, { ...pending, text: null }, { ...pending, createdAt: 'invalid' }]) {
+      const malformed = structuredClone(snapshot);
+      Object.assign(malformed.agents[0]!, { pendingPrompts: [invalid] });
+      expect(isAppSnapshot(malformed)).toBe(false);
+    }
+  });
+
   it('decodes valid empty, seeded, JSON, and fully populated snapshots', () => {
     const empty = createEmptySnapshot();
     const seeded = createInitialSnapshot();
@@ -18,6 +30,18 @@ describe('snapshot guards', () => {
     expect(decodeAppSnapshot(seeded)).toStrictEqual({ value: seeded });
     expect(decodeAppSnapshot(json)).toStrictEqual({ value: json });
     expect(isAppSnapshot(full)).toBe(true);
+  });
+
+  it('accepts legacy settings without Cursor steering fallback and validates the optional boolean', () => {
+    const snapshot = createInitialSnapshot();
+    delete snapshot.general.cursorSteeringFallbackEnabled;
+    expect(decodeAppSnapshot(snapshot)).toStrictEqual({ value: snapshot });
+    for (const enabled of [true, false]) {
+      snapshot.general.cursorSteeringFallbackEnabled = enabled;
+      expect(decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))).toStrictEqual({ value: snapshot });
+    }
+    snapshot.general.cursorSteeringFallbackEnabled = 'true' as never;
+    expect(isAppSnapshot(snapshot)).toBe(false);
   });
 
   it('validates public MCP eligibility without requiring it on legacy connections', () => {
@@ -99,6 +123,7 @@ describe('snapshot guards', () => {
       { name: 'agent git status', mutate: (snapshot) => { snapshot.agentGitStatuses.agent!.branch = null as never; } },
       { name: 'turn git diff', mutate: (snapshot) => { snapshot.turnGitDiffs.turn!.addedLines = 'one' as never; } },
       { name: 'account rate limits', mutate: (snapshot) => { snapshot.accountRateLimits!.primary!.usedPercent = 'half' as never; } },
+      { name: 'Cursor permission defaults', mutate: (snapshot) => { snapshot.general.providerApprovalDefaults = { cursor: 42 as never }; } },
       { name: 'active ids', mutate: (snapshot) => { snapshot.activeAgentId = 42 as never; } },
     ];
 

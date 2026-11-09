@@ -26,6 +26,9 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const claudeLoading = ref(false);
   const claudeError = ref<string | null>(null);
   const claudeDialogVisible = ref(false);
+  const cursorLoading = ref(false);
+  const cursorPending = ref(false);
+  const cursorError = ref<string | null>(null);
   const antigravityLoading = ref(false);
   const antigravityPending = ref(false);
   const antigravityError = ref<string | null>(null);
@@ -46,6 +49,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
 
   const codexConnected = computed(() => options.getConnections().some(provider => provider.backend === 'codex' && provider.connected));
   const claudeConnected = computed(() => options.getConnections().some(provider => provider.backend === 'claude' && provider.connected));
+  const cursorConnected = computed(() => options.getConnections().some(provider => provider.backend === 'cursor' && provider.connected));
   const antigravityConnected = computed(() => options.getConnections().some(provider => provider.backend === 'antigravity' && provider.connected));
   const canContinue = computed(() => options.getConnections().some(provider => provider.connected && provider.installed && provider.enabled !== false));
   const initialAuthenticationLoading = computed(() => discovering.value);
@@ -131,8 +135,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   }
 
   async function enableConnectedEngine(backend: AgentBackend): Promise<void> {
-    const busy = backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
-    const error = backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
+    const busy = backend === 'cursor' ? cursorLoading : backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
+    const error = backend === 'cursor' ? cursorError : backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
     busy.value = true;
     error.value = null;
     try { await requireApi().setProviderEnabled(backend, true); }
@@ -141,8 +145,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   }
 
   async function disconnectProvider(backend: AgentBackend): Promise<void> {
-    const busy = backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
-    const error = backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
+    const busy = backend === 'cursor' ? cursorLoading : backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
+    const error = backend === 'cursor' ? cursorError : backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
     busy.value = true;
     error.value = null;
     try {
@@ -164,20 +168,29 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     return providerSetup.value.some(setup => setup.backend === backend && setup.installed);
   }
 
-  async function connectAntigravity(): Promise<void> {
-    if (!isInstalled('antigravity')) return;
-    if (antigravityConnected.value) { await enableConnectedEngine('antigravity'); return; }
-    antigravityPending.value = true; antigravityError.value = null;
-    try { await requireApi().authenticateProvider('antigravity', 'login'); }
-    catch (error) { if (!disposed && antigravityPending.value) antigravityError.value = errorMessage(error); }
-    finally { antigravityPending.value = false; }
-  }
+  const nativeState = (backend: 'antigravity' | 'cursor') => backend === 'cursor'
+    ? { pending: cursorPending, error: cursorError, connected: cursorConnected }
+    : { pending: antigravityPending, error: antigravityError, connected: antigravityConnected };
 
-  async function cancelAntigravityLogin(): Promise<void> {
-    antigravityPending.value = false;
-    try { await requireApi().authenticateProvider('antigravity', 'cancel'); }
-    catch (error) { if (!disposed) antigravityError.value = errorMessage(error); }
+  async function connectNativeProvider(backend: 'antigravity' | 'cursor'): Promise<void> {
+    if (!isInstalled(backend)) return;
+    const state = nativeState(backend);
+    if (state.connected.value) { await enableConnectedEngine(backend); return; }
+    state.pending.value = true; state.error.value = null;
+    try { await requireApi().authenticateProvider(backend, 'login'); }
+    catch (error) { if (!disposed && state.pending.value) state.error.value = errorMessage(error); }
+    finally { state.pending.value = false; }
   }
+  async function cancelNativeLogin(backend: 'antigravity' | 'cursor'): Promise<void> {
+    const state = nativeState(backend);
+    state.pending.value = false;
+    try { await requireApi().authenticateProvider(backend, 'cancel'); }
+    catch (error) { if (!disposed) state.error.value = errorMessage(error); }
+  }
+  const connectAntigravity = () => connectNativeProvider('antigravity');
+  const cancelAntigravityLogin = () => cancelNativeLogin('antigravity');
+  const connectCursor = () => connectNativeProvider('cursor');
+  const cancelCursorLogin = () => cancelNativeLogin('cursor');
 
   async function customizeProvider(backend: AgentBackend): Promise<void> {
     setupError.value = null;
@@ -192,6 +205,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   }
 
   async function refreshProvider(backend: AgentBackend): Promise<void> {
+    if (backend === 'cursor') cursorError.value = null;
     await updateProvider(backend, () => requireApi().refreshProvider(backend));
   }
 
@@ -356,11 +370,12 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     return api;
   }
 
-  onScopeDispose(() => { disposed = true; stopPolling(); });
+  onScopeDispose(() => { if (cursorPending.value) void options.getApi()?.authenticateProvider('cursor', 'cancel').catch(() => {}); disposed = true; stopPolling(); });
 
   return {
     authentication, authenticationCancelling, authenticationError, authenticationLoading,
     claudeAuthentication, claudeLoading, claudeError, claudeDialogVisible,
+    cursorConnected, cursorLoading, cursorPending, cursorError, connectCursor, cancelCursorLogin,
     antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
     codexConnected, claudeConnected, canContinue, continuing,
     completeVisible, gated, repositoriesVisible, initialAuthenticationLoading, showLogin,

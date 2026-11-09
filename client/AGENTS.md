@@ -38,12 +38,17 @@ links `../codex-app-sdk` (`CODEX_APP_SDK_SOURCE_ROOT` for another checkout).
 Optional telemetry is isolated by lint: only the local runtime composes the uploader,
 provider and pricing code cannot depend on it, and its endpoint is runtime config.
 
+Use the [provider integration checklist](../docs/provider-integration.md)
+for new providers and capability changes. Reuse shared coordination and UI; qualify
+native behavior independently from transport support.
+
 ## Packaging, Docs And Verify
 
 Forge signs and notarizes macOS builds by default, which is slow and reserved for
 release work; for verification use `APP_SKIP_SIGNING=1 npm run package` (or `build`).
 Read: `docs/backend-architecture.md` (daemon rules, packaging, auto-update, companion
-gateway and relay), `docs/codex.md` and `docs/claude.md` (provider integration),
+gateway and relay), `docs/codex.md`, `docs/claude.md`, `docs/antigravity.md` and
+`docs/cursor.md` (provider integration),
 `docs/mcp.md` and `docs/custom-tools.md` (MCP server and tools), `docs/frontend.md`
 (UI, with the `korus-frontend-dev` skill), `docs/agent-provider-selection.md`,
 `docs/agent-isolation.md` (unimplemented design note), `docs/codex.png` (target shell) and

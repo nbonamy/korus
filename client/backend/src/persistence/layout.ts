@@ -13,6 +13,7 @@ type ClaudeSession = Extract<BackendSession, { kind: 'claude' }>;
 
 /** One provider block instead of three sibling fields that had to agree on `kind`. */
 type Engine =
+  | { kind: 'cursor'; session?: { sessionId: string }; settings?: Omit<Extract<BackendDefaults, { kind: 'cursor' }>, 'kind'> }
   | { kind: 'antigravity'; session?: { sessionId: string }; settings?: Omit<Extract<BackendDefaults, { kind: 'antigravity' }>, 'kind'> }
   | { kind: 'codex'; session?: { threadId: string }; settings?: Omit<CodexDefaults, 'kind'> }
   | { kind: 'claude'; session?: Omit<ClaudeSession, 'kind'>; settings?: Omit<ClaudeDefaults, 'kind'> };
@@ -201,10 +202,10 @@ function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
 
 function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): PersistedAgent {
   const { engine, ...kept } = agent;
-  if (engine.kind === 'antigravity') return {
-    ...kept, ...(teamId ? { teamId } : {}), backend: 'antigravity',
-    ...(engine.session ? { backendSession: { kind: 'antigravity', ...engine.session } } : {}),
-    ...(engine.settings ? { backendDefaults: { kind: 'antigravity', ...engine.settings } } : {}),
+  if (engine.kind === 'antigravity' || engine.kind === 'cursor') return {
+    ...kept, ...(teamId ? { teamId } : {}), backend: engine.kind,
+    ...(engine.session ? { backendSession: { kind: engine.kind, ...engine.session } } : {}),
+    ...(engine.settings ? { backendDefaults: { kind: engine.kind, ...engine.settings } } : {}),
   };
   const session = engine.session;
   const settings = engine.settings;
@@ -225,10 +226,10 @@ function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): Per
 
 function engineFrom(agent: PersistedAgent): Engine {
   const { backend, backendSession, backendDefaults } = agent;
-  if (backend === 'antigravity') return {
-    kind: 'antigravity',
-    ...(backendSession?.kind === 'antigravity' ? { session: withoutKind(backendSession) } : {}),
-    ...(backendDefaults?.kind === 'antigravity' ? { settings: withoutKind(backendDefaults) } : {}),
+  if (backend === 'antigravity' || backend === 'cursor') return {
+    kind: backend,
+    ...(backendSession?.kind === backend ? { session: withoutKind(backendSession) } : {}),
+    ...(backendDefaults?.kind === backend ? { settings: withoutKind(backendDefaults) } : {}),
   };
   if (backend === 'claude') {
     const session = backendSession?.kind === 'claude' ? withoutKind(backendSession) : undefined;

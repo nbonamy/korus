@@ -417,9 +417,13 @@ describe('useAppState', () => {
     expect(retryTurn).toHaveBeenCalledWith('agent-dina', 'turn-1');
   });
 
-  it('continues a Codex interrupted turn through preload without sending a prompt', async () => {
+  it.each(['codex', 'claude', 'antigravity', 'cursor'] as const)('continues a %s interrupted turn through preload without sending a prompt', async backend => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    remoteSnapshot.agents[0]!.backend = backend;
+    remoteSnapshot.agents[0]!.backendDefaults = { kind: backend };
+    remoteSnapshot.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'thread-dina' }
+      : backend === 'claude' ? { kind: backend, sessionId: 'session-dina', transport: 'stdio' }
+        : { kind: backend, sessionId: 'session-dina' };
     const continuedSnapshot = structuredClone(remoteSnapshot);
     continuedSnapshot.agents[0]!.status = { type: 'working' };
     const continueInterruptedTurn = vi.fn().mockResolvedValue(continuedSnapshot);
@@ -1231,7 +1235,7 @@ describe('useAppState', () => {
     receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
     for (let n = 0; n < 20; n++) repair();
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
-    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     expect(load).toHaveBeenCalledTimes(1);
     first.resolve(remote);
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
@@ -1245,7 +1249,7 @@ describe('useAppState', () => {
     const snapshotFetches = getSnapshotState.mock.calls.length;
     expect(snapshotFetches).toBeLessThan(8);
     receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
-    await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.busy).toBe(true));
+    await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.conversation?.busy).toBe(true));
     second.resolve(remote);
     // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
@@ -1254,7 +1258,7 @@ describe('useAppState', () => {
     receive({ seq: 7, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
-    expect(state.agentConversationFor(claude.id)?.claudeSnapshot).not.toBeNull();
+    expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     // The owner restarted: its counter is below the retained frame's, yet the replay and its deltas apply.
     receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
@@ -1265,7 +1269,7 @@ describe('useAppState', () => {
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     receive({ seq: 11, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
     receive({ seq: 12, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
-    expect(state.agentConversationFor(claude.id)?.claudeSnapshot?.error).toBe('post-restart');
+    expect(state.agentConversationFor(claude.id)?.conversation?.error).toBe('post-restart');
   });
 
   it('restores the active agent after reconnect while cached recoveries are still loading', async () => {

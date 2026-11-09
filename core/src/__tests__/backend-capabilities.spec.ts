@@ -6,6 +6,21 @@ import {
 } from '../backend-capabilities';
 
 describe('backend capabilities', () => {
+  it('enables implemented Cursor execution and cold history controls', () => {
+    expect(defaultBackendCapabilities('cursor')).toStrictEqual({
+      reportsTokens: false,
+      codeReview: true, planReview: true, questions: false, plugins: false,
+      conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
+      remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
+      reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
+      goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
+      deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
+      approvalPresets: [], permissionModes: [
+        { id: 'default', label: { key: 'permissions.cursor.default.label' }, description: { key: 'permissions.cursor.default.description' } },
+        { id: 'full-access', label: { key: 'permissions.cursor.fullAccess.label' }, description: { key: 'permissions.cursor.fullAccess.description' }, dangerous: true },
+      ],
+    });
+  });
   it('never inherits unsupported Codex controls for Antigravity', () => {
     expect(defaultBackendCapabilities('antigravity')).toMatchObject({
       goals: false, serviceTier: false, thinkingBudget: false, reasoningEffort: false,

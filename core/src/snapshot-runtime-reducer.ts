@@ -88,9 +88,9 @@ export function applyRuntimeEventToSnapshot(
 
   if (event.type === 'agent.conversationAttached') {
     const agent = findAgent(snapshot, event.agentId);
-    if (agent && event.backend === 'antigravity') {
-      agent.backend = 'antigravity';
-      agent.backendSession = { kind: 'antigravity', sessionId: event.conversationId };
+    if (agent && (event.backend === 'antigravity' || event.backend === 'cursor')) {
+      agent.backend = event.backend;
+      agent.backendSession = { kind: event.backend, sessionId: event.conversationId };
       return;
     }
     if (agent && event.backend === 'claude') {
@@ -273,7 +273,7 @@ type BackendRuntimeCapabilities = NonNullable<AppSnapshot['backendRuntimes'][num
 
 function backendCapabilities(value: Record<string, unknown>): Partial<BackendRuntimeCapabilities> {
   return {
-    ...Object.fromEntries(['planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl']
+    ...Object.fromEntries(['nativeMonitor', 'reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare']
       .filter((key) => typeof value[key] === 'boolean').map((key) => [key, value[key]])),
     ...(typeof value.attachments === 'boolean' ? { attachments: value.attachments } : {}),
     ...(typeof value.models === 'boolean' ? { models: value.models } : {}),

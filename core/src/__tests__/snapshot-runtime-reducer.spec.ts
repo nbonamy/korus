@@ -31,6 +31,9 @@ describe('snapshot runtime reducer', () => {
         status: 'running',
         detail: 'connected',
         capabilities: {
+          reportsTokens: false,
+          nativeMonitor: true,
+          codeReview: false,
           approvalPresets: ['ask-for-approval', 'not-a-preset'],
           permissionModes: [
             { id: 'default', label: 'Default', description: 'Ask when needed.' },
@@ -50,12 +53,25 @@ describe('snapshot runtime reducer', () => {
       status: 'running',
       detail: 'connected',
       capabilities: {
+        reportsTokens: false,
+        nativeMonitor: true,
+        codeReview: false,
         approvalPresets: ['ask-for-approval'],
         permissionModes: [{ id: 'default', label: 'Default', description: 'Ask when needed.' }],
         conversationFork: true,
         reasoningEffort: true,
       },
     });
+  });
+
+  it('keeps Cursor attached to its native session instead of falling back to Codex', () => {
+    const snapshot = createInitialSnapshot(), agent = snapshot.agents[0]!;
+    agent.backend = 'cursor'; agent.backendDefaults = { kind: 'cursor', model: 'native-model' };
+    applyMainEventToSnapshot(snapshot, { seq: 1, agentId: agent.id, backend: 'cursor', conversationId: 'cursor-review',
+      type: 'agent.conversationAttached', payload: {}, occurredAt: '' });
+    expect(agent.backend).toBe('cursor');
+    expect(agent.backendSession).toStrictEqual({ kind: 'cursor', sessionId: 'cursor-review' });
+    expect(agent.backendDefaults).toStrictEqual({ kind: 'cursor', model: 'native-model' });
   });
 
   it('records Claude session starts without requiring a Codex thread id', () => {

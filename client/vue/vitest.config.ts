@@ -31,6 +31,8 @@ export default defineConfig({
   test: {
     testTimeout: 2_500,
     hookTimeout: 2_500,
+    // Vitest schedules groups by array index; negative groups are skipped.
+    sequence: { groupOrder: 2 },
     environment: 'jsdom',
     css: {
       // Opt in only components with valuable runtime CSS assertions.

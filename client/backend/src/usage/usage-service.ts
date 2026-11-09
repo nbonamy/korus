@@ -72,6 +72,7 @@ export class UsageService {
     const view = providerConversationEventView(event);
     if (
       view.type === "message.delta" ||
+      (view.type === "message.upsert" && assistantOutput(view.payload)) ||
       view.type === "plan.delta" ||
       view.type === "tool.started" ||
       view.type === "item.started"
@@ -190,4 +191,14 @@ export class UsageService {
     await this.chain;
     await this.local.close();
   }
+}
+
+function assistantOutput(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || !('message' in payload)) return false;
+  const message = payload.message;
+  return !!message && typeof message === 'object' && 'role' in message && message.role === 'assistant'
+    && 'parts' in message && Array.isArray(message.parts) && message.parts.some(part =>
+      part && ((part.type === 'text' && typeof part.text === 'string' && part.text.length > 0)
+        || (part.type === 'reasoning' && typeof part.summary === 'string' && part.summary.length > 0)
+        || part.type === 'tool'));
 }

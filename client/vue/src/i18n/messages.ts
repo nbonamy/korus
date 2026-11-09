@@ -136,6 +136,7 @@ export const messages = {
     modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
+      tokenReportingWarning: '{providers} turns are reported, but token usage is unavailable.',
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',
       costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
       title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',
@@ -168,6 +169,7 @@ export const messages = {
       groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
       actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', previousTeam: 'Previous team', nextWindow: 'Next window', previousWindow: 'Previous window', closeWindow: 'Close window', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
     },
+    cursor: { billing: 'Billing', refreshBilling: 'Refresh billing', team: 'Team', name: 'Cursor', conversation: 'Conversation', connect: 'Connect Cursor', connected: 'Cursor connected', enable: 'Enable Cursor', managedPermissions: 'Cursor-managed', steeringFallback: 'Steering fallback', steeringFallbackDescription: 'Interrupt the current turn and send your update as a new turn.', remoteLogin: 'Sign in with agent login on the remote host, then retry the connection.', existingHome: 'Uses your existing Cursor setup.', install: 'Install Cursor' },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
     branchWork: {
       menu: 'Branch', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
@@ -683,6 +685,10 @@ export const messages = {
       restarting: 'Restarting daemon…',
     },
     permissions: {
+      cursor: {
+        default: { label: 'Ask for approval', description: 'Ask when Cursor requests a tool permission. Native Cursor rules still apply.' },
+        fullAccess: { label: 'Full access', description: 'Automatically allow requested tool permissions for this conversation. Native Cursor rules still apply.' },
+      },
       antigravity: {
         default: { label: 'Ask for approval', description: 'Antigravity asks before commands and file changes.' },
         autoEdit: { label: 'Allow file edits', description: 'Allow native file edits; commands still use Antigravity approvals.' },
@@ -1069,6 +1075,7 @@ export const messages = {
       notDetected: 'Not detected',
       checkAgain: 'Check again',
       installProvider: 'Install',
+      installNamedProvider: 'Install {provider}',
       saveSetup: 'Save',
       settingUp: 'Setting up…',
       connectingTitle: 'Getting your workspace ready.',

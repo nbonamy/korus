@@ -5,9 +5,11 @@
         <SettingsEngineConnectionRow
           compact installable overflow
           :backend="engine.backend"
+          :capabilities="providerSetup.find(setup => setup.backend === engine.backend)?.capabilities"
           :installed="engine.installed"
           :title="backendDisplayName(engine.backend)"
           :authentication="engine.authentication"
+          :error="engine.authentication?.kind === 'cursor' ? engine.authentication.state.error || engine.error : engine.error"
           :connected="engine.connected"
           :enabled="engine.enabled"
           :busy="busy"
@@ -37,7 +39,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import type { AgentBackend, RemoteConnection } from '@workspace/core/contracts';
 import { agentBackends } from '@workspace/core/contracts/shared';
-import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
+import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
@@ -49,6 +51,7 @@ import ProviderUpdateRow from './ProviderUpdateRow.vue';
 const props = defineProps<{ connection: RemoteConnection }>();
 const emit = defineEmits<{ activity: [active: boolean] }>();
 const engines = ref<ProviderConnection[]>([]);
+const providerSetup = ref<ProviderSetupStatus[]>([]);
 const orderedEngines = computed(() => agentBackends.flatMap(backend => engines.value.filter(engine => engine.backend === backend)));
 const signingIn = ref<AgentBackend | null>(null);
 const error = ref('');
@@ -63,8 +66,11 @@ async function refresh() {
   error.value = '';
   try {
     if (!appApi) throw new Error('Backend connection is unavailable.');
-    const result = await appApi.getProviderConnections(props.connection.id);
-    if (expected === revision) engines.value = result;
+    const [result, setup] = await Promise.all([
+      appApi.getProviderConnections(props.connection.id),
+      appApi.getProviderSetup(props.connection.id).catch(() => null),
+    ]);
+    if (expected === revision) { engines.value = result; if (setup !== null) providerSetup.value = setup; }
   } catch (cause) {
     if (expected === revision) error.value = cause instanceof Error ? cause.message : String(cause);
   } finally { if (expected === revision) busy.value = false; }
@@ -99,6 +105,7 @@ async function setEnabled(backend: AgentBackend, enabled: boolean) {
   } finally { if (expected === revision) busy.value = false; }
 }
 async function connect(engine: ProviderConnection) {
+  if (!engine.connected && engine.backend === 'cursor') { error.value = engine.authentication?.kind === 'cursor' && engine.authentication.state.error || translate('cursor.remoteLogin'); return; }
   if (!engine.connected && engine.backend === 'antigravity') { error.value = translate('antigravity.remoteLogin'); return; }
   if (!engine.connected) { signingIn.value = engine.backend; return; }
   busy.value = true;
@@ -131,7 +138,7 @@ async function finishConnection() {
     error.value = translate('engineConnection.updateFailed');
   }
 }
-watch(() => props.connection.id, () => { engines.value = []; signingIn.value = null; void refresh(); }, { immediate: true });
+watch(() => props.connection.id, () => { engines.value = []; providerSetup.value = []; signingIn.value = null; void refresh(); }, { immediate: true });
 onScopeDispose(() => { ++revision; emit('activity', false); });
 </script>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentConversationId, isPlanReview, isPlanReviewDraft, planReviewFromEvent } from '../plan-review';
+import { agentConversationId, isPlanReview, isPlanReviewDraft, planReviewDelivery, planReviewFromEvent } from '../plan-review';
 import { createInitialSnapshot } from '../snapshot';
 
 describe('plan review identity', () => {
@@ -11,6 +11,8 @@ describe('plan review identity', () => {
     const draft = planReviewFromEvent(agent, event);
     expect(draft.conversationId).toBeNull();
     expect(isPlanReview(draft)).toBe(true);
+    expect(planReviewDelivery(draft)).toStrictEqual({ kind: 'prompt' });
+    expect(planReviewDelivery({ ...draft, requestId: 'native-request' })).toStrictEqual({ kind: 'request', requestId: 'native-request', lifetime: 'process' });
     agent.backendSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
     expect(planReviewFromEvent(agent, event).conversationId).toBe('session');
     agent.backendSession = { kind: 'codex', threadId: 'thread' };

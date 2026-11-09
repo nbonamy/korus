@@ -20,6 +20,7 @@ import { spokenAnnouncementVoices } from './contracts';
 import { isPlanReview } from './plan-review';
 import { isVisualization, isVisualizeSession } from './visualize';
 import { isCodeReviewSession, isCodeReviewPreferences } from './code-review';
+import { isPendingConversationPrompt } from './pending-conversation-prompt';
 import {
   isSubagentActivityKind,
   isSubagentOperationKind,
@@ -117,6 +118,7 @@ function isTeam(value: unknown): boolean {
 
 function isAgent(value: unknown): boolean {
   return isRecord(value) &&
+    optional(value, 'pendingPrompts', candidate => isArrayOf(candidate, isPendingConversationPrompt)) &&
     typeof value.id === 'string' &&
     optional(value, 'teamId', isString) &&
     optional(value, 'remoteConnectionId', isString) &&
@@ -213,7 +215,7 @@ function isAgentWorkspaceIdentity(value: unknown): boolean {
 
 function isBackendSession(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  if (value.kind === 'antigravity') return typeof value.sessionId === 'string';
+  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
   if (value.kind === 'codex') return typeof value.threadId === 'string';
   return value.kind === 'claude' &&
     typeof value.sessionId === 'string' &&
@@ -227,6 +229,9 @@ function isBackendSession(value: unknown): boolean {
 
 function isBackendDefaults(value: unknown): boolean {
   if (!isRecord(value)) return false;
+  if (value.kind === 'cursor') return optional(value, 'model', isString)
+    && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString)
+    && optional(value, 'reasoningEffort', isString) && optional(value, 'serviceTier', isNullableString);
   if (value.kind === 'antigravity') return optional(value, 'model', isString)
     && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString);
   if (value.kind === 'codex') {
@@ -336,7 +341,7 @@ function isAutomationExecution(value: unknown): boolean {
 function isBackendConversationRef(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.backend === 'codex') return typeof value.threadId === 'string';
-  return (value.backend === 'claude' || value.backend === 'antigravity') && isNullableString(value.folder) && typeof value.sessionId === 'string'
+  return (value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor') && isNullableString(value.folder) && typeof value.sessionId === 'string'
     && (value.backend !== 'claude' || optional(value, 'subagentId', isString));
 }
 
@@ -362,7 +367,7 @@ function isBackendCapabilities(value: unknown): boolean {
     optional(value, 'interrupt', isBoolean) &&
     optional(value, 'history', isBoolean) &&
     optional(value, 'conversationFork', isBoolean) &&
-    ['codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl'].every((key) => optional(value, key, isBoolean)) &&
+    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare'].every((key) => optional(value, key, isBoolean)) &&
     optional(value, 'deleteTurn', isBoolean) &&
     optional(value, 'editTurn', isBoolean) &&
     optional(value, 'retryTurn', isBoolean) &&
@@ -560,23 +565,24 @@ function isGeneralSettings(value: unknown): boolean {
     includes(spokenAnnouncementVoices, value.spokenAnnouncementVoice) &&
     typeof value.codexBinaryPath === 'string' &&
     typeof value.claudeCodeEnabled === 'boolean' &&
+    optional(value, 'cursorSteeringFallbackEnabled', isBoolean) &&
     (value.codexEnabled === undefined || typeof value.codexEnabled === 'boolean') &&
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
-    optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isBoolean(enabled))) &&
+    optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor') && isBoolean(enabled))) &&
     optional(value, 'codeReviewInstructions', isString) &&
     optional(value, 'codeReviewDiscussWithOriginalThread', isBoolean) &&
     optional(value, 'missionInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
-      && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
+      && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString) && optional(candidate, 'cursor', isString)) &&
     optional(value, 'excludeLockfilesFromDiffs', isBoolean) &&
     optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
-    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity'))) &&
+    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor'))) &&
     optional(value, 'gitMergeCleanup', candidate => isRecord(candidate) && isBoolean(candidate.deleteWorktree) && isBoolean(candidate.deleteBranch)) &&
     optional(value, 'providerModelDefaults', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, selection]) =>
       isExecutionSelection(selection) && selection.backend === backend)) &&
     optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, home]) =>
-      (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
+      (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor') && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
     typeof value.agentListCompact === 'boolean' &&
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)

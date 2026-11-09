@@ -53,10 +53,10 @@ afterEach(() => {
 });
 
 describe('useSessionHistory', () => {
-  it('does not offer to resume the active Antigravity session or mistake another provider for it', async () => {
+  it.each(['antigravity', 'cursor'] as const)('does not offer to resume the active %s session or mistake another provider for it', async backend => {
     const { agentRef, history } = createHistory();
-    agentRef.value = { ...agent, backend: 'antigravity', backendSession: { kind: 'antigravity', sessionId: 'native-current' } };
-    const current: ConversationSummary = { ...sessions[0]!, id: 'native-current', ref: { backend: 'antigravity', folder: agent.folder, sessionId: 'native-current' } };
+    agentRef.value = { ...agent, backend, backendSession: { kind: backend, sessionId: 'native-current' } };
+    const current: ConversationSummary = { ...sessions[0]!, id: 'native-current', ref: { backend, folder: agent.folder, sessionId: 'native-current' } };
     expect(history.isCurrentSession(current)).toBe(true);
     expect(history.canResume(current)).toBe(false);
     expect(history.isCurrentSession({ ...current, ref: { backend: 'claude', folder: agent.folder, sessionId: 'native-current' } })).toBe(false);

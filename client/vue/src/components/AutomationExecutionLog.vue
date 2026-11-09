@@ -176,7 +176,7 @@ function conversationRefForRow(row: AppDataListRow): BackendConversationRef | nu
   return row.conversationRef.backend === 'codex'
     ? { backend: 'codex', threadId: row.conversationRef.threadId }
     : {
-        backend: 'claude',
+        backend: row.conversationRef.backend,
         folder: row.conversationRef.folder,
         sessionId: row.conversationRef.sessionId,
       };
@@ -260,7 +260,7 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
     return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
   }
 
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
+  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
     typeof candidate.sessionId === 'string' &&
     candidate.sessionId.trim().length > 0 &&
     (candidate.folder === null || typeof candidate.folder === 'string');

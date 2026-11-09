@@ -51,6 +51,10 @@ weight and predictable geometry over decorative cards or explanatory copy.
   routes provider frames to the matching provider reducer and never interprets or
   rebuilds transcripts. It delegates catalogs, authorization, unread policy, history
   paging and repository discovery to focused `*-state.ts` modules.
+  Shared backend prompt dispatch publishes transient pending-message metadata for
+  injected work, including reviews and Missions. Conversation presentation overlays
+  those previews until provider acknowledgment; provider transcripts, persisted
+  history and companion projections retain their existing ownership.
 - **Composables:** reusable stateful behavior (async loading, caching, request
   lifecycle, mutations). `AppShell` delegates multi-step workflows (onboarding,
   repository acquisition, work-item routing, per-agent right workspace, annotation) to
@@ -109,11 +113,15 @@ Rules of thumb:
 
 `CodexConversationPane` from `@codex-app-sdk/vue` is the complete conversation and
 composer surface. Extend it through its controller, slots and typed actions; Korus's
-wrapper only maps app state and product routing. Codex panes receive the SDK-owned
-snapshot and call targeted SDK bridge operations; Claude panes receive the Claude
-host's snapshot. A generic Codex interaction defect is an SDK defect. Never add a
-global message list or provider-neutral reducer to `app-state.ts`; Korus-only
-overlays read the provider frame or an explicit coordination projection.
+wrapper only maps app state and product routing. Registered provider bindings
+select the matching native cache and project a read-only conversation presentation.
+Shared panes and the shell consume that selected presentation, including requests
+and plans, without choosing between native snapshot fields. Native replicas,
+recovery and reducers remain provider-owned; the binding does not rebuild a
+transcript. Sidebar request visibility follows the app-owned review delivery and
+conversation/turn identity, rather than native tool names. A generic Codex
+interaction defect is an SDK defect. Never add a global message list or
+provider-neutral reducer to `app-state.ts`.
 
 Mentions are authored parts created by picker selection, with stable targets and
 frozen labels. Drafts, saved selections, queues, submissions and mobile transports

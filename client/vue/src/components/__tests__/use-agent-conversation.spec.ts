@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { promptContentText } from '@codex-app-sdk/core/surface';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
+import { projectCodexConversation } from '../../provider-conversation-bindings';
+import { codexConversationSnapshot } from '../../../tests/support/codex-conversation-fixtures';
 import { resolveConversationControllerValue } from '../../../tests/support/app-shell-test-harness';
 
 const image: CodexNativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
@@ -48,9 +51,40 @@ describe('useAgentConversation image annotations', () => {
 });
 
 describe('agentConversationState identity', () => {
+  it('shows injected prompts before native acceptance without confusing identical history or blocking hydration', () => {
+    const createdAt = '2026-11-09T10:00:00.000Z';
+    const text = 'Fix the selected findings.\n\n<context>Private review instructions</context>';
+    const pendingPrompt = { id: 'review-injection', text, createdAt };
+    const agent = { ...createInitialSnapshot().agents[0]!, pendingPrompts: [pendingPrompt] };
+    const previous = { id: 'old-injection', role: 'user' as const, status: 'complete' as const, createdAt: '2026-11-08T10:00:00.000Z', parts: [{ type: 'text' as const, text }] };
+    const native = codexConversationSnapshot([previous]);
+    const view = { agent, conversation: projectCodexConversation(native, agent), history: { hydrating: true } } as unknown as AgentConversationView;
+    const state = agentConversationState(() => view);
+    expect(state.identity.messages).toHaveLength(2);
+    expect(state.identity.messages.at(-1)).toMatchObject({ id: pendingPrompt.id, role: 'user', parts: [{ type: 'text', text }] });
+    expect(state.identity.busy).toBe(true);
+    expect(state.history!.loading).toBe(false);
+    native.messages = [previous, { ...previous, id: 'accepted-injection', createdAt }];
+    view.conversation = projectCodexConversation(native, agent);
+    expect(state.identity.messages).toHaveLength(2);
+    expect(state.identity.messages.at(-1)!.id).toBe('accepted-injection');
+    agent.pendingPrompts = [];
+    expect(state.identity.messages).toHaveLength(2);
+    view.conversation = null;
+    agent.pendingPrompts = [pendingPrompt];
+    expect(state.identity.messages).toHaveLength(1);
+    agent.pendingPrompts = [];
+    expect(state.identity.messages).toHaveLength(0);
+    const obsoleteSteeringPreview = { ...pendingPrompt, steering: true };
+    agent.pendingPrompts = [obsoleteSteeringPreview];
+    expect(state.identity.messages).toHaveLength(0);
+  });
+
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
-    const view = { agent: { id: 'restored', backendSession: { kind: 'codex', threadId: 'restored' } },
-      codexSnapshot: { messages: [], historyLoading: false }, history: { hydrating: true } } as unknown as AgentConversationView;
+    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', backendSession: { kind: 'codex' as const, threadId: 'restored' } };
+    const view = { agent,
+      conversation: projectCodexConversation(codexConversationSnapshot([], { activeConversationId: 'restored', historyLoading: false }), agent),
+      history: { hydrating: true } } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);
     expect(state.history!.loading).toBe(true);
     expect(state.identity.disabled).toBe(true);
@@ -59,9 +93,10 @@ describe('agentConversationState identity', () => {
     expect(state.identity.disabled).toBe(false);
   });
   it('hands the pane the same answered-request set until its members change, so message blocks are not re-rendered by every update', () => {
+    const agent = createInitialSnapshot().agents[0]!;
     const answered = ref<ReadonlySet<string>>(new Set(['a']));
     const state = agentConversationState(() => ({
-      codexSnapshot: null, claudeSnapshot: null, antigravitySnapshot: null, answeredClientRequestIds: answered.value,
+      agent, conversation: null, answeredClientRequestIds: answered.value,
     }) as unknown as AgentConversationView);
     const first = state.thread!.answeredClientRequestIds;
 

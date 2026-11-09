@@ -1541,10 +1541,11 @@ describe('AppShell workspace and plans', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('opens native Markdown plans, reopens revised proposals, and keeps approval separate from feedback', async () => {
+  it.each(['codex', 'cursor'] as const)('opens %s Markdown plans, reopens revised proposals, and keeps approval separate from feedback', async backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'planning' };
+    agent.backend = backend;
+    agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'planning' } : { kind: 'cursor', sessionId: 'planning' };
     agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
     const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'accept' });
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, updatePlanReview } });

@@ -35,6 +35,52 @@ beforeEach(() => { vi.spyOn(window, 'open').mockReturnValue(null); });
 afterEach(() => { vi.useRealTimers(); configureAppClient(undefined); document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
 describe('RemoteEngineConnections', () => {
+  it('honors remote setup capabilities and the explicit controller install grant', async () => {
+    const { api } = createClientApiMock();
+    const setup = { backend: 'claude' as const, installed: false, isolated: false, shareSkills: false, homePath: '/remote/claude', locked: false,
+      capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: false, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#remote' } } };
+    api.getProviderConnections.mockResolvedValue([{ backend: 'claude', installed: false, connected: false, checking: false }]);
+    api.getProviderSetup.mockResolvedValue([setup]);
+    api.refreshProvider.mockResolvedValue(setup);
+    configureAppClient({ platform: 'desktop', api });
+    const wrapper = mount(RemoteEngineConnections, { props: { connection } });
+    await flushPromises();
+    expect(api.getProviderSetup).toHaveBeenCalledExactlyOnceWith(connection.id);
+    expect(wrapper.get('a').attributes('href')).toBe(setup.capabilities.installation.instructionsUrl);
+    expect(wrapper.findAll('button').some(button => button.text() === 'Install')).toBe(false);
+    api.getProviderSetup.mockRejectedValueOnce(new Error('Temporary metadata failure'));
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('button').some(button => button.text() === 'Install')).toBe(false);
+    expect(wrapper.get('a').attributes('href')).toBe(setup.capabilities.installation.instructionsUrl);
+    api.getProviderSetup.mockResolvedValue([{ ...setup, capabilities: { ...setup.capabilities, installation: { ...setup.capabilities.installation, allowControllerInstall: true } } }]);
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
+    await flushPromises();
+    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith('claude', connection.id);
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('reports Cursor on its owning host and asks for remote login instead of opening a local browser', async () => {
+    const { api } = createClientApiMock();
+    api.getProviderConnections.mockResolvedValue([{ backend: 'cursor', installed: true, connected: false, checking: false }]);
+    configureAppClient({ platform: 'desktop', api });
+    const wrapper = mount(RemoteEngineConnections, { props: { connection } });
+    await flushPromises();
+    expect(api.getProviderConnections).toHaveBeenCalledWith(connection.id);
+    await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
+    expect(wrapper.get('[role="alert"]').text()).toContain('agent login on the remote host');
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
+    api.getProviderConnections.mockResolvedValue([{ backend: 'cursor', installed: true, connected: false, checking: false,
+      authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/remote/.cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }]);
+    await wrapper.get('.remote-engine-connections > button').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('Update Cursor CLI to 2026.10.08');
+    wrapper.unmount();
+  });
+
   it('keeps Antigravity sign-in native without offering unsupported remote upgrades', async () => {
     const { api } = createClientApiMock();
     api.getProviderConnections.mockResolvedValue([{ backend: 'antigravity', installed: true, connected: false, checking: false }]);

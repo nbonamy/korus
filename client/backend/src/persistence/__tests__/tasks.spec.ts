@@ -20,6 +20,14 @@ const task = (): DelegatedTask => ({
 });
 
 describe('tasks.json persistence', () => {
+  it('round-trips Cursor task acceptance and submission without a migration', async () => {
+    const value = task();
+    value.backend = 'cursor';
+    value.acceptance!.backendSession = { kind: 'cursor', sessionId: 'cursor-child' };
+    value.submission!.backendSession = { kind: 'cursor', sessionId: 'cursor-child' };
+    await new AppStateStore(home).saveTasks([value]);
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
   it('retains a Claude worker native store reference in acceptance and result after restart', async () => {
     const value = task();
     value.backend = 'claude';

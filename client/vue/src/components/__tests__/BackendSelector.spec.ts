@@ -12,7 +12,7 @@ describe('BackendSelector', () => {
       props: { modelValue: 'codex' },
       global: {
         components: { ElSelect, ElOption },
-        provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) },
+        provide: { [backendChoicesKey as symbol]: computed(() => ['cursor', 'codex', 'claude', 'antigravity']) },
       },
     });
     const claudeIcon = new URL('../../shared/icons/claude-code-icon.svg', import.meta.url).href;
@@ -21,6 +21,7 @@ describe('BackendSelector', () => {
     expect(wrapper.get('.el-select__prefix img').attributes('src')).toBe(claudeIcon);
     await wrapper.get('.el-select__wrapper').trigger('click');
     const options = [...document.querySelectorAll('[role="option"]')];
+    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Codex', 'Claude Code', 'Cursor', 'Antigravity']);
     expect(options.find(option => option.textContent?.includes('Codex'))?.querySelector('.backend-icon--monochrome')).not.toBeNull();
     expect(options.find(option => option.textContent?.includes('Claude Code'))?.querySelector('img')?.getAttribute('src')).toBe(claudeIcon);
   });

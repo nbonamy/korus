@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import type { AgentBackendDriver, BackendSendResult } from '@workspace/core/backend-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
-import { BackendDriverRpc, appSurfaceOptions } from '../driver-rpc';
+import { BackendDriverRpc, appSurfaceOptions, createBackendDriver } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { CodexBackendDriver } from '../codex/codex-driver';
@@ -19,6 +20,67 @@ vi.mock('../codex/codex-command', () => ({
 }));
 
 describe('BackendDriverRpc', () => {
+  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('presents direct %s injections while leaving steering presentation to the provider', async backend => {
+    let accept!: () => void;
+    let reject!: (error: Error) => void;
+    const sending = new Promise<void>(resolve => { accept = resolve; });
+    const steering = new Promise<void>((_resolve, fail) => { reject = fail; });
+    const agent = { ...createAgent(), backend };
+    const reference = backend === 'codex' ? { kind: backend, threadId: 'thread' } : backend === 'claude'
+      ? { kind: backend, sessionId: 'session', transport: 'stdio' as const } : { kind: backend, sessionId: 'session' };
+    const driver = createDriver({ backend, getCapabilities: () => ({ ...codexBackendCapabilities, steerPrompt: true }),
+      sendPrompt: vi.fn(async () => { await sending; return { backendSession: reference }; }),
+      steerPrompt: vi.fn(async () => { await steering; return { backendSession: reference }; }),
+    });
+    const rpc = new BackendDriverRpc(new Map([[backend, driver]]));
+    const events: import('@workspace/core/backend-driver').BackendEvent[] = [];
+    rpc.onEvent(event => { events.push(structuredClone(event)); });
+    const sent = rpc.handle('driver/prompt/send', { agent, prompt: 'Injected work' });
+    const options = { selection: { model: 'selected-model' } };
+    const steered = rpc.handle('driver/prompt/steer', { agent, prompt: 'Consider this later', options }).catch(error => error);
+    try {
+      await vi.waitFor(() => expect(driver.steerPrompt).toHaveBeenCalledOnce());
+      expect(events.at(-1)).toMatchObject({ type: 'agent.updated', agentId: agent.id, payload: { pendingPrompts: [
+        expect.objectContaining({ text: 'Injected work' }),
+      ] } });
+      expect(events).toHaveLength(1);
+      expect(driver.interrupt).not.toHaveBeenCalled();
+      expect(driver.steerPrompt).toHaveBeenCalledExactlyOnceWith(agent, 'Consider this later', options);
+      expect(events.every(event => event.type === 'agent.updated')).toBe(true);
+      accept(); await sent;
+      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [] } });
+      reject(new Error('Native steering rejected'));
+      expect(await steered).toBeInstanceOf(Error);
+      expect(events.at(-1)).toMatchObject({ payload: { pendingPrompts: [] } });
+      expect(events).toHaveLength(2);
+      const eventCount = events.length;
+      await rpc.handle('driver/prompt/send', { agent, prompt: 'Internal provider instructions', options: { recordUserMessage: false } });
+      const attachments = [{ type: 'file', path: '/tmp/notes.txt', name: 'notes.txt' }];
+      await rpc.handle('driver/prompt/send', { agent, prompt: '', options: { attachments } });
+      expect(driver.sendPrompt).toHaveBeenLastCalledWith(agent, '', { attachments });
+      expect(events).toHaveLength(eventCount);
+    } finally { accept(); reject(new Error('Cleanup')); await Promise.allSettled([sent, steered]); await rpc.close(); }
+  });
+
+  it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
+    const rpc = new BackendDriverRpc(new Map([['cursor', createBackendDriver('cursor')], ['antigravity', createBackendDriver('antigravity')]]));
+    try {
+      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+      expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
+      expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    } finally { await rpc.close(); }
+  });
+  it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
+    const cursor = createBackendDriver('cursor');
+    const other = createDriver();
+    const agent = { ...createAgent(), backend: 'cursor' as const, backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const rpc = new BackendDriverRpc(new Map([['cursor', cursor], ['codex', other]]));
+    try {
+      await expect(rpc.handle('driver/models/list', { agent })).rejects.toThrow(/identity mismatch/i);
+      expect(other.sendPrompt).not.toHaveBeenCalled();
+      await expect(rpc.handle('driver/prompt/send', { agent, prompt: 'Synthetic prompt' })).rejects.toThrow(/another provider|does not match/i);
+    } finally { await rpc.close(); }
+  });
   it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
     const agent = { ...createAgent(), backendSession: { kind: 'codex' as const, threadId: 'original' } };
     const sendPrompt = vi.fn(); const steerPrompt = vi.fn();
@@ -241,6 +303,7 @@ describe('BackendDriverRpc', () => {
   });
   it('uses the selected Codex home and replaces only the configured provider driver', async () => {
     expect(appSurfaceOptions({ generalSettings: { ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/existing/codex' } } } }).codexHome).toBe('/existing/codex');
+    expect(appSurfaceOptions({ getGeneralSettings: () => ({ ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/getter/codex' } } }) }).codexHome).toBe('/getter/codex');
     const unsubscribe = vi.fn();
     const previous = createDriver({ onEvent: vi.fn(() => unsubscribe) });
     const next = createDriver();

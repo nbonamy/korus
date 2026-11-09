@@ -1,6 +1,9 @@
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
+import { randomUUID } from 'node:crypto';
+import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
+import { CursorHost } from './cursor/cursor-host';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -12,7 +15,7 @@ import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
+import { resolveBackendCoordinationPolicy, unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
@@ -38,6 +41,7 @@ export type BackendDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
   hostedMcpServerUrls?: () => Readonly<Record<string, string>>;
   generalSettings?: AppGeneralSettings;
+  getGeneralSettings?: () => AppGeneralSettings;
   pluginSettings?: () => AppPluginSettings;
   celebrationsEnabled?: () => boolean;
   additionalDeveloperInstructions?: (agent: Agent) => string | undefined;
@@ -53,10 +57,11 @@ type AppSurfaceOptions = Parameters<typeof createCodexSurface>[0] & {
 
 export function createDefaultBackendDrivers(options: BackendDriverRegistryOptions = {}): Map<AgentBackend, AgentBackendDriver> {
   // Retain hosts for saved history and cleanup even when their new-work release gate is off.
-  return new Map((['codex', 'claude', 'antigravity'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
+  return new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
 }
 
 export function createBackendDriver(backend: AgentBackend, options: BackendDriverRegistryOptions = {}): AgentBackendDriver {
+  if (backend === 'cursor') return new CursorHost(options);
   if (backend === 'antigravity') return new AntigravityHost(options);
   if (backend === 'claude') return new ClaudeBackendDriver(undefined, undefined, {
     appMcpServerUrl: options.appMcpServerUrl ?? null,
@@ -71,19 +76,20 @@ export function createBackendDriver(backend: AgentBackend, options: BackendDrive
 }
 
 export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): AppSurfaceOptions {
+  const generalSettings = options.getGeneralSettings?.() ?? options.generalSettings;
   return {
     autoSelectFirstConversation: false,
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
-    codexHome: options.generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
+    codexHome: generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     conversationDefaults: codexConversationDefaults,
     loadingStrategy: 'lazy',
     historyItemsView: 'summary',
     originalHistoryImages: true,
     originalHistoryUsage: true,
     transport: {
-      ...resolveCodexLaunch(options.generalSettings?.codexBinaryPath),
+      ...resolveCodexLaunch(generalSettings?.codexBinaryPath),
       configOverrides: buildAppMcpConfigOverrides(
-        options.pluginSettings?.() ?? options.generalSettings?.plugins,
+        options.pluginSettings?.() ?? generalSettings?.plugins,
       ),
     },
     extensions: [{
@@ -94,9 +100,9 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
         return buildAppThreadConfig(
           agent,
           reviewMcpServerUrl ?? options.appMcpServerUrl ?? null,
-          options.pluginSettings?.() ?? options.generalSettings?.plugins,
+          options.pluginSettings?.() ?? generalSettings?.plugins,
           {
-            celebrationsEnabled: options.celebrationsEnabled?.() ?? options.generalSettings?.celebrationsEnabled,
+            celebrationsEnabled: options.celebrationsEnabled?.() ?? generalSettings?.celebrationsEnabled,
             developerInstructions: options.additionalDeveloperInstructions?.(agent),
           },
           reviewMcpServerUrl ? {} : options.hostedMcpServerUrls?.() ?? {},
@@ -127,6 +133,22 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
+  private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
+  private closing = false;
+
+  private async presentPrompt<T>(agent: Agent, prompt: string, send: () => Promise<T>, options?: SendPromptOptions): Promise<T> {
+    if (options?.recordUserMessage === false || !prompt.trim()) return send();
+    const pending: PendingConversationPrompt = { id: `pending-prompt-${randomUUID()}`, text: prompt, createdAt: new Date().toISOString() };
+    const entries = [...(this.pendingPrompts.get(agent.id) ?? []), pending];
+    this.pendingPrompts.set(agent.id, entries);
+    this.emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, pendingPrompts: entries } });
+    try { return await send(); }
+    finally {
+      const remaining = (this.pendingPrompts.get(agent.id) ?? []).filter(entry => entry.id !== pending.id);
+      if (remaining.length) this.pendingPrompts.set(agent.id, remaining); else this.pendingPrompts.delete(agent.id);
+      if (!this.closing) this.emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, pendingPrompts: remaining } });
+    }
+  }
   private readonly textGenerations = new Map<string, { controller: AbortController; done: Promise<void>; finish: () => void }>();
   private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
   private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
@@ -185,6 +207,7 @@ export class BackendDriverRpc {
   isBusy(backend: AgentBackend): boolean { return (this.inFlight.get(backend) ?? 0) > 0; }
 
   getCapabilities(agent: Agent) { return this.requireDriver(agent.backend).getCapabilities(agent); }
+  getCoordinationPolicy(backend: AgentBackend) { return resolveBackendCoordinationPolicy(this.drivers.get(backend)?.coordinationPolicy); }
 
   async refreshConversationContext(agent: Agent): Promise<void> {
     const driver = this.requireDriver(agent.backend);
@@ -200,7 +223,7 @@ export class BackendDriverRpc {
   async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
-    const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
+    const backend = candidate === 'codex' || candidate === 'claude' || candidate === 'cursor' ? candidate : undefined;
     if (backend) {
       if (method !== backendMethods.driverTextCancel && this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
@@ -216,8 +239,8 @@ export class BackendDriverRpc {
         const backend = requireBackend(record.backend);
         const driver = this.requireDriver(backend);
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
-        const action = record.action;
-        if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && backend === 'antigravity')) throw new Error('Invalid authentication action.');
+        const action = record.action as import('@workspace/core/contracts/provider-setup').ProviderAuthenticationAction['action'];
+        if (!this.getCoordinationPolicy(backend).authentication.actions.includes(action)) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
       case backendMethods.driverBankedResetsGet: {
@@ -359,12 +382,13 @@ export class BackendDriverRpc {
         if (!driver.runCodeReview || !driver.getCapabilities(agent).codeReview) {
           throw unsupportedBackendFeature(agent, 'code review');
         }
-        return driver.runCodeReview(agent, {
+        const input = {
           prompt: requireString(record.prompt, 'prompt'),
           cwd: requireString(record.cwd, 'cwd'),
           reviewMcpServerUrl: requireString(record.reviewMcpServerUrl, 'reviewMcpServerUrl'),
           ...(record.reviewerSession ? { reviewerSession: record.reviewerSession as BackendSession } : {}),
-        });
+        };
+        return this.presentPrompt(agent, input.prompt, () => driver.runCodeReview!(agent, input));
       }
       case backendMethods.driverCodeReviewDispose: {
         const { agent } = requireAgentParams(params);
@@ -387,7 +411,8 @@ export class BackendDriverRpc {
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
-        return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
+        const options = record.options as SendPromptOptions | undefined;
+        return this.presentPrompt(agent, prompt, () => driver.sendPrompt(agent, prompt, options), options);
       }
       case backendMethods.driverConversationReplaceWithSummary: {
         const { agent } = requireAgentParams(params);
@@ -581,13 +606,13 @@ export class BackendDriverRpc {
       case backendMethods.driverPromptSteer: {
         const { agent } = requireAgentParams(params);
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.steerPrompt || driver.getCapabilities(agent).steerPrompt === false) {
+          throw unsupportedBackendFeature(agent, 'prompt steering');
+        }
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.steerPrompt) {
-          throw unsupportedBackendFeature(agent, 'prompt steering');
-        }
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
@@ -720,13 +745,20 @@ export class BackendDriverRpc {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     for (const job of this.textGenerations.values()) job.controller.abort(new Error('Generation cancelled during shutdown.'));
-    for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
-    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
     }
-    await Promise.all([...this.drivers.values()].map((driver) => driver.close()));
+    const results = await Promise.allSettled([...this.drivers.values()].map(driver => Promise.resolve().then(() => driver.close())));
+    for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
+    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
+    this.unsubscribeUsage.clear();
+    this.unsubscribeRequestUsage.clear();
+    this.unsubscribeDriverEvents.clear();
+    this.pendingPrompts.clear();
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   }
 
   tryHandlePromptCommand(agent: Agent, prompt: string): Promise<BackendSendResult> | null {

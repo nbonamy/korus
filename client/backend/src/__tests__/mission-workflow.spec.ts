@@ -20,6 +20,7 @@ it.each([
   { backend: 'codex', parallel: false, mode: 'lead' },
   { backend: 'codex', parallel: false, mode: 'perRepository' },
   { backend: 'antigravity', parallel: false, mode: undefined },
+  { backend: 'cursor', parallel: true, mode: 'multiplePerRepository' },
   { backend: 'codex', parallel: true, mode: 'multiplePerRepository' },
 ] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel, mode }) => {
   const folder = await mkdtemp(join(tmpdir(), 'app-mission-workflow-'));

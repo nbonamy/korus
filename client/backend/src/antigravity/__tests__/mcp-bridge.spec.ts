@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { AcpConnection } from '../acp-connection';
+import { AcpConnection } from '../../acp/acp-connection';
 import { sessionMcpServer } from '../mcp-bridge';
 import { AppMcpService } from '../../mcp/service';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -14,7 +14,7 @@ describe('Antigravity session MCP bridge', () => {
     const endpoint = await service.start();
     const connections = snapshot.agents.map(agent => {
       const config = sessionMcpServer(`${endpoint}?agentId=${agent.id}`);
-      const connection = new AcpConnection({ ...config, cwd: process.cwd(), env: { ...process.env, ...Object.fromEntries(config.env.map(entry => [entry.name, entry.value])) },
+      const connection = new AcpConnection({ ...config, displayName: 'Antigravity', cwd: process.cwd(), env: { ...process.env, ...Object.fromEntries(config.env.map(entry => [entry.name, entry.value])) },
         onRequest: async () => { throw new Error('unexpected'); }, onNotification: () => {}, onClose: () => {},
       });
       connection.start(); return connection;
@@ -50,7 +50,7 @@ describe('Antigravity session MCP bridge', () => {
       const config = sessionMcpServer(endpoint);
       expect(config.name).toBe('korus');
       expect(config.args).not.toContain(endpoint);
-      const connection = new AcpConnection({ ...config, cwd: process.cwd(), env: { ...process.env, ...Object.fromEntries(config.env.map(entry => [entry.name, entry.value])) },
+      const connection = new AcpConnection({ ...config, displayName: 'Antigravity', cwd: process.cwd(), env: { ...process.env, ...Object.fromEntries(config.env.map(entry => [entry.name, entry.value])) },
         onRequest: async () => { throw new Error('unexpected'); }, onNotification: () => {}, onClose: () => {},
       });
       connection.start(); return connection;

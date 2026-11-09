@@ -19,7 +19,7 @@ import { appDeveloperInstructions } from '../mcp/agent-prompts';
 import { AcpRuntime, NativeLoginRequired } from './acp-runtime';
 import { AcpSession } from './session';
 import { antigravityHome, resolveAcpRuntime } from './runtime';
-import { record } from './acp-connection';
+import { record } from '../acp/acp-connection';
 import { sessionMcpServer } from './mcp-bridge';
 import { listAcpSessions } from './catalog';
 import { acpAttachments } from './attachments';
@@ -28,6 +28,7 @@ import { parseQuotaMessage } from './quota';
 
 export class AntigravityHost implements AgentBackendDriver {
   readonly backend = 'antigravity' as const;
+  readonly coordinationPolicy = { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const } };
   private readonly sessions = new Map<string, AcpSession>();
   private readonly opening = new Map<string, Promise<AcpSession>>();
   private readonly generations = new Map<string, number>();

@@ -6,8 +6,8 @@ import { createTestSnapshot, readyRemoteConnection } from './server-test-fixture
 describe('provider update ownership', () => {
   it('validates consent on the backend and refuses new admissions during an upgrade', async () => {
     let finish!: () => void;
-    const installation = { executable: '/bin/claude', version: '1.0.0', latestVersion: '1.1.0', method: 'native' as const, identity: 'claude', command: { file: '/bin/claude', args: ['update'] } };
-    const upgrade = vi.fn(() => new Promise<void>(resolve => { finish = () => { installation.version = '1.1.0'; resolve(); }; }));
+    const installation = { status: 'available' as 'available' | 'current', executable: '/bin/claude', version: '1.0.0', latestVersion: '1.1.0', method: 'native' as const, identity: 'claude', command: { file: '/bin/claude', args: ['update'] } };
+    const upgrade = vi.fn(() => new Promise<void>(resolve => { finish = () => { installation.version = '1.1.0'; installation.status = 'current'; resolve(); }; }));
     const updates = new ProviderUpdates({ inspect: async () => installation, upgrade, busy: () => false, withStoppedProvider: async (_backend, work) => work() });
     const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), providerUpdates: updates });
     try {

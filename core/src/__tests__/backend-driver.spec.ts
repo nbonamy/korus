@@ -10,6 +10,7 @@ import type {
 import { createEmptySnapshot } from '../snapshot';
 import {
   backendDisplayName,
+  resolveBackendCoordinationPolicy,
   backendRuntimeFromSnapshot,
   codexPromptOptions,
   unsupportedBackendFeature,
@@ -17,9 +18,14 @@ import {
 } from '../backend-driver';
 
 describe('backend driver helpers', () => {
+  it('resolves provider-independent legacy coordination defaults and explicit auth overrides', () => {
+    expect(resolveBackendCoordinationPolicy()).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    expect(resolveBackendCoordinationPolicy({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } })).toStrictEqual({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+  });
   it('uses product-facing backend names in unsupported feature errors', () => {
     expect(backendDisplayName('codex')).toBe('Codex');
     expect(backendDisplayName('claude')).toBe('Claude Code');
+    expect(backendDisplayName('cursor')).toBe('Cursor');
     expect(unsupportedBackendFeature(agent('claude'), 'rollback').message)
       .toBe('Claude Code does not support rollback.');
   });

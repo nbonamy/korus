@@ -9,6 +9,7 @@ import type {
 } from '../contracts';
 import type { CodexConversationEvent, CodexConversationSnapshot } from '@codex-app-sdk/core/surface';
 import type { MissionImplementationStartProgress } from '../mission-execution';
+import type { CursorConversationEvent, CursorConversationSnapshot } from './cursor-conversation';
 import type { AntigravityConversationEvent, AntigravityConversationSnapshot } from './antigravity-conversation';
 
 type EventEnvelope = {
@@ -64,6 +65,8 @@ type AgentPromptRetryScheduledPayload = {
   retryAt?: string;
 };
 type AppEvent =
+  | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; backend: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
+  | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; backend: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
   | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
   | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; backend: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
   | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; backend: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
@@ -154,7 +157,7 @@ type AppEvent =
       type: 'plan.readyForReview';
       agentId: string;
       turnId: string;
-      payload: { markdown: string; itemId?: string };
+      payload: { markdown: string; itemId?: string; requestId?: string };
     }>
   | EventWith<{
       type: 'plan.reviewResolved';
@@ -319,7 +322,7 @@ type AppEvent =
 
 export type ClientTransportEvent = Extract<AppEvent, { type: "client.connectionChanged" }>;
 export type ClientEffectEvent = Extract<AppEvent, { type: "client.markdownDisplayRequested" | "client.celebrationRequested" | "browser.annotationCreated" }>;
-export type ProviderConversationFrame = Extract<AppEvent, { type: "codex.conversationSnapshotChanged" | "codex.conversationEventReceived" | "claude.conversationSnapshotChanged" | "claude.conversationEventReceived" | "antigravity.conversationSnapshotChanged" | "antigravity.conversationEventReceived" }>;
+export type ProviderConversationFrame = Extract<AppEvent, { type: "cursor.conversationSnapshotChanged" | "cursor.conversationEventReceived" | "codex.conversationSnapshotChanged" | "codex.conversationEventReceived" | "claude.conversationSnapshotChanged" | "claude.conversationEventReceived" | "antigravity.conversationSnapshotChanged" | "antigravity.conversationEventReceived" }>;
 export type BackendDomainEvent = Exclude<AppEvent, ClientTransportEvent | ClientEffectEvent | ProviderConversationFrame>;
 export type BackendPublishedEvent = BackendDomainEvent | ClientEffectEvent | ProviderConversationFrame;
 export type MainToRendererEvent = BackendPublishedEvent | ClientTransportEvent;

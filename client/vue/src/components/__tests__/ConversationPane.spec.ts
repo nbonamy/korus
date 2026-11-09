@@ -470,7 +470,12 @@ describe('ConversationPane', () => {
     const update = vi.fn(async (_id: string, backend: Agent['backend']) => {
       selectedAgent.value = { ...selectedAgent.value, backend, backendDefaults: { kind: backend } };
     });
-    const controller = controllerFor([]);
+    const updateSettings = vi.fn(() => { choices.value = ['codex', 'claude']; });
+    const controller = createCodexConversationPaneController({
+      state: { identity: { conversationKey: agent.id, messages: [] },
+        catalogs: { models: [{ id: 'cursor-model', model: 'cursor-model', displayName: 'Cursor model', isDefault: true }] } },
+      actions: { updateSettings },
+    });
     const wrapper = mount(defineComponent({
       setup() {
         provide(backendChoicesKey, computed(() => choices.value));
@@ -479,17 +484,30 @@ describe('ConversationPane', () => {
       },
     }));
     expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-    choices.value = ['codex', 'claude'];
+    choices.value = ['codex', 'claude', 'cursor'];
     await nextTick();
     expect(wrapper.find('.chat-composer-shelf').exists()).toBe(true);
     const editor = wrapper.get('[role="textbox"][contenteditable]');
     editor.element.textContent = 'Keep this idea';
     await editor.trigger('input');
+    await wrapper.get('.backend-selector select').setValue('cursor');
+    await flushPromises();
+    expect(update).toHaveBeenCalledExactlyOnceWith(agent.id, 'cursor');
+    expect(editor.element.textContent).toBe('Keep this idea');
+    expect(wrapper.get<HTMLSelectElement>('.backend-selector select').element.value).toBe('cursor');
+    await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
+    await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().startsWith('Cursor model'))!.trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ modelId: 'cursor-model' });
+    // A connection refresh after model selection must not switch this chat.
+    expect(selectedAgent.value.backend).toBe('cursor');
+    expect(update).toHaveBeenCalledTimes(1);
+    choices.value = ['codex', 'claude', 'cursor'];
+    await nextTick();
+    expect(wrapper.get<HTMLSelectElement>('.backend-selector select').element.value).toBe('cursor');
     await wrapper.get('.backend-selector select').setValue('claude');
     await flushPromises();
-    expect(update).toHaveBeenCalledWith(agent.id, 'claude');
-    expect(editor.element.textContent).toBe('Keep this idea');
-    expect(wrapper.get<HTMLSelectElement>('.backend-selector select').element.value).toBe('claude');
+    expect(update).toHaveBeenLastCalledWith(agent.id, 'claude');
     selectedAgent.value = { ...selectedAgent.value, hasSubmittedPrompt: true };
     await nextTick();
     expect(wrapper.find('.backend-selector').exists()).toBe(false);

@@ -8,7 +8,7 @@ export type AgentRequest = RequestIdentity & (
 );
 export type AgentRequestOutcome =
   | { kind: 'answered'; answers: NonNullable<NonNullable<ClientRequestResponse['payload']>['answers']> }
-  | { kind: 'decision'; decision: NonNullable<NonNullable<ClientRequestResponse['payload']>['decision']> }
+  | { kind: 'decision'; decision: NonNullable<NonNullable<ClientRequestResponse['payload']>['decision']>; feedback?: string }
   | { kind: 'cancelled'; reason?: string }
   | { kind: 'completed'; reason?: string };
 export type AgentRequestResponse = { id: string; agentId?: string; outcome: Exclude<AgentRequestOutcome, { kind: 'completed' }> };
@@ -20,7 +20,7 @@ export function isAgentRequestResponse(value: unknown): value is AgentRequestRes
   if (typeof response.id !== 'string' || !response.id.trim() || !response.outcome || typeof response.outcome !== 'object') return false;
   const outcome = response.outcome as Record<string, unknown>;
   if (outcome.kind === 'cancelled') return outcome.reason === undefined || typeof outcome.reason === 'string';
-  if (outcome.kind === 'decision') return ['allow', 'allow_conversation', 'always_allow', 'deny'].includes(outcome.decision as string);
+  if (outcome.kind === 'decision') return ['allow', 'allow_conversation', 'always_allow', 'deny'].includes(outcome.decision as string) && (outcome.feedback === undefined || (typeof outcome.feedback === 'string' && outcome.feedback.length <= 100_000));
   return outcome.kind === 'answered' && Boolean(outcome.answers && typeof outcome.answers === 'object' && !Array.isArray(outcome.answers)
     && Object.values(outcome.answers).every((answer) => answer && Array.isArray(answer.answers) && answer.answers.every((text: unknown) => typeof text === 'string')));
 }

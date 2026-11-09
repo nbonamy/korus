@@ -18,6 +18,8 @@ export type PlanReview = {
   conversationId: string | null;
   turnId: string;
   itemId?: string;
+  /** A live process-local request; approval authority does not survive restart. */
+  requestId?: string;
   markdown: string;
   status: 'pending' | PlanReviewResolution;
   draft?: PlanReviewDraft;
@@ -39,6 +41,12 @@ export type PlanReviewResponse = {
   feedback?: string;
 };
 
+export type PlanReviewDelivery = { kind: 'prompt' } | { kind: 'request'; requestId: string; lifetime: 'process' };
+
+export function planReviewDelivery(review: Pick<PlanReview, 'requestId'>): PlanReviewDelivery {
+  return review.requestId === undefined ? { kind: 'prompt' } : { kind: 'request', requestId: review.requestId, lifetime: 'process' };
+}
+
 export function agentConversationId(agent: Agent): string | null {
   const session = agent.backendSession;
   return session?.kind === 'codex' ? session.threadId : (session?.sessionId ?? null);
@@ -54,6 +62,7 @@ export function planReviewFromEvent(
     conversationId,
     turnId: event.turnId,
     ...(event.payload.itemId ? { itemId: event.payload.itemId } : {}),
+    ...(event.payload.requestId ? { requestId: event.payload.requestId } : {}),
     markdown: event.payload.markdown,
     status: 'pending',
     ...(agent.planReview?.conversationId === conversationId
@@ -84,6 +93,7 @@ export function isPlanReview(value: unknown): value is PlanReview {
     typeof review.turnId === 'string' &&
     typeof review.markdown === 'string' &&
     (review.itemId === undefined || typeof review.itemId === 'string') &&
+    (review.requestId === undefined || typeof review.requestId === 'string') &&
     ['pending', 'accept', 'revise', 'cancel'].includes(review.status as string) &&
     (review.draft === undefined || isPlanReviewDraft(review.draft)) &&
     (review.draftVersion === undefined ||

@@ -107,6 +107,7 @@
           v-if="showBackendSelector && agent && backendSwitch"
           class="conversation-pane__backend-selector"
           :model-value="agent.backend"
+          preserve-selection
           :remote-connection-id="agent.remoteConnectionId"
           size="small"
           :disabled="disabled || backendSwitch.busy.value"

@@ -1,6 +1,7 @@
 import {
   isPlanReview,
   isPlanReviewDraft,
+  planReviewDelivery,
   type PlanReview,
   type PlanReviewDraft,
 } from '@workspace/core/plan-review';
@@ -16,6 +17,13 @@ export function restorePlanReview(
   conversationId: string | null,
 ): PlanReview | undefined {
   const native = isPlanReview(agent.planReview) ? structuredClone(agent.planReview) : undefined;
+  // Native callbacks belong to the process that created them; saved content and
+  // feedback survive restart, but the lost request cannot authorize execution.
+  if (native?.status === 'pending' && planReviewDelivery(native).kind === 'request') {
+    native.status = 'cancel';
+    native.canApprove = false;
+    delete native.deliveryPending;
+  }
   const old = agent.interactivePlan;
   if (
     !object(old) ||

@@ -72,11 +72,11 @@ function expectRequiredString(
 
 function expectRequiredBackend(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity',
+  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectLiteral(
     event.backend,
-    backend ? [backend] : ['codex', 'claude', 'antigravity'],
+    backend ? [backend] : ['codex', 'claude', 'antigravity', 'cursor'],
     '$.backend',
   );
 }
@@ -87,7 +87,7 @@ function expectAgent(event: Record<string, unknown>): void {
 
 function expectAgentBackend(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity',
+  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectAgent(event);
   expectRequiredBackend(event, backend);
@@ -104,6 +104,15 @@ function expectTurnContext(
 
 function expectEventContext(event: EventRecord): void {
   switch (event.type) {
+    case 'cursor.conversationSnapshotChanged':
+    case 'cursor.conversationEventReceived': {
+      expectAgentBackend(event, 'cursor');
+      expectRequiredString(event, 'backendSessionId');
+      const payload = event.payload as Record<string, unknown>;
+      const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
+      if (frame.agentId !== event.agentId || frame.sessionId !== event.backendSessionId) failEventValidation('$.payload', 'expected the outer Cursor identity');
+      return;
+    }
     case 'antigravity.conversationSnapshotChanged':
     case 'antigravity.conversationEventReceived': {
       expectAgentBackend(event, 'antigravity');
@@ -218,7 +227,7 @@ export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   const event = value as EventRecord;
   expectOptional(event, 'agentId', '$', expectString);
   expectOptional(event, 'backend', '$', (candidate, path) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity'], path),
+    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], path),
   );
   expectOptional(event, 'backendSessionId', '$', expectString);
   expectOptional(event, 'conversationId', '$', expectString);

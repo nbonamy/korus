@@ -9,6 +9,7 @@ const preferences: Record<AgentBackend, Record<UtilityTaskComplexity, readonly R
     complex: [/\bastra\b/i, /^gpt-6\.1-sol\b/i, /\bsol\b/i],
   },
   claude: { simple: [/^haiku$/i, /\bhaiku\b/i], normal: [/^sonnet$/i, /\bsonnet\b/i], complex: [/^opus$/i, /\bopus\b/i] },
+  cursor: { simple: [], normal: [], complex: [] },
   antigravity: {
     simple: [/flash[-\s]?lite/i],
     normal: [/gemini.*\bflash\b(?![-\s]*lite)/i],

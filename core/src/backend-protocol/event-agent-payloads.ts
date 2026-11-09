@@ -1,4 +1,5 @@
 import { isProviderSafetyReview } from '../provider-safety-block';
+import { isPendingConversationPrompt } from '../pending-conversation-prompt';
 import { isRateLimitPause } from '../auto-resume';
 import { isWorktreeInitializationState } from '../worktree-initialization';
 import { isAgentReadState } from '../agent-read-state';
@@ -70,13 +71,13 @@ function expectWorkspace(value: unknown, path: string): void {
 
 function expectBackendSession(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity'], `${path}.kind`);
+  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   if (value.kind === 'codex') {
     expectString(value.threadId, `${path}.threadId`);
     return;
   }
   expectString(value.sessionId, `${path}.sessionId`);
-  if (value.kind === 'antigravity') return;
+  if (value.kind === 'antigravity' || value.kind === 'cursor') return;
   expectLiteral(value.transport, ['stdio', 'websocket'], `${path}.transport`);
   ['transcriptSessionId', 'transcriptFolder', 'serverUrl', 'model', 'reasoningEffort'].forEach(
     (key) => expectOptional(value, key, path, expectString),
@@ -85,7 +86,7 @@ function expectBackendSession(value: unknown, path: string): void {
 
 function expectBackendDefaults(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity'], `${path}.kind`);
+  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   ['model', 'reasoningEffort'].forEach((key) =>
     expectOptional(value, key, path, expectString),
   );
@@ -220,6 +221,8 @@ function expectPullRequest(value: unknown, path: string): void {
 function expectAgentUpdate(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
+  expectOptional(value, 'pendingPrompts', path, (candidate, at) => expectArray(candidate, at,
+    (prompt, promptPath) => expectKnownShape(prompt, promptPath, isPendingConversationPrompt, 'pending conversation prompt')));
   expectOptional(value, 'rateLimitPause', path, (candidate, at) => { if (candidate !== null && !isRateLimitPause(candidate)) throw new Error(`${at}: invalid rate-limit pause`); });
   expectOptional(value, 'delegationContext', path, (candidate, candidatePath) => {
     if (!isDelegationContext(candidate)) throw new Error(`${candidatePath}: invalid delegation context`);
@@ -247,7 +250,7 @@ function expectAgentUpdate(value: unknown, path: string): void {
     if (!isWorktreeInitializationState(candidate)) throw new Error(`${candidatePath}: invalid worktree initialization state`);
   });
   expectOptional(value, 'backend', path, (candidate, candidatePath) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity'], candidatePath),
+    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], candidatePath),
   );
   expectOptional(value, 'backendSession', path, expectBackendSession);
   expectOptional(value, 'backendDefaults', path, expectBackendDefaults);

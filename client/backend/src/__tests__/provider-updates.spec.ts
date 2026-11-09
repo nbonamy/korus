@@ -3,15 +3,35 @@ import { ProviderUpdates } from '../provider-updates';
 
 function setup() {
   let busy = false;
-  const installation = { executable: '/bin/codex', version: '1.0.0', latestVersion: '1.1.0', method: 'npm' as const, channel: 'latest', identity: 'npm:/bin/codex:1.0.0', command: { file: '/bin/npm', args: ['install', '-g', '@openai/codex@1.1.0'] } };
+  const installation = { status: 'available' as 'available' | 'current' | 'manual', executable: '/bin/codex', version: '1.0.0', latestVersion: '1.1.0', method: 'npm' as const, channel: 'latest', identity: 'npm:/bin/codex:1.0.0', command: { file: '/bin/npm', args: ['install', '-g', '@openai/codex@1.1.0'] } };
   const inspect = vi.fn(async () => installation);
-  const upgrade = vi.fn(async () => { installation.version = '1.1.0'; });
+  const upgrade = vi.fn(async () => { installation.version = '1.1.0'; installation.status = 'current'; });
   const restart = vi.fn(async (_backend, work: () => Promise<void>) => { await work(); });
   const updates = new ProviderUpdates({ inspect, upgrade, withStoppedProvider: restart, busy: () => busy });
   return { updates, inspect, upgrade, restart, installation, setBusy: (value: boolean) => { busy = value; } };
 }
 
 describe('provider upgrades', () => {
+  it('honors normalized native inspections while waiting for idle and requiring consent', async () => {
+    let busy = true;
+    const installation = { status: 'available' as 'available' | 'current', executable: '/agent', version: 'native-build-old', latestVersion: 'native-build-new', method: 'native' as const, identity: 'cursor-build', command: { file: '/agent', args: ['update'] } };
+    const inspect = vi.fn(async () => installation);
+    const upgrade = vi.fn(async () => { installation.version = installation.latestVersion; installation.status = 'current'; });
+    const stopped = vi.fn(async (_backend, work: () => Promise<void>) => { await work(); });
+    const updates = new ProviderUpdates({ inspect, upgrade, busy: () => busy, withStoppedProvider: stopped });
+    const status = await updates.get('cursor', true);
+    expect(status).toMatchObject({ status: 'available', canUpgrade: true, installedVersion: installation.version });
+    expect(upgrade).not.toHaveBeenCalled();
+    expect(() => updates.request('cursor', { action: 'upgrade', confirmed: false, token: status.token })).toThrow();
+    updates.request('cursor', { action: 'upgrade', confirmed: true, token: status.token });
+    expect(upgrade).not.toHaveBeenCalled();
+    busy = false;
+    await updates.tick();
+    expect(upgrade).toHaveBeenCalledTimes(1);
+    expect(stopped).toHaveBeenCalledExactlyOnceWith('cursor', expect.any(Function));
+    expect(await updates.get('cursor')).toMatchObject({ status: 'current', installedVersion: installation.latestVersion });
+  });
+
   it('checks without installing and upgrades only with explicit fresh consent', async () => {
     const f = setup();
     const checked = await f.updates.get('codex', true);
@@ -55,13 +75,15 @@ describe('provider upgrades', () => {
     expect(f.updates.isUpdating('codex')).toBe(false);
   });
 
-  it('refuses to update a different installation discovered after consent', async () => {
+  it.each(['identity', 'availability'] as const)('refuses an installation whose %s changes after consent', async changed => {
     const f = setup();
     const checked = await f.updates.get('codex');
-    f.installation.identity = 'another-installation';
+    if (changed === 'identity') f.installation.identity = 'another-installation';
+    else f.installation.status = 'manual';
     f.updates.request('codex', { action: 'upgrade', confirmed: true, token: checked.token });
     await f.updates.settle();
     expect(f.upgrade).not.toHaveBeenCalled();
+    expect(f.restart).not.toHaveBeenCalled();
     expect(await f.updates.get('codex')).toMatchObject({ status: 'error', error: 'installationChanged' });
   });
 
@@ -83,9 +105,9 @@ describe('provider upgrades', () => {
     expect(() => f.updates.request('codex', { action: 'upgrade', confirmed: true, token: manual.token })).toThrow();
   });
 
-  it('does not claim a prerelease is current or replace it with a stable release', async () => {
+  it('does not override an adapter manual decision based on version syntax', async () => {
     const f = setup();
-    f.installation.version = '1.1.0-alpha.1';
+    f.installation.status = 'manual';
     expect(await f.updates.get('codex')).toMatchObject({ status: 'manual', canUpgrade: false });
     expect(f.upgrade).not.toHaveBeenCalled();
   });

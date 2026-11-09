@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { lstat, mkdir, readlink, symlink, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProviderHomeSettings } from '@workspace/core/contracts/provider-setup';
@@ -9,6 +10,7 @@ export function createClaudeLifecycle(): ProviderLifecycle {
   const configured = process.env.CLAUDE_CONFIG_DIR;
   const paths = providerHomePaths('claude', configured);
   return {
+    capabilities: resolveProviderSetupCapabilities('claude'),
     skillDirectories: home => [path.join(home.homePath, 'skills')],
     home(snapshot, choice) {
       if (choice) return { ...choice, homePath: choice.isolated ? paths.isolated : paths.existing };

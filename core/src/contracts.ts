@@ -382,6 +382,8 @@ export type OpenInApplicationCatalog = {
 };
 
 export type Agent = {
+  /** Transient desktop presentation; cleared when dispatch settles or the daemon restarts. */
+  pendingPrompts?: import('./pending-conversation-prompt').PendingConversationPrompt[];
   worktreeInitialization?: import('./worktree-initialization').WorktreeInitializationState;
   handoff?: import('./agent-handoff').AgentHandoff;
   id: string;
@@ -534,6 +536,8 @@ export type AppGeneralSettings = {
   spokenAnnouncementVoice: SpokenAnnouncementVoice;
   codexBinaryPath: string;
   claudeCodeEnabled: boolean;
+  /** Explicit opt-in to interrupt-and-resend fallback; absent means disabled. */
+  cursorSteeringFallbackEnabled?: boolean;
   /** Undefined preserves Codex for existing installations. */
   codexEnabled?: boolean;
   providerOnboardingComplete?: boolean;
@@ -550,7 +554,7 @@ export type AppGeneralSettings = {
   missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
-  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
+  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string; cursor?: string };
   agentListCompact: boolean;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];

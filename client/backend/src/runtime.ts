@@ -251,6 +251,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     generalSettings: snapshot.general,
     pluginSettings,
     celebrationsEnabled: () => snapshot.general.celebrationsEnabled,
+    getGeneralSettings: () => snapshot.general,
     additionalDeveloperInstructions: (agent) => [
       tasks.instructions(agent.id),
       server?.missionDeveloperInstructions(agent.id),
@@ -268,6 +269,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     command: backend => backend === 'codex'
       ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
       : resolveClaudeLaunch().command,
+    cursorHome: () => snapshot.general.providerHomes?.cursor,
     claudeHome: () => snapshot.general.providerHomes?.claude?.homePath ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude'),
   });
   const providerUpdates: ProviderUpdates = new ProviderUpdates({

@@ -43,7 +43,7 @@ export function isTurnDelegationOverrides(value: unknown): value is TurnDelegati
   if (!isDelegationOverrides(value)) return false;
   const execution = (value as TurnDelegationOverrides).execution;
   return execution === undefined || Boolean(execution && typeof execution === 'object'
-    && ['codex', 'claude', 'antigravity'].includes(execution.backend)
+    && ['codex', 'claude', 'antigravity', 'cursor'].includes(execution.backend)
     && typeof execution.conversationId === 'string' && typeof execution.turnId === 'string');
 }
 

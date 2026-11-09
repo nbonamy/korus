@@ -4,6 +4,28 @@ import 'element-plus/theme-chalk/el-icon.css';
 import ProviderInstallActions from '../ProviderInstallActions.vue';
 
 describe('ProviderInstallActions', () => {
+  it.each([{ backend: 'codex', name: 'Codex' }, { backend: 'claude', name: 'Claude Code' }] as const)('allows a controller installer for explicit $backend setup metadata', async ({ backend, name }) => {
+    const wrapper = mount(ProviderInstallActions, { props: { backend, automated: true,
+      capabilities: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true } },
+    } });
+    expect(wrapper.find('a').exists()).toBe(false);
+    await wrapper.get(`button[aria-label="Install ${name}"]`).trigger('click');
+    expect(wrapper.emitted('install')).toEqual([[]]);
+    wrapper.unmount();
+  });
+  it.each([
+    { backend: 'cursor' as const },
+    { backend: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } },
+  ])('uses external installation policy for $backend despite a legacy automated caller', async ({ backend, capabilities }) => {
+    const wrapper = mount(ProviderInstallActions, { props: { backend, capabilities, automated: true } });
+    expect(wrapper.text()).toContain('curl https://cursor.com/install -fsS | bash');
+    expect(wrapper.get('a').attributes('href')).toBe('https://cursor.com/docs/cli/installation');
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
+    expect(wrapper.emitted('refresh')).toStrictEqual([[]]);
+    expect(wrapper.emitted('install')).toBeUndefined();
+    wrapper.unmount();
+  });
+
   it('installs Antigravity in the app and shows only a spinner while preventing duplicate actions', async () => {
     const wrapper = mount(ProviderInstallActions, { props: { backend: 'antigravity' } });
     expect(wrapper.find('a').exists()).toBe(false);

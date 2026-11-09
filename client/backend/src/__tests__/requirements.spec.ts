@@ -31,20 +31,23 @@ describe('host requirements', () => {
     '{"models":{"codex":[""]}}',
     '{"models":{"codex":["   "]}}',
     '{"models":{"typo":[]}}',
+    '{"models":{"cursor":"composer"}}',
+    '{"models":{"cursor":[null]}}',
+    '{"models":{"cursor":[" "]}}',
     '{"model":{"codex":[]}}',
   ])('rejects invalid requirements instead of silently lifting restrictions: %s', async content => {
     await expect(loadRequirements(await homeWith(content))).rejects.toThrow('requirements.json');
   });
 
   it('filters catalogs and catalog updates per provider without changing the provider catalog', async () => {
-    const requirements = await loadRequirements(await homeWith(JSON.stringify({ models: { codex: ['gpt-6-luna'], claude: [] } })));
+    const requirements = await loadRequirements(await homeWith(JSON.stringify({ models: { codex: ['gpt-6-luna'], claude: [], cursor: ['luna'] } })));
     const models: BackendModelOption[] = [
       { id: 'sol', model: 'gpt-6-sol', displayName: 'Sol', isDefault: true },
       { id: 'luna', model: 'gpt-6-luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ];
     const emitters = new Map<string, (event: BackendEvent) => void>();
     const unexpectedExecution = async (): Promise<never> => { throw new Error('Catalog reads must not execute a turn.'); };
-    const drivers = new Map((['codex', 'claude', 'antigravity'] as const).map(backend => [backend, {
+    const drivers = new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(backend => [backend, {
       backend,
       getRuntimeStatus: () => ({ backend, status: 'running' }),
       getCapabilities: () => defaultBackendCapabilities(backend),
@@ -58,7 +61,7 @@ describe('host requirements', () => {
     rpc.onEvent(event => events.push(event));
     const filtered = [{ ...models[1]!, isDefault: true }];
     try {
-      for (const [backend, expected] of [['codex', filtered], ['claude', []], ['antigravity', models]] as const) {
+      for (const [backend, expected] of [['codex', filtered], ['claude', []], ['antigravity', models], ['cursor', filtered]] as const) {
         await expect(rpc.handle(backendMethods.driverModelsList, { agent: { id: 'agent', backend } })).resolves.toStrictEqual(expected);
         emitters.get(backend)!({ type: 'models.changed', backend, payload: { models } });
         expect(events.at(-1)).toStrictEqual({ type: 'models.changed', backend, payload: { models: expected } });

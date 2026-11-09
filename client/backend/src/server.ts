@@ -18,6 +18,7 @@ import { AutoResumeService } from './agents/auto-resume-service';
 import { previewRepositoryDeletion, removeRepositoryFolders } from './repository-deletion';
 import { BrowserExtensionPackages } from './browser-extension-packages';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -63,7 +64,7 @@ import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guard
 import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, BackendModelOption, BackendConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { backendDisplayName, resolveBackendCoordinationPolicy } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendApprovalPresetResult, BackendConversationForkResult, BackendConversationResumeResult, BackendEvent, BackendGoalResult, BackendPermissionModeResult, BackendSendResult, BackendConversationReplacementResult } from '@workspace/core/backend-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
@@ -100,7 +101,7 @@ import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
 import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { agentConversationId, planReviewFromEvent } from '@workspace/core/plan-review';
+import { agentConversationId, planReviewFromEvent, planReviewFeedback, planReviewDelivery } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
 import { AgentConversationService } from './agents/agent-conversation-service';
@@ -665,6 +666,7 @@ export class AppBackendServer {
     this.version = options.version;
     this.pid = options.pid ?? process.pid;
     this.snapshot = options.snapshot ?? createEmptySnapshot();
+    for (const agent of this.snapshot.agents) delete agent.pendingPrompts;
     for (const agent of this.snapshot.agents) this.documentWorkspaceAgents.add(agent.id);
     if (options.providerSetup) {
       this.providerConnections = new ProviderConnections({
@@ -833,6 +835,22 @@ export class AppBackendServer {
       },
     });
     this.planReviews = new AgentPlanReviewService({
+      nativeDecision: (agent, review) => {
+        const delivery = planReviewDelivery(review);
+        if (delivery.kind !== 'request') return undefined;
+        return async response => {
+          const outcome: AgentRequestResponse['outcome'] = response.resolution === 'cancel'
+            ? { kind: 'cancelled' }
+            : {
+                kind: 'decision', decision: response.resolution === 'accept' ? 'allow' : 'deny',
+                ...(response.resolution === 'revise' ? { feedback: response.feedback?.trim() || planReviewFeedback(review) } : {}),
+              };
+          const answer = { agentId: agent.id, id: delivery.requestId, outcome };
+          await this.agentRequests.respond(answer, async owner => {
+            await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: answer });
+          });
+        };
+      },
       persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),
@@ -1321,18 +1339,28 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
-    await this.providerConnections?.refreshDisconnected(backend);
+    const rechecks = !backend ? this.snapshot.providerConnections?.filter(provider => provider.connected && this.coordinationPolicy(provider.backend).authentication.refreshOnAdmission) ?? [] : [];
+    if (backend && this.coordinationPolicy(backend).authentication.refreshOnAdmission) await this.providerConnections?.recheck(backend);
+    else {
+      await this.providerConnections?.refreshDisconnected(backend);
+      await Promise.all(rechecks.map(provider => this.providerConnections?.recheck(provider.backend)));
+    }
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-    return resolveAgentBackend(this.snapshot, backend);
+    const selected = resolveAgentBackend(this.snapshot, backend);
+    return selected;
   }
 
   private async authenticateProvider(backend: Agent['backend'], action: 'check' | 'cancel' | 'logout' | 'login' = 'check', loginId?: string): Promise<ProviderAuthentication> {
     return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, { backend, action, ...(loginId ? { loginId } : {}) }) as ProviderAuthentication;
   }
 
+  private coordinationPolicy(backend: Agent['backend']) {
+    return this.driverRpc?.getCoordinationPolicy?.(backend) ?? resolveBackendCoordinationPolicy();
+  }
+
   private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
     const { kind: backend, connected } = authentication;
-    if (connected) {
+    if (connected && this.coordinationPolicy(backend).authentication.enableOnSuccess) {
       this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [backend]: true };
     }
     this.providerConnections?.observe(backend, connected, authentication);
@@ -1428,7 +1456,9 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await usage.previewTelemetry(params.input as import('@workspace/core/telemetry').TelemetryPreviewInput, this.options.version, process.platform));
         }
         if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
-        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
+        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter, provider => isAgentBackend(provider)
+          ? (this.snapshot.backendRuntimes.find(runtime => runtime.backend === provider)?.capabilities?.reportsTokens ?? defaultBackendCapabilities(provider).reportsTokens) !== false
+          : true));}
       } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }
     }
 
@@ -1487,7 +1517,7 @@ export class AppBackendServer {
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       const requestedSelection = isRecord(input.selection) ? input.selection : {};
-      if (!remote && (message.method !== backendMethods.agentUpdate || requestedSelection.backend !== undefined)) {
+      if (!remote && (message.method !== backendMethods.agentUpdate || (requestedSelection.backend !== undefined && requestedSelection.backend !== agent?.backend))) {
         try {
           const duplicateOptions = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options : {};
           const duplicateBackend = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.backend : undefined;
@@ -2835,7 +2865,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: 'archived' },
+                  target: { ref: previousRef, storageState: this.coordinationPolicy(previousRef.backend).rollbackStorageState },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -2946,7 +2976,7 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as BackendPermissionModeResult;
           agent.backendDefaults = result.backendDefaults;
-          this.snapshot.general.providerApprovalDefaults = {
+          if (this.coordinationPolicy(agent.backend).permissionModeScope === 'provider') this.snapshot.general.providerApprovalDefaults = {
             ...this.snapshot.general.providerApprovalDefaults, [agent.backend]: mode,
           };
           return this.persistAndEmitSnapshot();
@@ -3304,6 +3334,20 @@ export class AppBackendServer {
         if (policy.general && 'providerHomes' in policy.general) throw new Error('Provider homes must be changed through provider setup.');
         if (Object.keys(preferences).length) throw new Error('Presentation settings must use client/preferences/update.');
         updateSettingsInSnapshot(this.snapshot, policy);
+        if (policy.general && this.driverRpc) {
+          const runtimes = new Map(this.snapshot.backendRuntimes.map(runtime => [runtime.backend, runtime]));
+          for (const agent of this.snapshot.agents) {
+            if (this.remoteTeams.connectionIdForAgent(agent) || runtimes.has(agent.backend)) continue;
+            runtimes.set(agent.backend, { backend: agent.backend, status: 'notConfigured' });
+          }
+          for (const runtime of runtimes.values()) {
+            const agent = this.snapshot.agents.find(agent => agent.backend === runtime.backend && !this.remoteTeams.connectionIdForAgent(agent));
+            if (!agent) continue;
+            const capabilities = this.driverRpc.getCapabilities(agent);
+            if (!isDeepStrictEqual(runtime.capabilities, capabilities)) this.applyAndEmitBackendEvent({ type: 'backend.statusChanged', backend: runtime.backend,
+              payload: { ...runtime, capabilities } });
+          }
+        }
         if (policy.general?.providerEnabled) this.providerConnections?.updateEnabled();
         if (policy.general?.codexBinaryPath !== undefined) {
           this.providerSetup?.invalidateInstallation('codex');
@@ -3368,7 +3412,7 @@ export class AppBackendServer {
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
         const backend = requireAgentBackend(params.backend);
-        if (backend !== 'antigravity' || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
+        if (!this.coordinationPolicy(backend).authentication.actions.includes('login') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
         const authentication = await this.authenticateProvider(backend, params.action);
         this.providerConnections?.observe(backend, authentication.connected, authentication);
         await this.persistAndEmitSnapshot();
@@ -3454,8 +3498,12 @@ export class AppBackendServer {
       case backendMethods.providerUsageGet: {
         const backend = requireRecord(message.params).backend;
         if (!isAgentBackend(backend)) throw new Error('Unknown provider.');
-        if (!this.snapshot.providerConnections?.some(item => item.backend === backend && item.installed && item.connected && item.enabled !== false)) return createAppRpcResult(message.id, null);
+        const provider = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!provider) return createAppRpcResult(message.id, null);
+        const authentication = JSON.stringify(provider.authentication);
         const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { backend }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
+        const current = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        if (!current || JSON.stringify(current.authentication) !== authentication) return createAppRpcResult(message.id, null);
         const limits = result.supported ? result.rateLimits ?? null : this.snapshot.backendAccountRateLimits?.[backend] ?? (backend === 'codex' ? this.snapshot.accountRateLimits : undefined) ?? null;
         if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', backend, payload: { rateLimits: limits } });
         return createAppRpcResult(message.id, limits);
@@ -3919,8 +3967,6 @@ export class AppBackendServer {
     await this.conversationShares?.close();
     await this.options.guestJoins?.close();
     this.autoResume.close();
-    this.unsubscribeUsage?.();
-    this.unsubscribeRequestUsage?.();
     await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
@@ -3928,10 +3974,18 @@ export class AppBackendServer {
     this.delegatedWorkReports.close();
     this.agentPrompts.close();
     this.unsubscribeDriverEvents?.();
-    await this.driverRpc?.close();
-    await this.remoteClients.close();
-    await this.options.remoteSnapshotCache?.flush?.();
-    await this.options.usage?.close();
+    try {
+      await this.driverRpc?.close();
+    } finally {
+      this.unsubscribeUsage?.();
+      this.unsubscribeRequestUsage?.();
+      try {
+        await this.remoteClients.close();
+        await this.options.remoteSnapshotCache?.flush?.();
+      } finally {
+        await this.options.usage?.close();
+      }
+    }
   }
 
   emitEvent(event: BackendEvent): void {
@@ -5261,7 +5315,7 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
     return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
   }
 
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
+  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
     (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
     typeof candidate.sessionId === 'string' &&
     candidate.sessionId.trim().length > 0 &&

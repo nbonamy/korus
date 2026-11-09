@@ -14,7 +14,7 @@
 
     <main class="settings-view__content">
       <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
-        <UsagePanel v-if="activeTab === 'usage'" />
+        <UsagePanel v-if="activeTab === 'usage'" :token-unavailable-providers="tokenUnavailableProviders" />
         <SettingsBrowserPanel v-else-if="activeTab === 'browser' && appHostCapabilities.embeddedBrowser" />
         <SettingsGeneralPanel
           v-else-if="activeTab === 'general'"
@@ -42,6 +42,8 @@
         <SettingsPersonalizationPanel v-else-if="activeTab === 'personalization'" />
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'codex')?.capabilities"
+          @install="installProvider?.('codex')"
           :connected="codexConnected"
           :remote-connection-id="remoteConnectionId"
           :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
@@ -58,8 +60,29 @@
           :launch-chat-gpt-app="launchChatGptApp"
           :settings="generalSettings"
         />
+        <SettingsCursorPanel
+          v-else-if="activeTab === 'cursor'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'cursor')?.capabilities"
+          @install="installProvider?.('cursor')"
+          :installed="providerConnections?.find(engine => engine.backend === 'cursor')?.installed ?? false"
+          :connected="providerConnections?.some(engine => engine.backend === 'cursor' && engine.connected)"
+          :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
+          :enabled="generalSettings.providerEnabled?.cursor !== false"
+          :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"
+          :steering-fallback-enabled="generalSettings.cursorSteeringFallbackEnabled === true"
+          :set-steering-fallback-enabled="enabled => updateSettings?.({ general: { cursorSteeringFallbackEnabled: enabled } })"
+          :busy="cursorConnectionBusy || updatingProvider === 'cursor'"
+          :pending="cursorLoginPending"
+          :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.backend === 'cursor')?.error"
+          :remote-connection-id="remoteConnectionId"
+          @refresh="refreshProvider?.('cursor')"
+          @connect="connectCursor"
+          @disconnect="disconnectProvider?.('cursor')"
+          @cancel="cancelCursorLogin"
+        />
         <SettingsAntigravityPanel
           v-else-if="activeTab === 'antigravity'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'antigravity')?.capabilities"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
           @install="installProvider?.('antigravity')"
@@ -78,6 +101,8 @@
         />
         <SettingsClaudeCodePanel
           v-else-if="activeTab === 'claude-code'"
+          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'claude')?.capabilities"
+          @install="installProvider?.('claude')"
           :connected="claudeConnected"
           :installed="providerConnections?.find(engine => engine.backend === 'claude')?.installed ?? false"
           @refresh="refreshProvider?.('claude')"
@@ -159,6 +184,7 @@ import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
+import SettingsCursorPanel from './SettingsCursorPanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';
 import SettingsCodexPanel from './SettingsCodexPanel.vue';
 import SettingsConnectionsPanel from './SettingsConnectionsPanel.vue';
@@ -173,8 +199,10 @@ import SettingsSidebar from './SettingsSidebar.vue';
 import SettingsDictationPanel from './SettingsDictationPanel.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
-import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import type { AgentBackend, BackendRuntimeStatus } from '@workspace/core/contracts';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { backendDisplayName } from '@workspace/core/backend-driver';
 import { appHostCapabilities } from '../platform-api';
 import appPackage from '../../package.json';
 
@@ -184,6 +212,8 @@ const props = withDefaults(defineProps<{
   codexConnected?: boolean;
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
+  backendRuntimes?: BackendRuntimeStatus[];
+  providerSetup?: ProviderSetupStatus[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
   installProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;
@@ -199,6 +229,11 @@ const props = withDefaults(defineProps<{
   claudeConnectionError?: string | null;
   connectCodex?: () => Promise<void>;
   connectClaude?: () => Promise<void>;
+  connectCursor?: () => Promise<void>;
+  cancelCursorLogin?: () => Promise<void>;
+  cursorConnectionBusy?: boolean;
+  cursorLoginPending?: boolean;
+  cursorConnectionError?: string | null;
   connectAntigravity?: () => Promise<void>;
   cancelAntigravityLogin?: () => Promise<void>;
   antigravityConnectionBusy?: boolean;
@@ -281,6 +316,12 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   selectTab: [tab: SettingsTab];
 }>();
+
+const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [])
+  .filter(engine => engine.installed && engine.enabled !== false && props.generalSettings.providerEnabled?.[engine.backend] !== false)
+  .filter(engine => (props.backendRuntimes?.find(runtime => runtime.backend === engine.backend)?.capabilities?.reportsTokens
+    ?? defaultBackendCapabilities(engine.backend).reportsTokens) === false)
+  .map(engine => backendDisplayName(engine.backend)));
 
 const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.backend === 'antigravity') ? 'general' : props.activeTab);
 const busyIntegrationProviders = ref<WorkProviderKind[]>([]);

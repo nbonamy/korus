@@ -14,6 +14,7 @@ export class AgentPlanReviewService {
   constructor(
     private readonly options: {
       submit: (agent: Agent, prompt: string, planMode: boolean) => Promise<void>;
+      nativeDecision?: (agent: Agent, review: PlanReview) => ((response: PlanReviewResponse) => Promise<void>) | undefined;
       persist: () => Promise<unknown>;
       emit: (event: BackendEvent) => void;
     },
@@ -63,13 +64,16 @@ export class AgentPlanReviewService {
         });
         return;
       }
-      if (response.resolution !== 'cancel') {
+      let replacedByNativeProposal = false;
+      const nativeDecision = this.options.nativeDecision?.(agent, review);
+      if (response.resolution !== 'cancel' || nativeDecision) {
         const pending = { ...review, deliveryPending: true };
         await this.replace(agent, review, pending);
         if (agent.planReview !== pending || agentConversationId(agent) !== review.conversationId)
           throw new Error('The conversation changed while the plan decision was being submitted.');
         try {
-          await this.options.submit(
+          if (nativeDecision) await nativeDecision(response);
+          else await this.options.submit(
             agent,
             response.resolution === 'accept'
               ? 'implement the plan'
@@ -80,10 +84,13 @@ export class AgentPlanReviewService {
           if (agent.planReview === pending) await this.replace(agent, pending, review);
           throw error;
         }
-        if (agent.planReview !== pending || agentConversationId(agent) !== review.conversationId)
+        replacedByNativeProposal = !!nativeDecision && response.resolution === 'revise' &&
+          agent.planReview !== pending && agent.planReview?.requestId !== review.requestId &&
+          agent.planReview?.conversationId === review.conversationId;
+        if (agentConversationId(agent) !== review.conversationId || (agent.planReview !== pending && !replacedByNativeProposal))
           throw new Error('The conversation changed while the plan decision was being submitted.');
       }
-      await this.replace(agent, agent.planReview!, { ...review, status: response.resolution });
+      if (!replacedByNativeProposal) await this.replace(agent, agent.planReview!, { ...review, status: response.resolution });
       this.options.emit({
         type: 'plan.reviewResolved',
         agentId: agent.id,

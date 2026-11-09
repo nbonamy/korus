@@ -4,8 +4,26 @@ import { describe, expect, it } from 'vitest';
 import ProviderSetupDialog from '../ProviderSetupDialog.vue';
 
 describe('ProviderSetupDialog', () => {
-  it('lets Settings change skills reuse for existing chats without requesting roster removal', async () => {
-    const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
+  it.each([
+    { backend: 'cursor' as const },
+    { backend: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false } } },
+  ])('honors fixed-home setup policy for $backend, including saved private contexts', async ({ backend, capabilities }) => {
+    for (const isolated of [false, true]) {
+      const wrapper = mount(ProviderSetupDialog, { props: {
+        setup: { backend, capabilities, installed: true, isolated, shareSkills: false, homePath: '/provider', locked: false },
+        busy: false, error: null,
+      }, global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } } });
+      expect(wrapper.findAll('input[type="radio"]')).toHaveLength(0);
+      await wrapper.get('.app-button--primary').trigger('click');
+      expect(wrapper.emitted('save')).toBeUndefined();
+      expect(wrapper.get('.app-button--primary').attributes('disabled')).toBeDefined();
+      expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+      wrapper.unmount();
+    }
+  });
+
+  it.each([undefined, { homeSelection: false, skillSharing: true, installation: { managed: false } }])('lets Settings change skills reuse independently of home selection (%j)', async capabilities => {
+    const setup = { backend: 'codex' as const, capabilities, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
     const wrapper = mount(ProviderSetupDialog, {
       props: { setup, allowReset: true, busy: false, error: null },
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
@@ -47,7 +65,7 @@ describe('ProviderSetupDialog', () => {
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
     });
     expect(getComputedStyle(wrapper.getComponent(ElRadioGroup).element).flexDirection).toBe('column');
-    expect(wrapper.getComponent(ElRadioGroup).findAll('input').map(input => input.attributes('type')))
+    expect(wrapper.findAll('input').map(input => input.attributes('type')))
       .toStrictEqual(['radio', 'radio', 'checkbox']);
     expect(wrapper.findAll('input[type="radio"]').map(input => input.attributes('value'))).toStrictEqual(['false', 'true']);
     expect(wrapper.get('input[type="radio"][value="true"]').element).toHaveProperty('checked', true);

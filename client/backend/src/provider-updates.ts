@@ -3,6 +3,9 @@ import type { AgentBackend } from '@workspace/core/contracts';
 import type { ProviderUpdateInput, ProviderUpdateStatus } from '@workspace/core/contracts/provider-updates';
 
 export type ProviderInstallation = {
+  /** Normalized by the provider adapter, including provider-native version comparisons. */
+  status: Extract<ProviderUpdateStatus['status'], 'unavailable' | 'manual' | 'current' | 'available'>;
+  backend?: AgentBackend;
   executable?: string;
   version?: string;
   latestVersion?: string;
@@ -82,13 +85,11 @@ export class ProviderUpdates {
     try {
       const installation = await this.options.inspect(backend);
       this.installations.set(backend, structuredClone(installation));
-      const available = newer(installation.latestVersion, installation.version);
-      const comparable = stableVersion(installation.version) && stableVersion(installation.latestVersion);
       this.states.set(backend, {
         backend, method: installation.method, channel: installation.channel,
         installedVersion: installation.version, latestVersion: installation.latestVersion,
-        status: !installation.version ? 'unavailable' : !comparable ? 'manual' : available ? 'available' : 'current',
-        canUpgrade: available && Boolean(installation.command), busy: false, token: randomUUID(),
+        status: installation.status,
+        canUpgrade: installation.status === 'available' && Boolean(installation.command), busy: false, token: randomUUID(),
       });
       this.checkedAt.set(backend, Date.now());
     } catch {
@@ -102,7 +103,7 @@ export class ProviderUpdates {
     const state = this.states.get(backend)!;
     try {
       const fresh = await this.options.inspect(backend);
-      if (fresh.identity !== approved.identity || !fresh.command || fresh.latestVersion !== approved.latestVersion) {
+      if (fresh.status !== 'available' || fresh.identity !== approved.identity || !fresh.command || fresh.latestVersion !== approved.latestVersion) {
         state.status = 'error'; state.error = 'installationChanged'; return;
       }
       if (this.closed || this.options.busy(backend)) { state.status = 'waiting'; return; }
@@ -120,12 +121,3 @@ export class ProviderUpdates {
     }
   }
 }
-
-function newer(candidate?: string, installed?: string): boolean {
-  if (!stableVersion(candidate) || !stableVersion(installed)) return false;
-  const a = candidate.split('.').map(Number), b = installed.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! > b[i]!;
-  return false;
-}
-
-function stableVersion(value?: string): value is string { return Boolean(value && /^\d+\.\d+\.\d+$/.test(value)); }

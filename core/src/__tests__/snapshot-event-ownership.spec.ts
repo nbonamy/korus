@@ -47,6 +47,8 @@ const subagentEventTypes = [
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'subagent'>[];
 
 const rendererEventTypes = [
+  'cursor.conversationSnapshotChanged',
+  'cursor.conversationEventReceived',
   'conversation.shareChanged',
   'antigravity.conversationSnapshotChanged',
   'antigravity.conversationEventReceived',

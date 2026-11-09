@@ -320,8 +320,8 @@ export class UsageLedger {
       "DELETE FROM executions WHERE provider=? AND session_id=? AND turn_id=?",
     ).run(provider, sessionId, turnId);
   }
-  query(filter: UsageFilter = {}): UsageSummary {
-    return this.summarize(filter);
+  query(filter: UsageFilter = {}, reportsTokens?: (provider: string) => boolean): UsageSummary {
+    return this.summarize(filter, undefined, 0, reportsTokens);
   }
   /** Numeric-only projection. No local identifiers, arbitrary labels, per-turn timing or
    * provider objects leave this boundary. Reuses the ledger's pricing coverage.
@@ -385,6 +385,7 @@ export class UsageLedger {
     filter: UsageFilter,
     projection?: TelemetryProjectionInput,
     from = 0,
+    reportsTokens?: (provider: string) => boolean,
   ): UsageSummary {
     const prices = typeof this.prices === 'function' ? this.prices() : this.prices;
     if (
@@ -520,11 +521,11 @@ export class UsageLedger {
         if (!filter.apiProvider) {
           const turnMs = record.taskDurationMs ?? record.durationMs;
           if (record.phase === "completed" && turnMs !== undefined && turnMs > longestTurnMs) longestTurnMs = turnMs;
-          this.aggregate(rows, record, label, modelVariant);
-          this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone));
+          this.aggregate(rows, record, label, modelVariant, reportsTokens?.(record.provider));
+          this.aggregate(daily, record, dayOf(record.startedAt, filter.timeZone), undefined, reportsTokens?.(record.provider));
           const day = dayOf(record.startedAt, filter.timeZone);
           const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
-          this.aggregate(groups, record, label, modelVariant);
+          this.aggregate(groups, record, label, modelVariant, reportsTokens?.(record.provider));
           dailyGroups.set(day, groups);
         }
         if (executionEstimate) {
@@ -539,6 +540,7 @@ export class UsageLedger {
             undefined,
             true,
             modelVariant,
+            reportsTokens?.(record.provider),
           );
         } else if (record.requestCoverage !== "complete")
           this.aggregateCost(
@@ -552,6 +554,7 @@ export class UsageLedger {
             record.requestCoverageReason ?? undefined,
             false,
             modelVariant,
+            reportsTokens?.(record.provider),
           );
       }
       for (const row of requestRows) {
@@ -591,6 +594,7 @@ export class UsageLedger {
           undefined,
           false,
           modelVariant,
+          reportsTokens?.(parent.provider),
         );
       }
     }
@@ -611,7 +615,8 @@ export class UsageLedger {
           cost: row.cost,
           ...(row.speed ? { speed: row.speed } : {}),
           groups: [...dailyGroups.get(day)!.values()].map(
-            ({ label, key, modelVariant, started, tokens, measuredTurns, speed, cost }) => ({
+            ({ label, key, modelVariant, started, tokens, measuredTurns, speed, cost, reportsTokens }) => ({
+              ...(reportsTokens !== undefined ? { reportsTokens } : {}),
               label,
               ...(key ? { key } : {}),
               ...(modelVariant ? { modelVariant } : {}),
@@ -655,6 +660,7 @@ export class UsageLedger {
     unknownReason?: UsageCostReason,
     execution = false,
     modelVariant?: UsageModelVariant,
+    reportsTokens?: boolean,
   ): void {
     const day = dayOf(at, this.zone);
     const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
@@ -663,8 +669,10 @@ export class UsageLedger {
       this.bucket(rows, label, modelVariant),
       this.bucket(daily, day),
       this.bucket(groups, label, modelVariant),
-    ])
+    ]) {
+      if (reportsTokens !== undefined) bucket.reportsTokens = bucket.reportsTokens === true || reportsTokens;
       addCost(bucket.cost!, price, unknownReason, execution);
+    }
     addCost(total, price, unknownReason, execution);
   }
   private aggregate(
@@ -672,12 +680,14 @@ export class UsageLedger {
     record: UsageRecord,
     label: string,
     modelVariant?: UsageModelVariant,
+    reportsTokens?: boolean,
   ): void {
     const row = this.bucket(rows, label, modelVariant);
+    if (reportsTokens !== undefined) row.reportsTokens = row.reportsTokens === true || reportsTokens;
     row.started++;
     if (record.phase === "started") row.inProgress++;
     else row[record.phase]++;
-    if (record.tokens) {
+    if (record.tokens && reportsTokens !== false) {
       row.measuredTurns++;
       row.tokens ??= {
         input: 0,
@@ -717,7 +727,7 @@ export class UsageLedger {
       if (timing.ttftMs !== null) {
         row.speed.ttftMs += timing.ttftMs;
         row.speed.ttftTurns++;
-        const output = record.tokens?.output ?? 0;
+        const output = reportsTokens === false ? 0 : record.tokens?.output ?? 0;
         if (output > 0 && timing.activeMs > timing.ttftMs) {
           row.speed.turns++;
           row.speed.outputTokens += output;

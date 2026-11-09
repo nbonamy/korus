@@ -1,6 +1,7 @@
 import type { AgentBackend, AppSnapshot, SetCodexResourceSharingInput } from '@workspace/core/contracts';
 import { clearRuntimeDiscoveryCache } from '@workspace/core/runtime-discovery';
 import type { ProviderHomeSettings, ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { createProviderLifecycles, type ProviderLifecycle } from './provider-lifecycle';
 import { localProviderAgents, resetProviderRoster, validateProviderReset } from './provider-roster-reset';
 
@@ -51,7 +52,11 @@ export class ProviderSetup {
   async configure(backend: AgentBackend, choice: ProviderSetupChange): Promise<ProviderSetupStatus> {
     if (this.busy) throw new Error('Provider setup is already in progress.');
     const lifecycle = this.lifecycle(backend);
+    lifecycle.validateChoice?.(choice);
     const previous = this.home(backend);
+    const capabilities = resolveProviderSetupCapabilities(backend, lifecycle.capabilities);
+    if ((!capabilities.homeSelection && previous.isolated !== choice.isolated)
+      || (!capabilities.skillSharing && previous.shareSkills !== choice.shareSkills)) throw new Error('This provider does not support changing this setup.');
     const changesHome = previous.isolated !== choice.isolated;
     const changesSharing = previous.shareSkills !== choice.shareSkills;
     if (!changesHome && !changesSharing && this.locked(backend)) throw new Error('This provider already has chats. Only its conversation setup can be changed here.');
@@ -138,7 +143,8 @@ export class ProviderSetup {
   private status(backend: AgentBackend): ProviderSetupStatus {
     const installed = this.installations.get(backend) ?? this.lifecycle(backend).installed(this.snapshot);
     this.installations.set(backend, installed);
-    return { backend, ...this.home(backend), installed, locked: this.locked(backend), affectedAgentIds: localProviderAgents(this.snapshot, backend).map(agent => agent.id) };
+    return { backend, ...this.home(backend), installed, locked: this.locked(backend), affectedAgentIds: localProviderAgents(this.snapshot, backend).map(agent => agent.id),
+      capabilities: resolveProviderSetupCapabilities(backend, this.lifecycle(backend).capabilities) };
   }
 
   private lifecycle(backend: AgentBackend): ProviderLifecycle {
