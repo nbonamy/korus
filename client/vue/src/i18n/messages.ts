@@ -3,6 +3,14 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    dictation: {
+      apple: 'Apple Speech Analyzer', openai: 'OpenAI', title: 'Dictation', engine: 'Engine', apiKey: 'OpenAI API key',
+      introTitle: 'Turn speech into text',
+      introDescription: 'Use your voice to write prompts and comments.',
+      enter: 'Enter your API key', live: 'Live transcription',
+      locked: 'Secure storage is unavailable. Unlock your system keychain to save an API key.',
+      unavailable: 'Dictation settings are available in the desktop app.', failed: 'Could not save dictation settings. Try again.',
+    },
     githubStar: {
       title: 'Support the project',
       notice: 'Enjoying {product}?',

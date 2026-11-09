@@ -164,6 +164,8 @@ const api: AppApi = {
   readEngineInstructions: (engine) => ipc.invoke(ipcChannels.readEngineInstructions, engine),
   manageSkills: input => ipc.invoke(ipcChannels.manageSkills, input),
   saveEngineInstructions: (input) => ipc.invoke(ipcChannels.saveEngineInstructions, input),
+  getDictationSettings: () => ipc.invoke(ipcChannels.getDictationSettings),
+  updateDictationSettings: (input) => ipc.invoke(ipcChannels.updateDictationSettings, input),
   previewSpokenAnnouncementVoice: (voice: SpokenAnnouncementVoice) => ipc.invoke(ipcChannels.previewSpokenAnnouncementVoice, voice),
   getCodexResourceSharingStatus: () => ipc.invoke(ipcChannels.getCodexResourceSharingStatus),
   setCodexResourceSharing: (input: SetCodexResourceSharingInput) => ipc.invoke(ipcChannels.setCodexResourceSharing, input),
@@ -261,4 +263,4 @@ const api: AppApi = {
 
 contextBridge.exposeInMainWorld('app', api);
 contextBridge.exposeInMainWorld('appTraceConversationLoad', process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1');
-exposeCodexNativeRendererApi(contextBridge, ipcRenderer);
+exposeCodexNativeRendererApi(contextBridge, ipcRenderer, { transcription: true, streamingTranscription: true, speechPreparation: true });

@@ -16,6 +16,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 const native = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
   nativeOptions: undefined as unknown,
+  dataDirectory: '/test/data',
   exposed: new Map<string, unknown>(),
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn(), showMessageBoxSync: vi.fn(), showErrorBox: vi.fn() },
   shell: { openExternal: vi.fn(), openPath: vi.fn(), beep: vi.fn() },
@@ -34,7 +35,7 @@ vi.mock('electron', async () => {
   return {
     app: Object.assign(new EventEmitter(), {
       isPackaged: true, getAppPath: () => '/test/app',
-      getPath: vi.fn((name: string) => name === 'exe' ? '/Volumes/Install/Test.app/Contents/MacOS/Test' : '/test/data'),
+      getPath: vi.fn((name: string) => name === 'exe' ? '/Volumes/Install/Test.app/Contents/MacOS/Test' : native.dataDirectory),
       isReady: () => native.ready, whenReady: vi.fn(), requestSingleInstanceLock: vi.fn(() => true),
       isInApplicationsFolder: vi.fn(() => true), moveToApplicationsFolder: vi.fn(),
       quit: vi.fn(), exit: vi.fn(), relaunch: vi.fn(), setAsDefaultProtocolClient: vi.fn(),
@@ -47,6 +48,12 @@ vi.mock('electron', async () => {
     contextBridge: { exposeInMainWorld: (name: string, value: unknown) => native.exposed.set(name, value) },
     ipcRenderer: {
       invoke: async (channel: string, ...args: unknown[]) => native.handlers.get(channel)!({}, ...args),
+    },
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      getSelectedStorageBackend: () => 'gnome_libsecret',
+      encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')),
+      decryptString: (value: Buffer) => value.toString().split('').reverse().join(''),
     },
     nativeTheme: { themeSource: 'system' },
     powerMonitor: Object.assign(new EventEmitter(), { isOnBatteryPower: vi.fn(() => false) }),
@@ -185,6 +192,29 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('round-trips write-only dictation credentials through preload and desktop IPC without touching the daemon', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'desktop-dictation-'));
+    native.dataDirectory = directory;
+    try {
+      const { backend } = setup();
+      await import('../../preload/index');
+      const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+      const speech = native.exposed.get('codexAppSdkNative') as { streamingTranscription?: { prepare?: unknown } };
+      expect(typeof speech.streamingTranscription?.prepare).toBe('function');
+      expect((await api.getDictationSettings!()).hasApiKey).toBe(false);
+      expect(await api.updateDictationSettings!({ engine: 'openai', apiKey: 'test-secret' })).toStrictEqual({
+        engine: 'openai', openaiLiveTranscription: false, appleAvailable: process.platform === 'darwin', hasApiKey: true, secureStorageAvailable: true,
+      });
+      expect((await api.getDictationSettings!()).hasApiKey).toBe(true);
+      expect(await readFile(path.join(directory, 'dictation-openai-key.bin'), 'utf8')).not.toContain('test-secret');
+      await api.updateDictationSettings!({ apiKey: null });
+      expect((await api.getDictationSettings!()).hasApiKey).toBe(false);
+      expect(backend.request).not.toHaveBeenCalled();
+    } finally {
+      native.dataDirectory = '/test/data';
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it('uses renderer visibility through preload and IPC to suppress and cancel selected-agent announcements', async () => {
     const fixture = backendFixture();
     fixture.state.snapshot.general.spokenAnnouncementsEnabled = true;

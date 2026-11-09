@@ -12,6 +12,7 @@ import {
   SettingsIcon,
   TerminalIcon,
   UserIcon,
+  VolumeIcon,
   WorldIcon,
 } from "../shared/icons/app-icons";
 import type { AgentBackend } from "@workspace/core/contracts";
@@ -32,7 +33,8 @@ export type SettingsTab =
   | "skills"
   | "personalization"
   | "git"
-  | "voice";
+  | "voice"
+  | "dictation";
 type SettingsDestination = {
   id: SettingsTab;
   labelKey: string;
@@ -68,11 +70,12 @@ const settingsDestinations: readonly SettingsDestination[] = [
     aliases: "theme color light dark font typography text size",
   },
   { id: "browser", labelKey: "surface.browserExtensions.browser", group: "app", icon: WorldIcon, aliases: "extensions password managers bitwarden 1password browser install" },
+  { id: "dictation", labelKey: "dictation.title", group: "app", icon: MicrophoneIcon, aliases: "speech transcription microphone openai api key engine" },
   {
     id: "voice",
     labelKey: "surface.settingsSidebar.voice",
     group: "app",
-    icon: MicrophoneIcon,
+    icon: VolumeIcon,
     aliases: "speech spoken announcements narration mute audio",
   },
   {
