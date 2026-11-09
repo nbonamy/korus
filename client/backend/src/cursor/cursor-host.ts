@@ -24,7 +24,7 @@ import { getCursorAccountUsage } from './account-usage';
 
 export class CursorHost implements AgentBackendDriver {
   readonly backend = 'cursor' as const;
-  readonly coordinationPolicy = { permissionModeScope: 'conversation' as const, rollbackStorageState: 'active' as const, authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } };
+  readonly coordinationPolicy = { permissionModeScope: 'provider' as const, rollbackStorageState: 'active' as const, authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } };
   private readonly reviewScopes = new Map<string, string>();
   private readonly sessions = new Map<string, CursorSession>();
   private readonly opening = new Map<string, { abort: AbortController; done: Promise<CursorSession> }>();

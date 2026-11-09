@@ -61,21 +61,23 @@ describe('agent-manager', () => {
   });
   it('seeds new agents and quick chats with per-provider approvals without overriding explicit settings or existing chats', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude', 'cursor'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits' };
+    snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits', cursor: 'full-access' };
     const existing = structuredClone(snapshot.agents);
-    for (const backend of ['codex', 'claude'] as const) {
+    for (const backend of ['codex', 'claude', 'cursor'] as const) {
       createAgentInSnapshot(snapshot, { name: 'New', folder: '/repo', selection: { backend } }, undefined, `agent-${backend}`);
       createQuickChatInSnapshot(snapshot, { selection: { backend } }, undefined, `quick-${backend}`);
       for (const id of [`agent-${backend}`, `quick-${backend}`]) {
         expect(snapshot.agents.find(agent => agent.id === id)?.backendDefaults).toMatchObject(backend === 'codex'
           ? { kind: 'codex', approvalPreset: 'ask-for-approval', approvalPolicy: 'on-request', sandboxMode: 'workspace-write' }
-          : { kind: 'claude', permissionMode: 'acceptEdits' });
+          : backend === 'claude' ? { kind: 'claude', permissionMode: 'acceptEdits' } : { kind: 'cursor', permissionMode: 'full-access' });
       }
     }
     createAgentInSnapshot(snapshot, { name: 'Explicit', folder: '/repo', backendDefaults: { kind: 'codex', approvalPreset: 'full-access' }, selection: { backend: 'codex' } }, undefined, 'explicit');
     expect(snapshot.agents.find(agent => agent.id === 'explicit')?.backendDefaults).toEqual({ kind: 'codex', approvalPreset: 'full-access' });
+    createAgentInSnapshot(snapshot, { name: 'Explicit Cursor', folder: '/repo', backendDefaults: { kind: 'cursor', permissionMode: 'default' }, selection: { backend: 'cursor' } }, undefined, 'explicit-cursor');
+    expect(snapshot.agents.find(agent => agent.id === 'explicit-cursor')?.backendDefaults).toStrictEqual({ kind: 'cursor', permissionMode: 'default' });
     expect(snapshot.agents.slice(0, existing.length)).toEqual(existing);
   });
 

@@ -6,7 +6,7 @@ import { isAgentBackend } from './contracts/shared';
 import { spokenAnnouncementVoices, type AgentBackend, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
-import { claudeBackendCapabilities } from './backend-capabilities';
+import { claudeBackendCapabilities, cursorBackendCapabilities } from './backend-capabilities';
 import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
@@ -221,11 +221,12 @@ function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNull
 }
 
 function normalizeProviderApprovalDefaults(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerApprovalDefaults']> {
-  const { codex, claude, antigravity } = value;
+  const { codex, claude, antigravity, cursor } = value;
   return {
     ...(isApprovalPreset(codex) ? { codex } : {}),
     ...(typeof claude === 'string' && claudeBackendCapabilities.permissionModes?.some(option => option.id === claude) ? { claude } : {}),
     ...(typeof antigravity === 'string' && ['default', 'auto_edit'].includes(antigravity) ? { antigravity } : {}),
+    ...(typeof cursor === 'string' && cursorBackendCapabilities.permissionModes?.some(option => option.id === cursor) ? { cursor } : {}),
   };
 }
 

@@ -102,8 +102,10 @@ once-only options cancel the request rather than creating a persistent allow rul
 Changing to Full access also settles existing tool-permission requests, while plan
 review and questions retain their separate explicit decisions. Returning to Ask
 restores prompts for subsequent callbacks without restarting the native session.
-The choice is saved with that conversation's agent defaults; it is not stored as
-the default for newly created agents and does not modify shared Cursor configuration.
+The choice is saved on the current agent and as the default for new Cursor
+conversations, including Quick Chats. Existing conversations retain their saved
+choice. Model selection is also retained for new conversations. These defaults
+belong to Korus and do not modify shared Cursor configuration.
 
 These choices do not establish interception of every native file operation.
 Full edit-approval enforcement remains unavailable.

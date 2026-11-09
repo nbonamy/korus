@@ -475,9 +475,9 @@ describe('settings contracts', () => {
   });
 
   it('loads supported approval defaults without accepting malformed or unknown modes', () => {
-    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'ask-for-approval', claude: 'acceptEdits', other: 'ignored' } }).providerApprovalDefaults)
-      .toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits' });
-    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'invalid', claude: 'invalid' } }).providerApprovalDefaults).toStrictEqual({});
+    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'ask-for-approval', claude: 'acceptEdits', cursor: 'full-access', other: 'ignored' } }).providerApprovalDefaults)
+      .toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits', cursor: 'full-access' });
+    expect(normalizeGeneralSettings({ providerApprovalDefaults: { codex: 'invalid', claude: 'invalid', cursor: 'invalid' } }).providerApprovalDefaults).toStrictEqual({});
   });
 
   it('retains review defaults across settings normalization without retaining invalid automatic authorization', () => {

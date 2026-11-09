@@ -550,7 +550,7 @@ export type AppGeneralSettings = {
   missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
-  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
+  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string; cursor?: string };
   agentListCompact: boolean;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];

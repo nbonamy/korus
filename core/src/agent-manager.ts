@@ -223,6 +223,8 @@ function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
     agent.backendDefaults = { ...agent.backendDefaults, kind: 'claude', permissionMode: approvals.claude };
   } else if (agent.backend === 'antigravity' && approvals?.antigravity) {
     agent.backendDefaults = { ...agent.backendDefaults, kind: 'antigravity', permissionMode: approvals.antigravity };
+  } else if (agent.backend === 'cursor' && approvals?.cursor) {
+    agent.backendDefaults = { ...agent.backendDefaults, kind: 'cursor', permissionMode: approvals.cursor };
   }
 }
 

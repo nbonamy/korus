@@ -22,7 +22,7 @@ describe('BackendDriverRpc', () => {
   it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
     const rpc = new BackendDriverRpc(new Map([['cursor', createBackendDriver('cursor')], ['antigravity', createBackendDriver('antigravity')]]));
     try {
-      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
       expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
       expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
     } finally { await rpc.close(); }

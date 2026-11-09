@@ -11,6 +11,7 @@ import { AppMcpService } from '../../mcp/service';
 import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createAgentInSnapshot, createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversation-guards';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import { UsageLedger } from '../../usage/usage-ledger';
@@ -180,8 +181,8 @@ describe('Cursor ACP host transport boundary', () => {
       await expect(access(path.join(root, 'wire.jsonl'))).rejects.toThrow();
     } finally { await server.close(); }
   });
-  it('switches live permission handling through the daemon, persists the choice, and keeps native plan review explicit', async () => {
-    const state = createTestSnapshot(); state.agents = [{ ...agent }];
+  it('switches live permission handling through the daemon, persists the choice, and seeds future model/permission defaults, and keeps native plan review explicit', async () => {
+    const state = createInitialSnapshot(); state.agents = [{ ...agent }];
     state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
     const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
     const select = (mode: string) => server.handleMessage({ jsonrpc: '2.0', id: 'mode', method: 'agent/permissionMode/update', params: { agentId: agent.id, mode } });
@@ -193,12 +194,30 @@ describe('Cursor ACP host transport boundary', () => {
       await vi.waitFor(() => expect(completions()).toHaveLength(1));
       expect(state.agentRequests?.[agent.id]).toStrictEqual([]);
       expect((await wire()).find(call => call.id === 1 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'selected', optionId: 'allow-once' } });
-      const restored = snapshotFromPersistedState(persistedStateFromSnapshot(state));
+      await server.handleMessage({ jsonrpc: '2.0', id: 'model', method: 'agent/update', params: { input: { id: agent.id, selection: { backend: 'cursor', model: 'composer-2.5' } } } });
+      const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(persistedStateFromSnapshot(state))));
       expect(restored.agents[0]!.backendDefaults).toMatchObject({ kind: 'cursor', permissionMode: 'full-access' });
-      expect(state.general.providerApprovalDefaults ?? {}).not.toHaveProperty('cursor');
+      expect(restored.general.providerApprovalDefaults?.cursor).toBe('full-access');
+      // Runtime connections are re-established rather than restored from disk.
+      restored.providerConnections = structuredClone(state.providerConnections);
+      createAgentInSnapshot(restored, { name: 'Next Cursor', folder: root, selection: { backend: 'cursor' } }, undefined, 'next-workspace');
+      createQuickChatInSnapshot(restored, { selection: { backend: 'cursor' } }, undefined, 'next-quick-chat');
+      const inheritedHost = createBackendDriver('cursor'), inheritedEvents: BackendEvent[] = [];
+      inheritedHost.onEvent(event => inheritedEvents.push(event));
+      try {
+        for (const [index, id] of ['next-workspace', 'next-quick-chat'].entries()) {
+          const next = restored.agents.find(candidate => candidate.id === id)!;
+          expect(next.backendDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permissionMode: 'full-access' });
+          await inheritedHost.sendPrompt(next, 'permission');
+          await vi.waitFor(() => expect(inheritedEvents.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toHaveLength(index + 1));
+          expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'composer-2.5' });
+        }
+        expect(inheritedEvents.some(event => event.type === 'agentRequest.created')).toBe(false);
+      } finally { await inheritedHost.close(); }
       await expect(select('auto_edit')).rejects.toThrow(/Unsupported permission mode/);
       expect(state.agents[0]!.backendDefaults).toMatchObject({ permissionMode: 'full-access' });
       await select('default');
+      expect(snapshotFromPersistedState(persistedStateFromSnapshot(state)).general.providerApprovalDefaults?.cursor).toBe('default');
       await send('permission');
       await vi.waitFor(() => expect(state.agentRequests?.[agent.id]).toHaveLength(1));
       const pending = state.agentRequests![agent.id]![0]!;
@@ -210,7 +229,7 @@ describe('Cursor ACP host transport boundary', () => {
       expect(completions()).toHaveLength(2);
       await server.handleMessage({ jsonrpc: '2.0', id: 'plan', method: 'agent/planReview/respond', params: { agentId: agent.id, response: { reviewId: state.agents[0]!.planReview!.id, resolution: 'cancel' } } });
       await vi.waitFor(() => expect(completions()).toHaveLength(3));
-      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
+      expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(3);
     } finally { await server.close(); }
   });
   it.each([false, true])('restores full-access policy on session startup and uses only once-only permission options (missingOnce=%s)', async missingOnce => {
