@@ -339,7 +339,6 @@ describe('useAppState', () => {
     }));
 
     const reloaded = createAgentComposerState({ getSnapshot: () => persisted });
-    reloaded.restore(persisted.agents[0]!.id);
     await reloaded.loadModels(persisted.agents[0]!.id);
     expect(reloaded.selectedModelId.value).toBe('sol-id');
     expect(reloaded.selectedReasoningEffort.value).toBe('high');

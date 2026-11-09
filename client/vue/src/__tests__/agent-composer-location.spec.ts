@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { reactive } from 'vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../agent-composer-state';
 import { stubElectronTestWindow } from '../../tests/support/client';
@@ -62,7 +63,7 @@ describe('composer catalog locations', () => {
     expect(composer.resolvePromptOptions(agent.id, 'hello')?.selection?.model).toBe('sonnet');
   });
   it('keeps local and SSH models separate, including pushed catalog updates', async () => {
-    const snapshot = createInitialSnapshot();
+    const snapshot = reactive(createInitialSnapshot());
     const local = snapshot.agents[0]!;
     const remote = snapshot.agents[1]!;
     remote.teamId = 'remote-team';
@@ -76,7 +77,6 @@ describe('composer catalog locations', () => {
     snapshot.activeAgentId = local.id;
     await composer.loadModels(local.id);
     snapshot.activeAgentId = remote.id;
-    composer.restore(remote.id);
     await composer.loadModels(remote.id);
     expect(listBackendModels).toHaveBeenCalledTimes(2);
     expect(composer.resolvePromptOptions(remote.id, 'hello')?.selection?.model).toBe('remote-model');
@@ -86,7 +86,6 @@ describe('composer catalog locations', () => {
     composer.handleMainEvent({ type: 'models.changed', backend: 'codex', agentId: remote.id, seq: 2, occurredAt: '', payload: { models: [model('remote-updated')] } });
     expect(composer.selectedModelId.value).toBe('remote-updated');
     snapshot.activeAgentId = local.id;
-    composer.restore(local.id);
     expect(composer.selectedModelId.value).toBe('local-updated');
   });
 });

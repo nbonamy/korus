@@ -180,7 +180,6 @@ const {
   backendModels,
   backendPlugins,
   backendSkills,
-  clearActive: clearActiveComposerConfiguration,
   fileCatalogError,
   fileCatalogStatus,
   handleMainEvent: syncComposerStateFromMainEvent,
@@ -194,10 +193,8 @@ const {
   modelCatalogError,
   modelCatalogStatus,
   planMode,
-  rememberActive: rememberActiveComposerConfiguration,
   resetIfSourceChanged: resetCatalogStateIfSourceChanged,
   resolvePromptOptions: resolvedPromptOptions,
-  restore: restoreComposerConfiguration,
   selectModel,
   selectModelForAgent,
   selectedModelId,
@@ -576,7 +573,6 @@ export function useAppState() {
       await startWindowState();
       await generalPreferences.migrate();
       markLoad('startup.preferences-ready');
-      if (snapshot.value.activeAgentId) restoreComposerConfiguration(snapshot.value.activeAgentId);
       // The SDK publishes a bounded initial page immediately. Older pages stay
       // behind the conversation's demand-paging cursor until the user reaches
       // the top of the transcript.
@@ -952,10 +948,8 @@ export function useAppState() {
       return;
     }
     const needsHistory = agentNeedsHistory(agentId);
-    rememberActiveComposerConfiguration();
     snapshot.value = selectAgentInSnapshot(snapshot.value, agentId);
     markAgentRead(agentId);
-    restoreComposerConfiguration(agentId);
     if (needsHistory) markAgentHistoryHydrating(agentId, true);
     void loadActiveAgentCatalogs(agentId);
     void refreshAgentSelection(agentId, requestId, needsHistory);
@@ -1190,17 +1184,13 @@ export function useAppState() {
     }
 
     const requestId = ++agentSelectionRequestId;
-    rememberActiveComposerConfiguration();
     snapshot.value = selectTeamInSnapshot(snapshot.value, teamId);
     const selectedAgentId = snapshot.value.activeAgentId;
     const needsHistory = selectedAgentId ? agentNeedsHistory(selectedAgentId) : false;
     if (selectedAgentId) {
       markAgentRead(selectedAgentId);
-      restoreComposerConfiguration(selectedAgentId);
       if (needsHistory) markAgentHistoryHydrating(selectedAgentId, true);
       void loadActiveAgentCatalogs(selectedAgentId);
-    } else {
-      clearActiveComposerConfiguration();
     }
     await refreshTeamSelection(teamId, requestId, selectedAgentId, needsHistory);
   }
@@ -2425,7 +2415,6 @@ function recoverRendererAfterBackendConnection(): Promise<void> {
     try {
       await synchronizeRendererSnapshotRequest?.();
       const activeAgentId = snapshot.value.activeAgentId;
-      if (activeAgentId) restoreComposerConfiguration(activeAgentId);
       await Promise.all([
         hydrateActiveAgentHistory(),
         loadActiveAgentCatalogs(activeAgentId),
@@ -2501,16 +2490,9 @@ function pinWindowTeam(next: AppSnapshot): void {
 
 function adoptNavigationSnapshot(nextSnapshot: AppSnapshot): void {
   threadFlagState.project(nextSnapshot);
-  const previousAgentId = snapshot.value.activeAgentId;
-  rememberActiveComposerConfiguration();
   snapshot.value = nextSnapshot;
   pruneUnreadAgentIds();
   pruneConversationFrames();
-  if (nextSnapshot.activeAgentId && nextSnapshot.activeAgentId !== previousAgentId) {
-    restoreComposerConfiguration(nextSnapshot.activeAgentId);
-  } else if (!nextSnapshot.activeAgentId) {
-    clearActiveComposerConfiguration();
-  }
 }
 
 function pruneConversationFrames(): void {
