@@ -7,7 +7,7 @@ import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { normalizePromptContent, promptContentText } from '@codex-app-sdk/core/surface';
 import type { Agent, BackendSession, SendPromptOptions, ConversationListInput, ConversationSummary, ConversationResumeTarget, BackendConversationRef, RendererMessage } from '@workspace/core/contracts';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
+import type { AgentBackendDriver, BackendEvent, BackendCodeReviewInput, BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CursorConversationEvent } from '@workspace/core/contracts/cursor-conversation';
 import type { ExecutionObservation } from '@workspace/core/usage';
@@ -25,6 +25,7 @@ import { getCursorAccountUsage } from './account-usage';
 export class CursorHost implements AgentBackendDriver {
   readonly backend = 'cursor' as const;
   readonly coordinationPolicy = { permissionModeScope: 'conversation' as const, rollbackStorageState: 'active' as const, authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } };
+  private readonly reviewScopes = new Map<string, string>();
   private readonly sessions = new Map<string, CursorSession>();
   private readonly opening = new Map<string, { abort: AbortController; done: Promise<CursorSession> }>();
   private readonly resuming = new Set<string>();
@@ -78,6 +79,10 @@ export class CursorHost implements AgentBackendDriver {
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions, admissionGuard?: () => void) {
+    const { backendSession, turnId } = await this.sendPromptInScope(agent, prompt, options, admissionGuard);
+    return { backendSession, turnId };
+  }
+  private async sendPromptInScope(agent: Agent, prompt: string, options?: SendPromptOptions, admissionGuard?: () => void, reviewUrl?: string) {
     const agentId = agent.id;
     if (agent.backend !== this.backend || (agent.backendSession && agent.backendSession.kind !== this.backend)) throw new Error('Cursor cannot use another provider conversation.');
     if (this.steering.has(agent.id) && !admissionGuard) throw new Error('Finish the current Cursor steering operation first.');
@@ -97,7 +102,7 @@ export class CursorHost implements AgentBackendDriver {
       admissionGuard?.();
       const attachments = await cursorAttachments(options?.attachments ?? []);
       admissionGuard?.();
-      const session = await this.ensure(agent);
+      const session = await this.ensure(agent, reviewUrl);
       admissionGuard?.();
       const model=selection.model;
       if (model) {
@@ -118,8 +123,25 @@ export class CursorHost implements AgentBackendDriver {
       this.planModes.set(agent.id, options?.planMode === true);
       const turn = session.prompt(content === undefined ? prompt : promptContentText(content), wire, content === undefined ? undefined : { promptContent: content }, attachments, (options?.attachments ?? []).map(attachment => ({ type: 'attachment', attachment: { kind: attachment.type, name: attachment.name ?? path.basename(attachment.path), path: attachment.path, ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}), ...('previewUrl' in attachment && attachment.previewUrl ? { url: attachment.previewUrl } : {}) } })));
       void turn.completion.finally(settle);
-      return { backendSession: this.reference(session), turnId: turn.turnId };
+      return { backendSession: this.reference(session), turnId: turn.turnId, completion: turn.completion, session };
     } catch (error) { settle(); throw error; }
+  }
+  async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {
+    if (input.reviewerSession && input.reviewerSession.kind !== this.backend) throw new Error('Cursor cannot continue another provider review.');
+    const reviewer = { ...agent, folder: input.cwd, backendSession: input.reviewerSession };
+    const started = await this.sendPromptInScope(reviewer, input.prompt, undefined, undefined, input.reviewMcpServerUrl);
+    await started.completion;
+    const snapshot = started.session.snapshot;
+    if (snapshot.turns.find(turn => turn.id === started.turnId)?.status !== 'completed') throw new Error(snapshot.error ?? 'Cursor review was interrupted.');
+    const text = snapshot.messages.filter(message => message.turnId === started.turnId && message.role === 'assistant')
+      .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n');
+    return { text, reviewerSession: started.backendSession };
+  }
+  async disposeCodeReview(agent: Agent, reviewerSession: BackendSession): Promise<void> {
+    if (reviewerSession.kind !== this.backend) throw new Error('Cursor cannot dispose another provider review.');
+    const session = this.sessions.get(agent.id);
+    if (session && session.sessionId !== reviewerSession.sessionId) throw new Error('Cursor review session changed.');
+    await this.releaseConversation(agent.id);
   }
   async steerPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     const agentId = agent.id;
@@ -209,7 +231,7 @@ export class CursorHost implements AgentBackendDriver {
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
       const previous = this.sessions.get(agent.id); await previous?.close();
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await next.close(); throw new Error('Cursor history operation was released.'); }
-      this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, next); this.publishSnapshot(agent.id, next); return next;
+      this.reviewScopes.delete(agent.id); this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, next); this.publishSnapshot(agent.id, next); return next;
     })().finally(() => { this.opening.delete(agent.id); this.resuming.delete(agent.id); });
     this.opening.set(agent.id, { abort, done });
     return { backendSession: this.reference(await done) };
@@ -231,13 +253,14 @@ export class CursorHost implements AgentBackendDriver {
     if (session && !session.isClosed) session.setPermissionMode(permission);
     return { backendDefaults: defaults };
   }
-  async listModels(agent: Agent) { return (await this.ensure(agent)).models; }
+  async listModels(agent: Agent) { return (await this.ensure(agent, this.reviewScopes.get(agent.id))).models; }
   async respondToAgentRequest(response: AgentRequestResponse): Promise<void> {
     const session = response.agentId ? this.sessions.get(response.agentId) : [...this.sessions.values()].find(session => session.snapshot.clientRequests.some(request => request.id === response.id));
     if (!session) throw new Error('Cursor request is no longer pending.');
     session.respond(response);
   }
-  private mcpServers(agent: Agent) {
+  private mcpServers(agent: Agent, reviewUrl?: string) {
+    if (reviewUrl) return [sessionMcpServer(reviewUrl, undefined, ['read-skill', 'report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'])];
     return [...(this.options.appMcpServerUrl ? [sessionMcpServer(appMcpUrlForAgent(this.options.appMcpServerUrl, agent))] : []), ...Object.entries(this.options.hostedMcpServerUrls?.() ?? {}).map(([name, url]) => sessionMcpServer(agentScopedMcpUrl(url, agent.id), name))];
   }
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
@@ -257,6 +280,7 @@ export class CursorHost implements AgentBackendDriver {
     await session?.close();
     if (this.sessions.get(agentId) === session) this.sessions.delete(agentId);
     await this.opening.get(agentId)?.done.catch(() => {});
+    this.reviewScopes.delete(agentId);
     this.planModes.delete(agentId);
     for (const key of this.nativePlanTurns) if (JSON.parse(key)[0] === agentId) this.nativePlanTurns.delete(key);
   }
@@ -277,7 +301,8 @@ export class CursorHost implements AgentBackendDriver {
     this.listeners.clear();
     this.usageListeners.clear();
   }
-  private async ensure(agent: Agent): Promise<CursorSession> {
+  private async ensure(agent: Agent, reviewUrl?: string): Promise<CursorSession> {
+    if (this.closed) throw new Error('Cursor host is closed.');
     const current = this.sessions.get(agent.id);
     if (current) {
       if (current.isClosed) {
@@ -287,7 +312,11 @@ export class CursorHost implements AgentBackendDriver {
       }
       if (agent.backendSession && (agent.backendSession.kind !== this.backend || agent.backendSession.sessionId !== current.sessionId)) throw new Error('Cursor conversation identity mismatch.');
       if (agent.folder && path.resolve(agent.folder) !== path.resolve(current.cwd)) throw new Error('Cursor conversation belongs to another workspace.');
-      if (!current.isClosed) return current;
+      if (!current.isClosed && this.reviewScopes.get(agent.id) === reviewUrl) return current;
+    }
+    if (this.reviewScopes.get(agent.id) !== reviewUrl && (this.sessions.has(agent.id) || this.opening.has(agent.id))) {
+      if (this.sessions.get(agent.id)?.snapshot.busy || this.opening.has(agent.id)) throw new Error('Cursor collaboration scope cannot change during a turn.');
+      await this.releaseConversation(agent.id);
     }
     if (agent.backendSession && agent.backendSession.kind !== this.backend) throw new Error('Cursor conversation identity mismatch.');
     const existing = this.opening.get(agent.id); if (existing) return existing.done;
@@ -298,12 +327,13 @@ export class CursorHost implements AgentBackendDriver {
       if (!auth.connected) throw new Error(auth.state.error ?? 'Cursor is disconnected. Sign in in Settings.');
       const cwd = this.workingDirectory(agent);
       if (!agent.folder) await mkdir(cwd, { recursive: true, mode: 0o700 });
-      const session = await CursorSession.open({ agentId: agent.id, cwd, permissionMode: this.permissionMode(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent), appMcpServerName: this.options.appMcpServerUrl ? product.mcpServerName : undefined, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
+      const session = await CursorSession.open({ agentId: agent.id, cwd, permissionMode: this.permissionMode(agent), runtime: this.runtime, mcpServers: this.mcpServers(agent, reviewUrl), appMcpServerName: (reviewUrl || this.options.appMcpServerUrl) ? product.mcpServerName : undefined, sessionId: agent.backendSession?.kind === this.backend ? agent.backendSession.sessionId : undefined, signal: abort.signal,
         changed: event => this.conversationEvent(event), disconnected: error => this.disconnected(error),
       });
       if (this.closed || abort.signal.aborted || generation !== (this.generations.get(agent.id) ?? 0)) { await session.close(); throw new Error('Cursor session was released during startup.'); }
       this.sessionIdentities.set(agent.id,this.observedIdentity); this.sessions.set(agent.id, session); this.publishSnapshot(agent.id, session); return session;
     })().catch(error => { this.disconnected(error instanceof Error ? error : new Error('Cursor session failed.')); throw error; }).finally(() => this.opening.delete(agent.id));
+    if (reviewUrl) this.reviewScopes.set(agent.id, reviewUrl); else this.reviewScopes.delete(agent.id);
     this.opening.set(agent.id, { abort, done }); return done;
   }
   private disconnected(error: Error): void {

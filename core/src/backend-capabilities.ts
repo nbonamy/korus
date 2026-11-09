@@ -108,7 +108,7 @@ export const antigravityBackendCapabilities: BackendCapabilities = {
 
 // Cursor enables only capabilities implemented and verified by its host.
 export const cursorBackendCapabilities: BackendCapabilities = {
-  codeReview: false, planReview: true, questions: false, plugins: false,
+  codeReview: true, planReview: true, questions: false, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
   remoteControl: false, attachments: true, models: true, skills: false,
   reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',

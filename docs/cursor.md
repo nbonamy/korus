@@ -51,8 +51,8 @@ a process-owned approval callback. The session-injected
 Korus MCP server is preapproved only through a current-turn tool-call identity,
 using the native once-only option. Display titles, other MCP servers and native
 shell/file tools do not grant that authorization. Native edits
-can bypass permission callbacks, so approval presets and automatic review remain
-unavailable. Structured questions map displayed choices back to native option
+can bypass permission callbacks, so permission choices do not establish full edit
+prevention. Structured questions map displayed choices back to native option
 identities and reject ambiguous or stale answers. Native plan entries and todo
 updates remain observed metadata. Todo extensions accept both request and
 notification framing; requests acknowledge only the validated projected state.
@@ -69,6 +69,18 @@ Explicit quota-exhaustion RPC failures end the turn without closing its usable
 session or marking the account signed out. Known future reset metadata permits
 the shared one-shot continuation policy; missing reset data leaves retry manual.
 Congestion, generic throttling and unknown diagnostics do not invent quota state.
+
+## Code review
+
+Code review uses the shared prompt-and-MCP workflow: inspection, finding discussion,
+selected remediation and follow-up rounds run in the reviewer conversation.
+Each review scope supplies its own Korus MCP endpoint and tool list, including
+reviewer skill loading and finding reporting. Normal application and hosted MCP
+endpoints are replaced for the review scope and restored for normal conversation.
+The native conversation reference, model and reasoning selection are retained;
+cancellation, permissions and execution accounting use the normal Cursor turn path.
+Review scope limits Korus MCP access; permission callbacks use the conversation's
+Ask/Full access choice. Native filesystem access is not isolated by review scope.
 
 ## Steering fallback
 
@@ -94,7 +106,7 @@ The choice is saved with that conversation's agent defaults; it is not stored as
 the default for newly created agents and does not modify shared Cursor configuration.
 
 These choices do not establish interception of every native file operation.
-Full edit-approval enforcement and automatic code review remain unavailable.
+Full edit-approval enforcement remains unavailable.
 
 The extended native model catalog supplies per-model enum reasoning choices and
 selected context-capacity labels. Capacity stays native descriptive metadata; it
@@ -188,7 +200,8 @@ subprocess fixture. Native measurements do not attest to every model or tool.
 | [x] | Auth, transport and policy failures | Safe terminal errors, pending-request settlement, identity invalidation and bounded shutdown; [host tests][cursor-host-tests] and [authentication tests][cursor-auth-tests]. Quota normalization is the separate partial item above. |
 | [x] | Account quota and billing reads | Validated included/on-demand balances, reset metadata and stale-account protection; [account tests][cursor-billing-tests]. These are account observations, not per-turn cost. |
 | [ ] | Token/context/pricing measurements | Partial: executions and timings reach the ledger/telemetry pipeline; tokens, context consumption, served model and API cost remain unknown. [Host execution tests][cursor-host-tests]. |
-| [ ] | Isolated utility generation/review | Absent: no Cursor isolated text/image generation or enforced tool-free utility path. Automatic code review is disabled; this limits app workflows beyond native conversation features. |
+| [x] | Structured code review | Shared manual and automatic review workflows report findings through scoped MCP, retain discussion and remediation in the native conversation, and clean up reviewer sessions. [Owning workflows][cursor-host-tests]. |
+| [ ] | Isolated utility generation | No Cursor isolated text/image generation or enforced tool-free utility path. |
 
 Native plugins, managed skills, subagent control, remote control and turn
 edit/delete/retry/archive remain unavailable. Cursor is desktop-only at companion

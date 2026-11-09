@@ -26,7 +26,7 @@ const contextsFor = (model,extended=false) => model==='fixture-alpha' ? [context
 const rich = fs.existsSync(path.join(__dirname,'rich-models'));
 if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha'),...contextsFor('fixture-alpha')); }
 if(rich && fs.existsSync(path.join(__dirname,'missing-live-model-id'))) delete configOptions[0].id;
-let sessionId = 'session-' + process.pid, pending, mode;
+let sessionId = 'session-' + process.pid, pending, mode, mcpServers = [];
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
 // Diff/location shape from installed Cursor source; resource/image blocks are synthetic ACP content fixtures.
@@ -51,7 +51,31 @@ const richOutput = replay => {
   update({sessionUpdate:'tool_call_update',toolCallId:replay?'replay-mcp':'live-mcp',kind:'other',status:'completed',rawOutput:{recipientName:'Other Agent'}});
   update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Rich output complete'}});
 };
-readline.createInterface({ input: process.stdin }).on('line', line => {
+async function review(text,reply) {
+ const server=mcpServers.find(server=>server.name==='korus');
+ if(!server) throw new Error('Missing korus server');
+ const child=require('node:child_process').spawn(server.command,server.args,{env:{...process.env,...Object.fromEntries(server.env.map(item=>[item.name,item.value]))},stdio:['pipe','pipe','ignore']});
+ const pending=new Map();let id=0;
+ require('node:readline').createInterface({input:child.stdout}).on('line',line=>{const value=JSON.parse(line);const done=pending.get(value.id);if(done)done(value);});
+ const rpc=(method,params)=>new Promise((resolve,reject)=>{const key=++id;pending.set(key,value=>value.error?reject(new Error(value.error.message)):resolve(value.result));child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:key,method,params})+'\n');});
+ const call=async(name,args)=>{const result=await rpc('tools/call',{name,arguments:args});if(result.isError)throw new Error(JSON.stringify(result));return result.structuredContent;};
+ try {
+  if(text.includes('answer this specific question')) {update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'The finding is supported by the fixture.'}});reply({stopReason:'end_turn'});return;}
+  const tools=await rpc('tools/list',{});
+  if(!tools.tools.some(tool=>tool.name==='read-skill')||!tools.tools.some(tool=>tool.name==='report_finding')||tools.tools.some(tool=>tool.name==='create-agent')) throw new Error('Wrong review scope');
+  const ledgerFile=require('node:path').join(process.cwd(),'fixture-ledger.json');
+  if(/Fix the \d+ findings? I selected\./u.test(text)) {
+   const finding=JSON.parse(fs.readFileSync(ledgerFile,'utf8'));
+   fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-code.txt'),'fixed');
+   await call('update_finding',{findingId:finding.id,status:'fixed',evidence:'Fixture external tool wrote and verified fixed content.'});
+  } else if(!fs.existsSync(require('node:path').join(process.cwd(),'fixture-code.txt'))) {
+   const finding=await call('report_finding',{priority:'p2',title:'Fixture defect',body:'The fixture code needs a correction.'});
+   fs.writeFileSync(ledgerFile,JSON.stringify(finding.finding??finding));
+   await call('finish_review_round',{findingCount:1});
+  } else await call('finish_review_round',{findingCount:0});
+  update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Review turn complete.'}});reply({stopReason:'end_turn'});
+ } finally {child.stdin.end();}
+}readline.createInterface({ input: process.stdin }).on('line', line => {
   const value = JSON.parse(line); log(value);
   const reply = result => send({ id: value.id, result });
   if (value.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, sessionCapabilities: fs.existsSync(path.join(__dirname, 'no-list')) ? {} : { list: {} } }, authMethods: [{ id: 'cursor_login', name: 'Cursor Login' }] });
@@ -62,7 +86,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if(fs.existsSync(path.join(__dirname,'catalog-result.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'catalog-result.json'),'utf8')));return;}
     reply({models:configOptions[0].options.map(option=>({...option,configOptions:[...controlsFor(option.value),...(rich?contextsFor(option.value,true):[])]}))});
   }
-  else if (value.method === 'session/new') { if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
+  else if (value.method === 'session/new') { mcpServers = value.params.mcpServers; if (!fs.existsSync(path.join(__dirname, 'hold-new'))) reply({ sessionId, configOptions }); }
   else if (value.method === 'session/set_config_option') {
     if (value.params.configId === 'model' && fs.existsSync(path.join(__dirname,'model-ack.json'))) { reply(JSON.parse(fs.readFileSync(path.join(__dirname,'model-ack.json'),'utf8'))); return; }
     if (value.params.configId === 'mode' && fs.existsSync(path.join(__dirname,'mode-selection-ack.json'))) {reply(JSON.parse(fs.readFileSync(path.join(__dirname,'mode-selection-ack.json'),'utf8')));return;}
@@ -81,7 +105,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   }
   else if (value.method === 'session/list') reply({ sessions: [{ sessionId: 'saved-session', cwd: process.cwd() }, { sessionId: 'foreign-session', cwd: path.dirname(process.cwd()) }, ...Object.entries(history()).map(([sessionId, value]) => ({sessionId,cwd:value.cwd,title:'Saved conversation'}))] });
   else if (value.method === 'session/load') {
-    sessionId = value.params.sessionId;
+    sessionId = value.params.sessionId; mcpServers = value.params.mcpServers;
     if (fs.existsSync(path.join(__dirname, 'hold-load'))) return;
     const saved = history()[sessionId];
     if (saved) {
@@ -105,6 +129,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     if(configOptions[0].currentValue==='fixture-dual' && fs.existsSync(path.join(__dirname,'native-thinking-change'))) {configOptions=configOptions.map(option=>option.id==='thinking'?{...option,currentValue:'true'}:option);update({sessionUpdate:'config_option_update',configOptions});}
     const saved = history(); saved[sessionId] = {cwd:process.cwd(),prompt:value.params.prompt}; fs.writeFileSync(historyFile,JSON.stringify(saved));
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
+    if(mcpServers.some(server=>server.env.some(item=>item.name==='KORUS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {
+      void review(value.params.prompt[0].text,reply).catch(error=>{fs.writeFileSync(path.join(__dirname,'fixture-error.txt'),error.message);send({id:value.id,error:{code:-32603,message:error.message}});}); return;
+    }
     // session_info_update: installed CLI live evidence; subagent kinds: installed-source evidence only.
     update({sessionUpdate:'session_info_update',title:'Synthetic conversation'});
     update({sessionUpdate:'subagent_spawned',agentId:'synthetic-child'});

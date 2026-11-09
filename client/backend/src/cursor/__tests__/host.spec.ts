@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
 import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import { CodeReviewService } from '../../review/code-review-service';
+import { AgentCreationService } from '../../agents/agent-creation-service';
+import { AppMcpService } from '../../mcp/service';
+import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversation-guards';
@@ -37,6 +41,113 @@ async function snapshot(): Promise<CursorConversationSnapshot> {
 }
 async function wire() { return (await readFile(path.join(root, 'wire.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
 describe('Cursor ACP host transport boundary', () => {
+  it.each(['manual', 'automatic'] as const)('runs a %s Cursor review, fixes a finding and completes a clean follow-up through the driver RPC', async mode => {
+    const state = createInitialSnapshot();
+    const owner = { ...agent, id: 'review-owner' };
+    state.agents = [owner]; state.general.providerEnabled = { cursor: true };
+    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    const mcp = new AppMcpService({ snapshot: state });
+    const url = await mcp.start();
+    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: url });
+    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const creation = new AgentCreationService(state);
+    const checkpoint = { head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'fixture' };
+    const commit = vi.fn();
+    const dispose = vi.fn(async (reviewer: import('@workspace/core/contracts').Agent) => {
+      if (reviewer.backendSession) await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: reviewer.backendSession });
+      state.agents = state.agents.filter(candidate => candidate.id !== reviewer.id);
+    });
+    const review = new CodeReviewService({ snapshot: state, tools: mcp,
+      createAgent: (input, options) => creation.create(input, options),
+      runReview: (reviewer, prompt, reviewMcpServerUrl, reviewerSession) => rpc.handle('driver/codeReview/run', { agent: reviewer, prompt, cwd: root, reviewMcpServerUrl, reviewerSession }) as Promise<BackendCodeReviewResult>,
+      resetReviewer: async reviewer => { await host.releaseConversation!(reviewer.id); delete reviewer.backendSession; },
+      deleteReviewer: dispose, saveReport: async () => path.join(root, 'report.md'), changed: () => {},
+      git: { prepare: async () => ({ ...checkpoint, baseRef: 'a'.repeat(40) }), inspect: async () => checkpoint, hasChanges: async () => false, commit },
+    });
+    try {
+      const result = mode === 'automatic'
+        ? review.startAutomatic(owner, { scope: { type: 'uncommitted' }, maxRounds: 3, autoCommit: false })
+        : review.start(owner, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+      if (mode === 'manual') {
+        await vi.waitFor(() => expect(result.status).toBe('ready'));
+        const reviewer = state.agents.find(candidate => candidate.id === result.reviewerAgentId)!;
+        const round = result.rounds[0]!, finding = round.findings[0]!;
+        review.discuss(reviewer, { sessionId: result.id, roundId: round.id, findingId: finding.id, question: 'Why is this actionable?' });
+        await vi.waitFor(() => expect(finding.discussion.at(-1)).toMatchObject({ author: 'reviewer', body: 'The finding is supported by the fixture.' }));
+        review.submit(reviewer, result.id);
+        await vi.waitFor(() => expect(result.status).toBe('readyToFinish'));
+        await review.reviewAgain(reviewer, result.id);
+        await vi.waitFor(() => expect(result.status).toBe('ready'));
+        review.submit(reviewer, result.id);
+        await review.finish(reviewer, result.id);
+      } else {
+        await vi.waitFor(() => expect(['completed', 'paused']).toContain(result.automation?.state));
+        expect(result.automation?.state, JSON.stringify(result.rounds)).toBe('completed');
+      }
+      expect(result.rounds.map(round => round.inspectionCompletion?.findingCount)).toStrictEqual([1, 0]);
+      expect(result.rounds[0]?.findings[0]?.remediation).toMatchObject({ state: 'fixed', evidence: expect.stringContaining('verified') });
+      expect(await readFile(path.join(root, 'fixture-code.txt'), 'utf8')).toBe('fixed');
+      await vi.waitFor(() => expect(state.agents).toStrictEqual([owner]));
+      expect(dispose).toHaveBeenCalledOnce(); expect(commit).not.toHaveBeenCalled();
+    } finally { await rpc.close(); await mcp.stop(); }
+  });
+
+  it('preserves the native conversation and selected model while entering and leaving a scoped review', async () => {
+    await writeFile(path.join(root, 'rich-models'), '');
+    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ external: 'http://127.0.0.1:1235/mcp' }) }); host.onEvent(event => events.push(event));
+    const reviewer = { ...agent, backendDefaults: { kind: 'cursor' as const, model: 'fixture-beta', reasoningEffort: 'xhigh' } };
+    const sent = await host.sendPrompt(reviewer, 'hello');
+    await vi.waitFor(async () => expect((await wire()).filter(call => call.fixture === 'prompt-admission')).toHaveLength(1));
+    await vi.waitFor(async () => expect((await snapshot()).busy).toBe(false));
+    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    try {
+      const reviewMcpServerUrl = 'http://127.0.0.1:1234/review';
+      const result = await rpc.handle('driver/codeReview/run', { agent: reviewer, prompt: 'Inspect changes', cwd: root, reviewMcpServerUrl, reviewerSession: sent.backendSession }) as BackendCodeReviewResult;
+      expect(result).toStrictEqual({ text: 'Hello Cursor', reviewerSession: sent.backendSession });
+      const loaded = (await wire()).filter(call => call.method === 'session/load').at(-1);
+      expect(loaded.params.mcpServers).toHaveLength(1);
+      expect(loaded.params.mcpServers[0].env).toEqual(expect.arrayContaining([{ name: 'KORUS_ACP_MCP_URL', value: reviewMcpServerUrl }]));
+      expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'fixture-beta', thoughts: { reasoning_effort: 'xhigh' } });
+      await host.sendPrompt({ ...reviewer, backendSession: result.reviewerSession }, 'Back to normal');
+      await vi.waitFor(async () => expect((await snapshot()).busy).toBe(false));
+      expect((await wire()).filter(call => call.method === 'session/load').at(-1).params.mcpServers).toHaveLength(2);
+      await expect(rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: { kind: 'cursor', sessionId: 'stale' } })).rejects.toThrow(/changed/);
+      await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: result.reviewerSession });
+    } finally { await rpc.close(); }
+  });
+
+  it('preapproves observed review MCP calls without granting native tool access', async () => {
+    await writeFile(path.join(root, 'mcp-permission.json'), JSON.stringify({ input: { providerIdentifier: 'korus', toolName: 'report_finding', args: { title: 'Fixture' } } }));
+    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    try {
+      const reviewMcpServerUrl = 'http://127.0.0.1:1234/review';
+      const result = await rpc.handle('driver/codeReview/run', { agent, prompt: 'mcp-permission', cwd: root, reviewMcpServerUrl }) as BackendCodeReviewResult;
+      expect((await wire()).find(call => call.id === 8 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'selected', optionId: 'native-mcp-once' } });
+      expect(events.some(event => event.type === 'agentRequest.created')).toBe(false);
+      const native = rpc.handle('driver/codeReview/run', { agent, prompt: 'permission', cwd: root, reviewMcpServerUrl, reviewerSession: result.reviewerSession });
+      await vi.waitFor(() => expect(events.some(event => event.type === 'agentRequest.created')).toBe(true));
+      const request = events.find(event => event.type === 'agentRequest.created')!;
+      if (request.type !== 'agentRequest.created') throw new Error('Missing native permission');
+      await host.respondToAgentRequest!({ agentId: agent.id, id: request.payload.request.id, outcome: { kind: 'decision', decision: 'deny' } });
+      await native;
+      await expect(access(path.join(root, 'should-not-exist'))).rejects.toThrow();
+    } finally { await rpc.close(); }
+  });
+
+  it.each(['wait', 'quota'])('settles a %s review through the normal cancellation and failure path', async prompt => {
+    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    try {
+      const reviewing = rpc.handle('driver/codeReview/run', { agent, prompt, cwd: root, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
+      const rejected = expect(reviewing).rejects.toThrow(prompt === 'wait' ? /interrupted/ : /usage limit/);
+      if (prompt === 'wait') {
+        await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/prompt')).toBe(true));
+        await host.interrupt(agent);
+      }
+      await rejected;
+      expect(events.some(event => event.type === 'provider.authenticationChanged' && !event.payload.connected)).toBe(false);
+    } finally { await rpc.close(); }
+  });
+
   it('rejects unsupported native controls at the driver boundary without launching ACP or falling back to another provider', async () => {
     const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
     const controls = [
