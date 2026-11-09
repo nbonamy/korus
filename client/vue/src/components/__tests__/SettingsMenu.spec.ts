@@ -35,6 +35,12 @@ describe('SettingsMenu', () => {
       expect(wrapper.get('[aria-label="Included"]').text()).toContain('75%');
       expect(wrapper.get('[aria-label="Credits"]').text()).toContain('$15.00');
       expect(wrapper.get('[aria-label="On-demand"]').text()).toContain('$49.00');
+      await openMenu(wrapper);
+      getProviderUsage.mockResolvedValue({ ...free, planType: 'Premium',
+        billing: { includedBalanceUsd: '0.00', onDemand: { enabled: true, unlimited: true, usedUsd: null, limitUsd: null, remainingUsd: null } } });
+      await openMenu(wrapper); await flushPromises();
+      expect(wrapper.get('[aria-label="On-demand"]').text()).toContain('No limit');
+      expect(wrapper.get('[aria-label="On-demand"]').attributes('title')).toBe('On-demand: No limit');
     } finally { wrapper.unmount(); }
   });
 

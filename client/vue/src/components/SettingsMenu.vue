@@ -189,9 +189,9 @@ const usageGroups = computed(() => quotaBackends.value.map(backend => {
     rows.push(row('credits', billing.includedBalanceUsd === null ? translate('surface.settingsMenu.unknown') : usd(billing.includedBalanceUsd)));
     const demand = billing.onDemand;
     const value = demand.enabled === false ? translate('surface.settingsMenu.billingOff')
-      : demand.enabled === true && demand.unlimited && demand.usedUsd !== null ? translate('surface.settingsMenu.usedValue', { value: usd(demand.usedUsd) })
+      : demand.enabled === true && demand.unlimited ? translate('surface.settingsMenu.noLimit')
         : demand.enabled === true && demand.remainingUsd !== null ? usd(demand.remainingUsd) : translate('surface.settingsMenu.unknown');
-    rows.push({ ...row('onDemand', value), ...(demand.unlimited ? { title: translate('surface.settingsMenu.noPersonalLimit') } : {}),
+    rows.push({ ...row('onDemand', value),
       ...(demand.enabled === true && !demand.unlimited ? { valueLabel: translate('surface.settingsMenu.remainingValue', { value }) } : {}) });
   }
   return { backend, name: translate(`surface.settingsMenu.engine.${backend}`), rows, failed: usageErrors.value[backend] && !rows.length };

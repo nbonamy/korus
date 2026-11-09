@@ -67,10 +67,13 @@ export async function getCursorAccountUsage(runtime: CursorRuntime = cursorRunti
   const remaining = included ? amount(included.remaining) : null;
   const individualLimit = spend && spend.individualLimit !== undefined ? amount(spend.individualLimit) : null;
   const hardLimit = amount(hard.hardLimit);
-  const limit = individualLimit ?? (spend?.limitType !== 'team' ? hardLimit * 100 : null);
   const used = spend ? amount(spend.individualUsed) : null;
   const billingAllowed = hard.noUsageBasedAllowed !== true && hard.onDemandSpendDisabledByOrganization !== true;
-  const unlimited = billingAllowed && spend?.limitType === 'team' && individualLimit === null && hardLimit > 0;
+  // Cursor's native usage summary treats INT32_MAX dollars as no monthly limit.
+  const unlimitedHardLimit = hardLimit >= 2_147_483_647;
+  const unlimited = billingAllowed && (spend?.limitType === 'team'
+    ? individualLimit === null && hardLimit > 0 : unlimitedHardLimit);
+  const limit = unlimited ? null : individualLimit ?? (spend?.limitType !== 'team' && !unlimitedHardLimit ? hardLimit * 100 : null);
   const enabled = billingAllowed && (unlimited || (limit !== null && limit > 0));
   const onDemand = { enabled, unlimited, usedUsd: used === null ? null : used / 100, limitUsd: limit === null ? null : limit / 100,
     remainingUsd: enabled && used !== null && limit !== null ? Math.max(0, limit - used) / 100 : enabled ? null : 0 };

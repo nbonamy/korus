@@ -45,10 +45,10 @@ it('reads native subscription balance and billing-cycle quota through the driver
   } finally { await driver.close(); }
 });
 
-it('preserves Free and disabled usage-based billing without representing zero allowance as unlimited quota', async () => {
+it.each([0, 2147483647])('preserves Free and disabled usage-based billing with hard limit %s without granting unlimited quota', async hardLimit => {
   io.fetch.mockImplementation(async (url: string) => new Response(JSON.stringify(url.endsWith('/GetPlanInfo')
     ? { planInfo: { planName: 'Free', price: 'Free' } }
-    : url.endsWith('/GetHardLimit') ? { noUsageBasedAllowed: true }
+    : url.endsWith('/GetHardLimit') ? { hardLimit, noUsageBasedAllowed: true }
       : { planUsage: { totalPercentUsed: 0 }, spendLimitUsage: { individualLimit: 0, limitType: 'user' } })));
   const driver = createBackendDriver('cursor');
   try {
@@ -57,6 +57,26 @@ it('preserves Free and disabled usage-based billing without representing zero al
       credits: { hasCredits: false, unlimited: false, balance: '0.00' },
       individualLimit: { enabled: false, limitUsd: 0 },
       billing: { includedBalanceUsd: '0.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } },
+    });
+  } finally { await driver.close(); }
+});
+
+it.each([
+  { scope: 'user', individualLimit: undefined, unlimited: true, limitUsd: null, remainingUsd: null },
+  { scope: 'user', individualLimit: 5000, unlimited: true, limitUsd: null, remainingUsd: null },
+  { scope: 'team', individualLimit: 5000, unlimited: false, limitUsd: 50, remainingUsd: 48.75 },
+])('normalizes the native unlimited sentinel for $scope with personal limit $individualLimit', async expected => {
+  io.fetch.mockImplementation(async (url: string) => new Response(JSON.stringify(url.endsWith('/GetPlanInfo')
+    ? { planInfo: { planName: 'Premium' } }
+    : url.endsWith('/GetHardLimit') ? { hardLimit: 2147483647 }
+      : { spendLimitUsage: { limitType: expected.scope, individualLimit: expected.individualLimit, individualUsed: 125 } })));
+  const driver = createBackendDriver('cursor');
+  try {
+    const demand = { enabled: true, unlimited: expected.unlimited, usedUsd: 1.25, limitUsd: expected.limitUsd, remainingUsd: expected.remainingUsd };
+    expect(await driver.getAccountRateLimits!()).toMatchObject({
+      individualLimit: demand,
+      billing: { onDemand: demand },
+      secondary: expected.unlimited ? null : { usedPercent: 2.5 },
     });
   } finally { await driver.close(); }
 });
