@@ -95,13 +95,14 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: 'agent.updated', payload: expect.objectContaining({ conversationTitle: 'Updated after completion' }) })));
   });
 
-  it('restores persisted fast mode after cold load and delegates paging without implementing history', async () => {
+  it('inherits native fast mode on cold load and delegates paging without implementing history', async () => {
     const { driver, conversation } = setup();
     const session = conversation('conversation-a');
     session.handle.loadOlderHistory.mockResolvedValue({ conversationId: 'conversation-a', messages: [], hasOlder: true });
     const agent = { ...sdkAgent(), backendDefaults: { kind: 'codex' as const, serviceTier: 'fast' } };
+    session.setSnapshot({ selectedServiceTier: null, approvalPreset: 'ask-for-approval', approvalPresets: ['ask-for-approval', 'full-access'] });
     await driver.loadConversation(agent);
-    expect(session.handle.updateSettings).toHaveBeenCalledWith({ serviceTier: 'fast' });
+    expect(session.handle.updateSettings).not.toHaveBeenCalled();
     await expect(driver.loadOlderHistory(agent)).resolves.toStrictEqual({ hasOlder: true });
     expect(session.handle.loadOlderHistory).toHaveBeenCalledOnce();
     await driver.loadTurnHistory(agent, 'older-turn');
@@ -112,7 +113,7 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
     await expect(driver.loadOlderHistory(agent)).rejects.toThrow('page unavailable');
   });
 
-  it.each(['gpt-6.1-sol', 'gpt-6.1-terra'])('restores saved %s, effort and tier before publishing a cold-loaded conversation', async model => {
+  it.each(['gpt-6.1-sol', 'gpt-6.1-terra'])('uses native settings instead of saved %s preferences on a cold-loaded conversation', async model => {
     const { driver, conversation, events } = setup();
     const session = conversation('conversation-a');
     session.setSnapshot({ selectedModelId: 'gpt-6.1-sol', selectedReasoningEffort: 'low', selectedServiceTier: 'fast' });
@@ -131,10 +132,10 @@ describe(`Codex SDK → ${product.name} session policy`, () => {
 
     await driver.loadConversation(agent);
 
-    expect(session.handle.updateSettings).toHaveBeenCalledWith({ modelId: model, reasoningEffort: 'high', serviceTier: null });
+    expect(session.handle.updateSettings).not.toHaveBeenCalled();
     const settings = events.filter(event => event.type === 'conversation.settingsUpdated');
     expect(settings).toHaveLength(1);
-    expect(settings[0]).toMatchObject({ payload: { settings: { model, reasoningEffort: 'high', serviceTier: null } } });
+    expect(settings[0]).toMatchObject({ payload: { settings: { model: 'gpt-6.1-sol', reasoningEffort: 'low', serviceTier: 'fast' } } });
   });
 
   it.each([false, true])('rolls over via a bounded handoff and archives only after replacement acceptance (failure=%s)', async (fail) => {

@@ -176,7 +176,7 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     session.setSnapshot({ selectedModelId: 'gpt-6.1-sol', selectedReasoningEffort: 'low' });
     await driver.loadConversation(savedAgent);
     expect(session.handle.load).toHaveBeenCalledTimes(2);
-    expect(session.handle.updateSettings).toHaveBeenCalledWith({ modelId: 'gpt-6.1-sol', reasoningEffort: 'high' });
+    expect(session.handle.updateSettings).not.toHaveBeenCalled();
     session.setSnapshot({ activeTurnId: 'live', busy: true });
     vi.advanceTimersByTime(16 * 60_000);
     await driver.loadConversation(sdkAgent());

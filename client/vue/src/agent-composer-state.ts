@@ -15,6 +15,7 @@ import type {
 import { computed, reactive, ref } from 'vue';
 import { AsyncCatalogCache, type AsyncCatalogEntry, type AsyncCatalogStatus } from './async-catalog-cache';
 import { appApi } from './platform-api';
+import { projectSessionSelection } from '@korus-dev/multi-agent-sdk/conversations/presentation';
 
 export type AgentComposerConfiguration = {
   backend: Agent['backend'] | undefined;
@@ -185,13 +186,6 @@ export function createAgentComposerState(options: {
     const save = previous.then(() => {
       if (snapshot().agents.find((candidate) => candidate.id === agentId)?.backend !== backend) return;
       return options.persistSelection!(agentId, selection);
-    }).then(() => {
-      const current = configurationByAgentId.get(agentId);
-      if (current && sameSelection(current.pendingSelection, selection)) {
-        current.pendingSelection = null;
-        const savedAgent = snapshot().agents.find((candidate) => candidate.id === agentId);
-        if (savedAgent) synchronizeSelectionWithAgent(current, savedAgent);
-      }
     }).catch((error: unknown) => {
       options.onSelectionSaveError?.(error);
     });
@@ -457,16 +451,19 @@ export function createAgentComposerState(options: {
       const settings = event.payload.settings;
       if (!agentId) return;
       const current = configuration(agentId);
-      const agent = snapshot().agents.find((candidate) => candidate.id === agentId);
-      if (!current.pendingSelection && agent?.backendDefaults?.userSelectedModel !== true) {
-        if (settings.model !== undefined) {
-          current.selectedModelId = current.models.find(model => modelMatchesSelection(model, settings.model ?? null))?.id ?? settings.model;
-        }
-        if (settings.reasoningEffort !== undefined) current.selectedReasoningEffort = settings.reasoningEffort;
-        if ('serviceTier' in settings && settings.serviceTier !== undefined) {
-          current.selectedServiceTier = settings.serviceTier;
-        }
+      if (current.pendingSelection) {
+        const pending = current.pendingSelection;
+        const model = current.models.find(model => modelMatchesSelection(model, settings.model ?? null));
+        if ((model?.model ?? settings.model) !== pending.model
+          || (settings.reasoningEffort ?? null) !== pending.reasoningEffort
+          || (settings.serviceTier ?? null) !== pending.serviceTier) return;
+        current.pendingSelection = null;
       }
+      if (settings.model !== undefined) {
+        current.selectedModelId = current.models.find(model => modelMatchesSelection(model, settings.model ?? null))?.id ?? settings.model;
+      }
+      if (settings.reasoningEffort !== undefined) current.selectedReasoningEffort = settings.reasoningEffort;
+      if (settings.serviceTier !== undefined) current.selectedServiceTier = settings.serviceTier;
       return;
     }
     const agentId = event.agentId ?? snapshot().activeAgentId;
@@ -571,10 +568,9 @@ function selectDefaultModel(configuration: AgentComposerConfiguration): void {
 function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { source: string } {
   if (!agent) return { source: 'missing', backend: 'codex', model: null, reasoningEffort: null, serviceTier: null };
   const defaults = agent.backendDefaults?.kind === agent.backend ? agent.backendDefaults : undefined;
-  const preferred = defaults?.userSelectedModel === true ? defaults : undefined;
-  const claudeSession = agent.backendSession?.kind === 'claude' ? agent.backendSession : undefined;
-  const model = preferred?.model ?? claudeSession?.model ?? defaults?.model ?? null;
-  const reasoningEffort = preferred ? preferred.reasoningEffort ?? null : claudeSession?.reasoningEffort ?? defaults?.reasoningEffort ?? null;
+  const native = projectSessionSelection(agent.backendSession);
+  const model = native?.model ?? defaults?.model ?? null;
+  const reasoningEffort = native ? native.reasoningEffort ?? null : defaults?.reasoningEffort ?? null;
   const serviceTier = defaults && defaults.kind !== 'antigravity' ? defaults.serviceTier ?? null : null;
   const sessionId = agent.backendSession?.kind === 'codex'
     ? agent.backendSession.threadId
@@ -590,10 +586,7 @@ function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { so
 function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration, agent: Agent): void {
   const selection = selectionFromAgent(agent);
   if (configuration.backend !== agent.backend) configuration.pendingSelection = null;
-  else if (configuration.pendingSelection) {
-    if (agent.backendDefaults?.userSelectedModel !== true || !sameSelection(configuration.pendingSelection, selection)) return;
-    configuration.pendingSelection = null;
-  }
+  else if (configuration.pendingSelection) return;
   if (configuration.selectionSource === selection.source) return;
   if (configuration.backend !== agent.backend) {
     configuration.models = [];
@@ -611,11 +604,6 @@ function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration
   configuration.selectedReasoningEffort = selection.reasoningEffort;
   configuration.selectedServiceTier = selection.serviceTier;
   if (configuration.modelStatus === 'loaded') selectDefaultModel(configuration);
-}
-
-function sameSelection(left: ExecutionSelection | null | undefined, right: ExecutionSelection | null | undefined): boolean {
-  return Boolean(left && right && left.model === right.model &&
-    left.reasoningEffort === right.reasoningEffort && left.serviceTier === right.serviceTier);
 }
 
 function modelMatchesSelection(model: BackendModelOption, selection: string | null): boolean {

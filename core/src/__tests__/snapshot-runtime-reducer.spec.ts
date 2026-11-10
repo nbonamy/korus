@@ -168,7 +168,7 @@ describe('snapshot runtime reducer', () => {
     });
   });
 
-  it('does not overwrite an explicit next-prompt model choice with current-thread settings', () => {
+  it('records backend-reported settings even when a saved model preference exists', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
     snapshot.agents[0].backendDefaults = {
@@ -186,7 +186,7 @@ describe('snapshot runtime reducer', () => {
     });
 
     expect(snapshot.agents[0].backendDefaults).toMatchObject({
-      model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true, approvalPreset: 'full-access',
+      model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', userSelectedModel: true, approvalPreset: 'full-access',
     });
   });
 

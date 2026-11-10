@@ -98,7 +98,9 @@ threads, routed by `threadId` and `agentId`.
   agents use `thread/start` and set the conversation title to the agent name
   (matching titles are a no-op; renaming the agent renames the conversation).
   Active sessions are SDK-memory-authoritative and are not re-resumed on selection;
-  after relaunch `agent/conversation/load` rebinds the persisted reference.
+  after relaunch `agent/conversation/load` rebinds the persisted reference. Existing
+  threads inherit model, effort, service tier and permissions from the SDK; saved
+  agent defaults configure new conversations and never rewrite a loaded thread.
 - Archive/reconcile/resume rules are in
   [architecture.md](architecture.md#backend-seam). Resume searches active and
   archived catalogs with the agent folder as exact `cwd`; `storageState` marks

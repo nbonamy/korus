@@ -76,6 +76,8 @@ export function agentConversationState(view: () => AgentConversationView, extens
   const answeredIds = stableSet();
   const approvalPreset = () => {
     const allowed = view().capabilities.approvalPresets ?? [];
+    const native = provider()?.permission;
+    if (native !== undefined) return native && allowed.includes(native as ApprovalPreset) ? native as ApprovalPreset : null;
     const stored = approvalPresetFromDefaults(view().agent.backendDefaults);
     return view().capabilities.approvals ? (allowed.includes(stored) ? stored : allowed[0] ?? null) : null;
   };
@@ -117,9 +119,19 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get leadingMenuItems() { return [...permissionMenuItems(view()), ...conversationCommandMenuItems()]; },
       get modelMenuItems() { return extensions.modelMenuItems?.(); },
       get planMode() { return view().composer.planMode; },
-      get selectedModelId() { return view().composer.selectedModelId; },
-      get selectedReasoningEffort() { return view().composer.selectedReasoningEffort; },
-      get selectedServiceTier() { return view().composer.selectedServiceTier; },
+      get selectedModelId() {
+        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        if (!selection) return view().composer.selectedModelId;
+        return view().composer.models?.find(model => model.id === selection.model || model.model === selection.model)?.id ?? selection.model ?? null;
+      },
+      get selectedReasoningEffort() {
+        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        return selection ? selection.reasoningEffort ?? null : view().composer.selectedReasoningEffort;
+      },
+      get selectedServiceTier() {
+        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        return selection ? selection.serviceTier ?? null : view().composer.selectedServiceTier;
+      },
     },
     catalogs: {
       get files() { return view().composer.files; },
@@ -250,6 +262,6 @@ export function useAgentConversation(options: {
 
 function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
   const defaults = view.agent.backendDefaults;
-  const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
+  const selected = view.conversation?.permission ?? (defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined);
   return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
 }

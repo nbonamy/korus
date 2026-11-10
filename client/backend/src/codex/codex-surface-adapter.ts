@@ -21,6 +21,7 @@ export class CodexSurfaceAgentAdapter extends NativeAdapter<Agent> {
   constructor(surface: CodexSurface, closeSurface: () => Promise<void> = () => surface.close()) {
     super(surface, closeSurface, {
       defaultModel: codexConversationDefaults,
+      inheritNativeSettings: true,
       onDiagnostic: traceCodexDiagnostic,
       displayName: agentDisplayName, shouldSyncTitle: shouldSyncConversationTitleFromAgent,
       approvalPresetFromDefaults: codexApprovalPresetFromDefaults,

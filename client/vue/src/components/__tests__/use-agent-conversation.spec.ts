@@ -80,6 +80,23 @@ describe('agentConversationState identity', () => {
     expect(state.identity.messages).toHaveLength(0);
   });
 
+  it('uses native loaded model and permissions instead of stored defaults, with pending edits taking precedence', () => {
+    const agent = { ...createInitialSnapshot().agents[0]!, backendDefaults: { kind: 'codex' as const, model: 'saved', approvalPreset: 'full-access' as const } };
+    const native = codexConversationSnapshot([], { approvalPreset: 'ask-for-approval', selectedModelId: 'native', selectedReasoningEffort: 'low', selectedServiceTier: 'fast' });
+    const view = { agent, conversation: projectCodexConversation(native, agent),
+      capabilities: { approvals: true, approvalPresets: ['ask-for-approval', 'full-access'] },
+      composer: { selectedModelId: 'saved', selectedReasoningEffort: 'high', selectedServiceTier: null, pendingSelection: null },
+    } as unknown as AgentConversationView;
+    const state = agentConversationState(() => view);
+    expect(state.composer!.approvalPreset).toBe('ask-for-approval');
+    expect(state.composer!.selectedModelId).toBe('native');
+    expect(state.composer!.selectedReasoningEffort).toBe('low');
+    expect(state.composer!.selectedServiceTier).toBe('fast');
+    view.composer.selectedModelId = 'draft';
+    view.composer.pendingSelection = { backend: 'codex', model: 'draft', reasoningEffort: 'high', serviceTier: null };
+    expect(state.composer!.selectedModelId).toBe('draft');
+  });
+
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
     const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', backendSession: { kind: 'codex' as const, threadId: 'restored' } };
     const view = { agent,

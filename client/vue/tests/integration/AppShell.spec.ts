@@ -1539,7 +1539,7 @@ describe('AppShell authentication and conversation', () => {
     if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
         .map(row => row.attributes('role') === 'separator' ? '---' : row.text())).toStrictEqual([
-        'Approval', '---', 'Design', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
+        'Permissions', '---', 'Design', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
       ]);
     }
     const item = wrapper.findAll('[role="menuitem"]').find(item => item.text() === label);
@@ -1803,6 +1803,7 @@ describe('AppShell authentication and conversation', () => {
     activeAgent.backendSession = { kind: 'codex', threadId: 'thread-dina' };
     const providerSnapshot = codexConversationSnapshot([], {
       activeConversationId: 'thread-dina',
+      selectedModelId: 'native-model', selectedReasoningEffort: 'low', selectedServiceTier: null,
       plugins: [{
         id: 'app-69b31dc2110c8191b8b47dc98fe5a052',
         name: 'dropbox',
@@ -1839,9 +1840,9 @@ describe('AppShell authentication and conversation', () => {
       activeTurnId: null,
     });
     expect(state.composer).toMatchObject({
-      selectedModelId: 'gpt-5',
-      selectedReasoningEffort: 'high',
-      selectedServiceTier: 'fast',
+      selectedModelId: 'native-model',
+      selectedReasoningEffort: 'low',
+      selectedServiceTier: null,
       state: { text: 'saved draft', selectionStart: 5, selectionEnd: 5 },
     });
     expect(state.catalogs?.plugins).toStrictEqual([{

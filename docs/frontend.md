@@ -31,7 +31,10 @@ weight and predictable geometry over decorative cards or explanatory copy.
 
 ## Ownership
 
-- **Components:** ephemeral interaction and derived presentation state.
+- **Components:** ephemeral interaction and derived presentation state. Loaded
+  conversation settings come from SDK state. Pending unsent model choices remain
+  local until matching native settings acknowledge them; persisted preferences
+  never suppress subsequent provider updates.
 - **Shared Quick Chats:** saved joins appear in their original local team's Quick
   Chat list with a shared origin marker. Pasted invitations and native deep links
   use the same join dialog. The daemon owns credentials and provider replicas;
