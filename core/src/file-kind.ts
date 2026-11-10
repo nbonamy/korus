@@ -1,1 +1,1 @@
-export * from 'ai-app-sdk/documents/files';
+export * from '@korus-dev/agent-ui-sdk/documents/files';

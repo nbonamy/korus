@@ -1,3 +1,4 @@
+import { sdkSourceAliases, sdkSourceRoot, sdkSourcesEnabled } from '../../vite.sdk-aliases';
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
@@ -23,11 +24,13 @@ const logicTestFiles = [
 
 export default defineConfig({
   plugins: [vue()],
+  server: { fs: { allow: [path.resolve(__dirname, '../..'), ...(sdkSourcesEnabled ? [sdkSourceRoot] : [])] } },
   resolve: {
     dedupe: ['vue', 'element-plus'],
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      ...sdkSourceAliases,
+    ],
   },
   test: {
     testTimeout: 2_500,
@@ -37,7 +40,7 @@ export default defineConfig({
     environment: 'jsdom',
     css: {
       // Opt in only components with valuable runtime CSS assertions.
-      include: [/ai-app-sdk.*styles\.css/, /(BrowserPanel|AnnotationSendButton)\.vue/, /MarkdownPanel\.vue/, /GitPruneDialog\.vue/, /CodexLoginLanding\.vue/, /ProviderInstallActions\.vue/, /AppMenu\.vue/, /TeamRail\.vue/, /Form(Section|Row)\.vue/, /SettingsMenu\.vue/, /AutomationsView\.vue/, /Automation(Schedule)?Editor\.vue/, /AnnotationOverlayApp\.vue/, /MissionWorkspace\.css/, /Mission(Conversation|Stage)Rail\.vue/, /(?:WorkspaceHeader|PaneTransition)\.vue/, /AgentSidebar(?:Repo|Activity)?\.vue/, /(?:Activity|Repository)AgentRow\.vue/, /agent-row\.css/, /agent-sidebar-common\.css/, /SettingsSidebar\.vue/, /Backend(Icon|Selector)\.vue/, /SourcePreviewPanel\.vue/, /CodeReviewPanel\.vue/, /ReviewFindingList\.vue/, /MissionShipBoard\.vue/, /MissionImplementationBoard\.css/, /MissionImplementationTicketCard\.vue/, /RepositorySessionSourceDialog\.vue/, /RightWorkspacePanel\.vue/, /WorkspaceLinkDropTarget\.vue/, /AgentWorkspace\.vue/, /ConversationPane\.vue/, /SplitLayoutControl\.vue/, /ProviderSetupDialog\.vue/, /BacklogView\.vue/, /BacklogSourceSelector\.vue/, /base\.css/, /el-select\.css/, /el-icon\.css/],
+      include: [/agent-ui-sdk.*styles\.css/, /(BrowserPanel|AnnotationSendButton)\.vue/, /MarkdownPanel\.vue/, /GitPruneDialog\.vue/, /CodexLoginLanding\.vue/, /ProviderInstallActions\.vue/, /AppMenu\.vue/, /TeamRail\.vue/, /Form(Section|Row)\.vue/, /SettingsMenu\.vue/, /AutomationsView\.vue/, /Automation(Schedule)?Editor\.vue/, /AnnotationOverlayApp\.vue/, /MissionWorkspace\.css/, /Mission(Conversation|Stage)Rail\.vue/, /(?:WorkspaceHeader|PaneTransition)\.vue/, /AgentSidebar(?:Repo|Activity)?\.vue/, /(?:Activity|Repository)AgentRow\.vue/, /agent-row\.css/, /agent-sidebar-common\.css/, /SettingsSidebar\.vue/, /Backend(Icon|Selector)\.vue/, /SourcePreviewPanel\.vue/, /CodeReviewPanel\.vue/, /ReviewFindingList\.vue/, /MissionShipBoard\.vue/, /MissionImplementationBoard\.css/, /MissionImplementationTicketCard\.vue/, /RepositorySessionSourceDialog\.vue/, /RightWorkspacePanel\.vue/, /WorkspaceLinkDropTarget\.vue/, /AgentWorkspace\.vue/, /ConversationPane\.vue/, /SplitLayoutControl\.vue/, /ProviderSetupDialog\.vue/, /BacklogView\.vue/, /BacklogSourceSelector\.vue/, /base\.css/, /el-select\.css/, /el-icon\.css/],
     },
     pool: 'vmThreads',
     vmMemoryLimit: '2GB',

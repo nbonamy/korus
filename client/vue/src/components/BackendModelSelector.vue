@@ -36,7 +36,7 @@
 import { computed, ref, watch } from 'vue';
 import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
-import { UltrafastIcon as CodexUltrafastIcon } from 'ai-app-sdk';
+import { UltrafastIcon as CodexUltrafastIcon } from '@korus-dev/agent-ui-sdk';
 import type { AgentBackend, BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';

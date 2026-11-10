@@ -1,1 +1,1 @@
-export { getCursorAccountUsage } from 'multi-agents-sdk/providers/cursor';
+export { getCursorAccountUsage } from '@korus-dev/multi-agent-sdk/providers/cursor';

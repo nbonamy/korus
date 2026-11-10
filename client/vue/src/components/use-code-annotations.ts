@@ -1,8 +1,8 @@
-import { describeCodeRange, type CodeRange, type CodeAnnotationInput } from 'ai-app-sdk';
-export { describeCodeRange, type CodeRange, type CodeAnnotationInput } from 'ai-app-sdk';
+import { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
+export { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from 'multi-agents-sdk/surface';
-import type { ClientSendMessageOptions as CodexRendererSendMessageOptions } from 'ai-app-sdk';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/surface';
+import type { ClientSendMessageOptions as CodexRendererSendMessageOptions } from '@korus-dev/agent-ui-sdk';
 import { computed, reactive } from 'vue';
 
 /** Where the code is: a file and a run of lines, with the lines of a diff numbered on the side the person pointed at. */

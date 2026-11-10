@@ -1,4 +1,4 @@
-import { AntigravityHost as NativeHost } from 'multi-agents-sdk/providers/antigravity';
+import { AntigravityHost as NativeHost } from '@korus-dev/multi-agent-sdk/providers/antigravity';
 import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendCodeReviewInput, BackendCodeReviewResult, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import type { BackendDriverRegistryOptions } from '../driver-rpc';

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 export function speechHelperResources(workspacePath: string, platform: NodeJS.Platform): string[] {
   if (platform !== 'darwin') return [];
-  const sdk = installedPackageRoot(workspacePath, 'ai-app-sdk');
+  const sdk = installedPackageRoot(workspacePath, '@korus-dev/agent-ui-sdk');
   return [path.join(sdk, 'assets/apple-speechanalyzer-cli')];
 }
 

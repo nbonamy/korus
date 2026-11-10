@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/contracts/safety-review';
+export * from '@korus-dev/multi-agent-sdk/contracts/safety-review';

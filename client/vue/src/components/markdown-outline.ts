@@ -1,1 +1,1 @@
-export { collectMarkdownHeadings, type MarkdownHeading } from 'ai-app-sdk';
+export { collectMarkdownHeadings, type MarkdownHeading } from '@korus-dev/agent-ui-sdk';

@@ -135,7 +135,7 @@ import type {
   ConversationVisualization as CodexConversationVisualization,
   MessageImage as CodexMessageImage,
   MessageImageContext as CodexMessageImageContext,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';

@@ -1,9 +1,9 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from 'multi-agents-sdk/surface';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/surface';
 import type {
   MessageTextSelection as CodexMessageTextSelection,
   ClientSendMessageOptions as CodexRendererSendMessageOptions,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import { computed, reactive } from 'vue';
 
 export type ChatTextSelection = CodexMessageTextSelection & { textStart?: number; textBlockIndex?: number };

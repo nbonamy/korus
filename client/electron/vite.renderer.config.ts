@@ -2,28 +2,23 @@ import { excalidrawAssets } from '../vue/vite.excalidraw-assets';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
-import { sdkSourceAliases, sdkSourceRoot } from '../../vite.sdk-aliases';
+import { sdkSourceAliases, sdkSourceRoot, sdkSourcesEnabled, sdkSourcePackages } from '../../vite.sdk-aliases';
 
-const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
+const useSdkSources = sdkSourcesEnabled;
 
 export default defineConfig({
   root: path.resolve(__dirname, 'src/renderer'),
   optimizeDeps: useSdkSources ? {
     // Source aliases must stay in Vite's module graph for SDK HMR. Their CJS
     // dependencies remain eligible for normal dependency optimization.
-    exclude: Object.keys(sdkSourceAliases),
-  } : {
-    // The SDK is a linked local package during development. Rebuild dependency
-    // chunks on startup so its Vue code and scoped CSS always use matching IDs.
-    // Keep prebundling enabled because SDK dependencies such as elkjs are CJS.
-    force: true,
-  },
+    exclude: sdkSourcePackages,
+  } : undefined,
   resolve: {
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-      '@workspace/vue': path.resolve(__dirname, '../vue/src'),
-      ...(useSdkSources ? sdkSourceAliases : {}),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      { find: '@workspace/vue', replacement: path.resolve(__dirname, '../vue/src') },
+      ...(useSdkSources ? sdkSourceAliases : []),
+    ],
     dedupe: ['vue', 'element-plus'],
   },
   server: {

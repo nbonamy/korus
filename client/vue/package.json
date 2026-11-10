@@ -45,8 +45,8 @@
     "vue": "^3.5.35",
     "vue-chartjs": "5.3.4",
     "vue-i18n": "^11.4.5",
-    "multi-agents-sdk": "file:../../../multi-agents-sdk",
-    "ai-app-sdk": "file:../../../ai-app-sdk"
+    "@korus-dev/multi-agent-sdk": "0.0.0",
+    "@korus-dev/agent-ui-sdk": "0.0.0"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",

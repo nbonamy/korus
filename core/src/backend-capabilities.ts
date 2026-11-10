@@ -1,5 +1,5 @@
 import type { AgentBackend, BackendCapabilities } from './contracts';
-import { codexBackendCapabilities as nativecodex, claudeBackendCapabilities as nativeclaude, cursorBackendCapabilities as nativecursor, antigravityBackendCapabilities as nativeantigravity } from 'multi-agents-sdk/capabilities';
+import { codexBackendCapabilities as nativecodex, claudeBackendCapabilities as nativeclaude, cursorBackendCapabilities as nativecursor, antigravityBackendCapabilities as nativeantigravity } from '@korus-dev/multi-agent-sdk/capabilities';
 export const codexBackendCapabilities: BackendCapabilities = {
   ...nativecodex,
   codeReview: true,

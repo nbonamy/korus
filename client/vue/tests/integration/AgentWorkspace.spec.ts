@@ -1,6 +1,6 @@
 import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { MessageImage as CodexMessageImage, MessageImageContext as CodexMessageImageContext } from 'ai-app-sdk';
+import type { MessageImage as CodexMessageImage, MessageImageContext as CodexMessageImageContext } from '@korus-dev/agent-ui-sdk';
 import { defineComponent, h, reactive } from 'vue';
 import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';

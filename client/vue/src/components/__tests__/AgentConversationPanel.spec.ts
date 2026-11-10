@@ -1,4 +1,4 @@
-import { provideToolCallDetails as provideCodexToolCallDetails } from 'ai-app-sdk';
+import { provideToolCallDetails as provideCodexToolCallDetails } from '@korus-dev/agent-ui-sdk';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';

@@ -1,6 +1,6 @@
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createConversationPaneController as createCodexConversationPaneController, type ConversationPaneActions as CodexConversationPaneActions, type ConversationPaneState as CodexConversationPaneState, type ClientSendMessageOptions as CodexRendererSendMessageOptions, type ComposerMenuItem as CodexComposerMenuItem } from 'ai-app-sdk';
+import { createConversationPaneController as createCodexConversationPaneController, type ConversationPaneActions as CodexConversationPaneActions, type ConversationPaneState as CodexConversationPaneState, type ClientSendMessageOptions as CodexRendererSendMessageOptions, type ComposerMenuItem as CodexComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
@@ -64,7 +64,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => CodexComposerMenuItem[];
   placeholder?: () => string | undefined;
-  previewMessage?: () => import('multi-agents-sdk/surface').SurfaceMessage | undefined;
+  previewMessage?: () => import('@korus-dev/multi-agent-sdk/surface').SurfaceMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
 } = {}): CodexConversationPaneState {
   const provider = () => conversationForView(view());

@@ -3,7 +3,7 @@
 </template>
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BrowserPanel, type BrowserUiHost } from 'ai-app-sdk/browser-ui';
+import { BrowserPanel, type BrowserUiHost } from '@korus-dev/agent-ui-sdk/browser-ui';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { annotationToBrowserOwner, viewportToBrowserOwner } from '@workspace/core/browser-contracts';
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';

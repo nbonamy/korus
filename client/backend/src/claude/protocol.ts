@@ -1,1 +1,1 @@
-export { type ClaudeSdkMessage } from 'multi-agents-sdk/providers/claude';
+export { type ClaudeSdkMessage } from '@korus-dev/multi-agent-sdk/providers/claude';

@@ -1,6 +1,6 @@
-import type { BrowserAnnotation as OwnerAnnotation } from 'ai-app-sdk/browser/contracts';
-import type { BrowserViewportRequest as OwnerViewportRequest } from 'ai-app-sdk/browser/viewport';
-export type { BrowserBounds, BrowserViewportBounds, BrowserState } from 'ai-app-sdk/browser/contracts';
+import type { BrowserAnnotation as OwnerAnnotation } from '@korus-dev/agent-ui-sdk/browser/contracts';
+import type { BrowserViewportRequest as OwnerViewportRequest } from '@korus-dev/agent-ui-sdk/browser/viewport';
+export type { BrowserBounds, BrowserViewportBounds, BrowserState } from '@korus-dev/agent-ui-sdk/browser/contracts';
 
 /** Product wire identities remain compatible with released clients. */
 export type BrowserAnnotation = Omit<OwnerAnnotation, 'ownerId'> & { agentId: string };

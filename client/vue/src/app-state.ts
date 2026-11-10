@@ -23,12 +23,12 @@ import { guestConversationCapabilities } from '@workspace/core/guest-conversatio
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { type ComposerState as CodexComposerState, type NativeAttachment as CodexNativeAttachment } from 'ai-app-sdk';
+import { type ComposerState as CodexComposerState, type NativeAttachment as CodexNativeAttachment } from '@korus-dev/agent-ui-sdk';
 import {
   createCodexConversationReplica,
   type CodexConversationReplica,
-} from 'multi-agents-sdk/conversation-replica';
-import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
+} from '@korus-dev/multi-agent-sdk/conversation-replica';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
 import {
   createClaudeConversationReplica,
   type ClaudeConversationReplica,

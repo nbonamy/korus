@@ -13,7 +13,7 @@
   </CodexComposerDrawer>
 </template>
 <script setup lang="ts">
-import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from 'ai-app-sdk';
+import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from '@korus-dev/agent-ui-sdk';
 import { useI18n } from 'vue-i18n';
 import { product } from '@workspace/core/product';
 import { appPlatformActions } from '../platform-api';

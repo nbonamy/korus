@@ -1,4 +1,4 @@
-import type { ChatMessage as CodexChatMessage } from 'ai-app-sdk';
+import type { ChatMessage as CodexChatMessage } from '@korus-dev/agent-ui-sdk';
 import type { RendererMessage } from '@workspace/core/contracts';
 import { parseCollaborationMessageEnvelope } from '@workspace/core/collaboration-message-envelope';
 import { product } from '@workspace/core/product';

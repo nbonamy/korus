@@ -1,4 +1,4 @@
 <script lang="ts">
-import { AnnotationSendButton } from 'ai-app-sdk/browser-ui';
+import { AnnotationSendButton } from '@korus-dev/agent-ui-sdk/browser-ui';
 export default AnnotationSendButton;
 </script>

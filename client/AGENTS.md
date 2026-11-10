@@ -27,14 +27,14 @@ Vitest.
 ## Providers
 
 Codex and Claude Code run as provider drivers in `daemon`. Provider conversations
-stay provider-owned: `multi-agents-sdk` owns native conversation state, reducers,
-replicas and transport primitives; `ai-app-sdk` owns generic conversation UI.
+stay provider-owned: `multi-agent-sdk` owns native conversation state, reducers,
+replicas and transport primitives; `agent-ui-sdk` owns generic conversation UI.
 Korus stores the thread reference,
 transports snapshots and events, and adds coordination metadata. Fix generic Codex
 behavior in the SDK; Codex product policy lives in the driver. `RendererMessage` is an
 app-owned DTO where explicitly needed, not a live transcript. New providers arrive as
-hosts behind `daemon`, not as a global transcript reducer. `CODEX_APP_SDK_SOURCE=1`
-links the sibling SDK source directories (`CODEX_APP_SDK_SOURCE_ROOT` selects
+hosts behind `daemon`, not as a global transcript reducer. `SDK_LOCAL_SOURCE=1`
+links the sibling SDK source directories (`SDK_SOURCE_ROOT` selects
 their common parent).
 
 Optional telemetry is isolated by lint: only the local runtime composes the uploader,

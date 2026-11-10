@@ -1,11 +1,13 @@
+import { sdkSourceAliases } from '../../vite.sdk-aliases';
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      ...sdkSourceAliases,
+    ],
   },
   test: {
     testTimeout: 2_500,

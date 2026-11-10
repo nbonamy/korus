@@ -4,8 +4,8 @@ import type {
   ConversationPaneController as CodexConversationPaneController,
   ConversationPaneState as CodexConversationPaneState,
   NativeAttachment as CodexNativeAttachment,
-} from 'ai-app-sdk';
-import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
+} from '@korus-dev/agent-ui-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
 import { defineComponent, nextTick } from 'vue';
 import { expect, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';

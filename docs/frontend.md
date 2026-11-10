@@ -111,11 +111,11 @@ Rules of thumb:
 
 ### Conversation Panes
 
-`ConversationPane` from `ai-app-sdk` is the complete conversation and
+`ConversationPane` from `@korus-dev/agent-ui-sdk` is the complete conversation and
 composer surface. Extend it through its controller, slots and typed actions; Korus's
 wrapper only maps app state and product routing. Registered provider bindings
 select the matching native cache and use the read-only presentation adapters in
-`multi-agents-sdk`. Korus adds review-sidebar policy outside those adapters.
+`multi-agent-sdk`. Korus adds review-sidebar policy outside those adapters.
 Shared panes and the shell consume that selected presentation, including requests
 and plans, without choosing between native snapshot fields. Native replicas,
 recovery and reducers remain provider-owned; the binding does not rebuild a
@@ -124,7 +124,7 @@ conversation/turn identity, rather than native tool names. A generic conversatio
 interaction defect is an SDK defect. Never add a global message list or
 provider-neutral reducer to `app-state.ts`.
 
-Document, diff and code-annotation controls belong to `ai-app-sdk`; Korus supplies
+Document, diff and code-annotation controls belong to `agent-ui-sdk`; Korus supplies
 file access, navigation, draft persistence and the neutral overview slot. The browser
 UI receives an injected host API. Bookmark storage, extension selection, settings
 and product navigation stay in Korus.

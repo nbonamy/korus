@@ -1,7 +1,7 @@
 import { isAppMcpServerName } from '@workspace/core/product';
 import {
   type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 
 type ToolPhase = 'completed' | 'failed' | 'running';
 type AgentNameResolver = (identifier: string) => string | undefined;

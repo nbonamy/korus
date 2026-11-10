@@ -1,1 +1,1 @@
-export { claudeModelOptionsFromSdk } from 'multi-agents-sdk/providers/claude';
+export { claudeModelOptionsFromSdk } from '@korus-dev/multi-agent-sdk/providers/claude';

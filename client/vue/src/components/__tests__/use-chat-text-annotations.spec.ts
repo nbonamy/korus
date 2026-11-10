@@ -1,4 +1,4 @@
-import type { MessageTextSelection as CodexMessageTextSelection } from 'ai-app-sdk';
+import type { MessageTextSelection as CodexMessageTextSelection } from '@korus-dev/agent-ui-sdk';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import {

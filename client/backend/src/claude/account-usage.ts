@@ -1,1 +1,1 @@
-export { getClaudeAccountUsage } from 'multi-agents-sdk/providers/claude';
+export { getClaudeAccountUsage } from '@korus-dev/multi-agent-sdk/providers/claude';

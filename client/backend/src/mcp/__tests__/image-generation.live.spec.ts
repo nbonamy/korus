@@ -2,7 +2,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { createCodexSurface } from 'multi-agents-sdk/codex';
+import { createCodexSurface } from '@korus-dev/multi-agent-sdk/codex';
 import type { BackendImageGenerationResult } from '@workspace/core/backend-driver';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { createInitialSnapshot } from '@workspace/core/snapshot';

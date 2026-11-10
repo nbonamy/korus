@@ -15,14 +15,14 @@ describe('packaged speech helper', () => {
     fixtures.push(root);
     const workspace = path.join(root, 'client/electron');
     mkdirSync(workspace, { recursive: true });
-    const sdk = path.join(layout === 'hoisted' ? root : layout === 'workspace' ? workspace : path.join(root, 'libraries'), 'node_modules/ai-app-sdk');
+    const sdk = path.join(layout === 'hoisted' ? root : layout === 'workspace' ? workspace : path.join(root, 'libraries'), 'node_modules/@korus-dev/agent-ui-sdk');
     mkdirSync(path.join(sdk, 'assets'), { recursive: true });
     writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({
-      name: 'ai-app-sdk', exports: { '.': { import: './dist/vue/index.js' } },
+      name: '@korus-dev/agent-ui-sdk', exports: { '.': { import: './dist/vue/index.js' } },
     }));
     if (layout === 'linked') {
-      mkdirSync(path.join(root, 'node_modules'), { recursive: true });
-      symlinkSync(sdk, path.join(root, 'node_modules/ai-app-sdk'), process.platform === 'win32' ? 'junction' : 'dir');
+      mkdirSync(path.join(root, 'node_modules/@korus-dev'), { recursive: true });
+      symlinkSync(sdk, path.join(root, 'node_modules/@korus-dev/agent-ui-sdk'), process.platform === 'win32' ? 'junction' : 'dir');
     }
     writeFileSync(path.join(sdk, 'assets/apple-speechanalyzer-cli'), 'native speech helper');
 

@@ -1,4 +1,4 @@
-import 'ai-app-sdk/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import { elementPlusStubs } from '../support/element-plus-stubs';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import bitwardenIcon from '../../src/assets/browser-extensions/bitwarden.svg';

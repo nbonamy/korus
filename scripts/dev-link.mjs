@@ -25,7 +25,7 @@ export async function createDevelopmentLinkTarget({ root = rootDirectory, home, 
   const config = { executable, appPath, home, scheme, electronArgs, environment: { ...environment,
     NODE_ENV: 'development', APP_HOME: home, APP_DEV_PROTOCOL_SCHEME: scheme,
     APP_BACKEND_MODE: 'bundled', APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_BACKEND_COMMAND: process.execPath, APP_BACKEND_ARGS: `${path.join(root, 'client/backend/dist/daemon.mjs')},--stdio`, APP_BACKEND_WATCH_FILE: '',
-    APP_ASSETS_PATH: path.join(root, 'client/electron/assets'), CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/multi-agents-sdk/codex/assets'),
+    APP_ASSETS_PATH: path.join(root, 'client/electron/assets'), CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/@korus-dev/multi-agent-sdk/codex/assets'),
   } };
   await writeFile(configuration, JSON.stringify(config), { mode: 0o600 });
   await writeFile(launcher, `import {spawn} from 'node:child_process';

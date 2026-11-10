@@ -1,1 +1,1 @@
-export { useCodeSelection, type CodeSelection, type CodeSelectionAnchor } from 'ai-app-sdk';
+export { useCodeSelection, type CodeSelection, type CodeSelectionAnchor } from '@korus-dev/agent-ui-sdk';

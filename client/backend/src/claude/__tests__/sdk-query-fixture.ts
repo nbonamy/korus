@@ -1,7 +1,11 @@
-import type { Options as ClaudeQueryOptions, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { vi } from 'vitest';
 import type { ClaudeQueryFactory, ClaudeQueryRuntime } from '../agent-sdk-transport';
 import type { ClaudeSdkMessage } from '../protocol';
+
+type QueryInput = Parameters<ClaudeQueryFactory>[0];
+type ClaudeQueryOptions = QueryInput['options'];
+type SDKUserMessage = QueryInput['prompt'] extends AsyncIterable<infer Message> ? Message : never;
+type SDKMessage = ClaudeQueryRuntime extends AsyncIterable<infer Message> ? Message : never;
 
 export function createQueryHarness(initializationModels: Array<Record<string, unknown>> = []): {
   createQuery: ReturnType<typeof vi.fn<ClaudeQueryFactory>>;

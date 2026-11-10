@@ -1,5 +1,5 @@
-import { CodexSurfaceAgentAdapter as NativeAdapter } from 'multi-agents-sdk/providers/codex';
-import type { CodexSurface } from 'multi-agents-sdk/codex';
+import { CodexSurfaceAgentAdapter as NativeAdapter } from '@korus-dev/multi-agent-sdk/providers/codex';
+import type { CodexSurface } from '@korus-dev/multi-agent-sdk/codex';
 import type { Agent, BackendSession } from '@workspace/core/contracts';
 import type { BackendCodeReviewInput, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';

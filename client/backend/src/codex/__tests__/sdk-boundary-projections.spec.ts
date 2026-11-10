@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CodexConversationSnapshot, CodexSurfaceSkill } from 'multi-agents-sdk/surface';
+import type { CodexConversationSnapshot, CodexSurfaceSkill } from '@korus-dev/multi-agent-sdk/surface';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { codexSdkFixture, sdkAgent } from './sdk-surface-fixture';
 

@@ -17,6 +17,9 @@ test('a built daemon carries only public connection settings and preserves telem
     await copyFile(path.join(root, 'client/electron/assets/viz/reference.png'), path.join(temp, 'client/electron/assets/viz/reference.png'));
     await copyFile(path.join(root, 'client/backend/vite.config.ts'), path.join(temp, 'client/backend/vite.config.ts'));
     await copyFile(path.join(root, 'vite.sdk-aliases.ts'), path.join(temp, 'vite.sdk-aliases.ts'));
+    await mkdir(path.join(temp, 'scripts'));
+    await copyFile(path.join(root, 'scripts/sdk-sources.mjs'), path.join(temp, 'scripts/sdk-sources.mjs'));
+    await copyFile(path.join(root, 'package.json'), path.join(temp, 'package.json'));
     for (const name of ['core', 'node_modules']) await symlink(path.join(root, name), path.join(temp, name), directoryLink);
     const secret = 'BUILD_SECRET_CANARY_DO_NOT_SHIP_81524';
     await writeFile(path.join(temp, '.env'), `APP_COMPANION_RELAY_URL=wss://packaged.example\nAPP_COMPANION_RELAY_PEER_ID=12D3KooWKgzKeaxarcdmiyzTLSu2fmxxY6Nkj4CZKfvQGspLMG5S\nAPPLE_PASSWORD=${secret}\nAPP_COMPANION_APNS_PRIVATE_KEY=${secret}\nAPP_TELEMETRY_ENDPOINT=https://packaged.example/v1/telemetry/daily\n`);
@@ -32,7 +35,7 @@ finally { await manager.stop(); }
     await writeFile(path.join(temp, 'build.mjs'), `import { build } from 'vite';
 await build({ configFile: ${JSON.stringify(path.join(temp, 'client/backend/vite.config.ts'))}, logLevel: 'silent', build: { ssr: ${JSON.stringify(entry)}, outDir: ${JSON.stringify(path.join(temp, 'dist'))}, sourcemap: false } });
 `);
-    const env = { ...process.env, CODEX_APP_SDK_SOURCE: '0' };
+    const env = { ...process.env, SDK_LOCAL_SOURCE: '0' };
     delete env.APP_COMPANION_RELAY_URL;
     delete env.APP_COMPANION_RELAY_PEER_ID;
     delete env.APP_TELEMETRY_ENDPOINT;

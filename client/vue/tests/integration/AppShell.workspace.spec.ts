@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
   NativeRendererApi as CodexNativeRendererApi,
-} from 'ai-app-sdk';
-import type { SurfaceMessage } from 'multi-agents-sdk/surface';
+} from '@korus-dev/agent-ui-sdk';
+import type { SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';

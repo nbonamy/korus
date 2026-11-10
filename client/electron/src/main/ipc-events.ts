@@ -1,6 +1,6 @@
 import type { AppCommand, MainToRendererEvent } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents } from '@workspace/core/ipc';
-import { sendIpcEvent, type IpcEventSender } from 'ai-app-sdk/electron';
+import { sendIpcEvent, type IpcEventSender } from '@korus-dev/agent-ui-sdk/electron';
 
 export function sendRendererEvent(sender: IpcEventSender, event: MainToRendererEvent): void {
   sendIpcEvent<AppIpcEvents, typeof ipcChannels.event>(sender, ipcChannels.event, event);

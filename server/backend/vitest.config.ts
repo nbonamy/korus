@@ -1,6 +1,8 @@
+import { sdkSourceAliases } from '../../vite.sdk-aliases';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: { alias: sdkSourceAliases },
   test: {
     testTimeout: 2_500,
     hookTimeout: 2_500,

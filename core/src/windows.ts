@@ -1,5 +1,5 @@
-import type { NativeAttachment as CodexNativeAttachment } from 'ai-app-sdk/host';
-import type { CodexPromptPart } from 'multi-agents-sdk/surface';
+import type { NativeAttachment as CodexNativeAttachment } from '@korus-dev/agent-ui-sdk/host';
+import type { CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
 
 /**
  * View state a window starts with. Opening a window always takes one, so every

@@ -1,10 +1,10 @@
-import { ClaudeAgentSdkTransport as NativeTransport, type ClaudeAgentSdkTransportOptions as NativeOptions } from 'multi-agents-sdk/providers/claude';
+import { ClaudeAgentSdkTransport as NativeTransport, type ClaudeAgentSdkTransportOptions as NativeOptions } from '@korus-dev/multi-agent-sdk/providers/claude';
 import { product } from '@workspace/core/product';
 import type { RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
 import { resolveClaudeLaunch } from './claude-command';
 import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { debugMain, logMain } from '../log';
-export type { ClaudeQueryRuntime, ClaudeQueryFactory } from 'multi-agents-sdk/providers/claude';
+export type { ClaudeQueryRuntime, ClaudeQueryFactory } from '@korus-dev/multi-agent-sdk/providers/claude';
 export type ClaudeAgentSdkTransportOptions = NativeOptions & { runtimeDiscovery?: RuntimeDiscoveryDependencies };
 /** Product identity, utility restrictions and plan review remain application policy. */
 export class ClaudeAgentSdkTransport extends NativeTransport {

@@ -5,7 +5,7 @@
   </DiffPreviewPanel>
 </template>
 <script setup lang="ts">
-import { DiffPreviewPanel, type CodeAnnotationInput } from 'ai-app-sdk';
+import { DiffPreviewPanel, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 import { translate } from '../i18n';
 import { computed, nextTick, ref } from 'vue';
 import { useGeneralPreferences } from '../general-preferences';

@@ -1,4 +1,4 @@
-import { ElectronAttachmentRegistry as CodexElectronAttachmentRegistry } from 'ai-app-sdk/electron';
+import { ElectronAttachmentRegistry as CodexElectronAttachmentRegistry } from '@korus-dev/agent-ui-sdk/electron';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

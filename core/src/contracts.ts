@@ -1,8 +1,8 @@
 import type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
 export type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
-export { PRIMARY_BROWSER_ID } from 'ai-app-sdk/browser/contracts';
-import type { BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';
-export type { BackendApprovalDecision, BackendApprovalScope, BackendRequestedPermission, BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';
+export { PRIMARY_BROWSER_ID } from '@korus-dev/agent-ui-sdk/browser/contracts';
+import type { BackendApprovalRequest } from '@korus-dev/multi-agent-sdk/contracts/approvals';
+export type { BackendApprovalDecision, BackendApprovalScope, BackendRequestedPermission, BackendApprovalRequest } from '@korus-dev/multi-agent-sdk/contracts/approvals';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
 import type {
   AgentBackend,

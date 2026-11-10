@@ -1,4 +1,4 @@
-import type { ComposerMenuItem as CodexComposerMenuItem } from 'ai-app-sdk';
+import type { ComposerMenuItem as CodexComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import { IconChecklist, IconPalette, IconSitemap } from '@tabler/icons-vue';
 import { GitBranchIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';

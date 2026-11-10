@@ -1,6 +1,6 @@
 <template><SourcePreviewPanel v-bind="props" :translate="translate" @annotate="emit('annotate', $event)" /></template>
 <script setup lang="ts">
-import { SourcePreviewPanel, type CodeAnnotationInput } from 'ai-app-sdk';
+import { SourcePreviewPanel, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 import { translate } from '../i18n';
 const props = withDefaults(defineProps<{
   content: string;

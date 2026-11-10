@@ -353,12 +353,12 @@ outside loopback, and saved pairings cannot enable the development exception.
 ## Conversation Ownership
 
 Provider conversations stay provider-owned end to end. `codex-sdk` owns the
-Codex app-server protocol and transports. `multi-agents-sdk` owns native
+Codex app-server protocol and transports. `multi-agent-sdk` owns native
 conversation state, replicas, read-only conversation presentation, native harness
 drivers, scoped execution and reusable
 transport primitives. Its primary consumer interface uses opaque durable sessions,
 neutral events and capability-driven operations. Native compatibility contracts
-remain available through explicit entry points for shipped product transports. `ai-app-sdk` owns conversation/composer rendering, document
+remain available through explicit entry points for shipped product transports. `agent-ui-sdk` owns conversation/composer rendering, document
 and diff controls, code annotations, host bridges, speech, browser controls and
 the Electron browser engine. Each library is one package with runtime
 subpath exports; browser-safe contracts do not import trusted runtime code.
@@ -397,7 +397,7 @@ existing agent-based product wire fields intact.
 Every backend-dependent feature enters through the app seam:
 
 1. Define an app-owned contract for behavior outside the transcript.
-2. Express native operations through the native driver contract in `multi-agents-sdk/native`;
+2. Express native operations through the native driver contract in `multi-agent-sdk/native`;
    `AgentBackendDriver` adds Korus workflow policy behind `daemon`.
 3. Keep native provider execution in the SDK adapters. Korus provider directories
    supply product policy, native installation lifecycle and host composition.

@@ -1,5 +1,5 @@
 import type { Agent } from '@workspace/core/contracts';
-import type { CodexConversationSnapshot, SurfaceMessage } from 'multi-agents-sdk/surface';
+import type { CodexConversationSnapshot, SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
 import type { CompanionConnector, CompanionSession } from './companion-port';
 
 /** Explicit offline demo; no daemon, network, credentials or provider execution. */

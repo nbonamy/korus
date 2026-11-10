@@ -1,11 +1,11 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from 'multi-agents-sdk/surface';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/surface';
 import {
   getNativeRendererApi as getCodexNativeRendererApi,
   type NativeAttachment as CodexNativeAttachment,
   type ComposerState as CodexComposerState,
   type ClientSendMessageOptions as CodexRendererSendMessageOptions,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import type { RendererPromptAttachment, RendererSendPromptOptions } from '@workspace/core/contracts';
 import { computed, reactive, ref } from 'vue';
 import { translate } from '../i18n';

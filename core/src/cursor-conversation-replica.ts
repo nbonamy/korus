@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/conversations/cursor-conversation-replica';
+export * from '@korus-dev/multi-agent-sdk/conversations/cursor-conversation-replica';

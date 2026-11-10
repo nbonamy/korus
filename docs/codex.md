@@ -9,9 +9,9 @@ conversation state, rendering, actions, history or transport.
 
 `codex-sdk` owns executable discovery, generated app-server types,
 request/response inference, bidirectional routing and stdio JSONL framing.
-`multi-agents-sdk` owns targeted conversation operations, snapshots and reducers,
+`multi-agent-sdk` owns targeted conversation operations, snapshots and reducers,
 optimistic submissions, history reconciliation, queues and turn mutations.
-`ai-app-sdk` owns the generic conversation UI (`CodexConversationPane`).
+`agent-ui-sdk` owns the generic conversation UI (`CodexConversationPane`).
 `daemon` is the product adapter: explicit executable
 selection, initialization metadata, agent/session policy, approval presets, the
 routing envelope (agent, thread, revision) and recovery.

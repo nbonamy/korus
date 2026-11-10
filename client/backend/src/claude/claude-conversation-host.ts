@@ -1,4 +1,4 @@
-import { ClaudeConversationHost as NativeHost, type ClaudeHistoryLoader } from 'multi-agents-sdk/providers/claude';
+import { ClaudeConversationHost as NativeHost, type ClaudeHistoryLoader } from '@korus-dev/multi-agent-sdk/providers/claude';
 import type { Agent, AppPluginSettings, BackendSession } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendCodeReviewInput, BackendCodeReviewResult, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';

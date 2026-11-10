@@ -1,7 +1,7 @@
 import { createApp, h } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import 'ai-app-sdk/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import '../../../../src/styles/variables.css';
 import '../../../../src/styles/theme.css';
 import '../../../../src/styles/base.css';

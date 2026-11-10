@@ -1,4 +1,4 @@
-import type { TypedIpcMain } from 'ai-app-sdk/electron';
+import type { TypedIpcMain } from '@korus-dev/agent-ui-sdk/electron';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { ipcChannels, type AppIpcRequests } from '@workspace/core/ipc';
 import type { AppSnapshot } from '@workspace/core/contracts';

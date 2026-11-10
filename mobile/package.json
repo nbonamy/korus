@@ -36,8 +36,8 @@
     "uint8arraylist": "2.4.9",
     "uint8arrays": "5.1.1",
     "vue": "^3.5.35",
-    "multi-agents-sdk": "file:../../multi-agents-sdk",
-    "ai-app-sdk": "file:../../ai-app-sdk"
+    "@korus-dev/multi-agent-sdk": "0.0.0",
+    "@korus-dev/agent-ui-sdk": "0.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",

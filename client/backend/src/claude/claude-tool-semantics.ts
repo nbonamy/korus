@@ -1,1 +1,1 @@
-export { claudeToolSemantics } from 'multi-agents-sdk/providers/claude';
+export { claudeToolSemantics } from '@korus-dev/multi-agent-sdk/providers/claude';

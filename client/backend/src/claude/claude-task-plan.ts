@@ -1,1 +1,1 @@
-export { ClaudeTaskPlan } from 'multi-agents-sdk/providers/claude';
+export { ClaudeTaskPlan } from '@korus-dev/multi-agent-sdk/providers/claude';

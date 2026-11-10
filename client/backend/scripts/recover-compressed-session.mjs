@@ -7,7 +7,7 @@ import { copyFile, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createCodexSurface } from 'multi-agents-sdk/codex';
+import { createCodexSurface } from '@korus-dev/multi-agent-sdk/codex';
 
 const scriptFolder = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptFolder, '..', '..', '..');

@@ -1,4 +1,4 @@
-import type { HarnessDriver } from 'multi-agents-sdk/native';
+import type { HarnessDriver } from '@korus-dev/multi-agent-sdk/native';
 import type {
   Agent,
   AgentBackend,

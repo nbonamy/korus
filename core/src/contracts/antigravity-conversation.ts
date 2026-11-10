@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/contracts/antigravity-conversation';
+export * from '@korus-dev/multi-agent-sdk/contracts/antigravity-conversation';

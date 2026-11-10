@@ -1,1 +1,1 @@
-export { sanitizeSvg } from 'ai-app-sdk';
+export { sanitizeSvg } from '@korus-dev/agent-ui-sdk';

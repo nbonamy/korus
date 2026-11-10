@@ -1,4 +1,4 @@
-import { CursorHost as NativeHost } from 'multi-agents-sdk/providers/cursor';
+import { CursorHost as NativeHost } from '@korus-dev/multi-agent-sdk/providers/cursor';
 import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendCodeReviewInput, BackendCodeReviewResult } from '@workspace/core/backend-driver';
 import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';

@@ -1,4 +1,4 @@
-import type { ToolPresentationContext as CodexToolPresentationContext, ToolTitlePresenterContext as CodexToolTitlePresenterContext } from 'ai-app-sdk';
+import type { ToolPresentationContext as CodexToolPresentationContext, ToolTitlePresenterContext as CodexToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
 import { messages } from './i18n/messages';
 
 type Translate = CodexToolTitlePresenterContext['translate'];

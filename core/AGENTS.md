@@ -11,7 +11,7 @@ maps to `src/<module>.ts`). Follow the root [AGENTS.md](../AGENTS.md) as well.
 - **Stay platform-neutral.** No Electron, daemon, provider SDK or browser-only
   dependencies. The mobile app and the hosted console import `core` too, so a new
   import here widens what they can reach. Keep helpers pure and side-effect free.
-  SDK imports use portable contracts and replicas. The single `ai-app-sdk`
+  SDK imports use portable contracts and replicas. The single `agent-ui-sdk`
   package's `/host`, `/browser/contracts` and `/browser/viewport` exports are
   platform-neutral leaves; its renderer and trusted runtime exports are forbidden.
 - **App-owned contracts first.** Backend-dependent product features enter through

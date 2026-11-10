@@ -180,20 +180,20 @@ function checkTelemetryCalls(node, file) {
 }
 
 function forbiddenImport(area, file, specifier, typeOnly = false) {
-  const consumerRuntime = !typeOnly && (specifier === 'multi-agents-sdk' || isPackage(specifier, 'multi-agents-sdk/native'));
+  const consumerRuntime = !typeOnly && (specifier === '@korus-dev/multi-agent-sdk' || isPackage(specifier, '@korus-dev/multi-agent-sdk/native'));
   const providerRuntime = [
-    "codex-sdk", "multi-agents-sdk/codex", "multi-agents-sdk/backend", "multi-agents-sdk/providers",
-    "multi-agents-sdk/acp", "multi-agents-sdk/tools",
+    "@korus-dev/codex-sdk", "@korus-dev/multi-agent-sdk/codex", "@korus-dev/multi-agent-sdk/backend", "@korus-dev/multi-agent-sdk/providers",
+    "@korus-dev/multi-agent-sdk/acp", "@korus-dev/multi-agent-sdk/tools",
   ].some((name) => isPackage(specifier, name)) || consumerRuntime;
-  if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "multi-agents-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
+  if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "@korus-dev/multi-agent-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
   const nativeHostRuntime = [
-    "multi-agents-sdk/computer-use", "ai-app-sdk/electron",
-    "ai-app-sdk/speech", "ai-app-sdk/browser/electron",
+    "@korus-dev/multi-agent-sdk/computer-use", "@korus-dev/agent-ui-sdk/electron",
+    "@korus-dev/agent-ui-sdk/speech", "@korus-dev/agent-ui-sdk/browser/electron",
   ].some((name) => isPackage(specifier, name));
   if (["core", "renderer", "mobile", "console"].includes(area)
       && (providerRuntime || nativeHostRuntime)) {
     // Keep the more specific core UI diagnostic for the existing entry points.
-    if (!(area === "core" && isPackage(specifier, "ai-app-sdk")))
+    if (!(area === "core" && isPackage(specifier, "@korus-dev/agent-ui-sdk")))
       return `${area} cannot import trusted SDK runtimes`;
   }
   if (["electron-main", "preload"].includes(area) && providerRuntime)
@@ -342,8 +342,8 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
       "@workspace/backend",
       "@workspace/electron",
       "@workspace/web",
-      "multi-agents-sdk/codex",
-      "ai-app-sdk/electron",
+      "@korus-dev/multi-agent-sdk/codex",
+      "@korus-dev/agent-ui-sdk/electron",
       "@anthropic-ai/claude-agent-sdk",
     ];
     const forbiddenSource =
@@ -367,19 +367,19 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
     // A single UI package also exports portable host contracts. Permit only
     // these leaf modules, never its renderer or trusted runtime entry points.
     const portableUiContract = [
-      "ai-app-sdk/host",
-      "ai-app-sdk/browser/contracts",
-      "ai-app-sdk/browser/viewport",
-      "ai-app-sdk/documents/files",
+      "@korus-dev/agent-ui-sdk/host",
+      "@korus-dev/agent-ui-sdk/browser/contracts",
+      "@korus-dev/agent-ui-sdk/browser/viewport",
+      "@korus-dev/agent-ui-sdk/documents/files",
     ].includes(specifier);
     if (
       [
         "electron",
         "vue",
         "@vue",
-        "ai-app-sdk/electron",
-        "ai-app-sdk",
-        "multi-agents-sdk/web",
+        "@korus-dev/agent-ui-sdk/electron",
+        "@korus-dev/agent-ui-sdk",
+        "@korus-dev/multi-agent-sdk/web",
       ].some((name) => isPackage(specifier, name)) && !portableUiContract
     ) {
       return "core cannot depend on desktop or UI packages";
@@ -398,7 +398,7 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
     area === "electron-main" &&
     ([
       "@workspace/backend",
-      "multi-agents-sdk/codex",
+      "@korus-dev/multi-agent-sdk/codex",
       "@anthropic-ai/claude-agent-sdk",
     ].some((name) => isPackage(specifier, name)) ||
       (specifier.startsWith(".") &&

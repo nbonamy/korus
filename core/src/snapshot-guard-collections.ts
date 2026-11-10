@@ -1,5 +1,5 @@
 import { isExecutionSelectionOverrides } from './execution-selection';
-import { normalizePromptContent } from 'multi-agents-sdk/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/surface';
 import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
 import {

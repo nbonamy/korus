@@ -1,4 +1,4 @@
-import type { CodexPromptPart } from 'multi-agents-sdk/surface';
+import type { CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, ExecutionSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';

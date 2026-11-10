@@ -220,9 +220,12 @@ node node_modules/electron/install.js
 npm run dev
 ```
 
-Workspace manifests pin published Codex App SDK packages; the lockfile is the
-release dependency boundary. No sibling checkout is required. SDK contributors
-can explicitly set `CODEX_APP_SDK_SOURCE=1` for development source aliases.
+Workspace manifests pin `@korus-dev/multi-agent-sdk` and `@korus-dev/agent-ui-sdk`
+npm packages; the lockfile is the dependency boundary. No sibling checkout is
+required. SDK contributors can set `SDK_LOCAL_SOURCE=1` in `.env` to use local
+source. `SDK_SOURCE_ROOT` selects the directory containing the three SDK
+repositories, defaulting to the parent directory. Local runtime builds use source;
+typechecking uses locally built declarations. `npm run dev` builds them first.
 Install Electron once before running parallel tests: its lazy first-import
 download can otherwise race across workers on a clean checkout.
 

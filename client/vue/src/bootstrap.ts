@@ -3,7 +3,7 @@ import InlineExcalidrawBlock from './components/InlineExcalidrawBlock.vue';
 import type { AppClient } from '@workspace/core/client';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import 'ai-app-sdk/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import './styles/variables.css';
 import './styles/theme.css';
 import './styles/base.css';

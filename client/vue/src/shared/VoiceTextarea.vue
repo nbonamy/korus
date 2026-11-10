@@ -42,7 +42,7 @@ import {
   ComposerVoiceField as CodexComposerVoiceField,
   getNativeRendererApi as getCodexNativeRendererApi,
   useComposerVoice as useCodexComposerVoice,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = withDefaults(defineProps<{

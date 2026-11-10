@@ -23,8 +23,8 @@
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
-    "multi-agents-sdk": "file:../../multi-agents-sdk",
-    "ai-app-sdk": "file:../../ai-app-sdk"
+    "@korus-dev/multi-agent-sdk": "0.0.0",
+    "@korus-dev/agent-ui-sdk": "0.0.0"
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",

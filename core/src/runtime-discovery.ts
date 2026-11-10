@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { homedir } from 'node:os';
-import * as runtime from 'multi-agents-sdk/runtime';
+import * as runtime from '@korus-dev/multi-agent-sdk/runtime';
 import { product } from './product';
 export type RuntimeDiscoveryDependencies = runtime.RuntimeDiscoveryDependencies;
 export const privateBinEngines = ['codex', 'claude'] as const;

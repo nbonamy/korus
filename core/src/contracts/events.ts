@@ -7,7 +7,7 @@ import type {
   SubagentOperationChange, SubagentStatusChange, ThreadGoal, TurnGitDiff,
   WorkBacklogAssignment, WorkBacklogAssignmentPolicy, WorkBacklogAssignmentStatus
 } from '../contracts';
-import type { CodexConversationEvent, CodexConversationSnapshot } from 'multi-agents-sdk/surface';
+import type { CodexConversationEvent, CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
 import type { MissionImplementationStartProgress } from '../mission-execution';
 import type { CursorConversationEvent, CursorConversationSnapshot } from './cursor-conversation';
 import type { AntigravityConversationEvent, AntigravityConversationSnapshot } from './antigravity-conversation';

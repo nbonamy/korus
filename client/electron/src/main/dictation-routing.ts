@@ -1,4 +1,4 @@
-import { prepareOpenAISpeechSession, startAppleSpeechSession, startOpenAISpeechSession, type NativeMainOptions as CodexNativeMainOptions } from 'ai-app-sdk/electron';
+import { prepareOpenAISpeechSession, startAppleSpeechSession, startOpenAISpeechSession, type NativeMainOptions as CodexNativeMainOptions } from '@korus-dev/agent-ui-sdk/electron';
 
 type Preferences = { get(): { engine: string; openaiLiveTranscription?: boolean }; apiKey(): string | undefined };
 /** Select once at start; the SDK retains the returned session for append/stop/cancel. */

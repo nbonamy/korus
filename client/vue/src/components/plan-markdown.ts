@@ -1,4 +1,4 @@
-import { renderMarkdown } from 'ai-app-sdk';
+import { renderMarkdown } from '@korus-dev/agent-ui-sdk';
 
 export type PlanChoiceGroup = {
   id: string;

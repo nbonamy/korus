@@ -4,7 +4,7 @@ import {
   type ToolPresentationContext as CodexToolPresentationContext,
   type ToolVisibility as CodexToolVisibility,
   type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import {
   IconDeviceMobile as MobileIcon,
   IconBrowser as BrowserIcon,

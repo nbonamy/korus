@@ -10,7 +10,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { BackendPublishedEvent } from '@workspace/core/contracts';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
-import { createCodexSurface } from 'multi-agents-sdk/codex';
+import { createCodexSurface } from '@korus-dev/multi-agent-sdk/codex';
 import { appSurfaceOptions, BackendDriverRpc } from '../../driver-rpc';
 import { CodexSurfaceAgentAdapter } from '../codex-surface-adapter';
 import { CodexBackendDriver } from '../codex-driver';

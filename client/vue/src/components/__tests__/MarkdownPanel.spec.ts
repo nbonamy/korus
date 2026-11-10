@@ -1,4 +1,4 @@
-import 'ai-app-sdk/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';

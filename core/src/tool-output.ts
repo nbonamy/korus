@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/conversations/tool-output';
+export * from '@korus-dev/multi-agent-sdk/conversations/tool-output';

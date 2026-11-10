@@ -1,7 +1,7 @@
 import type { Agent, ClaudeConversationSnapshot, ThreadPlan } from '@workspace/core/contracts';
 import { planReviewDelivery } from '@workspace/core/plan-review';
-import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
-import type { ConversationPaneIdentityState as CodexConversationPaneIdentityState } from 'ai-app-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
+import type { ConversationPaneIdentityState as CodexConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 
@@ -30,10 +30,10 @@ export function pendingConversationPrompts(
     return !accepted;
   });
 }
-export type { ConversationPresentation } from 'multi-agents-sdk/conversations/presentation';
+export type { ConversationPresentation } from '@korus-dev/multi-agent-sdk/conversations/presentation';
 import { projectCodexConversation as codexPresentation, projectClaudeConversation as claudePresentation,
   projectCursorConversation as cursorPresentation, projectAntigravityConversation as antigravityPresentation,
-  type ConversationPresentation } from 'multi-agents-sdk/conversations/presentation';
+  type ConversationPresentation } from '@korus-dev/multi-agent-sdk/conversations/presentation';
 type Project<S> = (snapshot: S | null | undefined, agent: Agent) => ConversationPresentation | null;
 export const projectCodexConversation: Project<CodexConversationSnapshot> = codexPresentation;
 export const projectClaudeConversation: Project<ClaudeConversationSnapshot> = claudePresentation;

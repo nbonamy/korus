@@ -6,7 +6,7 @@ import { UsageService } from "../../usage/usage-service";
 import { AppBackendServer } from "../../server";
 import { createTestSnapshot } from "../../__tests__/server-test-fixtures";
 import { expect, it } from "vitest";
-import type { CodexConversationEvent } from "multi-agents-sdk/surface";
+import type { CodexConversationEvent } from "@korus-dev/multi-agent-sdk/surface";
 import type { ExecutionObservation, UsageSummary } from "@workspace/core/usage";
 import { codexSdkFixture, sdkAgent } from "./sdk-surface-fixture";
 const metadata = {
@@ -211,7 +211,7 @@ it.each(["completed", "interrupted", "failed"] as const)(
       execution: counts,
       model: null,
       ...{ requestUsage },
-    } satisfies import("multi-agents-sdk/surface").CodexSurfaceExecutionUsage;
+    } satisfies import("@korus-dev/multi-agent-sdk/surface").CodexSurfaceExecutionUsage;
     try {
       await driver.loadConversation(sdkAgent());
       const c = conversation("conversation-a");

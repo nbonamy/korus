@@ -7,7 +7,7 @@ import {
   type MessageTextSelection as CodexMessageTextSelection,
   type NativeAttachment as CodexNativeAttachment,
   type NativeRendererApi as CodexNativeRendererApi,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';

@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it } from 'vitest';
-import type { ToolTitlePresenterContext as CodexToolTitlePresenterContext } from 'ai-app-sdk';
+import type { ToolTitlePresenterContext as CodexToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
 import { messages } from '../i18n/messages';
 import { presentAppToolTitle } from '../tool-title-presenter';
 

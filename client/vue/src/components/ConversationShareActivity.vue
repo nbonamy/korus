@@ -19,7 +19,7 @@
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from 'ai-app-sdk';
+import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from '@korus-dev/agent-ui-sdk';
 import type { GuestProposal } from '@workspace/core/conversation-sharing';
 import { PencilIcon, ShareIcon, Trash2Icon } from '../shared/icons/app-icons';
 defineProps<{ proposals: readonly GuestProposal[]; owner?: boolean; disabled?: boolean; editDisabled?: boolean; failed?: boolean }>();

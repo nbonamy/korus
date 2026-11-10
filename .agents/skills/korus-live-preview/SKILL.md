@@ -47,7 +47,7 @@ npm run start:electron -- --user-data-dir=<preview-home>/electron
 ```
 
 Root `npm run dev` remains the normal Electron development command.
-Choose installed SDK packages by default (`CODEX_APP_SDK_SOURCE=0`); use source
+Choose installed SDK packages by default (`SDK_LOCAL_SOURCE=0`); use source
 linking only when explicitly testing SDK source integration.
 
 For a repeatable automated Design workflow, run:

@@ -6,7 +6,7 @@ import { ElMessageBox } from 'element-plus';
 import type {
   NativeAttachment as CodexNativeAttachment,
   NativeRendererApi as CodexNativeRendererApi,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';

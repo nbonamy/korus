@@ -16,9 +16,9 @@ const sdk = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
-vi.mock('ai-app-sdk', async (importOriginal) => {
+vi.mock('@korus-dev/agent-ui-sdk', async (importOriginal) => {
   const vue = await import('vue');
-  const actual = await importOriginal<typeof import('ai-app-sdk')>();
+  const actual = await importOriginal<typeof import('@korus-dev/agent-ui-sdk')>();
   return {
     ComposerVoiceButton: defineComponent({
       name: 'ComposerVoiceButton',

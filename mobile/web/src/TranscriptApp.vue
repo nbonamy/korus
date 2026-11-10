@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, nextTick, provide, reactive, shallowRef } from 'vue';
-import { createConversationPaneController as createCodexConversationPaneController, provideHostCapabilities as provideCodexHostCapabilities, type ConversationPaneState as CodexConversationPaneState } from 'ai-app-sdk';
+import { createConversationPaneController as createCodexConversationPaneController, provideHostCapabilities as provideCodexHostCapabilities, type ConversationPaneState as CodexConversationPaneState } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';

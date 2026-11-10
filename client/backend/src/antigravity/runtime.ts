@@ -1,4 +1,4 @@
-import * as runtime from 'multi-agents-sdk/providers/antigravity';
+import * as runtime from '@korus-dev/multi-agent-sdk/providers/antigravity';
 import { backendHomeDir } from '../state';
 import { withDiscoveredRuntimePath } from '@workspace/core/runtime-discovery';
 export const acpEnvironment = (home: string, harness: string, temporary: string) => runtime.acpEnvironment(home, harness, temporary, withDiscoveredRuntimePath(undefined));

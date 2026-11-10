@@ -71,7 +71,7 @@ import type {
   ConversationPaneActions as CodexConversationPaneActions,
   ComposerMentionGroup as CodexComposerMentionGroup,
   ComposerMenuItem as CodexComposerMenuItem,
-} from 'ai-app-sdk';
+} from '@korus-dev/agent-ui-sdk';
 import type { AgentConversationView } from '../app-state';
 import {
   agentConversationState,
@@ -92,7 +92,7 @@ const props = defineProps<{
   emptyHeadline?: string;
   emptySubhead?: string;
   placeholder?: string;
-  previewMessage?: import('multi-agents-sdk/surface').SurfaceMessage;
+  previewMessage?: import('@korus-dev/multi-agent-sdk/surface').SurfaceMessage;
   previewApproval?: import('@workspace/core/contracts').BackendApprovalRequest;
   followUpBehavior?: AppGeneralSettings['followUpBehavior'];
   mentionGroups: readonly CodexComposerMentionGroup[];
@@ -101,7 +101,7 @@ const props = defineProps<{
   plan?: ThreadPlan | null;
   planVisible?: boolean;
   savedPromptDrafts: readonly SavedPromptDraft[];
-  savePromptDraft: (agentId: string, text: string, content?: readonly import('multi-agents-sdk/surface').CodexPromptPart[]) => Promise<void>;
+  savePromptDraft: (agentId: string, text: string, content?: readonly import('@korus-dev/multi-agent-sdk/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft: (id: string) => Promise<void>;
   reviewFinding?: CodeReviewFinding | null;
   openLink: NonNullable<CodexConversationPaneActions['openLink']>;

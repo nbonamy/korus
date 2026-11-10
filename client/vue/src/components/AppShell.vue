@@ -771,8 +771,8 @@ import {
   type NativeAttachment as CodexNativeAttachment,
   type ComposerState as CodexComposerState,
   type QueuedPromptData as QueuedChatPrompt,
-} from 'ai-app-sdk';
-import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from 'multi-agents-sdk/surface';
+} from '@korus-dev/agent-ui-sdk';
+import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {
@@ -3349,7 +3349,7 @@ function copyPromptDraft(draft: AppSnapshot['general']['savedPromptDrafts'][numb
   return { ...draft, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }) };
 }
 
-async function savePromptDraft(agentId: string, text: string, content?: readonly import('multi-agents-sdk/surface').CodexPromptPart[]): Promise<void> {
+async function savePromptDraft(agentId: string, text: string, content?: readonly import('@korus-dev/multi-agent-sdk/surface').CodexPromptPart[]): Promise<void> {
   if (!text.trim() || text.length > 131_072) throw new Error(t('chat.savedDrafts.invalid'));
   const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map(copyPromptDraft), {
     id: crypto.randomUUID(), agentId, text, ...(content === undefined ? {} : { content: normalizePromptContent(content) }), createdAt: Date.now(),

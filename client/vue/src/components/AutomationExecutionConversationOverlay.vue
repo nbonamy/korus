@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import type { RendererMessage } from '@workspace/core/contracts';
-import { MessageList as CodexMessageList } from 'ai-app-sdk';
+import { MessageList as CodexMessageList } from '@korus-dev/agent-ui-sdk';
 import { useI18n } from 'vue-i18n';
 import { X } from '../shared/icons/app-icons';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';

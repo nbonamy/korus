@@ -37,7 +37,7 @@
     "postcss-selector-parser": "^7.1.1",
     "yauzl": "^3.4.0",
     "zod": "^4.4.3",
-    "multi-agents-sdk": "file:../../../multi-agents-sdk"
+    "@korus-dev/multi-agent-sdk": "0.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

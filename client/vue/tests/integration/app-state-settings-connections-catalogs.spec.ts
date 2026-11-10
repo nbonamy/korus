@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { mount } from '@vue/test-utils';
-import { UserText as CodexUserText, createConversationPaneController as createCodexConversationPaneController } from 'ai-app-sdk';
+import { UserText as CodexUserText, createConversationPaneController as createCodexConversationPaneController } from '@korus-dev/agent-ui-sdk';
 import ConversationPane from '../../src/components/ConversationPane.vue';
 import { agentConversationState } from '../../src/components/use-agent-conversation';
 import { useAppState } from '../../src/app-state';

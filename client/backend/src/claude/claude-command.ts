@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveClaudeLaunch as nativeLaunch } from 'multi-agents-sdk/providers/claude';
+import { resolveClaudeLaunch as nativeLaunch } from '@korus-dev/multi-agent-sdk/providers/claude';
 import { resolveRuntimeExecutable, resolveRuntimeLaunch, type RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
 export function resolveClaudeLaunch(configuredPath?: string, overrides?: NodeJS.ProcessEnv, dependencies: RuntimeDiscoveryDependencies = {}) {
   const configured = configuredPath?.trim() || process.env.APP_CLAUDE_COMMAND?.trim();

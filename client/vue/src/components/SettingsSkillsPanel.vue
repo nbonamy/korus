@@ -114,7 +114,7 @@ import { ElMessageBox } from 'element-plus';
 import type { AgentBackend } from '@workspace/core/contracts';
 import { curatedSkills, parseSkillDocument, type InstalledSkill, type CuratedSkill, type SkillManagerInput, type SkillManagerState, type SkillDocument } from '@workspace/core/skill-manager';
 import { backendDisplayName } from '@workspace/core/backend-driver';
-import { renderMarkdown } from 'ai-app-sdk';
+import { renderMarkdown } from '@korus-dev/agent-ui-sdk';
 import { appApi, appPlatformActions } from '../platform-api';
 import { translate } from '../i18n';
 import { DotsVerticalIcon, EyeIcon, FileSparkIcon, PlusIcon, RefreshIcon, Trash2Icon } from '../shared/icons/app-icons';

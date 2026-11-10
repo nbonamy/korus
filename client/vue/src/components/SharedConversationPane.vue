@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ConversationPane as CodexConversationPane, provideHostCapabilities as provideCodexHostCapabilities, useHostCapabilities as useCodexHostCapabilities, type ChatMessage as CodexChatMessage, type SurfaceMessage, type ConversationLink as CodexConversationLink } from 'ai-app-sdk';
+import { ConversationPane as CodexConversationPane, provideHostCapabilities as provideCodexHostCapabilities, useHostCapabilities as useCodexHostCapabilities, type ChatMessage as CodexChatMessage, type SurfaceMessage, type ConversationLink as CodexConversationLink } from '@korus-dev/agent-ui-sdk';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';

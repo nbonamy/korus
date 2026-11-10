@@ -1,7 +1,7 @@
-import { AcpRuntime as NativeRuntime } from 'multi-agents-sdk/providers/antigravity';
+import { AcpRuntime as NativeRuntime } from '@korus-dev/multi-agent-sdk/providers/antigravity';
 import { product } from '@workspace/core/product';
 import { acpEnvironment, antigravityHome, resolveAcpRuntime } from './runtime';
-export { NativeLoginRequired } from 'multi-agents-sdk/providers/antigravity';
+export { NativeLoginRequired } from '@korus-dev/multi-agent-sdk/providers/antigravity';
 export type AcpRuntime = NativeRuntime;
 export function appAcpRuntimeOptions() {
   const runtime = resolveAcpRuntime();

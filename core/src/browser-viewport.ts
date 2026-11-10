@@ -1,2 +1,2 @@
-export * from 'ai-app-sdk/browser/viewport';
+export * from '@korus-dev/agent-ui-sdk/browser/viewport';
 export type { BrowserViewportRequest } from './browser-contracts';

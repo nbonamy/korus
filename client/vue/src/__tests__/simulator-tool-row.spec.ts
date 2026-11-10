@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
-import { ToolCall as CodexToolCall } from 'ai-app-sdk';
+import { ToolCall as CodexToolCall } from '@korus-dev/agent-ui-sdk';
 import { expect, it } from 'vitest';
 import { i18n } from '../i18n';
 import { provideAppToolPresentation } from '../tool-presentation';

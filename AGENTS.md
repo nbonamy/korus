@@ -99,10 +99,11 @@ Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outpu
 generated bindings and packaged resources separate from source. Packaging and
 signing are in [client/AGENTS.md](client/AGENTS.md).
 
-**SDK.** This worktree consumes sibling `codex-sdk`, `multi-agents-sdk` and
-`ai-app-sdk` packages. Dev builds use their source with `CODEX_APP_SDK_SOURCE=1`;
-`CODEX_APP_SDK_SOURCE_ROOT` selects the directory containing all three. Build the
-libraries before consumer typechecking; do not publish them during extraction.
+**SDK.** npm dependencies use the `@korus-dev` scope. `SDK_LOCAL_SOURCE=1` in
+`.env` enables local runtime source; `SDK_SOURCE_ROOT` selects the directory
+containing `codex-sdk`, `multi-agent-sdk` and `agent-ui-sdk`, defaulting to the
+parent directory. Build local dependencies before typechecking their declarations.
+SDK publication is a separate action owned by the SDK maintainers.
 
 ## Project Skills
 

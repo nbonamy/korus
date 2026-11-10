@@ -12,7 +12,7 @@ import { sdkSourceAliases, sdkSourceRoot } from '../../../../vite.sdk-aliases.ts
 
 test('inline renderer streams and renders diagrams, integrating with capable SDKs and preserving older code fallback', async () => {
   const root = fileURLToPath(new URL('../../../..', import.meta.url));
-  const useSource = process.env.CODEX_APP_SDK_SOURCE === '1';
+  const useSource = process.env.SDK_LOCAL_SOURCE === '1';
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-vite-'));
   const server = await createServer({
     configFile: false, root, logLevel: 'error', cacheDir,
@@ -36,9 +36,9 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
       load(id) {
         if (id !== '\0diagram-fixture') return;
         return `import {createApp,h,ref} from 'vue';
-          import * as SDK from 'ai-app-sdk';
+          import * as SDK from '@korus-dev/agent-ui-sdk';
           import Diagram from '/client/vue/src/components/InlineExcalidrawBlock.vue';
-          import 'ai-app-sdk/styles.css';
+          import '@korus-dev/agent-ui-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/base.css';
           import {i18n} from '/client/vue/src/i18n/index.ts';

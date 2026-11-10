@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { conversationLinkFromHref as codexConversationLinkFromHref } from 'ai-app-sdk';
+import { conversationLinkFromHref as codexConversationLinkFromHref } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { translate } from '../i18n';

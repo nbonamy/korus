@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/contracts/execution';
+export * from '@korus-dev/multi-agent-sdk/contracts/execution';

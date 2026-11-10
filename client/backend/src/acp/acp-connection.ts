@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/acp/acp-connection';
+export * from '@korus-dev/multi-agent-sdk/acp/acp-connection';
