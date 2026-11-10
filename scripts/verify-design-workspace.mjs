@@ -54,7 +54,7 @@ try {
       APP_BACKEND_SOCKET: path.join(home, 'daemon.sock'), APP_BACKEND_COMMAND: process.execPath,
       APP_BACKEND_ARGS: `${path.join(root, 'client/backend/dist/daemon.mjs')},--stdio`, APP_BACKEND_WATCH_FILE: '',
       APP_ASSETS_PATH: path.join(root, 'client/electron/assets'), CODEX_APP_SDK_SOURCE: '0',
-      CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/@codex-app-sdk/backend/assets') },
+      CODEX_APP_SDK_ASSETS_PATH: path.join(root, 'node_modules/multi-agents-sdk/codex/assets') },
   });
   page = await desktop.firstWindow();
   await (await desktop.browserWindow(page)).evaluate(window => window.setContentSize(1440, 1000));

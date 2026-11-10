@@ -19,10 +19,10 @@ for (const script of ['build.mjs', 'build-sdk.mjs']) {
       mkdirSync(sdkRoot);
       writeFileSync(path.join(sdkRoot, 'package.json'), '{}');
       const overrides = {};
-      for (const [workspace, name] of [['client/backend', 'backend'], ['client/backend', 'core'], ['client/electron', 'electron'], ['client/vue', 'vue']]) {
+      for (const [workspace, name] of [['client/backend', 'multi-agents-sdk'], ['client/electron', 'ai-app-sdk']]) {
         mkdirSync(path.join(root, workspace), { recursive: true });
         writeFileSync(path.join(root, workspace, 'package.json'), '{}');
-        overrides[`@codex-app-sdk/${name}`] = `file:./sdk checkout/packages/${name}`;
+        overrides[name] = `file:./sdk checkout/${name}`;
       }
       writeFileSync(path.join(root, 'package.json'), JSON.stringify({ type: 'module', overrides }));
       const trace = path.join(root, 'trace.json');

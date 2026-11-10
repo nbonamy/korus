@@ -2,7 +2,7 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../st
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CodexConversationEvent } from '@codex-app-sdk/core/surface';
+import type { CodexConversationEvent } from 'multi-agents-sdk/surface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';

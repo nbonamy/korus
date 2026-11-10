@@ -6,7 +6,7 @@ import { UsageService } from "../../usage/usage-service";
 import { AppBackendServer } from "../../server";
 import { createTestSnapshot } from "../../__tests__/server-test-fixtures";
 import { expect, it } from "vitest";
-import type { CodexConversationEvent } from "@codex-app-sdk/core/surface";
+import type { CodexConversationEvent } from "multi-agents-sdk/surface";
 import type { ExecutionObservation, UsageSummary } from "@workspace/core/usage";
 import { codexSdkFixture, sdkAgent } from "./sdk-surface-fixture";
 const metadata = {
@@ -211,7 +211,7 @@ it.each(["completed", "interrupted", "failed"] as const)(
       execution: counts,
       model: null,
       ...{ requestUsage },
-    } satisfies import("@codex-app-sdk/core/surface").CodexSurfaceExecutionUsage;
+    } satisfies import("multi-agents-sdk/surface").CodexSurfaceExecutionUsage;
     try {
       await driver.loadConversation(sdkAgent());
       const c = conversation("conversation-a");

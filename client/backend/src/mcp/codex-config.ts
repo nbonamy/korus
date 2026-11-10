@@ -2,7 +2,7 @@ import type { Agent, AppPluginSettings } from '@workspace/core/contracts';
 import { product } from '@workspace/core/product';
 import { defaultPluginSettings } from '@workspace/core/settings';
 import { workProviderDefinition, workProviderKinds } from '@workspace/core/work-providers';
-import type { CodexThreadStartExtension } from '@codex-app-sdk/backend';
+import type { CodexThreadStartExtension } from 'multi-agents-sdk/codex';
 import { appDeveloperInstructions, type AgentEffectInstructionSettings } from './agent-prompts';
 
 const chatGptGitHubConnectorId = 'connector_76869538009648d5b282a4bb21c3d157';

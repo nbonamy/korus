@@ -771,8 +771,8 @@ import {
   type CodexNativeAttachment,
   type CodexComposerState,
   type CodexQueuedPromptData as QueuedChatPrompt,
-} from '@codex-app-sdk/vue';
-import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@codex-app-sdk/core/surface';
+} from 'ai-app-sdk';
+import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from 'multi-agents-sdk/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {
@@ -3349,7 +3349,7 @@ function copyPromptDraft(draft: AppSnapshot['general']['savedPromptDrafts'][numb
   return { ...draft, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }) };
 }
 
-async function savePromptDraft(agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]): Promise<void> {
+async function savePromptDraft(agentId: string, text: string, content?: readonly import('multi-agents-sdk/surface').CodexPromptPart[]): Promise<void> {
   if (!text.trim() || text.length > 131_072) throw new Error(t('chat.savedDrafts.invalid'));
   const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map(copyPromptDraft), {
     id: crypto.randomUUID(), agentId, text, ...(content === undefined ? {} : { content: normalizePromptContent(content) }), createdAt: Date.now(),

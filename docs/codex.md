@@ -7,11 +7,12 @@ conversation state, rendering, actions, history or transport.
 
 ## Ownership
 
-The local `codex-app-sdk` owns: executable discovery, generated app-server types,
-request/response inference, bidirectional routing, stdio JSONL framing, targeted
-conversation operations, snapshots and reducers, optimistic submissions, history
-reconciliation, queues, turn mutations and the generic conversation UI
-(`CodexConversationPane`). `daemon` is the product adapter: explicit executable
+`codex-sdk` owns executable discovery, generated app-server types,
+request/response inference, bidirectional routing and stdio JSONL framing.
+`multi-agents-sdk` owns targeted conversation operations, snapshots and reducers,
+optimistic submissions, history reconciliation, queues and turn mutations.
+`ai-app-sdk` owns the generic conversation UI (`CodexConversationPane`).
+`daemon` is the product adapter: explicit executable
 selection, initialization metadata, agent/session policy, approval presets, the
 routing envelope (agent, thread, revision) and recovery.
 

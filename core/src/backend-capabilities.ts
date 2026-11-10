@@ -1,64 +1,16 @@
 import type { AgentBackend, BackendCapabilities } from './contracts';
-
+import { codexBackendCapabilities as nativecodex, claudeBackendCapabilities as nativeclaude, cursorBackendCapabilities as nativecursor, antigravityBackendCapabilities as nativeantigravity } from 'multi-agents-sdk';
 export const codexBackendCapabilities: BackendCapabilities = {
-  reportsTokens: true,
+  ...nativecodex,
   codeReview: true,
   planReview: true,
-  questions: true,
-  plugins: true,
-  conversationArchive: true,
-  conversationResume: true,
-  conversationReplaceWithSummary: true,
-  remoteControl: true,
-  conversationShare: true,
-  attachments: true,
-  models: true,
-  skills: true,
-  reasoningEffort: true,
-  serviceTier: true,
-  thinkingBudget: false,
-  planMode: 'native',
-  goals: true,
-  steerPrompt: true,
-  interrupt: true,
-  history: true,
-  conversationFork: true,
-  deleteTurn: true,
-  editTurn: true,
-  retryTurn: true,
-  approvals: true,
-  approvalPresets: ['ask-for-approval', 'approve-for-me', 'full-access'],
+  conversationShare: true
 };
-
 export const claudeBackendCapabilities: BackendCapabilities = {
-  reportsTokens: true,
-  nativeMonitor: true,
+  ...nativeclaude,
   codeReview: true,
   planReview: true,
-  questions: true,
-  plugins: false,
-  conversationArchive: false,
-  conversationResume: true,
-  conversationReplaceWithSummary: false,
-  remoteControl: false,
   conversationShare: true,
-  attachments: true,
-  models: true,
-  skills: true,
-  reasoningEffort: false,
-  serviceTier: false,
-  thinkingBudget: false,
-  planMode: 'prompted',
-  goals: true,
-  steerPrompt: true,
-  interrupt: true,
-  history: true,
-  conversationFork: true,
-  deleteTurn: false,
-  editTurn: false,
-  retryTurn: false,
-  approvals: true,
-  approvalPresets: [],
   permissionModes: [
     {
       id: 'default',
@@ -86,42 +38,30 @@ export const claudeBackendCapabilities: BackendCapabilities = {
       description: { key: 'permissions.claude.bypass.description' },
       dangerous: true,
     },
-  ],
+  ]
 };
-
+export const antigravityBackendCapabilities: BackendCapabilities = {
+  ...nativeantigravity,
+  codeReview: true,
+  planReview: true,
+  conversationShare: true,
+  permissionModes: [
+    { id: 'default', label: { key: 'permissions.antigravity.default.label' }, description: { key: 'permissions.antigravity.default.description' } },
+    { id: 'auto_edit', label: { key: 'permissions.antigravity.autoEdit.label' }, description: { key: 'permissions.antigravity.autoEdit.description' } },
+  ]
+};
+export const cursorBackendCapabilities: BackendCapabilities = {
+  ...nativecursor,
+  codeReview: true,
+  planReview: true,
+  conversationShare: false,
+  permissionModes: [
+    { id: 'default', label: { key: 'permissions.cursor.default.label' }, description: { key: 'permissions.cursor.default.description' } },
+    { id: 'full-access', label: { key: 'permissions.cursor.fullAccess.label' }, description: { key: 'permissions.cursor.fullAccess.description' }, dangerous: true },
+  ]
+};
 export function defaultBackendCapabilities(backend: AgentBackend): BackendCapabilities {
   if (backend === 'cursor') return cursorBackendCapabilities;
   if (backend === 'antigravity') return antigravityBackendCapabilities;
   return backend === 'claude' ? claudeBackendCapabilities : codexBackendCapabilities;
 }
-
-// Keep unimplemented app workflows unavailable until their owning integration is qualified.
-export const antigravityBackendCapabilities: BackendCapabilities = {
-  reportsTokens: true,
-  codeReview: true, planReview: true, questions: true, plugins: false,
-  conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
-  remoteControl: false, conversationShare: true, attachments: true, models: true, skills: false,
-  reasoningEffort: false, serviceTier: false, thinkingBudget: false,
-  planMode: 'native', goals: false, steerPrompt: false, interrupt: true, history: true,
-  conversationFork: false, deleteTurn: false, editTurn: false, retryTurn: false,
-  approvals: true, approvalPresets: [],
-  permissionModes: [
-    { id: 'default', label: { key: 'permissions.antigravity.default.label' }, description: { key: 'permissions.antigravity.default.description' } },
-    { id: 'auto_edit', label: { key: 'permissions.antigravity.autoEdit.label' }, description: { key: 'permissions.antigravity.autoEdit.description' } },
-  ],
-};
-
-// Cursor enables only capabilities implemented and verified by its host.
-export const cursorBackendCapabilities: BackendCapabilities = {
-  reportsTokens: false,
-  codeReview: true, planReview: true, questions: false, plugins: false,
-  conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
-  remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
-  reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
-  goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
-  deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
-  approvalPresets: [], permissionModes: [
-    { id: 'default', label: { key: 'permissions.cursor.default.label' }, description: { key: 'permissions.cursor.default.description' } },
-    { id: 'full-access', label: { key: 'permissions.cursor.fullAccess.label' }, description: { key: 'permissions.cursor.fullAccess.description' }, dangerous: true },
-  ],
-};

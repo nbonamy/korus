@@ -1,5 +1,5 @@
 import { onScopeDispose, ref } from 'vue';
-import { codexConversationLinkFromHref, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { codexConversationLinkFromHref, type CodexConversationLink } from 'ai-app-sdk';
 
 /** Captures the raw chat href and source agent before the browser resolves relative file links. */
 export function useWorkspaceLinkDrag(options: {

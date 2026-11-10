@@ -7,7 +7,7 @@ import {
   type CodexMessageTextSelection,
   type CodexNativeAttachment,
   type CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';

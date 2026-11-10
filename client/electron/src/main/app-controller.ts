@@ -18,7 +18,7 @@ import { mainT } from './i18n';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell } from 'electron';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
+import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from 'ai-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { COMPACT_MIN_SIZE, createMainWindow } from './main-window';

@@ -1,4 +1,4 @@
-import { CodexElectronAttachmentRegistry } from '@codex-app-sdk/electron';
+import { CodexElectronAttachmentRegistry } from 'ai-app-sdk/electron';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 

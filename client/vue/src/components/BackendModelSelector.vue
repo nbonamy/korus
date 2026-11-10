@@ -36,7 +36,7 @@
 import { computed, ref, watch } from 'vue';
 import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
-import { CodexUltrafastIcon } from '@codex-app-sdk/vue';
+import { CodexUltrafastIcon } from 'ai-app-sdk';
 import type { AgentBackend, BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';

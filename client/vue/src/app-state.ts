@@ -23,12 +23,12 @@ import { guestConversationCapabilities } from '@workspace/core/guest-conversatio
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { type CodexComposerState, type CodexNativeAttachment } from '@codex-app-sdk/vue';
+import { type CodexComposerState, type CodexNativeAttachment } from 'ai-app-sdk';
 import {
   createCodexConversationReplica,
   type CodexConversationReplica,
-} from '@codex-app-sdk/core/conversation-replica';
-import type { CodexConversationSnapshot } from '@codex-app-sdk/core/surface';
+} from 'multi-agents-sdk/conversation-replica';
+import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
 import {
   createClaudeConversationReplica,
   type ClaudeConversationReplica,

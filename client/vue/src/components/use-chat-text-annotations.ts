@@ -1,9 +1,9 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@codex-app-sdk/core/surface';
+import { trimPromptContent } from 'multi-agents-sdk/surface';
 import type {
   CodexMessageTextSelection,
   CodexRendererSendMessageOptions,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { computed, reactive } from 'vue';
 
 export type ChatTextSelection = CodexMessageTextSelection & { textStart?: number; textBlockIndex?: number };

@@ -1,5 +1,5 @@
 import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '@workspace/core/companion-journal';
-import { createCodexConversationReplica } from '@codex-app-sdk/core/conversation-replica';
+import { createCodexConversationReplica } from 'multi-agents-sdk/conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';

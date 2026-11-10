@@ -12,7 +12,7 @@ import type {
   SidePanelMarkdownRequest,
   SidePanelRequest,
 } from '@workspace/core/contracts';
-import { languageForFilePath } from '@codex-app-sdk/vue';
+import { languageForFilePath } from 'ai-app-sdk';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 import type { SidePanelGitDiffState } from './side-panel';

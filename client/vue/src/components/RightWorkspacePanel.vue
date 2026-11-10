@@ -420,7 +420,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconPalette, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
-import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
+import type { CodexConversationLink, CodexConversationVisualization } from 'ai-app-sdk';
 import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, SquareXIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';

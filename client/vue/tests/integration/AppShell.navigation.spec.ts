@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
   CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';

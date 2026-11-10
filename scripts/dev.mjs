@@ -51,12 +51,12 @@ const electronDev = start('npm', ['run', 'start:electron'], {
 function sdkAssetsPath() {
   if (process.env.CODEX_APP_SDK_SOURCE === '1') {
     // Match the selected checkout used by vite.sdk-aliases.ts.
-    return path.resolve(rootDir, process.env.CODEX_APP_SDK_SOURCE_ROOT || '../codex-app-sdk', 'packages/backend/assets');
+    return path.resolve(rootDir, process.env.CODEX_APP_SDK_SOURCE_ROOT || '..', 'ai-app-sdk/assets');
   }
   // SDK exports do not expose assets/package.json. Follow the backend
   // workspace's Node search order, supporting both nested and hoisted installs.
-  const require = createRequire(path.join(rootDir, 'client/backend/package.json'));
-  const packageName = '@codex-app-sdk/backend';
+  const require = createRequire(path.join(rootDir, 'client/electron/package.json'));
+  const packageName = 'ai-app-sdk';
   const packageRoot = (require.resolve.paths(packageName) ?? [])
     .map((directory) => path.join(directory, packageName))
     .find((directory) => existsSync(path.join(directory, 'package.json')));

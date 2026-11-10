@@ -121,7 +121,7 @@ rl.on('line',line=>{
      planPhase='question';
      send({id:v.id,method:'session/request_permission',params:{sessionId,toolCall:{toolCallId:'interaction_plan',title:'Use the minimal plan?'},options:[{optionId:'minimal-plan',name:'Minimal',kind:'allow_once'}]}});return;
    }
-   if(mcpServers.some(server=>server.env.some(item=>item.name==='KORUS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {void review(text,reply).catch(error=>{fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-error.txt'),error.message);send({id:v.id,error:{code:-32603,message:error.message}});});return;}
+   if(mcpServers.some(server=>server.env.some(item=>item.name==='HARNESS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {void review(text,reply).catch(error=>{fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-error.txt'),error.message);send({id:v.id,error:{code:-32603,message:error.message}});});return;}
    if(text==='crash') process.exit(1);
    if(text==='wait'||text.endsWith('utility-wait')) return;
    if(text==='question'||text==='deny') {
@@ -510,7 +510,7 @@ describe('Antigravity native session', () => {
       expect(result.text).toBe('Tools denied; text result.');
       expect(JSON.parse(await readFile(path.join(root, 'fixture-model.json'), 'utf8'))).toMatchObject({ configId: 'model', value: 'quick-lite' });
       expect(JSON.parse(await readFile(path.join(root, 'fixture-initialize.json'), 'utf8')).clientCapabilities.fs).toEqual({ readTextFile: false, writeTextFile: false });
-      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [expect.objectContaining({name:'diagram_icons_job',env:expect.arrayContaining([{name:'KORUS_ACP_MCP_URL',value:'http://127.0.0.1:1234/mcp/token'}])})], _meta: { agy: { enabledTools: [] } } });
+      expect(JSON.parse(await readFile(path.join(root, 'fixture-session.json'), 'utf8'))).toMatchObject({ mcpServers: [expect.objectContaining({name:'diagram_icons_job',env:expect.arrayContaining([{name:'HARNESS_ACP_MCP_URL',value:'http://127.0.0.1:1234/mcp/token'}])})], _meta: { agy: { enabledTools: [] } } });
       await expect(readFile(path.join(root, 'unwanted-write'))).rejects.toMatchObject({ code: 'ENOENT' });
       expect(events).toEqual([]);
       expect(agent.backendSession).toBeUndefined();

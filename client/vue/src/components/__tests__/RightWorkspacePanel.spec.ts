@@ -320,8 +320,8 @@ describe('RightWorkspacePanel', () => {
     const wrapper = mountPanel();
 
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
-    await bodyAll('.app-menu__item')[0]?.trigger('click');
+    expect(bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
+    await bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item')[0]?.trigger('click');
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview']]);
   });

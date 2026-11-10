@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it } from 'vitest';
-import type { CodexToolPresentationContext } from '@codex-app-sdk/vue';
+import type { CodexToolPresentationContext } from 'ai-app-sdk';
 import {
   IconBrowser as BrowserIcon,
   IconDeviceDesktop as DeviceDesktopIcon,

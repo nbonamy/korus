@@ -19,8 +19,8 @@ const output =
 await mkdir(output, { recursive: true });
 const entry = `
 import {createApp,h,provide,ref} from 'vue';
-import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
-import '@codex-app-sdk/vue/styles.css';
+import {createCodexConversationPaneController} from 'ai-app-sdk';
+import 'ai-app-sdk/styles.css';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '/src/styles/variables.css';
@@ -82,7 +82,11 @@ const server = await createServer({
       },
     },
   ],
-  resolve: { alias: { "@workspace/core": path.join(root, "core/src") } },
+  // The virtual entry is invisible to Vite's HTML dependency scan. Include its
+  // linked UI package up front so late optimization cannot invalidate requests
+  // while HMR is disabled for the controlled-clock workflow.
+  optimizeDeps: { include: ['ai-app-sdk', 'vue', 'element-plus', 'vue-i18n'] },
+  resolve: { alias: { "@workspace/core": path.join(root, "core/src") }, dedupe: ['vue'] },
   // This fixed fixture must not reload while the browser clock advances.
   server: { host: "127.0.0.1", port: 0, hmr: false, ws: false },
 });

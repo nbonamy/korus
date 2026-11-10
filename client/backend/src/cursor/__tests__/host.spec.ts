@@ -218,7 +218,7 @@ describe('Cursor ACP host transport boundary', () => {
       expect(result).toStrictEqual({ text: 'Hello Cursor', reviewerSession: sent.backendSession });
       const loaded = (await wire()).filter(call => call.method === 'session/load').at(-1);
       expect(loaded.params.mcpServers).toHaveLength(1);
-      expect(loaded.params.mcpServers[0].env).toEqual(expect.arrayContaining([{ name: 'KORUS_ACP_MCP_URL', value: reviewMcpServerUrl }]));
+      expect(loaded.params.mcpServers[0].env).toEqual(expect.arrayContaining([{ name: 'HARNESS_ACP_MCP_URL', value: reviewMcpServerUrl }]));
       expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'fixture-beta', thoughts: { reasoning_effort: 'xhigh' } });
       await host.sendPrompt({ ...reviewer, backendSession: result.reviewerSession }, 'Back to normal');
       await vi.waitFor(async () => expect((await snapshot()).busy).toBe(false));
@@ -1008,7 +1008,7 @@ describe('Cursor ACP host transport boundary', () => {
     const calls = (await wire()).filter(call => call.method === 'session/new');
     expect(calls).toHaveLength(2);
     for (const [index, owner] of [agent.id, second.id].entries()) {
-      expect(calls[index].params.mcpServers.map((server: {env: {name:string;value:string}[]}) => new URL(server.env.find(env => env.name === 'KORUS_ACP_MCP_URL')!.value).searchParams.get('agentId'))).toStrictEqual([owner, owner]);
+      expect(calls[index].params.mcpServers.map((server: {env: {name:string;value:string}[]}) => new URL(server.env.find(env => env.name === 'HARNESS_ACP_MCP_URL')!.value).searchParams.get('agentId'))).toStrictEqual([owner, owner]);
     }
   });
   it.each([true, false])('keeps quota exhaustion connected and resumes only with a known reset (knownReset=%s)', async knownReset => {

@@ -42,7 +42,7 @@ import {
   CodexComposerVoiceField,
   getCodexNativeRendererApi,
   useCodexComposerVoice,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = withDefaults(defineProps<{

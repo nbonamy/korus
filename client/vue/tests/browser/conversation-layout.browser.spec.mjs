@@ -16,14 +16,14 @@ test('single and split conversations keep their geometry, drafts and keyboard ow
 import {createApp,h,ref,shallowReactive} from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import '@codex-app-sdk/vue/styles.css';
+import 'ai-app-sdk/styles.css';
 import '/src/styles/variables.css';
 import '/src/styles/base.css';
 import {i18n} from '/src/i18n/index.ts';
 import {applyAppTheme} from '/src/theme/apply-theme.ts';
 import Shell from '/src/components/AppShell.vue';
 import ConversationPane from '/src/components/ConversationPane.vue';
-import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
+import {createCodexConversationPaneController} from 'ai-app-sdk';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
 import {claudeBackendCapabilities} from '@workspace/core/backend-capabilities';
 import {createAgentComposerState} from '/src/agent-composer-state.ts';
@@ -69,7 +69,7 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     configFile: false, root: path.join(root, 'client/vue'), cacheDir, logLevel: 'error',
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
     server: { host: '127.0.0.1', port: 0 },
-    optimizeDeps: { noDiscovery: true, include: ['vue', 'vue-i18n', 'element-plus', '@tabler/icons-vue', '@codex-app-sdk/vue', '@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client', 'rrule-temporal', 'rrule-temporal/totext', 'beautiful-mermaid', 'qrcode', 'parse-git-diff'] },
+    optimizeDeps: { noDiscovery: true, include: ['vue', 'vue-i18n', 'element-plus', '@tabler/icons-vue', 'ai-app-sdk', '@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client', 'rrule-temporal', 'rrule-temporal/totext', 'beautiful-mermaid', 'qrcode', 'parse-git-diff'] },
     plugins: [vue(), excalidrawAssets(), {
       name: 'conversation-layout-fixture',
       resolveId(id) { if (id === '/conversation-fixture.js') return '\0conversation-fixture'; },

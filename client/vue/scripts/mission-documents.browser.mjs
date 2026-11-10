@@ -13,7 +13,7 @@ test('Mission documents use a request drawer and centered viewer without replaci
   const require = createRequire(new URL('../package.json', import.meta.url));
   const artifacts = process.env.MISSION_DOCUMENT_ARTIFACTS ?? path.join(root, '.app-dev/mission-documents');
   const server = await createServer({ configFile:false, root, cacheDir:path.join(artifacts,'vite-cache'), server:{host:'127.0.0.1',port:0,watch:null},
-    resolve:{alias:{'@workspace/core':path.join(root,'core/src'),'@codex-app-sdk/vue/styles.css':require.resolve('@codex-app-sdk/vue/styles.css')},dedupe:['vue']},
+    resolve:{alias:{'@workspace/core':path.join(root,'core/src'),'ai-app-sdk/styles.css':require.resolve('ai-app-sdk/styles.css')},dedupe:['vue']},
     plugins:[vue(), {
       name:'mission-documents-fixture',
       configureServer(server) {
@@ -28,9 +28,9 @@ test('Mission documents use a request drawer and centered viewer without replaci
         return `
           import {createApp,h,Fragment,ref,reactive} from 'vue';
           import ElementPlus from 'element-plus';
-          import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
+          import {createCodexConversationPaneController} from 'ai-app-sdk';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import 'ai-app-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';

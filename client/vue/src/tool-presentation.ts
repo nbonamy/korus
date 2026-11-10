@@ -4,7 +4,7 @@ import {
   type CodexToolPresentationContext,
   type CodexToolVisibility,
   type CodexToolTitlePresenterContext,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import {
   IconDeviceMobile as MobileIcon,
   IconBrowser as BrowserIcon,

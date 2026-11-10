@@ -30,8 +30,6 @@
     "test:watch": "vitest watch"
   },
   "dependencies": {
-    "@codex-app-sdk/core": "0.23.0",
-    "@codex-app-sdk/vue": "0.23.0",
     "@excalidraw/excalidraw": "0.18.1",
     "@excalidraw/mermaid-to-excalidraw": "2.2.2",
     "@tabler/icons-vue": "^3.44.0",
@@ -41,13 +39,14 @@
     "chart.js": "4.6.1",
     "chartjs-chart-treemap": "4.2.2",
     "element-plus": "^2.13.6",
-    "parse-git-diff": "^0.0.20",
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "vue": "^3.5.35",
     "vue-chartjs": "5.3.4",
-    "vue-i18n": "^11.4.5"
+    "vue-i18n": "^11.4.5",
+    "multi-agents-sdk": "file:../../../multi-agents-sdk",
+    "ai-app-sdk": "file:../../../ai-app-sdk"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",

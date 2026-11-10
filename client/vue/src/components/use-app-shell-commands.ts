@@ -9,7 +9,7 @@ import type {
   SidePanelMarkdownRequest,
   Team,
 } from '@workspace/core/contracts';
-import { getCodexNativeRendererApi, type CodexComposerState, type CodexNativeAttachment } from '@codex-app-sdk/vue';
+import { getCodexNativeRendererApi, type CodexComposerState, type CodexNativeAttachment } from 'ai-app-sdk';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';

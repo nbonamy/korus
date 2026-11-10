@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CodexConversationEvent, SurfaceMessage } from '@codex-app-sdk/core/surface';
+import type { CodexConversationEvent, SurfaceMessage } from 'multi-agents-sdk/surface';
 import { codexSdkFixture, sdkAgent, sdkSummary } from './sdk-surface-fixture';
 
 const metadata = { seq: 1, origin: 'notification' as const, occurredAt: '2026-09-16T00:00:00Z', conversationId: 'conversation-a', turnId: 'turn' };

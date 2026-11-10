@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
 import type { BackendEvent } from '@workspace/core/backend-driver';
-import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
-import type { CodexConversationEvent, CodexConversationSnapshot, CodexConversationSummary, CodexSurfaceEvent } from '@codex-app-sdk/core/surface';
+import type { CodexConversation, CodexSurface } from 'multi-agents-sdk/codex';
+import type { CodexConversationEvent, CodexConversationSnapshot, CodexConversationSummary, CodexSurfaceEvent } from 'multi-agents-sdk/surface';
 import { CodexBackendDriver } from '../codex-driver';
 import { CodexSurfaceAgentAdapter } from '../codex-surface-adapter';
 

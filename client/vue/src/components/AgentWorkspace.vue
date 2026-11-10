@@ -135,7 +135,7 @@ import type {
   CodexConversationVisualization,
   CodexMessageImage,
   CodexMessageImageContext,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';

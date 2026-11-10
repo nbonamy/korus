@@ -1,5 +1,5 @@
-import type { CodexNativeAttachment } from '@codex-app-sdk/core/native';
-import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
+import type { CodexNativeAttachment } from 'ai-app-sdk/host';
+import type { CodexPromptPart } from 'multi-agents-sdk/surface';
 
 /**
  * View state a window starts with. Opening a window always takes one, so every

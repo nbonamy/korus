@@ -1,3 +1,5 @@
+import 'ai-app-sdk/styles.css';
+import { elementPlusStubs } from '../support/element-plus-stubs';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import bitwardenIcon from '../../src/assets/browser-extensions/bitwarden.svg';
 import { serialize } from 'node:v8';
@@ -82,7 +84,7 @@ function mountPanel(
   };
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
   setElectronTestClient(api);
-  const wrapper = mount(BrowserPanel, { attachTo: options.attachTo, props: { agentId: 'agent-1', visible: true, ...props } });
+  const wrapper = mount(BrowserPanel, { attachTo: options.attachTo, global: { stubs: { ElPopover: elementPlusStubs.ElPopover } }, props: { agentId: 'agent-1', visible: true, ...props } });
   const emitDomReady = () => wrapper.get('webview').element.dispatchEvent(new Event('dom-ready'));
   if (!options.deferDomReady) queueMicrotask(emitDomReady);
   return { api, browserOpen, emitDomReady, emitEvent: (event: MainToRendererEvent) => listener?.(event), emitCommand: (command: AppCommand) => commandListener?.(command), wrapper };

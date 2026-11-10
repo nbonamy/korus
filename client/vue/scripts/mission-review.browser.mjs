@@ -17,7 +17,7 @@ test('Mission review keeps actions visible and applies the implementation model 
     server: { host: '127.0.0.1', port: 0 },
     resolve: { alias: {
       '@workspace/core': path.join(root, 'core/src'),
-      '@codex-app-sdk/vue/styles.css': require.resolve('@codex-app-sdk/vue/styles.css'),
+      'ai-app-sdk/styles.css': require.resolve('ai-app-sdk/styles.css'),
     }, dedupe: ['vue'] },
     plugins: [vue(), {
       name: 'mission-review-layout',
@@ -36,7 +36,7 @@ test('Mission review keeps actions visible and applies the implementation model 
           import { backendModelCatalogKey } from '/client/vue/src/components/backend-model-catalog.ts';
           import ElementPlus from 'element-plus';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import 'ai-app-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';

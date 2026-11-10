@@ -1,3 +1,8 @@
+import type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from 'ai-app-sdk/browser/contracts';
+export type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from 'ai-app-sdk/browser/contracts';
+export { PRIMARY_BROWSER_ID } from 'ai-app-sdk/browser/contracts';
+import type { BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';
+export type { BackendApprovalDecision, BackendApprovalScope, BackendRequestedPermission, BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
 import type {
   AgentBackend,
@@ -331,35 +336,6 @@ export type RemoteTeamLink = {
   remoteTeamId: string;
 };
 
-export type BackendApprovalDecision = 'approve' | 'deny';
-export type BackendApprovalScope = 'once' | 'session';
-export type BackendRequestedPermission =
-  | {
-    kind: 'filesystem';
-    access: 'read' | 'write' | 'deny';
-    path: string;
-  }
-  | {
-    kind: 'network';
-    enabled: boolean;
-    host?: string;
-    protocol?: string;
-  };
-export type BackendApprovalRequest = {
-  id: string;
-  kind: 'command' | 'file-change' | 'permissions';
-  conversationId: string;
-  turnId?: string;
-  itemId: string;
-  title: string;
-  description?: string;
-  command?: string;
-  cwd?: string;
-  requestedPermissions?: BackendRequestedPermission[];
-  allowedScopes?: BackendApprovalScope[];
-  canDeny?: boolean;
-};
-
 export type OpenInApplication =
   | 'vscode'
   | 'finder'
@@ -619,39 +595,6 @@ export type SidePanelGitDiffRequest = {
 };
 
 export type SidePanelRequest = SidePanelMarkdownRequest | SidePanelGitDiffRequest;
-
-export type BrowserBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-export type BrowserViewportBounds = BrowserBounds & {
-  /** Guest viewport pixels hidden above or to the left of the visible bounds. */
-  contentOffset?: { x: number; y: number };
-};
-
-export const PRIMARY_BROWSER_ID = 'primary';
-
-export type BrowserAnnotation = {
-  id: string;
-  agentId: string;
-  browserId: string;
-  url: string;
-  kind: 'element' | 'area';
-  selector?: string;
-  label?: string;
-  comment?: string;
-  rect: { x: number; y: number; width: number; height: number };
-};
-
-export type BrowserState = {
-  url: string;
-  title: string;
-  canGoBack: boolean;
-  canGoForward: boolean;
-};
 
 export type SystemPermissionsStatus = {
   platform: string;

@@ -1,11 +1,11 @@
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
-import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+import { promptContentText, trimPromptContent, type CodexPromptPart } from 'multi-agents-sdk/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { mobileAgentStatus, providerBlockFor } from './provider-block';
 import { missionAgentsAttention, type MissionAttention } from '@workspace/core/mission-attention';
-import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
+import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from 'ai-app-sdk';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
@@ -162,7 +162,7 @@ export type EngineCommand =
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
-  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('@codex-app-sdk/core/surface').CodexPromptPart[]; attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('multi-agents-sdk/surface').CodexPromptPart[]; attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'queuedPrompt'; target: CompanionTarget; promptId: string; action: 'steer' | 'delete' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }

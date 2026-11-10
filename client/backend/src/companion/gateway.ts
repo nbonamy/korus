@@ -1,7 +1,7 @@
 import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { executionSelectionSchema, executionSelectionOverridesSchema, executionSelectionRequestSchema } from '../execution-selection-schema';
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
-import { normalizePromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent, type CodexPromptPart } from 'multi-agents-sdk/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';

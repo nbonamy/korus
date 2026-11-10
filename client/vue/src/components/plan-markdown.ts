@@ -1,4 +1,4 @@
-import { renderMarkdown } from '@codex-app-sdk/vue';
+import { renderMarkdown } from 'ai-app-sdk';
 
 export type PlanChoiceGroup = {
   id: string;

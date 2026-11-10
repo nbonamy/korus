@@ -1,5 +1,5 @@
 import { readPersistedExecutionSelection } from './execution-selection';
-import { normalizePromptContent } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent } from 'multi-agents-sdk/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';

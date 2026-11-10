@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, nextTick, provide, reactive, shallowRef } from 'vue';
-import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from '@codex-app-sdk/vue';
+import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from 'ai-app-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';

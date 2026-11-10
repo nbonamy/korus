@@ -1,6 +1,6 @@
 import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
+import type { CodexMessageImage, CodexMessageImageContext } from 'ai-app-sdk';
 import { defineComponent, h, reactive } from 'vue';
 import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';

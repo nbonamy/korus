@@ -31,7 +31,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ChevronRightIcon, CodeIcon, FileDiffIcon, RefreshIcon, X } from '@workspace/vue/shared/icons/app-icons';
 import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
-import { languageForFilePath } from '@codex-app-sdk/vue';
+import { languageForFilePath } from 'ai-app-sdk';
 import GitDiffPreviewPanel from '@workspace/vue/components/GitDiffPreviewPanel.vue';
 import SourcePreviewPanel from '@workspace/vue/components/SourcePreviewPanel.vue';
 import type { TranscriptFileState } from './transcript-files';

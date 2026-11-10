@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { CodexConversationPane, provideCodexHostCapabilities, useCodexHostCapabilities, type CodexChatMessage, type SurfaceMessage, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { CodexConversationPane, provideCodexHostCapabilities, useCodexHostCapabilities, type CodexChatMessage, type SurfaceMessage, type CodexConversationLink } from 'ai-app-sdk';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';

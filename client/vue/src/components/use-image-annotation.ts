@@ -1,11 +1,11 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@codex-app-sdk/core/surface';
+import { trimPromptContent } from 'multi-agents-sdk/surface';
 import {
   getCodexNativeRendererApi,
   type CodexNativeAttachment,
   type CodexComposerState,
   type CodexRendererSendMessageOptions,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import type { RendererPromptAttachment, RendererSendPromptOptions } from '@workspace/core/contracts';
 import { computed, reactive, ref } from 'vue';
 import { translate } from '../i18n';

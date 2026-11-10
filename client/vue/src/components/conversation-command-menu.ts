@@ -1,4 +1,4 @@
-import type { CodexComposerMenuItem } from '@codex-app-sdk/vue';
+import type { CodexComposerMenuItem } from 'ai-app-sdk';
 import { IconChecklist, IconPalette, IconSitemap } from '@tabler/icons-vue';
 import { GitBranchIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';

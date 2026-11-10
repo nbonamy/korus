@@ -111,17 +111,23 @@ Rules of thumb:
 
 ### Conversation Panes
 
-`CodexConversationPane` from `@codex-app-sdk/vue` is the complete conversation and
+`CodexConversationPane` from `ai-app-sdk` is the complete conversation and
 composer surface. Extend it through its controller, slots and typed actions; Korus's
 wrapper only maps app state and product routing. Registered provider bindings
-select the matching native cache and project a read-only conversation presentation.
+select the matching native cache and use the read-only presentation adapters in
+`multi-agents-sdk`. Korus adds review-sidebar policy outside those adapters.
 Shared panes and the shell consume that selected presentation, including requests
 and plans, without choosing between native snapshot fields. Native replicas,
 recovery and reducers remain provider-owned; the binding does not rebuild a
 transcript. Sidebar request visibility follows the app-owned review delivery and
-conversation/turn identity, rather than native tool names. A generic Codex
+conversation/turn identity, rather than native tool names. A generic conversation
 interaction defect is an SDK defect. Never add a global message list or
 provider-neutral reducer to `app-state.ts`.
+
+Document, diff and code-annotation controls belong to `ai-app-sdk`; Korus supplies
+file access, navigation, draft persistence and the diff-treemap slot. The browser
+UI receives an injected host API. Bookmark storage, extension selection, settings
+and product navigation stay in Korus.
 
 Mentions are authored parts created by picker selection, with stable targets and
 frozen labels. Drafts, saved selections, queues, submissions and mobile transports

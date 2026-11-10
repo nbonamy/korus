@@ -4,9 +4,8 @@ import path from 'node:path';
 
 export function speechHelperResources(workspacePath: string, platform: NodeJS.Platform): string[] {
   if (platform !== 'darwin') return [];
-  const electronSdk = installedPackageRoot(workspacePath, '@codex-app-sdk/electron');
-  const backendSdk = installedPackageRoot(electronSdk, '@codex-app-sdk/backend');
-  return [path.join(backendSdk, 'assets/apple-speechanalyzer-cli')];
+  const sdk = installedPackageRoot(workspacePath, 'ai-app-sdk');
+  return [path.join(sdk, 'assets/apple-speechanalyzer-cli')];
 }
 
 function installedPackageRoot(consumerPath: string, packageName: string): string {

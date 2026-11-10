@@ -16,9 +16,9 @@ const sdk = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
-vi.mock('@codex-app-sdk/vue', async (importOriginal) => {
+vi.mock('ai-app-sdk', async (importOriginal) => {
   const vue = await import('vue');
-  const actual = await importOriginal<typeof import('@codex-app-sdk/vue')>();
+  const actual = await importOriginal<typeof import('ai-app-sdk')>();
   return {
     CodexComposerVoiceButton: defineComponent({
       name: 'CodexComposerVoiceButton',

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CodexSurfaceRateLimits } from '@codex-app-sdk/core/surface';
+import type { CodexSurfaceRateLimits } from 'multi-agents-sdk/surface';
 import { codexSdkFixture, sdkSnapshot } from './sdk-surface-fixture';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { isProviderAuthentication } from '@workspace/core/contracts/provider-setup';

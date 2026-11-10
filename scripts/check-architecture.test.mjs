@@ -85,6 +85,7 @@ test("architecture lint accepts legitimate host imports and ignores source-like 
     "core/src/runtime-discovery.ts":
       "import { readFileSync } from 'node:fs';\n",
     "core/src/example.ts": "const example = \"from 'electron'\";\n",
+    "core/src/host.ts": "import type { CodexHostCapabilities } from 'ai-app-sdk/host'; import type { BrowserState } from 'ai-app-sdk/browser/contracts'; import { parseBrowserViewport } from 'ai-app-sdk/browser/viewport';",
     "client/electron/src/main/native.ts":
       "import { readFile } from 'node:fs/promises';\n",
   });
@@ -106,6 +107,10 @@ test("standalone CLI can reuse backend modules while staying independent of Elec
 test("architecture lint rejects imports across owned process boundaries", async () => {
   const result = await checkFixture({
     "core/src/ui.ts": "import type { Ref } from 'vue';\n",
+    "core/src/desktop.ts": "import { BrowserPane } from 'ai-app-sdk/browser/electron'; import { CodexComposer } from 'ai-app-sdk';",
+    "core/src/provider.ts": "import { ClaudeAgentSdkTransport } from 'multi-agents-sdk/providers/claude/agent-sdk-transport';",
+    "client/vue/src/native.ts": "import { executeComputerUseCommand } from 'multi-agents-sdk/computer-use';",
+    "mobile/src/provider.ts": "import { AcpConnection } from 'multi-agents-sdk/acp/acp-connection';",
     "core/src/read.ts": "import fs from 'node:fs';\n",
     "core/src/nested/runtime-discovery.ts": "import fs from 'node:fs';\n",
     "client/backend/src/host.ts": "await import('electron');\n",
@@ -119,6 +124,10 @@ test("architecture lint rejects imports across owned process boundaries", async 
   assert.equal(result.status, 1, result.stderr);
   for (const [file, reason] of [
     ["core/src/ui.ts", "core cannot depend on desktop or UI packages"],
+    ["core/src/desktop.ts", "core cannot depend on desktop or UI packages"],
+    ["core/src/provider.ts", "core cannot import trusted SDK runtimes"],
+    ["client/vue/src/native.ts", "renderer cannot import trusted SDK runtimes"],
+    ["mobile/src/provider.ts", "mobile cannot import trusted SDK runtimes"],
     ["core/src/read.ts", "core cannot use Node filesystem APIs"],
     [
       "core/src/nested/runtime-discovery.ts",
@@ -146,7 +155,7 @@ test("mobile code only receives app-owned contracts and browser-safe UI", async 
     "mobile/src/host.ts":
       "import { App } from '@capacitor/app';\nimport type { Agent } from '@workspace/core/contracts';\n",
     "mobile/src/conversation.ts":
-      "import { createCodexConversationPaneController } from '@codex-app-sdk/vue';\n",
+      "import { createCodexConversationPaneController } from 'ai-app-sdk';\n",
   });
   assert.equal(accepted.status, 0, accepted.stderr);
   const rejected = await checkFixture({

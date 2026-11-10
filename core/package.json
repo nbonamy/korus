@@ -19,11 +19,12 @@
     "test:watch": "vitest watch"
   },
   "devDependencies": {
-    "@codex-app-sdk/core": "0.23.0",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "multi-agents-sdk": "file:../../multi-agents-sdk",
+    "ai-app-sdk": "file:../../ai-app-sdk"
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",

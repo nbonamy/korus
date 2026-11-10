@@ -24,7 +24,7 @@ export default defineConfig({
       '@workspace/vue': path.resolve(__dirname, '../vue/src'),
       ...(useSdkSources ? sdkSourceAliases : {}),
     },
-    dedupe: ['vue'],
+    dedupe: ['vue', 'element-plus'],
   },
   server: {
     port: 5174,

@@ -19,7 +19,7 @@
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { CodexComposerDrawer, CodexComposerDrawerRow, CodexIconButton } from '@codex-app-sdk/vue';
+import { CodexComposerDrawer, CodexComposerDrawerRow, CodexIconButton } from 'ai-app-sdk';
 import type { GuestProposal } from '@workspace/core/conversation-sharing';
 import { PencilIcon, ShareIcon, Trash2Icon } from '../shared/icons/app-icons';
 defineProps<{ proposals: readonly GuestProposal[]; owner?: boolean; disabled?: boolean; editDisabled?: boolean; failed?: boolean }>();

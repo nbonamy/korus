@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { CodexMessageList, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { CodexMessageList, type CodexConversationLink } from 'ai-app-sdk';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentSubagentTree, RendererMessage } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';

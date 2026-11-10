@@ -99,8 +99,10 @@ Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outpu
 generated bindings and packaged resources separate from source. Packaging and
 signing are in [client/AGENTS.md](client/AGENTS.md).
 
-**SDK.** Dev builds run the `~/src/codex-app-sdk` source (`CODEX_APP_SDK_SOURCE=1`), so
-SDK changes are live: never cite publishing or the pinned version outside release prep.
+**SDK.** This worktree consumes sibling `codex-sdk`, `multi-agents-sdk` and
+`ai-app-sdk` packages. Dev builds use their source with `CODEX_APP_SDK_SOURCE=1`;
+`CODEX_APP_SDK_SOURCE_ROOT` selects the directory containing all three. Build the
+libraries before consumer typechecking; do not publish them during extraction.
 
 ## Project Skills
 

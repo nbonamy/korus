@@ -17,7 +17,7 @@ test('Mission message links reveal a usable document beside the conversation', a
     server: { host: '127.0.0.1', port: 0 },
     resolve: { alias: {
       '@workspace/core': path.join(root, 'core/src'),
-      '@codex-app-sdk/vue/styles.css': require.resolve('@codex-app-sdk/vue/styles.css'),
+      'ai-app-sdk/styles.css': require.resolve('ai-app-sdk/styles.css'),
     }, dedupe: ['vue'] },
     plugins: [vue(), {
       name: 'conversation-links-fixture',
@@ -34,7 +34,7 @@ test('Mission message links reveal a usable document beside the conversation', a
           import { createApp, h, reactive } from 'vue';
           import ElementPlus from 'element-plus';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import 'ai-app-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';

@@ -26,7 +26,7 @@ import { CodexBackendDriver } from './codex/codex-driver';
 import { CodexSurfaceAgentAdapter } from './codex/codex-surface-adapter';
 import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveCodexLaunch } from './codex/codex-command';
-import { createCodexSurface } from '@codex-app-sdk/backend';
+import { createCodexSurface } from 'multi-agents-sdk/codex';
 import { listSourceBranches, listSourceWorktrees, suggestedSourceWorktreePath } from './git-worktrees';
 import { WorktreeManager } from './worktrees/worktree-manager';
 import { buildAppMcpConfigOverrides, buildAppThreadConfig } from './mcp/codex-config';

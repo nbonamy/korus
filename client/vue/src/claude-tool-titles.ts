@@ -1,4 +1,4 @@
-import type { CodexToolPresentationContext, CodexToolTitlePresenterContext } from '@codex-app-sdk/vue';
+import type { CodexToolPresentationContext, CodexToolTitlePresenterContext } from 'ai-app-sdk';
 import { messages } from './i18n/messages';
 
 type Translate = CodexToolTitlePresenterContext['translate'];

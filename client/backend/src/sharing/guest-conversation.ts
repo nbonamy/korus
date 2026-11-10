@@ -2,7 +2,7 @@ import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionSync } from '@workspace/core/companion-journal';
 import { isConversationReset, type CompanionReset } from '@workspace/core/companion-protocol';
 import type { GuestConversationUpdate, GuestConversationSync } from '@workspace/core/guest-conversation';
-import { createCodexConversationReplica } from '@codex-app-sdk/core/conversation-replica';
+import { createCodexConversationReplica } from 'multi-agents-sdk/conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 

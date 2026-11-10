@@ -1,4 +1,4 @@
-import { normalizePromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent, type CodexPromptPart } from 'multi-agents-sdk/surface';
 
 /** A prompt draft as the composer holds it. */
 export type DraftState = { text: string; content?: readonly CodexPromptPart[]; selectionStart: number; selectionEnd: number };

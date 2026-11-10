@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { promptContentText } from '@codex-app-sdk/core/surface';
+import { promptContentText } from 'multi-agents-sdk/surface';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
+import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from 'ai-app-sdk';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
 import { projectCodexConversation } from '../../provider-conversation-bindings';

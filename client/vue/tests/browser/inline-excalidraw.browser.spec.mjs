@@ -36,9 +36,9 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
       load(id) {
         if (id !== '\0diagram-fixture') return;
         return `import {createApp,h,ref} from 'vue';
-          import * as SDK from '@codex-app-sdk/vue';
+          import * as SDK from 'ai-app-sdk';
           import Diagram from '/client/vue/src/components/InlineExcalidrawBlock.vue';
-          import '@codex-app-sdk/vue/styles.css';
+          import 'ai-app-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/base.css';
           import {i18n} from '/client/vue/src/i18n/index.ts';

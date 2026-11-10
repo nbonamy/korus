@@ -182,7 +182,7 @@
 <script setup lang="ts">
 import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
 import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
-import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
+import { slicePromptContent, replacePromptContentRange } from 'multi-agents-sdk/surface';
 import ConversationShareActivity from './ConversationShareActivity.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
 import GithubStarPrompt from './GithubStarPrompt.vue';
@@ -204,7 +204,7 @@ import {
   type CodexConversationPaneController,
   type CodexNativeAttachment,
   type SurfaceMessage,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';
 import { IconSitemap } from '@tabler/icons-vue';
 import type {
@@ -280,7 +280,7 @@ const props = withDefaults(defineProps<{
   emptySubhead?: string;
   threadFlagBusy?: boolean;
   savedPromptDrafts?: readonly SavedPromptDraft[];
-  savePromptDraft?: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
+  savePromptDraft?: (agentId: string, text: string, content?: readonly import('multi-agents-sdk/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft?: (id: string) => Promise<void>;
   readConversationContent?: (agentId: string, input: ConversationContentInput) => Promise<ConversationContentChunk>;
 }>(), {

@@ -10,7 +10,7 @@ import { createComposerState } from './composer-state';
 import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
-import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
+import type { CodexPromptPart } from 'multi-agents-sdk/surface';
 import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
 import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';

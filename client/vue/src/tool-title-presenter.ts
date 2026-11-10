@@ -1,7 +1,7 @@
 import { isAppMcpServerName } from '@workspace/core/product';
 import {
   type CodexToolTitlePresenterContext,
-} from '@codex-app-sdk/vue';
+} from 'ai-app-sdk';
 
 type ToolPhase = 'completed' | 'failed' | 'running';
 type AgentNameResolver = (identifier: string) => string | undefined;

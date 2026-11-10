@@ -26,7 +26,6 @@
     "prepare:mobile-simulator": "node ../../scripts/prepare-mobile-simulator.mjs"
   },
   "dependencies": {
-    "@codex-app-sdk/electron": "0.23.0",
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
     "@workspace/core": "0.56.0",
@@ -34,7 +33,9 @@
     "autolib": "github:nbonamy/witsy-autolib#v1.2.4",
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",
-    "vue": "^3.5.35"
+    "vue": "^3.5.35",
+    "multi-agents-sdk": "file:../../../multi-agents-sdk",
+    "ai-app-sdk": "file:../../../ai-app-sdk"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",

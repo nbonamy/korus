@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
   CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
-import type { SurfaceMessage } from '@codex-app-sdk/core/surface';
+} from 'ai-app-sdk';
+import type { SurfaceMessage } from 'multi-agents-sdk/surface';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -746,14 +746,14 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
 
     expect(browserClose).not.toHaveBeenCalled();
-    expect(wrapper.findAllComponents({ name: 'BrowserPanel' })).toHaveLength(1);
+    expect(wrapper.findAll('webview')).toHaveLength(1);
     await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.isVisible() && button.text().includes('Browser'))?.trigger('click');
     readyBrowserGuest(wrapper.findAll('webview')[1]!.element, 43);
     await flushPromises();
 
     expect(browserOpen).toHaveBeenCalledWith('agent-jesse', 'primary', '', 43);
-    expect(wrapper.findAllComponents({ name: 'BrowserPanel' })).toHaveLength(2);
+    expect(wrapper.findAll('webview')).toHaveLength(2);
     await wrapper.setProps({ activeAgent: snapshot.agents.find((agent) => agent.id === 'agent-dina') } as Record<string, unknown>);
     await flushPromises();
 

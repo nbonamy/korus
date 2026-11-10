@@ -1,5 +1,5 @@
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';
-import type { CodexConversationVisualization } from '@codex-app-sdk/vue';
+import type { CodexConversationVisualization } from 'ai-app-sdk';
 import { computed, onScopeDispose, reactive, watch, watchEffect } from 'vue';
 import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { SidePanelGitDiffState, SidePanelImageState, SidePanelMarkdownState } from './side-panel';

@@ -6,10 +6,8 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rootPackageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const sdkDependencies = [
-  ['client/backend', '@codex-app-sdk/backend'],
-  ['client/backend', '@codex-app-sdk/core'],
-  ['client/electron', '@codex-app-sdk/electron'],
-  ['client/vue', '@codex-app-sdk/vue'],
+  ['client/backend', 'multi-agents-sdk'],
+  ['client/electron', 'ai-app-sdk'],
 ].map(([directory, packageName]) => {
   const packagePath = path.join(rootDir, directory, 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
@@ -27,26 +25,26 @@ const localDependencies = sdkDependencies.filter(({ specifier }) => (
 ));
 
 if (localDependencies.length === 0) {
-  console.log('[build:sdk] scoped SDK packages are published; using the installed packages.');
+  console.log('[build:sdk] using the installed SDK packages.');
   process.exit(0);
 }
 if (localDependencies.length !== sdkDependencies.length) {
-  throw new Error('Scoped SDK packages must use the same local or published dependency strategy.');
+  throw new Error('SDK packages must use the same local or published dependency strategy.');
 }
 
 const sdkRoots = new Set(localDependencies.map(({ packageDirectory }) => {
-  return path.resolve(packageDirectory, '..', '..');
+  return path.resolve(packageDirectory, '..');
 }));
 if (sdkRoots.size !== 1) {
-  throw new Error('Workspaces resolve scoped SDK packages from different repositories.');
+  throw new Error('Workspaces resolve SDK packages from different directories.');
 }
 
 const sdkRoot = [...sdkRoots][0];
 if (!fs.existsSync(path.join(sdkRoot, 'package.json'))) {
-  throw new Error(`Local modular Codex App SDK not found at ${sdkRoot}.`);
+  throw new Error(`Local SDK workspace not found at ${sdkRoot}.`);
 }
 
-console.log(`[build:sdk] rebuilding local modular Codex App SDK at ${sdkRoot}`);
+console.log(`[build:sdk] rebuilding local SDK workspace at ${sdkRoot}`);
 const npmCli = process.env.npm_execpath;
 const result = spawnSync(npmCli ? process.execPath : 'npm', npmCli ? [npmCli, 'run', 'build'] : ['run', 'build'], { cwd: sdkRoot, stdio: 'inherit' });
 if (result.error) throw result.error;
@@ -57,6 +55,8 @@ for (const dependency of localDependencies) {
 }
 
 function refreshInstalledPackage({ packageDirectory, packageName }) {
+  const installedPath = path.join(rootDir, 'node_modules', ...packageName.split('/'));
+  if (fs.existsSync(installedPath) && fs.realpathSync(installedPath) === fs.realpathSync(packageDirectory)) return;
   const packageJsonPath = path.join(packageDirectory, 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   if (!Array.isArray(packageJson.files)) {

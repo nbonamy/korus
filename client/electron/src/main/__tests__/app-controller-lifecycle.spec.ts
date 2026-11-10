@@ -24,8 +24,8 @@ const native = vi.hoisted(() => ({
   factory: vi.fn(), createWindow: vi.fn(), maintenance: vi.fn(), capture: vi.fn(),
   keyStart: vi.fn((_hotkey: string, _capture: () => void) => true), keyStop: vi.fn(), ready: false,
 }));
-vi.mock('@codex-app-sdk/electron', async importOriginal => {
-  const sdk = await importOriginal<typeof import('@codex-app-sdk/electron')>();
+vi.mock('ai-app-sdk/electron', async importOriginal => {
+  const sdk = await importOriginal<typeof import('ai-app-sdk/electron')>();
   return { ...sdk, registerCodexNativeIpc: (...args: Parameters<typeof sdk.registerCodexNativeIpc>) => {
     native.nativeOptions = args[1]; return sdk.registerCodexNativeIpc(...args);
   } };

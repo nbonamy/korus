@@ -4,8 +4,8 @@ import type {
   CodexConversationPaneController,
   CodexConversationPaneState,
   CodexNativeAttachment,
-} from '@codex-app-sdk/vue';
-import type { CodexConversationSnapshot } from '@codex-app-sdk/core/surface';
+} from 'ai-app-sdk';
+import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
 import { defineComponent, nextTick } from 'vue';
 import { expect, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';

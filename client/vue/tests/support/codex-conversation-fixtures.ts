@@ -1,4 +1,4 @@
-import type { CodexConversationSnapshot, SurfaceMessage } from '@codex-app-sdk/core/surface';
+import type { CodexConversationSnapshot, SurfaceMessage } from 'multi-agents-sdk/surface';
 
 export function codexConversationSnapshot(
   messages: SurfaceMessage[] = [],

@@ -4,8 +4,8 @@ import type {
   CodexComposerMenuSelectableItem,
   CodexNativeAttachment,
   CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
-import type { CodexSurfaceClientRequest } from '@codex-app-sdk/core/surface';
+} from 'ai-app-sdk';
+import type { CodexSurfaceClientRequest } from 'multi-agents-sdk/surface';
 import { nextTick, reactive, shallowReactive } from 'vue';
 import type { AgentConversationView } from '../../src/app-state';
 import type { AgentConversationActions } from '../../src/components/use-agent-conversation';

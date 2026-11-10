@@ -174,6 +174,23 @@ function checkTelemetryCalls(node, file) {
 }
 
 function forbiddenImport(area, file, specifier) {
+  const providerRuntime = [
+    "codex-sdk", "multi-agents-sdk/codex", "multi-agents-sdk/backend", "multi-agents-sdk/providers",
+    "multi-agents-sdk/acp", "multi-agents-sdk/tools",
+  ].some((name) => isPackage(specifier, name));
+  if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "multi-agents-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
+  const nativeHostRuntime = [
+    "multi-agents-sdk/computer-use", "ai-app-sdk/electron",
+    "ai-app-sdk/speech", "ai-app-sdk/browser/electron",
+  ].some((name) => isPackage(specifier, name));
+  if (["core", "renderer", "mobile", "console"].includes(area)
+      && (providerRuntime || nativeHostRuntime)) {
+    // Keep the more specific core UI diagnostic for the existing entry points.
+    if (!(area === "core" && isPackage(specifier, "ai-app-sdk")))
+      return `${area} cannot import trusted SDK runtimes`;
+  }
+  if (["electron-main", "preload"].includes(area) && providerRuntime)
+    return "Electron main must use the daemon protocol, not backend implementations";
   const relative = path.relative(root, file).split(path.sep).join("/");
   const hostedBackend = path.join(root, "server/backend/src");
   const target = specifier.startsWith(".")
@@ -318,8 +335,8 @@ function forbiddenImport(area, file, specifier) {
       "@workspace/backend",
       "@workspace/electron",
       "@workspace/web",
-      "@codex-app-sdk/backend",
-      "@codex-app-sdk/electron",
+      "multi-agents-sdk/codex",
+      "ai-app-sdk/electron",
       "@anthropic-ai/claude-agent-sdk",
     ];
     const forbiddenSource =
@@ -340,15 +357,23 @@ function forbiddenImport(area, file, specifier) {
     }
   }
   if (area === "core") {
+    // A single UI package also exports portable host contracts. Permit only
+    // these leaf modules, never its renderer or trusted runtime entry points.
+    const portableUiContract = [
+      "ai-app-sdk/host",
+      "ai-app-sdk/browser/contracts",
+      "ai-app-sdk/browser/viewport",
+      "ai-app-sdk/documents/files",
+    ].includes(specifier);
     if (
       [
         "electron",
         "vue",
         "@vue",
-        "@codex-app-sdk/electron",
-        "@codex-app-sdk/vue",
-        "@codex-app-sdk/web",
-      ].some((name) => isPackage(specifier, name))
+        "ai-app-sdk/electron",
+        "ai-app-sdk",
+        "multi-agents-sdk/web",
+      ].some((name) => isPackage(specifier, name)) && !portableUiContract
     ) {
       return "core cannot depend on desktop or UI packages";
     }
@@ -366,7 +391,7 @@ function forbiddenImport(area, file, specifier) {
     area === "electron-main" &&
     ([
       "@workspace/backend",
-      "@codex-app-sdk/backend",
+      "multi-agents-sdk/codex",
       "@anthropic-ai/claude-agent-sdk",
     ].some((name) => isPackage(specifier, name)) ||
       (specifier.startsWith(".") &&
