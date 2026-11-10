@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/claude/claude-task-plan';
+export { ClaudeTaskPlan } from 'multi-agents-sdk/providers/claude';

@@ -356,7 +356,9 @@ Provider conversations stay provider-owned end to end. `codex-sdk` owns the
 Codex app-server protocol and transports. `multi-agents-sdk` owns native
 conversation state, replicas, read-only conversation presentation, native harness
 drivers, scoped execution and reusable
-transport primitives. `ai-app-sdk` owns conversation/composer rendering, document
+transport primitives. Its primary consumer interface uses opaque durable sessions,
+neutral events and capability-driven operations. Native compatibility contracts
+remain available through explicit entry points for shipped product transports. `ai-app-sdk` owns conversation/composer rendering, document
 and diff controls, code annotations, host bridges, speech, browser controls and
 the Electron browser engine. Each library is one package with runtime
 subpath exports; browser-safe contracts do not import trusted runtime code.
@@ -365,10 +367,15 @@ policy, existing native homes and journal namespaces. Generic completed prompt
 execution uses caller-owned MCP scopes; CodeReviewService retains the review
 workflow. Browser controls receive a host API, while Korus supplies bookmark
 persistence, extension choices and product navigation. Diff treemaps compose
-through the shared diff control's map slot. Native capabilities belong to the harness contract;
+through the shared diff control's neutral overview slot; Korus owns map mode
+and filters. Native capabilities belong to the harness contract;
 review and sharing workflow flags extend it in Korus. Korus stores the provider session reference, transports
 frames inside an app-owned envelope (agent, provider, revision), invokes SDK
-operations, and adds coordination metadata.
+operations, and adds coordination metadata. The separate Computer Use capability
+is bound in Korus: helper packaging, lifecycle, permission policy and MCP tool
+registration belong to the host; the harness SDK only consumes generic MCP
+endpoints. Browser owner identities are translated at the host boundary, keeping
+existing agent-based product wire fields intact.
 
 - `daemon` publishes one bounded provider reset followed by revisioned deltas.
   Electron forwards frames unreduced. The renderer keeps one provider replica per
@@ -390,7 +397,7 @@ operations, and adds coordination metadata.
 Every backend-dependent feature enters through the app seam:
 
 1. Define an app-owned contract for behavior outside the transcript.
-2. Express native operations through `HarnessDriver` in `multi-agents-sdk`;
+2. Express native operations through the native driver contract in `multi-agents-sdk/native`;
    `AgentBackendDriver` adds Korus workflow policy behind `daemon`.
 3. Keep native provider execution in the SDK adapters. Korus provider directories
    supply product policy, native installation lifecycle and host composition.

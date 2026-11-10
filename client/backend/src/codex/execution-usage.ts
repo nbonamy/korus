@@ -1,1 +1,1 @@
-export { codexExecutionConsumption } from 'multi-agents-sdk/providers/codex/execution-usage';
+export { codexExecutionConsumption } from 'multi-agents-sdk/providers/codex';

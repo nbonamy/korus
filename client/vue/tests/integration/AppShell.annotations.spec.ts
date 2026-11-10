@@ -1,4 +1,4 @@
-import type { CodexMessageTextSelection } from 'ai-app-sdk';
+import type { MessageTextSelection as CodexMessageTextSelection } from 'ai-app-sdk';
 import { flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';

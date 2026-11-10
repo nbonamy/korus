@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createCodexConversationPaneController } from 'ai-app-sdk';
+import { createConversationPaneController as createCodexConversationPaneController } from 'ai-app-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { product } from '@workspace/core/product';

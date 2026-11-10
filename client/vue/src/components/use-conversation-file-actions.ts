@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { codexConversationLinkFromHref } from 'ai-app-sdk';
+import { conversationLinkFromHref as codexConversationLinkFromHref } from 'ai-app-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { translate } from '../i18n';

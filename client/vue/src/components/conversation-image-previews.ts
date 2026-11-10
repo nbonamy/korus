@@ -1,5 +1,5 @@
 import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
-import { provideCodexHostCapabilities, useCodexHostCapabilities } from 'ai-app-sdk';
+import { provideHostCapabilities as provideCodexHostCapabilities, useHostCapabilities as useCodexHostCapabilities } from 'ai-app-sdk';
 import { appApi } from '../platform-api';
 
 /** Keep attachment capabilities native; read conversation file images on their owning host. */

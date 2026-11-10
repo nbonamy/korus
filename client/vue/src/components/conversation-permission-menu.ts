@@ -1,5 +1,5 @@
 import type { BackendPermissionModeOption } from '@workspace/core/contracts';
-import type { CodexComposerMenuItem } from 'ai-app-sdk';
+import type { ComposerMenuItem as CodexComposerMenuItem } from 'ai-app-sdk';
 import { ShieldCheckIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';

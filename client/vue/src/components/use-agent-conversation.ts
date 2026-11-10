@@ -1,6 +1,6 @@
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from 'ai-app-sdk';
+import { createConversationPaneController as createCodexConversationPaneController, type ConversationPaneActions as CodexConversationPaneActions, type ConversationPaneState as CodexConversationPaneState, type ClientSendMessageOptions as CodexRendererSendMessageOptions, type ComposerMenuItem as CodexComposerMenuItem } from 'ai-app-sdk';
 import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';

@@ -68,9 +68,9 @@ import type {
 } from '@workspace/core/contracts';
 import type { CodeReviewFinding } from '@workspace/core/code-review';
 import type {
-  CodexConversationPaneActions,
-  CodexComposerMentionGroup,
-  CodexComposerMenuItem,
+  ConversationPaneActions as CodexConversationPaneActions,
+  ComposerMentionGroup as CodexComposerMentionGroup,
+  ComposerMenuItem as CodexComposerMenuItem,
 } from 'ai-app-sdk';
 import type { AgentConversationView } from '../app-state';
 import {

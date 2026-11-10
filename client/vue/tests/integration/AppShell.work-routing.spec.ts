@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
-  CodexNativeRendererApi,
+  NativeRendererApi as CodexNativeRendererApi,
 } from 'ai-app-sdk';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';

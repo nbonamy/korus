@@ -1,4 +1,4 @@
-import { CodexBackendDriver as NativeDriver } from 'multi-agents-sdk/providers/codex/driver';
+import { CodexBackendDriver as NativeDriver } from 'multi-agents-sdk/providers/codex';
 import type { Agent, BackendSession, SendPromptOptions } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendCodeReviewInput, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import type { CodexSurfaceAgentAdapter } from './codex-surface-adapter';

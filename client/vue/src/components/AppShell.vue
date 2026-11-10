@@ -761,16 +761,16 @@ import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigration
 import ModelFavoritesDialog from './ModelFavoritesDialog.vue';
 import type { SettingsTab } from './settings-tabs';
 import {
-  type CodexConversationLink,
-  type CodexConversationPaneActions,
-  type CodexConversationVisualization,
-  type CodexComposerMenuItem,
-  type CodexComposerMentionGroup,
-  type CodexMessageImage,
-  type CodexMessageImageContext,
-  type CodexNativeAttachment,
-  type CodexComposerState,
-  type CodexQueuedPromptData as QueuedChatPrompt,
+  type ConversationLink as CodexConversationLink,
+  type ConversationPaneActions as CodexConversationPaneActions,
+  type ConversationVisualization as CodexConversationVisualization,
+  type ComposerMenuItem as CodexComposerMenuItem,
+  type ComposerMentionGroup as CodexComposerMentionGroup,
+  type MessageImage as CodexMessageImage,
+  type MessageImageContext as CodexMessageImageContext,
+  type NativeAttachment as CodexNativeAttachment,
+  type ComposerState as CodexComposerState,
+  type QueuedPromptData as QueuedChatPrompt,
 } from 'ai-app-sdk';
 import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from 'multi-agents-sdk/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';

@@ -4,8 +4,8 @@ import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
-  CodexNativeAttachment,
-  CodexNativeRendererApi,
+  NativeAttachment as CodexNativeAttachment,
+  NativeRendererApi as CodexNativeRendererApi,
 } from 'ai-app-sdk';
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';

@@ -1,6 +1,6 @@
 import { isAppMcpServerName } from '@workspace/core/product';
 import {
-  type CodexToolTitlePresenterContext,
+  type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
 } from 'ai-app-sdk';
 
 type ToolPhase = 'completed' | 'failed' | 'running';

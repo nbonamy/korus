@@ -131,10 +131,10 @@ import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
 import type { FileKind } from '@workspace/core/file-kind';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
-  CodexConversationLink,
-  CodexConversationVisualization,
-  CodexMessageImage,
-  CodexMessageImageContext,
+  ConversationLink as CodexConversationLink,
+  ConversationVisualization as CodexConversationVisualization,
+  MessageImage as CodexMessageImage,
+  MessageImageContext as CodexMessageImageContext,
 } from 'ai-app-sdk';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';

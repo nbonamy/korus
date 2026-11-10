@@ -389,10 +389,33 @@ describe('BackendDriverRpc', () => {
 
     expect(options).toMatchObject({
       transport: {
-        configOverrides: expect.arrayContaining(['mcp_servers.node_repl.enabled=true']),
+        configOverrides: expect.arrayContaining(['features.default_mode_request_user_input=true', 'mcp_servers.node_repl.enabled=true']),
       },
     });
     expect(pluginSettings).toHaveBeenCalledOnce();
+  });
+
+  it('keeps conversation-load diagnostics opt-in and filters generic request timing in the host', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      vi.stubEnv('CODEX_APP_SDK_TRACE_CONVERSATION_LOAD', '0');
+      expect(appSurfaceOptions().onRequestSettled).toBeUndefined();
+      vi.stubEnv('CODEX_APP_SDK_TRACE_CONVERSATION_LOAD', '1');
+      const settled = appSurfaceOptions().onRequestSettled;
+      settled?.({ id: 7, method: 'thread/read', outcome: 'ok', startedAt: 100, durationMs: 25 });
+      expect(warn).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(warn.mock.calls[0]?.[0]).slice('[conversation-load] '.length))).toMatchObject({
+        layer: 'codex-rpc', id: 7, method: 'thread/read', outcome: 'ok', startAt: 100, at: 125, durationMs: 25,
+      });
+      settled?.({ id: 8, method: 'turn/start', outcome: 'ok', startedAt: 200, durationMs: 10 });
+      expect(warn).toHaveBeenCalledOnce();
+      const diagnostic = { layer: 'harness-adapter', stage: 'resume.failed', threadId: 'thread', at: 300 };
+      appSurfaceOptions().onDiagnostic?.(diagnostic);
+      expect(warn).toHaveBeenLastCalledWith('[conversation-load] ' + JSON.stringify(diagnostic));
+      vi.stubEnv('CODEX_APP_SDK_TRACE_CONVERSATION_LOAD', '0');
+      appSurfaceOptions().onDiagnostic?.(diagnostic);
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllEnvs(); warn.mockRestore(); }
   });
 
   it('uses the live celebration setting when configuring a provider conversation', async () => {

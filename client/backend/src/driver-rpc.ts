@@ -24,6 +24,7 @@ import { ClaudeBackendDriver } from './claude/claude-driver';
 import { AntigravityHost } from './antigravity/antigravity-host';
 import { CodexBackendDriver } from './codex/codex-driver';
 import { CodexSurfaceAgentAdapter } from './codex/codex-surface-adapter';
+import { traceCodexDiagnostic } from './codex/diagnostics';
 import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveCodexLaunch } from './codex/codex-command';
 import { createCodexSurface } from 'multi-agents-sdk/codex';
@@ -79,6 +80,12 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
   const generalSettings = options.getGeneralSettings?.() ?? options.generalSettings;
   return {
     autoSelectFirstConversation: false,
+    onDiagnostic: traceCodexDiagnostic,
+    onRequestSettled: process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' ? info => {
+      if (!/^(?:initialize|thread\/(?:resume|read|list|turns\/.*|goal\/get)|permissionProfile\/list|configRequirements\/read|model\/list|skills\/list)$/.test(info.method)) return;
+      console.warn('[conversation-load] ' + JSON.stringify({ layer: 'codex-rpc', method: info.method, id: info.id, outcome: info.outcome,
+        startAt: info.startedAt, at: info.startedAt + info.durationMs, durationMs: info.durationMs }));
+    } : undefined,
     clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
     codexHome: generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     conversationDefaults: codexConversationDefaults,
@@ -88,9 +95,9 @@ export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): A
     originalHistoryUsage: true,
     transport: {
       ...resolveCodexLaunch(generalSettings?.codexBinaryPath),
-      configOverrides: buildAppMcpConfigOverrides(
+      configOverrides: ['features.default_mode_request_user_input=true', ...buildAppMcpConfigOverrides(
         options.pluginSettings?.() ?? generalSettings?.plugins,
-      ),
+      )],
     },
     extensions: [{
       configureConversation: async ({ extensionContext }) => {

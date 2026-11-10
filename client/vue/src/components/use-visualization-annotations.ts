@@ -1,6 +1,6 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from 'multi-agents-sdk/surface';
-import type { CodexRendererSendMessageOptions } from 'ai-app-sdk';
+import type { ClientSendMessageOptions as CodexRendererSendMessageOptions } from 'ai-app-sdk';
 import { computed, reactive } from 'vue';
 
 export type VisualizationAnnotationElement = {

@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/claude/config-directory';
+export { claudeConfigDirectory } from 'multi-agents-sdk/providers/claude';

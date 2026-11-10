@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CodexToolPresentationContext } from 'ai-app-sdk';
+import type { ToolPresentationContext as CodexToolPresentationContext } from 'ai-app-sdk';
 import { presentClaudeToolTitle } from '../claude-tool-titles';
 import { messages } from '../i18n/messages';
 import { presentAppTool } from '../tool-presentation';

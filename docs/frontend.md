@@ -111,7 +111,7 @@ Rules of thumb:
 
 ### Conversation Panes
 
-`CodexConversationPane` from `ai-app-sdk` is the complete conversation and
+`ConversationPane` from `ai-app-sdk` is the complete conversation and
 composer surface. Extend it through its controller, slots and typed actions; Korus's
 wrapper only maps app state and product routing. Registered provider bindings
 select the matching native cache and use the read-only presentation adapters in
@@ -125,7 +125,7 @@ interaction defect is an SDK defect. Never add a global message list or
 provider-neutral reducer to `app-state.ts`.
 
 Document, diff and code-annotation controls belong to `ai-app-sdk`; Korus supplies
-file access, navigation, draft persistence and the diff-treemap slot. The browser
+file access, navigation, draft persistence and the neutral overview slot. The browser
 UI receives an injected host API. Bookmark storage, extension selection, settings
 and product navigation stay in Korus.
 

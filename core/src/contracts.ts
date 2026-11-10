@@ -1,5 +1,5 @@
-import type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from 'ai-app-sdk/browser/contracts';
-export type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from 'ai-app-sdk/browser/contracts';
+import type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
+export type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
 export { PRIMARY_BROWSER_ID } from 'ai-app-sdk/browser/contracts';
 import type { BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';
 export type { BackendApprovalDecision, BackendApprovalScope, BackendRequestedPermission, BackendApprovalRequest } from 'multi-agents-sdk/contracts/approvals';

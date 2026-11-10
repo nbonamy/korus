@@ -52,7 +52,7 @@ import { useGeneralPreferences } from '../general-preferences';
 import { withoutLockfileStats } from '@workspace/core/diff-lockfiles';
 import { computed, ref, shallowRef, watch } from 'vue';
 import type { AgentGitDiffSummary, AgentGitDiffTarget, AgentGitStatus, TurnGitDiff } from '@workspace/core/contracts';
-import { CodexAnimatedDiffStat } from 'ai-app-sdk';
+import { AnimatedDiffStat as CodexAnimatedDiffStat } from 'ai-app-sdk';
 import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon, LockOffIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';

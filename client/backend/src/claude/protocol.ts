@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/claude/protocol';
+export { type ClaudeSdkMessage } from 'multi-agents-sdk/providers/claude';

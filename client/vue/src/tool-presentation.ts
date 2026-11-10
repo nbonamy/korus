@@ -1,9 +1,9 @@
 import {
-  provideCodexToolPresentation,
-  type CodexToolPresentation,
-  type CodexToolPresentationContext,
-  type CodexToolVisibility,
-  type CodexToolTitlePresenterContext,
+  provideToolPresentation as provideCodexToolPresentation,
+  type ToolPresentation as CodexToolPresentation,
+  type ToolPresentationContext as CodexToolPresentationContext,
+  type ToolVisibility as CodexToolVisibility,
+  type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
 } from 'ai-app-sdk';
 import {
   IconDeviceMobile as MobileIcon,

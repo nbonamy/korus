@@ -1,13 +1,13 @@
 <template>
-  <DiffPreviewPanel ref="preview" v-bind="props" :translate="translate" :exclude-lockfiles="preferences?.general().excludeLockfilesFromDiffs === true"
-    @update:view="emit('update:view', $event)" @all-expanded-change="emit('allExpandedChange', $event)" @open-file="emit('openFile', $event)" @annotate="emit('annotate', $event)">
-    <template #map="{ files, kinds, setKinds, select }"><GitDiffTreemap :files="files" :kinds="kinds" @update:kinds="setKinds" @select="select" /></template>
+  <DiffPreviewPanel ref="preview" v-bind="paneProps" :overview="props.view === 'map'" :translate="translate" :exclude-lockfiles="preferences?.general().excludeLockfilesFromDiffs === true"
+    @select="emit('update:view', 'diff')" @all-expanded-change="emit('allExpandedChange', $event)" @open-file="emit('openFile', $event)" @annotate="emit('annotate', $event)">
+    <template #overview="{ files, select }"><GitDiffTreemap v-model:kinds="mapKinds" :files="files" @select="select" /></template>
   </DiffPreviewPanel>
 </template>
 <script setup lang="ts">
 import { DiffPreviewPanel, type CodeAnnotationInput } from 'ai-app-sdk';
 import { translate } from '../i18n';
-import { ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useGeneralPreferences } from '../general-preferences';
 import type { FileKind } from '@workspace/core/file-kind';
 import GitDiffTreemap from './GitDiffTreemap.vue';
@@ -51,7 +51,9 @@ const emit = defineEmits<{
 }>();
 
 const preferences = useGeneralPreferences();
+const paneProps = computed(() => { const { view: _view, ...rest } = props; return rest; });
+const mapKinds = ref<FileKind[]>([]);
 const preview = ref<InstanceType<typeof DiffPreviewPanel>>();
-async function showFiles(...args: Parameters<InstanceType<typeof DiffPreviewPanel>['showFiles']>) { await preview.value?.showFiles(...args); }
+async function showFiles(...args: Parameters<InstanceType<typeof DiffPreviewPanel>['showFiles']>) { emit('update:view', 'diff'); await nextTick(); await preview.value?.showFiles(...args); }
 defineExpose({ showFiles });
 </script>

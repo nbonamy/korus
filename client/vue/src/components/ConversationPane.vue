@@ -194,15 +194,15 @@ import { translate } from '../i18n';
 import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
-  CodexConversationPane,
-  CodexMessageBlock,
-  defaultCodexChatTranslate,
-  provideCodexChatTranslate,
-  resolveCodexConversationPaneValue,
-  type CodexComposerState,
-  type CodexChatMessage,
-  type CodexConversationPaneController,
-  type CodexNativeAttachment,
+  ConversationPane as CodexConversationPane,
+  MessageBlock as CodexMessageBlock,
+  defaultChatTranslate as defaultCodexChatTranslate,
+  provideChatTranslate as provideCodexChatTranslate,
+  resolveConversationPaneValue as resolveCodexConversationPaneValue,
+  type ComposerState as CodexComposerState,
+  type ChatMessage as CodexChatMessage,
+  type ConversationPaneController as CodexConversationPaneController,
+  type NativeAttachment as CodexNativeAttachment,
   type SurfaceMessage,
 } from 'ai-app-sdk';
 import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';

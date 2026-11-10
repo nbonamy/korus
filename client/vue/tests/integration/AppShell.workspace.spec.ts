@@ -1,7 +1,7 @@
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
-  CodexNativeRendererApi,
+  NativeRendererApi as CodexNativeRendererApi,
 } from 'ai-app-sdk';
 import type { SurfaceMessage } from 'multi-agents-sdk/surface';
 import { nextTick } from 'vue';

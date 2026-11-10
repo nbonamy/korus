@@ -1,4 +1,4 @@
-import type { HarnessDriver } from 'multi-agents-sdk';
+import type { HarnessDriver } from 'multi-agents-sdk/native';
 import type {
   Agent,
   AgentBackend,

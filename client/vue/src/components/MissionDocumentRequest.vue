@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { CodexComposerDrawer, CodexComposerDrawerRow, CodexIconButton } from 'ai-app-sdk';
+import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from 'ai-app-sdk';
 import { CheckIcon, FileTextIcon, X } from '../shared/icons/app-icons';
 import type { PendingMissionDocument } from './use-mission-documents';
 const props = defineProps<{ request: PendingMissionDocument }>();

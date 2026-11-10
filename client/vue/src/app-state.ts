@@ -23,7 +23,7 @@ import { guestConversationCapabilities } from '@workspace/core/guest-conversatio
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { type CodexComposerState, type CodexNativeAttachment } from 'ai-app-sdk';
+import { type ComposerState as CodexComposerState, type NativeAttachment as CodexNativeAttachment } from 'ai-app-sdk';
 import {
   createCodexConversationReplica,
   type CodexConversationReplica,

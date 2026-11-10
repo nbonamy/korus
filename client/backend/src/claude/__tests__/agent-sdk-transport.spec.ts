@@ -53,14 +53,14 @@ describe('ClaudeAgentSdkTransport', () => {
     } finally { await driver.close(); }
   });
 
-  it.each(['cli', 'sdk-cli', 'sdk-ts', 'custom-launcher'])('attributes resumed sessions from a %s parent', async entrypoint => {
+  it.each(['cli', 'sdk-cli', 'sdk-ts', 'custom-launcher'])('keeps explicit product attribution when a resumed session inherits a %s parent', async entrypoint => {
     const harness = createQueryHarness();
     const env = { PATH: '/usr/local/bin', CLAUDE_CODE_ENTRYPOINT: entrypoint };
     const transport = new ClaudeAgentSdkTransport({ env, createQuery: harness.createQuery });
     try {
       const turn = transport.startTurn({ cwd: '/tmp/project', sessionId: 'resumed', prompt: 'continue' }, () => undefined);
       await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
-      expect(harness.options[0]?.env?.CLAUDE_CODE_ENTRYPOINT).toBe(entrypoint === 'custom-launcher' ? entrypoint : product.slug);
+      expect(harness.options[0]?.env?.CLAUDE_CODE_ENTRYPOINT).toBe(product.slug);
       expect(harness.options[0]?.resume).toBe('resumed');
       expect(env).toStrictEqual({ PATH: '/usr/local/bin', CLAUDE_CODE_ENTRYPOINT: entrypoint });
       harness.emit({ type: 'result', subtype: 'success', session_id: 'resumed', is_error: false });

@@ -1,6 +1,7 @@
 import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
+import * as composerSettings from '../composer-settings';
 import { createEngine, type EngineEvent, type EngineState, type EnginePort } from '../engine';
 import { createSelectionStore } from '../selection-store';
 import type { CompanionHistoryPage, CompanionSession, CompanionWorkspace } from '../companion-port';
@@ -1154,4 +1155,14 @@ it('renames a paired laptop and shows the new name, leaving it alone when the na
     await engine.dispatch({ type: 'renameLaptop', laptopId: 'someone-else', name: 'Other' });
     expect(shownName()).toBe('Work Mac');
   } finally { engine.dispose(); }
+});
+
+it('uses a permission identity when an option has no provider-authored label', () => {
+  const original = composerSettings.composerCapabilitiesFor;
+  const capabilities = vi.spyOn(composerSettings, 'composerCapabilitiesFor').mockImplementation((...args) => ({
+    ...original(...args), permissionModes: [{ id: 'future-mode' }],
+  }));
+  const { engine, latest } = open();
+  try { expect(latest().permissions.modes).toStrictEqual([{ id: 'future-mode', label: 'future-mode' }]); }
+  finally { engine.dispose(); capabilities.mockRestore(); }
 });

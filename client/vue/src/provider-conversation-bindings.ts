@@ -1,7 +1,7 @@
 import type { Agent, ClaudeConversationSnapshot, ThreadPlan } from '@workspace/core/contracts';
 import { planReviewDelivery } from '@workspace/core/plan-review';
 import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
-import type { CodexConversationPaneIdentityState } from 'ai-app-sdk';
+import type { ConversationPaneIdentityState as CodexConversationPaneIdentityState } from 'ai-app-sdk';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 

@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/cursor/account-usage';
+export { getCursorAccountUsage } from 'multi-agents-sdk/providers/cursor';

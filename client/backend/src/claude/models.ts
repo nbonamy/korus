@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/claude/models';
+export { claudeModelOptionsFromSdk } from 'multi-agents-sdk/providers/claude';

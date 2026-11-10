@@ -1,9 +1,9 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
 import type {
-  CodexConversationPaneActions,
-  CodexConversationPaneController,
-  CodexConversationPaneState,
-  CodexNativeAttachment,
+  ConversationPaneActions as CodexConversationPaneActions,
+  ConversationPaneController as CodexConversationPaneController,
+  ConversationPaneState as CodexConversationPaneState,
+  NativeAttachment as CodexNativeAttachment,
 } from 'ai-app-sdk';
 import type { CodexConversationSnapshot } from 'multi-agents-sdk/surface';
 import { defineComponent, nextTick } from 'vue';

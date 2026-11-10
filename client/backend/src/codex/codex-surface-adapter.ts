@@ -1,4 +1,4 @@
-import { CodexSurfaceAgentAdapter as NativeAdapter } from 'multi-agents-sdk/providers/codex/host';
+import { CodexSurfaceAgentAdapter as NativeAdapter } from 'multi-agents-sdk/providers/codex';
 import type { CodexSurface } from 'multi-agents-sdk/codex';
 import type { Agent, BackendSession } from '@workspace/core/contracts';
 import type { BackendCodeReviewInput, BackendTextGenerationInput } from '@workspace/core/backend-driver';
@@ -12,6 +12,7 @@ import { utilityTextModel } from '../agents/utility-text-model';
 import { utilityMcpServers } from '../diagram-icons/utility-mcp';
 import { warnMain } from '../log';
 import { codexConversationDefaults } from './codex-model-defaults';
+import { traceCodexDiagnostic } from './diagnostics';
 import { statusFromSnapshot } from './codex-status';
 
 /** Korus naming, approval defaults and workflow context around the native harness. */
@@ -19,6 +20,7 @@ export class CodexSurfaceAgentAdapter extends NativeAdapter<Agent> {
   constructor(surface: CodexSurface, closeSurface: () => Promise<void> = () => surface.close()) {
     super(surface, closeSurface, {
       defaultModel: codexConversationDefaults,
+      onDiagnostic: traceCodexDiagnostic,
       displayName: agentDisplayName, shouldSyncTitle: shouldSyncConversationTitleFromAgent,
       approvalPresetFromDefaults: codexApprovalPresetFromDefaults,
       formatPrompt: promptWithSelectedReferences, statusFromSnapshot,
@@ -43,11 +45,11 @@ export class CodexSurfaceAgentAdapter extends NativeAdapter<Agent> {
     return { ...super.getCapabilities(agent), codeReview: true, planReview: true, conversationShare: true, permissionModes: codexBackendCapabilities.permissionModes };
   }
   generateText(agent: Agent, input: BackendTextGenerationInput) {
-    return super.generateText(agent, { ...input, mcpServers: utilityMcpServers(input.mcpServers), selectModel: models => utilityTextModel('codex', models, input.complexity) });
+    return super.generateText(agent, { ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: models => utilityTextModel('codex', models, input.complexity) });
   }
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput) {
     const result = await this.executeScopedPrompt(agent, { cwd: input.cwd, prompt: input.prompt, session: input.reviewerSession ?? agent.backendSession,
-      scope: { id: input.reviewMcpServerUrl, mcpServers: [{ name: product.mcpServerName, url: input.reviewMcpServerUrl, enabledTools: ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'] }] },
+      scope: { id: input.reviewMcpServerUrl, mcpServers: [{ name: product.mcpServerName, url: input.reviewMcpServerUrl, approval: 'auto', required: true, enabledTools: ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'] }] },
     });
     return { text: result.text, reviewerSession: result.session };
   }

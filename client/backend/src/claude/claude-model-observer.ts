@@ -1,1 +1,1 @@
-export * from 'multi-agents-sdk/providers/claude/claude-model-observer';
+export { ClaudeModelObserver } from 'multi-agents-sdk/providers/claude';

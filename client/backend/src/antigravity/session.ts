@@ -1,4 +1,4 @@
-import { AcpSession as NativeSession } from 'multi-agents-sdk/providers/antigravity/session';
+import { AcpSession as NativeSession } from 'multi-agents-sdk/providers/antigravity';
 import { product } from '@workspace/core/product';
 import { appAcpRuntimeOptions } from './acp-runtime';
 import { antigravityHome } from './runtime';

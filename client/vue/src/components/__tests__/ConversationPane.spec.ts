@@ -1,12 +1,12 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import {
-  createCodexConversationPaneController,
-  type CodexComposerState,
-  type CodexConversationPaneController,
-  type CodexMessageTextSelection,
-  type CodexNativeAttachment,
-  type CodexNativeRendererApi,
+  createConversationPaneController as createCodexConversationPaneController,
+  type ComposerState as CodexComposerState,
+  type ConversationPaneController as CodexConversationPaneController,
+  type MessageTextSelection as CodexMessageTextSelection,
+  type NativeAttachment as CodexNativeAttachment,
+  type NativeRendererApi as CodexNativeRendererApi,
 } from 'ai-app-sdk';
 import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -472,7 +472,12 @@ describe('ConversationPane', () => {
     });
     const updateSettings = vi.fn(() => { choices.value = ['codex', 'claude']; });
     const controller = createCodexConversationPaneController({
-      state: { identity: { conversationKey: agent.id, messages: [] },
+      state: { identity: { conversationKey: agent.id, messages: [] }, capabilities: {
+        models: true, skills: false, reasoningEffort: false, serviceTier: false,
+        planMode: false, goals: false, steerPrompt: false, interrupt: false,
+        history: false, deleteTurn: false, editTurn: false, retryTurn: false,
+        approvals: false, approvalPresets: [],
+      },
         catalogs: { models: [{ id: 'cursor-model', model: 'cursor-model', displayName: 'Cursor model', isDefault: true }] } },
       actions: { updateSettings },
     });

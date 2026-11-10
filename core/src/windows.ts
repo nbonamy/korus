@@ -1,4 +1,4 @@
-import type { CodexNativeAttachment } from 'ai-app-sdk/host';
+import type { NativeAttachment as CodexNativeAttachment } from 'ai-app-sdk/host';
 import type { CodexPromptPart } from 'multi-agents-sdk/surface';
 
 /**

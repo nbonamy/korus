@@ -34,7 +34,6 @@
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",
     "vue": "^3.5.35",
-    "multi-agents-sdk": "file:../../../multi-agents-sdk",
     "ai-app-sdk": "file:../../../ai-app-sdk"
   },
   "devDependencies": {

@@ -1,8 +1,8 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from 'multi-agents-sdk/surface';
 import type {
-  CodexMessageTextSelection,
-  CodexRendererSendMessageOptions,
+  MessageTextSelection as CodexMessageTextSelection,
+  ClientSendMessageOptions as CodexRendererSendMessageOptions,
 } from 'ai-app-sdk';
 import { computed, reactive } from 'vue';
 

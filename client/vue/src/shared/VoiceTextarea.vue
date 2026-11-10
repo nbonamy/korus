@@ -38,10 +38,10 @@
 
 <script setup lang="ts">
 import {
-  CodexComposerVoiceButton,
-  CodexComposerVoiceField,
-  getCodexNativeRendererApi,
-  useCodexComposerVoice,
+  ComposerVoiceButton as CodexComposerVoiceButton,
+  ComposerVoiceField as CodexComposerVoiceField,
+  getNativeRendererApi as getCodexNativeRendererApi,
+  useComposerVoice as useCodexComposerVoice,
 } from 'ai-app-sdk';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 

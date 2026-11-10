@@ -1,4 +1,4 @@
-import { ClaudeConversationHost as NativeHost, type ClaudeHistoryLoader } from 'multi-agents-sdk/providers/claude/host';
+import { ClaudeConversationHost as NativeHost, type ClaudeHistoryLoader } from 'multi-agents-sdk/providers/claude';
 import type { Agent, AppPluginSettings, BackendSession } from '@workspace/core/contracts';
 import type { AgentBackendDriver, BackendCodeReviewInput, BackendCodeReviewResult, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -60,7 +60,7 @@ export class ClaudeConversationHost extends NativeHost<Agent> implements AgentBa
   }
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {
     const result = await this.executeScopedPrompt(agent, { prompt: input.prompt, cwd: input.cwd, session: input.reviewerSession ?? agent.backendSession,
-      scope: { id: input.reviewMcpServerUrl, mcpServers: [{ name: product.mcpServerName, url: input.reviewMcpServerUrl, enabledTools: reviewTools }] },
+      scope: { id: input.reviewMcpServerUrl, mcpServers: [{ name: product.mcpServerName, url: input.reviewMcpServerUrl, approval: 'auto', enabledTools: reviewTools }] },
     });
     return { text: result.text, reviewerSession: result.session };
   }

@@ -5,6 +5,7 @@
 import { computed } from 'vue';
 import { BrowserPanel, type BrowserUiHost } from 'ai-app-sdk/browser-ui';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
+import { annotationToBrowserOwner, viewportToBrowserOwner } from '@workspace/core/browser-contracts';
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';
 import { normalizeBrowserBookmarks } from '@workspace/core/browser-bookmarks';
 import { appApi, appClientPlatform } from '../platform-api';
@@ -17,7 +18,7 @@ const props = withDefaults(defineProps<{
   visualization?: { path: string; title: string } | null;
 }>(), { browserId: PRIMARY_BROWSER_ID, initialUrl: '', openRequestId: 0, visible: true, visualization: null });
 const emit = defineEmits<{ 'send-prompt': [prompt: string]; 'url-change': [url: string]; 'open-browser-settings': [] }>();
-const paneProps = computed(() => { const { visualization: _document, ...rest } = props; return rest; });
+const paneProps = computed(() => { const { visualization: _document, agentId: ownerId, ...rest } = props; return { ...rest, ownerId }; });
 const appState = useAppState();
 const host: BrowserUiHost = {
   platform: appClientPlatform === 'desktop' ? 'desktop' : 'web',
@@ -26,7 +27,7 @@ const host: BrowserUiHost = {
   bookmarks: () => normalizeBrowserBookmarks(appState.snapshot.value.general.browserBookmarks),
   saveBookmarks: async bookmarks => { await appState.updateSettings({ general: { browserBookmarks: bookmarks } }); },
   extensionIcon: browserExtensionIcon, openExternal: openInExternalBrowser, translate,
-  onEvent: listener => appApi?.onEvent(event => { if (event.type === 'browser.annotationCreated') listener(event); }) ?? (() => {}),
-  onViewportRequest: listener => appApi?.onAppCommand(command => { if (command.type === 'set-browser-viewport') listener(command); }) ?? (() => {}),
+  onEvent: listener => appApi?.onEvent(event => { if (event.type === 'browser.annotationCreated') listener({ ...event, payload: annotationToBrowserOwner(event.payload) }); }) ?? (() => {}),
+  onViewportRequest: listener => appApi?.onAppCommand(command => { if (command.type === 'set-browser-viewport') listener(viewportToBrowserOwner(command)); }) ?? (() => {}),
 };
 </script>

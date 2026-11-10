@@ -34,8 +34,8 @@ for (const [directory, area] of areas) {
       ts.ScriptTarget.Latest,
       true,
     );
-    for (const specifier of moduleSpecifiers(source)) {
-      const forbidden = forbiddenImport(area, file, specifier);
+    for (const { specifier, typeOnly } of moduleSpecifiers(source)) {
+      const forbidden = forbiddenImport(area, file, specifier, typeOnly);
       if (forbidden)
         violations.push(
           `${path.relative(root, file)}: ${specifier} (${forbidden})`,
@@ -103,26 +103,32 @@ async function sourceFiles(directory) {
 
 function moduleSpecifiers(source) {
   const specifiers = [];
+  const add = (specifier, node) => {
+    const named = node.importClause?.namedBindings ?? node.exportClause;
+    const typeOnly = Boolean(node.isTypeOnly || node.importClause?.isTypeOnly || ts.isImportTypeNode(node)
+      || (named?.elements?.length && named.elements.every(element => element.isTypeOnly)));
+    specifiers.push({ specifier, typeOnly });
+  };
   function visit(node) {
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier &&
       ts.isStringLiteralLike(node.moduleSpecifier)
     ) {
-      specifiers.push(node.moduleSpecifier.text);
+      add(node.moduleSpecifier.text, node);
     } else if (
       ts.isImportEqualsDeclaration(node) &&
       ts.isExternalModuleReference(node.moduleReference) &&
       node.moduleReference.expression &&
       ts.isStringLiteralLike(node.moduleReference.expression)
     ) {
-      specifiers.push(node.moduleReference.expression.text);
+      add(node.moduleReference.expression.text, node);
     } else if (
       ts.isImportTypeNode(node) &&
       ts.isLiteralTypeNode(node.argument) &&
       ts.isStringLiteralLike(node.argument.literal)
     ) {
-      specifiers.push(node.argument.literal.text);
+      add(node.argument.literal.text, node);
     } else if (
       ts.isCallExpression(node) &&
       node.arguments.length === 1 &&
@@ -131,7 +137,7 @@ function moduleSpecifiers(source) {
         (ts.isIdentifier(node.expression) &&
           node.expression.text === "require"))
     ) {
-      specifiers.push(node.arguments[0].text);
+      add(node.arguments[0].text, node);
     }
     ts.forEachChild(node, visit);
   }
@@ -173,11 +179,12 @@ function checkTelemetryCalls(node, file) {
   visit(node);
 }
 
-function forbiddenImport(area, file, specifier) {
+function forbiddenImport(area, file, specifier, typeOnly = false) {
+  const consumerRuntime = !typeOnly && (specifier === 'multi-agents-sdk' || isPackage(specifier, 'multi-agents-sdk/native'));
   const providerRuntime = [
     "codex-sdk", "multi-agents-sdk/codex", "multi-agents-sdk/backend", "multi-agents-sdk/providers",
     "multi-agents-sdk/acp", "multi-agents-sdk/tools",
-  ].some((name) => isPackage(specifier, name));
+  ].some((name) => isPackage(specifier, name)) || consumerRuntime;
   if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "multi-agents-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
   const nativeHostRuntime = [
     "multi-agents-sdk/computer-use", "ai-app-sdk/electron",

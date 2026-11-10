@@ -1,9 +1,9 @@
 import { product } from '@workspace/core/product';
 import { config, DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
-  CodexComposerMenuSelectableItem,
-  CodexNativeAttachment,
-  CodexNativeRendererApi,
+  ComposerMenuSelectableItem as CodexComposerMenuSelectableItem,
+  NativeAttachment as CodexNativeAttachment,
+  NativeRendererApi as CodexNativeRendererApi,
 } from 'ai-app-sdk';
 import type { CodexSurfaceClientRequest } from 'multi-agents-sdk/surface';
 import { nextTick, reactive, shallowReactive } from 'vue';

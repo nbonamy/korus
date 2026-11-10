@@ -1,4 +1,4 @@
-import type { CodexComposerMentionGroup, CodexComposerMentionItem } from 'ai-app-sdk';
+import type { ComposerMentionGroup as CodexComposerMentionGroup, ComposerMentionItem as CodexComposerMentionItem } from 'ai-app-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { missionAgentIds, missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionRunTicketIndex } from '@workspace/core/mission-execution';
