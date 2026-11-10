@@ -122,6 +122,19 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     expect(conversation('broken').listenerCount()).toBe(0);
   });
 
+  it('restores the old binding when the Korus archive policy fails after a successful resume', async () => {
+    const { driver, surface, conversation } = setup();
+    await driver.loadConversation(sdkAgent());
+    surface.archiveConversation.mockRejectedValueOnce(new Error('archive failed'));
+    await expect(driver.resumeConversation(sdkAgent(), {
+      ref: { backend: 'codex', threadId: 'target' }, storageState: 'archived',
+    })).rejects.toThrow('archive failed');
+    expect(surface.archiveConversation.mock.calls).toStrictEqual([['conversation-a'], ['target']]);
+    await driver.sendPrompt(sdkAgent(), 'continue');
+    expect(conversation('conversation-a').handle.sendMessage).toHaveBeenCalledOnce();
+    expect(conversation('target').handle.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('deletes the attached conversation through the SDK, and does nothing without a thread', async () => {
     const { driver, surface } = setup();
     await driver.deleteAgentConversation(sdkAgent());

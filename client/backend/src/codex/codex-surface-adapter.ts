@@ -1,6 +1,6 @@
 import { CodexSurfaceAgentAdapter as NativeAdapter } from '@korus-dev/multi-agent-sdk/providers/codex';
 import type { CodexSurface } from '@korus-dev/multi-agent-sdk/codex';
-import type { Agent, BackendSession } from '@workspace/core/contracts';
+import type { Agent, BackendSession, ConversationListInput, ConversationResumeTarget } from '@workspace/core/contracts';
 import type { BackendCodeReviewInput, BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { codexApprovalPresetFromDefaults } from '@workspace/core/codex-approval-presets';
@@ -17,6 +17,7 @@ import { statusFromSnapshot } from './codex-status';
 
 /** Korus naming, approval defaults and workflow context around the native harness. */
 export class CodexSurfaceAgentAdapter extends NativeAdapter<Agent> {
+  private readonly appSurface: CodexSurface;
   constructor(surface: CodexSurface, closeSurface: () => Promise<void> = () => surface.close()) {
     super(surface, closeSurface, {
       defaultModel: codexConversationDefaults,
@@ -40,6 +41,28 @@ export class CodexSurfaceAgentAdapter extends NativeAdapter<Agent> {
         log: (message, details) => warnMain('image-generation', message, details),
       },
     });
+    this.appSurface = surface;
+  }
+  async listConversations(agent: Agent, input: ConversationListInput = {}) {
+    const scoped = { ...input, ...(agent.folder?.trim() ? { cwd: agent.folder.trim() } : {}) };
+    const [active, archived] = await Promise.all([
+      super.listConversations(agent, scoped), super.listConversations(agent, { ...scoped, archived: true }),
+    ]);
+    const current = agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : undefined;
+    return [...active.filter(chat => chat.id === current), ...archived];
+  }
+  async resumeConversation(agent: Agent, target: ConversationResumeTarget) {
+    const previous = agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : undefined;
+    const result = await super.resumeConversation(agent, target);
+    if (previous && target.ref.backend === 'codex' && previous !== target.ref.threadId) {
+      try { await this.appSurface.archiveConversation(previous); }
+      catch (error) {
+        await super.resumeConversation(agent, { ref: { backend: 'codex', threadId: previous }, storageState: 'active' }).catch(() => undefined);
+        if (target.storageState === 'archived') await this.appSurface.archiveConversation(target.ref.threadId).catch(() => undefined);
+        throw error;
+      }
+    }
+    return result;
   }
   getCapabilities(agent?: Agent) {
     return { ...super.getCapabilities(agent), codeReview: true, planReview: true, conversationShare: true, permissionModes: codexBackendCapabilities.permissionModes };

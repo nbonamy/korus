@@ -9,26 +9,28 @@
         <ChevronDown class="backend-model-selector__chevron" aria-hidden="true" />
       </button>
     </template>
-    <div class="backend-model-selector__header">
+    <ModelPicker :models="models" :selection="{ model, reasoningEffort, serviceTier }" :disabled="disabled" :loading="loading"
+      :model-label="t('modelPicker.model')" :service-tier-label="t('modelPicker.serviceTier')"
+      :standard-tier-label="t('modelPicker.standardTier')" :loading-label="t('modelPicker.loading')"
+      @update:selection="updateModelSelection" @select="open = false">
+      <template #header>
       <el-tabs v-model="backend" :aria-label="t('surface.agentDialog.codingAgent')">
         <el-tab-pane v-for="choice in tabs" :key="choice" :name="choice" :label="backendDisplayName(choice)" :disabled="disabled">
           <template #label><span class="backend-model-selector__tab" role="img" :title="backendDisplayName(choice)" :aria-label="backendDisplayName(choice)"><BackendIcon :backend="choice" /></span></template>
         </el-tab-pane>
       </el-tabs>
+      </template>
+      <template #service-tier="{ items, select }">
       <el-tooltip v-if="serviceTiers.length" :content="tierTooltip" :trigger-keys="[]" placement="top" :show-after="300">
         <span class="backend-model-selector__tier">
-          <AppMenuButton v-if="serviceTiers.length > 1" v-model:open="tierOpen" :ariaLabel="t('modelPicker.serviceTier')" :items="tierItems" :width="188" :teleported="false" @select="serviceTier = $event">
+          <AppMenuButton v-if="serviceTiers.length > 1" v-model:open="tierOpen" :ariaLabel="t('modelPicker.serviceTier')" :items="items" :width="188" :teleported="false" @select="select">
             <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button backend-model-selector__tier-button" :class="{ 'backend-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName"><CodexUltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button></template>
           </AppMenuButton>
-          <button v-else class="app-icon-button backend-model-selector__tier-button" :class="{ 'backend-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName" :aria-pressed="Boolean(serviceTier)" @click="serviceTier = serviceTier ? '' : serviceTiers[0]!.id"><CodexUltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button>
+          <button v-else class="app-icon-button backend-model-selector__tier-button" :class="{ 'backend-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName" :aria-pressed="Boolean(serviceTier)" @click="select(serviceTier ? '' : serviceTiers[0]!.id)"><CodexUltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button>
         </span>
       </el-tooltip>
-    </div>
-    <AppMenu class="app-menu--embedded" :items="modelItems" :ariaLabel="t('modelPicker.model')" @select="selectModel" />
-    <!-- Only on a cold first load; a cached catalog is shown straight away and refreshed behind the scenes. -->
-    <div v-if="loading" class="backend-model-selector__loading" aria-busy="true" role="status" :aria-label="t('modelPicker.loading')">
-      <span v-for="row in 4" :key="row" />
-    </div>
+      </template>
+    </ModelPicker>
   </el-popover>
 </template>
 
@@ -36,13 +38,11 @@
 import { computed, ref, watch } from 'vue';
 import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
-import { UltrafastIcon as CodexUltrafastIcon } from '@korus-dev/agent-ui-sdk';
+import { ModelPicker, type ModelSelection, UltrafastIcon as CodexUltrafastIcon } from '@korus-dev/agent-ui-sdk';
 import type { AgentBackend, BackendModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';
-import AppMenu from '../shared/menu/AppMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
-import type { AppMenuItem } from '../shared/menu/app-menu';
 import { BoltIcon, ChevronDown } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
@@ -92,31 +92,9 @@ const serviceTiers = computed(() => selectedModel.value?.serviceTiers ?? []);
 const currentTierName = computed(() => serviceTiers.value.find(tier => tier.id === serviceTier.value)?.name ?? t('modelPicker.standardTier'));
 const tierAccessibleName = computed(() => t('modelPicker.currentServiceTier', { tier: currentTierName.value }));
 const tierTooltip = computed(() => !serviceTier.value ? t('modelPicker.normalSpeed') : currentTierName.value.toLowerCase() === 'fast' ? t('modelPicker.fastMode') : currentTierName.value);
-const tierItems = computed<AppMenuItem[]>(() => [
-  { id: '', label: t('modelPicker.standardTier'), type: 'radio', checked: !serviceTier.value },
-  ...serviceTiers.value.map((tier): AppMenuItem => ({ id: tier.id, label: tier.name, type: 'radio', checked: serviceTier.value === tier.id })),
-]);
 // Lowercase like the effort next to it, so the two read as one setting.
 const tierLabel = (name: string) => name.toLowerCase();
 const serviceTierName = computed(() => tierLabel(selectedModel.value?.serviceTiers?.find(tier => tier.id === serviceTier.value)?.name ?? ''));
-// Reasoning stays model-specific; service tier is controlled separately in the header.
-const modelItems = computed<AppMenuItem[]>(() => [
-  ...models.value.map((option): AppMenuItem => {
-    const selected = model.value === option.model;
-    if (!option.supportedReasoningEfforts?.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
-    const summary = selected ? reasoningEffort.value : '';
-    return {
-      id: `submenu:${option.model}`, type: 'submenu', label: option.displayName, checked: selected,
-      ...(summary ? { value: summary } : {}),
-      items: [
-        ...(option.supportedReasoningEfforts ?? []).map((effort): AppMenuItem => ({
-          id: `effort:${option.model}:${effort.reasoningEffort}`, label: effort.reasoningEffort, type: 'radio',
-          checked: selected && reasoningEffort.value === effort.reasoningEffort,
-        })),
-      ],
-    };
-  }),
-]);
 watch([backend, catalogAgentId, () => props.remoteConnectionId], async ([nextBackend, agentId], previous, cleanup) => {
   let current = true;
   cleanup(() => { current = false; });
@@ -162,14 +140,10 @@ function selectDefaultModel() {
     : defaultReasoningEffort(target);
   serviceTier.value = savedTier && target.serviceTiers?.some(tier => tier.id === savedTier) ? savedTier : '';
 }
-function selectModel(id: string) {
-  const [kind, chosen = '', ...rest] = id.split(':');
-  if (kind === 'effort') {
-    // Setting the model resets the effort, so the effort is applied once that watcher has run.
-    model.value = chosen;
-    reasoningEffort.value = rest.join(':');
-  } else model.value = chosen;
-  open.value = false;
+function updateModelSelection(value: ModelSelection) {
+  model.value = value.model ?? '';
+  reasoningEffort.value = value.reasoningEffort ?? '';
+  serviceTier.value = value.serviceTier ?? '';
 }
 </script>
 
@@ -239,14 +213,14 @@ function selectModel(id: string) {
   margin-bottom: 0;
 }
 
-.backend-model-selector__header {
+.backend-model-selector__popover .model-picker__header {
   display: flex;
   align-items: center;
   margin-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
-.backend-model-selector__header .el-tabs {
+.backend-model-selector__popover .model-picker__header .el-tabs {
   flex: 1;
   min-width: 0;
 }
@@ -288,27 +262,6 @@ function selectModel(id: string) {
   flex: 1;
   justify-content: center;
   padding: 0 var(--space-4);
-}
-
-.backend-model-selector__loading {
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
-}
-
-.backend-model-selector__loading span {
-  height: 14px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-base);
-  animation: backend-model-selector-pulse 1.2s ease-in-out infinite;
-}
-
-.backend-model-selector__loading span:nth-child(2) { width: 75%; }
-.backend-model-selector__loading span:nth-child(3) { width: 60%; }
-.backend-model-selector__loading span:nth-child(4) { width: 85%; }
-
-@keyframes backend-model-selector-pulse {
-  50% { opacity: 0.4; }
 }
 
 .backend-model-selector__tab {

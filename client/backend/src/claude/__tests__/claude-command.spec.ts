@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { sdkSources } from '../../../../../scripts/sdk-sources.mjs';
 import { resolveClaudeLaunch } from '../claude-command';
 import { createClaudeLifecycle } from '../provider-lifecycle';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
@@ -11,7 +13,10 @@ vi.mock('node:child_process', async original => ({
   ...await original<typeof import('node:child_process')>(),
   execFileSync: () => '__APP_RUNTIME_PATH_START__/user/bin__APP_RUNTIME_PATH_END__',
 }));
-const sdkBinary = createRequire(import.meta.resolve('@korus-dev/multi-agent-sdk/providers/claude')).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${process.platform === 'win32' ? 'claude.exe' : 'claude'}`);
+const { root: sdkSourceRoot, enabled: sdkSourcesEnabled } = sdkSources(fileURLToPath(new URL('../../../../../', import.meta.url)));
+const sdkBinary = createRequire(sdkSourcesEnabled
+  ? path.join(sdkSourceRoot, 'multi-agent-sdk/package.json')
+  : import.meta.resolve('@korus-dev/multi-agent-sdk/providers/claude')).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${process.platform === 'win32' ? 'claude.exe' : 'claude'}`);
 const packaged = '/app/resources/claude/claude';
 
 afterEach(() => { vi.unstubAllEnvs(); host.files.clear(); });
