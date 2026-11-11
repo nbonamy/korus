@@ -1284,9 +1284,9 @@ describe('useAppState', () => {
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     // The owner restarted: its revisions start over, yet its snapshot replaces the frame and its patches follow it.
     const restarted = { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null };
-    receive({ seq: 8, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionSnapshot', payload: { conversation: 'thread-1', snapshot: { revision: 0, state: restarted } } });
+    receive({ seq: 8, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionSnapshot', payload: { conversation: 'thread-1', epoch: 'restarted', snapshot: { revision: 0, state: restarted } } });
     expect(state.activeConversationPresentation.value?.busy).toBe(false);
-    receive({ seq: 9, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionPatch', payload: { conversation: 'thread-1', patch: { revision: 1, ops: [{ op: 'set', key: 'busy', value: true }] } } });
+    receive({ seq: 9, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionPatch', payload: { conversation: 'thread-1', epoch: 'restarted', patch: { revision: 1, ops: [{ op: 'set', key: 'busy', value: true }] } } });
     expect(state.activeConversationPresentation.value?.busy).toBe(true);
   });
 

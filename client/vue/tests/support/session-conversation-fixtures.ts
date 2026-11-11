@@ -33,7 +33,7 @@ let revisions = 0;
 export function sessionSnapshotEvent(agentId: string, fixture: NativeConversationFixture, options: { seq?: number; conversation?: string | null; revision?: number; requests?: AgentRequest[] } = {}): MainToRendererEvent {
   return {
     type: 'conversation.sessionSnapshot', agentId, provider: fixture.provider, seq: options.seq ?? 0, occurredAt: '2026-11-11T00:00:00.000Z',
-    payload: { conversation: options.conversation ?? null, snapshot: { revision: options.revision ?? ++revisions, state: sessionStateFrom(agentId, fixture, options.requests) } },
+    payload: { conversation: options.conversation ?? null, epoch: 'fixture', snapshot: { revision: options.revision ?? ++revisions, state: sessionStateFrom(agentId, fixture, options.requests) } },
   } as MainToRendererEvent;
 }
 

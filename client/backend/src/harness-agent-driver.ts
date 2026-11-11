@@ -55,8 +55,10 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private readonly quiet = new Set<Session>();
   /** The agent each session's conversation belongs to: a scope reports as the agent it works for. */
   private readonly owners = new WeakMap<Session, string>();
-  /** The session each agent's conversation was last published from. A different one starts over with a snapshot. */
-  private readonly published = new Map<string, Session>();
+  /** What each agent's readers last received. A different session or conversation starts them over with a snapshot. */
+  private readonly published = new Map<string, { session: Session; conversation: string | null }>();
+  /** A stream identity per session, so a reader can tell a restarted stream from a late one. */
+  private readonly epochs = new WeakMap<Session, string>();
   private readonly recovering = new Set<Session>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly usageListeners = new Set<NonNullable<Parameters<NonNullable<AgentProviderDriver['onUsage']>>[0]>>();
@@ -91,14 +93,24 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   /** Publishes an agent's conversation as neutral session state: a snapshot when the reader has no base for a patch, otherwise the patch. */
   private publishConversation(session: Session, patch?: SessionPatch): void {
     const agentId = this.owners.get(session);
-    if (agentId === undefined || this.quiet.has(session)) return;
+    if (agentId === undefined || this.quiet.has(session) || this.shownSession(agentId) !== session) return;
     const data = this.admittedData(session);
     const conversation = data ? identityOf(data) : null;
-    const event: BackendEvent = patch && this.published.get(agentId) === session
-      ? { type: 'conversation.sessionPatch', agentId, provider: this.provider, payload: { conversation, patch } }
-      : { type: 'conversation.sessionSnapshot', agentId, provider: this.provider, payload: { conversation, snapshot: this.harness.readSessionSnapshot(session) } };
-    this.published.set(agentId, session);
+    let epoch = this.epochs.get(session);
+    if (!epoch) { epoch = randomUUID(); this.epochs.set(session, epoch); }
+    const last = this.published.get(agentId);
+    const event: BackendEvent = patch && last?.session === session && last.conversation === conversation
+      ? { type: 'conversation.sessionPatch', agentId, provider: this.provider, payload: { conversation, epoch, patch } }
+      : { type: 'conversation.sessionSnapshot', agentId, provider: this.provider, payload: { conversation, epoch, snapshot: this.harness.readSessionSnapshot(session) } };
+    this.published.set(agentId, { session, conversation });
     for (const listener of this.listeners) listener(event);
+  }
+  /** The one conversation an agent's readers see: the scope it is running, the review that continued its conversation, or its own. */
+  private shownSession(agentId: string): Session | undefined {
+    const running = this.running.get(agentId);
+    if (running) return running;
+    const stored = this.latest.get(agentId)?.providerSession;
+    return (stored ? this.scopes.get(identityOf(stored)) : undefined) ?? this.sessions.get(agentId);
   }
 
   /** A provider stream that broke is repaired by reloading the conversation, which also hands readers a fresh snapshot. */
@@ -107,10 +119,10 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     this.recovering.add(session);
     try {
       await this.harness.loadConversation(session);
-      this.publishConversation(session);
     } catch {
-      // The session state already carries the error; the next load retries.
+      // The session state carries the error, which readers see in the snapshot below; their next load retries.
     } finally { this.recovering.delete(session); }
+    this.publishConversation(session);
   }
 
   /** The Harness session for an agent, with Korus's stored identity, folder and defaults re-stated so the provider enforces its own checks against them. */
@@ -285,7 +297,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const session = this.sessions.get(agentId);
     if (!session) return;
     this.sessions.delete(agentId);
-    if (this.published.get(agentId) === session) this.published.delete(agentId);
+    if (this.published.get(agentId)?.session === session) this.published.delete(agentId);
     await this.harness.release(session);
   }
 
@@ -308,6 +320,9 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     } finally {
       if (this.running.get(agent.id) === scope) this.running.delete(agent.id);
       this.quiet.delete(scope);
+      // Readers saw the scope while it ran; they return to the conversation the agent shows now.
+      const shown = this.shownSession(agent.id);
+      if (shown && this.published.get(agent.id)?.session === scope && shown !== scope) this.publishConversation(shown);
     }
   }
   async disposeScopedSession(agent: Agent, session: ProviderSessionData) {

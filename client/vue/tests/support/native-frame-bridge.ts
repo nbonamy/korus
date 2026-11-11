@@ -8,15 +8,16 @@ type Native = {
   type: string; agentId: string; provider: HarnessProvider; threadId?: string; seq?: number; occurredAt?: string;
   payload: { revision: number; snapshot?: { sessionId?: string | null; activeConversationId?: string }; event?: unknown };
 };
-type Conversation = { provider: HarnessProvider; conversation: string | null; nativeRevision: number; apply(frame: unknown): SessionPatch[]; snapshot(): SessionSnapshot };
+type Conversation = { provider: HarnessProvider; conversation: string | null; epoch: string; nativeRevision: number; apply(frame: unknown): SessionPatch[]; snapshot(): SessionSnapshot };
 
+let streams = 0;
 function conversationFor(agentId: string, provider: HarnessProvider, conversation: string | null): Conversation {
   const { harness, script } = createScriptedHarness(provider);
   const session = harness.open({ id: agentId, folder: '/work' });
   let patches: SessionPatch[] = [];
   harness.onEvent(event => { if (event.type === 'session.patch') patches.push(event.patch); });
   return {
-    provider, conversation, nativeRevision: 0,
+    provider, conversation, epoch: `stream-${++streams}`, nativeRevision: 0,
     apply(frame) { patches = []; script.emit(frame as never); return patches; },
     // The browser receives session state as JSON.
     snapshot: () => JSON.parse(JSON.stringify(harness.readSessionSnapshot(session))) as SessionSnapshot,
@@ -51,7 +52,7 @@ export function withNativeFrameBridge(listener: (event: MainToRendererEvent) => 
         current.nativeRevision = frame.payload.revision;
       }
       conversations.set(frame.agentId, current);
-      send('conversation.sessionSnapshot', { conversation: current.conversation, snapshot: current.snapshot() });
+      send('conversation.sessionSnapshot', { conversation: current.conversation, epoch: current.epoch, snapshot: current.snapshot() });
       return;
     }
     const current = conversations.get(frame.agentId);
@@ -59,11 +60,11 @@ export function withNativeFrameBridge(listener: (event: MainToRendererEvent) => 
     if (current && current.conversation === conversation && frame.payload.revision <= current.nativeRevision) return;
     if (!current || current.provider !== frame.provider || current.conversation !== conversation || frame.payload.revision !== current.nativeRevision + 1) {
       // A patch the browser cannot apply sends it back to the conversation owner for a fresh snapshot.
-      send('conversation.sessionPatch', { conversation, patch: { revision: (current?.snapshot().revision ?? 0) + 2, ops: [] } });
+      send('conversation.sessionPatch', { conversation, epoch: current?.epoch ?? 'unknown', patch: { revision: (current?.snapshot().revision ?? 0) + 2, ops: [] } });
       return;
     }
     current.nativeRevision = frame.payload.revision;
     const native = frame.provider === 'codex' ? { ...frame, payload: { ...frame.payload, event: codexEventFromWire(frame.payload.event as never) } } : frame;
-    for (const patch of current.apply(native)) send('conversation.sessionPatch', { conversation, patch });
+    for (const patch of current.apply(native)) send('conversation.sessionPatch', { conversation, epoch: current.epoch, patch });
   };
 }

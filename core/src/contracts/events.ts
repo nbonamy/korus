@@ -69,9 +69,12 @@ type AgentPromptRetryScheduledPayload = {
 type AppEvent =
   | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; provider: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
   | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; provider: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
-  /** An agent's conversation as neutral session state: a snapshot to start from, then revisioned patches. `conversation` names the provider conversation it belongs to. */
-  | EventWith<{ type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; snapshot: SessionSnapshot } }>
-  | EventWith<{ type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; patch: SessionPatch } }>
+  /**
+   * An agent's conversation as neutral session state: a snapshot to start from, then revisioned patches. `conversation` names the
+   * provider conversation it belongs to; `epoch` names the stream, so a late snapshot is told apart from a restarted one.
+   */
+  | EventWith<{ type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; epoch: string; snapshot: SessionSnapshot } }>
+  | EventWith<{ type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; epoch: string; patch: SessionPatch } }>
   | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
   | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; provider: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
   | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; provider: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>

@@ -4,7 +4,7 @@ import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import type { Agent, MainToRendererEvent } from '@workspace/core/contracts';
 
 type Event = Extract<MainToRendererEvent, { type: 'conversation.sessionSnapshot' | 'conversation.sessionPatch' }>;
-type Frame = { conversation: string | null; snapshot: SessionSnapshot; awaitingRecovery: boolean };
+type Frame = { conversation: string | null; epoch: string; snapshot: SessionSnapshot; awaitingRecovery: boolean };
 
 const conversationOf = (agent: Agent): string | null => {
   const session = agent.providerSession;
@@ -12,8 +12,9 @@ const conversationOf = (agent: Agent): string | null => {
 };
 
 /**
- * Every agent's conversation as the harness reports it: a snapshot, then patches applied in revision order.
- * A missed revision keeps the last state visible and reloads the conversation, which sends a fresh snapshot.
+ * Every agent's conversation as the harness reports it: a snapshot, then patches applied in revision order within one stream.
+ * A missed revision, an invalid patch or a patch from another stream keeps the last state visible and reloads the
+ * conversation, which sends a fresh snapshot.
  */
 export function createSessionConversationState(recover: (agentId: string) => Promise<unknown>) {
   const frames = shallowRef<Record<string, Frame>>({});
@@ -44,14 +45,17 @@ export function createSessionConversationState(recover: (agentId: string) => Pro
     },
     /** Applies the event and returns the state it produced, or undefined when it changed nothing. */
     receive(event: Event): SessionState | undefined {
-      const { conversation } = event.payload;
+      const { conversation, epoch } = event.payload;
+      const current = frames.value[event.agentId];
+      const sameStream = current !== undefined && current.epoch === epoch && current.conversation === conversation;
       if (event.type === 'conversation.sessionSnapshot') {
-        frames.value = { ...frames.value, [event.agentId]: { conversation, snapshot: event.payload.snapshot, awaitingRecovery: false } };
+        // A snapshot older than the state of its own stream arrived late; a new stream starts over at any revision.
+        if (sameStream && !current.awaitingRecovery && event.payload.snapshot.revision < current.snapshot.revision) return;
+        frames.value = { ...frames.value, [event.agentId]: { conversation, epoch, snapshot: event.payload.snapshot, awaitingRecovery: false } };
         return event.payload.snapshot.state;
       }
-      const current = frames.value[event.agentId];
-      if (current && !current.awaitingRecovery && current.conversation === conversation && event.payload.patch.revision <= current.snapshot.revision) return;
-      if (!current || current.awaitingRecovery || current.conversation !== conversation) { invalidate(event.agentId); return; }
+      if (sameStream && !current.awaitingRecovery && event.payload.patch.revision <= current.snapshot.revision) return;
+      if (!sameStream || current.awaitingRecovery) { invalidate(event.agentId); return; }
       try {
         const snapshot = applySessionPatch(current.snapshot, event.payload.patch);
         frames.value = { ...frames.value, [event.agentId]: { ...current, snapshot } };

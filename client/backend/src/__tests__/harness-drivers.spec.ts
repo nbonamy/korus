@@ -98,6 +98,43 @@ describe('Korus provider drivers over the SDK Harness', () => {
     await vi.waitFor(() => expect(seen.at(-1)).toBe('conversation.sessionSnapshot'));
   });
 
+  it('starts readers over when a fresh agent adopts its conversation, without asking them to reload', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const seen: Array<{ type: string; payload: { conversation: string | null; epoch: string } }> = [];
+    driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
+    script.on('sendPrompt', (async (context: { id: string }) => {
+      script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Before admission' } } as never);
+      return { providerSession: { kind: 'codex', threadId: 't' }, turnId: 'turn-1' };
+    }) as never);
+    await driver.sendPrompt(agent, 'Hello');
+    script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'After admission' } } as never);
+    script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'Streaming' } } as never);
+    expect(seen.map(event => [event.type, event.payload.conversation])).toStrictEqual([
+      ['conversation.sessionSnapshot', null], ['conversation.sessionSnapshot', 't'], ['conversation.sessionPatch', 't'],
+    ]);
+    expect(new Set(seen.map(event => event.payload.epoch)).size).toBe(1);
+  });
+
+  it('publishes one conversation per agent: the scope it runs, then its own conversation again', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    await driver.loadConversation!(agent);
+    const seen: Array<{ type: string; payload: { epoch: string; snapshot?: { state: { title: string | null } } } }> = [];
+    driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
+    script.on('executeScopedPrompt', (async (context: { id: string }) => {
+      script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Review' } } as never);
+      // The agent's own conversation changes meanwhile; readers keep seeing the scope it runs.
+      script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'Main' } } as never);
+      script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Review done' } } as never);
+      return { text: 'ok', session: { kind: 'codex', threadId: 'review' } };
+    }) as never);
+    await driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } });
+    expect(seen.map(event => event.type)).toStrictEqual(['conversation.sessionSnapshot', 'conversation.sessionPatch', 'conversation.sessionSnapshot']);
+    expect(seen[0]!.payload.epoch).not.toBe(seen[2]!.payload.epoch);
+    expect(seen[2]!.payload.snapshot?.state.title).toBe('Main');
+  });
+
   it('publishes a scoped run as its agent, unless the run is silent', async () => {
     const { driver, script } = scriptedDriver('codex');
     const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
