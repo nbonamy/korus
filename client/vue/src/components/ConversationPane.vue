@@ -383,7 +383,7 @@ const canMoveSuggestion = computed(() => Boolean(resolveConversationPaneValue(pr
 function guestAuthor(id: string | undefined) { return guestAuthors.value.find(author => author.messageId === id)?.name ?? null; }
 const loadedContent = reactive(new Map<string, RendererMessage>());
 watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
-function deferredContent(message: ChatMessage | ConversationMessage): RendererMessage['deferredContent'] {
+function deferredContent(message: ChatMessage | PaneMessage): RendererMessage['deferredContent'] {
   // The SDK header slot exposes its normalized message, so resolve app metadata by ID.
   const original = resolveConversationPaneValue(props.controller.state).identity.messages.find((candidate) => candidate.id === message.id);
   return (original as RendererMessage | undefined)?.deferredContent;
