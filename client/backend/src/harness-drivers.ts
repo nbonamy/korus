@@ -154,6 +154,7 @@ export function createCodexDriver(options: Options = {}, make: HarnessFactory = 
   const agents = new AgentRegistry();
   const harness = make('codex', codexHarnessOptions(options, agents));
   return driver('codex', harness, agents, {
+    coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
     capabilities: () => ({ codeReview: true, planReview: true, conversationShare: true, permissionModes: codexProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ approval: 'auto', required: true, tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
     prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('codex', models, input.complexity) }),

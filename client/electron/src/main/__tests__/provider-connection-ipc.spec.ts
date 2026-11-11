@@ -146,6 +146,8 @@ describe('provider sign-out IPC', () => {
     expect(request).toHaveBeenLastCalledWith('provider/authenticate', { provider: 'antigravity', action: 'login' });
     await api.authenticateProvider('antigravity', 'cancel');
     expect(request).toHaveBeenLastCalledWith('provider/authenticate', { provider: 'antigravity', action: 'cancel' });
+    await api.authenticateProvider('codex', 'cancel', { remoteConnectionId: 'wall-e', loginId: 'login-1' });
+    expect(request).toHaveBeenLastCalledWith('provider/authenticate', { provider: 'codex', action: 'cancel', loginId: 'login-1', remoteConnectionId: 'wall-e' });
     request.mockRejectedValueOnce(new Error('Sign-out failed'));
     await expect(api.disconnectProvider('codex')).rejects.toThrow('Sign-out failed');
     expect(request).toHaveBeenLastCalledWith('provider/disconnect', { provider: 'codex', remoteConnectionId: undefined });

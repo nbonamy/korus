@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock as createBaseClientApiMock } from '../../../tests/support/client-api-mock';
+import { createClientApiMock as createBaseClientApiMock, scriptedAuthentication } from '../../../tests/support/client-api-mock';
 import RemoteEngineConnections from '../RemoteEngineConnections.vue';
 function createClientApiMock() {
   const result = createBaseClientApiMock();
@@ -117,7 +117,7 @@ describe('RemoteEngineConnections', () => {
     await flushPromises();
     expect(api.setProviderUpdate).toHaveBeenCalledExactlyOnceWith('claude', { action: 'upgrade', confirmed: true, token: 'verified-installation' }, 'wall-e');
     expect(row.text()).toContain('2.0');
-    expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -164,11 +164,14 @@ describe('RemoteEngineConnections', () => {
     const missing = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: false, connected: false, checking: false }));
     api.getProviderConnections.mockResolvedValueOnce(missing).mockResolvedValue(missing.map(engine => ({ ...engine, installed: engine.provider === provider, enabled: false, ...(engine.provider === 'claude' ? { authentication: { kind: 'claude' as const, connected: false, state: { loggedIn: false, configDirectory: '/remote/app/claude-home' } } } : {}) })));
     api.refreshProvider.mockResolvedValue({ provider: provider, installed: true, locked: false, isolated: true, shareSkills: true, homePath: '/remote/app/claude-home' });
-    api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false, configDirectory: '/remote/app/claude-home' });
-    api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } });
-    api.cancelCodexChatGptLogin.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'cancelled', error: null } });
-    api.startCodexChatGptDeviceCodeLogin.mockResolvedValue({ loginId: 'remote-login', userCode: 'REMOTE-CODE', verificationUrl: 'https://auth.openai.com/codex/device' });
-    if (provider === 'codex') api.startCodexChatGptDeviceCodeLogin.mockRejectedValueOnce(new Error('Temporary login error'));
+    const checkClaude = vi.fn().mockResolvedValue({ loggedIn: false, configDirectory: '/remote/app/claude-home' });
+    const checkCodex = vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } });
+    const cancelCodex = vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'cancelled', error: null } });
+    const loginCodex = vi.fn().mockResolvedValue({ kind: 'codex', connected: false, state: { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } },
+      login: { method: 'deviceCode', id: 'remote-login', code: 'REMOTE-CODE', url: 'https://auth.openai.com/codex/device' } });
+    if (provider === 'codex') loginCodex.mockRejectedValueOnce(new Error('Temporary login error'));
+    const authenticateProvider = scriptedAuthentication({ codex: { check: checkCodex, login: loginCodex, cancel: cancelCodex }, claude: { check: checkClaude } });
+    api.authenticateProvider.mockImplementation(authenticateProvider);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
@@ -177,15 +180,14 @@ describe('RemoteEngineConnections', () => {
     await choose(wrapper, 'Refresh status', provider === 'codex' ? 0 : 1);
     expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith(provider, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
-    expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
-    expect(api.getCodexAuthentication).not.toHaveBeenCalled();
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
     await flushPromises();
     if (provider === 'claude') {
-      expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+      expect(checkClaude).not.toHaveBeenCalled();
       expect(document.body.textContent).toContain("CLAUDE_CONFIG_DIR='/remote/app/claude-home' claude auth login --console");
     } else {
-      expect(api.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledExactlyOnceWith('wall-e');
+      expect(loginCodex).toHaveBeenCalledExactlyOnceWith({ method: 'deviceCode', remoteConnectionId: 'wall-e' });
       expect(wrapper.emitted('activity')?.at(-1)).toStrictEqual([false]);
       await wrapper.findAll('button').find(button => button.text() === 'Retry sign-in')!.trigger('click');
       await flushPromises();
@@ -196,10 +198,10 @@ describe('RemoteEngineConnections', () => {
     api.setProviderEnabled.mockResolvedValue(connected);
     api.getProviderConnections.mockResolvedValue(connected);
     if (provider === 'claude') {
-      api.getClaudeAuthentication.mockResolvedValue({ loggedIn: true, configDirectory: '/remote/app/claude-home' });
+      checkClaude.mockResolvedValue({ loggedIn: true, configDirectory: '/remote/app/claude-home' });
       (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
     } else {
-      api.getCodexAuthentication.mockResolvedValue({ account: { type: 'chatgpt', email: 'remote@example.com', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'completed', error: null } });
+      checkCodex.mockResolvedValue({ account: { type: 'chatgpt', email: 'remote@example.com', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'completed', error: null } });
       await vi.advanceTimersByTimeAsync(2_000);
     }
     await flushPromises();

@@ -59,7 +59,6 @@ import type {
 } from './contracts/workspace';
 import type {
   AddSshConnectionInput,
-  ClaudeAuthentication,
   DevicePairingSession,
   DevicePairingStatus,
   PairedDevice,
@@ -76,9 +75,6 @@ import type {
   ProviderRuntimeStatus,
   ProviderSessionData,
   ProviderSkillSummary,
-  CodexAuthentication,
-  CodexChatGptLogin,
-  CodexChatGptDeviceCodeLogin
 } from './contracts/provider';
 import type {
   AgentHistoryLoadResult,
@@ -195,14 +191,9 @@ export type {
   ProviderServiceTier,
   ProviderSessionData,
   ProviderSkillSummary,
-  CodexAccount,
   ApprovalPreset,
-  CodexApprovalsReviewer,
-  CodexAuthentication,
-  CodexChatGptLogin,
-  CodexChatGptDeviceCodeLogin,
-  CodexThreadSettings,
 } from './contracts/provider';
+export type { CodexAccount, CodexApprovalsReviewer, CodexAuthentication } from './contracts/provider-setup';
 export {
   subagentActivityKinds,
   subagentOperationKinds,
@@ -1004,8 +995,6 @@ export type AppApi = {
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;
   setCodexResourceSharing(input: SetCodexResourceSharingInput): Promise<AppSnapshot>;
   getPluginStatus(): Promise<AppPluginStatus>;
-  getCodexAuthentication(remoteConnectionId?: string): Promise<CodexAuthentication>;
-  getClaudeAuthentication(remoteConnectionId?: string): Promise<ClaudeAuthentication>;
   getProviderSetup(remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus[]>;
   getProviderUpdate(provider: HarnessProvider, remoteConnectionId?: string, refresh?: boolean): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
   setProviderUpdate(provider: HarnessProvider, input: import('./contracts/provider-updates').ProviderUpdateInput, remoteConnectionId?: string): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
@@ -1015,14 +1004,10 @@ export type AppApi = {
   useBankedReset(input: import('./contracts/banked-resets').UseBankedResetInput, remoteConnectionId?: string): Promise<import('./contracts/banked-resets').BankedResetResult>;
   setProviderEnabled(provider: HarnessProvider, enabled: boolean, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
   disconnectProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
-  authenticateProvider(provider: HarnessProvider, action: 'login' | 'cancel'): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
+  authenticateProvider(provider: HarnessProvider, action: import('./contracts/provider-setup').ProviderAuthenticationAction['action'], options?: import('./contracts/provider-setup').ProviderAuthenticationOptions): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   configureProviderSetup(provider: HarnessProvider, choice: import('./contracts/provider-setup').ProviderSetupChange): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   installProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   refreshProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
-  cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication>;
-  startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<CodexChatGptDeviceCodeLogin>;
-  startCodexChatGptLogin(): Promise<CodexChatGptLogin>;
-  logoutCodex(): Promise<CodexAuthentication>;
   getUpdateStatus(): Promise<DesktopUpdateStatus>;
   installUpdate(): Promise<void>;
   setDockBadgeCount(count: number): Promise<void>;

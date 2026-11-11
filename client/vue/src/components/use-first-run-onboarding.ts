@@ -1,11 +1,14 @@
 import type { HarnessProvider, ClaudeAuthentication, CodexAuthentication, AppApi } from '@workspace/core/contracts';
-import type { ProviderConnection, ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { providerAuthenticationState, type ProviderAuthenticationAction, type ProviderConnection, type ProviderSetupChange, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { providerDisplayName } from '@workspace/core/provider-driver';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
 import { clearFirstRunOnboardingStage, getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
+
+/** What each provider's connection control shows while it signs in, keyed by provider. */
+export type ProviderConnectionActivity = Partial<Record<HarnessProvider, { busy: boolean; error: string | null | undefined }>>;
 
 type FirstRunOnboardingOptions = {
   getApi: () => AppApi | undefined;
@@ -51,6 +54,18 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const claudeConnected = computed(() => options.getConnections().some(provider => provider.provider === 'claude' && provider.connected));
   const cursorConnected = computed(() => options.getConnections().some(provider => provider.provider === 'cursor' && provider.connected));
   const antigravityConnected = computed(() => options.getConnections().some(provider => provider.provider === 'antigravity' && provider.connected));
+  const connection = (provider: HarnessProvider) => options.getConnections().find(candidate => candidate.provider === provider);
+  const checking = (provider: HarnessProvider) => connection(provider)?.checking === true;
+  const cursorConnectionError = computed(() => {
+    const authentication = connection('cursor')?.authentication;
+    return cursorError.value ?? (authentication?.kind === 'cursor' ? authentication.state.error : undefined) ?? connection('cursor')?.error;
+  });
+  const connectionActivity = computed<ProviderConnectionActivity>(() => ({
+    codex: { busy: authenticationLoading.value || checking('codex'), error: authenticationError.value ?? authentication.value?.login.error ?? connection('codex')?.error },
+    claude: { busy: claudeLoading.value || checking('claude'), error: claudeError.value ?? connection('claude')?.error },
+    cursor: { busy: cursorLoading.value || checking('cursor'), error: cursorConnectionError.value },
+    antigravity: { busy: antigravityLoading.value || checking('antigravity'), error: antigravityError.value ?? connection('antigravity')?.error },
+  }));
   const canContinue = computed(() => options.getConnections().some(provider => provider.connected && provider.installed && provider.enabled !== false));
   const initialAuthenticationLoading = computed(() => discovering.value);
   const showLogin = computed(() => discovering.value || providersVisible.value);
@@ -80,7 +95,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
 
   async function refreshCodex(): Promise<void> {
     try {
-      const next = await requireApi().getCodexAuthentication();
+      const next = await codexAuthentication('check');
       if (!disposed) authentication.value = next;
     } catch (error) {
       if (!disposed) authenticationError.value = errorMessage(error);
@@ -98,7 +113,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationLoading.value = true;
     authenticationError.value = null;
     try {
-      await requireApi().startCodexChatGptLogin();
+      await requireApi().authenticateProvider('codex', 'login', { method: 'browser' });
       if (disposed) return;
       authentication.value = { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } };
       startPolling();
@@ -113,7 +128,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     claudeLoading.value = true;
     claudeError.value = null;
     try {
-      const next = await requireApi().getClaudeAuthentication();
+      const next = providerAuthenticationState(await requireApi().authenticateProvider('claude', 'check'), 'claude');
       if (disposed) return;
       claudeAuthentication.value = next;
       if (next.loggedIn) claudeDialogVisible.value = false;
@@ -230,7 +245,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     try {
       if (backend === 'codex') {
         stopPolling();
-        if (authentication.value?.login.status === 'pending') await requireApi().cancelCodexChatGptLogin();
+        if (authentication.value?.login.status === 'pending') await requireApi().authenticateProvider('codex', 'cancel');
       }
       const current = providerSetup.value.find(setup => setup.provider === backend);
       const unchangedLockedSetup = current?.locked && !choice.removeAgentIds
@@ -310,7 +325,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationError.value = null;
     stopPolling();
     try {
-      const next = await requireApi().cancelCodexChatGptLogin();
+      const next = await codexAuthentication('cancel');
       if (!disposed) authentication.value = next;
     } catch (error) {
       if (!disposed) authenticationError.value = errorMessage(error);
@@ -346,7 +361,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     const revision = pollRevision;
     const poll = async () => {
       try {
-        const next = await requireApi().getCodexAuthentication();
+        const next = await codexAuthentication('check');
         if (disposed || revision !== pollRevision) return;
         authentication.value = next;
         if (next.account || next.login.status === 'error' || next.login.status === 'cancelled') return;
@@ -364,6 +379,10 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationPoll = null;
   }
 
+  async function codexAuthentication(action: ProviderAuthenticationAction['action']): Promise<CodexAuthentication> {
+    return providerAuthenticationState(await requireApi().authenticateProvider('codex', action), 'codex');
+  }
+
   function requireApi(): AppApi {
     const api = options.getApi();
     if (!api) throw new Error(translate('surface.appShell.appAPIIsUnavailable'));
@@ -375,7 +394,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   return {
     authentication, authenticationCancelling, authenticationError, authenticationLoading,
     claudeAuthentication, claudeLoading, claudeError, claudeDialogVisible,
-    cursorConnected, cursorLoading, cursorPending, cursorError, connectCursor, cancelCursorLogin,
+    cursorConnected, cursorLoading, cursorPending, cursorError, cursorConnectionError, connectCursor, cancelCursorLogin,
+    connectionActivity,
     antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
     codexConnected, claudeConnected, canContinue, continuing,
     completeVisible, gated, repositoriesVisible, initialAuthenticationLoading, showLogin,

@@ -179,24 +179,17 @@
         :updating-provider="updatingProvider"
         :customize-provider="customizeProvider"
         :claude-connected="!debugMissingEngines && claudeConnected"
-        :codex-connection-busy="!debugMissingEngines && (authenticationLoading || snapshot.providerConnections?.some(engine => engine.provider === 'codex' && engine.checking))"
+        :connection-activity="debugMissingEngines ? {} : connectionActivity"
         :set-provider-enabled="setEngineEnabled"
-        :claude-connection-busy="!debugMissingEngines && (claudeLoading || snapshot.providerConnections?.some(engine => engine.provider === 'claude' && engine.checking))"
         :codex-login-pending="!debugMissingEngines && authentication?.login.status === 'pending'"
-        :codex-connection-error="debugMissingEngines ? null : authenticationError ?? authentication?.login.error ?? snapshot.providerConnections?.find(engine => engine.provider === 'codex')?.error"
-        :claude-connection-error="debugMissingEngines ? null : claudeError ?? snapshot.providerConnections?.find(engine => engine.provider === 'claude')?.error"
         :connect-codex="startChatGptLogin"
         :connect-claude="connectClaude"
         :connect-cursor="connectCursor"
         :cancel-cursor-login="cancelCursorLogin"
-        :cursor-connection-busy="!debugMissingEngines && (cursorLoading || snapshot.providerConnections?.some(engine => engine.provider === 'cursor' && engine.checking))"
         :cursor-login-pending="!debugMissingEngines && cursorPending"
-        :cursor-connection-error="debugMissingEngines ? null : cursorConnectionError"
         :connect-antigravity="connectAntigravity"
         :cancel-antigravity-login="cancelAntigravityLogin"
-        :antigravity-connection-busy="!debugMissingEngines && (antigravityLoading || snapshot.providerConnections?.some(engine => engine.provider === 'antigravity' && engine.checking))"
         :antigravity-login-pending="!debugMissingEngines && antigravityPending"
-        :antigravity-connection-error="debugMissingEngines ? null : antigravityError ?? snapshot.providerConnections?.find(engine => engine.provider === 'antigravity')?.error"
         :disconnect-provider="disconnectProvider"
         :cancel-codex-login="cancelChatGptLogin"
         :active-tab="settingsActiveTab"
@@ -1557,7 +1550,8 @@ const firstRunOnboarding = useFirstRunOnboarding({
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
-  cursorConnected, cursorLoading, cursorPending, cursorError, connectCursor, cancelCursorLogin,
+  cursorConnected, cursorLoading, cursorPending, cursorConnectionError, connectCursor, cancelCursorLogin,
+  connectionActivity,
   antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
   providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, installProvider: installRealProvider, refreshProvider: refreshRealProvider,
   codexConnected, continuing, connectClaude, disconnectProvider, refreshClaude, continueWithProviders,
@@ -1575,11 +1569,6 @@ const {
   load: loadAuthentication,
   startChatGptLogin,
 } = firstRunOnboarding;
-const cursorConnectionError = computed(() => {
-  const connection = props.snapshot.providerConnections?.find(engine => engine.provider === 'cursor');
-  const authentication = connection?.authentication;
-  return cursorError.value ?? (authentication?.kind === 'cursor' ? authentication.state.error : undefined) ?? connection?.error;
-});
 const telemetryNoticeReady = computed(() => {
   const existingProfile = props.snapshot.general.providerOnboardingComplete || props.snapshot.agents.length > 0;
   return existingProfile ? !initialAuthenticationLoading.value : onboardingCompleteVisible.value || !realOnboardingGate.value;

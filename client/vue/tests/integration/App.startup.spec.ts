@@ -163,7 +163,7 @@ describe('app startup', () => {
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
     expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('synthetic-redacted');
-    expect(api.createAgent).not.toHaveBeenCalled(); expect(api.startCodexChatGptLogin).not.toHaveBeenCalled();
+    expect(api.createAgent).not.toHaveBeenCalled(); expect(api.authenticateProvider.mock.calls.filter(([, action]) => action === 'login')).toStrictEqual([]);
     expect(wrapper.find('button[aria-label="Shared with me"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Shared conversation"]').exists()).toBe(true);
     expect(api.sendPrompt).not.toHaveBeenCalled();

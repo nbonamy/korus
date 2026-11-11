@@ -171,7 +171,12 @@ export class ProviderDriverRpc {
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
         const action = record.action as import('@workspace/core/contracts/provider-setup').ProviderAuthenticationAction['action'];
         if (!this.getCoordinationPolicy(backend).authentication.actions.includes(action)) throw new Error('Invalid authentication action.');
-        return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
+        if (record.method !== undefined && record.method !== 'browser' && record.method !== 'deviceCode') throw new Error('Invalid authentication method.');
+        return driver.authenticate({
+          action,
+          ...(record.method === undefined ? {} : { method: record.method }),
+          ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }),
+        });
       }
       case backendMethods.driverBankedResetsGet: {
         const driver = this.requireDriver('codex');
@@ -196,22 +201,6 @@ export class ProviderDriverRpc {
         const record = requireRecord(params);
         return listAgentDirectory(requireString(record.folder, 'folder'), record.input === undefined ? {} : requireRecord(record.input));
       }
-      case backendMethods.driverCodexAuthenticationGet:
-        return (await this.codexAuthentication({ action: 'check' })).state;
-      case backendMethods.driverCodexLoginCancel:
-        return (await this.codexAuthentication({ action: 'cancel', ...(params ? { loginId: requireString(requireRecord(params).loginId, 'loginId') } : {}) })).state;
-      case backendMethods.driverCodexChatGptDeviceCodeLoginStart: {
-        const { login } = await this.codexAuthentication({ action: 'login', method: 'deviceCode' });
-        if (login?.method !== 'deviceCode') throw new Error('Codex did not start a device-code login.');
-        return { loginId: login.id, verificationUrl: login.url, userCode: login.code };
-      }
-      case backendMethods.driverCodexChatGptLoginStart: {
-        const { login } = await this.codexAuthentication({ action: 'login', method: 'browser' });
-        if (login?.method !== 'browser') throw new Error('Codex did not start a browser login.');
-        return { loginId: login.id, authUrl: login.url };
-      }
-      case backendMethods.driverCodexLogout:
-        return (await this.codexAuthentication({ action: 'logout' })).state;
       case backendMethods.remoteControlStatusGet:
         return this.remoteControlOperation(params, 'getRemoteControlStatus')();
       case backendMethods.remoteControlEnable:
@@ -671,14 +660,6 @@ export class ProviderDriverRpc {
     const operation = driver[key];
     if (!operation) throw new Error(`${provider} does not support remote control (${key}).`);
     return operation.bind(driver) as NonNullable<AgentProviderDriver[Key]>;
-  }
-
-  private async codexAuthentication(action: import('@workspace/core/contracts/provider-setup').ProviderAuthenticationAction) {
-    const driver = this.requireDriver('codex');
-    if (!driver.authenticate) throw new Error('Codex driver is not configured.');
-    const result = await driver.authenticate(action);
-    if (result.kind !== 'codex') throw new Error('Codex driver is not configured.');
-    return result;
   }
 
   async close(): Promise<void> {

@@ -41,7 +41,7 @@ import type { DurableTaskService } from './agents/durable-task-service';
 import { ProviderConnections } from './provider-connections';
 import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
-import { isProviderConnection, type ProviderAuthentication, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { isProviderConnection, type ProviderAuthentication, type ProviderAuthenticationAction, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
 import { missionRunPromptMarker } from './mission-execution-policy';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
@@ -1348,8 +1348,10 @@ export class AppBackendServer {
     return selected;
   }
 
-  private async authenticateProvider(provider: Agent['provider'], action: 'check' | 'cancel' | 'logout' | 'login' = 'check', loginId?: string): Promise<ProviderAuthentication> {
-    return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, { provider: provider, action, ...(loginId ? { loginId } : {}) }) as ProviderAuthentication;
+  private async authenticateProvider(provider: Agent['provider'], action: ProviderAuthenticationAction['action'] = 'check', options: Omit<ProviderAuthenticationAction, 'action'> = {}): Promise<ProviderAuthentication> {
+    return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, {
+      provider: provider, action, ...(options.method ? { method: options.method } : {}), ...(options.loginId ? { loginId: options.loginId } : {}),
+    }) as ProviderAuthentication;
   }
 
   private coordinationPolicy(provider: Agent['provider']) {
@@ -3412,11 +3414,28 @@ export class AppBackendServer {
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
         const provider = requireAgentProvider(params.provider);
-        if (!this.coordinationPolicy(provider).authentication.actions.includes('login') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
-        const authentication = await this.authenticateProvider(provider, params.action);
-        this.providerConnections?.observe(provider, authentication.connected, authentication);
-        await this.persistAndEmitSnapshot();
-        return createAppRpcResult(message.id, authentication);
+        const { action, method, loginId } = params;
+        if (action !== 'check' && action !== 'login' && action !== 'cancel' && action !== 'logout') throw new Error('Unsupported native authentication action.');
+        if (method !== undefined && method !== 'browser' && method !== 'deviceCode') throw new Error('Unsupported authentication method.');
+        if (params.remoteConnectionId !== undefined && (typeof params.remoteConnectionId !== 'string' || !params.remoteConnectionId.trim())) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'remoteConnectionId must be a non-empty string.');
+        }
+        if (loginId !== undefined && (typeof loginId !== 'string' || !loginId.trim())) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'loginId must be a non-empty string.');
+        }
+        const remoteConnectionId = requireOptionalConnectionId(params);
+        if (remoteConnectionId && action === 'cancel' && !loginId) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Remote cancellation requires a loginId.');
+        }
+        if (!remoteConnectionId && !this.coordinationPolicy(provider).authentication.actions.includes(action)) throw new Error('Unsupported native authentication action.');
+        const options: Omit<ProviderAuthenticationAction, 'action'> = { ...(method ? { method } : {}), ...(typeof loginId === 'string' ? { loginId } : {}) };
+        return this.respondInLocation(message.id,
+          this.locationFromRemoteConnectionId(remoteConnectionId), message.method, { provider: provider, action, ...options },
+          async () => {
+            const authentication = await this.authenticateProvider(provider, action, options);
+            await this.observeAuthentication(authentication);
+            return authentication;
+          });
       }
       case backendMethods.providerUpdateGet:
       case backendMethods.providerUpdateSet: {
@@ -3560,59 +3579,6 @@ export class AppBackendServer {
         await this.providerConnections?.refresh();
         await this.persistAndEmitSnapshot();
         return createAppRpcResult(message.id, result);
-      }
-      case backendMethods.claudeAuthenticationGet: {
-        if (!isRecord(message.params) || message.params.connectionId === undefined) {
-          const auth = await this.authenticateProvider('claude');
-          await this.observeAuthentication(auth);
-          return createAppRpcResult(message.id, auth.state);
-        }
-        const connectionId = requireConnectionId(message.params);
-        const connection = this.snapshot.remoteConnections.connections.find((candidate) => candidate.id === connectionId);
-        if (!connection) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection not found: ${connectionId}`);
-        }
-        if (connection.status !== 'ready') {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection is not ready: ${connection.name}`);
-        }
-        return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.claudeAuthenticationGet));
-      }
-      case backendMethods.codexAuthenticationGet:
-      case backendMethods.codexLoginCancel:
-      case backendMethods.codexChatGptDeviceCodeLoginStart: {
-        if (isRecord(message.params) && message.params.remoteConnectionId !== undefined
-          && (typeof message.params.remoteConnectionId !== 'string' || !message.params.remoteConnectionId.trim())) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'remoteConnectionId must be a non-empty string.');
-        }
-        const remoteConnectionId = requireOptionalConnectionId(message.params);
-        const loginId = isRecord(message.params) ? message.params.loginId : undefined;
-        if (loginId !== undefined && (typeof loginId !== 'string' || !loginId.trim())) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'loginId must be a non-empty string.');
-        }
-        if (remoteConnectionId && message.method === backendMethods.codexLoginCancel && !loginId) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Remote cancellation requires a loginId.');
-        }
-        const params = loginId ? { loginId } : undefined;
-        return this.respondInLocation(message.id,
-          this.locationFromRemoteConnectionId(remoteConnectionId), message.method, params,
-          async () => {
-            if (message.method === backendMethods.codexChatGptDeviceCodeLoginStart) {
-              return this.requireDriverRpc().handle(backendMethods.driverCodexChatGptDeviceCodeLoginStart, params);
-            }
-            const auth = await this.authenticateProvider('codex', message.method === backendMethods.codexLoginCancel ? 'cancel' : 'check', loginId as string | undefined);
-            await this.observeAuthentication(auth);
-            return auth.state;
-          });
-      }
-      case backendMethods.codexChatGptLoginStart:
-        return createAppRpcResult(
-          message.id,
-          await this.requireDriverRpc().handle(backendMethods.driverCodexChatGptLoginStart, undefined),
-        );
-      case backendMethods.codexLogout: {
-        const auth = await this.authenticateProvider('codex', 'logout');
-        await this.observeAuthentication(auth);
-        return createAppRpcResult(message.id, auth.state);
       }
       case backendMethods.sourceRepositoriesList: {
         return this.respondInLocation(

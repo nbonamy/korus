@@ -57,7 +57,7 @@ describe('connected engine admission', () => {
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: rpc,
       providerSetup: { isChanging: () => false, list: () => [{ provider: 'claude', installed: true, homePath: '/synthetic/claude' }] } as never });
     try {
-      await server.handleMessage({ jsonrpc: '2.0', id: 'auth', method: 'claude/authentication/get', params: {} });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'auth', method: 'provider/authenticate', params: { provider: 'claude', action: 'check' } });
       expect(snapshot.general.providerEnabled?.claude).toBe(!declared);
       if (declared) await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { provider: 'claude', enabled: true } });
       const checks = authenticate.mock.calls.length;

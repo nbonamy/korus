@@ -2,7 +2,21 @@ import type { HarnessProvider } from '../contracts';
 import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type { ProviderAuthenticationAction, ProviderAuthentication, AuthenticationLogin, AuthenticationLoginMethod } from '@korus-dev/multi-agent-sdk';
-import type { ProviderAuthentication } from '@korus-dev/multi-agent-sdk';
+import type { AuthenticationLoginMethod, ProviderAuthentication, ProviderDefaults } from '@korus-dev/multi-agent-sdk';
+
+/** Where and how an authentication action runs; `method` picks the login flow, `loginId` names the login to cancel. */
+export type ProviderAuthenticationOptions = { method?: AuthenticationLoginMethod; loginId?: string; remoteConnectionId?: string };
+/** Codex's own sign-in state, as its sign-in screens read it. */
+export type CodexAuthentication = Extract<ProviderAuthentication, { kind: 'codex' }>['state'];
+export type CodexAccount = NonNullable<CodexAuthentication['account']>;
+export type CodexApprovalsReviewer = NonNullable<Extract<ProviderDefaults, { kind: 'codex' }>['approvalsReviewer']>;
+
+/** A provider's own sign-in state, for the setup screen that asked that provider. */
+export function providerAuthenticationState<Kind extends keyof ProviderAuthenticationStates>(authentication: ProviderAuthentication, kind: Kind): ProviderAuthenticationStates[Kind] {
+  if (authentication.kind !== kind) throw new Error(`Expected ${kind} authentication, received ${authentication.kind}.`);
+  return authentication.state as ProviderAuthenticationStates[Kind];
+}
+type ProviderAuthenticationStates = { [Authentication in ProviderAuthentication as Authentication['kind']]: Authentication['state'] };
 
 /** Runtime observation, never persisted as an enable/disable preference. */
 export type ProviderConnection = {

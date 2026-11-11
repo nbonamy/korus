@@ -51,9 +51,9 @@
           :authentication="providerConnections?.find(engine => engine.provider === 'codex')?.authentication"
           @customize="customizeProvider?.('codex')"
           :set-enabled="enabled => setProviderEnabled?.('codex', enabled)"
-          :connection-busy="codexConnectionBusy || updatingProvider === 'codex'"
+          :connection-busy="connectionActivity?.codex?.busy || updatingProvider === 'codex'"
           :login-pending="codexLoginPending"
-          :connection-error="codexConnectionError || providerSetupError"
+          :connection-error="connectionActivity?.codex?.error || providerSetupError"
           @connect="connectCodex"
           @disconnect="disconnectProvider?.('codex')"
           @cancel="cancelCodexLogin"
@@ -71,9 +71,9 @@
           :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"
           :steering-fallback-enabled="generalSettings.cursorSteeringFallbackEnabled === true"
           :set-steering-fallback-enabled="enabled => updateSettings?.({ general: { cursorSteeringFallbackEnabled: enabled } })"
-          :busy="cursorConnectionBusy || updatingProvider === 'cursor'"
+          :busy="connectionActivity?.cursor?.busy || updatingProvider === 'cursor'"
           :pending="cursorLoginPending"
-          :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.provider === 'cursor')?.error"
+          :error="connectionActivity?.cursor?.error || providerSetupError || providerConnections?.find(engine => engine.provider === 'cursor')?.error"
           :remote-connection-id="remoteConnectionId"
           @refresh="refreshProvider?.('cursor')"
           @connect="connectCursor"
@@ -91,9 +91,9 @@
           :home="generalSettings.providerHomes?.antigravity"
           :enabled="generalSettings.providerEnabled?.antigravity !== false"
           :set-enabled="enabled => setProviderEnabled?.('antigravity', enabled)"
-          :busy="antigravityConnectionBusy || updatingProvider === 'antigravity'"
+          :busy="connectionActivity?.antigravity?.busy || updatingProvider === 'antigravity'"
           :pending="antigravityLoginPending"
-          :error="antigravityConnectionError || providerSetupError"
+          :error="connectionActivity?.antigravity?.error || providerSetupError"
           @customize="customizeProvider?.('antigravity')"
           @connect="connectAntigravity"
           @disconnect="disconnectProvider?.('antigravity')"
@@ -111,8 +111,8 @@
           @customize="customizeProvider?.('claude')"
           :enabled="generalSettings.providerEnabled?.claude !== false"
           :set-enabled="enabled => setProviderEnabled?.('claude', enabled)"
-          :busy="claudeConnectionBusy || updatingProvider === 'claude'"
-          :error="claudeConnectionError || providerSetupError"
+          :busy="connectionActivity?.claude?.busy || updatingProvider === 'claude'"
+          :error="connectionActivity?.claude?.error || providerSetupError"
           @connect="connectClaude"
           @disconnect="disconnectProvider?.('claude')"
         />
@@ -199,6 +199,7 @@ import SettingsSidebar from './SettingsSidebar.vue';
 import SettingsDictationPanel from './SettingsDictationPanel.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
+import type { ProviderConnectionActivity } from './use-first-run-onboarding';
 import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import type { HarnessProvider, ProviderRuntimeStatus } from '@workspace/core/contracts';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
@@ -222,23 +223,16 @@ const props = withDefaults(defineProps<{
   setProviderEnabled?: (provider: HarnessProvider, enabled: boolean) => unknown;
   disconnectProvider?: (provider: HarnessProvider) => Promise<void>;
   claudeConnected?: boolean;
-  codexConnectionBusy?: boolean;
-  claudeConnectionBusy?: boolean;
+  connectionActivity?: ProviderConnectionActivity;
   codexLoginPending?: boolean;
-  codexConnectionError?: string | null;
-  claudeConnectionError?: string | null;
   connectCodex?: () => Promise<void>;
   connectClaude?: () => Promise<void>;
   connectCursor?: () => Promise<void>;
   cancelCursorLogin?: () => Promise<void>;
-  cursorConnectionBusy?: boolean;
   cursorLoginPending?: boolean;
-  cursorConnectionError?: string | null;
   connectAntigravity?: () => Promise<void>;
   cancelAntigravityLogin?: () => Promise<void>;
-  antigravityConnectionBusy?: boolean;
   antigravityLoginPending?: boolean;
-  antigravityConnectionError?: string | null;
   cancelCodexLogin?: () => Promise<void>;
   activeTab?: SettingsTab;
   settings: AppThemeSettings;

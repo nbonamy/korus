@@ -1,6 +1,7 @@
 import { DictationSettingsStore } from './dictation-settings';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
 import type { HarnessProvider, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
+import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
@@ -32,7 +33,7 @@ import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
-import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type ClaudeAuthentication, type ClientRequestResponse, type CodexAuthentication, type CodexChatGptLogin, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
+import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type ClientRequestResponse, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
@@ -595,8 +596,6 @@ export class AppController {
     ipc.handle(ipcChannels.readEngineInstructions, (_event, engine) => this.requireBackendClient().request<{ text: string; path: string }>(backendMethods.engineInstructionsRead, { engine }));
     ipc.handle(ipcChannels.manageSkills, (_event, input) => this.requireBackendClient().request(backendMethods.skillsManage, { input }));
     ipc.handle(ipcChannels.saveEngineInstructions, (_event, input) => this.requireBackendClient().request<void>(backendMethods.engineInstructionsSave, { input }));
-    ipc.handle(ipcChannels.getCodexAuthentication, (_event, remoteConnectionId?: string) => this.getCodexAuthentication(remoteConnectionId));
-    ipc.handle(ipcChannels.getClaudeAuthentication, (_event, remoteConnectionId?: string) => this.getClaudeAuthentication(remoteConnectionId));
     ipc.handle(ipcChannels.getProviderSetup, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerSetupGet, { remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderUpdate, (_event, provider, remoteConnectionId, refresh) => this.requireBackendClient().request(backendMethods.providerUpdateGet, { provider: provider, remoteConnectionId, refresh }));
     ipc.handle(ipcChannels.setProviderUpdate, (_event, provider, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerUpdateSet, { provider: provider, input, remoteConnectionId }));
@@ -606,16 +605,10 @@ export class AppController {
     ipc.handle(ipcChannels.getProviderUsage, (_event, provider) => this.requireBackendClient().request(backendMethods.providerUsageGet, { provider: provider }));
     ipc.handle(ipcChannels.setProviderEnabled, (_event, provider, enabled, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerEnabledSet, { provider: provider, enabled, remoteConnectionId }));
     ipc.handle(ipcChannels.disconnectProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { provider: provider, remoteConnectionId }));
-    ipc.handle(ipcChannels.authenticateProvider, (_event, provider, action) => this.requireBackendClient().request(backendMethods.providerAuthenticate, { provider: provider, action }));
+    ipc.handle(ipcChannels.authenticateProvider, (_event, provider, action, options) => this.authenticateProvider(provider, action, options));
     ipc.handle(ipcChannels.configureProviderSetup, (_event, provider, choice) => this.requireBackendClient().request(backendMethods.providerSetupConfigure, { provider: provider, choice }));
     ipc.handle(ipcChannels.installProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerInstall, { provider: provider, remoteConnectionId }));
     ipc.handle(ipcChannels.refreshProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerRefresh, { provider: provider, remoteConnectionId }));
-    ipc.handle(ipcChannels.cancelCodexChatGptLogin, (_event, remoteConnectionId?: string, loginId?: string) => this.cancelCodexChatGptLogin(remoteConnectionId, loginId));
-    ipc.handle(ipcChannels.startCodexChatGptDeviceCodeLogin, (_event, remoteConnectionId: string) => {
-      return this.startCodexChatGptDeviceCodeLogin(remoteConnectionId);
-    });
-    ipc.handle(ipcChannels.startCodexChatGptLogin, () => this.startCodexChatGptLogin());
-    ipc.handle(ipcChannels.logoutCodex, () => this.logoutCodex());
     ipc.handle(ipcChannels.getUpdateStatus, () => this.desktopUpdateStatus);
     ipc.handle(ipcChannels.installUpdate, () => this.requestInstallUpdate());
     ipc.handle(ipcChannels.setDockBadgeCount, (_event, count: number) => this.setDockBadgeCount(count));
@@ -1326,35 +1319,15 @@ export class AppController {
     return this.requireBackendClient().request<AppPluginStatus>(backendMethods.settingsPluginStatusGet);
   }
 
-  private getCodexAuthentication(remoteConnectionId?: string): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexAuthenticationGet, remoteConnectionId ? { remoteConnectionId } : undefined);
-  }
-
-  private getClaudeAuthentication(remoteConnectionId?: string): Promise<ClaudeAuthentication> {
+  private async authenticateProvider(provider: HarnessProvider, action: ProviderAuthenticationAction['action'], options: ProviderAuthenticationOptions = {}): Promise<ProviderAuthentication> {
+    const { method, loginId, remoteConnectionId } = options;
     if (remoteConnectionId !== undefined && (typeof remoteConnectionId !== 'string' || !remoteConnectionId.trim())) throw new Error('A remote connection is required.');
-    return this.requireBackendClient().request(backendMethods.claudeAuthenticationGet, remoteConnectionId === undefined ? undefined : { connectionId: remoteConnectionId });
-  }
-
-  private startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<import('@workspace/core/contracts').CodexChatGptDeviceCodeLogin> {
-    if (typeof remoteConnectionId !== 'string' || !remoteConnectionId.trim()) throw new Error('A remote connection is required.');
-    return this.requireBackendClient().request(backendMethods.codexChatGptDeviceCodeLoginStart, { remoteConnectionId });
-  }
-
-  private cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexLoginCancel,
-      remoteConnectionId || loginId ? { ...(remoteConnectionId ? { remoteConnectionId } : {}), ...(loginId ? { loginId } : {}) } : undefined);
-  }
-
-  private async startCodexChatGptLogin(): Promise<CodexChatGptLogin> {
-    const login = await this.requireBackendClient().request<CodexChatGptLogin>(
-      backendMethods.codexChatGptLoginStart,
-    );
-    await this.openExternal(login.authUrl);
-    return login;
-  }
-
-  private logoutCodex(): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexLogout);
+    const authentication = await this.requireBackendClient().request<ProviderAuthentication>(backendMethods.providerAuthenticate, {
+      provider: provider, action, ...(method ? { method } : {}), ...(loginId ? { loginId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}),
+    });
+    // A local browser login continues in the user's default browser.
+    if (!remoteConnectionId && action === 'login' && authentication.login?.method === 'browser') await this.openExternal(authentication.login.url);
+    return authentication;
   }
 
   private async getDaemonStatus(): Promise<DaemonStatus> {

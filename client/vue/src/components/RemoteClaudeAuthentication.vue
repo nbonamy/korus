@@ -39,12 +39,13 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import type { ClaudeAuthentication, AppApi, RemoteConnection } from '@workspace/core/contracts';
+import { providerAuthenticationState } from '@workspace/core/contracts/provider-setup';
 import { CheckIcon, CopyIcon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
-type ClaudeAuthApi = Pick<AppApi, 'getClaudeAuthentication'>;
+type ClaudeAuthApi = Pick<AppApi, 'authenticateProvider'>;
 const props = defineProps<{ connection: RemoteConnection; authentication?: ClaudeAuthentication; api?: ClaudeAuthApi }>();
 const emit = defineEmits<{ connected: []; cancel: []; activity: [active: boolean] }>();
 const baseLoginOptions = [
@@ -72,7 +73,7 @@ async function refresh(): Promise<void> {
   checking.value = true;
   error.value = '';
   try {
-    const result = await client.getClaudeAuthentication(props.connection.id);
+    const result = providerAuthenticationState(await client.authenticateProvider('claude', 'check', { remoteConnectionId: props.connection.id }), 'claude');
     if (expectedRevision !== revision) return;
     authentication.value = result;
     if (result.loggedIn) { dialogVisible.value = false; emit('connected'); }

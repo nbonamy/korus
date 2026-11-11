@@ -75,11 +75,23 @@ describe('ProviderDriverRpc', () => {
   });
 
   it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
-    const rpc = new ProviderDriverRpc(new Map([['cursor', createProviderDriver('cursor')], ['antigravity', createProviderDriver('antigravity')]]));
+    const rpc = new ProviderDriverRpc(new Map([['cursor', createProviderDriver('cursor')], ['antigravity', createProviderDriver('antigravity')], ['codex', createProviderDriver('codex')]]));
     try {
+      expect(rpc.getCoordinationPolicy('codex')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
       expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
       expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
       expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    } finally { await rpc.close(); }
+  });
+  it('passes the requested login method to the driver and returns its authentication as is', async () => {
+    const authentication = { kind: 'codex', connected: false, state: { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } }, login: { method: 'deviceCode', id: 'login-1', url: 'https://auth.openai.com/codex/device', code: 'ABCD' } };
+    const authenticate = vi.fn().mockResolvedValue(authentication);
+    const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({ authenticate, coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } } })]]));
+    try {
+      await expect(rpc.handle('driver/provider/authentication', { provider: 'codex', action: 'login', method: 'deviceCode' })).resolves.toBe(authentication);
+      expect(authenticate).toHaveBeenCalledExactlyOnceWith({ action: 'login', method: 'deviceCode' });
+      await expect(rpc.handle('driver/provider/authentication', { provider: 'codex', action: 'login', method: 'sms' })).rejects.toThrow('Invalid authentication method');
+      expect(authenticate).toHaveBeenCalledOnce();
     } finally { await rpc.close(); }
   });
   it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
@@ -248,8 +260,8 @@ describe('ProviderDriverRpc', () => {
       expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: true, authentication: { state } });
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/connections/get' });
       expect(authenticate).toHaveBeenCalledExactlyOnceWith({ action: 'check' });
-      await expect(server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'codex/authentication/login/cancel', params: { loginId: 'login-1' } }))
-        .resolves.toMatchObject({ result: state });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/authenticate', params: { provider: 'codex', action: 'cancel', loginId: 'login-1' } }))
+        .resolves.toMatchObject({ result: { kind: 'codex', state } });
       expect(authenticate).toHaveBeenLastCalledWith({ action: 'cancel', loginId: 'login-1' });
       authenticate.mockResolvedValue({ kind: 'codex', connected: false, state });
       await server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'provider/disconnect', params: { provider: 'codex' } });

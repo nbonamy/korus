@@ -1,9 +1,26 @@
 import { vi, type Mock } from 'vitest';
-import type { AppSnapshot, AppApi, RendererSnapshotState } from '@workspace/core/contracts';
+import type { AppSnapshot, AppApi, HarnessProvider, RendererSnapshotState } from '@workspace/core/contracts';
+import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 
 type Api = Required<AppApi>;
 type ApiMocks = { [K in keyof Api]: Mock<Api[K]> };
+
+type AuthenticationScript = Partial<Record<HarnessProvider, Partial<Record<ProviderAuthenticationAction['action'], (options?: ProviderAuthenticationOptions) => unknown>>>>;
+/**
+ * Routes neutral sign-in calls to per-provider, per-action scripts. A script returns that provider's own state, which is
+ * wrapped as its authentication, or a complete authentication (with `kind`) such as a started login.
+ */
+export function scriptedAuthentication(script: AuthenticationScript): Mock<Api['authenticateProvider']> {
+  return vi.fn<Api['authenticateProvider']>(async (provider, action, options) => {
+    const handler = script[provider]?.[action];
+    if (!handler) throw new Error(`Script the ${provider} '${action}' authentication before invoking it.`);
+    const state = await (options === undefined ? handler() : handler(options)) as Record<string, unknown> | undefined;
+    if (state && 'kind' in state) return state as ProviderAuthentication;
+    const connected = Boolean(state && ('loggedIn' in state ? state.loggedIn : state.account || !state.requiresOpenaiAuth));
+    return { kind: provider, connected, state } as ProviderAuthentication;
+  });
+}
 
 function unscripted<K extends keyof Api>(method: K): Mock<Api[K]> {
   return vi.fn<Api[K]>(() => { throw new Error(`Script the UI client method '${method}' before invoking it.`); });
@@ -195,8 +212,6 @@ export function createClientApiMock(
     getCodexResourceSharingStatus: unscripted<'getCodexResourceSharingStatus'>('getCodexResourceSharingStatus'),
     setCodexResourceSharing: unscripted<'setCodexResourceSharing'>('setCodexResourceSharing'),
     getPluginStatus: unscripted<'getPluginStatus'>('getPluginStatus'),
-    getCodexAuthentication: unscripted<'getCodexAuthentication'>('getCodexAuthentication'),
-    getClaudeAuthentication: unscripted<'getClaudeAuthentication'>('getClaudeAuthentication'),
     getProviderSetup: unscripted<'getProviderSetup'>('getProviderSetup'),
     getProviderUpdate: vi.fn<Api['getProviderUpdate']>(async provider => ({ provider: provider, status: 'unavailable', method: 'manual', canUpgrade: false, busy: false })),
     setProviderUpdate: unscripted<'setProviderUpdate'>('setProviderUpdate'),
@@ -210,10 +225,6 @@ export function createClientApiMock(
     configureProviderSetup: unscripted<'configureProviderSetup'>('configureProviderSetup'),
     installProvider: unscripted<'installProvider'>('installProvider'),
     refreshProvider: unscripted<'refreshProvider'>('refreshProvider'),
-    cancelCodexChatGptLogin: unscripted<'cancelCodexChatGptLogin'>('cancelCodexChatGptLogin'),
-    startCodexChatGptDeviceCodeLogin: unscripted<'startCodexChatGptDeviceCodeLogin'>('startCodexChatGptDeviceCodeLogin'),
-    startCodexChatGptLogin: unscripted<'startCodexChatGptLogin'>('startCodexChatGptLogin'),
-    logoutCodex: unscripted<'logoutCodex'>('logoutCodex'),
     getUpdateStatus: unscripted<'getUpdateStatus'>('getUpdateStatus'),
     installUpdate: unscripted<'installUpdate'>('installUpdate'),
     setDockBadgeCount: unscripted<'setDockBadgeCount'>('setDockBadgeCount'),
@@ -311,8 +322,13 @@ export function createClientApiMock(
   api.getDaemonStatus.mockResolvedValue({ supported: true, installed: false, running: false, socketPath: '/test/daemon.sock' });
   api.getPluginStatus.mockResolvedValue({ chromeEnabled: false });
   api.getCodexResourceSharingStatus.mockResolvedValue({ enabled: false, migrationRequired: false });
-  api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } });
-  api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false });
+  // Signed-in status checks only; logins and sign-outs stay unscripted until a test scripts them.
+  api.authenticateProvider.mockImplementation(async (provider, action) => {
+    if (action !== 'check') throw new Error(`Script the UI client method 'authenticateProvider' (${action}) before invoking it.`);
+    if (provider === 'codex') return { kind: 'codex', connected: true, state: { account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } } };
+    if (provider === 'claude') return { kind: 'claude', connected: false, state: { loggedIn: false } };
+    return { kind: provider, connected: false, state: { loggedIn: false, homePath: `/app/${provider}-home` } };
+  });
   api.getProviderConnections.mockResolvedValue(snapshot.providerConnections ?? []);
   api.getProviderUsage.mockImplementation(async provider => snapshot.providerAccountRateLimits?.[provider] ?? null);
   api.getProviderSetup.mockResolvedValue(['codex', 'claude'].map(provider => ({ provider: provider, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${provider}-home` })) as Awaited<ReturnType<AppApi['getProviderSetup']>>);
