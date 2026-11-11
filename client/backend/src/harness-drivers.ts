@@ -1,4 +1,5 @@
 import { createHarness, type HarnessOptions } from '@korus-dev/multi-agent-sdk';
+import { isBookkeepingTool } from '@workspace/core/bookkeeping-tools';
 import type { Agent, ProviderModelOption } from '@workspace/core/contracts';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { claudeProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities, antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
@@ -31,7 +32,7 @@ const reviewBaseTools = ['report_finding', 'update_finding', 'delete_finding', '
 const planOnly = '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.';
 
 /** App identity, instructions and MCP wiring shared by every provider. */
-function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'trustedMcpServerName' | 'instructions' | 'mcpServers' | 'log'> {
+function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'trustedMcpServerName' | 'isBookkeepingTool' | 'instructions' | 'mcpServers' | 'log'> {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   void settings;
   return {
@@ -39,6 +40,7 @@ function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, '
     stateDirectory: backendHomeDir,
     formatPrompt: promptWithSelectedReferences,
     trustedMcpServerName: product.mcpServerName,
+    isBookkeepingTool,
     instructions: (context, { planMode }) => {
       const agent = agents.get(context.id);
       return appDeveloperInstructions(agent, options.pluginSettings?.(), { celebrationsEnabled: options.celebrationsEnabled?.(), developerInstructions: options.additionalDeveloperInstructions?.(agent) }) + (planMode ? planOnly : '');
