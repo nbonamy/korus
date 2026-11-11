@@ -3,7 +3,7 @@ import { executionSelectionSchema, executionSelectionOverridesSchema, executionS
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import { type PromptPart } from '@korus-dev/multi-agent-sdk';
-import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
+import type { CompanionCheckpoint, CompanionConversationSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
@@ -15,13 +15,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { HarnessProvider, AgentGitDiff, AgentGitDiffTarget, ProviderSkillSummary, ProviderPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
-import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { supportsCompanionProvider, companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
+import type { CompanionCloseOptions, CompanionClosePreview, CompanionConversation, CompanionConversationFrame, CompanionGrant, CompanionPending, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionConversationOf, companionSessionId, companionMaxUploadBytes, companionMaxUploads, followsCompanionConversation } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
 import { isCodeReviewStartInput } from '@workspace/core/code-review';
-import { opaquePath, projectCompanionWorkspace, supportedCompanionWorkspace } from '@workspace/core/companion-projection';
+import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
@@ -77,9 +77,8 @@ const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const catalogSchema = z.object({ teamId: identity, provider: z.enum(['github', 'gitlab']) }).strict();
 const catalogBranchesSchema = catalogSchema.extend({ repositoryId: z.string().regex(/^repo:[a-f0-9]{64}$/) }).strict();
-const companionSelectionRequestSchema = executionSelectionRequestSchema.refine(selection => supportsCompanionProvider(selection.provider), 'Provider is unavailable on this companion protocol.');
-const newChatSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, repositoryId: identity, selection: companionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
-const projectSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, selection: companionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+const newChatSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, repositoryId: identity, selection: executionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
+const projectSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, selection: executionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
   if ((input.branch || input.worktree) && !['github', 'gitlab', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
@@ -123,8 +122,8 @@ export type GatewayPort = {
   respondRequest?(response: AgentRequestResponse): Promise<void>;
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
-  synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
-  conversation(agentId: string): Promise<CompanionReset>;
+  synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionConversationSync>;
+  conversation(agentId: string): Promise<CompanionConversation>;
   loadOlderHistory(agentId: string): Promise<ProviderHistoryLoadResult>;
   loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
@@ -186,13 +185,10 @@ const queuedPromptOperation = (action: 'steer' | 'delete') => agentOperation(wit
     await port.updateQueuedPrompt(target, promptId, action); return {};
   },
 });
-/** Provider snapshots must belong to the agent's current session; Claude and Antigravity can rebind a session id mid-conversation, so their frame is this agent's own replica. */
-function currentReset(frame: CompanionReset, current: CompanionAgent, target: CompanionTarget) {
-  const session = current.providerSession;
-  if (frame.provider !== current.provider || (session?.kind === 'codex' && (frame.type !== 'codex.conversationSnapshotChanged' || frame.threadId !== session.threadId))
-    || (session?.kind === 'claude' && frame.type !== 'claude.conversationSnapshotChanged')
-    || (session?.kind === 'antigravity' && frame.type !== 'antigravity.conversationSnapshotChanged')) throw new Error('Conversation session mismatch.');
+/** A conversation frame must belong to this agent and to the conversation it is attached to now. */
+function currentConversation<F extends CompanionConversationFrame>(frame: F, current: CompanionAgent, target: CompanionTarget): F {
   if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
+  if (!followsCompanionConversation(frame, current)) throw new Error('Conversation session mismatch.');
   return frame;
 }
 /** Every operation a phone may call on an agent; none can bypass the dispatcher's target and grant checks. */
@@ -224,12 +220,12 @@ const agentOperations = {
     act: async (port, agent, { path }, target) => {
       const embedded = conversationImageInput(path);
       if (embedded) {
-        if (agent.providerSession?.kind !== 'codex' || agent.providerSession.threadId !== embedded.sessionId || !port.readConversationContent) throw new Error('Conversation image is unavailable.');
+        if (companionConversationOf(agent.providerSession) !== embedded.sessionId || !port.readConversationContent) throw new Error('Conversation image is unavailable.');
         // The provider checks the reference against its current snapshot. Reloading
         // history here can discard the very image the phone is trying to display.
         return { dataUrl: await readEmbeddedConversationImage(path, input => port.readConversationContent!(agent.id, input)) };
       }
-      const frame = currentReset(await port.conversation(agent.id), agent, target);
+      const frame = currentConversation(await port.conversation(agent.id), agent, target);
       const reference = conversationImageReference(frame, path);
       if (!port.readImage) throw new Error('Image reading is unavailable.');
       return port.readImage(agent.id, reference);
@@ -242,17 +238,14 @@ const agentOperations = {
       await port.markRead(agent.id, revision); return {};
     },
   }),
-  'conversation.subscribe': agentOperation(onlyTarget)({ act: (port, agent) => port.conversation(agent.id), read: { verify: currentReset } }),
+  'conversation.subscribe': agentOperation(onlyTarget)({ act: (port, agent) => port.conversation(agent.id), read: { verify: currentConversation } }),
   'conversation.synchronize': agentOperation(withTarget(z.object({ checkpoint: z.object({ epoch: z.string().min(1).max(100), revision: z.number().int().nonnegative().safe() }).strict().nullable() }).strict()))({
     act: (port, agent, { checkpoint }) => {
       if (!port.synchronize) throw new Error('Conversation synchronization unavailable.');
       return port.synchronize(agent.id, checkpoint);
     },
     read: { verify: (result, current, target) => {
-      for (const frame of result.frames) {
-        if (isConversationReset(frame)) currentReset(frame as CompanionReset, current, target);
-        else if (frame.agentId !== target.agentId || frame.provider !== current.provider || (current.providerSession?.kind === 'codex' && frame.threadId !== current.providerSession.threadId)) throw new Error('Conversation session mismatch.');
-      }
+      for (const frame of result.frames) currentConversation(frame, current, target);
       return result;
     } },
   }),
@@ -262,25 +255,20 @@ const agentOperations = {
       await port.loadTurnHistory(agent.id, input.turnId);
       return port.conversation(agent.id);
     },
-    read: { verify: (frame, current, target) => currentReset(frame, current, target) },
+    read: { verify: currentConversation },
   }),
   'conversation.loadOlder': agentOperation(onlyTarget)({
+    // The older page reaches the conversation as a patch; the reply carries the conversation that includes it.
     act: async (port, agent) => {
-      const page = await port.loadOlderHistory(agent.id);
-      return { page, reset: page.frame ? undefined : await port.conversation(agent.id) };
+      const { hasOlder } = await port.loadOlderHistory(agent.id);
+      return { hasOlder, frame: await port.conversation(agent.id) };
     },
-    read: { verify: ({ page, reset }, current, target) => {
-      if (reset) return { frame: currentReset(reset, current, target), hasOlder: page.hasOlder };
-      if (!page.frame || page.frame.agentId !== target.agentId || current.providerSession?.kind !== 'claude'
-        || page.frame.payload.event.providerSessionId !== current.providerSession.sessionId
-        || page.frame.payload.event.type !== 'history.prepended') throw new Error('Conversation identity mismatch.');
-      return { frame: page.frame, hasOlder: page.hasOlder };
-    } },
+    read: { verify: ({ hasOlder, frame }, current, target) => ({ frame: currentConversation(frame, current, target), hasOlder }) },
   }),
   'conversation.content.read': agentOperation(withTarget(z.object({ input: z.object({ sessionId: identity, contentId: z.string().regex(/^[a-f0-9]{64}$/), offset: z.number().int().nonnegative().safe() }).strict() }).strict()))({
     check: (agent, { input }) => {
       const session = agent.providerSession;
-      if ((session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null) !== input.sessionId) throw new Error('Conversation content is unavailable.');
+      if (companionConversationOf(session) !== input.sessionId) throw new Error('Conversation content is unavailable.');
     },
     act: async (port, agent, { input }) => {
       if (!port.readConversationContent) throw new Error('Conversation content is unavailable.');
@@ -778,7 +766,7 @@ export class CompanionGateway {
     if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Team changed.');
     return result;
   }
-  private async workspace(): Promise<CompanionWorkspace> { return supportedCompanionWorkspace(await this.port.workspace()); }
+  private async workspace(): Promise<CompanionWorkspace> { return this.port.workspace(); }
   private requireGrant({ peerId, grant }: Peer) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
   }

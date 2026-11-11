@@ -101,6 +101,6 @@ it('keeps mixed-provider Live Activity pushes valid for the released relay schem
   expect(f.push).toHaveBeenCalledTimes(1);
   const activity = f.push.mock.calls[0]![2];
   expect(liveActivityPushSchema.safeParse(activity).success).toBe(true);
-  expect(activity.state.running).toBe(3);
-  expect(activity.state.agents.every(agent=>['codex','claude','antigravity'].includes(agent.provider ?? ''))).toBe(true);
+  expect(activity.state.running).toBe(4);
+  expect(activity.state.agents.find(agent=>agent.id === '0cursor')).not.toHaveProperty('provider');
 });

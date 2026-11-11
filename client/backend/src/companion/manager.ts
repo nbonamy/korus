@@ -133,6 +133,7 @@ export class CompanionManager {
     return true;
   }
   private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
+  /** Guest sharing still reads native provider frames. */
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
   private readonly directory: string;
   constructor(private readonly home: string, private readonly provider: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
@@ -203,7 +204,7 @@ export class CompanionManager {
           await this.persist((saved) => ({ ...saved, enabled: false })); this.connector.disablePhone();
           if (this.shareRoutes.some(route => this.matchesRelay(route))) await this.connector.advertise();
           else { await this.connector.stop(); this.transportRelay = ''; }
-          if (!this.shareRoutes.length) this.conversations.clear(); break;
+          this.conversations.clear(); break;
         case 'invite':
           await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');

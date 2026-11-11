@@ -1,4 +1,3 @@
-import { supportsCompanionProvider } from './companion-protocol';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, ProviderDefaults, Team } from './contracts';
@@ -36,38 +35,12 @@ function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?
     primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot, remoteConnectionId), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
 }
 
-/** Keep unnegotiated clients on their existing provider set, including indirect references. */
-export function supportedCompanionWorkspace(source: CompanionWorkspace): CompanionWorkspace {
-  const hidden = new Set([...source.agents, ...source.missionAgents ?? []].filter(agent => !supportsCompanionProvider(agent.provider)).map(agent => agent.id));
-  const visible = (id: string) => !hidden.has(id);
-  const records = <T>(value: Record<string, T>) => Object.fromEntries(Object.entries(value).filter(([id]) => visible(id)));
-  return {
-    ...source,
-    teams: source.teams.map(team => ({...team, agentIds: team.agentIds.filter(visible)})),
-    agents: source.agents.filter(agent => visible(agent.id)),
-    ...(source.missionAgents ? {missionAgents: source.missionAgents.filter(agent => visible(agent.id))} : {}),
-    ...(source.missionProgress ? {missionProgress: source.missionProgress.map(mission => {
-      const {leadAgentId, tickets, ...rest} = mission;
-      return {...rest, ...(leadAgentId && visible(leadAgentId) ? {leadAgentId} : {}), tickets: tickets.map(ticket => {
-        const {agentId, ...fields} = ticket;
-        return {...fields, ...(agentId && visible(agentId) ? {agentId} : {})};
-      })};
-    })} : {}),
-    ...(source.providers ? {providers: Object.fromEntries(Object.entries(source.providers).map(([host, providers]) => [host, providers.filter(supportsCompanionProvider)]))} : {}),
-    ...(source.modelFavorites ? {modelFavorites: source.modelFavorites.filter(favorite => supportsCompanionProvider(favorite.provider))} : {}),
-    ...(source.agentRequests ? {agentRequests: records(source.agentRequests)} : {}),
-    ...(source.gitStatuses ? {gitStatuses: records(source.gitStatuses)} : {}),
-    ...(source.reviewFindings ? {reviewFindings: records(source.reviewFindings)} : {}),
-    ...(source.queuedPrompts ? {queuedPrompts: source.queuedPrompts.filter(prompt => visible(prompt.agentId))} : {}),
-  };
-}
 
 /**
  * What a paired phone sees of the laptop: enough to rebuild the desktop sidebar (repositories,
  * branch and conversation titles, repository icons) without paths, remotes or provider internals.
  */
 export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
-  source = supportedCompanionWorkspace(source);
   const teams = source.teams.map(({ id, name, avatar, agentIds }): Team => ({ id, name, avatar, agentIds }));
   const repositoryIcons: Record<string, string> = {};
   const projectAgent = (agent: Agent): Agent => {
@@ -175,7 +148,7 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
     const review = agent.codeReview;
     return review && review.status !== 'finished' ? [[agent.id, review.rounds.find(round => round.id === review.activeRoundId)?.findings.length ?? 0]] : [];
   }));
-  return supportedCompanionWorkspace({ ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
+  return ({ ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
     reviewFindings, providers: Object.fromEntries([
       ...snapshot.teams.map((team) => [team.id, enabledAgentProviders({ providerConnections: snapshot.providerConnections ?? [] })] as const),
       ...(snapshot.remoteConnections?.connections ?? []).map((connection) => [connection.id, enabledAgentProviders({ providerConnections: providerConnectionsForHost({ ...snapshot, remoteConnections: snapshot.remoteConnections } as AppSnapshot, connection.id) })] as const),

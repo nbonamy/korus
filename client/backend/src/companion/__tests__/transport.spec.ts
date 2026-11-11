@@ -12,9 +12,8 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
-import { sdkSnapshot } from '../../codex/__tests__/sdk-host-fixture';
 import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
-import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, readFirstCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { companionCompressedProtocol, companionCompressedUpdatesProtocol, companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, readFirstCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
 import { shareAdmissionProtocol, shareRendezvousProtocol } from '@workspace/core/conversation-share-relay';
 import { GuestConversationTransport } from '../../sharing/guest-transport';
@@ -24,7 +23,7 @@ import { createCompanionRelay } from '../relay';
 import { CompanionOutboundConnector } from '../connector';
 import { CompanionGateway } from '../gateway';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import type { CompanionWorkspace, CompanionReset } from '@workspace/core/companion-protocol';
+import type { CompanionWorkspace, CompanionConversation } from '@workspace/core/companion-protocol';
 import type { Libp2p, PrivateKey } from '@libp2p/interface';
 import { logMain } from '../../log';
 vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
@@ -234,7 +233,7 @@ describe('encrypted companion circuit', () => {
   it('loads screenshot-heavy provider data beyond the legacy response limit over a negotiated circuit', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const image = `data:image/png;base64,${randomBytes(26 * 1024 * 1024).toString('base64')}`;
-    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] }) } } as unknown as CompanionReset;
+    const frame = { type: 'conversation.sessionSnapshot', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', snapshot: { revision: 1, state: { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] } } } } as unknown as CompanionConversation;
     expect(Buffer.byteLength(JSON.stringify(frame))).toBeGreaterThan(companionResponseLimit);
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
@@ -244,7 +243,7 @@ describe('encrypted companion circuit', () => {
     const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
     const circuit = multiaddr(`${address}/p2p-circuit/p2p/${hostId}`);
-    const stream = await phone.dialProtocol(circuit, ['/workspace/companion-updates/2.0.0', companionUpdatesProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    const stream = await phone.dialProtocol(circuit, [companionCompressedUpdatesProtocol, companionUpdatesProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
     stream.maxReadBufferLength = companionResponseLimit + 4;
     const received: any[] = []; let ended = false;
     const reader = (async () => { try { for await (const value of readCompanionResponses(stream)) received.push(value); } catch { /* Peer reset is observed through ended. */ } finally { ended = true; } })();
@@ -258,7 +257,7 @@ describe('encrypted companion circuit', () => {
     expect(received.find(value => value.update?.type === 'conversation')?.update.frame).toStrictEqual(frame);
     expect(ended).toBe(false);
     // History reads use the same codec on the one-shot protocol.
-    const historyStream = await phone.dialProtocol(circuit, ['/workspace/companion/2.0.0', companionProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    const historyStream = await phone.dialProtocol(circuit, [companionCompressedProtocol, companionProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
     historyStream.maxReadBufferLength = companionResponseLimit + 4;
     const id = randomUUID();
     historyStream.send(encodeCompanionFrame({ v: 1, id, method: 'conversation.loadOlder', args: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } }));
@@ -270,7 +269,7 @@ describe('encrypted companion circuit', () => {
   it('pushes provider events over one authenticated duplex stream and closes it on revocation', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const events = new Set<(event: AppBackendEvent) => void>();
-    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: {} } } as CompanionReset;
+    const frame = { type: 'conversation.sessionSnapshot', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', snapshot: { revision: 1, state: {} } } } as CompanionConversation;
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
     workspace.agentRequests = { agent: [{ id: 'question', conversationId: 'thread', kind: 'question', question: { itemId: 'item', delivery: 'tool', blocking: true, questions: [] } }] };
     const responses: unknown[] = [];
@@ -291,10 +290,10 @@ describe('encrypted companion circuit', () => {
     request('snapshot.get', {});
     await expect.poll(() => received.some((item) => item.update?.type === 'workspace')).toBe(true);
     request('conversation.subscribe', { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) });
-    await expect.poll(() => received.some((item) => item.update?.frame?.payload.revision === 1)).toBe(true);
-    const delta = { ...frame, type: 'codex.conversationEventReceived', payload: { revision: 2, event: { type: 'provider-event', payload: { text: 'Streaming' } } } } as unknown as AppBackendEvent;
+    await expect.poll(() => received.some((item) => item.update?.frame?.payload.snapshot?.revision === 1)).toBe(true);
+    const delta = { ...frame, type: 'conversation.sessionPatch', occurredAt: 'now', payload: { conversation: 'thread', epoch: 'epoch', patch: { revision: 2, ops: [{ op: 'set', key: 'title', value: 'Streaming' }] } } } as unknown as AppBackendEvent;
     for (const listener of events) listener(delta);
-    await expect.poll(() => received.some((item) => item.update?.frame?.payload.revision === 2)).toBe(true);
+    await expect.poll(() => received.some((item) => item.update?.frame?.payload.patch?.revision === 2)).toBe(true);
     expect(received.filter((item) => item.update).map((item) => item.seq)).toStrictEqual([1, 2, 3]);
     expect(received.at(-1).update.frame.payload).toStrictEqual(delta.payload);
     const reply = { target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) }, id: 'question', conversationId: 'thread', outcome: { kind: 'answered', answers: { choice: { answers: ['Yes'] } } } };
@@ -348,7 +347,7 @@ describe('encrypted companion circuit', () => {
   it('streams a catch-up replay longer than the send queue without aborting the updates stream', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
-    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: index + 2, occurredAt: 'now', payload: { revision: index + 2, event: { type: 'provider-event', payload: { text: `Event ${index}` } } } }));
+    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'conversation.sessionPatch', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', patch: { revision: index + 2, ops: [{ op: 'set', key: 'title', value: `Event ${index}` }] } } }));
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => { throw new Error('No snapshot.'); },
       synchronize: async () => ({ checkpoint: { epoch: 'epoch', revision: 601 }, frames: replay }) as never,
@@ -365,7 +364,7 @@ describe('encrypted companion circuit', () => {
     await expect.poll(() => received.some((item) => item.update?.type === 'workspace')).toBe(true);
     request('conversation.synchronize', { target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) }, checkpoint: { epoch: 'epoch', revision: 1 } });
     await expect.poll(() => received.some((item) => item.result?.checkpoint), { timeout: 10_000 }).toBe(true);
-    expect(received.filter((item) => item.update?.type === 'conversation').map((item) => item.update.frame.payload.revision)).toStrictEqual(replay.map((item) => item.payload.revision));
+    expect(received.filter((item) => item.update?.type === 'conversation').map((item) => item.update.frame.payload.patch.revision)).toStrictEqual(replay.map((item) => item.payload.patch.revision));
     expect(stream.status).toBe('open');
   }, 30_000);
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {

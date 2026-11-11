@@ -1,20 +1,14 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
+import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderConversationFrame, ProviderSessionData, Team } from './contracts';
+import { applySessionPatch, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
-// Existing companion and guest transports have not negotiated Cursor replicas.
-export function supportsCompanionProvider(provider: string): provider is Exclude<HarnessProvider, 'cursor'> {
-  return provider === 'codex' || provider === 'claude' || provider === 'antigravity';
-}
-export function isCompanionConversationFrame(frame: ProviderConversationFrame): frame is Extract<ProviderConversationFrame, { provider: Exclude<HarnessProvider, 'cursor'> }> {
-  return supportsCompanionProvider(frame.provider);
-}
-
-export const companionProtocol = '/workspace/companion/1.0.0';
-export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
-/** Gzip responses are negotiated separately so older paired apps keep their JSON framing. */
-export const companionCompressedProtocol = '/workspace/companion/2.0.0';
-export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/2.0.0';
+// Conversations travel as neutral session state; a phone speaking an earlier version fails to negotiate.
+export const companionProtocol = '/workspace/companion/3.0.0';
+export const companionUpdatesProtocol = '/workspace/companion-updates/3.0.0';
+/** Gzip responses are negotiated separately from plain JSON framing. */
+export const companionCompressedProtocol = '/workspace/companion/4.0.0';
+export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/4.0.0';
 export const companionDecodedResponseLimit = 128 * 1024 * 1024;
 /** Match the native app lock: quick app switches retain the authenticated connection. */
 export const companionBackgroundGraceMs = 5 * 60_000;
@@ -24,7 +18,7 @@ export const companionRequestTimeoutMs = 15_000;
 export const companionIdleTimeoutMs = 45_000;
 /** A backgrounded phone sends nothing, so the laptop waits out the grace period before calling a stream idle. */
 export const companionBackgroundIdleTimeoutMs = companionBackgroundGraceMs + companionIdleTimeoutMs;
-export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
+export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: CompanionConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;
 export const companionFrameLimit = 4 * 1024 * 1024;
@@ -35,12 +29,57 @@ export type CompanionTarget = { hostId: string; locationId: string; teamId: stri
 export type CompanionRequestReply = { target: CompanionTarget; id: string; conversationId: string; outcome: AgentRequestResponse['outcome'] };
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
 export type CompanionClosePreview = { target: CompanionTarget } & import('./agent-close').AgentClosePreview;
+/** Guest sharing still reads native provider frames; the companion carries neutral session state. */
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
 const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
-/** A provider conversation frame is a full reset or one event after it; these two checks are the only definition of either. */
+/** A native provider frame for guest sharing: a full reset or one event after it. */
 export const isConversationFrame = (frame: { type: string }): boolean => conversationFrameType.test(frame.type);
 export const isConversationReset = (frame: ProviderConversationFrame): frame is CompanionReset =>
   frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
+
+/** Which stream a conversation frame belongs to: the provider conversation, and the session stream's identity. */
+export type CompanionConversationStream = { conversation: string | null; epoch: string };
+/** An agent's whole conversation as neutral session state, the base every patch applies to. */
+export type CompanionConversation = { type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: CompanionConversationStream & { snapshot: SessionSnapshot } };
+export type CompanionConversationPatch = { type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: CompanionConversationStream & { patch: SessionPatch } };
+/** A conversation on the companion wire: a snapshot to start from, or a patch that follows it. */
+export type CompanionConversationFrame = CompanionConversation | CompanionConversationPatch;
+export const isCompanionConversationFrame = (frame: { type: string }): frame is CompanionConversationFrame =>
+  frame.type === 'conversation.sessionSnapshot' || frame.type === 'conversation.sessionPatch';
+export const isCompanionConversation = (frame: { type: string }): frame is CompanionConversation => frame.type === 'conversation.sessionSnapshot';
+export const companionFrameRevision = (frame: CompanionConversationFrame): number =>
+  frame.type === 'conversation.sessionSnapshot' ? frame.payload.snapshot.revision : frame.payload.patch.revision;
+/** Only the conversation crosses to the phone, never the daemon's envelope around it. */
+export function companionConversationFrame<F extends CompanionConversationFrame>(event: F): F {
+  const { type, agentId, provider, payload } = event;
+  return { type, agentId, provider, payload } as F;
+}
+type StreamOf = { agentId: string; payload: CompanionConversationStream };
+export const sameCompanionStream = (a: StreamOf, b: StreamOf): boolean =>
+  a.agentId === b.agentId && a.payload.epoch === b.payload.epoch && a.payload.conversation === b.payload.conversation;
+/** The provider conversation an agent is attached to, as conversation frames name it. */
+export const companionConversationOf = (session: ProviderSessionData | null | undefined): string | null =>
+  !session ? null : session.kind === 'codex' ? session.threadId : session.sessionId;
+/** A frame belongs to the conversation the agent is attached to; before it attaches, a new conversation can already report. */
+export function followsCompanionConversation(frame: CompanionConversationFrame, agent: Pick<Agent, 'id' | 'provider' | 'providerSession'>): boolean {
+  const attached = companionConversationOf(agent.providerSession);
+  return frame.agentId === agent.id && frame.provider === agent.provider
+    && (frame.payload.conversation === null || attached === null || frame.payload.conversation === attached);
+}
+
+/**
+ * The conversation after one more frame. A snapshot replaces it unless it is an older state of the same stream; a patch
+ * applies in revision order within its stream. Returns `current` itself when the frame is stale, and null when the
+ * stream broke (another stream's patch, a missed revision or an invalid patch): only a fresh snapshot continues it.
+ */
+export function followCompanionConversation(current: CompanionConversation | null, frame: CompanionConversationFrame): CompanionConversation | null {
+  const same = current !== null && sameCompanionStream(current, frame);
+  if (frame.type === 'conversation.sessionSnapshot') return same && frame.payload.snapshot.revision < current.payload.snapshot.revision ? current : companionConversationFrame(frame);
+  if (!same) return null;
+  if (frame.payload.patch.revision <= current.payload.snapshot.revision) return current;
+  try { return { ...current, payload: { ...current.payload, snapshot: applySessionPatch(current.payload.snapshot, frame.payload.patch) } }; }
+  catch { return null; }
+}
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** A ticket's progress as the desktop's implementation board shows it. */

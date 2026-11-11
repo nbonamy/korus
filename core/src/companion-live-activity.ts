@@ -1,4 +1,3 @@
-import { supportsCompanionProvider } from './companion-protocol';
 import type { HarnessProvider } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
 import { agentDisplayName } from './agent-display';
@@ -16,10 +15,12 @@ export function liveActivityAuthorizationMessage(relayId: string, hostId: string
     registration.kind, registration.kind === 'update' ? registration.instanceId : null, registration.token, registration.environment, expiresAt]));
 }
 
+/** The engines the relay's Live Activity schema names; any other agent shows without an engine badge. */
+const liveActivityProviders = new Set<HarnessProvider>(['codex', 'claude', 'antigravity']);
 /** Count each agent once across teams and Mission workers, without exposing conversation content. */
 export function workActivityState(workspace: CompanionWorkspace, previous?: WorkActivityState, observedAt?: number): WorkActivityState {
   const teams = new Set(workspace.teams.map(team => team.id));
-  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => supportsCompanionProvider(agent.provider) && agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
+  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
   let running = 0; let attention = 0;
   const rows: WorkActivityAgent[] = [];
   const bounded = (text: string, limit: number) => Array.from(text.replace(/[\r\n\t]/gu, ' ').trim()).slice(0, limit).join('');
@@ -30,7 +31,7 @@ export function workActivityState(workspace: CompanionWorkspace, previous?: Work
     const status: WorkActivityAgent['status'] | undefined = requests.length ? requests.some(request => request.kind !== 'question') ? 'approval' : 'question'
       : agent.status.type === 'awaitingInput' ? 'waiting' : agent.status.type === 'error' ? 'error' : agent.status.type === 'working' ? 'working' : previous?.agents.some(row => row.id === agent.id) ? 'idle' : undefined;
     const startedAt = status && status !== 'idle' ? previous?.agents.find(row => row.id === agent.id)?.startedAt ?? observedAt : undefined;
-    if (status) rows.push({ id: agent.id, name: bounded(agentDisplayName(agent), 80), provider: agent.provider, ...(startedAt ? { startedAt } : {}), status,
+    if (status) rows.push({ id: agent.id, name: bounded(agentDisplayName(agent), 80), ...(liveActivityProviders.has(agent.provider) ? { provider: agent.provider } : {}), ...(startedAt ? { startedAt } : {}), status,
       detail: status === 'working' ? bounded(agent.statusText || 'Working', 100)
         : { idle: 'Idle', approval: 'Needs your approval', question: 'Has a question', waiting: 'Waiting for input', error: 'Needs attention' }[status] });
   }
