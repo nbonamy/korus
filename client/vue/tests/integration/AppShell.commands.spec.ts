@@ -1,5 +1,6 @@
 import { appApi } from '../../src/platform-api';
 import { setElectronTestClient } from '../support/client';
+import { nativePresentation } from '../support/session-conversation-fixtures';
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
@@ -124,11 +125,11 @@ describe('AppShell dialogs and commands', () => {
       viewport.element.scrollTop = 0; await viewport.trigger('scroll');
       expect(loadOlderAgentHistory).toHaveBeenCalledTimes(1);
       await wrapper.setProps({ historyLoadingOlder: true });
-      await wrapper.setProps({ claudeConversationSnapshot: history([older, recent], true), historyLoadingOlder: false });
+      await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: history([older, recent], true) }), historyLoadingOlder: false });
       await flushPromises(); viewport.element.scrollTop = 0; await viewport.trigger('scroll');
       expect(loadOlderAgentHistory).toHaveBeenCalledTimes(2);
       await wrapper.setProps({ historyLoadingOlder: true });
-      await wrapper.setProps({ claudeConversationSnapshot: history([first, older, recent], false), historyLoadingOlder: false });
+      await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: history([first, older, recent], false) }), historyLoadingOlder: false });
       await flushPromises();
       expect(wrapper.text()).toContain('Original request');
     } finally { wrapper.unmount(); }

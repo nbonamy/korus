@@ -57,7 +57,7 @@ describe('useAppState', () => {
     loadConversationHistory.mockClear();
     const selection = state.selectAgent('agent-dina');
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledWith('agent-dina'));
-    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
     refresh.resolve(structuredClone(base));
     await selection;
   });
@@ -1049,35 +1049,34 @@ describe('useAppState', () => {
       });
     }
 
-    expect(state.activeCodexConversationSnapshot.value?.messages).toStrictEqual([
+    expect(state.activeConversationPresentation.value?.messages).toStrictEqual([
       expect.objectContaining({ parts: [{ type: 'text', text: 'Newest' }] }),
     ]);
     // A recovered/native snapshot must restore the composer even if its
     // transient modeUpdated notification never reached this renderer.
     expect(state.planMode.value).toBe(true);
 
-    state.setPlanMode(false);
     listeners[0]?.({
       seq: 3, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: { revision: 3, event: {
         seq: 10, type: 'conversation.settingsChanged', conversationId: 'thread-1', origin: 'action',
         occurredAt: '2026-09-06T00:00:03.000Z',
-        payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: true },
+        payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: false },
       } },
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
-    expect(state.planMode.value).toBe(true);
+    expect(state.planMode.value).toBe(false);
 
-    state.setPlanMode(false);
+    state.setPlanMode(true);
     listeners[0]?.({
       seq: 4, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
       type: 'codex.conversationSnapshotChanged',
-      payload: { revision: 4, snapshot: codexConversationSnapshot([], { planMode: true }) },
+      payload: { revision: 4, snapshot: codexConversationSnapshot([], { planMode: false }) },
       occurredAt: '2026-09-06T00:00:04.000Z',
     });
     // Unchanged provider settings do not erase an unsent manual toggle.
-    expect(state.planMode.value).toBe(false);
+    expect(state.planMode.value).toBe(true);
   });
 
   it('projects only the provider snapshot matching the selected agent session', async () => {
@@ -1130,28 +1129,27 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:02.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value?.messages).toStrictEqual([
+    expect(state.activeConversationPresentation.value?.messages).toStrictEqual([
       expect.objectContaining({ id: 'message-codex' }),
     ]);
-    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
 
     state.snapshot.value.activeAgentId = 'agent-jesse';
     await nextTick();
 
-    expect(state.activeCodexConversationSnapshot.value).toBeNull();
-    expect(state.activeClaudeConversationSnapshot.value?.sessionId).toBe('session-claude');
+    expect(state.activeConversationPresentation.value).toMatchObject({ messages: [] });
 
+    // A conversation the agent was detached from is not its conversation any more.
     state.snapshot.value.agents[1]!.providerSession = undefined;
     await nextTick();
 
-    expect(state.activeClaudeConversationSnapshot.value?.sessionId).toBe('session-claude');
+    expect(state.activeConversationPresentation.value).toBeNull();
 
     state.snapshot.value.agents[1]!.providerSession = {
       kind: 'claude', sessionId: 'session-replaced', transport: 'stdio',
     };
     await nextTick();
 
-    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
+    expect(state.activeConversationPresentation.value).toBeNull();
   });
 
   it('advances the provider-owned Codex frame with SDK conversation events', async () => {
@@ -1225,7 +1223,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value?.messages).toStrictEqual([
+    expect(state.activeConversationPresentation.value?.messages).toEqual([
       expect.objectContaining({
         id: 'assistant-1',
         parts: [{ type: 'text', text: 'Hello', itemId: 'item-1' }],
@@ -1257,9 +1255,9 @@ describe('useAppState', () => {
     const repair = () => receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
     repair();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
-    receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
+    receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 41, snapshot: codexConversationSnapshot([], { busy: true }) } });
     for (let n = 0; n < 20; n++) repair();
-    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.activeConversationPresentation.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     expect(load).toHaveBeenCalledTimes(1);
     first.resolve(remote);
@@ -1273,7 +1271,7 @@ describe('useAppState', () => {
     await nextTick();
     const snapshotFetches = getSnapshotState.mock.calls.length;
     expect(snapshotFetches).toBeLessThan(8);
-    receive({ seq: 6, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
+    receive({ seq: 6, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 41, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
     await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.conversation?.busy).toBe(true));
     second.resolve(remote);
     // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
@@ -1282,19 +1280,14 @@ describe('useAppState', () => {
     expect(getSnapshotState).toHaveBeenCalledTimes(snapshotFetches);
     receive({ seq: 7, source: 'provider', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
-    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
+    expect(state.activeConversationPresentation.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
-    // The owner restarted: its counter is below the retained frame's, yet the replay and its deltas apply.
-    receive({ seq: 8, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
-    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
-    receive({ seq: 9, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
-    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
-    // Only the first replay bypasses the revision fence.
-    receive({ seq: 10, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
-    expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
-    receive({ seq: 11, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
-    receive({ seq: 12, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, provider: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
-    expect(state.agentConversationFor(claude.id)?.conversation?.error).toBe('post-restart');
+    // The owner restarted: its revisions start over, yet its snapshot replaces the frame and its patches follow it.
+    const restarted = { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null };
+    receive({ seq: 8, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionSnapshot', payload: { conversation: 'thread-1', snapshot: { revision: 0, state: restarted } } });
+    expect(state.activeConversationPresentation.value?.busy).toBe(false);
+    receive({ seq: 9, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionPatch', payload: { conversation: 'thread-1', patch: { revision: 1, ops: [{ op: 'set', key: 'busy', value: true }] } } });
+    expect(state.activeConversationPresentation.value?.busy).toBe(true);
   });
 
   it('restores the active agent after reconnect while cached recoveries are still loading', async () => {
@@ -1346,7 +1339,7 @@ describe('useAppState', () => {
       await vi.advanceTimersByTimeAsync(30_000);
       expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
       // The Codex hydrate produced no snapshot: its frame stays visible, and the next live event retries.
-      expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+      expect(state.activeConversationPresentation.value).not.toBeNull();
       receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
       await vi.advanceTimersByTimeAsync(0);
       expect(load.mock.calls.length).toBeGreaterThanOrEqual(3);
@@ -1435,7 +1428,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:02.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
     expect(loadConversationHistory).not.toHaveBeenCalled();
 
     listeners[0]?.({
@@ -1458,60 +1451,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
-    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
-  });
-
-  it('invalidates and rehydrates a Codex frame when a delta targets another conversation', async () => {
-    const listeners: Array<(event: MainToRendererEvent) => void> = [];
-    const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
-    const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
-    stubElectronTestWindow({
-      app: {
-        getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
-        loadConversationHistory,
-        onEvent: vi.fn((listener) => {
-          listeners.push(listener);
-          return () => undefined;
-        }),
-      } satisfies Partial<AppApi>,
-    });
-    const state = useAppState();
-    await state.loadSnapshot();
-    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalled());
-    loadConversationHistory.mockClear();
-
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationSnapshotChanged',
-      payload: { revision: 1, snapshot: codexConversationSnapshot() },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt: '2026-09-06T00:00:02.000Z',
-          origin: 'notification',
-          type: 'conversation.activityChanged',
-          conversationId: 'thread-other',
-          payload: { threadStatus: null, busy: true, error: null },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
-
-    expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
@@ -1616,7 +1556,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:05.000Z',
     });
 
-    expect(state.activeClaudeConversationSnapshot.value).toMatchObject({
+    expect(state.activeConversationPresentation.value).toMatchObject({
       activeTurnId: 'turn-1',
       busy: true,
       messages: [
@@ -1676,7 +1616,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:02.000Z',
     });
 
-    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
     expect(loadConversationHistory).not.toHaveBeenCalled();
 
     listeners[0]?.({
@@ -1698,7 +1638,7 @@ describe('useAppState', () => {
       occurredAt: '2026-09-06T00:00:03.000Z',
     });
 
-    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 });

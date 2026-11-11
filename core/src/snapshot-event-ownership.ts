@@ -6,6 +6,8 @@ export const snapshotEventOwnership = {
   'cursor.conversationSnapshotChanged': 'renderer',
   'cursor.conversationEventReceived': 'renderer',
   'conversation.shareChanged': 'renderer',
+  'conversation.sessionSnapshot': 'renderer',
+  'conversation.sessionPatch': 'renderer',
   'antigravity.conversationSnapshotChanged': 'renderer',
   'antigravity.conversationEventReceived': 'renderer',
   'provider.authenticationChanged': 'renderer',

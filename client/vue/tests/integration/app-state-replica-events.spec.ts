@@ -28,8 +28,8 @@ describe('useAppState', () => {
     receive({ ...identity, seq: 2, type: 'cursor.conversationEventReceived', payload: { revision: 2, event: { ...eventIdentity, type: 'turn.started', payload: { turn: { id: 'turn' } } } } });
     receive({ ...identity, seq: 3, type: 'cursor.conversationEventReceived', payload: { revision: 3, event: { ...eventIdentity, type: 'message.upsert', payload: { message: { agentId: agent.id, id: 'answer', turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt, parts: [{ type: 'text', text: 'Native Cursor reply' }] } } } } });
     expect(state.agentConversationFor(agent.id)?.conversation?.messages[0]?.parts).toEqual([{ type: 'text', text: 'Native Cursor reply' }]);
-    expect(state.activeCursorConversationSnapshot.value?.messages).toBe(state.agentConversationFor(agent.id)?.conversation?.messages);
-    expect(state.activeCursorConversationSnapshot.value?.activeTurnId).toBe('turn');
+    expect(state.activeConversationPresentation.value?.messages).toStrictEqual(state.agentConversationFor(agent.id)?.conversation?.messages);
+    expect(state.activeConversationPresentation.value?.activeTurnId).toBe('turn');
     expect(state.agentConversationFor(agent.id)?.conversation?.latestTurnId).toBe('turn');
     expect(state.snapshot.value).toBe(before);
   });
@@ -512,6 +512,8 @@ describe('useAppState', () => {
       'conversation.historyLoadFailed',
       'conversation.modeUpdated',
       'conversation.shareChanged',
+      'conversation.sessionSnapshot',
+      'conversation.sessionPatch',
     ].sort());
 
     listeners[0]?.({

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, shallowReactive } from 'vue';
+import { conversationFromSources, type NativeFixtureSources } from '../../../tests/support/session-conversation-fixtures';
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
@@ -22,7 +23,8 @@ it('renders the Antigravity replica, denies a native approval, and keeps unsuppo
   replica.apply({ ...identity, type: 'request.created', payload: { request: { id: 'permission', kind: 'confirm_tool', payload: { confirmation: {
     integrationId: 'antigravity', integrationName: 'Antigravity', toolName: 'Edit', summary: 'Edit example.ts?', argumentsPreview: 'change', allowAlways: false, allowConversation: false,
   } } } } });
-  const view = shallowReactive<AgentConversationView>({
+  const view = shallowReactive<AgentConversationView & NativeFixtureSources>({
+      get conversation() { return conversationFromSources(this.agent, this); },
     agent, codexSnapshot: null, claudeSnapshot: null, antigravitySnapshot: replica.getSnapshot(),
     composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
     composerState: { text: 'Keep my draft', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: antigravityProviderCapabilities,

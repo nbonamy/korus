@@ -1,5 +1,5 @@
 import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
-import { approvalAgentRequest, requestFromClientRequest } from '@korus-dev/multi-agent-sdk/contracts';
+import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { paneMessages } from '../conversation-presentation/pane-messages';
@@ -107,13 +107,9 @@ export function agentConversationState(view: () => AgentConversationView, extens
     },
     thread: {
       get requests() {
-        const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.();
-        // Transitional: native approvals and client requests become the harness's neutral requests until the browser reads session state.
-        return [...(preview ? [...approvals, preview] : approvals).map(approval => approvalAgentRequest(approval as never)),
-          ...(provider()?.clientRequests ?? []).map(request => ({
-            ...requestFromClientRequest(request as never, { conversationId: request.conversationId ?? '', ...(request.turnId ? { turnId: request.turnId } : {}) }),
-            ...(request.itemId ? { itemId: request.itemId } : {}),
-          }))];
+        const preview = extensions.previewApproval?.();
+        const requests = provider()?.requests ?? view().approvals.map(approval => approvalAgentRequest(approval as never));
+        return preview ? [...requests, approvalAgentRequest(preview as never)] : requests;
       },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
       get goal() { return provider()?.goal ?? view().agent.goal ?? null; },

@@ -5,7 +5,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { ConversationPaneState, NativeAttachment, NativeRendererApi } from '@korus-dev/agent-ui-sdk';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
-import { projectCodexConversation } from '../../provider-conversation-bindings';
+import { nativePresentation } from '../../../tests/support/session-conversation-fixtures';
 import { codexConversationSnapshot } from '../../../tests/support/codex-conversation-fixtures';
 import { resolveConversationControllerValue } from '../../../tests/support/app-shell-test-harness';
 
@@ -58,14 +58,14 @@ describe('agentConversationState identity', () => {
     const agent = { ...createInitialSnapshot().agents[0]!, pendingPrompts: [pendingPrompt] };
     const previous = { id: 'old-injection', role: 'user' as const, status: 'complete' as const, createdAt: '2026-11-08T10:00:00.000Z', parts: [{ type: 'text' as const, text }] };
     const native = codexConversationSnapshot([previous]);
-    const view = { agent, conversation: projectCodexConversation(native, agent), history: { hydrating: true } } as unknown as AgentConversationView;
+    const view = { agent, conversation: nativePresentation({ provider: 'codex', snapshot: native }, agent), history: { hydrating: true } } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);
     expect(state.identity.messages).toHaveLength(2);
     expect(state.identity.messages.at(-1)).toMatchObject({ id: pendingPrompt.id, role: 'user', parts: [{ type: 'text', text }] });
     expect(state.identity.busy).toBe(true);
     expect(state.history!.loading).toBe(false);
     native.messages = [previous, { ...previous, id: 'accepted-injection', createdAt }];
-    view.conversation = projectCodexConversation(native, agent);
+    view.conversation = nativePresentation({ provider: 'codex', snapshot: native }, agent);
     expect(state.identity.messages).toHaveLength(2);
     expect(state.identity.messages.at(-1)!.id).toBe('accepted-injection');
     agent.pendingPrompts = [];
@@ -83,7 +83,7 @@ describe('agentConversationState identity', () => {
   it('uses native loaded model and permissions instead of stored defaults, with pending edits taking precedence', () => {
     const agent = { ...createInitialSnapshot().agents[0]!, providerDefaults: { kind: 'codex' as const, model: 'saved', approvalPreset: 'full-access' as const } };
     const native = codexConversationSnapshot([], { approvalPreset: 'ask-for-approval', selectedModelId: 'native', selectedReasoningEffort: 'low', selectedServiceTier: 'fast' });
-    const view = { agent, conversation: projectCodexConversation(native, agent),
+    const view = { agent, conversation: nativePresentation({ provider: 'codex', snapshot: native }, agent),
       capabilities: { approvals: true, approvalPresets: ['ask-for-approval', 'full-access'] },
       composer: { selectedModelId: 'saved', selectedReasoningEffort: 'high', selectedServiceTier: null, pendingSelection: null },
     } as unknown as AgentConversationView;
@@ -100,7 +100,7 @@ describe('agentConversationState identity', () => {
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
     const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', providerSession: { kind: 'codex' as const, threadId: 'restored' } };
     const view = { agent,
-      conversation: projectCodexConversation(codexConversationSnapshot([], { activeConversationId: 'restored', historyLoading: false }), agent),
+      conversation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([], { activeConversationId: 'restored', historyLoading: false }) }, agent),
       history: { hydrating: true } } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);
     expect(state.history!.loading).toBe(true);

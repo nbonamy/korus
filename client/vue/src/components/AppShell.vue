@@ -659,7 +659,7 @@
 </template>
 
 <script setup lang="ts">
-import { conversationForView, conversationPlanForAgent, legacyConversationPresentation, type ConversationPresentation } from '../provider-conversation-bindings';
+import { conversationForView, conversationPlanForAgent, type ConversationPresentation } from '../provider-conversation-bindings';
 import type { PaneMessage } from '../conversation-presentation/pane-messages';
 import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
@@ -679,7 +679,7 @@ import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import type { HarnessProvider, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -776,7 +776,6 @@ import {
 } from '@korus-dev/agent-ui-sdk';
 import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import { type ConversationMessage } from '@korus-dev/multi-agent-sdk';
-import { type CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {
@@ -832,10 +831,6 @@ const props = withDefaults(defineProps<{
   providerSkills?: ProviderSkillSummary[];
   providerCapabilities?: ProviderCapabilities;
   conversationPresentation?: ConversationPresentation | null;
-  codexConversationSnapshot?: CodexConversationSnapshot | null;
-  claudeConversationSnapshot?: ClaudeConversationSnapshot | null;
-  cursorConversationSnapshot?: import('@workspace/core/contracts/cursor-conversation').CursorConversationSnapshot | null;
-  antigravityConversationSnapshot?: import('@workspace/core/contracts/antigravity-conversation').AntigravityConversationSnapshot | null;
   modelCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   skillCatalogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   selectedModelId?: string | null;
@@ -2039,7 +2034,7 @@ function conversationViewFor(agentId: string): AgentConversationView | null {
   const agent = currentAgent.value;
   if (!agent || agent.id !== agentId) return null;
   return {
-    agent, conversation: props.conversationPresentation !== undefined ? props.conversationPresentation : legacyConversationPresentation(agent, props),
+    agent, conversation: props.conversationPresentation ?? null,
     composerState: props.composerState, attachments: props.composerAttachments,
     capabilities: props.providerCapabilities, approvals: props.approvals, queuedPrompts: props.queuedPrompts.map(prompt => ({ ...prompt, agentId, text: prompt.text, createdAt: '' })),
     sending: props.isSending, answeredClientRequestIds: props.answeredClientRequestIds,

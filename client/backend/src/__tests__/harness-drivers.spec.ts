@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { createDefaultProviderDrivers } from '../driver-rpc';
 import { createClaudeDriver } from '../harness-drivers';
 import { antigravityGenerationPrompt, sessionHandoff } from '../agents/prompts';
@@ -66,6 +67,35 @@ describe('Korus provider drivers over the SDK Harness', () => {
     const cursorAgent = { ...(agent as object), provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' } } as never;
     await expect(cursor.driver.forkWorktreeConversation!(cursorAgent, { ...(cursorAgent as object), id: 'worker', folder: '/repo-worktree' } as never)).resolves.toBeNull();
     expect(cursor.script.calls('forkConversation')).toStrictEqual([]);
+  });
+
+  it('publishes the conversation as neutral session state: a snapshot to start from, then patches', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const seen: Array<{ type: string; agentId?: string; payload?: unknown }> = [];
+    driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
+    await driver.loadConversation!(agent);
+    script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'Release' } } as never);
+    expect(seen.map(event => event.type)).toStrictEqual(['conversation.sessionSnapshot', 'conversation.sessionPatch']);
+    expect(seen[0]).toMatchObject({ agentId: 'agent-a', provider: 'codex', payload: { conversation: 's', snapshot: { revision: 0 } } });
+    expect(seen[1]).toMatchObject({ payload: { conversation: 's', patch: { revision: 1, ops: [{ op: 'set', key: 'title', value: 'Release' }] } } });
+    seen.length = 0;
+    await driver.loadConversation!(agent);
+    expect(seen).toMatchObject([{ type: 'conversation.sessionSnapshot', payload: { snapshot: { revision: 1, state: { title: 'Release' } } } }]);
+  });
+
+  it('reloads a conversation whose provider stream broke, and hands readers the repaired state', async () => {
+    const { driver, script } = scriptedDriver('cursor');
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    await driver.loadConversation!(agent);
+    script.emit({ type: 'cursor.conversationSnapshotChanged', agentId: 'agent-a', provider: 'cursor', providerSessionId: 's', payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-a', 's') } } as never);
+    const loads = script.calls('loadConversation').length;
+    const seen: string[] = [];
+    driver.onEvent(event => seen.push(event.type));
+    // A native event that skips a revision cannot be applied: the provider stream must be reloaded.
+    script.emit({ type: 'cursor.conversationEventReceived', agentId: 'agent-a', provider: 'cursor', providerSessionId: 's', payload: { revision: 3, event: {} } } as never);
+    await vi.waitFor(() => expect(script.calls('loadConversation')).toHaveLength(loads + 1));
+    await vi.waitFor(() => expect(seen.at(-1)).toBe('conversation.sessionSnapshot'));
   });
 
   it('publishes a scoped run as its agent, unless the run is silent', async () => {

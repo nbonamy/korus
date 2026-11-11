@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { nativePresentation } from '../support/session-conversation-fixtures';
 import type {
   NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
@@ -1108,9 +1109,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
-        ]),
+        ]) }),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1166,9 +1167,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('message-source-link', 'assistant', 'Open [main](src/main.ts).'),
-        ]),
+        ]) }),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1336,14 +1337,14 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('message-preview-links', 'assistant', [
             'Open [relative](README.md:40),',
             '[line URL](file:///Users/nbonamy/src/id8/README.md:40:2),',
             '[encoded URL](file:///Users/nbonamy/src/id8/src/file%20name.ts),',
             'and [external](file:///Users/nbonamy/dotfiles/.agents/skills/writing-for-agents/SKILL.md).',
           ].join(' ')),
-        ]),
+        ]) }),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1390,9 +1391,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]),
+        ]) }),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1424,9 +1425,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]),
+        ]) }),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1654,11 +1655,11 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([planProgressMessage], {
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([planProgressMessage], {
           activeTurnId: 'turn-plan',
           turnIds: ['turn-plan'],
           busy: true,
-        }),
+        }) }),
         isLoading: false,
         isSending: true,
         planMode: true,

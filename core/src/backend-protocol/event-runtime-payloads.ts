@@ -417,6 +417,21 @@ export const runtimePayloadValidators = {
     expectNumber(value.revision, `${path}.revision`);
     if (!isAntigravityEvent(value.event)) throw new Error('Invalid Antigravity conversation event.');
   },
+  'conversation.sessionSnapshot': (value, path) => {
+    expectRecord(value, path);
+    expectNullable(value.conversation, `${path}.conversation`, expectString);
+    expectRecord(value.snapshot, `${path}.snapshot`);
+    if (!Number.isSafeInteger(value.snapshot.revision) || Number(value.snapshot.revision) < 0) throw new Error('Invalid conversation session revision.');
+    expectRecord(value.snapshot.state, `${path}.snapshot.state`);
+    expectArray(value.snapshot.state.messages, `${path}.snapshot.state.messages`, expectRecord);
+  },
+  'conversation.sessionPatch': (value, path) => {
+    expectRecord(value, path);
+    expectNullable(value.conversation, `${path}.conversation`, expectString);
+    expectRecord(value.patch, `${path}.patch`);
+    if (!Number.isSafeInteger(value.patch.revision) || Number(value.patch.revision) < 1) throw new Error('Invalid conversation session revision.');
+    expectArray(value.patch.ops, `${path}.patch.ops`, expectRecord);
+  },
   'provider.authenticationChanged': (value, path) => {
     if (!isProviderAuthentication(value)) {
       throw new Error(`Invalid ${product.name} backend event at ${path}: expected provider authentication.`);

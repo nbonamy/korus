@@ -50,6 +50,8 @@ const rendererEventTypes = [
   'cursor.conversationSnapshotChanged',
   'cursor.conversationEventReceived',
   'conversation.shareChanged',
+  'conversation.sessionSnapshot',
+  'conversation.sessionPatch',
   'antigravity.conversationSnapshotChanged',
   'antigravity.conversationEventReceived',
   'provider.authenticationChanged',

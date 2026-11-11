@@ -12,6 +12,7 @@ import AppShell from '../../src/components/AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent, AgentFilePreviewResult, AgentFileSearchItem, AppSnapshot, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ClaudeConversationSnapshot, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateTeamInput, AutomationLocation, OpenInApplication, OpenInApplicationCatalog, ReasoningEffort, RendererMessage, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput, UpdateAutomationInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
+import { conversationFromSources } from './session-conversation-fixtures';
 import type { CreateMissionInput, DeleteMissionInput, Mission } from '@workspace/core/missions';
 import type { MissionExecutionInput } from '@workspace/core/mission-execution';
 
@@ -134,6 +135,8 @@ export function mountShell(overrides: Partial<{
   codexConversationSnapshot: CodexConversationSnapshot | null;
   claudeConversationSnapshot: ClaudeConversationSnapshot | null;
   cursorConversationSnapshot: CursorConversationSnapshot | null;
+  /** Requests the harness reports as created, which no native snapshot carries. */
+  conversationRequests: import('@korus-dev/multi-agent-sdk').AgentRequest[];
   chooseAgentFolder: () => Promise<string | null>;
   chooseSourceFolder: () => Promise<string | null>;
   cloneSourceRepository: (input: import('@workspace/core/contracts').CloneSourceRepositoryInput) => Promise<SourceRepository>;
@@ -229,9 +232,7 @@ export function mountShell(overrides: Partial<{
       selectedModelId: overrides.selectedModelId ?? null,
       selectedReasoningEffort: overrides.selectedReasoningEffort ?? null,
       selectedServiceTier: overrides.selectedServiceTier ?? null,
-      codexConversationSnapshot: overrides.codexConversationSnapshot ?? null,
-      claudeConversationSnapshot: overrides.claudeConversationSnapshot ?? null,
-      cursorConversationSnapshot: overrides.cursorConversationSnapshot ?? null,
+      ...nativeConversation(snapshot, overrides),
       isLoading: false,
       isConversationLoadFailed: overrides.isConversationLoadFailed ?? false,
       retryAgentHistory: overrides.retryAgentHistory ?? vi.fn().mockResolvedValue(undefined),
@@ -383,4 +384,11 @@ export function workItemAssignment(item: WorkItem, agentId: string) {
     policy: 'review' as const,
     status: 'inProgress' as const,
   };
+}
+
+/** The active agent's conversation from the native fixtures a test supplies, as the harness would report it. */
+function nativeConversation(snapshot: AppSnapshot, overrides: { codexConversationSnapshot?: CodexConversationSnapshot | null; claudeConversationSnapshot?: ClaudeConversationSnapshot | null; cursorConversationSnapshot?: CursorConversationSnapshot | null; conversationRequests?: import('@korus-dev/multi-agent-sdk').AgentRequest[] }) {
+  const agent = snapshot.agents.find(candidate => candidate.id === snapshot.activeAgentId);
+  if (!agent || !(overrides.codexConversationSnapshot || overrides.claudeConversationSnapshot || overrides.cursorConversationSnapshot)) return {};
+  return { conversationPresentation: conversationFromSources(agent, { codexSnapshot: overrides.codexConversationSnapshot, claudeSnapshot: overrides.claudeConversationSnapshot, cursorSnapshot: overrides.cursorConversationSnapshot, requests: overrides.conversationRequests }) };
 }

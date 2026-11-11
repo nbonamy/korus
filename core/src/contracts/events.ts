@@ -8,6 +8,7 @@ import type {
   WorkBacklogAssignment, WorkBacklogAssignmentPolicy, WorkBacklogAssignmentStatus
 } from '../contracts';
 import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
+import type { SessionPatch, SessionSnapshot } from '@korus-dev/multi-agent-sdk';
 import type { CodexWireConversationEvent as CodexConversationEvent } from '../codex-event-wire';
 import type { MissionImplementationStartProgress } from '../mission-execution';
 import type { CursorConversationEvent, CursorConversationSnapshot } from './cursor-conversation';
@@ -68,6 +69,9 @@ type AgentPromptRetryScheduledPayload = {
 type AppEvent =
   | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; provider: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
   | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; provider: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
+  /** An agent's conversation as neutral session state: a snapshot to start from, then revisioned patches. `conversation` names the provider conversation it belongs to. */
+  | EventWith<{ type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; snapshot: SessionSnapshot } }>
+  | EventWith<{ type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; patch: SessionPatch } }>
   | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
   | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; provider: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
   | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; provider: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>

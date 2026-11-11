@@ -940,10 +940,10 @@ describe('useAppState', () => {
       listeners[0]?.({ seq: index + 1, occurredAt: '', agentId: agent.id, provider: 'antigravity', providerSessionId: native.sessionId,
         type: 'antigravity.conversationSnapshotChanged', payload: { revision: 1, snapshot: native } });
     }
-    expect(state.activeAntigravityConversationSnapshot.value?.messages).toHaveLength(1);
+    expect(state.activeConversationPresentation.value?.messages).toHaveLength(1);
     await state.restartAgent(first.id);
     expect(state.activeAgent.value?.providerSession).toBeUndefined();
-    expect(state.activeAntigravityConversationSnapshot.value).toBeNull();
+    expect(state.activeConversationPresentation.value).toBeNull();
     expect(state.agentConversationFor(second.id)?.conversation?.messages).toHaveLength(1);
   });
 
@@ -965,12 +965,12 @@ describe('useAppState', () => {
     listeners[0]?.({ seq: 1, occurredAt: '', agentId: agent.id, provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'claude-session-1' }) } });
-    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value).not.toBeNull();
 
     await state.restartAgent(agent.id);
 
     expect(state.activeAgent.value?.providerSession).toBeUndefined();
-    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
+    expect(state.activeConversationPresentation.value).toBeNull();
     expect(state.agentConversationFor(agent.id)?.conversation).toBeNull();
   });
 

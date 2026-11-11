@@ -107,6 +107,10 @@ function createFixtures(): EventFixtures {
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
+    'conversation.sessionSnapshot': { ...base, type: 'conversation.sessionSnapshot', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1',
+      snapshot: { revision: 2, state: { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null } } } },
+    'conversation.sessionPatch': { ...base, type: 'conversation.sessionPatch', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1',
+      patch: { revision: 3, ops: [{ op: 'set', key: 'busy', value: true }] } } },
     'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: {
       active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'ready',
       proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],

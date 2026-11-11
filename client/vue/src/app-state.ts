@@ -1,13 +1,9 @@
 import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
 import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
-import { codexEventFromWire } from '@workspace/core/codex-event-wire';
-import { bindConversation, projectCodexConversation, projectClaudeConversation, projectCursorConversation, projectAntigravityConversation, type NativeConversationSources, type ConversationPresentation } from './provider-conversation-bindings';
-import { createCursorConversationState } from './cursor-conversation-state';
+import { projectSessionConversation, type ConversationPresentation } from './provider-conversation-bindings';
+import { createSessionConversationState } from './session-conversation-state';
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
-import { isConversationFrame } from '@workspace/core/companion-protocol';
-import { createAntigravityConversationState } from './antigravity-conversation-state';
-import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 
 import { translate } from './i18n';
 import { localizedErrorMessage } from './i18n/errors';
@@ -27,16 +23,6 @@ import { defaultProviderCapabilities } from '@workspace/core/provider-capabiliti
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-sdk';
-import {
-  createCodexConversationReplica,
-  type CodexConversationReplica,
-} from '@korus-dev/multi-agent-sdk/contracts';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
-import {
-  createClaudeConversationReplica,
-  type ClaudeConversationReplica,
-} from '@workspace/core/claude-conversation-replica';
-import type { ClaudeConversationSnapshot } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
 import { appText } from '@workspace/core/app-text';
@@ -92,26 +78,9 @@ const missionImplementationStartProgress = ref<MissionImplementationStartProgres
 /** An agent asked to open a Mission. The sequence makes repeated requests for one Mission distinct. */
 const missionFocusRequest = ref<{ missionId: string; sequence: number } | null>(null);
 let missionFocusSequence = 0;
-// Frames are replaced, never mutated, so shallow refs spare the whole message tree (and the replica) deep reactive proxies.
-const codexConversationFramesByAgentId = shallowRef<Record<string, {
-  replica: CodexConversationReplica;
-  revision: number;
-  snapshot: CodexConversationSnapshot;
-  threadId: string;
-}>>({});
-const claudeConversationFramesByAgentId = shallowRef<Record<string, {
-  replica: ClaudeConversationReplica;
-  revision: number;
-  snapshot: ClaudeConversationSnapshot;
-}>>({});
 // One hydration at a time across providers. Pending identities coalesce repeated
 // repair signals while their last good provider frame remains visible.
 const conversationRecoveries = new Map<string, Promise<void>>();
-// Retained frames stay visible during recovery, but their revision fence may belong
-// to a previous owner process. Recovery marks the frame with this revision so the
-// next snapshot replaces it even when its own revision is lower, and no live event
-// can extend it before then. The state lives and dies with the frame.
-const AWAITING_RECOVERY_REVISION = Number.NEGATIVE_INFINITY;
 // A load that never settles must not hold the queue slot for every other pane.
 const CONVERSATION_RECOVERY_TIMEOUT_MS = 30_000;
 let conversationRecoveryTail = Promise.resolve();
@@ -135,32 +104,13 @@ function recoverConversation(agentId: string): Promise<void> {
   conversationRecoveryTail = request;
   return request;
 }
-const cursorConversations = createCursorConversationState(async agentId => {
-  await recoverConversation(agentId);
-});
-const antigravityConversations = createAntigravityConversationState(async agentId => {
-  await recoverConversation(agentId);
-});
-const conversationBindings = {
-  codex: bindConversation(agent => {
-    const session = agent.providerSession, frame = codexConversationFramesByAgentId.value[agent.id];
-    return session?.kind === 'codex' && frame?.threadId === session.threadId ? frame.snapshot : null;
-  }, projectCodexConversation, agent => {
-    const session = agent.providerSession, frame = codexConversationFramesByAgentId.value[agent.id];
-    return session?.kind === 'codex' && (frame?.threadId !== session.threadId || frame.revision === AWAITING_RECOVERY_REVISION);
-  }),
-  claude: bindConversation(agent => {
-    const frame = claudeConversationFramesByAgentId.value[agent.id];
-    const sessionId = agent.providerSession?.kind === 'claude' ? agent.providerSession.sessionId : null;
-    return frame && (!sessionId || frame.snapshot.sessionId === sessionId) ? frame.snapshot : null;
-  }, projectClaudeConversation, agent => {
-    const session = agent.providerSession, frame = claudeConversationFramesByAgentId.value[agent.id];
-    return session?.kind === 'claude' && (frame?.snapshot.sessionId !== session.sessionId || frame.revision === AWAITING_RECOVERY_REVISION);
-  }),
-  cursor: bindConversation(cursorConversations.select, projectCursorConversation, agent => !cursorConversations.select(agent)),
-  antigravity: bindConversation(antigravityConversations.select, projectAntigravityConversation,
-    agent => !antigravityConversations.select(agent) || antigravityConversations.awaitingRecovery(agent.id)),
+const sessionConversations = createSessionConversationState(recoverConversation);
+const conversationBinding = {
+  select: (agent: Agent) => projectSessionConversation(sessionConversations.select(agent), agent),
+  needsHistory: (agent: Agent) => sessionConversations.needsHistory(agent),
 };
+/** Both carry provider revisions, which still apply when the global event sequence already covers them. */
+const isConversationFrame = (event: { type: string }) => event.type === 'conversation.sessionSnapshot' || event.type === 'conversation.sessionPatch';
 let agentSelectionRequestId = 0;
 let unsubscribeMainEvents: (() => void) | null = null;
 let bufferedMainEvents: MainToRendererEvent[] | null = null;
@@ -271,7 +221,7 @@ const {
   statusFor: agentHistoryStatusFor,
 } = agentHistory;
 
-export type AgentConversationView = NativeConversationSources & {
+export type AgentConversationView = {
   agent: Agent;
   conversation?: ConversationPresentation | null;
   composer: AgentComposerConfiguration;
@@ -439,21 +389,12 @@ export function useAppState() {
 
   const activeProviderCapabilities = computed(() => providerCapabilitiesForAgent(activeAgent.value));
   const activeProviderCommands = computed<ProviderCommandSummary[]>(() => defaultProviderCommands(activeAgent.value?.provider ?? 'codex'));
-  const activeCodexConversationSnapshot = computed(() => {
-    const agent = activeAgent.value;
-    return agent?.provider === 'codex' ? conversationBindings.codex.selectNative(agent) : null;
-  });
-  const activeClaudeConversationSnapshot = computed(() => {
-    const agent = activeAgent.value;
-    return agent?.provider === 'claude' ? conversationBindings.claude.selectNative(agent) : null;
-  });
-
   function agentConversationFor(agentId: string): AgentConversationView | null {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
     if (!agent) return null;
     return {
       agent,
-      conversation: conversationBindings[agent.provider].select(agent),
+      conversation: conversationBinding.select(agent),
       composer: configurationForAgent(agentId),
       composerState: composerStatesByAgentId.value[agentId] ?? emptyComposerState(),
       attachments: composerAttachmentsByAgentId.value[agentId] ?? [],
@@ -570,10 +511,7 @@ export function useAppState() {
 
     resetCatalogStateIfSourceChanged(appApi);
     resetUnreadAgentIds();
-    codexConversationFramesByAgentId.value = {};
-    claudeConversationFramesByAgentId.value = {};
-    cursorConversations.reset();
-    antigravityConversations.reset();
+    sessionConversations.reset();
     conversationRecoveries.clear();
     agentCreationProgresses.value = [];
     backgroundedAgentCreationIds.clear();
@@ -628,27 +566,15 @@ export function useAppState() {
   // whose earlier recovery completed gets one catch-up load: its owner may have
   // restarted since. Callers never wait for provider loads.
   synchronizeRendererSnapshotRequest = async () => {
-    const cachedCodexAgentIds = Object.keys(codexConversationFramesByAgentId.value);
-    const cachedClaudeAgentIds = Object.keys(claudeConversationFramesByAgentId.value);
     await synchronizeRendererSnapshot(true);
     // The first provider reset can itself be dropped under transport pressure;
     // an opened conversation without any cached frame still needs a replay.
     const activeAgentId = snapshot.value.activeAgentId;
-    if (activeAgentId && agentNeedsHistory(activeAgentId)
-      && !cachedCodexAgentIds.includes(activeAgentId) && !cachedClaudeAgentIds.includes(activeAgentId)) {
-      void recoverConversation(activeAgentId);
-    }
+    if (activeAgentId && agentNeedsHistory(activeAgentId)) void recoverConversation(activeAgentId);
     // App snapshots cannot repair provider events skipped by the global
     // sequence fence. Refresh every cached pane from its conversation owner,
     // including split panes and inactive agents, before trusting those frames.
-    for (const agentId of cachedCodexAgentIds) {
-      invalidateAndRecoverCodexConversation(agentId);
-    }
-    for (const agentId of cachedClaudeAgentIds) {
-      invalidateAndRecoverClaudeConversation(agentId);
-    }
-    cursorConversations.recoverAll();
-    antigravityConversations.recoverAll();
+    sessionConversations.recoverAll();
   };
 
   async function performRendererSynchronization(preserveActiveSelection: boolean): Promise<void> {
@@ -1665,8 +1591,7 @@ export function useAppState() {
     }
 
     adoptBackgroundSnapshot(await appApi.restartAgent(agentId));
-    const { [agentId]: _discarded, ...claudeFrames } = claudeConversationFramesByAgentId.value;
-    claudeConversationFramesByAgentId.value = claudeFrames;
+    sessionConversations.discard(agentId);
     resetAgentHistory(agentId);
   }
 
@@ -1807,12 +1732,8 @@ export function useAppState() {
     answeredClientRequestIds,
     providerModels,
     activeProviderCommands,
-    activeCodexConversationSnapshot,
-    activeClaudeConversationSnapshot,
-    activeConversationPresentation: computed(() => activeAgent.value ? conversationBindings[activeAgent.value.provider].select(activeAgent.value) : null),
-    activeCursorConversationSnapshot: computed(() => activeAgent.value ? cursorConversations.select(activeAgent.value) : null),
+    activeConversationPresentation: computed(() => activeAgent.value ? conversationBinding.select(activeAgent.value) : null),
     agentConversationFor,
-    activeAntigravityConversationSnapshot: computed(() => activeAgent.value ? antigravityConversations.select(activeAgent.value) : null),
     prepareAgentConversation,
     activeProviderCapabilities,
     modelCatalogStatus,
@@ -2251,107 +2172,25 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
     case 'conversation.modeUpdated':
       syncComposerStateFromMainEvent(event);
       return;
-    case 'codex.conversationSnapshotChanged': {
-      const applyStarted = performance.now();
-      const current = codexConversationFramesByAgentId.value[event.agentId];
-      if (
-        current?.threadId === event.threadId
-        && current.revision >= event.payload.revision
-      ) return;
-      codexConversationFramesByAgentId.value = {
-        ...codexConversationFramesByAgentId.value,
-        [event.agentId]: {
-          replica: createCodexConversationReplica(event.payload.snapshot),
-          revision: event.payload.revision,
-          snapshot: event.payload.snapshot,
-          threadId: event.threadId,
-        },
-      };
-      if (current?.threadId !== event.threadId || current.snapshot.planMode !== event.payload.snapshot.planMode) {
-        syncComposerPlanMode(event.agentId, event.payload.snapshot.planMode);
-      }
-      if (traceConversationLoad) console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage: 'frame.applied', agentId: event.agentId,
-        threadId: event.threadId, revision: event.payload.revision, seq: event.seq, messages: event.payload.snapshot.messages.length,
-        rendererId: performance.timeOrigin, at: performance.timeOrigin + performance.now(), durationMs: performance.now() - applyStarted }));
+    case 'conversation.sessionSnapshot':
+    case 'conversation.sessionPatch': {
+      const before = sessionConversations.planModeOf(event.agentId);
+      const planMode = sessionConversations.receive(event)?.planMode;
+      // The provider's plan mode reaches the composer when it changes, so a lost mode notification is
+      // repaired by the next snapshot, while an unchanged one never erases an unsent manual toggle.
+      if (planMode !== undefined && planMode !== before) syncComposerPlanMode(event.agentId, planMode);
       return;
     }
-    case 'codex.conversationEventReceived': {
-      const current = codexConversationFramesByAgentId.value[event.agentId];
-      if (
-        current?.threadId !== event.threadId
-        || event.payload.revision !== current.revision + 1
-      ) {
-        if (!current || event.payload.revision > current.revision) {
-          invalidateAndRecoverCodexConversation(event.agentId);
-        }
-        return;
-      }
-      let nextSnapshot: CodexConversationSnapshot;
-      try {
-        nextSnapshot = current.replica.apply(codexEventFromWire(event.payload.event));
-      } catch {
-        invalidateAndRecoverCodexConversation(event.agentId);
-        return;
-      }
-      codexConversationFramesByAgentId.value = {
-        ...codexConversationFramesByAgentId.value,
-        [event.agentId]: {
-          ...current,
-          revision: event.payload.revision,
-          snapshot: nextSnapshot,
-        },
-      };
-      if (event.payload.event.type === 'conversation.settingsChanged') {
-        syncComposerPlanMode(event.agentId, nextSnapshot.planMode);
-      }
-      return;
-    }
+    // Native frames still travel for the companion and guest sharing; the browser reads session state.
+    case 'codex.conversationSnapshotChanged':
+    case 'codex.conversationEventReceived':
     case 'cursor.conversationSnapshotChanged':
     case 'cursor.conversationEventReceived':
-      cursorConversations.receive(event);
-      return;
     case 'antigravity.conversationSnapshotChanged':
     case 'antigravity.conversationEventReceived':
-      antigravityConversations.receive(event);
+    case 'claude.conversationSnapshotChanged':
+    case 'claude.conversationEventReceived':
       return;
-    case 'claude.conversationSnapshotChanged': {
-      const current = claudeConversationFramesByAgentId.value[event.agentId];
-      if (current && current.revision >= event.payload.revision) return;
-      claudeConversationFramesByAgentId.value = {
-        ...claudeConversationFramesByAgentId.value,
-        [event.agentId]: {
-          replica: createClaudeConversationReplica(event.payload.snapshot),
-          revision: event.payload.revision,
-          snapshot: event.payload.snapshot,
-        },
-      };
-      return;
-    }
-    case 'claude.conversationEventReceived': {
-      const current = claudeConversationFramesByAgentId.value[event.agentId];
-      if (!current || event.payload.revision !== current.revision + 1) {
-        if (!current || event.payload.revision > current.revision) {
-          invalidateAndRecoverClaudeConversation(event.agentId);
-        }
-        return;
-      }
-      let nextSnapshot: ClaudeConversationSnapshot;
-      try {
-        nextSnapshot = current.replica.apply(event.payload.event);
-      } catch {
-        invalidateAndRecoverClaudeConversation(event.agentId);
-        return;
-      }
-      claudeConversationFramesByAgentId.value = {
-        ...claudeConversationFramesByAgentId.value,
-        [event.agentId]: {
-          ...current,
-          revision: event.payload.revision,
-          snapshot: nextSnapshot,
-        },
-      };
-      return;
-    }
     case 'provider.authenticationChanged':
       // The owning host publishes connection state through snapshot.updated.
       return;
@@ -2381,22 +2220,6 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       void exhaustive;
     }
   }
-}
-
-function invalidateAndRecoverCodexConversation(agentId: string): void {
-  const frame = codexConversationFramesByAgentId.value[agentId];
-  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
-    codexConversationFramesByAgentId.value = { ...codexConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
-  }
-  void recoverConversation(agentId);
-}
-
-function invalidateAndRecoverClaudeConversation(agentId: string): void {
-  const frame = claudeConversationFramesByAgentId.value[agentId];
-  if (frame && frame.revision !== AWAITING_RECOVERY_REVISION) {
-    claudeConversationFramesByAgentId.value = { ...claudeConversationFramesByAgentId.value, [agentId]: { ...frame, revision: AWAITING_RECOVERY_REVISION } };
-  }
-  void recoverConversation(agentId);
 }
 
 function showPlanReview(markdown: string): void {
@@ -2530,26 +2353,7 @@ function adoptNavigationSnapshot(nextSnapshot: AppSnapshot): void {
 }
 
 function pruneConversationFrames(): void {
-  const agentsById = new Map(snapshot.value.agents.map((agent) => [agent.id, agent]));
-  codexConversationFramesByAgentId.value = Object.fromEntries(
-    Object.entries(codexConversationFramesByAgentId.value).filter(([agentId, frame]) => {
-      const agent = agentsById.get(agentId);
-      return agent?.provider === 'codex'
-        && agent.providerSession?.kind === 'codex'
-        && agent.providerSession.threadId === frame.threadId;
-    }),
-  );
-  claudeConversationFramesByAgentId.value = Object.fromEntries(
-    Object.entries(claudeConversationFramesByAgentId.value).filter(([agentId, frame]) => {
-      const agent = agentsById.get(agentId);
-      if (agent?.provider !== 'claude') return false;
-      return agent.providerSession?.kind !== 'claude'
-        || frame.snapshot.sessionId === null
-        || frame.snapshot.sessionId === agent.providerSession.sessionId;
-    }),
-  );
-  cursorConversations.reconcile([...agentsById.values()]);
-  antigravityConversations.reconcile([...agentsById.values()]);
+  sessionConversations.reconcile(snapshot.value.agents);
 }
 
 function syncSidePanelFromMainEvent(event: Extract<RendererOnlySnapshotEvent, { type: 'client.markdownDisplayRequested' }>): void {
@@ -2582,7 +2386,7 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent?.providerSession) return false;
-  return conversationBindings[agent.provider].needsHistory(agent);
+  return conversationBinding.needsHistory(agent);
 }
 
 async function refreshTeamSelection(

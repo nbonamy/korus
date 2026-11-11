@@ -1,36 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { projectAntigravityConversation, projectClaudeConversation, projectCodexConversation, projectCursorConversation } from '../../conversation-presentation/presentation';
-import { emptyCursorSnapshot, emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
-import { claudeConversationSnapshot } from './claude-conversation-fixtures';
-import { codexConversationSnapshot as codex } from './codex-conversation-fixtures';
+import type { Message, SessionState } from '@korus-dev/multi-agent-sdk';
+import type { Agent } from '@workspace/core/contracts';
+import { presentSessionState } from '../../conversation-presentation/presentation';
+import { projectSessionConversation } from '../../provider-conversation-bindings';
 
-describe('native conversation presentation', () => {
-  it('handles absent snapshots and projects shared identity, requests and plans without changing native state', () => {
-    for (const project of [projectCodexConversation, projectClaudeConversation, projectCursorConversation, projectAntigravityConversation]) expect(project(null)).toBeNull();
-    const snapshot = codex([], { approvalPreset: 'ask-for-approval', selectedModelId: 'terra', selectedReasoningEffort: 'high', selectedServiceTier: 'fast', turnIds: ['last'], executionPlan: { turnId: 'last', steps: [{ step: 'Done', status: 'completed' }], explanation: 'Ready', markdown: 'Done', updatedAt: 'today' } });
-    const original = structuredClone(snapshot);
-    expect(projectCodexConversation(snapshot)).toMatchObject({ latestTurnId: 'last', clientRequests: [], approvals: [], goal: null, permission: 'ask-for-approval', selection: { model: 'terra', reasoningEffort: 'high', serviceTier: 'fast' }, plan: { kind: 'execution', status: 'completed', explanation: 'Ready' } });
-    expect(snapshot).toEqual(original);
-    expect(projectCodexConversation(codex([], { executionPlan: { ...snapshot.executionPlan!, steps: [] } }))?.plan?.status).toBe('inProgress');
-    expect(projectCodexConversation(codex())?.plan).toBeNull();
-    expect(projectClaudeConversation(claudeConversationSnapshot([], { turnIds: ['last'] }))?.latestTurnId).toBe('last');
+const state = (patch: Partial<SessionState> = {}): SessionState => ({
+  messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...patch,
+});
+const message = (id: string, parts: Message['parts']): Message => ({ id, agentId: 'a', role: 'assistant', status: 'complete', createdAt: '', parts });
+const agent = (patch: Partial<Agent> = {}) => ({ id: 'a', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' }, ...patch }) as Agent;
+
+describe('conversation presentation', () => {
+  it('shows the harness state as it is, with the latest turn', () => {
+    expect(presentSessionState(null)).toBeNull();
+    const turns = [{ id: 'first', status: 'completed' }, { id: 'last', status: 'inProgress' }] as SessionState['turns'];
+    const source = state({ turns, permission: 'ask-for-approval', selection: { model: 'terra', reasoningEffort: 'high' } });
+    const original = structuredClone(source);
+    expect(presentSessionState(source)).toMatchObject({ latestTurnId: 'last', permission: 'ask-for-approval', selection: { model: 'terra', reasoningEffort: 'high' }, requests: [] });
+    expect(source).toEqual(original);
+    expect(presentSessionState(state())?.latestTurnId).toBeNull();
   });
-  it('keeps Cursor native reasoning while presenting text and normalizing pending questions', () => {
-    const snapshot = emptyCursorSnapshot('a', 'session');
-    snapshot.messages = [{ id: 'mixed', agentId: 'a', role: 'assistant', createdAt: '', status: 'complete', parts: [{ type: 'reasoning', itemId: 'r', summary: 'Thought', summaryIndex: 0 }, { type: 'text', text: 'Answer' }] }, { id: 'reasoning', agentId: 'a', role: 'assistant', createdAt: '', status: 'complete', parts: [{ type: 'reasoning', itemId: 'r2', summary: 'Thought', summaryIndex: 0 }] }];
-    snapshot.clientRequests = [{ id: 'ask', kind: 'ask_user', payload: { request: { itemId: 'tool', questions: [] } } }];
-    const original = structuredClone(snapshot);
-    const presentation = projectCursorConversation(snapshot)!;
-    expect(presentation.messages).toHaveLength(1);
-    expect(presentation.messages[0]!.parts).toEqual([{ type: 'text', text: 'Answer' }]);
-    expect(presentation.clientRequests[0]).toMatchObject({ conversationId: 'session', turnId: '', itemId: 'tool', payload: { request: { delivery: 'tool', blocking: true } } });
-    expect(snapshot).toEqual(original);
-    expect(projectCursorConversation(emptyCursorSnapshot('a', 's'))?.latestTurnId).toBeNull();
+
+  it('keeps Cursor thoughts out of the pane and drops messages that only held thoughts', () => {
+    const messages = [
+      message('mixed', [{ type: 'reasoning', itemId: 'r', summary: 'Thought', summaryIndex: 0 }, { type: 'text', text: 'Answer' }]),
+      message('thought', [{ type: 'reasoning', itemId: 'r2', summary: 'Thought', summaryIndex: 0 }]),
+    ];
+    const cursor = projectSessionConversation(state({ messages }), agent({ provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' } }))!;
+    expect(cursor.messages.map(m => m.parts)).toStrictEqual([[{ type: 'text', text: 'Answer' }]]);
+    expect(projectSessionConversation(state({ messages }), agent())!.messages).toHaveLength(2);
   });
-  it('maps Antigravity confirmation requests without importing product policy', () => {
-    const snapshot = emptyAntigravitySnapshot('a', 's');
-    snapshot.activeTurnId = 'turn';
-    snapshot.clientRequests = [{ id: 'confirm', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'mcp', integrationName: 'Tools', toolName: 'write', summary: 'Write?', argumentsPreview: '{}', allowConversation: true, allowAlways: false } } }];
-    expect(projectAntigravityConversation(snapshot)?.clientRequests[0]).toMatchObject({ id: 'confirm', conversationId: 's', turnId: 'turn', itemId: 'confirm' });
+
+  it('leaves a plan under sidebar review out of the pane, for its own conversation and turn only', () => {
+    const request = { id: 'plan', kind: 'toolConfirmation', conversationId: 'thread', confirmation: { integrationId: 'x', integrationName: 'x', toolName: 'plan', summary: 'Plan', argumentsPreview: '', allowAlways: false } } as const;
+    const pending = { id: 'review', conversationId: 'thread', turnId: 'turn', requestId: 'plan', markdown: '# Plan', status: 'pending' } as const;
+    const source = state({ activeTurnId: 'turn', requests: [request] });
+    expect(projectSessionConversation(source, agent({ planReview: pending }))!.requests).toStrictEqual([]);
+    expect(projectSessionConversation(source, agent({ planReview: { ...pending, conversationId: 'other' } }))!.requests).toStrictEqual([request]);
+    expect(projectSessionConversation(source, agent({ planReview: { ...pending, turnId: 'earlier' } }))!.requests).toStrictEqual([request]);
   });
 });

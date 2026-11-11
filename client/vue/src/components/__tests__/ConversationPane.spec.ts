@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
+import { conversationFromSources, type NativeFixtureSources } from '../../../tests/support/session-conversation-fixtures';
 import {
   createConversationPaneController,
   type ComposerState,
@@ -98,7 +99,8 @@ describe('ConversationPane', () => {
     const owner = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
     const recent = { ...messages[1]!, id: 'recent' };
     const older = { ...messages[1]!, id: 'older', turnId: 'older-turn' };
-    const view = shallowReactive<AgentConversationView>({ agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+    const view = shallowReactive<AgentConversationView & NativeFixtureSources>({
+      get conversation() { return conversationFromSources(this.agent, this); }, agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, codexSnapshot: null,
       claudeSnapshot: claudeConversationSnapshot([recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } }),
       attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false, queuedPrompts: [],
@@ -131,7 +133,8 @@ describe('ConversationPane', () => {
     const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
     composer.skills = [{ name: 'imagegen', displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
       path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
-    const view = shallowReactive<AgentConversationView>({ agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+    const view = shallowReactive<AgentConversationView & NativeFixtureSources>({
+      get conversation() { return conversationFromSources(this.agent, this); }, agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
       codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
     const submit = vi.fn();

@@ -35,7 +35,7 @@ snapshot.providerConnections=[{provider:'claude',installed:true,connected:true,c
 const composer=createAgentComposerState({getSnapshot:()=>snapshot});
 const views=snapshot.agents.map(agent=>{
  agent.provider='claude';agent.providerDefaults={kind:'claude',permissionMode:'default'};
- return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:{agentId:agent.id,sessionId:'fixture-session',activeTurnId:null,turnIds:['fixture-turn'],turns:[],
+ return shallowReactive({agent,conversation:{latestTurnId:'fixture-turn',activeTurnId:null,turns:[],requests:[],goal:null,
  messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The **request** should be retried.\\n\\n'+Array.from({length:40},()=> 'More context before the selected passage.').join('\\n\\n')+'\\n\\nThe **request** should be retried.'}]}],
  answeredClientRequestIds:[],busy:false,historyLoading:false,historyState:{hasOlder:false,loadingOlder:false},contextUsage:null,plan:null,error:null},composer:composer.configurationForAgent(agent.id),
  composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeProviderCapabilities,

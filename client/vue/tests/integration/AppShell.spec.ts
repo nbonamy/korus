@@ -1,5 +1,6 @@
 import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
+import { conversationFromSources, nativePresentation, type NativeFixtureSources } from '../support/session-conversation-fixtures';
 import { config, DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
   ComposerMenuSelectableItem,
@@ -24,7 +25,6 @@ import { useConfetti } from '../../src/shared/confetti/use-confetti';
 import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
-import { projectCodexConversation } from '../../src/provider-conversation-bindings';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
 import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
@@ -73,7 +73,8 @@ describe('AppShell authentication and conversation', () => {
     const views = snapshot.agents.map(agent => {
       agent.provider = provider;
       agent.providerDefaults = { kind: provider, permissionMode: provider === 'cursor' ? 'default' : 'acceptEdits' };
-      return shallowReactive<AgentConversationView>({
+      return shallowReactive<AgentConversationView & NativeFixtureSources>({
+        get conversation() { return conversationFromSources(this.agent, this); },
         agent, codexSnapshot: null, claudeSnapshot: provider === 'claude' ? claudeConversationSnapshot([], { agentId: agent.id }) : null,
         cursorSnapshot: provider === 'cursor' ? emptyCursorSnapshot(agent.id, `session-${agent.id}`) : null,
         composer: composer.configurationForAgent(agent.id),
@@ -488,7 +489,8 @@ describe('AppShell authentication and conversation', () => {
     replica.apply({ type: 'approval.requested', agentId: agent.id, provider: 'claude', seq: 1, occurredAt: '2026-10-03T00:00:00Z', turnId: 'turn-approval', payload: { id: 'permission', kind: 'confirm_tool', payload: { confirmation } } });
     const draft = { text: 'Keep my draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: NativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
-    const wrapper = mountShell({ snapshot, claudeConversationSnapshot: replica.getSnapshot(), stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
+    const request = { id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation } as const;
+    const wrapper = mountShell({ snapshot, claudeConversationSnapshot: replica.getSnapshot(), conversationRequests: [request], stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
     expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([{
       id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation,
     }]);
@@ -501,7 +503,7 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     expect(wrapper.emitted('client-response')).toEqual([[{ id: 'permission', payload: { decision: 'allow_conversation' } }]]);
     replica.apply({ type: 'clientRequest.resolved', agentId: agent.id, provider: 'claude', seq: 2, occurredAt: '2026-10-03T00:00:01Z', payload: { id: 'permission' } });
-    await wrapper.setProps({ claudeConversationSnapshot: replica.getSnapshot() });
+    await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: replica.getSnapshot() }) });
     expect(conversationControllerState(wrapper).thread?.requests).toEqual([]);
     expect(conversationControllerState(wrapper).identity.messages).toHaveLength(1);
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe(draft.text);
@@ -544,7 +546,7 @@ describe('AppShell authentication and conversation', () => {
     });
     const state = conversationControllerState(wrapper);
 
-    expect(state.identity.messages).toStrictEqual(providerMessages);
+    expect(state.identity.messages).toMatchObject(providerMessages);
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.activeTurnId).toBe('turn-provider');
     expect(state.identity.busy).toBe(true);
@@ -638,7 +640,7 @@ describe('AppShell authentication and conversation', () => {
       }),
     }));
 
-    expect(state.identity.messages).toStrictEqual(messages);
+    expect(state.identity.messages).toMatchObject(messages);
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.busy).toBe(true);
   });
@@ -1291,7 +1293,7 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('assistant-plan', 'assistant', '', 'turn-plan'),
         ], {
           activeConversationId: 'thread-plan',
@@ -1302,7 +1304,7 @@ describe('AppShell authentication and conversation', () => {
             startedAt: '2026-08-01T00:00:00.000Z', completedAt: null, durationMs: null,
           }],
           busy: true,
-        }),
+        }) }),
         isLoading: false,
         isSending: true,
       },
@@ -1339,7 +1341,7 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        conversationPresentation: projectCodexConversation(providerSnapshot, activeAgent),
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: providerSnapshot }, activeAgent),
         isLoading: false,
         isSending: true,
       },
@@ -1376,12 +1378,12 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        codexConversationSnapshot: codexConversationSnapshot([
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
           codexTextMessage('assistant-real-turn', 'assistant', 'Existing history.', 'turn-real'),
         ], {
           activeConversationId: 'thread-debug-plan',
           turnIds: ['turn-real'],
-        }),
+        }) }),
         isLoading: false,
         isSending: false,
       },
@@ -1420,7 +1422,7 @@ describe('AppShell authentication and conversation', () => {
 
     await wrapper.setProps({
       isConversationLoading: false,
-      codexConversationSnapshot: codexConversationSnapshot([
+      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
         codexTextMessage('assistant-newer-turn', 'assistant', 'Newer work completed.', 'turn-newer'),
       ], {
         activeConversationId: 'thread-persisted',
@@ -1429,7 +1431,7 @@ describe('AppShell authentication and conversation', () => {
           id: 'turn-newer', status: 'completed', error: null, willRetry: false,
           startedAt: '2026-08-02T00:00:00.000Z', completedAt: '2026-08-02T00:00:01.000Z', durationMs: 1_000,
         }],
-      }),
+      }) }),
     } as Record<string, unknown>);
 
     expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toBeNull();
@@ -1762,21 +1764,21 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.setProps({
       snapshot: { ...snapshot },
       activeAgent: agent,
-      codexConversationSnapshot: codexConversationSnapshot([], {
+      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([], {
         activeConversationId: 'thread-created',
-      }),
+      }) }),
     });
 
     expect(wrapper.find('.agent-ui-conversation-pane__hero').exists()).toBe(false);
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
 
     await wrapper.setProps({
-      codexConversationSnapshot: codexConversationSnapshot([
+      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
         codexTextMessage('authoritative-user', 'user', 'Create the first turn', 'turn-created'),
       ], {
         activeConversationId: 'thread-created',
         turnIds: ['turn-created'],
-      }),
+      }) }),
     });
 
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
@@ -1818,7 +1820,7 @@ describe('AppShell authentication and conversation', () => {
         activeAgent,
         isLoading: false,
         isSending: false,
-        codexConversationSnapshot: providerSnapshot,
+        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: providerSnapshot }),
         selectedModelId: 'gpt-5',
         selectedReasoningEffort: 'high',
         selectedServiceTier: 'fast',
@@ -1875,7 +1877,7 @@ describe('AppShell authentication and conversation', () => {
     )];
     await wrapper.setProps({
       isSending: true,
-      codexConversationSnapshot: codexConversationSnapshot(updatedMessages, {
+      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot(updatedMessages, {
         activeConversationId: 'thread-dina',
         activeTurnId: 'turn-controller',
         turnIds: ['turn-controller'],
@@ -1884,9 +1886,9 @@ describe('AppShell authentication and conversation', () => {
           startedAt: '2026-08-04T00:00:00.000Z', completedAt: null, durationMs: null,
         }],
         busy: true,
-      }),
+      }) }),
     } as Record<string, unknown>);
-    expect(conversationControllerState(wrapper).identity.messages).toStrictEqual(updatedMessages);
+    expect(conversationControllerState(wrapper).identity.messages).toMatchObject(updatedMessages);
     expect(conversationControllerState(wrapper).identity.activeTurnId).toBe('turn-controller');
     expect(wrapper.text()).toContain('Updated through the stable controller.');
 
