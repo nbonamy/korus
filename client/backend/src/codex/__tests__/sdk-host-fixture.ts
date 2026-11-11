@@ -2,7 +2,7 @@ import { vi, type Mock } from 'vitest';
 
 type Fn = Mock<(...args: any[]) => any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 import { createScriptedCodexHarness, scriptedCodexSnapshot, type ScriptedCodex } from '@korus-dev/multi-agent-sdk/testing';
-import type { CodexConversationEvent, CodexConversationSnapshot, CodexConversationSummary, CodexEvent } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationEvent, CodexConversationSnapshot, CodexConversationSummary, CodexEvent } from '@korus-dev/multi-agent-sdk/codex';
 import type { Agent } from '@workspace/core/contracts';
 import type { BackendEvent } from '@workspace/core/provider-driver';
 import { createCodexDriver } from '../../harness-drivers';

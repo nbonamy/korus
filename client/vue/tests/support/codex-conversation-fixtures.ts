@@ -1,4 +1,5 @@
-import type { CodexConversationSnapshot, ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 
 export function codexConversationSnapshot(
   messages: ConversationMessage[] = [],

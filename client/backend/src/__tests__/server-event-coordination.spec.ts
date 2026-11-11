@@ -1,4 +1,4 @@
-import type { CodexConversationEvent } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationEvent } from '@korus-dev/multi-agent-sdk/codex';
 import { approvalAgentRequest } from '@workspace/core/agent-request';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';

@@ -29,7 +29,7 @@ import {
   createCodexConversationReplica,
   type CodexConversationReplica,
 } from '@korus-dev/multi-agent-sdk/renderer';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import {
   createClaudeConversationReplica,
   type ClaudeConversationReplica,

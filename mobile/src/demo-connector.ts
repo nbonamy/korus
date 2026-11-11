@@ -1,5 +1,6 @@
 import type { Agent } from '@workspace/core/contracts';
-import type { CodexConversationSnapshot, ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import type { CompanionConnector, CompanionSession } from './companion-port';
 
 /** Explicit offline demo; no daemon, network, credentials or provider execution. */

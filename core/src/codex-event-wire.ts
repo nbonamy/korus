@@ -1,4 +1,4 @@
-import type { CodexConversationEvent } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationEvent } from '@korus-dev/multi-agent-sdk/codex';
 
 type Resolution = Extract<CodexConversationEvent, { type: 'approval.resolved' | 'clientRequest.resolved' }>;
 type WireResolution<Event> = Event extends { payload: infer Payload }

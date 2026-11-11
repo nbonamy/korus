@@ -1,6 +1,6 @@
 import type { Agent, ClaudeConversationSnapshot, ThreadPlan } from '@workspace/core/contracts';
 import { planReviewDelivery } from '@workspace/core/plan-review';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import type { ConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';

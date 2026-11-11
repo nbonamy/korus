@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import type { MainToRendererEvent } from '../contracts';
 import { applyMainEventToSnapshot, createInitialSnapshot } from '../snapshot';
 import { applyCoordinationEventToSnapshot } from '../snapshot-coordination-reducer';
