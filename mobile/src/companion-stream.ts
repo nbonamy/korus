@@ -1,10 +1,11 @@
 import { readCompanionResponses } from '@workspace/core/companion-response';
 import { isCompanionNotification } from '@workspace/core/companion-notification';
-import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
+import { runtimePayloadValidators } from '@workspace/core/backend-protocol/event-runtime-payloads';
+import { isHarnessProvider } from '@workspace/core/contracts/shared';
 import type { Stream } from '@libp2p/interface';
 import {
   companionBackgroundIdleTimeoutMs, companionHeartbeatIntervalMs, companionIdleTimeoutMs, companionRequestTimeoutMs, companionResponseLimit,
-  encodeCompanionFrame, isConversationFrame, type CompanionUpdate,
+  encodeCompanionFrame, isCompanionConversationFrame, type CompanionUpdate,
 } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
@@ -39,13 +40,23 @@ class EnvelopeError extends Error {
   constructor(readonly stage: string, message: string) { super(message); }
 }
 
+/** A conversation frame is neutral session state the phone can apply; anything else is refused before it reaches the cache. */
+function validConversationFrame(frame: unknown): boolean {
+  if (!frame || typeof frame !== 'object') return false;
+  const value = frame as { type?: unknown; agentId?: unknown; provider?: unknown; payload?: unknown };
+  if (typeof value.type !== 'string' || typeof value.agentId !== 'string' || !isHarnessProvider(value.provider)) return false;
+  const type = value.type;
+  if (!isCompanionConversationFrame({ type })) return false;
+  try { runtimePayloadValidators[type as 'conversation.sessionSnapshot' | 'conversation.sessionPatch'](value.payload, '$.payload'); return true; } catch { return false; }
+}
+
 function readEnvelope(raw: unknown): Envelope {
   if (!raw || typeof raw !== 'object' || !('v' in raw) || raw.v !== 1) throw new EnvelopeError('envelope', 'Invalid update envelope.');
   if ('update' in raw) {
     const update = raw.update as CompanionUpdate;
     if (!update || !['workspace', 'conversation', 'notification'].includes(update.type)) throw new EnvelopeError('update', 'Invalid update.');
     if (update.type === 'notification' && !isCompanionNotification(update.notification)) throw new EnvelopeError('update', 'Invalid notification.');
-    if (update.type === 'conversation' && !isConversationFrame(decodeAppBackendEvent(update.frame))) throw new EnvelopeError('provider-frame', 'Invalid conversation frame.');
+    if (update.type === 'conversation' && !validConversationFrame(update.frame)) throw new EnvelopeError('conversation-frame', 'Invalid conversation frame.');
     return { type: 'update', seq: 'seq' in raw ? raw.seq : undefined, update };
   }
   if (!('id' in raw) || typeof raw.id !== 'string' || (!('error' in raw) && !('result' in raw))) throw new EnvelopeError('reply', 'Invalid reply.');

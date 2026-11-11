@@ -1,4 +1,4 @@
-import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
+import type { CompanionCheckpoint, CompanionConversationSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
 import { promptContentText, trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
@@ -111,7 +111,7 @@ export type EngineEvent =
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
   | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
   /** Everything around the open conversation changed but the conversation itself did not: small, and never resends the transcript. */
-  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionSync & TranscriptContext)
+  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionConversationSync & TranscriptContext)
   | ({ type: 'conversationContext'; agentId: string } & TranscriptContext);
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
@@ -391,15 +391,15 @@ export function createEngine(port: EnginePort) {
     });
   }
   watch(view, publish, { flush: 'sync' });
-  // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
+  // A provider can publish the sent prompt only after the laptop accepts it.
   // Until the real message arrives, the transcript shows the prompt as sent.
   const pending: { id: string; agentId: string; text: string; content?: readonly PromptPart[]; baseline: number; expires: number; createdAt: string }[] = [];
   let expiry: ReturnType<typeof setTimeout> | undefined;
-  const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
+  const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.state.messages
     .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
   /** The frame with the prompts still waiting for the laptop's confirmation, and which prompts those are. */
   function withPending(frame: CompanionConversation | null): { frame: CompanionConversation | null; key: string } {
-    if (!frame || frame.provider === 'codex') return { frame, key: '' };
+    if (!frame) return { frame, key: '' };
     const now = Date.now();
     const sent = new Map<string, number>();
     const shown = pending.filter((entry) => {
@@ -409,8 +409,8 @@ export function createEngine(port: EnginePort) {
     });
     if (!shown.length) return { frame, key: '' };
     const snapshot = frame.payload.snapshot;
-    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
-    return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
+    const messages = [...snapshot.state.messages, ...shown.map((entry): (typeof snapshot.state.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
+    return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, state: { ...snapshot.state, messages } } } }, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
   const contextNow = (): TranscriptContext => ({ engineInstance, imageCacheScope: state.status.value === 'connected' ? JSON.stringify([engineInstance, state.laptopId.value]) : null,
@@ -464,7 +464,7 @@ export function createEngine(port: EnginePort) {
     const content = command.options?.content === undefined ? undefined : trimPromptContent(command.options.content);
     const text = content === undefined ? command.text : promptContentText(content);
     const options = { ...command.options, ...(content === undefined ? {} : { content }), followUpBehavior, uploads: command.uploads, onResolved };
-    if (followUpBehavior === 'queue' || !frame || frame.provider === 'codex' || !state.canSend.value || !text.trim()) return state.submit(text, options);
+    if (followUpBehavior === 'queue' || !frame || !state.canSend.value || !text.trim()) return state.submit(text, options);
     const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text, ...(content === undefined ? {} : { content }), baseline: userTexts(frame, text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();

@@ -1,31 +1,31 @@
-import { codexEventFromWire } from '@workspace/core/codex-event-wire';
-import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '@workspace/core/companion-journal';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
-import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
-import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import { isCompanionConversationFrame, isConversationReset, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { CompanionJournal, type CompanionCheckpoint, type CompanionConversationSync } from '@workspace/core/companion-journal';
+import type { ProviderSessionData } from '@workspace/core/contracts';
+import {
+  companionFrameRevision, followCompanionConversation, followsCompanionConversation,
+  type CompanionConversation, type CompanionConversationFrame, type CompanionTarget,
+} from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
-type Replica = { apply(event: never): unknown; getSnapshot(): unknown };
-type Entry = { target: CompanionTarget; frame: CompanionReset | null; replica?: Replica; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionReset | null>; subscribed?: boolean; resetting?: boolean; checkpoint?: CompanionCheckpoint; bytes?: number };
+type Entry = { target: CompanionTarget; frame: CompanionConversation | null; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionConversation | null>; subscribed?: boolean; resetting?: boolean; checkpoint?: CompanionCheckpoint; bytes?: number };
 type Request = (method: string, target: CompanionTarget, checkpoint?: CompanionCheckpoint | null) => Promise<unknown>;
-export function createCompanionReplica(frame: CompanionReset): Replica {
-  if (frame.type === 'codex.conversationSnapshotChanged') return createCodexConversationReplica(frame.payload.snapshot);
-  if (frame.type === 'claude.conversationSnapshotChanged') return createClaudeConversationReplica(frame.payload.snapshot);
-  return createAntigravityConversationReplica(frame.payload.snapshot);
-}
 const graceMs = 5 * 60_000;
 const same = (a: CompanionTarget, b: CompanionTarget) => JSON.stringify(a) === JSON.stringify(b);
+const byteLength = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+/** The target names the conversation the phone opened; frames of another one wait for the workspace to name it. */
+function followsTarget(frame: CompanionConversationFrame, target: CompanionTarget): boolean {
+  let session: ProviderSessionData | undefined;
+  try { session = target.sessionId ? JSON.parse(target.sessionId) as ProviderSessionData : undefined; } catch { return false; }
+  return Boolean(session) && followsCompanionConversation(frame, { id: target.agentId, provider: session!.kind, providerSession: session });
+}
 
-/** A provider-owned replica per viewed chat; hidden subscriptions expire after five minutes. */
+/** The conversation of each viewed chat as neutral session state; hidden subscriptions expire after five minutes. */
 export class ConversationCache {
   private readonly entries = new Map<string, Entry>();
   private selected = '';
   private readonly journal = new CompanionJournal();
   private epoch = 0;
   private online = true;
-  constructor(private request: Request, private changed: (frame: CompanionReset) => void) {}
+  constructor(private request: Request, private changed: (frame: CompanionConversation) => void) {}
   reconnect(request: Request, changed = this.changed) { this.disconnect(); this.request = request; this.changed = changed; this.online = true; }
   disconnect() {
     ++this.epoch; this.online = false;
@@ -35,7 +35,7 @@ export class ConversationCache {
     const entry = this.entries.get(target.agentId);
     return this.online && Boolean(entry && same(entry.target, target) && entry.subscribed && !entry.loading && (!target.sessionId || entry.frame));
   }
-  updates(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null {
+  updates(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionConversationSync | null {
     const entry = this.entries.get(target.agentId);
     if (!entry?.frame || !same(entry.target, target)) return null;
     const resumed = since && this.journal.resume(target.agentId, since);
@@ -43,11 +43,11 @@ export class ConversationCache {
     const checkpoint = this.journal.checkpoint(target.agentId);
     return checkpoint ? { checkpoint, frames: [entry.frame] } : null;
   }
-  peek(target: CompanionTarget): CompanionReset | null | undefined {
+  peek(target: CompanionTarget): CompanionConversation | null | undefined {
     const entry = this.entries.get(target.agentId);
     return entry && same(entry.target, target) && (!target.sessionId || entry.frame) ? entry.frame : undefined;
   }
-  async select(target: CompanionTarget | null): Promise<CompanionReset | null> {
+  async select(target: CompanionTarget | null): Promise<CompanionConversation | null> {
     if (this.selected !== target?.agentId) {
       const previous = this.entries.get(this.selected);
       if (previous) {
@@ -67,38 +67,27 @@ export class ConversationCache {
     if (!this.online) return entry.frame;
     return entry.loading ?? (entry.subscribed && entry.frame ? entry.frame : this.load(entry));
   }
-  receive(frame: ProviderConversationFrame) {
-    if (!isCompanionConversationFrame(frame)) return;
+  /** A snapshot replaces the conversation unless it is older than its own stream; patches apply in order; a broken stream reloads. */
+  receive(frame: CompanionConversationFrame) {
     const entry = this.entries.get(frame.agentId);
-    if (!entry?.subscribed) return;
-    if (frame.provider === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;
+    if (!entry?.subscribed || !followsTarget(frame, entry.target)) return;
+    const snapshot = frame.type === 'conversation.sessionSnapshot';
     const current = entry.frame;
-    if (current && current.provider !== frame.provider) return;
-    const reset = isConversationReset(frame);
-    if (current && frame.payload.revision <= current.payload.revision && !(reset && entry.resetting)) return;
-    if (reset) { entry.resetting = false; entry.checkpoint = undefined; }
+    const next = followCompanionConversation(current, frame);
+    if (snapshot) entry.resetting = false;
+    if (!next) { this.reloadInBackground(entry); return; }
+    if (next === current) return;
     this.journal.observe(frame);
-    if (reset) entry.replica = createCompanionReplica(frame as CompanionReset);
+    if (snapshot) { entry.checkpoint = undefined; entry.bytes = byteLength(frame); }
     else {
-      if (!current || !entry.replica || frame.payload.revision !== current.payload.revision + 1) { this.reloadInBackground(entry); return; }
-      try {
-        entry.replica.apply((frame.provider === 'codex' ? codexEventFromWire(frame.payload.event) : frame.payload.event) as never);
-        const snapshot = entry.replica.getSnapshot();
-        // A peer can run a newer SDK. Some replicas return undefined for an unknown
-        // event; recover from its authoritative reset before touching renderer state.
-        if (!snapshot) throw new Error('Provider event did not produce a snapshot.');
-        entry.frame = { ...current, payload: { revision: frame.payload.revision, snapshot } } as CompanionReset;
-        if (entry.checkpoint) entry.checkpoint = { ...entry.checkpoint, revision: frame.payload.revision };
-        entry.bytes = (entry.bytes ?? 0) + new TextEncoder().encode(JSON.stringify(frame)).byteLength; this.trim();
-        this.changed(entry.frame); return;
-      } catch { this.reloadInBackground(entry); return; }
+      if (entry.checkpoint) entry.checkpoint = { ...entry.checkpoint, revision: companionFrameRevision(frame) };
+      entry.bytes = (entry.bytes ?? 0) + byteLength(frame);
     }
-    entry.frame = frame;
-    entry.bytes = new TextEncoder().encode(JSON.stringify(frame)).byteLength;
+    entry.frame = next;
     this.trim();
-    this.changed(frame);
+    this.changed(next);
   }
-  /** Workspace/session changes invalidate replicas before any more events can be applied. */
+  /** Workspace/session changes invalidate conversations before any more patches can be applied. */
   reconcile(targets: CompanionTarget[]) {
     for (const entry of [...this.entries.values()]) {
       const target = targets.find((target) => target.agentId === entry.target.agentId);
@@ -116,7 +105,7 @@ export class ConversationCache {
     for (const entry of this.entries.values()) clearTimeout(entry.timer);
     ++this.epoch; this.journal.clear(); this.entries.clear(); this.selected = '';
   }
-  private load(entry: Entry): Promise<CompanionReset | null> {
+  private load(entry: Entry): Promise<CompanionConversation | null> {
     if (entry.loading) return entry.loading;
     const epoch = this.epoch;
     entry.resetting = true; entry.subscribed = true;
@@ -124,8 +113,9 @@ export class ConversationCache {
       if (this.entries.get(entry.target.agentId) !== entry || epoch !== this.epoch) return null;
       if ((entry.resetting && !(result as { checkpoint?: unknown } | undefined)?.checkpoint) || !entry.frame) throw new Error('Conversation reset missing.');
       const checkpoint = (result as { checkpoint?: CompanionCheckpoint } | undefined)?.checkpoint;
-      if (checkpoint && entry.frame.payload.revision < checkpoint.revision) throw new Error('Conversation catch-up incomplete.');
-      if (checkpoint) entry.checkpoint = { ...checkpoint, revision: entry.frame.payload.revision };
+      const revision = entry.frame.payload.snapshot.revision;
+      if (checkpoint && revision < checkpoint.revision) throw new Error('Conversation catch-up incomplete.');
+      if (checkpoint) entry.checkpoint = { ...checkpoint, revision };
       entry.resetting = false;
       return entry.frame;
     }).catch((error) => {

@@ -1,4 +1,4 @@
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
+import { conversation, conversationPatch, textMessage } from './support/conversation';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
@@ -6,7 +6,7 @@ import { companionPushAuthorizationMessage } from '@workspace/core/companion-not
 import { liveActivityAuthorizationMessage, type LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
-import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionCompressedProtocol, companionProtocol, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
@@ -275,7 +275,7 @@ describe('native relay host adapter', () => {
   });
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);
-    const page = { frame: { type: 'codex.conversationSnapshotChanged', provider: 'codex', threadId: 'thread', agentId: 'agent', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
+    const page = { frame: conversation('agent', { conversation: 'thread', messages: [textMessage('large', 'assistant', 'x'.repeat(companionFrameLimit))] }), hasOlder: false };
     transport.response = (method) => method === 'snapshot.get'
       ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote' }] } : page;
     try {
@@ -306,7 +306,7 @@ describe('native relay host adapter', () => {
       expect(transport.rendezvous).toStrictEqual([{ code: 'K7QDM2XP' }]);
       expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.claim', 'pair.status']);
       expect(reused).toHaveBeenCalledTimes(2);
-      expect(reused).toHaveBeenCalledWith(['/workspace/companion/2.0.0', '/workspace/companion/1.0.0'], expect.objectContaining({ runOnLimitedConnection: true }));
+      expect(reused).toHaveBeenCalledWith([companionCompressedProtocol, companionProtocol], expect.objectContaining({ runOnLimitedConnection: true }));
       expect(wrongPath).not.toHaveBeenCalled(); expect(transport.dial).toHaveBeenCalledTimes(1);
       expect(pending).toHaveBeenCalledOnce();
       expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({ event: 'transport.stream-open', reused: true, connectionId: 'circuit', remainingBytes: '67108864', remainingSeconds: 120 }));
@@ -317,13 +317,13 @@ describe('native relay host adapter', () => {
     const connector = connect();
     try {
       await pairWith(connector);
-      const frame = { type: 'codex.conversationSnapshotChanged', agentId: 'agent', provider: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 2, snapshot: codexConversationSnapshot([codexTextMessage('response', 'assistant', 'Live response')], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } };
+      const frame = conversation('agent', { conversation: 'thread', revision: 2, messages: [textMessage('response', 'assistant', 'Live response')], state: { historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } } });
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : frame;
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       const update = vi.fn(); const disconnected = vi.fn();
       const stop = session.onUpdate!(update); session.onDisconnect(disconnected);
       await session.loadConversation('agent');
-      const next = { ...frame, payload: { ...frame.payload, revision: 3 } };
+      const next = { ...frame, payload: { ...frame.payload, snapshot: { ...frame.payload.snapshot, revision: 3 } } };
       transport.publish({ type: 'conversation', frame: next });
       await vi.advanceTimersByTimeAsync(0);
       expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ teams: [expect.objectContaining({ id: 'team' })] }), next);
@@ -344,36 +344,34 @@ describe('native relay host adapter', () => {
       stop(); await connector.suspend!();
     } finally { await connector.dispose!(); vi.useRealTimers(); }
   });
-  it('finishes a streamed Claude turn and keeps the completed reply when selected again', async () => {
+  it('finishes a streamed turn and keeps the completed reply when selected again', async () => {
     const connector = connect();
     try {
       await pairWith(connector);
-      const claude = { ...agent, provider: 'claude', providerSession: { kind: 'claude', sessionId: 'session' } };
-      const snapshot = { agentId: agent.id, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false,
-        historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
-      const frame = { type: 'claude.conversationSnapshotChanged', agentId: agent.id, provider: 'claude', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot } };
+      const claude = { ...agent, provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 'session' } };
+      const frame = conversation(agent.id, { provider: 'cursor', conversation: 'session', state: { historyState: { hasOlder: false, loadingOlder: false } } });
+      const answer = { ...textMessage('answer', 'assistant', 'The completed answer.'), status: 'streaming' as const };
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] } : frame;
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       const update = vi.fn(); const disconnected = vi.fn(); session.onUpdate!(update); session.onDisconnect(disconnected);
       await session.loadConversation('agent');
-      for (const [index, event] of [
-        { type: 'turn.started', payload: { turn: { id: 'turn', provider: 'claude' } } },
-        { type: 'message.delta', payload: { itemId: 'answer', delta: 'The completed Claude answer.' } },
-        { type: 'turn.completed', payload: { turn: { id: 'turn', status: 'completed' } } },
-      ].entries()) transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: index + 2, payload: {
-        revision: index + 2, event: { ...event, agentId: 'agent', provider: 'claude', providerSessionId: 'session', turnId: 'turn', seq: index + 2, occurredAt: '2026-10-14T00:00:01Z' },
-      } } });
-      await vi.waitFor(() => expect(update.mock.calls.at(-1)?.[1]?.payload.revision).toBe(4));
+      for (const patch of [
+        conversationPatch(frame, 2, [{ op: 'set', key: 'busy', value: true }, { op: 'set', key: 'activeTurnId', value: 'turn' }]),
+        conversationPatch(frame, 3, [{ op: 'spliceMessages', start: 0, deleteCount: 0, messages: [answer] }]),
+        conversationPatch(frame, 4, [{ op: 'spliceMessages', start: 0, deleteCount: 1, messages: [{ ...answer, status: 'complete' }] }, { op: 'set', key: 'busy', value: false }, { op: 'set', key: 'activeTurnId', value: null }]),
+      ]) transport.publish({ type: 'conversation', frame: patch });
+      await vi.waitFor(() => expect(update.mock.calls.at(-1)?.[1]?.payload.snapshot.revision).toBe(4));
       expect(disconnected).not.toHaveBeenCalled();
       session.deselectConversation!();
       const completed = await session.loadConversation('agent');
-      expect(completed?.payload.snapshot).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', itemId: 'answer', text: 'The completed Claude answer.' }] })] });
-      const older = { id: 'older', agentId: 'agent', role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Earlier question' }] };
-      const pageFrame = { ...frame, type: 'claude.conversationEventReceived', seq: 5, payload: { revision: 5, event: { seq: 5, occurredAt: '', agentId: 'agent', provider: 'claude', providerSessionId: 'session', type: 'history.prepended', payload: { messages: [older], hasOlder: false } } } };
+      expect(completed?.payload.snapshot.state).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', text: 'The completed answer.' }] })] });
+      const older = textMessage('older', 'user', 'Earlier question');
+      // The laptop answers with the conversation that includes the older page.
+      const pageFrame = { ...completed!, payload: { ...completed!.payload, snapshot: { revision: 5, state: { ...completed!.payload.snapshot.state, messages: [older, ...completed!.payload.snapshot.state.messages] } } } };
       const chunk = { data: 'e30=', nextOffset: null, totalBytes: 2 };
       transport.response = (method) => method === 'conversation.loadOlder' ? { frame: pageFrame, hasOlder: false } : chunk;
       const page = await session.loadOlderHistory!('agent');
-      expect(page.frame.payload.snapshot.messages).toEqual([older, ...completed!.payload.snapshot.messages]);
+      expect(page.frame.payload.snapshot.state.messages).toEqual([older, ...completed!.payload.snapshot.state.messages]);
       const input = { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 };
       expect(await session.readConversationContent!('agent', input)).toStrictEqual(chunk);
       expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.content.read', args: { target: { agentId: 'agent' }, input } });
@@ -510,7 +508,7 @@ describe('native relay host adapter', () => {
     const storage = vault(); const connector = connect(storage);
     await pairWith(connector);
     transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote-host' }] }
-      : method === 'conversation.subscribe' ? { type: 'codex.conversationSnapshotChanged', agentId: 'agent', provider: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } }
+      : method === 'conversation.subscribe' ? conversation('agent', { conversation: 'thread', state: { historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } } })
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     await session.loadConversation('agent');
@@ -616,8 +614,7 @@ it('retains paired-host conversations across reconnects and uses checkpoints onl
   await pairWith(connector);
   const claude = { id: 'agent', teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', sessionId: 'session' } };
   const workspace = { conversationSync: true, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] };
-  const snapshot = { agentId: 'agent', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
-  const frame = { type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: 'agent', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot } };
+  const frame = conversation('agent', { provider: 'claude', conversation: 'session' });
   transport.response = (method, args) => {
     if (method === 'snapshot.get') return workspace;
     if (method === 'conversation.synchronize') {
@@ -628,11 +625,11 @@ it('retains paired-host conversations across reconnects and uses checkpoints onl
   };
   try {
     const first = await connector.connect(host.hostId); await first.getWorkspace(); await first.loadConversation('agent');
-    transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: 2, payload: { revision: 2, event: { type: 'turn.started', seq: 2, agentId: 'agent', provider: 'claude', providerSessionId: 'session', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', provider: 'claude' } } } } } });
-    await vi.waitFor(() => expect(first.cachedConversation!('agent')?.payload.revision).toBe(2));
+    transport.publish({ type: 'conversation', frame: conversationPatch(frame, 2, [{ op: 'set', key: 'activeTurnId', value: 'live-turn' }]) });
+    await vi.waitFor(() => expect(first.cachedConversation!('agent')?.payload.snapshot.revision).toBe(2));
     first.close();
     const second = await connector.connect(host.hostId); await second.getWorkspace();
-    expect(second.cachedConversation!('agent')?.payload.snapshot.activeTurnId).toBe('live-turn');
+    expect(second.cachedConversation!('agent')?.payload.snapshot.state.activeTurnId).toBe('live-turn');
     await second.loadConversation('agent');
     first.close(); // A delayed close from the old connection must not suspend the new cache.
     expect(second.isConversationCurrent!('agent')).toBe(true);

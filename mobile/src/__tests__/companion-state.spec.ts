@@ -105,7 +105,7 @@ describe('companion state', () => {
       expect(state.canSend.value).toBe(false);
       update(workspace, old);
       expect(state.conversationReady.value).toBe(false);
-      const next = change === 'reset' ? null : { ...old, threadId: change === 'replacement' ? 'replacement' : old.threadId } as CompanionConversation;
+      const next = change === 'reset' ? null : { ...old, payload: { ...old.payload, conversation: change === 'replacement' ? 'replacement' : old.payload.conversation } } as CompanionConversation;
       finish(next);
       await vi.waitFor(() => expect(state.conversationReady.value).toBe(true));
       expect(state.conversation.value).toStrictEqual(next);
@@ -309,7 +309,7 @@ describe('companion state', () => {
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       const original = state.conversation.value;
-      expect(original?.payload.snapshot.messages.length).toBeGreaterThan(0);
+      expect(original?.payload.snapshot.state.messages.length).toBeGreaterThan(0);
       loadConversation.mockRejectedValueOnce(new Error('History response interrupted'));
       state.disconnect(); await state.reconnect();
       expect(state.conversation.value).toEqual(original);
@@ -449,7 +449,7 @@ describe('companion state', () => {
     state.updateDraft({ text: 'Summarize', selectionStart: 9, selectionEnd: 9 });
     await Promise.all([state.submit('Summarize'), state.submit('Summarize')]);
     expect(state.draft.value.text).toBe('');
-    expect(state.conversation.value?.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(1);
+    expect(state.conversation.value?.payload.snapshot.state.messages.filter((m) => m.role === 'user')).toHaveLength(1);
     state.dispose();
   });
 

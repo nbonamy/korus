@@ -13,7 +13,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import type { PromptPart } from '@korus-dev/multi-agent-sdk';
 import type { Agent, HarnessProvider, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionAgents, companionConversationOf, companionTarget, companionSessionId, followsCompanionConversation, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -71,7 +71,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const historyFailed = ref(false);
   const hasOlder = ref<boolean | null>(null);
   const history = computed<CompanionHistoryState>(() => ({
-    hasOlder: status.value === 'connected' && Boolean(conversation.value) && (hasOlder.value ?? conversation.value?.payload.snapshot.historyState?.hasOlder ?? true),
+    hasOlder: status.value === 'connected' && Boolean(conversation.value) && (hasOlder.value ?? conversation.value?.payload.snapshot.state.historyState?.hasOlder ?? true),
     loadingOlder: loadingOlder.value,
     failed: historyFailed.value,
   }));
@@ -317,9 +317,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   });
   function matchesCurrentSession(frame: CompanionConversation): boolean {
     const owner = agent.value;
-    if (!owner?.providerSession || frame.agentId !== owner.id || frame.provider !== owner.provider) return false;
-    if (frame.type === 'codex.conversationSnapshotChanged') return owner.providerSession.kind === 'codex' && frame.threadId === owner.providerSession.threadId;
-    return owner.providerSession.kind !== 'codex' && frame.payload.snapshot.sessionId === owner.providerSession.sessionId;
+    return Boolean(owner?.providerSession) && followsCompanionConversation(frame, owner!);
   }
   const notificationReads = new Map<string, number>();
   function forwardNotification(notification: CompanionNotification) {
@@ -532,7 +530,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function readConversationContent(id: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
     const active = session; const epoch = selectionEpoch;
     const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected'
-      && input.sessionId === (agent.value?.providerSession?.kind === 'codex' ? agent.value.providerSession.threadId : agent.value?.providerSession?.kind === 'claude' ? agent.value.providerSession.sessionId : null);
+      && input.sessionId === companionConversationOf(agent.value?.providerSession);
     if (!valid() || !active?.readConversationContent) throw new Error('Conversation content is unavailable.');
     const chunk = await active.readConversationContent(id, input);
     if (!valid()) throw new Error('Conversation changed.');
@@ -550,8 +548,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
           current.provider !== owner?.provider || companionSessionId(current) !== identity) throw new Error('Conversation changed.');
       return active.readImage!(id, path);
     };
-    const provider = owner?.providerSession;
-    const sessionId = provider?.kind === 'codex' ? provider.threadId : provider?.sessionId ?? null;
+    const sessionId = companionConversationOf(owner?.providerSession);
     const image = cache && owner ? await cache.read(host, owner.provider, sessionId, path, load) : await load();
     if (!valid()) throw new Error('Conversation changed.');
     return image;

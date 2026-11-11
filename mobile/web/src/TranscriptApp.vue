@@ -45,7 +45,7 @@ import { handler } from './native';
 import FilePreviewPane from './FilePreviewPane.vue';
 import { createTranscriptFiles } from './transcript-files';
 import { TranscriptReplicas } from '../../src/transcript-replica';
-import type { ProviderConversationFrame } from '@workspace/core/contracts';
+import { companionConversationOf, type CompanionConversationFrame } from '@workspace/core/companion-protocol';
 import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
 
 const frame = shallowRef<CompanionConversation | null>(null);
@@ -61,7 +61,7 @@ const insets = reactive({ top: 0, bottom: 0, leading: 0, trailing: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(providerChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.provider))]));
 
-const messages = computed(() => frame.value?.payload.snapshot.messages ?? []);
+const messages = computed(() => frame.value?.payload.snapshot.state.messages ?? []);
 const repository = computed(() => agent.value?.workspace?.kind === 'git' ? agent.value.workspace : null);
 const imageLoading = shallowRef(false);
 let imageOpenEpoch = 0;
@@ -130,11 +130,11 @@ function readConversationContent(agentId: string, input: ConversationContentInpu
 /** Read-only: the native app owns the composer and every interaction; this page only renders the conversation. */
 const controller = createConversationPaneController({
   state: computed<ConversationPaneState>(() => {
-    const snapshot = frame.value?.payload.snapshot;
+    const state = frame.value?.payload.snapshot.state;
     return {
-      identity: { conversationKey: agent.value?.id ?? null, messages: paneMessages(snapshot?.messages ?? []), turns: snapshot?.turns, activeTurnId: snapshot?.activeTurnId, busy: snapshot?.busy ?? false, disabled: true },
+      identity: { conversationKey: agent.value?.id ?? null, messages: paneMessages(state?.messages ?? []), turns: state?.turns, activeTurnId: state?.activeTurnId, busy: state?.busy ?? false, disabled: true },
       history: { loading: false, hasOlder: history.value.hasOlder && !history.value.failed, loadingOlder: history.value.loadingOlder },
-      thread: { approvals: [], clientRequests: [], answeredClientRequestIds: new Set<string>(), queuedPrompts: snapshot && 'queuedPrompts' in snapshot ? snapshot.queuedPrompts : [], contextUsage: snapshot && 'contextUsage' in snapshot ? snapshot.contextUsage : null },
+      thread: { approvals: [], clientRequests: [], answeredClientRequestIds: new Set<string>(), queuedPrompts: [], contextUsage: state?.contextUsage ?? null },
       composer: { state: { text: '', selectionStart: 0, selectionEnd: 0 } },
       capabilities: { models: false, skills: false, reasoningEffort: false, serviceTier: false, planMode: false, goals: false, steerPrompt: false, interrupt: false, history: true,
         deleteTurn: false, editTurn: false, retryTurn: false, approvals: false, approvalPresets: [] },
@@ -217,7 +217,7 @@ window.companionTranscript = {
   closeFile: files.close,
   setImage,
   async setTransfer(json: string) {
-    const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
+    const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: CompanionConversationFrame[] };
     bindEngine(message);
     if (message.generation < generation) return null;
     generation = message.generation;
@@ -248,7 +248,7 @@ window.companionTranscript = {
     if (!pending) return;
     contentRequests.delete(reply.requestId); clearTimeout(pending.timer);
     if (reply.agentId !== pending.agentId || reply.sessionId !== pending.sessionId || reply.agentId !== agent.value?.id
-      || reply.sessionId !== (agent.value.providerSession?.kind === 'codex' ? agent.value.providerSession.threadId : agent.value.providerSession?.kind === 'claude' ? agent.value.providerSession.sessionId : null) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
+      || reply.sessionId !== companionConversationOf(agent.value.providerSession) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
     else pending.resolve(reply.chunk);
   },
   async setConversation(json) {

@@ -1,4 +1,5 @@
 import { nextTick } from 'vue';
+import { conversation, textMessage } from './support/conversation';
 import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
 import * as composerSettings from '../composer-settings';
@@ -694,7 +695,7 @@ describe('companion engine', () => {
     expect(loadTurnHistory).toHaveBeenCalledExactlyOnceWith('demo-agent', 'old-turn');
     expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'details', agentId: 'demo-agent' });
     const mismatched = (await (await connect('demo-laptop')).loadConversation('demo-agent'))!;
-    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, threadId: 'different-thread' } as typeof mismatched);
+    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, payload: { ...mismatched.payload, conversation: 'different-thread' } });
     await engine.dispatch({ type: 'loadTurnHistory', requestId: 'wrong-session', agentId: 'demo-agent', turnId: 'old-turn' });
     expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'wrong-session', error: expect.any(String) });
     loadTurnHistory.mockRejectedValueOnce(new Error('offline'));
@@ -899,23 +900,19 @@ describe('companion engine', () => {
       }
     } finally { engine.dispose(); }
   });
-  describe('a prompt Claude has not published yet', () => {
-    // Claude publishes the prompt on the next read; the phone has to show it before that.
+  describe('a prompt the laptop has not published yet', () => {
+    // A provider can publish the prompt only after it accepts it; the phone has to show it before that.
     function claude(published: { texts: string[] }, sendPrompt: () => Promise<void> = async () => {}) {
       const connector = createDemoConnector(); const original = connector.connect;
       connector.connect = async (id) => {
         const session = await original(id); const workspace = await session.getWorkspace();
         return { ...session, sendPrompt,
           getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, provider: 'claude' as const })) }),
-          loadConversation: async (agentId) => ({ type: 'claude.conversationSnapshotChanged', seq: 1, occurredAt: '2026-01-01T00:00:00Z', agentId, provider: 'claude', payload: { revision: 1, snapshot: {
-            agentId, sessionId: 's', activeTurnId: null, turnIds: [], turns: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false },
-            contextUsage: null, plan: null, error: null,
-            messages: published.texts.map((text, index) => ({ id: `m${index}`, agentId, role: 'user' as const, status: 'complete' as const, createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text' as const, text }] })),
-          } } }) };
+          loadConversation: async (agentId) => conversation(agentId, { provider: 'claude', conversation: 's', messages: published.texts.map((text, index) => textMessage(`m${index}`, 'user', text)) }) };
       };
       return connector;
     }
-    const texts = (events: EngineEvent[]) => { const last = events.filter((event) => event.type === 'conversation').at(-1); return last?.type === 'conversation' && last.frame && 'messages' in last.frame.payload.snapshot ? last.frame.payload.snapshot.messages.map((message) => message.parts.map((part) => part.type === 'text' ? part.text : '').join('')) : []; };
+    const texts = (events: EngineEvent[]) => { const last = events.filter((event) => event.type === 'conversation').at(-1); return last?.type === 'conversation' && last.frame ? last.frame.payload.snapshot.state.messages.map((message) => message.parts.map((part) => part.type === 'text' ? part.text : '').join('')) : []; };
     async function opened(published: { texts: string[] }, sendPrompt?: () => Promise<void>) {
       const harness = open(claude(published, sendPrompt));
       await harness.engine.start(); await harness.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await harness.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
@@ -927,7 +924,7 @@ describe('companion engine', () => {
       await engine.dispatch({ type: 'send', text: '$review', options: { content } });
       expect(texts(events)).toEqual(['Earlier', 'Review']);
       const shown = events.filter(event => event.type === 'conversation').at(-1);
-      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
+      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.state.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
       published.texts.push('Review');
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
       expect(texts(events)).toEqual(['Earlier', 'Review']);

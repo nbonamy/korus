@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
+import { conversation, textMessage } from './support/conversation';
 import { createDemoConnector } from '../demo-connector';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 import { createEngine, type EngineEvent } from '../engine';
@@ -13,11 +13,10 @@ const bytes = (events: readonly EngineEvent[]) => events.reduce((sum, event) => 
 const clock = () => Number(process.hrtime.bigint()) / 1e6;
 const fakeTimers = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
 
-function frameOf(agentId: string, messages: ReturnType<typeof codexTextMessage>[], revision: number, busy = false): CompanionConversation {
-  return { type: 'codex.conversationSnapshotChanged', seq: revision, occurredAt: '2026-10-14T00:00:00Z', agentId, provider: 'codex', threadId: agentId,
-    payload: { revision, snapshot: codexConversationSnapshot(messages, { busy }) } } as CompanionConversation;
+function frameOf(agentId: string, messages: ReturnType<typeof textMessage>[], revision: number, busy = false): CompanionConversation {
+  return conversation(agentId, { revision, messages, state: { busy } });
 }
-const history = (agentId: string, count: number) => Array.from({ length: count }, (_, index) => codexTextMessage(`${agentId}-${index}`, index % 2 ? 'assistant' : 'user', 'x'.repeat(1000), `turn-${index}`));
+const history = (agentId: string, count: number) => Array.from({ length: count }, (_, index) => textMessage(`${agentId}-${index}`, index % 2 ? 'assistant' : 'user', 'x'.repeat(1000), `turn-${index}`));
 
 async function open(options: { messages?: number } = {}) {
   const connector = createDemoConnector(); const original = connector.connect;
@@ -59,7 +58,7 @@ describe('what the engine sends the transcript', () => {
   it('bounds the transfers of a streaming reply and ends on the final snapshot', async () => {
     fakeTimers();
     const { engine, events, update } = await open();
-    const baseMessages = history('demo-agent', 200); const reply = (text: string) => codexTextMessage('reply', 'assistant', text, 'turn-live');
+    const baseMessages = history('demo-agent', 200); const reply = (text: string) => textMessage('reply', 'assistant', text, 'turn-live');
     const before = events.length; const started = clock();
     for (let revision = 2; revision < 102; revision++) {
       update((agents) => agents, frameOf('demo-agent', [...baseMessages, reply('word '.repeat(revision))], revision, true));
@@ -70,7 +69,7 @@ describe('what the engine sends the transcript', () => {
     const sent = events.slice(before); const last = transcript(sent).at(-1);
     console.info(`[bridge] 101 streamed snapshots: ${transcript(sent).length} transcript transfers, ${bytes(sent)} bytes sent, ${(clock() - started).toFixed(1)} ms of engine work incl. serializing`);
     expect(transcript(sent).length).toBeLessThanOrEqual(8);
-    expect(last).toMatchObject({ type: 'conversation', frame: { payload: { revision: 102 } } });
+    expect(last).toMatchObject({ type: 'conversation', frame: { payload: { snapshot: { revision: 102 } } } });
     engine.dispose();
   });
 
@@ -104,9 +103,9 @@ describe('what the engine sends the transcript', () => {
     fakeTimers();
     const { engine, events, update } = await open();
     const base = history('demo-agent', 200);
-    update((agents) => agents, frameOf('demo-agent', [...base, codexTextMessage('reply', 'assistant', 'one', 'turn-live')], 2, true));
+    update((agents) => agents, frameOf('demo-agent', [...base, textMessage('reply', 'assistant', 'one', 'turn-live')], 2, true));
     await vi.advanceTimersByTimeAsync(10);
-    update((agents) => agents, frameOf('demo-agent', [...base, codexTextMessage('reply', 'assistant', 'one two', 'turn-live')], 3, true));
+    update((agents) => agents, frameOf('demo-agent', [...base, textMessage('reply', 'assistant', 'one two', 'turn-live')], 3, true));
     await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
     expect(transcript(events).at(-1)).toMatchObject({ agentId: 'demo-reviewer', frame: { agentId: 'demo-reviewer' } });
     // The late chunk of the chat that was left must not come back over the chat that was opened.

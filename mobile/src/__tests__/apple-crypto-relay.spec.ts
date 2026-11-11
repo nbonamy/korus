@@ -6,7 +6,7 @@ import { circuitRelayServer, circuitRelayTransport } from '@libp2p/circuit-relay
 import { identify } from '@libp2p/identify';
 import type { Libp2pOptions } from 'libp2p';
 import { companionResponseLimit, companionUpdatesProtocol, encodeCompanionFrame, readCompanionFrames } from '@workspace/core/companion-protocol';
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
+import { conversation, textMessage } from './support/conversation';
 import { cryptoFixture } from './apple-crypto-fixture';
 import { createRelayConnector } from '../relay-connector';
 
@@ -37,8 +37,7 @@ describe('Apple companion over a real relay', () => {
     const connector = createRelayConnector({ read: async ({ key }) => ({ value: values.get(key) ?? null }),
       write: async ({ key, value }) => { values.set(key, value); }, remove: async ({ key }) => { values.delete(key); } }, relayConfig);
     const text = 'history '.repeat(800_000);
-    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: '',
-      payload: { revision: 1, snapshot: { ...codexConversationSnapshot([codexTextMessage('large', 'assistant', text)]), historyState: { hasOlder: false, loadingOlder: false } } } };
+    const frame = conversation('agent', { conversation: 'thread', messages: [textMessage('large', 'assistant', text)], state: { historyState: { hasOlder: false, loadingOlder: false } } });
     const workspace = { repositoryIcons: {}, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', name: 'Agent', folder: null,
       status: { type: 'idle' }, providerSession: { kind: 'codex', threadId: 'thread' }, createdAt: '', updatedAt: '' }] };
     const failures: string[] = [];

@@ -1,15 +1,14 @@
 import type { PromptPart } from '@korus-dev/multi-agent-sdk';
-import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
+import type { CompanionCheckpoint, CompanionConversationSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
-import type { HarnessProvider, ExecutionSelection, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { HarnessProvider, ExecutionSelection, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary, PromptSkillInput } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository } from '@workspace/core/companion-protocol';
 
-/** Only authoritative provider resets cross this bounded, read/send companion seam. */
-export type CompanionConversation = Extract<ProviderConversationFrame, {
-  type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged';
-}>;
+/** The whole conversation as neutral session state is what crosses this bounded, read/send companion seam. */
+export type { CompanionConversation } from '@workspace/core/companion-protocol';
+import type { CompanionConversation } from '@workspace/core/companion-protocol';
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
@@ -97,7 +96,7 @@ export type CompanionConnector = {
   registerLiveActivity?(laptopId: string, registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null): Promise<void>;
   laptops: readonly { id: string; name: string }[];
   cachedConversation?(target: CompanionTarget): CompanionConversation | null | undefined;
-  conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
+  conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionConversationSync | null;
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
   /** Gives a paired laptop the person's own name. */

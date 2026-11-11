@@ -1,4 +1,5 @@
 import { nextTick } from 'vue';
+import { conversation } from './support/conversation';
 import { describe, expect, it, vi } from 'vitest';
 import { projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
@@ -100,9 +101,7 @@ describe('native activity drawer feed', () => {
       const session = await connect(id); const workspace = await session.getWorkspace();
       workspace.agents = workspace.agents.map(a => ({ ...a, provider: 'claude', providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }));
       return { ...session, getWorkspace: async () => projectCompanionWorkspace(workspace), selectModel, sendPrompt,
-        loadConversation: async agentId => ({ type: 'claude.conversationSnapshotChanged', agentId, provider: 'claude', seq: 1, occurredAt: '2026-10-15T12:00:00Z',
-          payload: { revision: 1, snapshot: { agentId, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [],
-            answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } }),
+        loadConversation: async agentId => conversation(agentId, { provider: 'claude', conversation: 'session' }),
         listModels: async () => [{ id: 'opus', model: 'opus', displayName: 'Opus', isDefault: true, supportedReasoningEfforts: [],
           serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] }],
       };

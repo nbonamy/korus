@@ -2,8 +2,8 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
-import { companionAgents, companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
-import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
+import { companionAgents, companionTarget, companionUpdatesProtocol } from '@workspace/core/companion-protocol';
+import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionConversation, CompanionSession } from './companion-port';
@@ -155,13 +155,10 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     },
     async loadOlderHistory(agentId) {
       const identity = target(agentId);
-      const page = await call<{ frame: ProviderConversationFrame; hasOlder: boolean }>('conversation.loadOlder', identity);
+      const page = await call<{ frame: CompanionConversation; hasOlder: boolean }>('conversation.loadOlder', identity);
       if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
       cache.receive(page.frame);
-      const returned = page.frame;
-      const frame = cache.peek(identity) ?? (isConversationReset(returned) ? returned : null);
-      if (!frame) throw new Error('Conversation history needs to be reloaded.');
-      return { hasOlder: page.hasOlder, frame };
+      return { hasOlder: page.hasOlder, frame: cache.peek(identity) ?? page.frame };
     },
     async readConversationContent(agentId, input) {
       const identity = target(agentId);
