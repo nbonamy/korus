@@ -64,9 +64,9 @@
 </template>
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { paneMessages, type PaneMessage } from '../conversation-presentation/pane-messages';
+import type { PaneMessage } from '../conversation-presentation/presentation';
 import { useI18n } from 'vue-i18n';
-import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
+import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';
@@ -96,7 +96,7 @@ async function withdraw(proposalId: string) {
   finally { withdrawing.value = false; }
 }
 let pending: { text: string; proposalId: string; followUpBehavior?: 'queue' | 'steer' } | undefined;
-const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultProviderCapabilities(props.view.target?.provider ?? props.view.frame?.provider ?? 'codex').steerPrompt) }));
+const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultProviderCapabilities(props.view.target?.provider ?? props.view.session?.provider ?? 'codex').steerPrompt) }));
 function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
 async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
   if (!text.trim() || props.view.status !== 'ready') return;
@@ -118,13 +118,13 @@ provideHostCapabilities({
     try { return (await appApi.guestConversationImage(props.view.id, reference)).dataUrl; } catch { return null; }
   },
 }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
-const snapshot = computed(() => props.view.frame?.payload.snapshot);
-const messages = computed(() => paneMessages(snapshot.value?.messages ?? []));
+const snapshot = computed(() => props.view.session?.snapshot.state);
+const messages = computed<PaneMessage[]>(() => snapshot.value?.messages ?? []);
 // Guests can submit follow-ups, but cannot stop the owner's active turn.
 const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props.view.proposalState?.writeAccess && snapshot.value?.busy));
 const loaded = reactive(new Map<string, RendererMessage>());
-watch(() => [props.view.id, props.view.status === 'rejected', props.view.frame === null], () => loaded.clear());
-function deferred(id: string | undefined) { const message = snapshot.value?.messages.find(message => message.id === id); return (message as RendererMessage | undefined)?.deferredContent; }
+watch(() => [props.view.id, props.view.status === 'rejected', props.view.session === null], () => loaded.clear());
+function deferred(id: string | undefined) { return snapshot.value?.messages.find(message => message.id === id)?.deferredContent; }
 function transform(message: ChatMessage | PaneMessage) {
   const content = deferred(message.id); return content && loaded.has(content.contentId) ? loaded.get(content.contentId)! : message;
 }

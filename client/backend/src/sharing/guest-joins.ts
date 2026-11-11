@@ -29,7 +29,7 @@ type Store = { v: 2; identity: string; joins: JoinRecord[] };
 type Session = { link: ConversationShareLink; view: GuestJoinView; client?: GuestConversationClient; transport?: GuestConversationTransport; connecting?: Promise<void>; generation: number; timer?: ReturnType<typeof setTimeout>; retries: number; stopping?: Promise<void> };
 export type GuestJoinsOptions = { directory: string; relay?: ShareRelay };
 const keyFor = (link: ConversationShareLink) => createHash('sha256').update(JSON.stringify([link.relay, link.handle])).digest('hex');
-const emptyView = (id: string, name = '', title?: string): GuestJoinView => ({ id, name, title: title ?? 'Shared conversation', status: 'needsName', participant: null, target: null, frame: null });
+const emptyView = (id: string, name = '', title?: string): GuestJoinView => ({ id, name, title: title ?? 'Shared conversation', status: 'needsName', participant: null, target: null, session: null });
 
 /** Installed guest authority. One protected app identity, durable pins/authorization, memory-only transcripts. */
 export class GuestJoins {
@@ -165,7 +165,7 @@ export class GuestJoins {
       } catch { await transport.stop(); session.view.status = 'storageUnavailable'; return; }
       if (!current()) { await transport.stop(); return; }
       const client = new GuestConversationClient(opened.stream, () => {
-        if (current() && client.snapshot) session.view.frame = client.snapshot;
+        if (current() && client.session) session.view.session = client.session;
         if (current() && client.proposalState) session.view.proposalState = client.proposalState;
       }, reason => {
         if (!current()) return;
@@ -187,7 +187,7 @@ export class GuestJoins {
         session.view.title = this.saved!.joins.find(saved => saved.id === record.id)?.title ?? session.view.title;
         session.view.target = joined.target; session.view.participant = joined.participant;
         await client.synchronize(); if (!current()) return;
-        session.view.frame = client.snapshot; session.view.status = 'ready'; session.retries = 0;
+        session.view.session = client.session; session.view.status = 'ready'; session.retries = 0;
         void client.proposals().catch(() => {});
       } catch (error) {
         if (!current()) return;
@@ -210,7 +210,7 @@ export class GuestJoins {
     session.timer = setTimeout(() => { session.timer = undefined; this.connect(session); }, delay); session.timer.unref();
   }
   private async reject(session: Session) {
-    this.dispose(session); session.view.proposalState = undefined; session.view.status = 'rejected'; session.view.frame = null; session.view.participant = null; session.view.target = null;
+    this.dispose(session); session.view.proposalState = undefined; session.view.status = 'rejected'; session.view.session = null; session.view.participant = null; session.view.target = null;
     try {
       await this.serial(async () => {
         if (this.saved) await this.write({ ...this.saved, joins: this.saved.joins.filter(record => record.id !== session.view.id) });
@@ -220,7 +220,7 @@ export class GuestJoins {
   private dispose(session: Session) {
     ++session.generation; clearTimeout(session.timer); session.timer = undefined;
     const client = session.client; session.client = undefined; client?.close();
-    session.stopping = session.transport?.stop(); session.view.frame = null;
+    session.stopping = session.transport?.stop(); session.view.session = null;
     if (session.view.status === 'ready' || session.view.status === 'connecting') session.view.status = 'unavailable';
   }
   async close() {

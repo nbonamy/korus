@@ -2,7 +2,6 @@ import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
 import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
-import { paneMessages } from '../conversation-presentation/pane-messages';
 import { ref } from 'vue';
 import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
@@ -68,7 +67,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   mentionGroups?: () => NonNullable<ConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => ComposerMenuItem[];
   placeholder?: () => string | undefined;
-  previewMessage?: () => import('../conversation-presentation/pane-messages').PaneMessage | undefined;
+  previewMessage?: () => import('../conversation-presentation/presentation').PaneMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').ProviderApprovalRequest | undefined;
 } = {}): ConversationPaneState {
   const provider = () => conversationForView(view());
@@ -94,7 +93,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
         const pending = pendingMessages();
         const messages = pending.length ? [...(provider()?.messages ?? []), ...pending] : provider()?.messages ?? [];
         const preview = extensions.previewMessage?.();
-        return preview ? [...messages, ...paneMessages([preview])] : messages;
+        return preview ? [...messages, preview] : messages;
       },
       get busy() { return pendingMessages().length > 0 || (provider()?.busy ?? view().sending); },
       get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },

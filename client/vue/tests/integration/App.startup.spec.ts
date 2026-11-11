@@ -31,7 +31,7 @@ describe('app startup', () => {
     const snapshot = createEmptySnapshot();
     const { api } = createClientApiMock(snapshot);
     api.guestConversationControl.mockImplementation(async input => ({ entries: [], view: {
-      id: input.action === 'prepare' ? 'new-invite' : 'previous-invite', name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, frame: null,
+      id: input.action === 'prepare' ? 'new-invite' : 'previous-invite', name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, session: null,
     } }));
     const wrapper = mountStartup(api);
     try {
@@ -62,7 +62,7 @@ describe('app startup', () => {
     const id = 'c'.repeat(64);
     let view: import('@workspace/core/guest-navigation').GuestJoinView | null = null;
     api.guestConversationControl.mockImplementation(async input => {
-      if (input.action === 'prepare') view = { id, name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, frame: null };
+      if (input.action === 'prepare') view = { id, name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, session: null };
       if (input.action === 'cancel') view = null;
       return { entries: [], view };
     });
@@ -88,7 +88,7 @@ describe('app startup', () => {
     api.updateSettings.mockReturnValue(pendingSave.promise);
     const id = 'd'.repeat(64);
     api.guestConversationControl.mockImplementation(async input => ({ entries: [], view: input.action === 'prepare' ? {
-      id, name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, frame: null,
+      id, name: '', title: 'Sharing', status: 'needsName', participant: null, target: null, session: null,
     } : null }));
     const wrapper = mountStartup(api);
     try {
@@ -113,7 +113,7 @@ describe('app startup', () => {
     api.getSnapshotState.mockReturnValue(pending.promise);
     const entry = { id: 'a'.repeat(64), name: '', title: 'Sharing' };
     api.guestConversationControl.mockImplementation(async input => ({ entries: [], view: input.action === 'state' ? null : {
-      ...entry, status: input.action === 'join' ? 'ready' : 'needsName', participant: null, target: null, frame: null,
+      ...entry, status: input.action === 'join' ? 'ready' : 'needsName', participant: null, target: null, session: null,
     } }));
     const wrapper = mountStartup(api);
     try {
@@ -137,8 +137,8 @@ describe('app startup', () => {
     let state: import('@workspace/core/guest-navigation').GuestJoinState = { entries: [], view: null };
     api.updateSettings.mockImplementation(async input => structuredClone(updateSettingsInSnapshot(snapshot, input)));
     api.guestConversationControl.mockImplementation(async input => {
-      if (input.action === 'prepare') state = { entries: [], view: { ...entry, name: '', status: 'needsName', participant: null, target: null, frame: null } };
-      if (input.action === 'join' || input.action === 'open') state = { entries: [entry, other], view: { ...(input.id === other.id ? other : entry), status: 'ready', participant: { identity: 'fixture', name: 'Alex', discriminator: '1234abcd' }, target: { agentId: 'shared', provider: 'claude', sessionId: 'session', conversation: { provider: 'claude', sessionId: 'session', folder: null } }, frame: { type: 'claude.conversationSnapshotChanged', agentId: 'shared', provider: 'claude', providerSessionId: 'session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'shared', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [{ id: 'past', agentId: 'shared', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'History from before sharing' }], createdAt: 'now' }], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } } };
+      if (input.action === 'prepare') state = { entries: [], view: { ...entry, name: '', status: 'needsName', participant: null, target: null, session: null } };
+      if (input.action === 'join' || input.action === 'open') state = { entries: [entry, other], view: { ...(input.id === other.id ? other : entry), status: 'ready', participant: { identity: 'fixture', name: 'Alex', discriminator: '1234abcd' }, target: { agentId: 'shared', provider: 'claude', sessionId: 'session', conversation: { provider: 'claude', sessionId: 'session', folder: null } }, session: { agentId: 'shared', provider: 'claude', conversation: 'session', epoch: 'fixture', snapshot: { revision: 1, state: { activeTurnId: null, turns: [], messages: [{ id: 'past', agentId: 'shared', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'History from before sharing' }], createdAt: 'now' }], requests: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null, goal: null, title: null } } } } };
       if (input.action === 'leave') state = { entries: [], view: null };
       if (input.action === 'join' || input.action === 'open') {
         snapshot.agents = [{ id: 'shared-row', teamId: snapshot.teams[0]!.id, name: entry.title, sessionKind: 'quickChat', sharedConversation: { joinId: id }, provider: 'codex', folder: null, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
@@ -183,7 +183,7 @@ describe('app startup', () => {
     snapshot.activeAgentId = agent.id;
     const { api, emit } = createClientApiMock(snapshot);
     const entry = { id, name: 'Alex', title: 'Sharing' };
-    let state: import('@workspace/core/guest-navigation').GuestJoinState = { entries: [entry], view: { ...entry, status: 'ready', participant: null, target: null, frame: null } };
+    let state: import('@workspace/core/guest-navigation').GuestJoinState = { entries: [entry], view: { ...entry, status: 'ready', participant: null, target: null, session: null } };
     let failClose = true;
     api.guestConversationControl.mockImplementation(async input => {
       if (input.action === 'leave') {
@@ -200,7 +200,7 @@ describe('app startup', () => {
     try {
       await flushPromises();
       expect(wrapper.find('.shared-conversation-pane').exists()).toBe(true);
-      state = { entries: [entry], view: { ...entry, status: 'rejected', participant: null, target: null, frame: null } };
+      state = { entries: [entry], view: { ...entry, status: 'rejected', participant: null, target: null, session: null } };
       await vi.advanceTimersByTimeAsync(750); await flushPromises();
       expect(wrapper.find('#guest-invitation').exists()).toBe(false);
       const ended = wrapper.get('.shared-conversation-pane');

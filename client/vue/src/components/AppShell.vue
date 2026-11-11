@@ -660,7 +660,7 @@
 
 <script setup lang="ts">
 import { conversationForView, conversationPlanForAgent, type ConversationPresentation } from '../provider-conversation-bindings';
-import type { PaneMessage } from '../conversation-presentation/pane-messages';
+import type { PaneMessage } from '../conversation-presentation/presentation';
 import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
 

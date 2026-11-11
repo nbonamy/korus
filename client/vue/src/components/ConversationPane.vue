@@ -182,7 +182,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'AppConversationPane' });
 import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
-import type { PaneMessage } from '../conversation-presentation/pane-messages';
+import type { PaneMessage } from '../conversation-presentation/presentation';
 import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
 import { slicePromptContent, replacePromptContentRange } from '@korus-dev/multi-agent-sdk/prompt';
 import ConversationShareActivity from './ConversationShareActivity.vue';

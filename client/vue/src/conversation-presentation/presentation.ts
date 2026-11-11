@@ -1,5 +1,7 @@
-import type { ProviderSessionData, SessionState } from '@korus-dev/multi-agent-sdk';
-import type { PaneMessage } from './pane-messages';
+import type { Message, ProviderSessionData, SessionState } from '@korus-dev/multi-agent-sdk';
+
+/** A message as Korus hands it to the conversation pane: the neutral model, without the agent that owns it. */
+export type PaneMessage = Omit<Message, 'agentId' | 'createdAt'> & { createdAt?: string };
 
 /** What a conversation pane shows: the harness's session state, read-only. */
 export type ConversationPresentation = Pick<SessionState,

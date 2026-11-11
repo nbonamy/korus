@@ -92,7 +92,7 @@ const props = defineProps<{
   emptyHeadline?: string;
   emptySubhead?: string;
   placeholder?: string;
-  previewMessage?: import('../conversation-presentation/pane-messages').PaneMessage;
+  previewMessage?: import('../conversation-presentation/presentation').PaneMessage;
   previewApproval?: import('@workspace/core/contracts').ProviderApprovalRequest;
   followUpBehavior?: AppGeneralSettings['followUpBehavior'];
   mentionGroups: readonly ComposerMentionGroup[];

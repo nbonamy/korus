@@ -100,7 +100,7 @@ describe('owner Share workflow', () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
     const proposal = { id: '11111111-1111-4111-8111-111111111111', handle: 'a'.repeat(32), identity: 'guest', name: 'Alex', discriminator: '1234abcd', text: 'Please inspect the retry path', status: 'pending' as const, createdAt: 'now' };
     agent.sharedConversation = { joinId: 'shared-join' };
-    const view: GuestJoinView = { id: 'shared-join', name: 'My display name', title: 'Owner title', status: 'ready', participant: { identity: 'guest', name: 'My display name', discriminator: '1234abcd' }, target: null, frame: null, proposalState: { proposals: [proposal], authors: [] } };
+    const view: GuestJoinView = { id: 'shared-join', name: 'My display name', title: 'Owner title', status: 'ready', participant: { identity: 'guest', name: 'My display name', discriminator: '1234abcd' }, target: null, session: null, proposalState: { proposals: [proposal], authors: [] } };
     const control = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
@@ -133,7 +133,7 @@ describe('owner Share workflow', () => {
     snapshot.general.followUpBehavior = preference;
     agent.sharedConversation = { joinId: 'shared-join' };
     const view: GuestJoinView = { id: 'shared-join', name: 'Guest', title: 'Owner chat', status: 'ready', participant: null, target: null,
-      frame: { type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: 'owner', providerSessionId: 'owner-session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'owner-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
+      session: { agentId: 'owner', provider: 'claude', conversation: 'owner-session', epoch: 'fixture', snapshot: { revision: 1, state: { activeTurnId: 'turn', turns: [], messages: [], requests: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null, goal: null, title: null } } },
       proposalState: { writeAccess: true, proposals: [], authors: [] } };
     const control = vi.fn().mockResolvedValue(true);
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });

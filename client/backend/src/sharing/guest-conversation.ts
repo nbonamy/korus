@@ -1,60 +1,123 @@
-import { codexEventFromWire } from '@workspace/core/codex-event-wire';
-import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import type { CompanionSync } from '@workspace/core/companion-journal';
-import { isConversationReset, type CompanionReset } from '@workspace/core/companion-protocol';
-import type { GuestConversationUpdate, GuestConversationSync } from '@workspace/core/guest-conversation';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
-import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
+import { applySessionPatch, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import type { Message, SessionState } from '@korus-dev/multi-agent-sdk';
+import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import type { GuestConversationSession, GuestConversationUpdate } from '@workspace/core/guest-conversation';
 
-/** Keep only the routing envelope. App snapshots, proposals and workspace projections never cross this boundary. */
-export function guestConversationFrame(frame: ProviderConversationFrame): GuestConversationUpdate {
-  const { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } = frame;
-  const clean = { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
-  if (clean.type === 'codex.conversationSnapshotChanged') {
-    const s = clean.payload.snapshot;
-    // A conversation SDK snapshot also carries account/catalog/queue state for its owner UI.
-    // Construct a read-only transcript projection with safe empty values for those SDK fields.
-    clean.payload = { revision: clean.payload.revision, snapshot: {
-      status: 'ready', authentication: { status: 'loaded', account: null, requiresOpenaiAuth: false, error: null, login: { status: 'idle', loginId: null, authUrl: null, error: null } },
-      activeConversationId: s.activeConversationId, activeTurnId: s.activeTurnId, turnIds: s.turnIds, turns: s.turns, messages: s.messages,
-      busy: s.busy, historyLoading: s.historyLoading, contextUsage: s.contextUsage, goal: s.goal, turnGitDiff: s.turnGitDiff, threadStatus: s.threadStatus, error: s.error,
-      ...(s.historyState ? { historyState: s.historyState } : {}), ...(s.executionPlan ? { executionPlan: s.executionPlan } : {}),
-      conversations: [], clientRequests: [], answeredClientRequestIds: [], approvals: [], models: [], modelCatalogStatus: 'loaded', skills: [], skillCatalogStatus: 'loaded', plugins: [], pluginCatalogStatus: 'loaded', permissionProfiles: [], approvalPresets: [], approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: false, rateLimits: null, queuedPrompts: [],
-    } };
-  } else if (clean.type === 'codex.conversationEventReceived') {
-    const event = clean.payload.event;
-    // Provider control/catalog and pending owner queues are not guest transcript traffic.
-    const allowed = new Set(['conversation.historyReplaced', 'conversation.historyPrepended', 'conversation.historyStateChanged', 'conversation.activityChanged', 'conversation.goalChanged', 'conversation.contextUsageChanged', 'conversation.executionUsageChanged', 'conversation.diffUpdated', 'turn.started', 'turn.completed', 'turn.error', 'message.appended', 'message.delta', 'message.updated', 'tool.started', 'tool.updated', 'tool.completed', 'file.activity', 'plan.delta', 'plan.updated', 'plan.completed', 'context.compactionStarted', 'context.compactionCompleted']);
-    if (!allowed.has(event.type)) return { revision: clean.payload.revision };
-  } else if (clean.type === 'antigravity.conversationSnapshotChanged') {
-    clean.payload = { revision: clean.payload.revision, snapshot: { ...clean.payload.snapshot, clientRequests: [], answeredClientRequestIds: [] } };
-  } else if (clean.type === 'antigravity.conversationEventReceived' && ['request.created', 'request.resolved'].includes(clean.payload.event.type)) return { revision: clean.payload.revision };
-  return { frame: clean };
+export type SessionConversationEvent = Extract<AppBackendEvent, { type: 'conversation.sessionSnapshot' | 'conversation.sessionPatch' }>;
+export const isSessionConversationEvent = (event: AppBackendEvent): event is SessionConversationEvent =>
+  event.type === 'conversation.sessionSnapshot' || event.type === 'conversation.sessionPatch';
+
+/**
+ * The transcript fields a guest sees. Execution settings, permissions, plan mode, the title and the owner's pending
+ * requests and answers stay with the owner; the required ones reach guests empty.
+ */
+const guestFields = new Set<string>(['busy', 'activeTurnId', 'turns', 'historyLoading', 'historyState', 'error', 'goal', 'contextUsage', 'plan'] satisfies (keyof SessionState)[]);
+
+function guestState({ messages, busy, activeTurnId, turns, historyLoading, historyState, error, goal, contextUsage, plan }: SessionState): SessionState {
+  return { messages, busy, activeTurnId, turns, error, goal, contextUsage, plan, requests: [], title: null,
+    ...(historyLoading === undefined ? {} : { historyLoading }), ...(historyState === undefined ? {} : { historyState }) };
 }
-export function guestConversationSync(sync: CompanionSync): GuestConversationSync { return { checkpoint: sync.checkpoint, updates: sync.frames.map(guestConversationFrame) }; }
+function guestPatch(patch: SessionPatch): SessionPatch {
+  // A patch keeps its revision with no visible change, so the guest's revisions stay contiguous.
+  return { revision: patch.revision, ops: patch.ops.filter(op => op.op === 'spliceMessages' || guestFields.has(op.key)) };
+}
 
-/** Cache routing/revisions around existing provider replicas; never reduce transcript events here. */
+/** Keep only the routing envelope and the guest-visible transcript. App snapshots, proposals and owner state never cross this boundary. */
+export function guestConversationUpdate(event: SessionConversationEvent | GuestConversationUpdate): GuestConversationUpdate {
+  const { agentId, provider } = event; const { conversation, epoch } = event.payload;
+  return event.type === 'conversation.sessionSnapshot'
+    ? { type: event.type, agentId, provider, payload: { conversation, epoch, snapshot: { revision: event.payload.snapshot.revision, state: guestState(event.payload.snapshot.state) } } }
+    : { type: event.type, agentId, provider, payload: { conversation, epoch, patch: guestPatch(event.payload.patch) } };
+}
+export function guestSnapshotUpdate(session: GuestConversationSession): GuestConversationUpdate {
+  const { agentId, provider, conversation, epoch, snapshot } = session;
+  return guestConversationUpdate({ type: 'conversation.sessionSnapshot', agentId, provider, payload: { conversation, epoch, snapshot } });
+}
+/** The messages an update delivers, which the guest may then ask the owner to expand or preview. */
+export function deliveredMessages(update: GuestConversationUpdate): Message[] {
+  return update.type === 'conversation.sessionSnapshot' ? update.payload.snapshot.state.messages
+    : update.payload.patch.ops.flatMap(op => op.op === 'spliceMessages' ? op.messages : []);
+}
+
+/**
+ * Applies one conversation stream: a snapshot replaces unless it is a late one from the current stream, and a patch
+ * applies in revision order within its stream. Returns false when the holder needs a fresh snapshot.
+ */
+function follow(current: GuestConversationSession | null, update: GuestConversationUpdate | SessionConversationEvent): { session: GuestConversationSession | null; ok: boolean } {
+  const { agentId, provider } = update; const { conversation, epoch } = update.payload;
+  const sameStream = current !== null && current.agentId === agentId && current.provider === provider && current.epoch === epoch && current.conversation === conversation;
+  if (update.type === 'conversation.sessionSnapshot') {
+    if (sameStream && update.payload.snapshot.revision < current.snapshot.revision) return { session: current, ok: true };
+    return { session: { agentId, provider, conversation, epoch, snapshot: update.payload.snapshot }, ok: true };
+  }
+  if (!sameStream) return { session: current, ok: false };
+  if (update.payload.patch.revision <= current.snapshot.revision) return { session: current, ok: true };
+  try { return { session: { ...current, snapshot: applySessionPatch(current.snapshot, update.payload.patch) }, ok: true }; }
+  catch { return { session: current, ok: false }; }
+}
+
+/** The guest's copy of the shared conversation. A missed revision or another stream asks the owner for a fresh snapshot. */
 export class GuestConversationCache {
-  snapshot: CompanionReset | null = null;
-  private replica?: { apply(event: never): unknown; getSnapshot(): unknown };
-  clear() { this.snapshot = null; this.replica = undefined; }
+  session: GuestConversationSession | null = null;
+  /** Set when an update could not be applied, until a snapshot replaces the state. */
+  stale = false;
+  clear() { this.session = null; this.stale = false; }
   receive(update: GuestConversationUpdate): boolean {
-    const frame = 'frame' in update ? update.frame : null;
-    const revision = frame?.payload.revision ?? ('revision' in update ? update.revision : -1);
-    if (frame && isConversationReset(frame)) {
-      this.replica = frame.type === 'codex.conversationSnapshotChanged' ? createCodexConversationReplica(frame.payload.snapshot)
-        : frame.type === 'claude.conversationSnapshotChanged' ? createClaudeConversationReplica(frame.payload.snapshot) : createAntigravityConversationReplica(frame.payload.snapshot);
-      this.snapshot = frame; return true;
+    const next = follow(this.session, update);
+    this.session = next.session;
+    if (update.type === 'conversation.sessionSnapshot') this.stale = false;
+    if (!next.ok) this.stale = true;
+    return next.ok;
+  }
+}
+
+/**
+ * The owner's shared conversations, as the daemon publishes them. Only conversations a guest session watches are
+ * retained, and another conversation the agent shows meanwhile never replaces them; a missed revision drops the copy,
+ * so the next read loads the conversation again.
+ */
+export class SessionConversationSource {
+  private readonly sessions = new Map<string, GuestConversationSession>();
+  private readonly watchers = new Map<string, number>();
+  constructor(private readonly load: (agentId: string) => Promise<void>) {}
+  private static key(agentId: string, conversation: string | null) { return JSON.stringify([agentId, conversation]); }
+  watch(agentId: string, conversation: string): () => void {
+    const key = SessionConversationSource.key(agentId, conversation);
+    this.watchers.set(key, (this.watchers.get(key) ?? 0) + 1);
+    let active = true;
+    return () => {
+      if (!active) return; active = false;
+      const count = (this.watchers.get(key) ?? 1) - 1;
+      if (count > 0) { this.watchers.set(key, count); return; }
+      this.watchers.delete(key); this.sessions.delete(key);
+    };
+  }
+  /** Safe to call once per listener: a repeated event changes nothing. */
+  observe(event: AppBackendEvent): void {
+    if (event.type === 'conversation.historyLoadFailed') { this.forget(id => id === event.agentId); return; }
+    if (event.type === 'snapshot.updated') {
+      const agents = new Set(event.payload.agents.map(agent => agent.id));
+      this.forget(id => !agents.has(id)); return;
     }
-    const current = this.snapshot;
-    if (!current || !this.replica) return false;
-    if (revision <= current.payload.revision) return true;
-    if (revision !== current.payload.revision + 1 || (frame && (frame.agentId !== current.agentId || frame.provider !== current.provider))) return false;
-    try {
-      if (frame && !isConversationReset(frame)) this.replica.apply((frame.provider === 'codex' ? codexEventFromWire(frame.payload.event) : frame.payload.event) as never);
-      const snapshot = this.replica.getSnapshot(); if (!snapshot) return false;
-      this.snapshot = { ...current, payload: { revision, snapshot } } as CompanionReset; return true;
-    } catch { return false; }
+    if (!isSessionConversationEvent(event)) return;
+    const key = SessionConversationSource.key(event.agentId, event.payload.conversation);
+    if (!this.watchers.has(key)) return;
+    const next = follow(this.sessions.get(key) ?? null, event);
+    if (next.ok && next.session) this.sessions.set(key, next.session); else this.sessions.delete(key);
+  }
+  clear(): void { this.sessions.clear(); }
+  async read(agentId: string, conversation: string): Promise<GuestConversationSession> {
+    const key = SessionConversationSource.key(agentId, conversation);
+    // Loading publishes a fresh snapshot, which observe() retains before the load resolves. A revision missed
+    // while it was loading drops that copy again, so the load is tried once more.
+    for (let attempt = 0; ; attempt++) {
+      const current = this.sessions.get(key);
+      if (current) return current;
+      if (attempt === 2) throw new Error('Authoritative conversation is unavailable.');
+      await this.load(agentId);
+    }
+  }
+  private forget(matches: (agentId: string) => boolean) {
+    for (const [key, session] of this.sessions) if (matches(session.agentId)) this.sessions.delete(key);
   }
 }

@@ -24,7 +24,7 @@ createApp({
     if (guestMode) {
       const lastControl = ref<GuestJoinControl | null>(null);
       const view: GuestJoinView = { id: 'synthetic-guest', name: 'Alex', title: 'Shared conversation', status: 'ready', participant: null, target: null,
-        frame: { type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: 'owner', providerSessionId: 'synthetic-session', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'synthetic-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
+        session: { agentId: 'owner', provider: 'claude', conversation: 'synthetic-session', epoch: 'fixture', snapshot: { revision: 1, state: { activeTurnId: 'turn', turns: [], messages: [], requests: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null, goal: null, title: null } } },
         proposalState: { proposals: [], authors: [], writeAccess: guestMode !== 'readonly' } };
       return () => h('main', { style: 'display:flex;height:100vh;background:var(--color-shell-main);color:var(--color-text)', 'data-guest-control': JSON.stringify(lastControl.value) }, [
         h(SharedConversationPane, { view, busy: false, followUpBehavior: guestMode === 'queue' ? 'queue' : 'steer', control: async input => { lastControl.value = input; return true; } }),
