@@ -34,7 +34,7 @@ export function isNumber(value: unknown): boolean {
   return typeof value === 'number';
 }
 
-export { isHarnessProvider } from '@korus-dev/multi-agent-sdk/renderer';
+export { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
 
 export function isNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';

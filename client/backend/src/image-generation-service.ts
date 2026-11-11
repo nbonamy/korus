@@ -1,4 +1,4 @@
-import { harnessProviders } from '@korus-dev/multi-agent-sdk/renderer';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import type { ProviderImageGenerationInput, ProviderImageGenerationResult } from '@workspace/core/provider-driver';

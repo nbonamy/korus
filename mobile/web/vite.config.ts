@@ -21,7 +21,7 @@ export default defineConfig({
       return JSON.stringify({ ...product, repository: product.releaseRepository });
     },
   }, vue(), excalidrawAssets(), ...(android ? [] : [appleCryptoBuild()])],
-  resolve: { dedupe: ['vue', '@korus-dev/multi-agent-sdk/renderer', '@korus-dev/agent-ui-sdk'], alias: [
+  resolve: { dedupe: ['vue', '@korus-dev/multi-agent-sdk/contracts', '@korus-dev/agent-ui-sdk'], alias: [
     ...(android ? [] : [
       { find: '@chainsafe/libp2p-noise', replacement: path.resolve(__dirname, '../src/apple-crypto/noise.ts') },
       { find: '@libp2p/crypto/keys', replacement: path.resolve(__dirname, '../src/apple-crypto/keys.ts') },

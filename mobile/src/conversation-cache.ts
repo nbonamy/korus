@@ -1,6 +1,6 @@
 import { codexEventFromWire } from '@workspace/core/codex-event-wire';
 import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '@workspace/core/companion-journal';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/renderer';
+import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';

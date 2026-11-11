@@ -1,5 +1,5 @@
 import { isProviderSafetyReview, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';

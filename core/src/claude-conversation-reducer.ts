@@ -1,1 +1,1 @@
-export { applyClaudeConversationEvent } from '@korus-dev/multi-agent-sdk/renderer';
+export { applyClaudeConversationEvent } from '@korus-dev/multi-agent-sdk/contracts';

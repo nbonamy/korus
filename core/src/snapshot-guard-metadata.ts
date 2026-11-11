@@ -1,6 +1,6 @@
 import { operationCapabilityFlags } from './capability-flags';
 import { isProviderSafetyReview } from './provider-safety-block';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isDesignWorkspace } from './design';
 import { isExecutionSelection } from './execution-selection';
 import { isPromptContent } from './snapshot-guard-collections';

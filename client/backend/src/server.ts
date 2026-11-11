@@ -1,5 +1,5 @@
 import { isProviderSafetyReviewTarget, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
 import { FeatureGroupService } from './features/feature-group-service';
 import type { FeatureGroupRequest, FeatureAgentRequest } from '@workspace/core/feature-groups';

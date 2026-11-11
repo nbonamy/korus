@@ -28,7 +28,7 @@ import { type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-s
 import {
   createCodexConversationReplica,
   type CodexConversationReplica,
-} from '@korus-dev/multi-agent-sdk/renderer';
+} from '@korus-dev/multi-agent-sdk/contracts';
 import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import {
   createClaudeConversationReplica,

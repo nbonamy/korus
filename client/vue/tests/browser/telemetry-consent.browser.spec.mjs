@@ -90,7 +90,7 @@ const server = await createServer({
     noDiscovery: sdkSourcesEnabled,
     include: ['vue', 'element-plus', 'vue-i18n', ...(sdkSourcesEnabled
       ? ['fix-webm-duration', 'katex', 'marked-katex-extension', 'parse-git-diff', 'elkjs/lib/elk.bundled.js']
-      : ['@korus-dev/agent-ui-sdk', '@korus-dev/multi-agent-sdk/renderer', '@korus-dev/multi-agent-sdk/prompt'])],
+      : ['@korus-dev/agent-ui-sdk', '@korus-dev/multi-agent-sdk/contracts', '@korus-dev/multi-agent-sdk/prompt'])],
   },
   resolve: { alias: { "@workspace/core": path.join(root, "core/src") }, dedupe: ['vue'] },
   // This fixed fixture must not reload while the browser clock advances.

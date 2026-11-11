@@ -1,5 +1,5 @@
 import type { HarnessProvider } from '../contracts';
-import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/renderer';
+import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type { ProviderAuthenticationAction, ProviderAuthentication, AuthenticationLogin, AuthenticationLoginMethod } from '@korus-dev/multi-agent-sdk';
 import type { ProviderAuthentication } from '@korus-dev/multi-agent-sdk';

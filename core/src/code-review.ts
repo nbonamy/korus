@@ -1,5 +1,5 @@
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
-import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/renderer';
+import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
 import { isExecutionSelection, isExecutionSelectionOverrides, readPersistedExecutionSelection } from './execution-selection';
 import type { ProviderSessionData } from './contracts/provider';
 import type { Agent, HarnessProvider, AgentGitStatus } from './contracts';

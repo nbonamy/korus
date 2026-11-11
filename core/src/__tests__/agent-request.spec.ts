@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { agentResponseFromClientResponse, approvalAgentRequest, approvalOutcome, clientResponseFromAgentResponse, isAgentRequestResponse, requestFromClientRequest } from '../agent-request';
 import type { ProviderApprovalRequest, ClientRequest, ClientRequestResponse } from '../contracts';
 import { codexEventFromWire } from '../codex-event-wire';
-import { approvalOutcome as sdkApprovalOutcome } from '@korus-dev/multi-agent-sdk/renderer';
+import { approvalOutcome as sdkApprovalOutcome } from '@korus-dev/multi-agent-sdk/contracts';
 
 describe('normalized agent input contracts', () => {
   it('lets the renamed SDK cancel an approval received from a released-client frame', () => {

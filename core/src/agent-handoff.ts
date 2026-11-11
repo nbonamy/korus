@@ -1,5 +1,5 @@
 import type { ExecutionSelection } from './contracts/execution';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isExecutionSelection, readPersistedExecutionSelection } from './execution-selection';
 import type { Agent, AppSnapshot, ProviderConversationRef } from './contracts';
 

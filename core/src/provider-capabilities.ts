@@ -1,5 +1,5 @@
 import type { HarnessProvider, ProviderCapabilities } from './contracts';
-import { codexHarnessCapabilities as nativecodex, claudeHarnessCapabilities as nativeclaude, cursorHarnessCapabilities as nativecursor, antigravityHarnessCapabilities as nativeantigravity } from '@korus-dev/multi-agent-sdk/renderer';
+import { codexHarnessCapabilities as nativecodex, claudeHarnessCapabilities as nativeclaude, cursorHarnessCapabilities as nativecursor, antigravityHarnessCapabilities as nativeantigravity } from '@korus-dev/multi-agent-sdk/contracts';
 export const codexProviderCapabilities: ProviderCapabilities = {
   ...nativecodex,
   conversationReplaceWithSummary: true,

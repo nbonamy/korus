@@ -1,6 +1,6 @@
-import { approvalOutcome as nativeApprovalOutcome, type AgentRequestOutcome } from '@korus-dev/multi-agent-sdk/renderer';
-export { isAgentRequestResponse, approvalAgentRequest, requestFromClientRequest, agentResponseFromClientResponse, clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/renderer';
-export type { AgentRequest, AgentRequestOutcome, AgentRequestResponse } from '@korus-dev/multi-agent-sdk/renderer';
+import { approvalOutcome as nativeApprovalOutcome, type AgentRequestOutcome } from '@korus-dev/multi-agent-sdk/contracts';
+export { isAgentRequestResponse, approvalAgentRequest, requestFromClientRequest, agentResponseFromClientResponse, clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
+export type { AgentRequest, AgentRequestOutcome, AgentRequestResponse } from '@korus-dev/multi-agent-sdk/contracts';
 
 export function requestOutcomeToWire(outcome: AgentRequestOutcome): AgentRequestOutcome {
   if (outcome.kind !== 'cancelled' && outcome.kind !== 'completed') return outcome;

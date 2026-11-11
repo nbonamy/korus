@@ -1,1 +1,1 @@
-export { createCursorConversationReplica, emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/renderer';
+export { createCursorConversationReplica, emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';

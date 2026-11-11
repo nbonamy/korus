@@ -1,5 +1,5 @@
 import { isCanvasDocument, type CanvasDocument } from './visualize-canvas';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import type { Agent, ProviderConversationRef } from './contracts';
 
 export const visualizationKinds = ['mermaid', 'svg', 'excalidraw', 'image'] as const;

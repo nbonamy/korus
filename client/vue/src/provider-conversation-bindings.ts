@@ -30,10 +30,10 @@ export function pendingConversationPrompts(
     return !accepted;
   });
 }
-export type { ConversationPresentation } from '@korus-dev/multi-agent-sdk/renderer';
+export type { ConversationPresentation } from './conversation-presentation/presentation';
 import { projectCodexConversation as codexPresentation, projectClaudeConversation as claudePresentation,
   projectCursorConversation as cursorPresentation, projectAntigravityConversation as antigravityPresentation,
-  type ConversationPresentation } from '@korus-dev/multi-agent-sdk/renderer';
+  type ConversationPresentation } from './conversation-presentation/presentation';
 type Project<S> = (snapshot: S | null | undefined, agent: Agent) => ConversationPresentation | null;
 export const projectCodexConversation: Project<CodexConversationSnapshot> = codexPresentation;
 export const projectClaudeConversation: Project<ClaudeConversationSnapshot> = claudePresentation;

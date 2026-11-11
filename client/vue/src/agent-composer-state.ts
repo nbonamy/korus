@@ -15,7 +15,7 @@ import type {
 import { computed, reactive, ref } from 'vue';
 import { AsyncCatalogCache, type AsyncCatalogEntry, type AsyncCatalogStatus } from './async-catalog-cache';
 import { appApi } from './platform-api';
-import { projectSessionSelection } from '@korus-dev/multi-agent-sdk/renderer';
+import { projectSessionSelection } from './conversation-presentation/presentation';
 
 export type AgentComposerConfiguration = {
   provider: Agent['provider'] | undefined;

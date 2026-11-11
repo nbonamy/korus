@@ -3,7 +3,7 @@ import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionSync } from '@workspace/core/companion-journal';
 import { isConversationReset, type CompanionReset } from '@workspace/core/companion-protocol';
 import type { GuestConversationUpdate, GuestConversationSync } from '@workspace/core/guest-conversation';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/renderer';
+import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 

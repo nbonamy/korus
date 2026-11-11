@@ -1,4 +1,4 @@
-import { withInferredWorkPhases as inferMessage, withInferredTurnWorkPhases as inferTurn, type WorkPhasePart } from '@korus-dev/multi-agent-sdk/renderer';
+import { withInferredWorkPhases as inferMessage, withInferredTurnWorkPhases as inferTurn, type WorkPhasePart } from '@korus-dev/multi-agent-sdk/contracts';
 import { isAppMcpServerName } from './product';
 type Message = { role?: string; kind?: string; parts?: readonly WorkPhasePart[] };
 const isBookkeepingTool = (part: WorkPhasePart) => part.metadata?.workPhase === 'bookkeeping'

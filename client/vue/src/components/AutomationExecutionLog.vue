@@ -65,7 +65,7 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { computed, ref } from 'vue';
 import type { ProviderConversationRef, Automation, AutomationExecutionStatus, RendererMessage } from '@workspace/core/contracts';
 import AppDataList from './AppDataList.vue';
