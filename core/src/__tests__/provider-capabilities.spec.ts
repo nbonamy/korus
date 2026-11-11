@@ -8,6 +8,7 @@ import {
 describe('backend capabilities', () => {
   it('enables implemented Cursor execution and cold history controls', () => {
     expect(defaultProviderCapabilities('cursor')).toStrictEqual({
+      commands: [{ id: 'cursor.plan', provider: 'cursor', name: 'plan', displayName: 'Plan', description: 'Switch to Cursor Plan mode.', slashName: 'plan', submitOnSelect: true }],
       accountUsage: true, scopedExecution: true, turnContinuation: true, mcpRequiredServers: false, mcpAutoApproval: false,
       reportsTokens: false,
       codeReview: true, planReview: true, questions: false, plugins: false,

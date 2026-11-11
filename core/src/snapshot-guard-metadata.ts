@@ -1,4 +1,4 @@
-import { operationCapabilityFlags } from './capability-flags';
+import { isProviderCommandSummary, operationCapabilityFlags } from './capability-flags';
 import { isProviderSafetyReview } from './provider-safety-block';
 import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isDesignWorkspace } from './design';
@@ -368,6 +368,7 @@ function isProviderCapabilities(value: unknown): boolean {
     optional(value, 'retryTurn', isBoolean) &&
     optional(value, 'approvals', isBoolean) &&
     optional(value, 'approvalPresets', (candidate) => isArrayOf(candidate, isApprovalPreset)) &&
+    optional(value, 'commands', (candidate) => isArrayOf(candidate, isProviderCommandSummary)) &&
     optional(value, 'permissionModes', (candidate) => isArrayOf(candidate, isPermissionModeOption));
 }
 

@@ -1,4 +1,4 @@
-import { operationCapabilityFlags } from './capability-flags';
+import { isProviderCommandSummary, operationCapabilityFlags } from './capability-flags';
 import type {
   AccountRateLimits,
   AgentContextUsage,
@@ -278,6 +278,7 @@ function providerCapabilities(value: Record<string, unknown>): Partial<ProviderR
     ...(typeof value.retryTurn === 'boolean' ? { retryTurn: value.retryTurn } : {}),
     ...(typeof value.approvals === 'boolean' ? { approvals: value.approvals } : {}),
     ...(Array.isArray(value.approvalPresets) ? { approvalPresets: value.approvalPresets.filter(isApprovalPreset) } : {}),
+    ...(Array.isArray(value.commands) ? { commands: value.commands.filter(isProviderCommandSummary) } : {}),
     ...(Array.isArray(value.permissionModes) ? { permissionModes: value.permissionModes.flatMap(permissionModeOption) } : {}),
     ...(Array.isArray(value.login) ? { login: value.login.filter((method): method is 'browser' | 'deviceCode' => method === 'browser' || method === 'deviceCode') } : {}),
   };

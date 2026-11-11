@@ -71,6 +71,8 @@ const providerCapabilities: Record<HarnessProvider, ProviderCapabilities> = {
 export const providerPolicy = {
   /** Cursor streams its thinking as long unstructured text, which crowds the pane's activity headings. */
   hideReasoning: new Set<HarnessProvider>(['cursor']),
+  /** Cursor's catalog has left out /review since Cursor joined; no reason was recorded, so it stays until someone decides. */
+  withoutReviewCommand: new Set<HarnessProvider>(['cursor']),
 } as const;
 /** The account a connection signed in with, when its provider reports one. */
 export function connectionAccount(authentication: ProviderConnection['authentication']): { type: string } | null {

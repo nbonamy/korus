@@ -55,6 +55,9 @@ function expectProviderCapabilities(value: unknown, path: string): void {
       candidatePath,
     );
   });
+  expectOptional(value, 'commands', path, (candidate, candidatePath) => {
+    expectArray(candidate, candidatePath, (item, itemPath) => expectRecord(item, itemPath));
+  });
   expectOptional(value, 'approvalPresets', path, (candidate, candidatePath) => {
     expectArray(candidate, candidatePath, (item, itemPath) => {
       expectLiteral(

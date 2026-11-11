@@ -18,10 +18,17 @@ describe('backend command catalog', () => {
   });
 });
 
-it('offers supported app commands and native Cursor plan mode without Codex controls', () => {
+it('offers native Cursor plan mode, then supported app commands, without Codex controls', () => {
   expect(defaultProviderCommands('cursor').map(({id,provider: provider,slashName,submitOnSelect}) => ({id,provider: provider,slashName,submitOnSelect})))
     .toStrictEqual([
-      ...['design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,provider:'cursor',slashName:name,submitOnSelect:true})),
       {id:'cursor.plan',provider:'cursor',slashName:'plan',submitOnSelect:true},
+      ...['design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,provider:'cursor',slashName:name,submitOnSelect:true})),
     ]);
+});
+
+it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('offers the %s harness commands first, then Korus commands', provider => {
+  const commands = defaultProviderCommands(provider);
+  const firstApp = commands.findIndex(command => command.id.startsWith('app.'));
+  expect(commands.slice(0, firstApp).every(command => command.id === `${provider}.${command.name}`)).toBe(true);
+  expect(commands.slice(firstApp).every(command => command.id.startsWith('app.'))).toBe(true);
 });

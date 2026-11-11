@@ -13,7 +13,7 @@ export const allowed = {
     // Installing harnesses on SSH hosts, and Codex's shared skills and plugins across homes.
     /^client\/backend\/src\/connections\/(remote-engines|ssh-connections)\.ts$/,
     /^client\/backend\/src\/codex-resource-sharing\.ts$/,
-    /^core\/src\/(runtime-discovery|provider-commands)\.ts$/,
+    /^core\/src\/runtime-discovery\.ts$/,
     /^core\/src\/contracts\/provider-setup\.ts$/,
     // Settings, onboarding and sign-in screens for each harness.
     /^client\/vue\/src\/components\/(SettingsView|SettingsPersonalizationPanel|SettingsEngineConnectionRow|SettingsBankedResets|FirstRunOnboardingGate|CodexLoginLanding|LocalClaudeAuthenticationDialog|RemoteEngineConnections|RemoteCodexAuthentication|RemoteClaudeAuthentication|ProviderUpdateRow)\.vue$/,
