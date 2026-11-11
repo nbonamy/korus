@@ -5,6 +5,7 @@ import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/c
 import type { DelegatedTask, TaskAcceptance, TaskContract, TaskResultInput, TaskWorkspace, WaitTasksInput, WaitTasksResult } from '@workspace/core/delegated-task';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { taskContractSchema, taskResultSchema } from '../persistence/task-schema';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; goal?: boolean; planMode?: boolean; delegationUserInstructions?: DelegatedTask['delegationUserInstructions']; provider: Agent['provider']; workspace?: TaskWorkspace; specification: unknown };
 type TaskPorts = {
@@ -20,7 +21,7 @@ type TaskPorts = {
 
 const terminal = (task: DelegatedTask) => ['completed', 'cancelled', 'failed'].includes(task.state);
 const actionable = (task: DelegatedTask) => terminal(task) || task.state === 'needs-input' || task.state === 'interrupted';
-const sessionKey = (session: TaskAcceptance['providerSession'] | undefined) => session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `claude:${session.sessionId}` : '';
+const sessionKey = (session: TaskAcceptance['providerSession'] | undefined) => session ? `${session.kind}:${sessionConversationId(session)}` : '';
 
 /** One owner for durable assignment, result and outbox transitions. Provider history remains provider-owned. */
 export class DurableTaskService {

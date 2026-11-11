@@ -15,6 +15,7 @@ import type {
 } from '@workspace/core/visualize';
 import { cloneVisualizeSession, visualizationRepositoryRoot, visualizationSuggestionLimits } from '@workspace/core/visualize';
 import { createEntityId } from '@workspace/core/ids';
+import { sameConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 
 const MAX_VISUALIZATION_SOURCE_BYTES = 250_000;
 const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -416,7 +417,7 @@ export class VisualizeService {
 
   private ownsCurrentConversation(agent: Agent, visualize: VisualizeSession): boolean {
     const current = conversationRefFromAgent(agent);
-    return visualize.conversationRef === null || (current !== null && sameConversation(visualize.conversationRef, current));
+    return visualize.conversationRef === null || (current !== null && sameConversationRef(visualize.conversationRef, current));
   }
 
   private bindConversation(agentId: string, visualize: VisualizeSession): void {
@@ -559,14 +560,6 @@ function compactText(value: string): string {
 
 function cloneConversationRef(ref: ProviderConversationRef | null): ProviderConversationRef | null {
   return ref ? { ...ref } : null;
-}
-
-function sameConversation(left: ProviderConversationRef, right: ProviderConversationRef): boolean {
-  return left.provider === 'codex' && right.provider === 'codex'
-    ? left.threadId === right.threadId
-    : left.provider !== 'codex' && right.provider === left.provider
-      ? left.folder === right.folder && left.sessionId === right.sessionId
-      : false;
 }
 
 function boundedText(value: string, label: string, maxBytes: number): string {

@@ -15,11 +15,9 @@ type EventEnvelope = {
   source?: 'provider' | 'client';
   agentId?: string;
   provider?: HarnessProvider;
-  providerSessionId?: string;
   /** Opaque provider conversation identity for app-owned projections. */
   conversationId?: string;
   snapshot?: AppSnapshot;
-  threadId?: string;
   turnId?: string;
   occurredAt: string;
 };

@@ -26,6 +26,7 @@ import {
   type RightWorkspaceTab,
 } from './right-workspace';
 import type { AgentRightWorkspaceState } from './use-right-workspace-state';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type WorkspacePreviewOptions = {
   readConversationContent?: (agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk>;
@@ -75,7 +76,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
     const filePath = link.filepath ?? link.path;
     if (link.diffContent) {
       const content = link.diffContent;
-      if (agent.providerSession?.kind !== 'codex' || agent.providerSession.threadId !== content.sessionId) return;
+      if (!agent.providerSession || sessionConversationId(agent.providerSession) !== content.sessionId) return;
       const workspace = options.workspaceFor(agent.id);
       const tab = rightWorkspaceDiffTab(content.contentId, filePath);
       const requestId = ++filePreviewRequestId;
@@ -83,7 +84,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
       contentRequestIds.set(requestKey, requestId);
       workspace.diffPanels = { ...workspace.diffPanels, [tab]: { kind: 'gitDiff', title: fileBasename(filePath), subtitle: filePath, diff: '', state: 'loading', error: null } };
       options.openTab(tab, agent.id);
-      const current = () => contentRequestIds.get(requestKey) === requestId && agentForId(agent.id)?.providerSession?.kind === 'codex'
+      const current = () => contentRequestIds.get(requestKey) === requestId && agentForId(agent.id) !== undefined
         && agentConversationId(agentForId(agent.id)!) === content.sessionId;
       try {
         if (!options.readConversationContent) throw new Error('Update the desktop to load this diff.');

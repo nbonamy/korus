@@ -1,5 +1,5 @@
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
-import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
+import { isHarnessProvider, isProviderSessionData } from '@korus-dev/multi-agent-sdk/contracts';
 import { isExecutionSelection, isExecutionSelectionOverrides, readPersistedExecutionSelection } from './execution-selection';
 import type { ProviderSessionData } from './contracts/provider';
 import type { Agent, HarnessProvider, AgentGitStatus } from './contracts';
@@ -359,14 +359,7 @@ function isCodeReviewRound(value: unknown): value is CodeReviewRound {
     && typeof value.startedAt === 'string';
 }
 
-function isProviderSession(value: unknown): value is ProviderSessionData {
-  if (!isRecord(value)) return false;
-  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
-  if (value.kind === 'codex') return typeof value.threadId === 'string';
-  return value.kind === 'claude'
-    && typeof value.sessionId === 'string'
-    && (value.transport === 'stdio' || value.transport === 'websocket');
-}
+const isProviderSession = (value: unknown): value is ProviderSessionData => isProviderSessionData(value);
 
 function isCodeReviewFinding(value: unknown): value is CodeReviewFinding {
   return isRecord(value)

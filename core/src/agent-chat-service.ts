@@ -74,7 +74,7 @@ export function sendAgentPrompt(
       agent.providerSession = result.providerSession;
       if (result.goal) {
         agent.goal = result.goal;
-        emit({ agentId, threadId: result.goal.threadId, type: 'conversation.goalUpdated', payload: { goal: result.goal } });
+        emit({ agentId, conversationId: result.goal.threadId, type: 'conversation.goalUpdated', payload: { goal: result.goal } });
       }
       return result;
     })

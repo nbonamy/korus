@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import type { Agent, ConversationListInput, ConversationResumeTarget, ConversationSummary } from '@workspace/core/contracts';
+import { sessionHasConversation } from '@korus-dev/multi-agent-sdk/contracts';
 
 type SessionTranslation = (key: string, params?: Record<string, number>) => string;
 
@@ -100,14 +101,8 @@ export function useSessionHistory(options: SessionHistoryOptions) {
   function isCurrentSession(session: ConversationSummary): boolean {
     const agent = options.agent();
     const providerSession = agent.providerSession;
-    if (session.ref.provider === 'codex') {
-      return providerSession?.kind === 'codex' && providerSession.threadId === session.ref.threadId;
-    }
-
-    return (providerSession?.kind === 'claude' || providerSession?.kind === 'antigravity' || providerSession?.kind === 'cursor') &&
-      providerSession.kind === session.ref.provider &&
-      session.ref.folder === agent.folder &&
-      (providerSession.kind === 'claude' ? providerSession.transcriptSessionId ?? providerSession.sessionId : providerSession.sessionId) === session.ref.sessionId;
+    return Boolean(providerSession && sessionHasConversation(providerSession, session.ref)
+      && (!('folder' in session.ref) || session.ref.folder === agent.folder));
   }
 
   function sessionTitle(session: ConversationSummary): string {

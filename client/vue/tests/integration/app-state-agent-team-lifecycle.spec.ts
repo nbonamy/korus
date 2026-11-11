@@ -482,7 +482,7 @@ describe('useAppState', () => {
       seq: 2,
       agentId: 'agent-jesse',
       provider: 'codex',
-      threadId: 'thread-jesse',
+      conversationId: 'thread-jesse',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-jesse',
@@ -499,7 +499,7 @@ describe('useAppState', () => {
       seq: 3,
       agentId: 'agent-jesse',
       provider: 'codex',
-      threadId: 'thread-jesse',
+      conversationId: 'thread-jesse',
       turnId: 'turn-jesse-2',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest({

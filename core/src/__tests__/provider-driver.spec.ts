@@ -73,25 +73,25 @@ describe('backend driver helpers', () => {
       .toEqualTypeOf<BrowserAnnotation>();
     type SubagentOperationEvent = Extract<BackendEvent, { type: 'subagent.operationChanged' }>;
     expectTypeOf<SubagentOperationEvent['payload']>().toEqualTypeOf<SubagentOperationChange>();
-    expectTypeOf<Pick<SubagentOperationEvent, 'agentId' | 'provider' | 'threadId' | 'turnId' | 'source'>>()
+    expectTypeOf<Pick<SubagentOperationEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId' | 'source'>>()
       .toEqualTypeOf<{
         agentId: string;
         provider: Agent['provider'];
-        threadId?: string;
+        conversationId?: string;
         turnId?: string;
         source?: 'provider' | 'client';
       }>();
     type DiffUpdatedEvent = Extract<BackendEvent, { type: 'conversation.turnDiffUpdated' }>;
     expectTypeOf<DiffUpdatedEvent['payload']>()
       .toEqualTypeOf<Omit<TurnGitDiff, 'agentId' | 'turnId' | 'updatedAt'>>();
-    expectTypeOf<Pick<DiffUpdatedEvent, 'agentId' | 'provider' | 'threadId' | 'turnId'>>()
-      .toEqualTypeOf<{ agentId: string; provider: Agent['provider']; threadId?: string; turnId: string }>();
+    expectTypeOf<Pick<DiffUpdatedEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider: Agent['provider']; conversationId?: string; turnId: string }>();
     expectTypeOf<Extract<BackendEvent, { type: 'workspace.fileActivityDetected' }>['payload']>()
       .toEqualTypeOf<Omit<AgentFileActivity, 'agentId' | 'turnId' | 'occurredAt'>>();
     type GitStatusUpdatedEvent = Extract<BackendEvent, { type: 'git.statusUpdated' }>;
     expectTypeOf<GitStatusUpdatedEvent['payload']>().toEqualTypeOf<AgentGitStatus>();
-    expectTypeOf<Pick<GitStatusUpdatedEvent, 'agentId' | 'provider' | 'threadId' | 'turnId'>>()
-      .toEqualTypeOf<{ agentId: string; provider?: Agent['provider']; threadId?: string; turnId?: string }>();
+    expectTypeOf<Pick<GitStatusUpdatedEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider?: Agent['provider']; conversationId?: string; turnId?: string }>();
     expectTypeOf<Extract<BackendEvent, { type: 'agentRequest.created' }>['payload']>()
       .toEqualTypeOf<{ request: import('../agent-request').AgentRequest }>();
     expectTypeOf<Extract<BackendEvent, { type: 'agentRequest.resolved' }>['payload']>()

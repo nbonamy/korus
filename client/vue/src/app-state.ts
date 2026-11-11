@@ -1970,11 +1970,7 @@ function emptyComposerState(): ComposerState {
 }
 
 function plainConversationRef(ref: ProviderConversationRef): ProviderConversationRef {
-  return ref.provider === 'codex'
-    ? { provider: 'codex', threadId: ref.threadId }
-    : { provider: ref.provider, folder: ref.folder, sessionId: ref.sessionId,
-      ...(ref.provider === 'claude' && ref.subagentId !== undefined ? { subagentId: ref.subagentId } : {}),
-    };
+  return JSON.parse(JSON.stringify(ref)) as ProviderConversationRef;
 }
 
 function plainDevicePairingSession(session: DevicePairingSession): DevicePairingSession {

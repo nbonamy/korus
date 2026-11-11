@@ -14,7 +14,7 @@ describe('snapshot subagent reducer', () => {
       seq: 1,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       turnId: 'turn-1',
       type: 'subagent.operationChanged',
       payload: {
@@ -42,7 +42,7 @@ describe('snapshot subagent reducer', () => {
       seq: 2,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       turnId: 'turn-1',
       type: 'subagent.activityChanged',
       payload: {
@@ -64,7 +64,7 @@ describe('snapshot subagent reducer', () => {
       seq: 3,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.identityChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -104,7 +104,7 @@ describe('snapshot subagent reducer', () => {
       seq: 4,
       agentId,
       provider: 'codex',
-      threadId: 'thread-child',
+      conversationId: 'thread-child',
       turnId: 'turn-child',
       type: 'subagent.activityChanged',
       payload: {
@@ -130,7 +130,7 @@ describe('snapshot subagent reducer', () => {
       seq: 5,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.identityChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -152,7 +152,7 @@ describe('snapshot subagent reducer', () => {
       seq: 1,
       agentId,
       provider: 'claude',
-      threadId: 'envelope-thread',
+      conversationId: 'envelope-thread',
       type: 'subagent.operationChanged',
       payload: {
         rootConversationId: 'payload-root',
@@ -225,7 +225,7 @@ describe('snapshot subagent reducer', () => {
       seq: 1,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -240,7 +240,7 @@ describe('snapshot subagent reducer', () => {
       seq: 2,
       agentId,
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-root',

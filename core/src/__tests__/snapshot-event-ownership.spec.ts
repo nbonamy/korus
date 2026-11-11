@@ -162,7 +162,7 @@ const rendererOnlyEvents = [
   {
     ...agent,
     provider: 'codex',
-    threadId: 'thread-1',
+    conversationId: 'thread-1',
     type: 'conversation.modeUpdated',
     payload: { mode: 'plan' },
   },
@@ -174,7 +174,7 @@ const rendererOnlyEvents = [
   {
     ...agent,
     provider: 'codex',
-    threadId: 'thread-1',
+    conversationId: 'thread-1',
     turnId: 'turn-1',
     type: 'workspace.fileActivityDetected',
     payload: {

@@ -3,6 +3,7 @@ import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import { planReviewDelivery } from '@workspace/core/plan-review';
 import type { ConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
 import { presentSessionState, type ConversationPresentation } from './conversation-presentation/presentation';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 /** Injected prompts remain presentation metadata until their provider-owned message arrives. */
 export function pendingConversationPrompts(
@@ -40,14 +41,14 @@ export function projectSessionConversation(state: SessionState | null | undefine
   return { ...presentation, messages, requests: sidebarRequestId ? presentation.requests.filter(request => request.id !== sidebarRequestId) : presentation.requests };
 }
 
-const conversationIdOf = (agent: Agent) => agent.providerSession ? (agent.providerSession.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession.sessionId) : null;
+const conversationIdOf = (agent: Agent) => agent.providerSession ? sessionConversationId(agent.providerSession) : null;
 
 export function conversationForView(view: { conversation?: ConversationPresentation | null }): ConversationPresentation | null {
   return view.conversation ?? null;
 }
 export function conversationKeyForAgent(agent: Agent): NonNullable<ConversationPaneIdentityState['conversationKey']> {
   const session = agent.providerSession;
-  return session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `${session.kind}:${session.sessionId}` : `agent:${agent.id}`;
+  return session ? `${session.kind}:${sessionConversationId(session)}` : `agent:${agent.id}`;
 }
 
 export function conversationPlanForAgent(agent: Agent, presentation: ConversationPresentation | null): ThreadPlan | null {

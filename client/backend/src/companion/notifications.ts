@@ -39,7 +39,7 @@ export class CompanionNotifications {
   }
   create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
     const view = { type: event.type, agentId: event.agentId, turnId: event.turnId,
-      conversationId: event.conversationId ?? event.threadId ?? event.providerSessionId, payload: event.payload };
+      conversationId: event.conversationId, payload: event.payload };
     // Mission workers are not in the team's agent list, but a person still has to answer them.
     const agent = companionAgents(workspace).find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);

@@ -97,7 +97,7 @@ describe('AppBackendServer', () => {
     emitEvent({
       provider: 'codex',
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-test',
       type: 'workspace.fileActivityDetected',
       payload: {
@@ -111,7 +111,7 @@ describe('AppBackendServer', () => {
     emitEvent({
       provider: 'codex',
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-test',
       type: 'conversation.turnDiffUpdated',
       payload: { addedLines: 3, removedLines: 1, diff: 'diff --git a/README.md b/README.md\n' },
@@ -416,7 +416,7 @@ describe('AppBackendServer', () => {
     server.emitEvent({
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       turnId: 'turn-1',
       type: 'subagent.operationChanged',
       payload: {
@@ -441,7 +441,7 @@ describe('AppBackendServer', () => {
     server.emitEvent({
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.identityChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -461,7 +461,7 @@ describe('AppBackendServer', () => {
     server.emitEvent({
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-root',
+      conversationId: 'thread-root',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -540,7 +540,7 @@ describe('AppBackendServer', () => {
     server.emitEvent({
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-diff',
       type: 'conversation.turnDiffUpdated',
       payload: {
@@ -553,7 +553,7 @@ describe('AppBackendServer', () => {
     expect(snapshot.turnGitDiffs['turn-diff']).toMatchObject({ diff });
     expect(events).toContainEqual(expect.objectContaining({
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-diff',
       type: 'conversation.turnDiffUpdated',
       payload: {

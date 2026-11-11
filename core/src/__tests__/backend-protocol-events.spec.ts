@@ -276,7 +276,7 @@ function createFixtures(): EventFixtures {
     },
     'conversation.goalUpdated': {
       ...agent,
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       type: 'conversation.goalUpdated',
       payload: { goal: {
         threadId: 'thread-1',

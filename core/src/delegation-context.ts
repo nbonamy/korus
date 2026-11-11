@@ -1,5 +1,6 @@
 import type { Agent, HarnessProvider } from './contracts';
 import type { ProviderSendResult } from './provider-driver';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 /** Upper bound for user-authored delegation text; durable task persistence enforces the same limit. */
 export const MAX_DELEGATION_INSTRUCTIONS_LENGTH = 100_000;
@@ -27,7 +28,7 @@ export function captureUserDelegationOverrides(agent: Agent, input?: DelegationO
 export function bindUserDelegationOverrides(agent: Agent, controls: TurnDelegationOverrides | undefined, receipt: ProviderSendResult): void {
   if (!controls || agent.userDelegationOverrides !== controls || !receipt.turnId) return;
   const session = receipt.providerSession;
-  controls.execution = { provider: session.kind, conversationId: session.kind === 'codex' ? session.threadId : session.sessionId, turnId: receipt.turnId };
+  controls.execution = { provider: session.kind, conversationId: sessionConversationId(session), turnId: receipt.turnId };
   if (pendingTerminals.get(controls)?.has(executionKey(controls.execution))) delete agent.userDelegationOverrides;
   pendingTerminals.delete(controls);
 }

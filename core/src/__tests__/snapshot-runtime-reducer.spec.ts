@@ -196,7 +196,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId: 'agent-dina',
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       type: 'conversation.goalUpdated',
       payload: {
         goal: {
@@ -227,7 +227,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId: 'agent-dina',
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       type: 'conversation.goalCleared',
       payload: {},
       occurredAt: '2026-06-05T00:00:02.000Z',
@@ -248,7 +248,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 3,
       agentId: 'agent-dina',
-      threadId: 'thread-2',
+      conversationId: 'thread-2',
       type: 'conversation.goalUpdated',
       payload: { goal: flatGoal },
       occurredAt: '2026-06-05T00:00:03.000Z',
@@ -263,7 +263,7 @@ describe('snapshot runtime reducer', () => {
       seq: 1,
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       turnId: 'turn-1',
       type: 'conversation.contextUsageUpdated',
       payload: {
@@ -306,7 +306,7 @@ describe('snapshot runtime reducer', () => {
       seq: 2,
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       type: 'conversation.contextUsageUpdated',
       payload: { contextUsage: flatContextUsage },
       occurredAt: '2026-06-05T00:00:02.000Z',

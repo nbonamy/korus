@@ -39,61 +39,48 @@ describe('ipc channels', () => {
     type AgentScopedEventContext = {
       agentId: string;
       provider?: HarnessProvider;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type OptionalEventContext = {
       agentId?: string;
       provider?: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type ClientRequestResolvedEventContext = {
       agentId: string;
       provider: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type AgentOnlyEventContext = {
       agentId: string;
       provider?: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type CodexThreadEventContext = {
       agentId: string;
       provider: 'codex';
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type AgentThreadEventContext = {
       agentId: string;
       provider?: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type ProviderThreadEventContext = {
       agentId: string;
       provider: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
@@ -102,34 +89,27 @@ describe('ipc channels', () => {
       provider: 'claude';
       providerSessionId: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId?: string;
       source?: 'provider' | 'client';
     };
     type ClaudeModeEventContext = {
       agentId: string;
       provider: 'claude';
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId: string;
       source?: 'provider' | 'client';
     };
     type TurnEventContext = {
       agentId: string;
       provider: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId: string;
       source?: 'provider' | 'client';
     };
     type ThreadTurnEventContext = {
       agentId: string;
       provider: HarnessProvider;
-      providerSessionId?: string;
       snapshot?: AppSnapshot;
-      threadId?: string;
       turnId: string;
       source?: 'provider' | 'client';
     };

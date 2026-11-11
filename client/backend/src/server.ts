@@ -1,5 +1,5 @@
 import { isProviderSafetyReviewTarget, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
-import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
+import { isProviderConversationRef, sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
 import { FeatureGroupService } from './features/feature-group-service';
 import type { FeatureGroupRequest, FeatureAgentRequest } from '@workspace/core/feature-groups';
@@ -906,10 +906,7 @@ export class AppBackendServer {
       applyEvent: (event) => this.handleBackendEvent(event, { persist: false }),
       getSnapshot: () => this.snapshot,
       loadSummary: this.driverRpc
-        ? (agent, conversationId) => this.driverRpc!.handle(backendMethods.driverConversationSummaryGet, {
-            agent,
-            ref: { provider: 'codex', threadId: conversationId },
-          }) as Promise<ConversationSummary | null>
+        ? (agent, ref) => this.driverRpc!.handle(backendMethods.driverConversationSummaryGet, { agent, ref }) as Promise<ConversationSummary | null>
         : undefined,
       persistSnapshot: () => this.persistSnapshotOnly(),
     });
@@ -1730,7 +1727,7 @@ export class AppBackendServer {
             { step: 'Exercise the execution-plan overlay', status: 'inProgress' },
             { step: 'Remove the debug fixture', status: 'pending' },
           ],
-          threadId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : `debug-thread-${agentId}`,
+          threadId: agent.providerSession ? sessionConversationId(agent.providerSession) : `debug-thread-${agentId}`,
           turnId,
           updatedAt: new Date().toISOString(),
         };
@@ -2925,7 +2922,7 @@ export class AppBackendServer {
             agent.goal = result.goal;
             this.handleBackendEvent({
               agentId,
-              threadId: result.goal.threadId,
+              conversationId: result.goal.threadId,
               type: 'conversation.goalUpdated',
               payload: { goal: result.goal },
             }, { persist: false });
@@ -2944,7 +2941,7 @@ export class AppBackendServer {
             delete agent.goal;
             this.handleBackendEvent({
               agentId,
-              threadId: result.providerSession.kind === 'codex' ? result.providerSession.threadId : undefined,
+              conversationId: sessionConversationId(result.providerSession),
               type: 'conversation.goalCleared',
               payload: {},
             }, { persist: false });
@@ -4540,7 +4537,7 @@ export class AppBackendServer {
   private nextMainEvent(event: BackendEvent): BackendPublishedEvent {
     if (event.type === 'agentRequest.resolved') event = { ...event, payload: { ...event.payload, outcome: requestOutcomeToWire(event.payload.outcome) } };
     const agent = event.agentId ? this.snapshot.agents.find((candidate) => candidate.id === event.agentId) : undefined;
-    const conversationId = event.conversationId ?? event.threadId ?? event.providerSessionId ?? (agent ? agentConversationId(agent) : null);
+    const conversationId = event.conversationId ?? (agent ? agentConversationId(agent) : null);
     return {
       ...event,
       ...(conversationId ? { conversationId } : {}),

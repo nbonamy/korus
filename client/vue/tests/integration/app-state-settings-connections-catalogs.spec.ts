@@ -317,8 +317,8 @@ describe('useAppState', () => {
     state.selectReasoningEffort('high');
     await vi.waitFor(() => expect(updateAgent).toHaveBeenCalledTimes(1));
     listeners[0]?.({
-      seq: 2, agentId: persisted.agents[0]!.id, provider: 'codex', threadId: 'thread-1',
-      conversationId: 'thread-1', type: 'conversation.settingsUpdated',
+      seq: 2, agentId: persisted.agents[0]!.id, provider: 'codex', conversationId: 'thread-1',
+      type: 'conversation.settingsUpdated',
       payload: { settings: { model: 'astra', reasoningEffort: 'medium' } },
       occurredAt: '2026-09-26T00:00:00.000Z',
     });

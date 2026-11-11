@@ -174,13 +174,7 @@ function conversationRefForRow(row: AppDataListRow): ProviderConversationRef | n
     return null;
   }
 
-  return row.conversationRef.provider === 'codex'
-    ? { provider: 'codex', threadId: row.conversationRef.threadId }
-    : {
-        provider: row.conversationRef.provider,
-        folder: row.conversationRef.folder,
-        sessionId: row.conversationRef.sessionId,
-      };
+  return JSON.parse(JSON.stringify(row.conversationRef)) as ProviderConversationRef;
 }
 
 function agentIdForRow(row: AppDataListRow): string {

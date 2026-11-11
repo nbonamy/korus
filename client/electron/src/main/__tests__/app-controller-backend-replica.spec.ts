@@ -419,7 +419,7 @@ describe('AppController', () => {
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.contextUsageUpdated',
       payload: { contextUsage },
@@ -481,7 +481,7 @@ describe('AppController', () => {
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.turnDiffUpdated',
       payload: {
@@ -509,7 +509,7 @@ describe('AppController', () => {
 
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'plan.readyForReview',
       payload: {
@@ -519,7 +519,7 @@ describe('AppController', () => {
 
     expect(send).toHaveBeenCalledWith('app:event', expect.objectContaining({
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'plan.readyForReview',
       payload: {

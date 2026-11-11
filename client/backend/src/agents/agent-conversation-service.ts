@@ -10,6 +10,7 @@ import type {
 import type { BackendEvent, ProviderTurnActionResult } from '@workspace/core/provider-driver';
 import { formatConversationTitle, shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
+import { isProviderSessionData, sameConversationRef, sessionConversationId, subagentOfRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { debugMain, warnMain } from '../log';
 import { conversationWriterDiagnostics } from './conversation-writer-diagnostics';
 
@@ -90,16 +91,10 @@ export class AgentConversationService {
     const agent = this.agent(agentId);
     if (agent?.handoff && sameConversationRef(agent.handoff.sourceRef, ref)) return true;
     const tree = snapshot.subagentTrees[agentId];
-    if (ref.provider === 'claude' && agent?.providerSession?.kind === 'claude') {
-      const root = conversationRefFromAgent(agent);
-      return tree?.rootConversationId === agent.providerSession.sessionId && root?.provider === 'claude'
-        && root.folder === ref.folder && root.sessionId === ref.sessionId
-        && ref.subagentId !== undefined && Boolean(tree.nodes[ref.subagentId]);
-    }
-    return ref.provider === 'codex' &&
-      agent?.providerSession?.kind === 'codex' &&
-      tree?.rootConversationId === agent.providerSession.threadId &&
-      Boolean(tree.nodes[ref.threadId]);
+    const root = agent ? conversationRefFromAgent(agent) : null;
+    if (!agent?.providerSession || !root || tree?.rootConversationId !== sessionConversationId(agent.providerSession)) return false;
+    const subagent = subagentOfRef(ref, root);
+    return subagent !== undefined && Boolean(tree.nodes[subagent]);
   }
 
   async hydrate(agentId: string, reportFailure = false): Promise<void> {
@@ -123,7 +118,7 @@ export class AgentConversationService {
     try {
       const session = await this.hydrateSessionWithTransientRetry(agentId, agent);
       const persistStarted = performance.now();
-      if (isProviderSession(session)) {
+      if (isProviderSessionData(session)) {
         agent.providerSession = session;
         await this.options.persistSnapshot();
         if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'daemon', stage: 'session-binding.persisted', agentId,
@@ -138,7 +133,7 @@ export class AgentConversationService {
       this.options.applyEvent({
         agentId,
         type: 'conversation.historyLoadFailed',
-        conversationId: agent.providerSession.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession.sessionId,
+        conversationId: sessionConversationId(agent.providerSession),
         payload: { error: 'Unable to load conversation history.' },
       });
       throw new Error('Unable to load conversation history.');
@@ -241,7 +236,7 @@ export class AgentConversationService {
     if (agent) agent.providerSession = result.providerSession;
     this.options.applyEvent({
       agentId,
-      ...(result.providerSession.kind === 'codex' ? { threadId: result.providerSession.threadId } : {}),
+      conversationId: sessionConversationId(result.providerSession),
       type: 'agent.statusChanged',
       payload: result.activeTurnId ? { type: 'working' } : { type: 'idle' },
     });
@@ -252,9 +247,8 @@ export class AgentConversationService {
 const HISTORY_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 function conversationKey(agent: Agent): string {
-  const session = agent.providerSession;
-  return JSON.stringify(session?.kind === 'codex' ? ['codex', session.threadId]
-    : session ? [session.kind, agent.folder, session.sessionId] : ['agent', agent.id]);
+  const ref = conversationRefFromAgent(agent);
+  return JSON.stringify(ref ?? ['agent', agent.id]);
 }
 
 function isTransientHistoryHydrationError(error: unknown): boolean {
@@ -264,26 +258,4 @@ function isTransientHistoryHydrationError(error: unknown): boolean {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function sameConversationRef(left: ProviderConversationRef, right: ProviderConversationRef): boolean {
-  return left.provider === right.provider && (
-    left.provider === 'codex'
-      ? right.provider === 'codex' && left.threadId === right.threadId
-      : right.provider === left.provider && left.folder === right.folder && left.sessionId === right.sessionId
-        && (left.provider !== 'claude' || right.provider !== 'claude' || left.subagentId === right.subagentId)
-  );
-}
-
-function isProviderSession(value: unknown): value is ProviderSessionData {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const session = value as Record<string, unknown>;
-  if (session.kind === 'codex') {
-    return typeof session.threadId === 'string' && session.threadId.trim().length > 0;
-  }
-  if (session.kind === 'antigravity' || session.kind === 'cursor') return typeof session.sessionId === 'string' && session.sessionId.trim().length > 0;
-  return session.kind === 'claude' &&
-    typeof session.sessionId === 'string' &&
-    session.sessionId.trim().length > 0 &&
-    typeof session.transport === 'string';
 }

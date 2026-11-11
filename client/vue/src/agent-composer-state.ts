@@ -16,6 +16,7 @@ import { computed, reactive, ref } from 'vue';
 import { AsyncCatalogCache, type AsyncCatalogEntry, type AsyncCatalogStatus } from './async-catalog-cache';
 import { appApi } from './platform-api';
 import { projectSessionSelection } from './conversation-presentation/presentation';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type AgentComposerConfiguration = {
   provider: Agent['provider'] | undefined;
@@ -572,9 +573,7 @@ function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { so
   const model = native?.model ?? defaults?.model ?? null;
   const reasoningEffort = native ? native.reasoningEffort ?? null : defaults?.reasoningEffort ?? null;
   const serviceTier = defaults && 'serviceTier' in defaults ? defaults.serviceTier ?? null : null;
-  const sessionId = agent.providerSession?.kind === 'codex'
-    ? agent.providerSession.threadId
-    : agent.providerSession?.sessionId ?? 'new';
+  const sessionId = agent.providerSession ? sessionConversationId(agent.providerSession) : 'new';
   return {
     provider: agent.provider, source: JSON.stringify([agent.provider, sessionId, model, reasoningEffort, serviceTier]),
     model,

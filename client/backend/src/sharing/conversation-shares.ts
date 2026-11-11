@@ -8,6 +8,7 @@ import { conversationShareTarget, decodeConversationInvitation, encodeConversati
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
+import { conversationRefId } from '@korus-dev/multi-agent-sdk/contracts';
 
 const bounded = z.string().min(1).max(4096);
 const conversation = z.discriminatedUnion('provider', [
@@ -48,8 +49,8 @@ export type ConversationSharingOptions = { directory: string; endpoint(): Promis
     subscribe(listener: (status: ShareRoutingStatus) => void): () => void;
   };
 };
-const conversationKey = (target: ConversationShareTarget) => JSON.stringify([target.provider, target.sessionId,
-  target.conversation.provider === 'codex' ? target.conversation.threadId : [target.conversation.folder, target.conversation.sessionId]]);
+const conversationKey = ({ provider, sessionId, conversation }: ConversationShareTarget) =>
+  JSON.stringify([provider, sessionId, conversationRefId(conversation), 'folder' in conversation ? conversation.folder : null]);
 const sameTarget = (a: ConversationShareTarget, b: ConversationShareTarget) => a.agentId === b.agentId && conversationKey(a) === conversationKey(b);
 
 /** Daemon-owned, serialized durable authority. No phone grants, renderer minting or expiry. */

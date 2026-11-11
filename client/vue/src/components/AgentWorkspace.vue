@@ -165,6 +165,7 @@ import {
   type RightWorkspaceTab,
   type RightWorkspaceBrowserTab,
 } from './right-workspace';
+import { sessionConversationId, subagentRef } from '@korus-dev/multi-agent-sdk/contracts';
 
 const props = withDefaults(defineProps<{
   previewDialog?: boolean;
@@ -635,7 +636,7 @@ function subagentTreeFor(agentId: string): AgentSubagentTree | null {
   const agent = props.snapshot.agents.find((candidate) => candidate.id === agentId);
   const tree = props.snapshot.subagentTrees[agentId];
   const session = agent?.providerSession;
-  const rootId = session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null;
+  const rootId = session ? sessionConversationId(session) : null;
   return rootId && tree?.rootConversationId === rootId
     ? tree
     : null;
@@ -645,7 +646,7 @@ watch(
   () =>
     props.snapshot.agents.map(
       (agent) =>
-        `${agent.id}:${agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession?.kind === 'claude' ? agent.providerSession.sessionId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
+        `${agent.id}:${agent.providerSession ? sessionConversationId(agent.providerSession) : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
           props.snapshot.subagentTrees[agent.id]?.nodes ?? {},
         )
           .sort()
@@ -680,8 +681,9 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
     return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
   const ref = agent ? conversationRefFromAgent(agent) : null;
-  if (!ref || (ref.provider !== 'codex' && ref.provider !== 'claude')) return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
-  return readConversationMessages(ref.provider === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
+  const subagent = ref ? subagentRef(ref, conversationId) : null;
+  if (!subagent) return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
+  return readConversationMessages(subagent, agentId);
 }
 
 function openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void {

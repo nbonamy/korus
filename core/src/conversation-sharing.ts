@@ -7,6 +7,7 @@ import { conversationRefFromAgent } from './conversation-ref';
 import { companionPeerIdPattern, relayAddress } from './companion-relay';
 import { defaultProviderCapabilities } from './provider-capabilities';
 import { product } from './product';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 export function supportsConversationSharing(agent: Agent | null | undefined): boolean {
   return Boolean(agent && defaultProviderCapabilities(agent.provider).conversationShare !== false && !agent.sharedConversation && conversationShareTarget(agent));
@@ -38,7 +39,7 @@ export function conversationShareTarget(agent: Agent): ConversationShareTarget |
   const conversation = conversationRefFromAgent(agent);
   const session = agent.providerSession;
   if (!conversation || !session || session.kind !== agent.provider) return null;
-  const sessionId = session.kind === 'codex' ? session.threadId : session.sessionId;
+  const sessionId = sessionConversationId(session);
   return sessionId ? { agentId: agent.id, provider: agent.provider, sessionId, conversation } : null;
 }
 

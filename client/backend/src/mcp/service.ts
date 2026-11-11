@@ -60,6 +60,7 @@ import { warnMain } from '../log';
 import type { DurableTaskService } from '../agents/durable-task-service';
 import type { RemoteWorkerRequest } from '@workspace/core/remote-collaboration';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 const maxMarkdownBytes = 2 * 1024 * 1024;
 
@@ -757,8 +758,7 @@ export class AppMcpService {
     if (!result) return { requested, effective: 'handoff', reason: 'unsupported' };
     const source = caller.providerSession;
     const session = result.providerSession;
-    const sameConversation = session.kind === 'codex' && source.kind === 'codex' ? session.threadId === source.threadId
-      : session.kind !== 'codex' && source.kind !== 'codex' && session.sessionId === source.sessionId;
+    const sameConversation = session.kind === source.kind && sessionConversationId(session) === sessionConversationId(source);
     if (session.kind !== worker.provider || sameConversation || result.activeTurnId) throw new Error('Native delegation did not create an independent idle worker conversation.');
     worker.providerSession = session;
     return { requested, effective: 'conversation' };

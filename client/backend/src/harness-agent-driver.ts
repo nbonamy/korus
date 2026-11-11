@@ -6,6 +6,7 @@ import type { AgentProviderDriver, BackendEvent, ProviderCodeReviewInput, Provid
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { providerDisplayName, unsupportedProviderFeature } from '@workspace/core/provider-driver';
 import { HarnessUnsupportedError } from '@korus-dev/multi-agent-sdk';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 type ProviderRuntimeStatus = ReturnType<AgentProviderDriver['getRuntimeStatus']>;
 
@@ -15,7 +16,7 @@ const defaultsOf = (value: ProviderDefaults | undefined): HarnessDefaults | unde
   ...(value.serviceTier !== undefined ? { serviceTier: value.serviceTier } : {}),
   ...('approvalPreset' in value && value.approvalPreset ? { permission: value.approvalPreset } : 'permissionMode' in value && value.permissionMode ? { permission: value.permissionMode } : {}),
 };
-const identityOf = (data: ProviderSessionData): string => data.kind === 'codex' ? data.threadId : data.sessionId;
+const identityOf = (data: ProviderSessionData): string => sessionConversationId(data);
 
 /**
  * Korus's driver contract over the provider-neutral Harness: one class for every provider.

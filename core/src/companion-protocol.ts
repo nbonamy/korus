@@ -1,7 +1,7 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
 import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
-import { applySessionPatch, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import { applySessionPatch, sessionConversationId, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
 // Conversations travel as neutral session state; a phone speaking an earlier version fails to negotiate.
 export const companionProtocol = '/workspace/companion/3.0.0';
@@ -55,7 +55,7 @@ export const sameCompanionStream = (a: StreamOf, b: StreamOf): boolean =>
   a.agentId === b.agentId && a.payload.epoch === b.payload.epoch && a.payload.conversation === b.payload.conversation;
 /** The provider conversation an agent is attached to, as conversation frames name it. */
 export const companionConversationOf = (session: ProviderSessionData | null | undefined): string | null =>
-  !session ? null : session.kind === 'codex' ? session.threadId : session.sessionId;
+  !session ? null : sessionConversationId(session);
 /** A frame belongs to the conversation the agent is attached to; before it attaches, a new conversation can already report. */
 export function followsCompanionConversation(frame: CompanionConversationFrame, agent: Pick<Agent, 'id' | 'provider' | 'providerSession'>): boolean {
   const attached = companionConversationOf(agent.providerSession);
@@ -151,6 +151,7 @@ export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | '
 export function companionSessionId(agent: Agent): string | null {
   const session = agent.providerSession;
   if (!session) return null;
+  // The phone stores this id as the host wrote it, so its shape is part of the companion wire format.
   return JSON.stringify(session.kind === 'codex' ? { kind: session.kind, threadId: session.threadId } : { kind: session.kind, sessionId: session.sessionId });
 }
 export function companionTarget(hostId: string, team: Team, agent: Agent): CompanionTarget {

@@ -27,7 +27,7 @@ describe('AgentConversationService', () => {
     expect(events).toStrictEqual([
       {
         agentId: agent.id,
-        threadId: 'thread-updated',
+        conversationId: 'thread-updated',
         type: 'agent.statusChanged',
         payload: { type: activeTurnId ? 'working' : 'idle' },
       },
@@ -35,7 +35,7 @@ describe('AgentConversationService', () => {
     expect(persistSnapshot).toHaveBeenCalledOnce();
   });
 
-  it('adopts Claude turn-operation results without adding Codex thread metadata', async () => {
+  it('adopts Claude turn-operation results and names the conversation they changed', async () => {
     const { agent, driverRequest, events, service } = createService();
     driverRequest.mockResolvedValue({
       providerSession: { kind: 'claude', sessionId: 'session-updated', transport: 'stdio' },
@@ -49,6 +49,7 @@ describe('AgentConversationService', () => {
     });
     expect(events).toStrictEqual([{
       agentId: agent.id,
+      conversationId: 'session-updated',
       type: 'agent.statusChanged',
       payload: { type: 'idle' },
     }]);

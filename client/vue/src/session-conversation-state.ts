@@ -1,5 +1,5 @@
 import { shallowRef } from 'vue';
-import { applySessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import { applySessionPatch, sessionConversationId, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import type { Agent, MainToRendererEvent } from '@workspace/core/contracts';
 
@@ -8,7 +8,7 @@ type Frame = { conversation: string | null; epoch: string; snapshot: SessionSnap
 
 const conversationOf = (agent: Agent): string | null => {
   const session = agent.providerSession;
-  return !session ? null : session.kind === 'codex' ? session.threadId : session.sessionId;
+  return !session ? null : sessionConversationId(session);
 };
 
 /**

@@ -190,7 +190,7 @@ describe('useAppState', () => {
       seq: 1,
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest(approval) },
       occurredAt: '2026-06-05T00:00:01.000Z',

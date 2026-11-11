@@ -595,7 +595,7 @@ describe('AppBackendServer', () => {
     server.emitEvent({
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       type: 'agent.statusChanged',
       payload: { type: 'idle' },
     });

@@ -58,7 +58,7 @@ describe('useAppState', () => {
       seq: 1,
       agentId: 'agent-jesse',
       provider: 'codex',
-      threadId: 'thread-jesse',
+      conversationId: 'thread-jesse',
       turnId: 'turn-jesse',
       type: 'workspace.fileActivityDetected',
       payload: {

@@ -75,11 +75,11 @@ describe('snapshot reducer', () => {
       activities: {},
     };
 
-    applyMainEventToSnapshot(snapshot, { conversationId: 'thread-1',
+    applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId,
       provider: 'codex',
-      threadId: 'thread-new',
+      conversationId: 'thread-new',
       type: 'agent.conversationAttached',
       payload: {},
       occurredAt: '2026-06-05T00:00:01.000Z',
