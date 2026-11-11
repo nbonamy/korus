@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { enabledAgentProviders, resolveAgentProvider, supportsSubscriptionQuota } from '../agent-providers';
+import { enabledAgentProviders, resolveAgentProvider } from '../agent-providers';
+import { supportsSubscriptionQuota } from '../provider-capabilities';
 import type { HarnessProvider } from '../contracts';
 
 describe('connected engines', () => {

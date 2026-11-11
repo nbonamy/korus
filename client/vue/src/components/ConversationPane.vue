@@ -246,6 +246,8 @@ import {
 } from '../shared/collaboration-message';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 const backendSwitch = useProviderSwitch();
 const providerChoices = useProviderChoices(() => props.agent?.remoteConnectionId);
 const connectEngine = useConnectEngine();
@@ -373,7 +375,8 @@ if (traceConversationLoad) watch([
     if (revision === loadTimingRevision && loadTimingRoot.value) mark('content.paint-opportunity');
   }));
 }, { immediate: true, flush: 'post' });
-const contentSessionId = computed(() => props.agent?.providerSession?.kind === 'claude' ? props.agent.providerSession.sessionId : null);
+const contentSessionId = computed(() => props.agent?.providerSession && defaultProviderCapabilities(props.agent.provider).deferredMessageContent
+  ? sessionConversationId(props.agent.providerSession) : null);
 const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
 const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);
 const movingSuggestion = ref(false);

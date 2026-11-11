@@ -2,6 +2,7 @@ import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/exec
 import { randomUUID } from 'node:crypto';
 import type { Agent, HarnessProvider, AgentCreationProgress, ProviderDefaults, SourceRepository } from '@workspace/core/contracts';
 import { requireRepositoryName } from '../create-source-repository';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export type ProjectCreationInput = {
   name: string;
@@ -34,7 +35,7 @@ export class ProjectCreationService {
     const progress: AgentCreationProgress = {
       id: `project-creation-${randomUUID()}`,
       state: 'running',
-      provider: input.selection?.provider ?? 'codex',
+      provider: input.selection?.provider ?? defaultHarnessProvider,
       repositoryName: name,
       createWorktree: false,
       createProject: true,

@@ -60,6 +60,7 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import type { SidebarRepositoryTarget } from './agent-sidebar-contracts';
 import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 const props = withDefaults(defineProps<{
   /** `agent` starts one agent on a new or existing branch of one repository; `worktree` makes a feature worktree across repositories. */
@@ -136,7 +137,7 @@ async function create(): Promise<void> {
   progress.value = props.repositories.filter(repository => selected.value.includes(repositoryKey(repository)) && !completed.value.has(repositoryKey(repository)))
     .map(repository => ({
       id: repositoryKey(repository), repositoryName: repository.repositoryName,
-      provider: props.providerForHost(repository.remoteConnectionId) ?? 'codex',
+      provider: props.providerForHost(repository.remoteConnectionId) ?? defaultHarnessProvider,
       state: 'running', hasPrompt: false,
       createWorktree: !existing || !branches.value.find(item => item.name === existing)?.worktreePath,
       branchName: existing ?? branch.value.trim(),

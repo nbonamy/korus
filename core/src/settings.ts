@@ -10,6 +10,7 @@ import { claudeProviderCapabilities, cursorProviderCapabilities, defaultProvider
 import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 export const defaultPluginSettings: AppPluginSettings = {
   computerUseEnabled: false,
@@ -198,7 +199,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
 
 function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerHomes']> {
   const homes: NonNullable<AppGeneralSettings['providerHomes']> = {};
-  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+  for (const provider of harnessProviders) {
     const entry = value[provider];
     if (isRecord(entry) && typeof entry.homePath === 'string' && entry.homePath.trim()
       && typeof entry.isolated === 'boolean' && typeof entry.shareSkills === 'boolean') {
@@ -210,7 +211,7 @@ function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<App
 
 function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerModelDefaults']> {
   const defaults: NonNullable<AppGeneralSettings['providerModelDefaults']> = {};
-  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+  for (const provider of harnessProviders) {
     const entry = value[provider];
     if (isRecord(entry) && entry.model !== undefined && entry.model !== null && !normalizeString(entry.model)) continue;
     const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, provider);

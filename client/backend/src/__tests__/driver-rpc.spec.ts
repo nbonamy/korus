@@ -270,9 +270,9 @@ describe('ProviderDriverRpc', () => {
     try {
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/usage/get', params: { provider: 'claude' } })).resolves.toMatchObject({ result: limits });
       expect(snapshot.providerAccountRateLimits?.claude).toEqual(limits);
-      expect(snapshot.accountRateLimits).toBeUndefined();
+      expect(snapshot.providerAccountRateLimits?.codex).toBeUndefined();
       expect(claude.sendPrompt).not.toHaveBeenCalled();
-      snapshot.accountRateLimits = { ...limits, limitId: 'codex' };
+      snapshot.providerAccountRateLimits = { ...snapshot.providerAccountRateLimits, codex: { ...limits, limitId: 'codex' } };
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/usage/get', params: { provider: 'codex' } })).resolves.toMatchObject({ result: { limitId: 'codex' } });
       getAccountRateLimits.mockResolvedValueOnce(null);
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/usage/get', params: { provider: 'claude' } })).resolves.toMatchObject({ result: null });

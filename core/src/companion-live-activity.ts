@@ -1,6 +1,7 @@
 import type { HarnessProvider } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
 import { agentDisplayName } from './agent-display';
+import { companionProviders } from './companion-protocol';
 
 /** A separate, opt-in APNs channel; ordinary notification tokens cannot authorize it. */
 export const companionLiveActivityProtocol = '/workspace/companion-live-activity/1.0.0';
@@ -15,8 +16,8 @@ export function liveActivityAuthorizationMessage(relayId: string, hostId: string
     registration.kind, registration.kind === 'update' ? registration.instanceId : null, registration.token, registration.environment, expiresAt]));
 }
 
-/** The engines the relay's Live Activity schema names; any other agent shows without an engine badge. */
-const liveActivityProviders = new Set<HarnessProvider>(['codex', 'claude', 'antigravity']);
+/** Any agent on a harness outside the relay's Live Activity schema shows without an engine badge. */
+const liveActivityProviders = new Set<HarnessProvider>(companionProviders);
 /** Count each agent once across teams and Mission workers, without exposing conversation content. */
 export function workActivityState(workspace: CompanionWorkspace, previous?: WorkActivityState, observedAt?: number): WorkActivityState {
   const teams = new Set(workspace.teams.map(team => team.id));

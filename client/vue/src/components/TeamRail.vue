@@ -130,7 +130,6 @@
           v-if="!phoneScope"
           :active="settingsActive"
           :account="account"
-          :rate-limits="rateLimits"
           :enabled-providers="enabledProviders"
           :provider-rate-limits="providerRateLimits"
           :provider-connections="providerConnections"
@@ -176,7 +175,6 @@ const props = defineProps<{
   backlogActive?: boolean;
   cockpitActive?: boolean;
   automationsActive?: boolean;
-  rateLimits?: AccountRateLimits;
   enabledProviders?: HarnessProvider[];
   providerRateLimits?: AppSnapshot['providerAccountRateLimits'];
   providerConnections?: AppSnapshot['providerConnections'];

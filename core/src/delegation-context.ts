@@ -1,6 +1,6 @@
 import type { Agent, HarnessProvider } from './contracts';
 import type { ProviderSendResult } from './provider-driver';
-import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
+import { isHarnessProvider, sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 /** Upper bound for user-authored delegation text; durable task persistence enforces the same limit. */
 export const MAX_DELEGATION_INSTRUCTIONS_LENGTH = 100_000;
@@ -44,7 +44,7 @@ export function isTurnDelegationOverrides(value: unknown): value is TurnDelegati
   if (!isDelegationOverrides(value)) return false;
   const execution = (value as TurnDelegationOverrides).execution;
   return execution === undefined || Boolean(execution && typeof execution === 'object'
-    && ['codex', 'claude', 'antigravity', 'cursor'].includes(execution.provider)
+    && isHarnessProvider(execution.provider)
     && typeof execution.conversationId === 'string' && typeof execution.turnId === 'string');
 }
 

@@ -17,6 +17,7 @@ import {
   expectString,
   type EventValueValidator,
 } from './event-validation';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 function expectAppText(value: unknown, path: string): void {
   if (typeof value !== 'string' && !isAppTextDescriptor(value)) {
@@ -76,7 +77,7 @@ function expectProviderCapabilities(value: unknown, path: string): void {
 
 function expectProviderRuntimeStatus(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.provider, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.provider`);
+  expectLiteral(value.provider, harnessProviders, `${path}.provider`);
   expectLiteral(
     value.status,
     ['notConfigured', 'starting', 'running', 'error'],
@@ -221,7 +222,7 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
   expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
-  expectLiteral(value.provider, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.provider`);
+  expectLiteral(value.provider, harnessProviders, `${path}.provider`);
   expectString(value.repositoryName, `${path}.repositoryName`);
   expectBoolean(value.createWorktree, `${path}.createWorktree`);
   expectOptional(value, 'createProject', path, expectBoolean);

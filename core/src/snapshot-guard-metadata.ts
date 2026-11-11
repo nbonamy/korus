@@ -69,7 +69,6 @@ export function isSnapshotMetadata(value: unknown): value is Record<string, unkn
     isRecordMapOf(value.subagentTrees, isSubagentTree) &&
     isArrayOf(value.providerRuntimes, isProviderRuntimeStatus) &&
     optional(value, 'providerConnections', candidate => isArrayOf(candidate, isProviderConnection)) &&
-    optional(value, 'accountRateLimits', isAccountRateLimits) &&
     optional(value, 'providerAccountRateLimits', candidate => isRecord(candidate) && Object.entries(candidate).every(([provider, limits]) => isHarnessProvider(provider) && isAccountRateLimits(limits))) &&
     isWorkBacklog(value.workBacklog) &&
     isRemoteConnections(value.remoteConnections) &&

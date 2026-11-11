@@ -16,7 +16,7 @@ import { z } from 'zod';
 import type { HarnessProvider, AgentGitDiff, AgentGitDiffTarget, ProviderSkillSummary, ProviderPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionConversation, CompanionConversationFrame, CompanionGrant, CompanionPending, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionConversationOf, companionSessionId, companionMaxUploadBytes, companionMaxUploads, followsCompanionConversation } from '@workspace/core/companion-protocol';
+import { companionConversationOf, companionMaxUploadBytes, companionMaxUploads, companionProviders, companionSessionId, followsCompanionConversation } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
@@ -306,7 +306,7 @@ const agentOperations = {
       await port.changeGoal(agent.id, objective); return {};
     },
   }),
-  'agent.provider.set': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+  'agent.provider.set': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders) }).strict()))({
     check: (agent, { provider: backend }, { providers: backends }) => {
       if (!canSelectAgentProvider(agent)) throw new Error('The engine can only change before the first prompt.');
       if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
@@ -319,7 +319,7 @@ const agentOperations = {
       await port.renameAgent(agent.id, name); return {};
     },
   }),
-  'agent.duplicate': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+  'agent.duplicate': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders) }).strict()))({
     check: (agent, { provider: backend }, { providers: backends }) => {
       if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
@@ -336,7 +336,7 @@ const agentOperations = {
   'agent.close': agentOperation(withTarget(z.object({ input: closeInputSchema.optional() }).strict()))({
     act: async (port, agent, { input }) => { await port.close(agent.id, input); return {}; },
   }),
-  'agent.review.setup': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']).optional() }).strict()))({
+  'agent.review.setup': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders).optional() }).strict()))({
     act: async (port, agent, { provider: backend }) => {
       if (!port.reviewSetup) throw new Error('Review setup unavailable.');
       return port.reviewSetup(agent.id, backend);
@@ -639,7 +639,7 @@ export class CompanionGateway {
       return { creationId: this.creations.start(peer.peerId, () => this.port.createChat(request)) };
     },
     'agent.quickChat.create': async (peer, args) => {
-      const input = z.object({ teamId: identity, provider: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
+      const input = z.object({ teamId: identity, provider: z.enum(companionProviders) }).strict().parse(args);
       const workspace = await this.workspace();
       this.requireGrant(peer);
       if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Team not found.');

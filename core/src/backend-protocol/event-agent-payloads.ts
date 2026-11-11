@@ -28,6 +28,7 @@ import {
   failEventValidation,
   type EventValueValidator,
 } from './event-validation';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 function expectAppText(value: unknown, path: string): void {
   if (typeof value !== 'string' && !isAppTextDescriptor(value)) {
@@ -71,7 +72,7 @@ function expectWorkspace(value: unknown, path: string): void {
 
 function expectProviderSession(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
+  expectLiteral(value.kind, harnessProviders, `${path}.kind`);
   if (value.kind === 'codex') {
     expectString(value.threadId, `${path}.threadId`);
     return;
@@ -86,7 +87,7 @@ function expectProviderSession(value: unknown, path: string): void {
 
 function expectProviderDefaults(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
+  expectLiteral(value.kind, harnessProviders, `${path}.kind`);
   ['model', 'reasoningEffort'].forEach((key) =>
     expectOptional(value, key, path, expectString),
   );
@@ -250,7 +251,7 @@ function expectAgentUpdate(value: unknown, path: string): void {
     if (!isWorktreeInitializationState(candidate)) throw new Error(`${candidatePath}: invalid worktree initialization state`);
   });
   expectOptional(value, 'provider', path, (candidate, candidatePath) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], candidatePath),
+    expectLiteral(candidate, harnessProviders, candidatePath),
   );
   expectOptional(value, 'providerSession', path, expectProviderSession);
   expectOptional(value, 'providerDefaults', path, expectProviderDefaults);

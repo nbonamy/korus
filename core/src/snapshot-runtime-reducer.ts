@@ -17,6 +17,8 @@ import { replaceAppSnapshot } from './snapshot-construction';
 import { decodeAppSnapshot } from './snapshot-guards';
 import type { SnapshotEventOwnedBy } from './snapshot-event-ownership';
 import { workItemAssignmentKey } from './work-assignments';
+import { conversationSessionData } from '@korus-dev/multi-agent-sdk/contracts';
+import { defaultProviderCapabilities } from './provider-capabilities';
 
 export function applyRuntimeEventToSnapshot(
   snapshot: AppSnapshot,
@@ -44,7 +46,6 @@ export function applyRuntimeEventToSnapshot(
   if (event.type === 'account.rateLimitsUpdated') {
     const limits = accountRateLimits(event.payload);
     snapshot.providerAccountRateLimits = { ...snapshot.providerAccountRateLimits, [event.provider]: limits };
-    if (event.provider === 'codex') snapshot.accountRateLimits = limits;
     return;
   }
 
@@ -89,24 +90,9 @@ export function applyRuntimeEventToSnapshot(
 
   if (event.type === 'agent.conversationAttached') {
     const agent = findAgent(snapshot, event.agentId);
-    if (agent && (event.provider === 'antigravity' || event.provider === 'cursor')) {
-      agent.provider = event.provider;
-      agent.providerSession = { kind: event.provider, sessionId: event.conversationId };
-      return;
-    }
-    if (agent && event.provider === 'claude') {
-      agent.provider = 'claude';
-      agent.providerSession = {
-        kind: 'claude',
-        sessionId: event.conversationId,
-        transport: 'stdio',
-      };
-      return;
-    }
-
     if (agent) {
-      agent.provider = 'codex';
-      agent.providerSession = { kind: 'codex', threadId: event.conversationId };
+      agent.provider = event.provider;
+      agent.providerSession = conversationSessionData(event.provider, event.conversationId);
     }
     return;
   }
@@ -117,7 +103,7 @@ export function applyRuntimeEventToSnapshot(
       if (agent) {
         const payload = event.payload;
         const approvalPreset = payload.settings.approvalPreset;
-        if (approvalPreset && event.provider === 'codex') {
+        if (approvalPreset && defaultProviderCapabilities(event.provider).approvalPresets?.length) {
           agent.providerDefaults = codexProviderDefaultsWithApprovalPreset(agent.providerDefaults, approvalPreset);
         }
         const defaults = agent.providerDefaults?.kind === event.provider

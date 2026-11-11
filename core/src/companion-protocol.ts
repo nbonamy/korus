@@ -146,6 +146,11 @@ export type CompanionControlResult = { status: CompanionStatus; invitation?: Com
 export type CompanionRequest = { v: 1; id: string; method: string; args: unknown };
 export type CompanionResponse = { v: 1; id: string; result?: unknown; error?: string };
 
+/** The harnesses the phone app and the relay's Live Activity schema name; others show on the phone without an engine. */
+export const companionProviders = ['codex', 'claude', 'antigravity'] as const satisfies readonly HarnessProvider[];
+export type CompanionProvider = typeof companionProviders[number];
+/** The harnesses whose quotas shipped phone apps can label; others need negotiated labels and balances first. */
+export const companionQuotaProviders: readonly HarnessProvider[] = ['codex', 'claude'];
 /** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
 export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
 export function companionSessionId(agent: Agent): string | null {

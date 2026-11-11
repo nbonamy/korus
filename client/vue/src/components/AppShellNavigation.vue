@@ -12,7 +12,6 @@
     :spoken-announcements-enabled="snapshot.general.spokenAnnouncementsEnabled"
     :spoken-announcements-muted="snapshot.general.spokenAnnouncementsMuted"
     :agent-sidebar-expanded="showAgentSidebar"
-    :rate-limits="snapshot.accountRateLimits"
     :enabled-providers="enabledAgentProviders(snapshot)"
     :provider-rate-limits="snapshot.providerAccountRateLimits"
     :provider-connections="snapshot.providerConnections"

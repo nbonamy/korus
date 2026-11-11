@@ -17,7 +17,7 @@ import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
-import { companionTarget, type CompanionControl, type CompanionControlResult, type CompanionWorkspace, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { companionQuotaProviders, companionTarget, type CompanionControl, type CompanionControlResult, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -32,7 +32,7 @@ import { storePromptUploads } from './uploads';
 import { readReviewSetup, readReviewSession, actOnReview } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
 import { resolveRepositorySession } from '../projects/repository-session';
-import { supportsSubscriptionQuota } from '@workspace/core/agent-providers';
+import { connectionAccount, supportsSubscriptionQuota } from '@workspace/core/provider-capabilities';
 import { readConversationImage } from './images';
 import { readConfiguredPairing } from './configured-pairing';
 
@@ -308,7 +308,7 @@ export class CompanionManager {
         // Shipped clients understand only these quota providers. Other engines
         // require negotiated labels and monetary balances before inclusion.
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && (provider.provider === 'codex' || provider.provider === 'claude') && supportsSubscriptionQuota(provider.provider, provider.authentication?.kind === 'codex' ? provider.authentication.state.account : null));
+          && companionQuotaProviders.includes(provider.provider) && supportsSubscriptionQuota(provider.provider, connectionAccount(provider.authentication)));
         return Promise.all(providers.map(async ({ provider: provider }) => {
           try {
             const limits = await this.provider.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { provider: provider });

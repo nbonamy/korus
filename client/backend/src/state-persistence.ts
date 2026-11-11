@@ -118,7 +118,8 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
     automations: snapshot.automations.map(cloneAutomation),
     activeTeamId: snapshot.activeTeamId,
     activeAgentId: snapshot.activeAgentId,
-    ...(snapshot.accountRateLimits ? { accountRateLimits: { ...snapshot.accountRateLimits } } : {}),
+    // Only Codex quotas outlive a restart, under their original name.
+    ...(snapshot.providerAccountRateLimits?.codex ? { accountRateLimits: { ...snapshot.providerAccountRateLimits.codex } } : {}),
     subagentTrees: cloneSubagentTrees(snapshot.subagentTrees),
     workBacklog: cloneWorkBacklogState(snapshot.workBacklog),
     remoteConnections: cloneRemoteConnectionsState(snapshot.remoteConnections),
@@ -232,7 +233,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
       .filter((automation): automation is Automation => Boolean(automation)),
     activeTeamId: typeof value.activeTeamId === 'string' ? value.activeTeamId : null,
     activeAgentId: typeof value.activeAgentId === 'string' ? value.activeAgentId : null,
-    ...(accountRateLimits ? { accountRateLimits } : {}),
+    ...(accountRateLimits ? { providerAccountRateLimits: { codex: accountRateLimits } } : {}),
     subagentTrees: sanitizeSubagentTrees(value.subagentTrees),
     workBacklog,
     remoteConnections,

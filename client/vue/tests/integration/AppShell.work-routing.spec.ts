@@ -1159,7 +1159,7 @@ describe('AppShell work routing', () => {
   it('opens settings on General, remembers the last settings pane, updates appearance, and quits', async () => {
     setElectronTestClient({});
     const snapshot = createInitialSnapshot();
-    snapshot.accountRateLimits = {
+    snapshot.providerAccountRateLimits = { codex: {
       limitId: 'codex',
       limitName: 'Codex',
       primary: {
@@ -1172,7 +1172,7 @@ describe('AppShell work routing', () => {
       individualLimit: null,
       planType: 'pro',
       rateLimitReachedType: null,
-    };
+    } };
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const quit = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountShell({ snapshot, updateSettings, quit });

@@ -32,8 +32,8 @@ export function createComposerState(deps: {
   const permissions = computed(() => {
     const current = deps.agent(); if (!current) return null;
     const choice = permissionChoices[current.id] ?? {}; const saved = current.providerDefaults;
-    return { approvalPreset: choice.approvalPreset ?? (saved?.kind === 'codex' ? saved.approvalPreset : undefined) ?? null,
-      permissionMode: choice.permissionMode ?? (saved && saved.kind !== 'codex' ? saved.permissionMode : undefined) ?? null };
+    return { approvalPreset: choice.approvalPreset ?? (saved && 'approvalPreset' in saved ? saved.approvalPreset : undefined) ?? null,
+      permissionMode: choice.permissionMode ?? (saved && 'permissionMode' in saved ? saved.permissionMode : undefined) ?? null };
   });
 
   async function loadModels(id: string, capturedSession: CompanionSession) {

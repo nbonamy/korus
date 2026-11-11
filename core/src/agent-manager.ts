@@ -21,6 +21,7 @@ import { canSelectAgentProvider, resolveAgentProvider } from './agent-providers'
 import { seedTeamId } from './seed-ids';
 import { providerDefaultsWithPermission } from './approval-presets';
 import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
+import { defaultHarnessProvider } from './provider-capabilities';
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
   const name = normalizedOptionalString(input.name) ?? null;
@@ -210,7 +211,7 @@ function clearAgentRuntimeState(agent: Agent): void {
 }
 
 function normalizedProvider(value: HarnessProvider | undefined): HarnessProvider {
-  return value ?? 'codex';
+  return value ?? defaultHarnessProvider;
 }
 
 function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {

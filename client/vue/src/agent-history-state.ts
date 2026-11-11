@@ -5,6 +5,7 @@ import type {
 } from '@workspace/core/contracts';
 import { computed, ref } from 'vue';
 import { appApi, traceConversationLoad } from './platform-api';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 
 export function createAgentHistoryState(options: {
   adoptSnapshot: (snapshot: AppSnapshot) => void;
@@ -28,7 +29,7 @@ export function createAgentHistoryState(options: {
   const activeHistoryHasOlder = computed(() => {
     const snapshot = options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
-    if (!agent || agent.provider !== 'codex') return false;
+    if (!agent || !defaultProviderCapabilities(agent.provider).olderHistoryPaging) return false;
     return hasOlderByAgentId.value[agent.id] ?? true;
   });
   const isLoadingOlderHistory = computed(() => {

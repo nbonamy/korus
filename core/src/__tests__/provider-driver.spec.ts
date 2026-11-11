@@ -12,7 +12,6 @@ import {
   providerDisplayName,
   resolveProviderCoordinationPolicy,
   providerRuntimeFromSnapshot,
-  codexPromptOptions,
   unsupportedProviderFeature,
   type BackendEvent,
 } from '../provider-driver';
@@ -44,23 +43,6 @@ describe('backend driver helpers', () => {
     });
   });
 
-  it('extracts only Codex prompt options', () => {
-    const codexOptions = {
-      providerOptions: {
-        kind: 'codex',
-        model: 'gpt-5',
-      },
-    } as SendPromptOptions;
-    const claudeOptions = {
-      providerOptions: {
-        kind: 'claude',
-      },
-    } as SendPromptOptions;
-
-    expect(codexPromptOptions(codexOptions)).toBe(codexOptions.providerOptions);
-    expect(codexPromptOptions(claudeOptions)).toBeUndefined();
-    expect(codexPromptOptions(undefined)).toBeUndefined();
-  });
 
   it('preserves typed payloads through the backend event input envelope', () => {
     type ConnectionEvent = Extract<BackendEvent, { type: 'snapshot.updated' }>;

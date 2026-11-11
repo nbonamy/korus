@@ -738,7 +738,7 @@ describe('state persistence', () => {
     const persistence = new AppStateStore(home);
     const snapshot = createInitialSnapshot();
     snapshot.providerRuntimes = [{ provider: 'codex', status: 'running', detail: 'connected' }];
-    snapshot.accountRateLimits = {
+    snapshot.providerAccountRateLimits = { codex: {
       limitId: 'codex',
       limitName: null,
       primary: {
@@ -755,7 +755,7 @@ describe('state persistence', () => {
       individualLimit: null,
       planType: 'pro',
       rateLimitReachedType: null,
-    };
+    } };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
       providerSession: { kind: 'codex', threadId: 'thread-dina' },
@@ -830,7 +830,7 @@ describe('state persistence', () => {
       expect(data).not.toHaveProperty('providerRuntimes');
       expect(data).not.toHaveProperty('appServer');
     }
-    expect(written.accountRateLimits).toStrictEqual(snapshot.accountRateLimits);
+    expect(written.accountRateLimits).toStrictEqual(snapshot.providerAccountRateLimits?.codex);
     expect(written.activeTeamId).toBe('team-app');
     const writtenAgent = (written.agents as Array<Record<string, unknown>>)[0];
     expect(writtenAgent.engine).toStrictEqual({
@@ -898,7 +898,7 @@ describe('state persistence', () => {
 
   it('resets transient agent fields while preserving metadata, status text, and backend session on load', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.accountRateLimits = {
+    snapshot.providerAccountRateLimits = { codex: {
       limitId: 'codex',
       limitName: null,
       primary: {
@@ -915,7 +915,7 @@ describe('state persistence', () => {
       individualLimit: null,
       planType: 'pro',
       rateLimitReachedType: null,
-    };
+    } };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
       providerSession: { kind: 'codex', threadId: 'thread-dina' },
@@ -1058,7 +1058,7 @@ describe('state persistence', () => {
       updatedAt: '2026-06-05T00:00:00.000Z',
     });
     expect(restored.providerRuntimes).toStrictEqual(createEmptySnapshot().providerRuntimes);
-    expect(restored.accountRateLimits).toStrictEqual(snapshot.accountRateLimits);
+    expect(restored.providerAccountRateLimits?.codex).toStrictEqual(snapshot.providerAccountRateLimits?.codex);
     expect(restored.workBacklog.assignments).toStrictEqual({
       'github:nbonamy/agent-workspace#12': {
         provider: 'github',

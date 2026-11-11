@@ -1,4 +1,4 @@
-import type { ClientState } from '../contracts';
+import type { ClientState, HarnessProvider } from '../contracts';
 import type { BackendPublishedEvent } from '../contracts/events';
 import { isClientState, isAppSnapshot } from '../snapshot-guards';
 import { agentPayloadValidators } from './event-agent-payloads';
@@ -15,6 +15,7 @@ import {
   failEventValidation,
   type EventValueValidator,
 } from './event-validation';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 type AppBackendEventFrom<Event extends BackendPublishedEvent> = Event extends BackendPublishedEvent
   ? Omit<Event, 'source'> & { clientState?: ClientState }
@@ -72,11 +73,11 @@ function expectRequiredString(
 
 function expectRequiredProvider(
   event: Record<string, unknown>,
-  provider?: 'codex' | 'claude' | 'antigravity' | 'cursor',
+  provider?: HarnessProvider,
 ): void {
   expectLiteral(
     event.provider,
-    provider ? [provider] : ['codex', 'claude', 'antigravity', 'cursor'],
+    provider ? [provider] : harnessProviders,
     '$.provider',
   );
 }
@@ -87,7 +88,7 @@ function expectAgent(event: Record<string, unknown>): void {
 
 function expectHarnessProvider(
   event: Record<string, unknown>,
-  provider?: 'codex' | 'claude' | 'antigravity' | 'cursor',
+  provider?: HarnessProvider,
 ): void {
   expectAgent(event);
   expectRequiredProvider(event, provider);
@@ -180,7 +181,7 @@ export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   const event = value as EventRecord;
   expectOptional(event, 'agentId', '$', expectString);
   expectOptional(event, 'provider', '$', (candidate, path) =>
-    expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], path),
+    expectLiteral(candidate, harnessProviders, path),
   );
   expectOptional(event, 'providerSessionId', '$', expectString);
   expectOptional(event, 'conversationId', '$', expectString);

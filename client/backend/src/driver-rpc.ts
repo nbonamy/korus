@@ -1,4 +1,4 @@
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { randomUUID } from 'node:crypto';
 import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
@@ -35,6 +35,7 @@ import { detectSourceFolder, scanSourceRepositories } from './source-repositorie
 import { cloneSourceRepository } from './clone-source-repository';
 import { createSourceRepository } from './create-source-repository';
 import { filterRequiredModels, type Requirements } from './requirements';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type ProviderDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
@@ -50,7 +51,7 @@ function isRecord(value: unknown): value is Record<string, unknown> { return Boo
 
 export function createDefaultProviderDrivers(options: ProviderDriverRegistryOptions = {}): Map<HarnessProvider, AgentProviderDriver> {
   // Retain hosts for saved history and cleanup even when their new-work release gate is off.
-  return new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(provider => [provider, createProviderDriver(provider, options)]));
+  return new Map(harnessProviders.map(provider => [provider, createProviderDriver(provider, options)]));
 }
 
 export function createProviderDriver(provider: HarnessProvider, options: ProviderDriverRegistryOptions = {}): AgentProviderDriver {
@@ -665,7 +666,7 @@ export class ProviderDriverRpc {
   private remoteControlOperation<Key extends 'getRemoteControlStatus' | 'enableRemoteControl' | 'disableRemoteControl' | 'startDevicePairing' | 'checkDevicePairing' | 'listPairedDevices' | 'revokePairedDevice'>(
     params: unknown, key: Key,
   ): NonNullable<AgentProviderDriver[Key]> {
-    const provider = params === undefined ? 'codex' : requireProvider(requireRecord(params).provider ?? 'codex');
+    const provider = params === undefined ? defaultHarnessProvider : requireProvider(requireRecord(params).provider ?? defaultHarnessProvider);
     const driver = this.requireDriver(provider);
     const operation = driver[key];
     if (!operation) throw new Error(`${provider} does not support remote control (${key}).`);

@@ -1,4 +1,4 @@
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type {
   Agent,
   ExecutionSelection,
@@ -506,7 +506,7 @@ export function createAgentComposerState(options: {
   }
 
   function capabilitiesForAgent(agent: Agent | null): ProviderCapabilities {
-    const backend = agent?.provider ?? 'codex';
+    const backend = agent?.provider ?? defaultHarnessProvider;
     const runtime = snapshot().providerRuntimes.find((candidate) => candidate.provider === backend);
     return { ...defaultProviderCapabilities(backend), ...runtime?.capabilities };
   }
@@ -567,7 +567,7 @@ function selectDefaultModel(configuration: AgentComposerConfiguration): void {
 }
 
 function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { source: string } {
-  if (!agent) return { source: 'missing', provider: 'codex', model: null, reasoningEffort: null, serviceTier: null };
+  if (!agent) return { source: 'missing', provider: defaultHarnessProvider, model: null, reasoningEffort: null, serviceTier: null };
   const defaults = agent.providerDefaults?.kind === agent.provider ? agent.providerDefaults : undefined;
   const native = projectSessionSelection(agent.providerSession);
   const model = native?.model ?? defaults?.model ?? null;

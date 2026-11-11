@@ -6,6 +6,7 @@ import { automationExecutionIsActive, canTargetAutomationAgent, failAutomationEx
 import { createEntityId } from '@workspace/core/ids';
 import { warnMain } from '../log';
 import { nextAutomationRunAt } from '@workspace/core/automation-schedule';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export type AutomationRunnerOptions = {
   getSnapshot: () => AppSnapshot;
@@ -57,7 +58,7 @@ export class AutomationRunner {
       if (target.kind !== 'newQuickChat' && (!existing || !canTargetAutomationAgent(snapshot, existing)
         || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat'))) throw new Error('The automation target is no longer available.');
       if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId)) throw new Error('The automation team is no longer available.');
-      await this.options.requireConnectedEngine?.(existing?.provider ?? (target.kind === 'newQuickChat' ? target.selection.provider : 'codex'));
+      await this.options.requireConnectedEngine?.(existing?.provider ?? (target.kind === 'newQuickChat' ? target.selection.provider : defaultHarnessProvider));
       if (!snapshot.automations.includes(automation) || !automation.enabled) {
         this.fail(automation, run, 'Automation was disabled or deleted before dispatch.');
         await this.publish();

@@ -76,13 +76,12 @@ import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { BrandSpeedTest, ChartBarIcon, InfoCircleIcon, ProductMarkIcon, QuitIcon, SettingsIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appHostCapabilities, appApi } from '../platform-api';
-import { supportsSubscriptionQuota } from '@workspace/core/agent-providers';
+import { supportsSubscriptionQuota } from '@workspace/core/provider-capabilities';
 import ProviderIcon from './ProviderIcon.vue';
 import { isAccountBilling } from '@workspace/core/snapshot-guard-collections';
 
 const props = withDefaults(defineProps<{
   active?: boolean;
-  rateLimits?: AccountRateLimits;
   enabledProviders?: HarnessProvider[];
   providerRateLimits?: AppSnapshot['providerAccountRateLimits'];
   providerConnections?: AppSnapshot['providerConnections'];
@@ -176,7 +175,7 @@ type RateLimitRow = {
 
 const usageGroups = computed(() => quotaBackends.value.map(backend => {
   const limits = fetchedUsage.value[backend] !== undefined ? fetchedUsage.value[backend]
-    : props.providerRateLimits?.[backend] ?? (backend === 'codex' ? props.rateLimits : undefined);
+    : props.providerRateLimits?.[backend];
   const rows = [
     rateLimitRow(limits?.primary ?? null, translate('surface.settingsMenu.usage')),
     ...(isAccountBilling(limits?.billing) ? [] : [rateLimitRow(limits?.secondary ?? null, translate('surface.settingsMenu.weekly'))]),

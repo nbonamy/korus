@@ -1,7 +1,9 @@
 import type { HarnessProvider, ProviderCapabilities } from './contracts';
+import type { ProviderConnection } from './contracts/provider-setup';
 import { codexHarnessCapabilities as nativecodex, claudeHarnessCapabilities as nativeclaude, cursorHarnessCapabilities as nativecursor, antigravityHarnessCapabilities as nativeantigravity } from '@korus-dev/multi-agent-sdk/contracts';
 export const codexProviderCapabilities: ProviderCapabilities = {
   ...nativecodex,
+  olderHistoryPaging: true,
   conversationReplaceWithSummary: true,
   codeReview: true,
   planReview: true,
@@ -9,6 +11,9 @@ export const codexProviderCapabilities: ProviderCapabilities = {
 };
 export const claudeProviderCapabilities: ProviderCapabilities = {
   ...nativeclaude,
+  selectionInSession: true,
+  deferredMessageContent: true,
+  sessionOwnsPlan: true,
   codeReview: true,
   planReview: true,
   conversationShare: true,
@@ -53,6 +58,7 @@ export const antigravityProviderCapabilities: ProviderCapabilities = {
 };
 export const cursorProviderCapabilities: ProviderCapabilities = {
   ...nativecursor,
+  hideReasoning: true,
   codeReview: true,
   planReview: true,
   conversationShare: false,
@@ -64,6 +70,16 @@ export const cursorProviderCapabilities: ProviderCapabilities = {
 const providerCapabilities: Record<HarnessProvider, ProviderCapabilities> = {
   codex: codexProviderCapabilities, claude: claudeProviderCapabilities, cursor: cursorProviderCapabilities, antigravity: antigravityProviderCapabilities,
 };
+/** The account a connection signed in with, when its provider reports one. */
+export function connectionAccount(authentication: ProviderConnection['authentication']): { type: string } | null {
+  return authentication?.kind === 'codex' ? authentication.state.account : null;
+}
+/** Whether an account's quota is a subscription Korus can show; API-key accounts pay per use. */
+export function supportsSubscriptionQuota(provider: HarnessProvider, account?: { type: string } | null): boolean {
+  return provider !== 'codex' || account?.type !== 'apiKey';
+}
+/** The harness a new agent uses when nothing selects one. */
+export const defaultHarnessProvider: HarnessProvider = 'codex';
 export function defaultProviderCapabilities(provider: HarnessProvider): ProviderCapabilities {
   return providerCapabilities[provider];
 }

@@ -344,7 +344,7 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.accountRateLimits).toStrictEqual({
+    expect(snapshot.providerAccountRateLimits?.codex).toStrictEqual({
       limitId: 'codex',
       limitName: 'Codex',
       primary: {
@@ -369,7 +369,7 @@ describe('snapshot runtime reducer', () => {
     const limits = { limitId: null, limitName: null, primary: null, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null };
     applyMainEventToSnapshot(snapshot, { seq: 1, type: 'account.rateLimitsUpdated', provider: 'codex', payload: { rateLimits: { ...limits, primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
     applyMainEventToSnapshot(snapshot, { seq: 2, type: 'account.rateLimitsUpdated', provider: 'claude', payload: { rateLimits: { ...limits, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
-    expect(snapshot.accountRateLimits?.primary?.usedPercent).toBe(5);
+    expect(snapshot.providerAccountRateLimits?.codex?.primary?.usedPercent).toBe(5);
     const restored = decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))?.value;
     expect(restored?.providerAccountRateLimits?.codex?.primary?.usedPercent).toBe(5);
     expect(restored?.providerAccountRateLimits?.claude?.primary?.usedPercent).toBe(20);

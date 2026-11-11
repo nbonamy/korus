@@ -1,5 +1,5 @@
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
-import { isHarnessProvider, isProviderSessionData } from '@korus-dev/multi-agent-sdk/contracts';
+import { harnessProviders, isHarnessProvider, isProviderSessionData } from '@korus-dev/multi-agent-sdk/contracts';
 import { isExecutionSelection, isExecutionSelectionOverrides, readPersistedExecutionSelection } from './execution-selection';
 import type { ProviderSessionData } from './contracts/provider';
 import type { Agent, HarnessProvider, AgentGitStatus } from './contracts';
@@ -51,9 +51,9 @@ export type CodeReviewAutomationSettings = {
 };
 
 export type CodeReviewPreferences = {
-  provider: 'codex' | 'claude' | 'antigravity' | 'cursor';
+  provider: HarnessProvider;
   automation: CodeReviewAutomationSettings;
-  providers: Partial<Record<'codex' | 'claude' | 'antigravity' | 'cursor', ExecutionSelection>>;
+  providers: Partial<Record<HarnessProvider, ExecutionSelection>>;
 };
 
 export type CodeReviewAutomation = CodeReviewAutomationSettings & {
@@ -429,7 +429,7 @@ function optionalSelection(value: unknown): boolean {
 export function readPersistedReviewPreferences(value: unknown): CodeReviewPreferences | undefined {
   if (!isRecord(value) || !isRecord(value.providers)) return undefined;
   const providers: CodeReviewPreferences['providers'] = {};
-  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+  for (const provider of harnessProviders) {
     if (value.providers[provider] === undefined) continue;
     const selection = readPersistedExecutionSelection(value.providers[provider], provider);
     if (!selection) return undefined;

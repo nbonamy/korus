@@ -364,7 +364,7 @@ function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; ac
     props: {
       enabledProviders: ['codex'],
       ...props,
-      rateLimits,
+      providerRateLimits: props.providerRateLimits ?? (rateLimits ? { codex: rateLimits } : undefined),
     },
     global: {
       components: realTooltips ? { ElTooltip } : {},

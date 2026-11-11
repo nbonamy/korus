@@ -21,8 +21,8 @@ export function opaquePath(value: string, remoteConnectionId?: string): string {
 function projectDefaults(defaults: ProviderDefaults): ProviderDefaults {
   const { kind, model, reasoningEffort } = defaults;
   const serviceTier = 'serviceTier' in defaults ? defaults.serviceTier : undefined;
-  const approvalPreset = defaults.kind === 'codex' ? defaults.approvalPreset : undefined;
-  const permissionMode = defaults.kind === 'codex' ? undefined : defaults.permissionMode;
+  const approvalPreset = 'approvalPreset' in defaults ? defaults.approvalPreset : undefined;
+  const permissionMode = 'permissionMode' in defaults ? defaults.permissionMode : undefined;
   return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(serviceTier === undefined ? {} : { serviceTier }), ...(approvalPreset === undefined ? {} : { approvalPreset }),
     ...(permissionMode === undefined ? {} : { permissionMode }) } as ProviderDefaults;

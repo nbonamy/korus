@@ -67,7 +67,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import type { PaneMessage } from '../conversation-presentation/presentation';
 import { useI18n } from 'vue-i18n';
 import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -96,7 +96,7 @@ async function withdraw(proposalId: string) {
   finally { withdrawing.value = false; }
 }
 let pending: { text: string; proposalId: string; followUpBehavior?: 'queue' | 'steer' } | undefined;
-const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultProviderCapabilities(props.view.target?.provider ?? props.view.session?.provider ?? 'codex').steerPrompt) }));
+const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultProviderCapabilities(props.view.target?.provider ?? props.view.session?.provider ?? defaultHarnessProvider).steerPrompt) }));
 function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
 async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
   if (!text.trim() || props.view.status !== 'ready') return;

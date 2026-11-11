@@ -1,9 +1,5 @@
 import type { Agent, HarnessProvider, AppSnapshot } from './contracts';
 
-export function supportsSubscriptionQuota(provider: HarnessProvider, codexAccount?: { type: string } | null): boolean {
-  return provider !== 'codex' || codexAccount?.type !== 'apiKey';
-}
-
 export function enabledAgentProviders(snapshot: Pick<AppSnapshot, 'providerConnections'>): HarnessProvider[] {
   return (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false).map(provider => provider.provider);
 }

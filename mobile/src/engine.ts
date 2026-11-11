@@ -21,7 +21,8 @@ import { createLifecycle } from './engine-lifecycle';
 import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
 import { ConversationImageCache, type ImageCacheStore } from './image-cache';
-import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
+import type { CompanionClosePreview, CompanionProvider, CompanionRequestReply } from '@workspace/core/companion-protocol';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 /** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
@@ -170,11 +171,11 @@ export type EngineCommand =
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
   | { type: 'loadBranches'; repositoryId: string } | { type: 'dismissBranches' }
-  | { type: 'newChat'; repositoryId: string; provider: 'codex' | 'claude' | 'antigravity'; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; provider: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissNewChat' } | { type: 'provider'; provider: 'codex' | 'claude' | 'antigravity' }
+  | { type: 'newChat'; repositoryId: string; provider: CompanionProvider; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; provider: CompanionProvider } | { type: 'dismissNewChat' } | { type: 'provider'; provider: CompanionProvider }
   | { type: 'composer'; change: ComposerChange }
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
-  | { type: 'loadReview'; provider?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
+  | { type: 'loadReview'; provider?: CompanionProvider } | { type: 'dismissReview' }
   | { type: 'loadReviewDetails' }
   | { type: 'reviewAction'; target: CompanionTarget; input: import('@workspace/core/companion-review').CompanionReviewAction }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
@@ -317,7 +318,7 @@ export function createEngine(port: EnginePort) {
       ? ticketOf ? { title: ticketOf.repository || (agent.workspace?.kind === 'git' ? agent.workspace.repositoryName : ticketOf.title), subtitle: null }
         : owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null } : null
       : null;
-    const capabilities = composerCapabilitiesFor(agent?.provider ?? 'codex', state.models.value);
+    const capabilities = composerCapabilitiesFor(agent?.provider ?? defaultHarnessProvider, state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {

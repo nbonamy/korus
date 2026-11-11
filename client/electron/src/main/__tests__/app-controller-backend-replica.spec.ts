@@ -459,7 +459,7 @@ describe('AppController', () => {
     });
     await flushMicrotasks();
 
-    expect(currentSnapshot(controller).accountRateLimits).toStrictEqual(rateLimits);
+    expect(currentSnapshot(controller).providerAccountRateLimits?.codex).toStrictEqual(rateLimits);
   });
 
 

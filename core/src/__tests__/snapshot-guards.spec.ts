@@ -122,7 +122,7 @@ describe('snapshot guards', () => {
       { name: 'delegation override instructions', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'handoff', instructions: 42 as never }; } },
       { name: 'agent git status', mutate: (snapshot) => { snapshot.agentGitStatuses.agent!.branch = null as never; } },
       { name: 'turn git diff', mutate: (snapshot) => { snapshot.turnGitDiffs.turn!.addedLines = 'one' as never; } },
-      { name: 'account rate limits', mutate: (snapshot) => { snapshot.accountRateLimits!.primary!.usedPercent = 'half' as never; } },
+      { name: 'account rate limits', mutate: (snapshot) => { snapshot.providerAccountRateLimits!.codex!.primary!.usedPercent = 'half' as never; } },
       { name: 'Cursor permission defaults', mutate: (snapshot) => { snapshot.general.providerApprovalDefaults = { cursor: 42 as never }; } },
       { name: 'active ids', mutate: (snapshot) => { snapshot.activeAgentId = 42 as never; } },
     ];
@@ -448,7 +448,7 @@ function completeSnapshot(): AppSnapshot {
     provider: 'claude',
     status: 'starting',
   }];
-  snapshot.accountRateLimits = {
+  snapshot.providerAccountRateLimits = { codex: {
     limitId: 'primary',
     limitName: 'Primary',
     primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 1_000 },
@@ -457,7 +457,7 @@ function completeSnapshot(): AppSnapshot {
     individualLimit: null,
     planType: 'team',
     rateLimitReachedType: null,
-  };
+  } };
   snapshot.workBacklog = {
     connections: [{
       provider: 'github',

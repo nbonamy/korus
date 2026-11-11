@@ -20,7 +20,7 @@ import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-sdk';
@@ -387,7 +387,7 @@ export function useAppState() {
   });
 
   const activeProviderCapabilities = computed(() => providerCapabilitiesForAgent(activeAgent.value));
-  const activeProviderCommands = computed<ProviderCommandSummary[]>(() => defaultProviderCommands(activeAgent.value?.provider ?? 'codex'));
+  const activeProviderCommands = computed<ProviderCommandSummary[]>(() => defaultProviderCommands(activeAgent.value?.provider ?? defaultHarnessProvider));
   function agentConversationFor(agentId: string): AgentConversationView | null {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
     if (!agent) return null;
@@ -2011,7 +2011,7 @@ function messageActionCapabilities(agentId: string) {
 
 function providerCapabilitiesForAgent(agent: Agent | null): ProviderCapabilities {
   if (agent?.sharedConversation) return guestConversationCapabilities;
-  const backend = agent?.provider ?? 'codex';
+  const backend = agent?.provider ?? defaultHarnessProvider;
   const defaults = defaultProviderCapabilities(backend);
   const runtime = snapshot.value.providerRuntimes.find((candidate) => candidate.provider === backend);
   return {
@@ -2311,7 +2311,7 @@ function adoptSnapshotFromMainEvent(event: MainToRendererEvent): void {
   }
   applyMainEventToSnapshot(snapshot.value, event);
   if (event.type === 'agent.updated' && Object.hasOwn(event.payload, 'threadFlags')) threadFlagState.project(snapshot.value, event.agentId);
-  if (event.type === 'agent.conversationAttached' && event.provider === 'claude') {
+  if (event.type === 'agent.conversationAttached' && defaultProviderCapabilities(event.provider).selectionInSession) {
     synchronizeComposerSelectionForAgent(event.agentId);
   }
 }

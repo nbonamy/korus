@@ -10,7 +10,7 @@ describe('backend capabilities', () => {
     expect(defaultProviderCapabilities('cursor')).toStrictEqual({
       accountUsage: true, scopedExecution: true, turnContinuation: true, mcpRequiredServers: false, mcpAutoApproval: false,
       reportsTokens: false,
-      codeReview: true, planReview: true, questions: false, plugins: false,
+      codeReview: true, planReview: true, hideReasoning: true, questions: false, plugins: false,
       conversationArchive: false, conversationResume: true,
       remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
       reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',

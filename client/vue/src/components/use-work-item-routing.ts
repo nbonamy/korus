@@ -26,6 +26,7 @@ import { computed, ref } from 'vue';
 import { translate } from '../i18n';
 import type { RepositoryWorkStartInput } from './right-workspace';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export type StartWorkItemsInput = {
   action: WorkItemAssignmentAction;
@@ -184,7 +185,7 @@ export function useWorkItemRouting(options: {
     const id = crypto.randomUUID();
     const progress = input.items.length === 1
       ? { mode: 'single' as const, progress: {
-          id, state: 'running' as const, provider: input.selection?.provider ?? 'codex',
+          id, state: 'running' as const, provider: input.selection?.provider ?? defaultHarnessProvider,
           repositoryName: input.repository?.name ?? workItemRepositoryName(input.items[0]!),
           createWorktree: true, branchName: workItemBranchName(input.items[0]!), hasPrompt: true, phase: 'creatingWorktree' as const,
         } }

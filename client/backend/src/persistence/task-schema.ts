@@ -1,6 +1,7 @@
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '@workspace/core/delegation-context';
 import * as z from 'zod/v4';
 import type { DelegatedTask, TaskContract, TaskResultInput } from '@workspace/core/delegated-task';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 const text = z.string().trim().min(1);
 export const taskContractSchema = z.strictObject({ title: text.max(200), doneWhen: text.max(4000) }) satisfies z.ZodType<TaskContract>;
@@ -24,7 +25,7 @@ const acceptance = z.looseObject({ providerSession: session, turnId: text.option
 // Command inputs stay strict; stored records accept additive fields from newer builds.
 const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
-  parentAgentId: text, workerAgentId: text, provider: z.enum(['codex', 'claude', 'antigravity', 'cursor']),
+  parentAgentId: text, workerAgentId: text, provider: z.enum(harnessProviders),
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
   goal: z.boolean().optional(),
   planMode: z.boolean().optional(),

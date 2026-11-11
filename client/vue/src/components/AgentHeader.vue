@@ -199,6 +199,7 @@ import { effectiveOpenInApplication } from '../shared/open-in';
 import { appApi } from '../platform-api';
 import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from './conversation-share-state';
 import { ElBadge } from 'element-plus';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 
 const props = withDefaults(defineProps<{
   runHostLabel?: string;
@@ -328,7 +329,7 @@ const statusLabel = computed(() => {
 
   return `${backendLabel.value} pending`;
 });
-const backendLabel = computed(() => (props.providerRuntime.provider === 'claude' ? translate('surface.agentHeader.claude') : translate('surface.agentHeader.codex')));
+const backendLabel = computed(() => providerDisplayName(props.providerRuntime.provider));
 const agentLocationLabel = computed(() => {
   const agent = props.agent;
   const gitStatus = props.gitStatus;

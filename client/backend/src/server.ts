@@ -3503,7 +3503,7 @@ export class AppBackendServer {
         const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { provider }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
         const current = this.snapshot.providerConnections?.find(item => item.provider === provider && item.installed && item.connected && item.enabled !== false);
         if (!current || JSON.stringify(current.authentication) !== authentication) return createAppRpcResult(message.id, null);
-        const limits = result.supported ? result.rateLimits ?? null : this.snapshot.providerAccountRateLimits?.[provider] ?? (provider === 'codex' ? this.snapshot.accountRateLimits : undefined) ?? null;
+        const limits = result.supported ? result.rateLimits ?? null : this.snapshot.providerAccountRateLimits?.[provider] ?? null;
         if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', provider, payload: { rateLimits: limits } });
         return createAppRpcResult(message.id, limits);
       }

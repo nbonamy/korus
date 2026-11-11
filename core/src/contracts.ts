@@ -654,7 +654,6 @@ export type AppSnapshot = {
   turnGitDiffs: Record<string, TurnGitDiff>;
   subagentTrees: Record<string, AgentSubagentTree>;
   providerRuntimes: ProviderRuntimeStatus[];
-  accountRateLimits?: AccountRateLimits;
   /** Live account quotas, kept separate for each local engine. */
   providerAccountRateLimits?: Partial<Record<HarnessProvider, AccountRateLimits>>;
   workBacklog: WorkBacklogState;

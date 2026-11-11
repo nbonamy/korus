@@ -314,7 +314,7 @@ export function createClientApiMock(
   api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } });
   api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false });
   api.getProviderConnections.mockResolvedValue(snapshot.providerConnections ?? []);
-  api.getProviderUsage.mockImplementation(async provider => snapshot.providerAccountRateLimits?.[provider] ?? (provider === 'codex' ? snapshot.accountRateLimits : undefined) ?? null);
+  api.getProviderUsage.mockImplementation(async provider => snapshot.providerAccountRateLimits?.[provider] ?? null);
   api.getProviderSetup.mockResolvedValue(['codex', 'claude'].map(provider => ({ provider: provider, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${provider}-home` })) as Awaited<ReturnType<AppApi['getProviderSetup']>>);
   api.getSystemPermissions.mockResolvedValue({ platform: 'darwin', accessibility: { required: true, trusted: true }, screenRecording: { required: true, trusted: true } });
   api.getUpdateStatus.mockResolvedValue({ state: 'idle' });

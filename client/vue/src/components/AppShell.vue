@@ -680,7 +680,7 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import type { HarnessProvider, AgentFileActivity } from '@workspace/core/contracts';
 import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
@@ -974,7 +974,7 @@ const props = withDefaults(defineProps<{
   providerCommands: () => [],
   providerPlugins: () => [],
   providerSkills: () => [],
-  providerCapabilities: () => defaultProviderCapabilities('codex'),
+  providerCapabilities: () => defaultProviderCapabilities(defaultHarnessProvider),
   isConversationLoading: false,
   isConversationLoadFailed: false,
   historyHasOlder: true,
@@ -2421,7 +2421,7 @@ const {
   workBacklog: cockpitWorkBacklog,
 } = cockpitBacklogState;
 const currentProviderRuntime = computed<ProviderRuntimeStatus>(() => {
-  const backend = currentAgent.value?.provider ?? 'codex';
+  const backend = currentAgent.value?.provider ?? defaultHarnessProvider;
   return props.snapshot.providerRuntimes.find((runtime) => runtime.provider === backend) ?? {
     provider: backend,
     status: 'notConfigured',
@@ -2533,7 +2533,7 @@ async function sendModelCommand(agentId: string, command: '/delegate' | '/missio
     if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
     if (props.agentConversationActions) await props.agentConversationActions.send(agentId, command);
     else if (currentAgent.value?.id === agentId) {
-      if (!preferredProviderChoices(props.snapshot, currentAgent.value?.remoteConnectionId).includes(currentAgent.value?.provider ?? 'codex')) throw new Error(t('engineConnection.required'));
+      if (!preferredProviderChoices(props.snapshot, currentAgent.value?.remoteConnectionId).includes(currentAgent.value?.provider ?? defaultHarnessProvider)) throw new Error(t('engineConnection.required'));
       if (props.sendPromptAction) await props.sendPromptAction(command);
       else emit('sendPrompt', command);
     } else throw new Error(t('delegation.agentUnavailable'));
@@ -2743,7 +2743,7 @@ const paletteActions = computed(() => {
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
     engineConnected: Boolean(agent && preferredProviderChoices(props.snapshot, agent.remoteConnectionId).includes(agent.provider)),
     canCreateAgent: Boolean(preferredProviderChoices(props.snapshot).length),
-    capabilities: { ...defaultProviderCapabilities(agent?.provider ?? 'codex'), ...currentProviderRuntime.value.capabilities },
+    capabilities: { ...defaultProviderCapabilities(agent?.provider ?? defaultHarnessProvider), ...currentProviderRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
     simulatorAvailable: Boolean(appApi?.mobileSimulator),
@@ -2881,7 +2881,7 @@ function startDebugAgentCreationProgress(): void {
   debugAgentCreationProgress.value = {
     id,
     state: 'running',
-    provider: 'codex',
+    provider: defaultHarnessProvider,
     repositoryName: 'agent-workspace',
     createWorktree: true,
     branchName: 'debug/worktree-preview',

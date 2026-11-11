@@ -25,6 +25,7 @@ import { translate } from '../i18n';
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
 import type { RemoteCheckout } from './use-remote-target';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export function useRepositorySession(options: {
   activeTeamId: () => string | undefined;
@@ -404,7 +405,7 @@ export function useRepositorySession(options: {
 
     const id = `work-item-${Date.now()}`;
     const branchName = workItemBranchName(selection.item);
-    const resolvedProvider = selection.selection?.provider ?? provider.value ?? 'codex';
+    const resolvedProvider = selection.selection?.provider ?? provider.value ?? defaultHarnessProvider;
     creationProgress.value = {
       id,
       state: 'running',

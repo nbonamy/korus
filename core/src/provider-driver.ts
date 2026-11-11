@@ -242,7 +242,3 @@ export function providerRuntimeFromSnapshot(snapshot: AppSnapshot, provider: Har
     status: 'notConfigured',
   };
 }
-
-export function codexPromptOptions(options: SendPromptOptions | undefined): Extract<ProviderPromptOptions, { kind: 'codex' }> | undefined {
-  return options?.providerOptions?.kind === 'codex' ? options.providerOptions : undefined;
-}
