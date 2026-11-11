@@ -13,7 +13,7 @@ describe('createAgentHistoryState', () => {
     let hasFrame = false;
     stubElectronTestWindow({ app: { loadConversationHistory: vi.fn().mockResolvedValue(snapshot) } satisfies Partial<AppApi> });
     const state = createAgentHistoryState({ adoptSnapshot: vi.fn(), getSnapshot: () => snapshot,
-      synchronizeComposerSelection: vi.fn(), hasHistory: () => hasFrame });
+      synchronizeComposerSelection: vi.fn(), hasHistory: () => hasFrame, sessionHasOlder: () => false });
     await state.hydrate(agent.id);
     expect(state.statusFor(agent.id).hydrating).toBe(true);
     hasFrame = true;
@@ -30,7 +30,7 @@ describe('createAgentHistoryState', () => {
     });
     stubElectronTestWindow({ app: { loadConversationHistory } satisfies Partial<AppApi> });
     const state = createAgentHistoryState({ adoptSnapshot: vi.fn(), getSnapshot: () => snapshot, synchronizeComposerSelection: vi.fn(),
-      hasHistory: () => agent.providerSession?.kind === 'codex' && agent.providerSession.threadId === loadedThread });
+      hasHistory: () => agent.providerSession?.kind === 'codex' && agent.providerSession.threadId === loadedThread, sessionHasOlder: () => false });
     expect(state.statusFor(agent.id).hydrating).toBe(true);
     await expect(state.hydrate(agent.id)).resolves.toBeUndefined();
     expect(state.statusFor(agent.id)).toMatchObject({ failed: true, hydrating: false });
@@ -55,7 +55,7 @@ describe('createAgentHistoryState', () => {
       adoptSnapshot: vi.fn(),
       getSnapshot: () => snapshot,
       synchronizeComposerSelection: vi.fn(),
-      hasHistory: () => hasFrame,
+      hasHistory: () => hasFrame, sessionHasOlder: () => false,
     });
 
     const initialHydration = state.hydrateActive();

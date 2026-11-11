@@ -203,6 +203,10 @@ const agentHistory = createAgentHistoryState({
   getSnapshot: () => snapshot.value,
   synchronizeComposerSelection: synchronizeComposerSelectionForAgent,
   hasHistory: agentId => !agentNeedsHistory(agentId),
+  sessionHasOlder: agentId => {
+    const agent = snapshot.value.agents.find(candidate => candidate.id === agentId);
+    return Boolean(agent && sessionConversations.select(agent)?.historyState?.hasOlder);
+  },
 });
 const {
   activeHistoryHasOlder,
@@ -2311,7 +2315,7 @@ function adoptSnapshotFromMainEvent(event: MainToRendererEvent): void {
   }
   applyMainEventToSnapshot(snapshot.value, event);
   if (event.type === 'agent.updated' && Object.hasOwn(event.payload, 'threadFlags')) threadFlagState.project(snapshot.value, event.agentId);
-  if (event.type === 'agent.conversationAttached' && defaultProviderCapabilities(event.provider).selectionInSession) {
+  if (event.type === 'agent.conversationAttached') {
     synchronizeComposerSelectionForAgent(event.agentId);
   }
 }

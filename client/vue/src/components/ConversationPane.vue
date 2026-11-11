@@ -375,7 +375,8 @@ if (traceConversationLoad) watch([
     if (revision === loadTimingRevision && loadTimingRoot.value) mark('content.paint-opportunity');
   }));
 }, { immediate: true, flush: 'post' });
-const contentSessionId = computed(() => props.agent?.providerSession && defaultProviderCapabilities(props.agent.provider).deferredMessageContent
+// Messages arrive with deferred content only from harnesses that read conversation content back.
+const contentSessionId = computed(() => props.agent?.providerSession && defaultProviderCapabilities(props.agent.provider).conversationContent
   ? sessionConversationId(props.agent.providerSession) : null);
 const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
 const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);

@@ -9,16 +9,6 @@ export type ProviderCapabilities = HarnessCapabilities & {
   codeReview?: boolean;
   planReview?: boolean;
   conversationShare?: boolean;
-  /** The pane loads older history page by page. */
-  olderHistoryPaging?: boolean;
-  /** The session data carries the model selection, so attaching a conversation updates the composer. */
-  selectionInSession?: boolean;
-  /** Long messages arrive shortened, and the pane loads the rest on request. */
-  deferredMessageContent?: boolean;
-  /** The plan comes only from the session state, never from one Korus kept for the agent. */
-  sessionOwnsPlan?: boolean;
-  /** The pane leaves the agent's reasoning out of its activity headings. */
-  hideReasoning?: boolean;
 };
 export type ProviderRuntimeStatus = Omit<HarnessRuntimeStatus, 'capabilities'> & {
   capabilities?: Partial<ProviderCapabilities>;

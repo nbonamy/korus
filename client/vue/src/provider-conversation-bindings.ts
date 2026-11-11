@@ -4,7 +4,7 @@ import { planReviewDelivery } from '@workspace/core/plan-review';
 import type { ConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
 import { presentSessionState, type ConversationPresentation } from './conversation-presentation/presentation';
 import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { providerPolicy } from '@workspace/core/provider-capabilities';
 
 /** Injected prompts remain presentation metadata until their provider-owned message arrives. */
 export function pendingConversationPrompts(
@@ -29,7 +29,7 @@ export type { ConversationPresentation } from './conversation-presentation/prese
 export function projectSessionConversation(state: SessionState | null | undefined, agent: Agent): ConversationPresentation | null {
   const presentation = presentSessionState(state);
   if (!presentation) return null;
-  const messages = !defaultProviderCapabilities(agent.provider).hideReasoning ? presentation.messages : presentation.messages.flatMap(message => {
+  const messages = !providerPolicy.hideReasoning.has(agent.provider) ? presentation.messages : presentation.messages.flatMap(message => {
     const parts = message.parts.filter(part => part.type !== 'reasoning');
     return parts.length === message.parts.length ? [message] : parts.length ? [{ ...message, parts }] : [];
   });
@@ -52,5 +52,6 @@ export function conversationKeyForAgent(agent: Agent): NonNullable<ConversationP
 }
 
 export function conversationPlanForAgent(agent: Agent, presentation: ConversationPresentation | null): ThreadPlan | null {
-  return defaultProviderCapabilities(agent.provider).sessionOwnsPlan ? presentation?.plan ?? null : presentation?.plan ?? agent.plan ?? null;
+  // The session's plan, else the one Korus kept for the agent.
+  return presentation?.plan ?? agent.plan ?? null;
 }

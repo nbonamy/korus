@@ -5,13 +5,14 @@ import type {
 } from '@workspace/core/contracts';
 import { computed, ref } from 'vue';
 import { appApi, traceConversationLoad } from './platform-api';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 
 export function createAgentHistoryState(options: {
   adoptSnapshot: (snapshot: AppSnapshot) => void;
   getSnapshot: () => AppSnapshot;
   synchronizeComposerSelection: (agentId: string) => void;
   hasHistory: (agentId: string) => boolean;
+  /** Whether the agent's session reports older history than it shows. */
+  sessionHasOlder: (agentId: string) => boolean;
 }) {
   const hydratingAgentIds = ref(new Set<string>());
   const failedAgentIds = ref(new Set<string>());
@@ -29,8 +30,8 @@ export function createAgentHistoryState(options: {
   const activeHistoryHasOlder = computed(() => {
     const snapshot = options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
-    if (!agent || !defaultProviderCapabilities(agent.provider).olderHistoryPaging) return false;
-    return hasOlderByAgentId.value[agent.id] ?? true;
+    if (!agent) return false;
+    return hasOlderByAgentId.value[agent.id] ?? options.sessionHasOlder(agent.id);
   });
   const isLoadingOlderHistory = computed(() => {
     const agentId = options.getSnapshot().activeAgentId;
