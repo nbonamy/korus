@@ -21,6 +21,7 @@ describe('non-Codex image generation over MCP', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'claude', folder, providerSession: { kind: 'claude', sessionId: 'original', transport: 'stdio' } };
     snapshot.agents[1] = { ...snapshot.agents[1]!, provider: 'codex' };
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const generateImage = vi.fn<NonNullable<AgentProviderDriver['generateImage']>>().mockResolvedValue({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] });
     const driver: AgentProviderDriver = {
       provider: 'codex', generateImage, getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(), sendPrompt: vi.fn(),
@@ -75,6 +76,19 @@ describe('non-Codex image generation over MCP', () => {
     f.snapshot.general.providerEnabled = { codex: false };
     expect((await f.request('tools/list', {})).tools.map((tool: { name: string }) => tool.name)).not.toContain('generate-image');
     expect((await readSkill()).isError).toBe(true);
+  });
+
+  it('hides the image bridge while Codex is enabled but not connected', async () => {
+    const f = await setup();
+    const tools = async () => (await f.request('tools/list', {})).tools.map((tool: { name: string }) => tool.name);
+    f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: false, checking: false }];
+    expect(await tools()).not.toContain('generate-image');
+    expect((await f.call({ prompt: 'A flower' })).isError).toBe(true);
+    expect(f.generateImage).not.toHaveBeenCalled();
+    f.snapshot.providerConnections = undefined;
+    expect(await tools()).not.toContain('generate-image');
+    f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    expect(await tools()).toContain('generate-image');
   });
 
   it('rejects invalid arguments and failed or empty generations without creating image files', async () => {

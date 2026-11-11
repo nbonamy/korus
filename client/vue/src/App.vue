@@ -260,6 +260,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import AppShell from './components/AppShell.vue';
 import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
 import { useGuestNavigation } from './guest-navigation';
@@ -651,8 +652,8 @@ function requestSessionCompression(agentId: string): void {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (
     !agent ||
-    agent.provider !== 'codex' ||
-    agent.providerSession?.kind !== 'codex' ||
+    !defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary ||
+    !agent.providerSession ||
     agent.status.type !== 'idle'
   ) {
     return;

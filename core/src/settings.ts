@@ -6,7 +6,7 @@ import { isHarnessProvider } from './contracts/shared';
 import { spokenAnnouncementVoices, type HarnessProvider, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
-import { claudeProviderCapabilities, cursorProviderCapabilities } from './provider-capabilities';
+import { claudeProviderCapabilities, cursorProviderCapabilities, defaultProviderCapabilities } from './provider-capabilities';
 import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
@@ -215,7 +215,8 @@ function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNull
     if (isRecord(entry) && entry.model !== undefined && entry.model !== null && !normalizeString(entry.model)) continue;
     const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, provider);
     if (!selection) continue;
-    defaults[provider] = provider === 'antigravity' ? { ...selection, reasoningEffort: null, serviceTier: null } : selection;
+    const capabilities = defaultProviderCapabilities(provider);
+    defaults[provider] = { ...selection, ...(capabilities.reasoningEffort ? {} : { reasoningEffort: null }), ...(capabilities.serviceTier ? {} : { serviceTier: null }) };
   }
   return defaults;
 }

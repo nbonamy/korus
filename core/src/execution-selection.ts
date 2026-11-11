@@ -1,6 +1,7 @@
 import type { Agent, ProviderDefaults } from './contracts';
 import type { HarnessProvider } from './contracts/shared';
 import { isHarnessProvider } from './contracts/shared';
+import { defaultProviderCapabilities } from './provider-capabilities';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
 
 export function defaultExecutionSelection(provider: HarnessProvider): ExecutionSelection {
@@ -56,13 +57,14 @@ export function applyExecutionSelection(agent: Pick<Agent, 'provider' | 'provide
   const { provider, model, reasoningEffort, serviceTier, ...remaining } = selection;
   const exhaustive: Record<string, never> = remaining;
   void exhaustive;
+  const capabilities = defaultProviderCapabilities(provider);
   const defaults: ProviderDefaults = agent.providerDefaults?.kind === provider ? agent.providerDefaults : { kind: provider };
   const { model: _oldModel, reasoningEffort: _oldEffort, serviceTier: _oldTier, userSelectedModel: _oldSelected, ...policy } = defaults;
   agent.providerDefaults = {
     ...policy,
     ...(model ? { model, userSelectedModel: true } : {}),
-    ...(provider !== 'antigravity' && reasoningEffort ? { reasoningEffort } : {}),
-    ...(provider !== 'antigravity' ? { serviceTier } : {}),
+    ...(capabilities.reasoningEffort && reasoningEffort ? { reasoningEffort } : {}),
+    ...(capabilities.serviceTier ? { serviceTier } : {}),
   };
 }
 

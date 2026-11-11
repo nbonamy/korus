@@ -1,3 +1,4 @@
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { randomUUID } from 'node:crypto';
 import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
@@ -134,6 +135,7 @@ export class ProviderDriverRpc {
   isBusy(provider: HarnessProvider): boolean { return (this.inFlight.get(provider) ?? 0) > 0; }
 
   getCapabilities(agent: Agent) { return this.requireDriver(agent.provider).getCapabilities(agent); }
+  providers(): HarnessProvider[] { return [...this.drivers.keys()]; }
   getCoordinationPolicy(provider: HarnessProvider) { return resolveProviderCoordinationPolicy(this.drivers.get(provider)?.coordinationPolicy); }
 
   async refreshConversationContext(agent: Agent): Promise<void> {
@@ -150,7 +152,7 @@ export class ProviderDriverRpc {
   async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.provider ?? (isRecord(record.agent) ? record.agent.provider : undefined);
-    const provider = candidate === 'codex' || candidate === 'claude' || candidate === 'cursor' ? candidate : undefined;
+    const provider = isHarnessProvider(candidate) ? candidate : undefined;
     if (provider) {
       if (method !== backendMethods.driverTextCancel && this.blocked(provider)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(provider, (this.inFlight.get(provider) ?? 0) + 1);
@@ -298,9 +300,9 @@ export class ProviderDriverRpc {
       }
       case backendMethods.driverImageGenerate: {
         const { agent } = requireAgentParams(params);
-        if (agent.provider !== 'codex') throw new Error('Image generation requires the Codex driver.');
-        await this.requireNewWork('codex');
-        const driver = this.requireDriver('codex');
+        if (!defaultProviderCapabilities(agent.provider).imageGeneration) throw unsupportedProviderFeature(agent, 'image generation');
+        await this.requireNewWork(agent.provider);
+        const driver = this.requireDriver(agent.provider);
         if (!driver.generateImage) throw unsupportedProviderFeature(agent, 'image generation');
         const record = requireRecord(params);
         return driver.generateImage(agent, { prompt: requireString(record.prompt, 'prompt'), cwd: requireString(record.cwd, 'cwd') }, signal);

@@ -21,7 +21,7 @@ export function opaquePath(value: string, remoteConnectionId?: string): string {
 /** The composer's last model and permission choice; never sandbox paths or approval policies. */
 function projectDefaults(defaults: ProviderDefaults): ProviderDefaults {
   const { kind, model, reasoningEffort } = defaults;
-  const serviceTier = defaults.kind !== 'antigravity' ? defaults.serviceTier : undefined;
+  const serviceTier = 'serviceTier' in defaults ? defaults.serviceTier : undefined;
   const approvalPreset = defaults.kind === 'codex' ? defaults.approvalPreset : undefined;
   const permissionMode = defaults.kind === 'codex' ? undefined : defaults.permissionMode;
   return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),

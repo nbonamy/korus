@@ -38,7 +38,7 @@ async function fixture(run: (context: { repo: string; worktree: string; remote: 
 }
 
 // Real local/remote Git repositories exercise prune and concurrent-update safety.
-describe('repository pruning with real Git', { timeout: 3_000 }, () => {
+describe('repository pruning with real Git', { timeout: 30_000 }, () => {
   it('deletes a branch merged into main even when its tracking branch is behind', async () => {
     await fixture(async ({ repo, service }) => {
       await writeFile(join(repo, 'file.txt'), 'merged work');

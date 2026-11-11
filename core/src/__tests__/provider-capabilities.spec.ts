@@ -49,7 +49,7 @@ describe('backend capabilities', () => {
       attachments: true,
       planMode: 'prompted',
       goals: true,
-      serviceTier: false,
+      serviceTier: true,
       steerPrompt: true,
       approvals: true,
       conversationFork: true,

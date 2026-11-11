@@ -61,8 +61,9 @@ export const cursorProviderCapabilities: ProviderCapabilities = {
     { id: 'full-access', label: { key: 'permissions.cursor.fullAccess.label' }, description: { key: 'permissions.cursor.fullAccess.description' }, dangerous: true },
   ]
 };
+const providerCapabilities: Record<HarnessProvider, ProviderCapabilities> = {
+  codex: codexProviderCapabilities, claude: claudeProviderCapabilities, cursor: cursorProviderCapabilities, antigravity: antigravityProviderCapabilities,
+};
 export function defaultProviderCapabilities(provider: HarnessProvider): ProviderCapabilities {
-  if (provider === 'cursor') return cursorProviderCapabilities;
-  if (provider === 'antigravity') return antigravityProviderCapabilities;
-  return provider === 'claude' ? claudeProviderCapabilities : codexProviderCapabilities;
+  return providerCapabilities[provider];
 }

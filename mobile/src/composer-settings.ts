@@ -19,7 +19,7 @@ export function composerCapabilitiesFor(provider: HarnessProvider, models: reado
 export function resolveComposerSettings(agent: Agent, models: readonly ProviderModelOption[], choice: ComposerChoice | undefined): ComposerSettings {
   const saved = agent.providerDefaults;
   const model = models.find((candidate) => matches(candidate, choice?.model ?? saved?.model)) ?? models.find((candidate) => candidate.isDefault) ?? models[0] ?? null;
-  const savedTier = saved && saved.kind !== 'antigravity' ? saved.serviceTier : undefined;
+  const savedTier = saved && 'serviceTier' in saved ? saved.serviceTier : undefined;
   return {
     provider: agent.provider, model,
     reasoningEffort: choice?.reasoningEffort !== undefined ? choice.reasoningEffort : (saved?.reasoningEffort ?? (model ? defaultEffort(model) : null)),

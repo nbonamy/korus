@@ -1,3 +1,6 @@
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/renderer';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { HarnessProvider } from '@workspace/core/contracts';
 import type { ProviderImageGenerationInput, ProviderImageGenerationResult } from '@workspace/core/provider-driver';
 import type { Agent, AppSnapshot, ProviderSkillSummary } from '@workspace/core/contracts';
 import { readBundledSkill } from './bundled-skills/catalog';
@@ -10,9 +13,16 @@ const extensions = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 
+/** A connected local provider that generates images natively, which agents on other harnesses can borrow. */
+function imageGenerationProvider(snapshot: AppSnapshot): HarnessProvider | undefined {
+  return harnessProviders.find(provider => defaultProviderCapabilities(provider).imageGeneration
+    && snapshot.general.providerEnabled?.[provider] !== false
+    && snapshot.providerConnections?.some(connection => connection.provider === provider && connection.connected && connection.enabled !== false));
+}
+
 export function imageGenerationSkill(snapshot: AppSnapshot, agentId: string): ProviderSkillSummary | undefined {
   const agent = snapshot.agents.find(candidate => candidate.id === agentId);
-  if (!agent || agent.provider === 'codex' || snapshot.general.providerEnabled?.codex === false || agent.remoteConnectionId) return;
+  if (!agent || defaultProviderCapabilities(agent.provider).imageGeneration || !imageGenerationProvider(snapshot) || agent.remoteConnectionId) return;
   const { description } = readBundledSkill('korus-imagegen', { toolModules: ['image-generation'] });
   return { name: 'imagegen', displayName: 'Image Gen', description,
     shortDescription: 'Generate or edit images for websites, games, and more',
@@ -32,12 +42,13 @@ export class ImageGenerationService {
   }
 
   async generate(agentId: string, prompt: string, signal?: AbortSignal) {
-    if (!this.available(agentId)) throw new Error('The image bridge is available to local non-Codex agents with Codex enabled.');
+    const provider = imageGenerationProvider(this.options.snapshot);
+    if (!this.available(agentId) || !provider) throw new Error('The image bridge is available to local agents whose harness cannot make images, while a harness that can is connected.');
     const caller = this.options.snapshot.agents.find(agent => agent.id === agentId)!;
     const cwd = caller.folder?.startsWith('~/') ? path.join(os.homedir(), caller.folder.slice(2)) : caller.folder || this.options.defaultCwd;
-    const result = await this.options.generate({ ...caller, provider: 'codex', providerSession: undefined, providerDefaults: undefined }, { prompt, cwd }, signal);
+    const result = await this.options.generate({ ...caller, provider, providerSession: undefined, providerDefaults: undefined }, { prompt, cwd }, signal);
     signal?.throwIfAborted();
-    if (!result.images.length || result.images.length > 4) throw new Error('Codex must return one to four images.');
+    if (!result.images.length || result.images.length > 4) throw new Error('The image generator must return one to four images.');
     await mkdir(this.options.generatedImagesRoot, { recursive: true });
     const root = await realpath(this.options.generatedImagesRoot);
     let total = 0;

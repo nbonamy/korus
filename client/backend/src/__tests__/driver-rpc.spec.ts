@@ -62,6 +62,18 @@ describe('ProviderDriverRpc', () => {
     } finally { accept(); reject(new Error('Cleanup')); await Promise.allSettled([sent, steered]); await rpc.close(); }
   });
 
+  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('reports %s busy while a request is in flight so upgrades wait', async provider => {
+    let finish!: () => void;
+    const sendPrompt = vi.fn(() => new Promise<ProviderSendResult>(resolve => { finish = () => resolve({ providerSession: { kind: provider, sessionId: 'session' } as never }); }));
+    const rpc = new ProviderDriverRpc(new Map([[provider, createDriver({ provider, sendPrompt })]]));
+    const sent = rpc.handle('driver/prompt/send', { agent: { ...createAgent(), provider }, prompt: 'Work' });
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalled());
+    expect(rpc.isBusy(provider)).toBe(true);
+    finish();
+    await sent;
+    expect(rpc.isBusy(provider)).toBe(false);
+  });
+
   it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
     const rpc = new ProviderDriverRpc(new Map([['cursor', createProviderDriver('cursor')], ['antigravity', createProviderDriver('antigravity')]]));
     try {

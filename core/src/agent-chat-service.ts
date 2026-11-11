@@ -57,7 +57,7 @@ export function sendAgentPrompt(
     capabilities: providerDriver.getCapabilities(agent),
   }, emit, snapshot);
 
-  if (agent.provider !== 'antigravity' && options?.selection?.serviceTier !== undefined) {
+  if (providerDriver.getCapabilities(agent).serviceTier && options?.selection?.serviceTier !== undefined) {
     const defaults = agent.providerDefaults?.kind === agent.provider
       ? agent.providerDefaults
       : { kind: agent.provider };

@@ -62,7 +62,7 @@ describe('settings contracts', () => {
     const agent = { provider: 'cursor', providerDefaults: { kind: 'codex', model: 'codex-only' } } as Pick<Agent, 'provider' | 'providerDefaults'>;
     expect(executionSelectionForAgent(agent)).toStrictEqual({ provider: 'cursor', model: null, reasoningEffort: null, serviceTier: null });
     applyExecutionSelection(agent, selection);
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high' });
     agent.provider = 'claude';
     expect(executionSelectionForAgent(agent)).toStrictEqual({ provider: 'claude', model: null, reasoningEffort: null, serviceTier: null });
     expect(() => applyExecutionSelection(agent, selection)).toThrow('does not match');

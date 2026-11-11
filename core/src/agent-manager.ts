@@ -19,7 +19,7 @@ import { workBacklogAssignmentFromWorkItem, workItemAssignmentKey, type WorkItem
 import { agentDisplayName } from './agent-display';
 import { canSelectAgentProvider, resolveAgentProvider } from './agent-providers';
 import { seedTeamId } from './seed-ids';
-import { approvalProviderDefaultsWithPreset } from './approval-presets';
+import { providerDefaultsWithPermission } from './approval-presets';
 import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
@@ -217,15 +217,8 @@ function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
   const selection = snapshot.general.providerModelDefaults?.[agent.provider];
   if (selection) applyExecutionSelection(agent, selection);
   const approvals = snapshot.general.providerApprovalDefaults;
-  if (agent.provider === 'codex' && approvals?.codex) {
-    agent.providerDefaults = approvalProviderDefaultsWithPreset(agent.providerDefaults, approvals.codex);
-  } else if (agent.provider === 'claude' && approvals?.claude) {
-    agent.providerDefaults = { ...agent.providerDefaults, kind: 'claude', permissionMode: approvals.claude };
-  } else if (agent.provider === 'antigravity' && approvals?.antigravity) {
-    agent.providerDefaults = { ...agent.providerDefaults, kind: 'antigravity', permissionMode: approvals.antigravity };
-  } else if (agent.provider === 'cursor' && approvals?.cursor) {
-    agent.providerDefaults = { ...agent.providerDefaults, kind: 'cursor', permissionMode: approvals.cursor };
-  }
+  const permission = approvals?.[agent.provider];
+  if (permission) agent.providerDefaults = providerDefaultsWithPermission(agent.providerDefaults, agent.provider, permission);
 }
 
 function providerDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAgentInput['selection']>): ProviderDefaults {
@@ -242,9 +235,7 @@ function normalizedProviderDefaults(defaults: ProviderDefaults | undefined, prov
     return undefined;
   }
 
-  return defaults.kind === 'claude' && defaults.thinking
-    ? { ...defaults, thinking: { ...defaults.thinking } }
-    : { ...defaults };
+  return structuredClone(defaults);
 }
 
 function normalizedFolder(folder: string): string {

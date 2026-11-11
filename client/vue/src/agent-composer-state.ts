@@ -571,7 +571,7 @@ function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { so
   const native = projectSessionSelection(agent.providerSession);
   const model = native?.model ?? defaults?.model ?? null;
   const reasoningEffort = native ? native.reasoningEffort ?? null : defaults?.reasoningEffort ?? null;
-  const serviceTier = defaults && defaults.kind !== 'antigravity' ? defaults.serviceTier ?? null : null;
+  const serviceTier = defaults && 'serviceTier' in defaults ? defaults.serviceTier ?? null : null;
   const sessionId = agent.providerSession?.kind === 'codex'
     ? agent.providerSession.threadId
     : agent.providerSession?.sessionId ?? 'new';

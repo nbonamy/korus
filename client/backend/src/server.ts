@@ -1282,7 +1282,7 @@ export class AppBackendServer {
     await this.agentHandoffs.recover();
     await this.providerConnections?.refresh();
     await this.initializeSourceFolderIfNeeded();
-    if (this.snapshot.providerConnections?.some(provider => provider.provider === 'codex' && provider.connected)) await this.ensureRemoteControlStatus();
+    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await this.ensureRemoteControlStatus();
     await this.agentWorkspaces.reconcile();
     await this.reconcileConversationsOnce();
     this.reconcileShares();
@@ -4314,12 +4314,13 @@ export class AppBackendServer {
     if (!this.driverRpc) return;
     if (this.conversationsReconciliation) return this.conversationsReconciliation;
     const reconciliation = (async () => {
-      const localCodexAgents = this.snapshot.agents.filter((agent) => agent.provider === 'codex' && !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
+      // Every connected harness archives the conversations no local agent owns, even when it has no agents at all.
+      const local = this.snapshot.agents.filter((agent) => !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
       try {
-        await this.agentConversations.reconcile(localCodexAgents, async () => { await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, {
-          provider: 'codex',
-          agents: localCodexAgents,
-        }); });
+        for (const provider of this.driverRpc!.providers()) {
+          const agents = local.filter(agent => agent.provider === provider);
+          await this.agentConversations.reconcile(agents, async () => { await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, { provider, agents }); });
+        }
       } catch (error) {
         this.conversationsReconciliation = undefined;
         warnMain('sessions', 'conversation archive reconciliation failed', {

@@ -1,4 +1,4 @@
-import type { AppTextDescriptor, ApprovalPreset, ProviderDefaults, CodexApprovalsReviewer } from './contracts';
+import type { AppTextDescriptor, ApprovalPreset, HarnessProvider, ProviderDefaults, CodexApprovalsReviewer } from './contracts';
 
 export const defaultApprovalPreset: ApprovalPreset = 'full-access';
 
@@ -90,4 +90,10 @@ export function approvalProviderDefaultsWithPreset(
     sandboxMode: 'workspace-write',
     approvalsReviewer: 'user',
   };
+}
+
+/** Stored defaults with a permission choice applied, in the shape the provider keeps it. */
+export function providerDefaultsWithPermission(defaults: ProviderDefaults | undefined, provider: HarnessProvider, permission: string): ProviderDefaults {
+  if (provider === 'codex') return isApprovalPreset(permission) ? approvalProviderDefaultsWithPreset(defaults, permission) : defaults?.kind === 'codex' ? defaults : { kind: 'codex' };
+  return { ...(defaults?.kind === provider ? defaults : {}), kind: provider, permissionMode: permission } as ProviderDefaults;
 }

@@ -230,7 +230,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   readConversationMessages(ref: ProviderConversationRef, agentId: string) {
     const session = this.sessions.get(agentId);
     if (!session) throw new Error('Unknown conversation.');
-    return this.harness.readConversationMessages(session, this.ref(ref), this.provider === 'codex' ? { view: 'last' } : undefined) as never;
+    return this.harness.readConversationMessages(session, this.ref(ref), { view: 'last' }) as never;
   }
   async readConversationSummary(agent: Agent, ref: ProviderConversationRef) {
     const found = await this.harness.readConversationSummary(await this.session(agent), this.ref(ref));
