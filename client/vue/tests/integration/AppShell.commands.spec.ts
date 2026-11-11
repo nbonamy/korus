@@ -1114,20 +1114,15 @@ describe('AppShell dialogs and commands', () => {
 
     listener({ type: 'debug-approval-request' });
     await nextTick();
-    expect(conversationControllerState(wrapper).thread?.approvals).toStrictEqual([expect.objectContaining({
-      id: 'debug-approval-request',
-      title: 'Allow debug command',
-      command: 'npm test -- --run debug-fixture',
+    expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([expect.objectContaining({
+      id: 'debug-approval-request', kind: 'approval',
+      approval: expect.objectContaining({ title: 'Allow debug command', command: 'npm test -- --run debug-fixture' }),
     })]);
 
-    await conversationControllerActions(wrapper).resolveApproval?.(
-      'debug-approval-request',
-      'approve',
-      'once',
-    );
+    await conversationControllerActions(wrapper).respond?.({ id: 'debug-approval-request', outcome: { kind: 'decision', decision: 'allow' } });
     await nextTick();
 
-    expect(conversationControllerState(wrapper).thread?.approvals).toStrictEqual([]);
+    expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([]);
     expect(wrapper.emitted('resolve-approval')).toBeUndefined();
 
     listener({ type: 'debug-user-questions' });
@@ -1143,21 +1138,16 @@ describe('AppShell dialogs and commands', () => {
     ]));
     expect(questionMessage?.parts?.find((part) => part.type === 'question')).toMatchObject({
       request: {
-        payload: {
-          request: {
-            questions: [
-              expect.objectContaining({ header: 'Core flow', options: expect.any(Array) }),
-              expect.objectContaining({ header: 'Review cadence', options: expect.any(Array) }),
-            ],
-          },
+        question: {
+          questions: [
+            expect.objectContaining({ header: 'Core flow', options: expect.any(Array) }),
+            expect.objectContaining({ header: 'Review cadence', options: expect.any(Array) }),
+          ],
         },
       },
     });
 
-    await conversationControllerActions(wrapper).clientResponse?.({
-      id: 'debug-user-questions',
-      payload: { cancelled: true },
-    });
+    await conversationControllerActions(wrapper).respond?.({ id: 'debug-user-questions', outcome: { kind: 'cancelled' } });
     await nextTick();
     expect(conversationControllerState(wrapper).identity.messages).not.toContain(questionMessage);
     expect(wrapper.emitted('client-response')).toBeUndefined();

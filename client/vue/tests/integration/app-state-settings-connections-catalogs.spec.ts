@@ -306,8 +306,8 @@ describe('useAppState', () => {
     const controller = createConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
       actions: { updateSettings: settings => {
-        if (settings.modelId !== undefined) state.selectModel(settings.modelId);
-        if (settings.reasoningEffort !== undefined) state.selectReasoningEffort(settings.reasoningEffort);
+        if (settings.model !== undefined) state.selectModel(settings.model);
+        if (settings.reasoningEffort != null) state.selectReasoningEffort(settings.reasoningEffort);
       } },
     });
     const wrapper = mount(ConversationPane, { props: { agent, controller } });

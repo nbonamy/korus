@@ -7,7 +7,7 @@ export type PaneMessage = Omit<Message, 'agentId' | 'createdAt'> & { createdAt?:
  * Transitional: Codex's native messages as the neutral model, until the browser reads harness session state.
  * Mirrors the SDK's own conversion; neutral messages pass through unchanged.
  */
-export function paneMessages(messages: readonly (ConversationMessage | Message)[]): PaneMessage[] {
+export function paneMessages(messages: readonly (ConversationMessage | Message | PaneMessage)[]): PaneMessage[] {
   return messages.map(message => ({
     ...message,
     ...(message.turnId === undefined && typeof metadataTurnId(message) === 'string' ? { turnId: metadataTurnId(message) } : {}),
@@ -16,6 +16,6 @@ export function paneMessages(messages: readonly (ConversationMessage | Message)[
 }
 
 /** Codex sometimes records a message's turn only in its metadata. */
-function metadataTurnId(message: ConversationMessage | Message): unknown {
+function metadataTurnId(message: ConversationMessage | Message | PaneMessage): unknown {
   return (message.metadata as Record<string, unknown> | undefined)?.turnId;
 }

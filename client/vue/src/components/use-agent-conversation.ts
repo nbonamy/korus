@@ -1,3 +1,5 @@
+import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
+import { approvalAgentRequest, requestFromClientRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { paneMessages } from '../conversation-presentation/pane-messages';
@@ -33,8 +35,8 @@ export type AgentConversationActions = {
   forkTurn: (agentId: string, turnId: string) => void | Promise<void>;
   retryTurn: (agentId: string, turnId: string) => void | Promise<void>;
   continueInterruptedTurn: (agentId: string) => void | Promise<void>;
-  resolveApproval: (agentId: string, approvalId: string, decision: ProviderApprovalDecision, scope: ProviderApprovalScope) => void | Promise<void>;
-  clientResponse: (response: ClientRequestResponse) => void | Promise<void>;
+  /** Answers a pending request (approval, question or tool confirmation) in the harness's own shape. */
+  respond: (agentId: string, response: AgentRequestResponse) => void | Promise<void>;
   selectModel: (agentId: string, modelId: string) => void;
   selectReasoningEffort: (agentId: string, effort: ReasoningEffort) => void;
   selectServiceTier: (agentId: string, tier: string | null) => void;
@@ -66,7 +68,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
   mentionGroups?: () => NonNullable<ConversationPaneState['catalogs']>['mentionGroups'];
   modelMenuItems?: () => ComposerMenuItem[];
   placeholder?: () => string | undefined;
-  previewMessage?: () => import('@korus-dev/multi-agent-sdk').ConversationMessage | undefined;
+  previewMessage?: () => import('../conversation-presentation/pane-messages').PaneMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').ProviderApprovalRequest | undefined;
 } = {}): ConversationPaneState {
   const provider = () => conversationForView(view());
@@ -104,8 +106,15 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
-      get approvals() { const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
-      get clientRequests() { return provider()?.clientRequests ?? []; },
+      get requests() {
+        const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.();
+        // Transitional: native approvals and client requests become the harness's neutral requests until the browser reads session state.
+        return [...(preview ? [...approvals, preview] : approvals).map(approval => approvalAgentRequest(approval as never)),
+          ...(provider()?.clientRequests ?? []).map(request => ({
+            ...requestFromClientRequest(request as never, { conversationId: request.conversationId ?? '', ...(request.turnId ? { turnId: request.turnId } : {}) }),
+            ...(request.itemId ? { itemId: request.itemId } : {}),
+          }))];
+      },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
       get goal() { return provider()?.goal ?? view().agent.goal ?? null; },
       get queuedPrompts() { return view().queuedPrompts; },
@@ -231,12 +240,11 @@ export function useAgentConversation(options: {
     cancel: () => options.actions.interrupt(agentId()),
     interrupt: () => options.actions.interrupt(agentId()),
     continueInterruptedTurn: () => options.actions.continueInterruptedTurn(agentId()),
-    clientResponse: (response) => options.actions.clientResponse({ ...response, agentId: agentId() }),
+    respond: (response) => options.actions.respond(agentId(), response),
     deleteTurn: (turnId) => options.actions.deleteTurn(agentId(), turnId),
     editTurn: (payload) => options.actions.editTurn(agentId(), payload),
     forkTurn: (turnId) => options.actions.forkTurn(agentId(), turnId),
     retryTurn: (turnId) => options.actions.retryTurn(agentId(), turnId),
-    resolveApproval: (id, decision, scope) => options.actions.resolveApproval(agentId(), id, decision, scope),
     sendFollowUp: (prompt) => forward(prompt, undefined, options.actions.send),
     submit: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.send),
     steer: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.steer),
@@ -248,14 +256,14 @@ export function useAgentConversation(options: {
     steerQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.steerQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.steerQueuedPrompt(agentId(), promptId, prompt),
     updateAttachments: (attachments) => { imageAnnotation.prune(agentId(), attachments); options.actions.updateAttachments(agentId(), attachments); },
     updateComposerState: (composerState) => options.actions.updateComposerState(agentId(), composerState),
-    updateSettings: (settings) => {
+    updateSettings: (defaults) => {
       const id = agentId();
-      if (settings.modelId !== undefined) options.actions.selectModel(id, settings.modelId);
-      if (settings.reasoningEffort !== undefined) options.actions.selectReasoningEffort(id, settings.reasoningEffort);
-      if (settings.serviceTier !== undefined) options.actions.selectServiceTier(id, settings.serviceTier);
-      if (settings.planMode !== undefined) options.actions.setPlanMode(id, settings.planMode);
-      if (settings.approvalPreset !== undefined) return options.actions.setApprovalPreset(id, settings.approvalPreset);
+      if (defaults.model !== undefined) options.actions.selectModel(id, defaults.model);
+      if (defaults.reasoningEffort != null) options.actions.selectReasoningEffort(id, defaults.reasoningEffort);
+      if (defaults.serviceTier !== undefined) options.actions.selectServiceTier(id, defaults.serviceTier);
+      if (defaults.permission !== undefined) return options.actions.setApprovalPreset(id, defaults.permission as ApprovalPreset);
     },
+    setPlanMode: (planMode) => options.actions.setPlanMode(agentId(), planMode),
     ...options.overrides,
   };
   const controller = createConversationPaneController({ state: options.state, actions });

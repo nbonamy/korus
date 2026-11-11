@@ -1,3 +1,4 @@
+import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
 import { config, DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
@@ -85,7 +86,7 @@ describe('AppShell authentication and conversation', () => {
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
       setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (id, mode) => {
         const view = views.find(view => view.agent.id === id)!;
@@ -488,8 +489,8 @@ describe('AppShell authentication and conversation', () => {
     const draft = { text: 'Keep my draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: NativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
     const wrapper = mountShell({ snapshot, claudeConversationSnapshot: replica.getSnapshot(), stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
-    expect(conversationControllerState(wrapper).thread?.clientRequests).toStrictEqual([{
-      id: 'permission', kind: 'confirm_tool', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', payload: { confirmation },
+    expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([{
+      id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation,
     }]);
     const footer = wrapper.get('.agent-ui-conversation-pane__footer');
     expect(footer.text()).toContain('Run the tests?');
@@ -501,7 +502,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('client-response')).toEqual([[{ id: 'permission', payload: { decision: 'allow_conversation' } }]]);
     replica.apply({ type: 'clientRequest.resolved', agentId: agent.id, provider: 'claude', seq: 2, occurredAt: '2026-10-03T00:00:01Z', payload: { id: 'permission' } });
     await wrapper.setProps({ claudeConversationSnapshot: replica.getSnapshot() });
-    expect(conversationControllerState(wrapper).thread?.clientRequests).toEqual([]);
+    expect(conversationControllerState(wrapper).thread?.requests).toEqual([]);
     expect(conversationControllerState(wrapper).identity.messages).toHaveLength(1);
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe(draft.text);
     expect(wrapper.text()).toContain('notes.txt');
@@ -547,7 +548,7 @@ describe('AppShell authentication and conversation', () => {
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.activeTurnId).toBe('turn-provider');
     expect(state.identity.busy).toBe(true);
-    expect(state.thread?.approvals).toStrictEqual(providerSnapshot.approvals);
+    expect(state.thread?.requests).toStrictEqual(providerSnapshot.approvals.map(approval => approvalAgentRequest(approval)));
     expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
@@ -1910,7 +1911,7 @@ describe('AppShell authentication and conversation', () => {
       mimeType: 'text/plain',
       size: 12,
     }]);
-    await actions.updateSettings?.({ modelId: 'gpt-5.1', serviceTier: null });
+    await actions.updateSettings?.({ model: 'gpt-5.1', serviceTier: null });
     await actions.submit?.('review context', {
       attachments: [{ type: 'file', reference: 'electron-attachment:context' }],
       selection: { model: 'sdk-selection-does-not-cross-host-boundary' },

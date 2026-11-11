@@ -503,7 +503,7 @@ describe('ConversationPane', () => {
     await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
     await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().startsWith('Cursor model'))!.trigger('click');
     await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ modelId: 'cursor-model' });
+    expect(updateSettings).toHaveBeenCalledWith({ model: 'cursor-model' });
     // A connection refresh after model selection must not switch this chat.
     expect(selectedAgent.value.provider).toBe('cursor');
     expect(update).toHaveBeenCalledTimes(1);

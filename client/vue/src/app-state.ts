@@ -1,3 +1,5 @@
+import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
+import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { codexEventFromWire } from '@workspace/core/codex-event-wire';
 import { bindConversation, projectCodexConversation, projectClaudeConversation, projectCursorConversation, projectAntigravityConversation, type NativeConversationSources, type ConversationPresentation } from './provider-conversation-bindings';
 import { createCursorConversationState } from './cursor-conversation-state';
@@ -1689,6 +1691,17 @@ export function useAppState() {
     markClientRequestAnswered(response.id);
   }
 
+  /** Answers a pending request in the harness's shape, after the same checks an approval prompt applies. */
+  async function respondToAgentRequest(agentId: string, response: AgentRequestResponse): Promise<void> {
+    const approval = snapshot.value.providerApprovals[agentId]?.find((candidate) => candidate.id === response.id);
+    if (approval && response.outcome.kind === 'decision') {
+      const decision = response.outcome.decision;
+      const scope = decision === 'allow_conversation' ? 'session' : 'once';
+      if (decision === 'deny' ? approval.canDeny === false : Boolean(approval.allowedScopes && !approval.allowedScopes.includes(scope))) return;
+    }
+    await respondToClientRequest({ ...clientResponseFromAgentResponse(response), agentId });
+  }
+
   async function resolveProviderApproval(
     approvalId: string,
     decision: ProviderApprovalDecision,
@@ -1959,6 +1972,7 @@ export function useAppState() {
     resolveProviderApproval,
     resolveProviderApprovalForAgent,
     respondToClientRequest,
+    respondToAgentRequest,
     selectModel,
     selectModelForAgent,
     selectReasoningEffort,

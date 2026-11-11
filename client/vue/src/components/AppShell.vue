@@ -660,6 +660,8 @@
 
 <script setup lang="ts">
 import { conversationForView, conversationPlanForAgent, legacyConversationPresentation, type ConversationPresentation } from '../provider-conversation-bindings';
+import type { PaneMessage } from '../conversation-presentation/pane-messages';
+import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
@@ -1492,7 +1494,7 @@ const fileQuickOpenVisible = ref(false);
 watch(fileQuickOpenVisible, (visible) => { if (visible) void props.loadAgentFiles?.(); });
 const agentQuickOpenVisible = ref(false);
 const debugApproval = ref<{ agentId: string; request: ProviderApprovalRequest } | null>(null);
-const debugUserQuestions = ref<{ agentId: string; message: ConversationMessage; requestId: string } | null>(null);
+const debugUserQuestions = ref<{ agentId: string; message: PaneMessage; requestId: string } | null>(null);
 const debugAgentCreationProgress = ref<AgentCreationProgress | null>(null);
 const debugAgentCreationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const agentWorkspace = ref<{
@@ -2064,8 +2066,7 @@ const legacyConversationActions: AgentConversationActions = {
   editTurn: (_id, payload) => props.editTurnAction ? props.editTurnAction(payload) : emit('edit-turn', payload),
   forkTurn: (_id, turn) => emit('fork-turn', turn), retryTurn: (_id, turn) => props.retryTurnAction ? props.retryTurnAction(turn) : emit('retry-turn', turn),
   continueInterruptedTurn: () => props.continueInterruptedTurnAction?.(),
-  resolveApproval: (_id, approval, decision, scope) => forwardApprovalResolution(approval, decision, scope),
-  clientResponse: response => { const { agentId: _id, ...answer } = response; emit('client-response', answer); },
+  respond: (_id, response) => emit('client-response', clientResponseFromAgentResponse(response)),
   selectModel: (_id, model) => emit('select-model', model), selectReasoningEffort: (_id, effort) => emit('select-reasoning-effort', effort),
   selectServiceTier: (_id, tier) => emit('select-service-tier', tier), setPlanMode: (_id, enabled) => emit('update:planMode', enabled),
   setApprovalPreset: (_id, preset) => emit('select-approval-preset', preset), setPermissionMode: (_id, mode) => emit('select-permission-mode', mode),
@@ -2164,13 +2165,10 @@ function addFocusedVisualizationAnnotation(annotation: import('./use-visualizati
 }
 const conversationActions = computed<AgentConversationActions>(() => ({
   ...(props.agentConversationActions ?? legacyConversationActions),
-  resolveApproval: (id, approval, decision, scope) => {
-    if (debugApproval.value?.request.id === approval) { debugApproval.value = null; return; }
-    return (props.agentConversationActions ?? legacyConversationActions).resolveApproval(id, approval, decision, scope);
-  },
-  clientResponse: response => {
+  respond: (id, response) => {
+    if (debugApproval.value?.request.id === response.id) { debugApproval.value = null; return; }
     if (debugUserQuestions.value?.requestId === response.id) { debugUserQuestions.value = null; return; }
-    return (props.agentConversationActions ?? legacyConversationActions).clientResponse(response);
+    return (props.agentConversationActions ?? legacyConversationActions).respond(id, response);
   },
   send: async (agentId, prompt, options) => {
     await backendSwitch.settled();
@@ -2804,12 +2802,11 @@ function showDebugUserQuestions(agentId: string): void {
           type: 'question',
           request: {
             id: requestId,
-            kind: 'ask_user',
+            kind: 'question',
             conversationId: `debug-${agentId}`,
             turnId,
             itemId,
-            payload: {
-              request: {
+            question: {
                 itemId,
                 delivery: 'async',
                 blocking: false,
@@ -2858,7 +2855,6 @@ function showDebugUserQuestions(agentId: string): void {
                   },
                 ],
               },
-            },
           },
         },
       ],

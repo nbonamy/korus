@@ -30,7 +30,7 @@ it('renders the Antigravity replica, denies a native approval, and keeps unsuppo
   });
   const actions: AgentConversationActions = {
     planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(),
-    deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+    deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), respond: vi.fn(),
     selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
     updateComposerState: vi.fn(), updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
   };
@@ -42,7 +42,7 @@ it('renders the Antigravity replica, denies a native approval, and keeps unsuppo
   const confirmation = wrapper.get('.chat-tool-confirmation');
   expect(confirmation.findAll('button').map(button => button.text())).toEqual(['Allow', 'Deny']);
   await confirmation.findAll('button').find(button => button.text() === 'Deny')!.trigger('click'); await flushPromises();
-  expect(actions.clientResponse).toHaveBeenCalledExactlyOnceWith({ agentId: agent.id, id: 'permission', payload: { decision: 'deny' } });
+  expect(actions.respond).toHaveBeenCalledExactlyOnceWith(agent.id, { id: 'permission', outcome: { kind: 'decision', decision: 'deny' } });
   view.antigravitySnapshot = replica.apply({ ...identity, type: 'request.resolved', payload: { id: 'permission', outcome: { kind: 'decision', decision: 'deny' } } });
   view.antigravitySnapshot = replica.apply({ ...identity, type: 'turn.completed', payload: { turn: { id: 'turn', status: 'completed' } } });
   await flushPromises();

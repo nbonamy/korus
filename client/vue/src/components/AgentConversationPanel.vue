@@ -92,7 +92,7 @@ const props = defineProps<{
   emptyHeadline?: string;
   emptySubhead?: string;
   placeholder?: string;
-  previewMessage?: import('@korus-dev/multi-agent-sdk').ConversationMessage;
+  previewMessage?: import('../conversation-presentation/pane-messages').PaneMessage;
   previewApproval?: import('@workspace/core/contracts').ProviderApprovalRequest;
   followUpBehavior?: AppGeneralSettings['followUpBehavior'];
   mentionGroups: readonly ComposerMentionGroup[];
