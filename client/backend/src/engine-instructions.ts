@@ -10,6 +10,11 @@ function instructionPath(engine: HarnessProvider, homes?: AppGeneralSettings['pr
   throw new Error('Unknown instruction engine.');
 }
 
+/** The harnesses whose instruction file Korus edits. */
+export function isInstructionEngine(value: unknown): value is 'codex' | 'claude' {
+  return value === 'codex' || value === 'claude';
+}
+
 export async function readEngineInstructions(engine: HarnessProvider, homes?: AppGeneralSettings['providerHomes']): Promise<{ path: string; text: string }> {
   const file = instructionPath(engine, homes);
   try {

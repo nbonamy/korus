@@ -1,12 +1,15 @@
 import { createCursorLifecycle } from './cursor/provider-lifecycle';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import type { HarnessProvider, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
+import type { HarnessProvider, AppGeneralSettings, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
 import type { ProviderHomeSettings, ProviderSetupCapabilities, ProviderSetupChange, ProviderSetupChoice } from '@workspace/core/contracts/provider-setup';
 import { backendHomeDir } from './state';
 import { createCodexLifecycle } from './codex/provider-lifecycle';
 import { createClaudeLifecycle } from './claude/provider-lifecycle';
 import { createAntigravityLifecycle } from './antigravity/provider-lifecycle';
+
+/** The setting that points at each harness's own executable, for harnesses that have one. */
+export const providerBinaryPathSettings = [['codex', 'codexBinaryPath']] as const satisfies readonly (readonly [HarnessProvider, keyof AppGeneralSettings])[];
 
 /** Provider-owned lifecycle policy; setup owns serialization and persistence. */
 export type ProviderLifecycle = {

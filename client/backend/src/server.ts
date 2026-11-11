@@ -45,7 +45,7 @@ import { isProviderConnection, type ProviderAuthentication, type ProviderSetupSt
 import { MissionExecutionService } from './mission-execution-service';
 import { missionRunPromptMarker } from './mission-execution-policy';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
-import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
+import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel, missionScreenshotSnapshotEvent } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
 import { missionStageSkills } from './bundled-skills/catalog';
 import { imageGenerationSkill } from './image-generation-service';
@@ -72,9 +72,9 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
-import { readEngineInstructions, saveEngineInstructions } from './engine-instructions';
+import { isInstructionEngine, readEngineInstructions, saveEngineInstructions } from './engine-instructions';
 import { SkillManager } from './skill-manager';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
 import { teamColors } from '@workspace/core/team-colors';
 import { sanitizeWorkItemAssignmentSource } from '@workspace/core/work-assignments';
@@ -87,11 +87,12 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
 import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
+import { installedByRemoteDaemon, installOverSsh } from './connections/remote-engines';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
 import { warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
-import { getCodexResourceSharingStatus, setCodexResourceSharing } from './codex-resource-sharing';
+import { codexResourceSharingAccess } from './codex-resource-sharing';
 import { AgentGitService } from './git/agent-git-service';
 import { AgentGitWorkflowService, parseAgentGitRequest } from './git/agent-git-workflow-service';
 import { AgentPromptManager } from './agents/agent-prompt-manager';
@@ -124,6 +125,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 import { remoteCollaborationTools, type CreateCoAgentInput, type RemoteCollaborationCall, type RemoteWorkerRequest, type RemoteWorkerResult } from '@workspace/core/remote-collaboration';
 import { CallToolResultSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { providerBinaryPathSettings } from './provider-lifecycle';
 
 export type AppBackendServerOptions = {
   collaborationTools?: {
@@ -569,7 +571,7 @@ export class AppBackendServer {
       let agent = this.snapshot.agents.find(agent => agent.sharedConversation?.joinId === entry.id);
       if (!agent) {
         const now = new Date().toISOString();
-        agent = { id: `shared-${entry.id}`, teamId: team.id, sessionKind: 'quickChat', sharedConversation: { joinId: entry.id }, name: entry.title, conversationTitle: entry.title, provider: 'codex', folder: null, status: { type: 'idle' }, createdAt: now, updatedAt: now };
+        agent = { id: `shared-${entry.id}`, teamId: team.id, sessionKind: 'quickChat', sharedConversation: { joinId: entry.id }, name: entry.title, conversationTitle: entry.title, provider: defaultHarnessProvider, folder: null, status: { type: 'idle' }, createdAt: now, updatedAt: now };
         this.snapshot.agents.push(agent); team.agentIds.push(agent.id); changed = true;
       }
       if (agent.name !== entry.title) { agent.name = entry.title; agent.conversationTitle = entry.title; changed = true; }
@@ -716,10 +718,9 @@ export class AppBackendServer {
     this.sshConnections = options.sshConnections ?? new SshConnectionService();
     this.remoteClients = options.remoteClients ?? new RemoteDaemonClientManager();
     this.sendAgentMessage = options.sendAgentMessage;
-    this.configureCodexResourceSharing = options.configureCodexResourceSharing ?? (options.providerSetup
-      ? input => options.providerSetup!.setResourceSharing('codex', input) : setCodexResourceSharing);
-    this.inspectCodexResourceSharing = options.inspectCodexResourceSharing ?? (options.providerSetup
-      ? () => options.providerSetup!.getResourceSharingStatus('codex') : getCodexResourceSharingStatus);
+    const resourceSharing = codexResourceSharingAccess(options.providerSetup);
+    this.configureCodexResourceSharing = options.configureCodexResourceSharing ?? resourceSharing.configure;
+    this.inspectCodexResourceSharing = options.inspectCodexResourceSharing ?? resourceSharing.inspect;
     this.inspectPluginStatus = options.inspectPluginStatus ?? loadPluginStatus;
     this.agentGitService = options.agentGitService ?? new AgentGitService();
     this.agentGitService.setSettingsProvider?.(() => normalizeGitSettings(this.snapshot.general.git));
@@ -1930,11 +1931,12 @@ export class AppBackendServer {
           await this.persistAndEmitSnapshot();
         };
         let checked = await this.sshConnections.checkConnection(connection, backends, progress);
-        if (checked.status === 'ready' && backends.includes('antigravity')) {
-          await progress('Installing Antigravity…');
+        for (const provider of backends.filter(installedByRemoteDaemon)) {
+          if (checked.status !== 'ready') break;
+          await progress(`Installing ${providerDisplayName(provider)}…`);
           try {
-            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { provider: 'antigravity', _clientId: 'remote-controller' });
-            if (!installed.installed) throw new Error('Antigravity installation could not be verified.');
+            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { provider, _clientId: 'remote-controller' });
+            if (!installed.installed) throw new Error(`${providerDisplayName(provider)} installation could not be verified.`);
           }
           catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
         }
@@ -2802,9 +2804,7 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, loadParams, async () => {
           const fixture = missionScreenshotConversation(this.snapshot, agentId);
           if (fixture) {
-            const session = this.localAgentForId(agentId)?.providerSession;
-            this.applyAndEmitBackendEvent({ agentId, provider: 'claude', type: 'conversation.sessionSnapshot',
-              payload: { conversation: session && session.kind !== 'codex' ? session.sessionId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state: fixture } } });
+            this.applyAndEmitBackendEvent(missionScreenshotSnapshotEvent(agentId, this.localAgentForId(agentId), fixture));
             return this.snapshot;
           }
           await this.agentConversations.hydrateAndRefresh(agentId, reportFailure);
@@ -3348,11 +3348,12 @@ export class AppBackendServer {
           }
         }
         if (policy.general?.providerEnabled) this.providerConnections?.updateEnabled();
-        if (policy.general?.codexBinaryPath !== undefined) {
-          this.providerSetup?.invalidateInstallation('codex');
-          this.providerConnections?.invalidate('codex');
-          await this.providerConnections?.refresh();
+        const relocated = providerBinaryPathSettings.filter(([, setting]) => policy.general?.[setting] !== undefined).map(([provider]) => provider);
+        for (const provider of relocated) {
+          this.providerSetup?.invalidateInstallation(provider);
+          this.providerConnections?.invalidate(provider);
         }
+        if (relocated.length) await this.providerConnections?.refresh();
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.skillsManage: {
@@ -3374,12 +3375,12 @@ export class AppBackendServer {
       }
       case backendMethods.engineInstructionsRead: {
         const { engine } = requireRecord(message.params);
-        if (engine !== 'codex' && engine !== 'claude') throw new Error('Unknown instruction engine.');
+        if (!isInstructionEngine(engine)) throw new Error('Unknown instruction engine.');
         return createAppRpcResult(message.id, await readEngineInstructions(engine, this.snapshot.general.providerHomes));
       }
       case backendMethods.engineInstructionsSave: {
         const input = requireRecord(requireRecord(message.params).input);
-        if (input.engine !== 'codex' && input.engine !== 'claude') throw new Error('Unknown instruction engine.');
+        if (!isInstructionEngine(input.engine)) throw new Error('Unknown instruction engine.');
         if (typeof input.text !== 'string') throw new Error('Invalid instruction text.');
         await saveEngineInstructions({ engine: input.engine, text: input.text, all: input.all as boolean | undefined, confirmed: input.confirmed === true }, this.snapshot.general.providerHomes);
         return createAppRpcResult(message.id, null);
@@ -3472,7 +3473,7 @@ export class AppBackendServer {
           if (!isBankedResets(result)) throw new Error('Could not read banked resets. Update the remote runtime.');
           return createAppRpcResult(message.id, result);
         }
-        const provider = this.snapshot.providerConnections?.find(item => item.provider === 'codex');
+        const provider = this.snapshot.providerConnections?.find(item => defaultProviderCapabilities(item.provider).bankedResets);
         if (!provider?.installed || provider.enabled === false) return createAppRpcResult(message.id, { status: 'unsupported' });
         if (!provider.connected) return createAppRpcResult(message.id, { status: 'signedOut' });
         const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetsGet, {});
@@ -3488,7 +3489,7 @@ export class AppBackendServer {
           if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
           return createAppRpcResult(message.id, result);
         }
-        const provider = this.snapshot.providerConnections?.find(item => item.provider === 'codex');
+        const provider = this.snapshot.providerConnections?.find(item => defaultProviderCapabilities(item.provider).bankedResets);
         if (!provider?.installed || provider.enabled === false || !provider.connected) throw new Error('Codex account is unavailable');
         const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetUse, { input });
         if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
@@ -3529,11 +3530,10 @@ export class AppBackendServer {
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           if (!isHarnessProvider(input.provider)) throw new Error('Unknown provider.');
-          if (message.method === backendMethods.providerInstall && input.provider !== 'antigravity') {
+          if (message.method === backendMethods.providerInstall && !installedByRemoteDaemon(input.provider)) {
             const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
             if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
-            if (input.provider === 'codex') await this.sshConnections.ensureRemoteCodexInstalled(connection.host);
-            else await this.sshConnections.ensureRemoteClaudeInstalled(connection.host);
+            await installOverSsh(this.sshConnections, connection.host, input.provider);
             return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { provider: input.provider }));
           }
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { provider: input.provider }));

@@ -10,7 +10,9 @@ export const allowed = {
     // Each harness's own install, update, lifecycle and launch modules.
     /^client\/backend\/src\/(codex|claude|cursor|antigravity)\//,
     /^client\/backend\/src\/(provider-lifecycle|provider-update-runtime|runtime|engine-instructions|harness-drivers|driver-rpc)\.ts$/,
-    /^client\/backend\/src\/connections\/ssh-connections\.ts$/,
+    // Installing harnesses on SSH hosts, and Codex's shared skills and plugins across homes.
+    /^client\/backend\/src\/connections\//,
+    /^client\/backend\/src\/codex-resource-sharing\.ts$/,
     /^core\/src\/(runtime-discovery|provider-commands|settings)\.ts$/,
     /^core\/src\/contracts\/provider-setup\.ts$/,
     // Settings, onboarding and sign-in screens for each harness.

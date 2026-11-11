@@ -118,3 +118,10 @@ export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: st
     historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null,
   };
 }
+
+/** The event that shows a screenshot fixture's conversation in the pane. */
+export function missionScreenshotSnapshotEvent(agentId: string, agent: Agent | null | undefined, state: SessionState): import('@workspace/core/provider-driver').BackendEvent {
+  const session = agent?.providerSession;
+  return { agentId, provider: 'claude', type: 'conversation.sessionSnapshot',
+    payload: { conversation: session && session.kind !== 'codex' ? session.sessionId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state } } };
+}
