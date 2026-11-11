@@ -75,7 +75,7 @@
     "format:vue-styles": "node scripts/format-vue-styles.mjs",
     "format:vue-styles:check": "node scripts/format-vue-styles.mjs --check",
     "lint": "npm run lint:architecture && npm run lint --workspaces && npm run lint:dead-code",
-    "lint:architecture": "node scripts/check-architecture.mjs",
+    "lint:architecture": "node scripts/check-architecture.mjs && node scripts/check-provider-neutrality.mjs",
     "lint:css": "npm run lint:css -w @workspace/vue",
     "lint:dead-code": "knip",
     "lint:electron": "npm run lint -w @workspace/electron",

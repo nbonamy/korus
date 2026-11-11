@@ -50,8 +50,8 @@ export const allowed = {
     /^core\/src\/provider-capabilities\.ts$/,
   ],
 };
-// Provider-specific SDK entries; only setup that has no neutral form yet may import them.
-const providerEntryImports = [/^core\/src\/contracts\/provider\.ts$/];
+// No file imports a provider-specific SDK entry.
+const providerEntryImports = [];
 
 const roots = ["core/src", "client/backend/src", "client/electron/src", "client/vue/src", "mobile/src"];
 const providers = ["codex", "claude", "cursor", "antigravity"];
