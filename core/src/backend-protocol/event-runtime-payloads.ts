@@ -1,3 +1,4 @@
+import { operationCapabilityFlags } from '../capability-flags';
 import { isCursorEvent, isCursorSnapshot } from '../cursor-conversation-guards';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
@@ -41,7 +42,7 @@ function expectProviderCapabilities(value: unknown, path: string): void {
     'interrupt',
     'history',
     'conversationFork',
-    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare',
+    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', ...operationCapabilityFlags,
     'deleteTurn',
     'editTurn',
     'retryTurn',

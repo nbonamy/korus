@@ -50,6 +50,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private readonly scopes = new Map<string, Session>();
   /** The scope an agent is running right now, which steering, interrupts and answers address instead of its own conversation. */
   private readonly running = new Map<string, Session>();
+  /** Scopes whose events stay out of the agent's conversation. */
+  private readonly quiet = new Set<Session>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly usageListeners = new Set<NonNullable<Parameters<NonNullable<AgentProviderDriver['onUsage']>>[0]>>();
   private readonly requestUsageListeners = new Set<NonNullable<Parameters<NonNullable<AgentProviderDriver['onRequestUsage']>>[0]>>();
@@ -67,6 +69,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
 
   private forward(event: HarnessEvent): void {
     if (event.type === 'provider.event') {
+      if (event.session && this.quiet.has(event.session)) return;
       // A scoped (review) session reports as the agent it works for, as the daemon tracks one conversation per agent.
       const agentId = (event.event as { agentId?: string }).agentId;
       const parent = agentId?.includes(':scope:') ? agentId.split(':scope:')[0] : undefined;
@@ -147,7 +150,13 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     return this.unless(agent, 'interrupted turn continuation', async () => { const session = await this.session(agent); const result = await this.harness.continueInterruptedTurn(session, safetyReview); return { providerSession: this.dataOf(session), activeTurnId: result.activeTurnId }; });
   }
   async reconcileConversations(agents: Agent[]) { await this.harness.reconcileConversations(await Promise.all(agents.map(agent => this.session(agent)))); }
-  assertHandoffReady(agent: Agent) { return this.unless(agent, 'handoff readiness checks', async () => { await this.harness.assertHandoffReady(await this.session(agent)); }); }
+  /** A conversation can be handed off only when nothing is running or waiting on the person. */
+  assertHandoffReady(agent: Agent) {
+    return this.unless(agent, 'handoff readiness checks', async () => {
+      const state = this.harness.readSession(await this.session(agent));
+      if (state.busy || state.activeTurnId || state.requests.length) throw new Error(`Resolve the ${providerDisplayName(this.provider)} turn and requests before handing off.`);
+    });
+  }
   async forkWorktreeConversation(agent: Agent, target: Agent) {
     return this.unless(agent, 'worktree conversation fork', async () => {
       const targetSession = await this.session(target);
@@ -211,7 +220,6 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     await this.harness.resumeConversation(session, { ref: this.ref(target.ref), storageState: target.storageState });
     return { providerSession: this.dataOf(session) };
   }
-  replaceConversationWithSummary(agent: Agent) { return this.unless(agent, 'session compression', async () => { const session = await this.session(agent); await this.harness.replaceConversationWithSummary(session); return { providerSession: this.dataOf(session) }; }); }
   forkConversation(agent: Agent, target: Agent, turnId?: string) {
     return this.unless(agent, 'conversation fork', async () => {
       const targetSession = await this.session(target);
@@ -228,6 +236,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const found = await this.harness.readConversationSummary(await this.session(agent), this.ref(ref));
     return found ? { ...found, ref: this.harness.getRefData(found.ref).data } as never : null;
   }
+  setConversationStorage(ref: ProviderConversationRef, state: 'active' | 'archived') { return this.harness.setConversationStorage(this.ref(ref), state); }
   async archiveAgentConversation(agent: Agent) { return this.harness.archiveConversation(await this.session(agent)); }
   async deleteAgentConversation(agent: Agent) { return this.harness.deleteConversation(await this.session(agent)); }
   async releaseConversation(agentId: string) {
@@ -237,13 +246,15 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     await this.harness.release(session);
   }
 
-  async executeScopedPrompt(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
+  executeScopedPrompt(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) { return this.unless(agent, 'scoped execution', () => this.runScoped(agent, input)); }
+  private async runScoped(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
     const parent = await this.session(agent);
     const existing = input.session ? this.scopes.get(identityOf(input.session)) : undefined;
     const scope = existing ?? (input.session
       ? this.harness.restoreSession({ id: `${agent.id}:scope:${randomUUID()}`, folder: input.cwd, defaults: defaultsOf(agent.providerDefaults) }, { provider: this.provider, data: input.session, role: 'scope', parentId: agent.id })
       : this.harness.openScope(parent, { cwd: input.cwd }));
     this.running.set(agent.id, scope);
+    if (input.silent) this.quiet.add(scope);
     try {
       const result = await this.harness.executeScopedPrompt(parent, { prompt: input.prompt, cwd: input.cwd, scope: input.scope, options: input.options as never, session: scope, ...(input.signal ? { signal: input.signal } : {}) });
       const data = this.dataOf(result.session);
@@ -251,6 +262,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       return { text: result.text, session: data };
     } finally {
       if (this.running.get(agent.id) === scope) this.running.delete(agent.id);
+      this.quiet.delete(scope);
     }
   }
   async disposeScopedSession(agent: Agent, session: ProviderSessionData) {

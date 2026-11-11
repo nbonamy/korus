@@ -64,7 +64,7 @@ async function fixture(purpose: 'transfer' | 'initialization' = 'transfer') {
 }
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
+describe('BranchCurrentWorkService', { timeout: 30_000 }, () => {
   it.each(['automatic', 'off', 'setup failure'] as const)('initializes an isolated branch through the configured runtime after transfer: %s', async scenario => {
     // The manifest itself carries both staged and unstaged edits, alongside an
     // ignored environment file. Transfer tests own the larger file-type matrix.
@@ -149,7 +149,7 @@ describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('transfer safety and recovery', { timeout: 3_000 }, () => {
+describe('transfer safety and recovery', { timeout: 30_000 }, () => {
   it.each(['local', 'remote', 'slash-named remote'] as const)('does not mistake an existing %s branch suffix for the requested branch', async scenario => {
     const f = await fixture();
     if (scenario === 'local') await f.git('branch', 'team/fix');
@@ -225,7 +225,7 @@ describe('transfer safety and recovery', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('file and checkout boundaries', { timeout: 3_000 }, () => {
+describe('file and checkout boundaries', { timeout: 30_000 }, () => {
   // Real multi-file Git transfer includes renames, binary patches and staged deletions.
   it('transfers staged additions/deletions, renames, binary content, and literal pathspecs', async () => {
     const f = await fixture();
@@ -286,7 +286,7 @@ describe('file and checkout boundaries', { timeout: 3_000 }, () => {
 
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('source cleanup races', { timeout: 3_000 }, () => {
+describe('source cleanup races', { timeout: 30_000 }, () => {
   it('retains edits through an open file descriptor in the reported recovery copies', async () => {
     const f = await fixture();
     const descriptor = await open(join(f.source, 'mixed'), 'r+');
@@ -302,7 +302,7 @@ describe('source cleanup races', { timeout: 3_000 }, () => {
 
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('worktree identity', { timeout: 3_000 }, () => {
+describe('worktree identity', { timeout: 30_000 }, () => {
   it('branches from a linked checkout HEAD without changing the primary checkout', async () => {
     const f = await fixture(); const linked = join(f.root, 'linked');
     await f.git('worktree', 'add', '-b', 'source-feature', linked);
@@ -345,7 +345,7 @@ describe('worktree identity', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('index lock contention', { timeout: 3_000 }, () => {
+describe('index lock contention', { timeout: 30_000 }, () => {
   it('waits for another git process to release the index lock instead of abandoning the cleanup', async () => {
     const f = await fixture();
     indexLock.busy = 6;

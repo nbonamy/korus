@@ -542,9 +542,10 @@ describe('ProviderDriverRpc', () => {
     const resumeConversation = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-resumed' },
     });
-    const replaceConversationWithSummary = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-compressed' },
-    });
+    // Compressing is composed from basic operations: a quiet summary, a new conversation seeded with it, the old one archived.
+    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', threadId: 'thread-test' } });
+    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-compressed' } });
+    const archiveStorage = vi.fn().mockResolvedValue(undefined);
     const forkConversation = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-forked' },
     });
@@ -555,7 +556,9 @@ describe('ProviderDriverRpc', () => {
     const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({
       clearGoal,
       archiveAgentConversation,
-      replaceConversationWithSummary,
+      getCapabilities: () => ({ ...codexProviderCapabilities, conversationReplaceWithSummary: true }),
+      executeScopedPrompt: summarize, sendPrompt: startSeeded, setConversationStorage: archiveStorage,
+      loadConversation: async () => ({ kind: 'codex', threadId: 'thread-test' }),
       releaseConversation,
       forkConversation,
       interrupt,
@@ -633,7 +636,9 @@ describe('ProviderDriverRpc', () => {
     expect(editTurn).toHaveBeenCalledWith(agent, 'turn-1', 'edited');
     expect(retryTurn).toHaveBeenCalledWith(agent, 'turn-1');
     expect(resumeConversation).toHaveBeenCalledWith(agent, target);
-    expect(replaceConversationWithSummary).toHaveBeenCalledWith(agent);
+    expect(summarize).toHaveBeenCalledWith(expect.objectContaining({ id: agent.id }), expect.objectContaining({ silent: true }));
+    expect(startSeeded).toHaveBeenCalledWith(expect.objectContaining({ id: agent.id, providerSession: undefined }), expect.stringContaining('Summary'));
+    expect(archiveStorage).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-test' }, 'archived');
     expect(forkConversation).toHaveBeenNthCalledWith(1, agent, targetAgent);
     expect(forkConversation).toHaveBeenNthCalledWith(2, agent, targetAgent, 'turn-5');
     expect(releaseConversation).toHaveBeenCalledWith('agent-dina');

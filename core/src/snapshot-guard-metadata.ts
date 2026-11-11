@@ -1,3 +1,4 @@
+import { operationCapabilityFlags } from './capability-flags';
 import { isProviderSafetyReview } from './provider-safety-block';
 import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
 import { isDesignWorkspace } from './design';
@@ -361,7 +362,7 @@ function isProviderCapabilities(value: unknown): boolean {
     optional(value, 'interrupt', isBoolean) &&
     optional(value, 'history', isBoolean) &&
     optional(value, 'conversationFork', isBoolean) &&
-    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage'].every((key) => optional(value, key, isBoolean)) &&
+    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage', ...operationCapabilityFlags].every((key) => optional(value, key, isBoolean)) &&
     optional(value, 'login', (candidate) => isArrayOf(candidate, (method): method is 'browser' | 'deviceCode' => method === 'browser' || method === 'deviceCode')) &&
     optional(value, 'deleteTurn', isBoolean) &&
     optional(value, 'editTurn', isBoolean) &&

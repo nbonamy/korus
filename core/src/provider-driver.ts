@@ -144,7 +144,7 @@ type HarnessDriver<Context, Event, HistoryFrame = unknown> = {
   revokePairedDevice?(environmentId: string, clientId: string): Promise<void>;
   getCapabilities(agent?: Context): ProviderCapabilities;
   sendPrompt(agent: Context, prompt: string, options?: SendPromptOptions): Promise<ProviderSendResult>;
-  executeScopedPrompt?(agent: Context, input: { prompt: string; cwd: string; session?: ProviderSessionData; scope: Sdk.HarnessPromptScope; options?: SendPromptOptions; signal?: AbortSignal }): Promise<{ text: string; session: ProviderSessionData }>;
+  executeScopedPrompt?(agent: Context, input: { prompt: string; cwd: string; session?: ProviderSessionData; scope: Sdk.HarnessPromptScope; options?: SendPromptOptions; signal?: AbortSignal; /** Keeps the run out of the conversation's published events (for example a summary the user did not ask to see). */ silent?: boolean }): Promise<{ text: string; session: ProviderSessionData }>;
   cancelScopedPrompt?(agent: Context): Promise<void>;
   disposeScopedSession?(agent: Context, session: ProviderSessionData): Promise<void>;
   generateImage?(agent: Context, input: Sdk.HarnessImageGenerationInput, signal?: AbortSignal): Promise<Sdk.HarnessImageGenerationResult>;
@@ -166,7 +166,6 @@ type HarnessDriver<Context, Event, HistoryFrame = unknown> = {
   readConversationContent?(agent: Context, input: Sdk.ConversationContentInput): Promise<Sdk.ConversationContentChunk>;
   listConversations?(agent: Context, input?: Sdk.ConversationListInput): Promise<Sdk.ProviderConversationSummary[]>;
   resumeConversation?(agent: Context, target: Sdk.ConversationResumeTarget): Promise<ProviderConversationResumeResult>;
-  replaceConversationWithSummary?(agent: Context): Promise<ProviderConversationReplacementResult>;
   forkConversation?(agent: Context, targetAgent: Context, turnId?: string): Promise<ProviderConversationForkResult>;
   readConversationMessages?(ref: ProviderConversationRef, agentId: string): Promise<Sdk.Message[]>;
   readConversationSummary?(agent: Context, ref: ProviderConversationRef): Promise<Sdk.ProviderConversationSummary | null>;

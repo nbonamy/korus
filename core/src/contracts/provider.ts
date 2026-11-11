@@ -3,6 +3,8 @@ import type { ProviderCapabilities as HarnessCapabilities, ProviderRuntimeStatus
 
 /** Product workflows are composed by Korus, independently of native primitives. */
 export type ProviderCapabilities = HarnessCapabilities & {
+  /** Compressing a session replaces its conversation with one seeded by a summary. */
+  conversationReplaceWithSummary?: boolean;
   codeReview?: boolean;
   planReview?: boolean;
   conversationShare?: boolean;

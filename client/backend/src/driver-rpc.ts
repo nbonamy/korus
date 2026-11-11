@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
+import { handOffConversation } from './agents/conversation-handoff';
+import { sessionHandoff } from './agents/provider-prompts';
 import { createAntigravityDriver, createClaudeDriver, createCodexDriver, createCursorDriver } from './harness-drivers';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -349,10 +351,13 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.provider);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.replaceConversationWithSummary) {
-          throw unsupportedProviderFeature(agent, 'session compression');
-        }
-        return driver.replaceConversationWithSummary(agent);
+        if (!driver.executeScopedPrompt || driver.getCapabilities(agent).conversationReplaceWithSummary !== true) throw unsupportedProviderFeature(agent, 'session compression');
+        const current = await driver.loadConversation?.(agent);
+        if (current === undefined || current === null) throw new Error('Context must be idle before compressing its session.');
+        // Compressing is a handoff from this harness to itself: a fresh conversation for the same agent, seeded with a summary.
+        const source = agent.providerSession ? agent : { ...agent, providerSession: current };
+        const { providerSession } = await handOffConversation({ from: { driver, agent: source }, to: { driver, agent: { ...agent, providerSession: undefined } }, prompts: sessionHandoff, archiveSource: true });
+        return { providerSession };
       }
       case backendMethods.driverConversationTitleUpdate: {
         const { agent } = requireAgentParams(params);

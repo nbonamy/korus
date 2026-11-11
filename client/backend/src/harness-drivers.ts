@@ -12,6 +12,7 @@ import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
 import { utilityTextModel } from './agents/utility-text-model';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
+import { antigravityGenerationPrompt } from './agents/provider-prompts';
 import { backendCodexHomeDir, backendHomeDir } from './state';
 import { debugMain, logMain, warnMain } from './log';
 import { resolveCodexLaunch } from './codex/codex-command';
@@ -85,7 +86,11 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
     capabilities: () => ({ codeReview: true, planReview: true, conversationShare: true, permissionModes: antigravityProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ developerInstructions: '', tools: [...reviewBaseTools, 'set-status', 'finish_turn'] }),
-    prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('antigravity', models, input.complexity) }),
+    prepareGeneration: (_agent, input) => {
+      const { outputSchema, ...rest } = input;
+      const mcpServers = utilityMcpServers(input.mcpServers);
+      return { ...rest, mcpServers, prompt: antigravityGenerationPrompt({ developerInstructions: input.developerInstructions, prompt: input.prompt, tools: input.tools, outputSchema, hasMcpServers: mcpServers.length > 0 }), developerInstructions: undefined, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('antigravity', models, input.complexity) };
+    },
   });
 }
 
@@ -98,7 +103,7 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
     mcpServerLabel: server => isAppMcpServerName(server) ? product.name : server,
     statusText: status => ({ key: status === 'notConfigured' ? 'backend.claudeNotStarted' : 'backend.claudeConnected' }),
     generationMcpServers: value => utilityMcpServers(value as never).map(server => ({ ...server, approval: 'auto' as const })),
-    claude: { launch: (command, env) => resolveClaudeLaunch(command, env), disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'], presentMcpInput: presentClaudeMcpInput },
+    claude: { launch: (command, env) => resolveClaudeLaunch(command, env), decideTool: tool => tool === 'ExitPlanMode' ? { behavior: 'deny' as const, message: `${product.name} captured the proposed plan. Wait for the user to review or request implementation.` } : undefined, disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'], presentMcpInput: presentClaudeMcpInput },
   });
   void settings;
   return driver('claude', harness, agents, {

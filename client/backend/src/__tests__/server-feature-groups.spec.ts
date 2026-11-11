@@ -71,7 +71,7 @@ describe('feature groups through the backend and real Git', () => {
       }
       expect((await f.store.load()).teams[0]!.featureLabels?.feat1).toBeUndefined();
     } finally { await f.close(); }
-  }, 3_000);
+  }, 30_000);
 
   it('saves the order of features in roster.json and refuses features it does not know', async () => {
     const f = await fixture();

@@ -185,20 +185,19 @@ describe('AppBackendServer', () => {
     const resumeConversation = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-new' },
     });
-    const replaceConversationWithSummary = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-compressed' },
-    });
+    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', threadId: 'thread-test' } });
+    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-compressed' } });
     const setConversationTitle = vi.fn().mockResolvedValue(undefined);
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: startSeeded,
       interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       releaseConversation,
       archiveAgentConversation,
-      replaceConversationWithSummary,
+      executeScopedPrompt: summarize, loadConversation: async () => ({ kind: 'codex', threadId: 'thread-test' }),
       resumeConversation,
       setConversationTitle,
       onEvent: () => () => undefined,
@@ -259,9 +258,7 @@ describe('AppBackendServer', () => {
       ref: { provider: 'codex', threadId: 'thread-new' },
       storageState: 'archived',
     });
-    expect(replaceConversationWithSummary).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'agent-dina',
-    }));
+    expect(startSeeded).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina', providerSession: undefined }), expect.stringContaining('Summary'));
     expect(setConversationTitle).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ id: 'agent-dina' }),

@@ -8,10 +8,10 @@ import {
 describe('backend capabilities', () => {
   it('enables implemented Cursor execution and cold history controls', () => {
     expect(defaultProviderCapabilities('cursor')).toStrictEqual({
-      accountUsage: true,
+      accountUsage: true, scopedExecution: true,
       reportsTokens: false,
       codeReview: true, planReview: true, questions: false, plugins: false,
-      conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
+      conversationArchive: false, conversationResume: true,
       remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
       reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
       goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
@@ -27,7 +27,7 @@ describe('backend capabilities', () => {
       goals: false, serviceTier: false, thinkingBudget: false, reasoningEffort: false,
       steerPrompt: false, conversationFork: false, deleteTurn: false, editTurn: false,
       retryTurn: false, plugins: false, remoteControl: false,
-      conversationArchive: false, conversationReplaceWithSummary: false,
+      conversationArchive: false,
     });
   });
   it('returns the native Codex capability set', () => {

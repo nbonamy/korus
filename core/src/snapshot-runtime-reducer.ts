@@ -1,3 +1,4 @@
+import { operationCapabilityFlags } from './capability-flags';
 import type {
   AccountRateLimits,
   AgentContextUsage,
@@ -272,7 +273,7 @@ type ProviderRuntimeCapabilities = NonNullable<AppSnapshot['providerRuntimes'][n
 
 function providerCapabilities(value: Record<string, unknown>): Partial<ProviderRuntimeCapabilities> {
   return {
-    ...Object.fromEntries(['nativeMonitor', 'reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage']
+    ...Object.fromEntries(['nativeMonitor', 'reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage', ...operationCapabilityFlags]
       .filter((key) => typeof value[key] === 'boolean').map((key) => [key, value[key]])),
     ...(typeof value.attachments === 'boolean' ? { attachments: value.attachments } : {}),
     ...(typeof value.models === 'boolean' ? { models: value.models } : {}),
