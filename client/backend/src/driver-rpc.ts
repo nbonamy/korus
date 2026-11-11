@@ -6,7 +6,7 @@ import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
 import { handOffConversation } from './agents/conversation-handoff';
 import { sessionHandoff } from './agents/prompts';
-import { createAntigravityDriver, createClaudeDriver, createCodexDriver, createCursorDriver } from './harness-drivers';
+import { createProviderDriver } from './harness-drivers';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
@@ -54,12 +54,7 @@ export function createDefaultProviderDrivers(options: ProviderDriverRegistryOpti
   return new Map(harnessProviders.map(provider => [provider, createProviderDriver(provider, options)]));
 }
 
-export function createProviderDriver(provider: HarnessProvider, options: ProviderDriverRegistryOptions = {}): AgentProviderDriver {
-  if (provider === 'cursor') return createCursorDriver(options);
-  if (provider === 'antigravity') return createAntigravityDriver(options);
-  if (provider === 'claude') return createClaudeDriver({ ...options, homeDir: undefined });
-  return createCodexDriver(options);
-}
+export { createProviderDriver };
 
 export class ProviderDriverRpc {
   private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
@@ -179,13 +174,13 @@ export class ProviderDriverRpc {
         });
       }
       case backendMethods.driverBankedResetsGet: {
-        const driver = this.requireDriver('codex');
+        const driver = this.requireDriver(this.bankedResetsProvider());
         return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };
       }
       case backendMethods.driverBankedResetUse: {
         const input = requireRecord(params).input;
         if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
-        const driver = this.requireDriver('codex');
+        const driver = this.requireDriver(this.bankedResetsProvider());
         if (!driver.useBankedReset) throw new Error('Reset redemption is unsupported');
         return driver.useBankedReset(input);
       }
@@ -585,7 +580,7 @@ export class ProviderDriverRpc {
           throw unsupportedProviderFeature(agent, 'interrupted turn continuation');
         }
         const review = requireRecord(params).safetyReview;
-        if (review !== undefined && (!isProviderSafetyReviewTarget(review) || agent.provider !== 'codex')) throw new Error('Invalid provider safety review.');
+        if (review !== undefined && (!isProviderSafetyReviewTarget(review) || !defaultProviderCapabilities(agent.provider).safetyReview)) throw new Error('Invalid provider safety review.');
         return review === undefined ? driver.continueInterruptedTurn(agent) : driver.continueInterruptedTurn(agent, review);
       }
       case backendMethods.driverModelsList: {
@@ -652,6 +647,10 @@ export class ProviderDriverRpc {
     }
   }
 
+  /** The harness whose account banks rate-limit resets. */
+  private bankedResetsProvider(): HarnessProvider {
+    return harnessProviders.find(provider => defaultProviderCapabilities(provider).bankedResets) ?? defaultHarnessProvider;
+  }
   private remoteControlOperation<Key extends 'getRemoteControlStatus' | 'enableRemoteControl' | 'disableRemoteControl' | 'startDevicePairing' | 'checkDevicePairing' | 'listPairedDevices' | 'revokePairedDevice'>(
     params: unknown, key: Key,
   ): NonNullable<AgentProviderDriver[Key]> {

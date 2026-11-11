@@ -9,11 +9,11 @@ export const allowed = {
   setup: [
     // Each harness's own install, update, lifecycle and launch modules.
     /^client\/backend\/src\/(codex|claude|cursor|antigravity)\//,
-    /^client\/backend\/src\/(provider-lifecycle|provider-update-runtime|runtime|engine-instructions|harness-drivers|driver-rpc)\.ts$/,
+    /^client\/backend\/src\/(provider-lifecycle|provider-update-runtime|runtime|engine-instructions|harness-drivers)\.ts$/,
     // Installing harnesses on SSH hosts, and Codex's shared skills and plugins across homes.
-    /^client\/backend\/src\/connections\//,
+    /^client\/backend\/src\/connections\/(remote-engines|ssh-connections)\.ts$/,
     /^client\/backend\/src\/codex-resource-sharing\.ts$/,
-    /^core\/src\/(runtime-discovery|provider-commands|settings)\.ts$/,
+    /^core\/src\/(runtime-discovery|provider-commands)\.ts$/,
     /^core\/src\/contracts\/provider-setup\.ts$/,
     // Settings, onboarding and sign-in screens for each harness.
     /^client\/vue\/src\/components\/(SettingsView|SettingsPersonalizationPanel|SettingsEngineConnectionRow|SettingsBankedResets|FirstRunOnboardingGate|CodexLoginLanding|LocalClaudeAuthenticationDialog|RemoteEngineConnections|RemoteCodexAuthentication|RemoteClaudeAuthentication|ProviderUpdateRow)\.vue$/,
@@ -21,12 +21,12 @@ export const allowed = {
     /^client\/vue\/src\/components\/(settings-tabs|use-first-run-onboarding|use-remote-codex-authentication)\.ts$/,
     // Each harness's name, icon and the words for its own tools.
     /^client\/vue\/src\/components\/ProviderIcon\.vue$/,
-    /^client\/vue\/src\/i18n\//,
+    /^client\/vue\/src\/i18n\/surface-messages\.ts$/,
     /^client\/vue\/src\/claude-tool-titles\.ts$/,
   ],
   persistence: [
     // Stored state, its migrations and validation, in the shapes each harness hands out.
-    /^client\/backend\/src\/persistence\//,
+    /^client\/backend\/src\/persistence\/(migrations|schema|layout|task-schema)\.ts$/,
     /^client\/backend\/src\/(state-persistence|mission-screenshot-fixture)\.ts$/,
     /^client\/backend\/src\/sharing\/conversation-shares\.ts$/,
     /^core\/src\/(snapshot-guard-metadata|snapshot-guard-collections|snapshot-construction|approval-presets)\.ts$/,

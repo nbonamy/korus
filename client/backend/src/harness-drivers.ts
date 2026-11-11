@@ -1,6 +1,6 @@
 import { createHarness, type HarnessOptions } from '@korus-dev/multi-agent-sdk';
 import { isBookkeepingTool } from '@workspace/core/bookkeeping-tools';
-import type { Agent, ProviderModelOption } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, ProviderModelOption } from '@workspace/core/contracts';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { claudeProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities, antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -63,7 +63,7 @@ const reviewScope = (extra: { approval?: 'auto'; required?: boolean; tools: read
 const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName'>) =>
   new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, ...policy });
 
-export function createCursorDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
+function createCursorDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   const agents = new AgentRegistry();
   const home = settings()?.providerHomes?.cursor;
@@ -159,4 +159,12 @@ export function createCodexDriver(options: Options = {}, make: HarnessFactory = 
     reviewScope: reviewScope({ approval: 'auto', required: true, tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
     prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('codex', models, input.complexity) }),
   });
+}
+
+/** The driver for a harness, with the options the daemon gives every harness. */
+export function createProviderDriver(provider: HarnessProvider, options: Options = {}): AgentProviderDriver {
+  if (provider === 'cursor') return createCursorDriver(options);
+  if (provider === 'antigravity') return createAntigravityDriver(options);
+  if (provider === 'claude') return createClaudeDriver({ ...options, homeDir: undefined });
+  return createCodexDriver(options);
 }
