@@ -1,6 +1,6 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderConversationFrame, ProviderSessionData, Team } from './contracts';
+import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
 import { applySessionPatch, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
 // Conversations travel as neutral session state; a phone speaking an earlier version fails to negotiate.
@@ -29,13 +29,9 @@ export type CompanionTarget = { hostId: string; locationId: string; teamId: stri
 export type CompanionRequestReply = { target: CompanionTarget; id: string; conversationId: string; outcome: AgentRequestResponse['outcome'] };
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
 export type CompanionClosePreview = { target: CompanionTarget } & import('./agent-close').AgentClosePreview;
-/** Guest sharing still reads native provider frames; the companion carries neutral session state. */
-export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
-const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
-/** A native provider frame for guest sharing: a full reset or one event after it. */
-export const isConversationFrame = (frame: { type: string }): boolean => conversationFrameType.test(frame.type);
-export const isConversationReset = (frame: ProviderConversationFrame): frame is CompanionReset =>
-  frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
+/** A conversation event that carries its own revision, which still applies when the global event sequence already covers it. */
+export const isConversationFrame = (frame: { type: string }): boolean =>
+  frame.type === 'conversation.sessionSnapshot' || frame.type === 'conversation.sessionPatch';
 
 /** Which stream a conversation frame belongs to: the provider conversation, and the session stream's identity. */
 export type CompanionConversationStream = { conversation: string | null; epoch: string };

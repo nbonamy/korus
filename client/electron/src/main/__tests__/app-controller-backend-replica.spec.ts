@@ -223,19 +223,8 @@ describe('AppController', () => {
       occurredAt: '2026-09-06T20:00:00.000Z',
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt: '2026-09-06T20:00:00.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          type: 'message.delta',
-          payload: { messageId: 'message-1', itemId: 'item-1', delta: 'Hello' },
-        } as unknown as Extract<AppBackendEvent, { type: 'codex.conversationEventReceived' }>['payload']['event'],
-      },
+      type: 'conversation.sessionPatch',
+      payload: { conversation: 'thread-dina', epoch: 'stream-1', patch: { revision: 2, ops: [{ op: 'set', key: 'busy', value: true }] } },
     } as AppBackendEvent;
     if (!late) backendEventListener(frame);
     resolveReconnectSnapshot({
@@ -256,8 +245,8 @@ describe('AppController', () => {
     expect(send.mock.calls
       .filter(([channel]) => channel === ipcChannels.event)
       .map(([, event]) => event.type))
-      .toStrictEqual(late ? ['client.connectionChanged', 'client.connectionChanged', 'snapshot.updated', 'codex.conversationEventReceived'] : [
-        'client.connectionChanged', 'codex.conversationEventReceived', 'client.connectionChanged', 'snapshot.updated',
+      .toStrictEqual(late ? ['client.connectionChanged', 'client.connectionChanged', 'snapshot.updated', 'conversation.sessionPatch'] : [
+        'client.connectionChanged', 'conversation.sessionPatch', 'client.connectionChanged', 'snapshot.updated',
       ]);
     await controller.shutdown();
   });

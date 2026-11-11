@@ -2,6 +2,7 @@ import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
 import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { projectSessionConversation, type ConversationPresentation } from './provider-conversation-bindings';
 import { createSessionConversationState } from './session-conversation-state';
+import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { product } from '@workspace/core/product';
 
@@ -109,8 +110,6 @@ const conversationBinding = {
   select: (agent: Agent) => projectSessionConversation(sessionConversations.select(agent), agent),
   needsHistory: (agent: Agent) => sessionConversations.needsHistory(agent),
 };
-/** Both carry provider revisions, which still apply when the global event sequence already covers them. */
-const isConversationFrame = (event: { type: string }) => event.type === 'conversation.sessionSnapshot' || event.type === 'conversation.sessionPatch';
 let agentSelectionRequestId = 0;
 let unsubscribeMainEvents: (() => void) | null = null;
 let bufferedMainEvents: MainToRendererEvent[] | null = null;

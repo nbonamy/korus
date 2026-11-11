@@ -1,5 +1,4 @@
-import type { ProviderConversationFrame } from './contracts';
-import { companionConversationFrame, companionFrameRevision, isConversationReset, sameCompanionStream, type CompanionConversationFrame, type CompanionConversationStream } from './companion-protocol';
+import { companionConversationFrame, companionFrameRevision, sameCompanionStream, type CompanionConversationFrame, type CompanionConversationStream } from './companion-protocol';
 
 export type CompanionCheckpoint = { epoch: string; revision: number };
 /** What a phone needs to catch up: the frames after its checkpoint, a snapshot first when it has to start over. */
@@ -77,25 +76,4 @@ export class CompanionJournal {
   forget(agentId: string): void { this.retention.forget(agentId); this.streams.delete(agentId); }
   clear(): void { this.retention.clear(); this.streams.clear(); }
   private prune() { for (const id of this.streams.keys()) if (!this.retention.entries.has(id)) this.streams.delete(id); }
-}
-
-/** Guest sharing still replays native provider frames. */
-export type CompanionSync = { checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
-/** Bounded replay of opaque native provider events for guest sharing. Resets establish a new continuity domain. */
-export class NativeCompanionJournal {
-  private readonly retention: Retention<ProviderConversationFrame>;
-  constructor(limits: Limits = { maxBytes: 8 * 1024 * 1024, maxConversations: 32 }) { this.retention = new Retention(limits); }
-  observe(frame: ProviderConversationFrame): void {
-    frame = Object.fromEntries(['type', 'agentId', 'provider', 'threadId', 'providerSessionId', 'conversationId', 'turnId', 'seq', 'occurredAt', 'payload']
-      .filter(key => Object.hasOwn(frame, key)).map(key => [key, frame[key as keyof ProviderConversationFrame]])) as ProviderConversationFrame;
-    if (isConversationReset(frame)) { this.retention.start(frame.agentId, frame.payload.revision); return; }
-    const entry = this.retention.entries.get(frame.agentId);
-    if (!entry || frame.payload.revision <= entry.checkpoint.revision) return;
-    if (frame.payload.revision !== entry.checkpoint.revision + 1) { this.retention.forget(frame.agentId); return; }
-    this.retention.append(frame.agentId, entry, frame, frame.payload.revision);
-  }
-  checkpoint(agentId: string): CompanionCheckpoint | null { return this.retention.entries.get(agentId)?.checkpoint ?? null; }
-  resume(agentId: string, since: CompanionCheckpoint): CompanionSync | null { return this.retention.resume(agentId, since, frame => frame.payload.revision); }
-  forget(agentId: string): void { this.retention.forget(agentId); }
-  clear(): void { this.retention.clear(); }
 }

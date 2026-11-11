@@ -38,7 +38,6 @@ import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
-import { paneMessages } from '@workspace/vue/conversation-presentation/pane-messages';
 import { providerChoicesKey } from '@workspace/vue/components/provider-selection';
 import type { CompanionConversation, CompanionHistoryState } from '../../src/companion-port';
 import { handler } from './native';
@@ -132,7 +131,7 @@ const controller = createConversationPaneController({
   state: computed<ConversationPaneState>(() => {
     const state = frame.value?.payload.snapshot.state;
     return {
-      identity: { conversationKey: agent.value?.id ?? null, messages: paneMessages(state?.messages ?? []), turns: state?.turns, activeTurnId: state?.activeTurnId, busy: state?.busy ?? false, disabled: true },
+      identity: { conversationKey: agent.value?.id ?? null, messages: state?.messages ?? [], turns: state?.turns, activeTurnId: state?.activeTurnId, busy: state?.busy ?? false, disabled: true },
       history: { loading: false, hasOlder: history.value.hasOlder && !history.value.failed, loadingOlder: history.value.loadingOlder },
       thread: { approvals: [], clientRequests: [], answeredClientRequestIds: new Set<string>(), queuedPrompts: [], contextUsage: state?.contextUsage ?? null },
       composer: { state: { text: '', selectionStart: 0, selectionEnd: 0 } },

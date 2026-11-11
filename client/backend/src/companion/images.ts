@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
 import type { AgentFilePreviewResult } from '@workspace/core/contracts';
 import type { Message } from '@korus-dev/multi-agent-sdk';
-import type { CompanionConversation, CompanionImage, CompanionReset } from '@workspace/core/companion-protocol';
+import type { CompanionConversation, CompanionImage } from '@workspace/core/companion-protocol';
 
 /** Authoritative message references are the allowlist; a phone cannot turn this into a file browser. */
 export function conversationImageReference(frame: CompanionConversation, requestedPath: string): string {
@@ -15,7 +15,7 @@ export function conversationImageReference(frame: CompanionConversation, request
 
 /** Extract bounded transcript ownership proofs without retaining a second transcript. */
 /** Guest sharing still hands over native provider messages. */
-export function conversationImageReferences(messages: ReadonlyArray<Message | CompanionReset['payload']['snapshot']['messages'][number]>): Set<string> {
+export function conversationImageReferences(messages: ReadonlyArray<Message>): Set<string> {
   const paths = new Set<string>();
   for (const message of messages) {
     for (const part of message.parts) {
