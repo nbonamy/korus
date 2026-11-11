@@ -7,7 +7,7 @@ import type {
   NativeAttachment,
   NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
-import type { ClientRequest } from '@korus-dev/multi-agent-sdk';
+import type { CodexClientRequest } from '@korus-dev/multi-agent-sdk/codex';
 import { nextTick, reactive, shallowReactive } from 'vue';
 import type { AgentConversationView } from '../../src/app-state';
 import type { AgentConversationActions } from '../../src/components/use-agent-conversation';
@@ -562,7 +562,7 @@ describe('AppShell authentication and conversation', () => {
     agent.providerSession = backend === 'codex'
       ? { kind: 'codex', threadId: 'thread-question' }
       : { kind: 'cursor', sessionId: 'thread-question' };
-    const question: ClientRequest = {
+    const question: CodexClientRequest = {
       id: 'request-framework', kind: 'ask_user', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
       payload: { request: { itemId: 'item-framework', delivery: 'tool', blocking: true,

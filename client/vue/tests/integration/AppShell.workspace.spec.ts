@@ -4,7 +4,7 @@ import { nativePresentation } from '../support/session-conversation-fixtures';
 import type {
   NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
-import type { ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationMessage } from '@korus-dev/multi-agent-sdk/codex';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -1634,7 +1634,7 @@ describe('AppShell workspace and plans', () => {
   it('locks plan review actions while a plan progress tool is running', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Previous Plan', status: 'pending' };
-    const planProgressMessage: ConversationMessage = {
+    const planProgressMessage: CodexConversationMessage = {
       id: 'assistant-turn-plan',
       role: 'assistant',
       status: 'streaming',

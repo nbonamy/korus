@@ -775,7 +775,6 @@ import {
   type QueuedPromptData as QueuedChatPrompt,
 } from '@korus-dev/agent-ui-sdk';
 import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
-import { type ConversationMessage } from '@korus-dev/multi-agent-sdk';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {

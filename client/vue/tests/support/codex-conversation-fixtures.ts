@@ -1,8 +1,8 @@
-import type { ConversationMessage } from '@korus-dev/multi-agent-sdk';
+import type { CodexConversationMessage } from '@korus-dev/multi-agent-sdk/codex';
 import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 
 export function codexConversationSnapshot(
-  messages: ConversationMessage[] = [],
+  messages: CodexConversationMessage[] = [],
   overrides: Partial<CodexConversationSnapshot> = {},
 ): CodexConversationSnapshot {
   return {
@@ -30,7 +30,7 @@ export function codexTextMessage(
   role: 'assistant' | 'user',
   text: string,
   turnId = 'turn-1',
-): ConversationMessage {
+): CodexConversationMessage {
   return {
     id,
     role,

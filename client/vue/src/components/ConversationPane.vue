@@ -205,7 +205,6 @@ import {
   type ChatMessage,
   type ConversationPaneController,
   type NativeAttachment,
-  type ConversationMessage,
 } from '@korus-dev/agent-ui-sdk';
 import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';
 import { IconSitemap } from '@tabler/icons-vue';
