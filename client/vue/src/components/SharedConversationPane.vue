@@ -27,7 +27,7 @@
     :can-retry-turn="false"
     follow-ups-disabled
     :history-loading="view.status === 'connecting'"
-    :messages="snapshot?.messages ?? []"
+    :messages="messages"
     :turns="snapshot?.turns"
     :active-turn-id="snapshot?.activeTurnId"
 
@@ -64,6 +64,7 @@
 </template>
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
+import { paneMessages, type PaneMessage } from '../conversation-presentation/pane-messages';
 import { useI18n } from 'vue-i18n';
 import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
@@ -118,12 +119,13 @@ provideHostCapabilities({
   },
 }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
 const snapshot = computed(() => props.view.frame?.payload.snapshot);
+const messages = computed(() => paneMessages(snapshot.value?.messages ?? []));
 // Guests can submit follow-ups, but cannot stop the owner's active turn.
 const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props.view.proposalState?.writeAccess && snapshot.value?.busy));
 const loaded = reactive(new Map<string, RendererMessage>());
 watch(() => [props.view.id, props.view.status === 'rejected', props.view.frame === null], () => loaded.clear());
 function deferred(id: string | undefined) { const message = snapshot.value?.messages.find(message => message.id === id); return (message as RendererMessage | undefined)?.deferredContent; }
-function transform(message: ChatMessage | ConversationMessage) {
+function transform(message: ChatMessage | PaneMessage) {
   const content = deferred(message.id); return content && loaded.has(content.contentId) ? loaded.get(content.contentId)! : message;
 }
 const readContent = (_agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => {

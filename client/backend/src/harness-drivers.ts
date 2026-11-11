@@ -20,7 +20,6 @@ import { resolveCodexLaunch } from './codex/codex-command';
 import { traceCodexDiagnostic } from './codex/diagnostics';
 import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveClaudeLaunch } from './claude/claude-command';
-import { presentClaudeMcpInput } from './claude/tool-presentation-policy';
 import { resolveCursorExecutable } from './cursor/runtime';
 import { isAppMcpServerName } from '@workspace/core/product';
 
@@ -102,10 +101,8 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
   const harness = make('claude', { ...common(options, agents),
     client: { name: product.name, title: product.name, metadataDirectory: 'korus-sessions', entrypoint: product.slug, clientApp: 'agent-workspace' },
     ...(options.homeDir ? { home: options.homeDir } : {}),
-    mcpServerLabel: server => isAppMcpServerName(server) ? product.name : server,
-    statusText: status => ({ key: status === 'notConfigured' ? 'backend.claudeNotStarted' : 'backend.claudeConnected' }),
     generationMcpServers: value => utilityMcpServers(value as never).map(server => ({ ...server, approval: 'auto' as const })),
-    claude: { launch: (command, env) => resolveClaudeLaunch(command, env), decideTool: tool => tool === 'ExitPlanMode' ? { behavior: 'deny' as const, message: `${product.name} captured the proposed plan. Wait for the user to review or request implementation.` } : undefined, disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'], presentMcpInput: presentClaudeMcpInput },
+    claude: { launch: (command, env) => resolveClaudeLaunch(command, env), decideTool: tool => tool === 'ExitPlanMode' ? { behavior: 'deny' as const, message: `${product.name} captured the proposed plan. Wait for the user to review or request implementation.` } : undefined, disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] },
   });
   void settings;
   return driver('claude', harness, agents, {
@@ -124,8 +121,6 @@ export function codexHarnessOptions(options: Options, agents: AgentRegistry): Ha
     formatPrompt: base.formatPrompt, trustedMcpServerName: product.mcpServerName, log: base.log,
     home: settings()?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     onDiagnostic: traceCodexDiagnostic,
-    statusText: status => ({ key: status === 'connecting' ? 'backend.codexConnecting' : status === 'running' ? 'backend.codexConnected' : 'backend.codexNotConnected' }),
-    waitingText: { approval: { key: 'backend.awaitingApproval' }, input: { key: 'backend.awaitingUserInput' } },
     codex: {
       launch: resolveCodexLaunch(settings()?.codexBinaryPath),
       config: ['features.default_mode_request_user_input=true', ...buildAppMcpConfigOverrides(options.pluginSettings?.() ?? settings()?.plugins)],

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { runtimeStatusDetail, withStatusWording } from './provider-status-wording';
 import type { Harness, HarnessDefaults, HarnessEvent, Session, SessionData } from '@korus-dev/multi-agent-sdk';
 import type { Agent, HarnessProvider, ProviderConversationRef, ProviderDefaults, ProviderSessionData, SendPromptOptions } from '@workspace/core/contracts';
 import type { AgentProviderDriver, BackendEvent, ProviderCodeReviewInput, ProviderCodeReviewResult, ProviderCoordinationPolicy } from '@workspace/core/provider-driver';
@@ -73,7 +74,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       // A scoped (review) session reports as the agent it works for, as the daemon tracks one conversation per agent.
       const agentId = (event.event as { agentId?: string }).agentId;
       const parent = agentId?.includes(':scope:') ? agentId.split(':scope:')[0] : undefined;
-      const frame = (parent ? { ...event.event, agentId: parent } : event.event) as unknown as BackendEvent;
+      const frame = withStatusWording(this.provider, (parent ? { ...event.event, agentId: parent } : event.event) as unknown as BackendEvent);
       for (const listener of this.listeners) listener(frame);
     }
     else if (event.type === 'usage.observed') for (const listener of this.usageListeners) listener(this.attributed(event.observation));
@@ -108,7 +109,9 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private ref(data: ProviderConversationRef) { return this.harness.restoreRef({ provider: this.provider, data }); }
 
   getRuntimeStatus(): ProviderRuntimeStatus {
-    return { ...this.harness.getRuntimeStatus(), capabilities: { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getProviderCapabilities()) } } as ProviderRuntimeStatus;
+    const runtime = this.harness.getRuntimeStatus();
+    const detail = runtimeStatusDetail(this.provider, runtime.status, runtime.detail);
+    return { ...runtime, ...(detail === undefined ? {} : { detail }), capabilities: { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getProviderCapabilities()) } } as ProviderRuntimeStatus;
   }
   private liveCapabilities({ permissions: _permissions, login: _login, realtime: _realtime, remoteControl: _remoteControl, accountUsage: _accountUsage, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
   authenticate(request: Parameters<NonNullable<AgentProviderDriver['authenticate']>>[0]) { return this.harness.authenticate(request).then(result => result.native as never); }

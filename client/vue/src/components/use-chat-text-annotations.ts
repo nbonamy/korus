@@ -1,9 +1,8 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
 import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import type {
-  MessageTextSelection,
-  ClientSendMessageOptions,
-} from '@korus-dev/agent-ui-sdk';
+  MessageTextSelection} from '@korus-dev/agent-ui-sdk';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { computed, reactive } from 'vue';
 
 export type ChatTextSelection = MessageTextSelection & { textStart?: number; textBlockIndex?: number };
@@ -62,8 +61,8 @@ export function useChatTextAnnotations(options: {
 
   async function forward(
     prompt: string,
-    sendOptions: ClientSendMessageOptions | undefined,
-    send: (nextPrompt: string, nextOptions?: ClientSendMessageOptions) => void | Promise<void>,
+    sendOptions: ReferenceSendPromptOptions | undefined,
+    send: (nextPrompt: string, nextOptions?: ReferenceSendPromptOptions) => void | Promise<void>,
   ): Promise<void> {
     const agentId = options.currentAgentId();
     const annotations = agentId

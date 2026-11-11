@@ -3,9 +3,8 @@ import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import {
   getNativeRendererApi,
   type NativeAttachment,
-  type ComposerState,
-  type ClientSendMessageOptions,
-} from '@korus-dev/agent-ui-sdk';
+  type ComposerState} from '@korus-dev/agent-ui-sdk';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import type { RendererPromptAttachment, RendererSendPromptOptions } from '@workspace/core/contracts';
 import { computed, reactive, ref } from 'vue';
 import { translate } from '../i18n';
@@ -134,7 +133,7 @@ export function useImageAnnotation(options: {
 
   async function forward(
     prompt: string,
-    sendOptions: ClientSendMessageOptions | undefined,
+    sendOptions: ReferenceSendPromptOptions | undefined,
     send: (nextPrompt: string, nextOptions?: RendererSendPromptOptions) => void | Promise<void>,
     captured: CapturedImageAnnotations = capture(),
   ): Promise<void> {
@@ -173,7 +172,7 @@ export function useImageAnnotation(options: {
         type: attachment.type,
         reference: attachment.reference,
       }));
-      const nextOptions: ClientSendMessageOptions = {
+      const nextOptions: ReferenceSendPromptOptions = {
         ...sendOptions,
         attachments: submittedAttachments.map((attachment) => ({
           ...attachment,
@@ -256,7 +255,7 @@ function cloneDraft(draft: SavedImageAnnotations): SavedImageAnnotations {
   };
 }
 
-function promptOptions(options?: ClientSendMessageOptions): RendererSendPromptOptions | undefined {
+function promptOptions(options?: ReferenceSendPromptOptions): RendererSendPromptOptions | undefined {
   const attachments = options?.attachments?.map<RendererPromptAttachment>((attachment) => ({ ...attachment }));
   if (!attachments?.length && !options?.inputMethod && options?.content === undefined) return undefined;
   return {

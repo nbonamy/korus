@@ -1913,7 +1913,7 @@ describe('AppShell authentication and conversation', () => {
     await actions.updateSettings?.({ modelId: 'gpt-5.1', serviceTier: null });
     await actions.submit?.('review context', {
       attachments: [{ type: 'file', reference: 'electron-attachment:context' }],
-      model: 'sdk-selection-does-not-cross-host-boundary',
+      selection: { model: 'sdk-selection-does-not-cross-host-boundary' },
     });
     await actions.openLink?.({ kind: 'external', href: 'https://example.com/docs' });
     const conversationImage = {

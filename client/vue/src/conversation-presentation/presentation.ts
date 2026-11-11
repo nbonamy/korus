@@ -1,4 +1,5 @@
 import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
+import { paneMessages, type PaneMessage } from './pane-messages';
 import type { ClaudeConversationSnapshot } from '@korus-dev/multi-agent-sdk/claude';
 import type { CursorConversationSnapshot } from '@korus-dev/multi-agent-sdk/cursor';
 import type { AntigravityConversationSnapshot } from '@korus-dev/multi-agent-sdk/antigravity';
@@ -9,8 +10,9 @@ type NativeSnapshot = CodexConversationSnapshot | ClaudeConversationSnapshot | C
 
 /** Read-only presentation; native replicas retain sole ownership of transcript transitions. */
 export type ConversationPresentation = Pick<NativeSnapshot,
-  'messages' | 'turns' | 'activeTurnId' | 'busy' | 'error' | 'historyLoading' | 'historyState' | 'contextUsage' | 'answeredClientRequestIds'
+  'turns' | 'activeTurnId' | 'busy' | 'error' | 'historyLoading' | 'historyState' | 'contextUsage' | 'answeredClientRequestIds'
 > & {
+  messages: PaneMessage[];
   latestTurnId: string | null;
   selection?: { model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null };
   permission?: string | null;
@@ -29,7 +31,7 @@ export function projectSessionSelection(session: ProviderSessionData | null | un
 
 function common(snapshot: NativeSnapshot) {
   return {
-    messages: snapshot.messages, turns: snapshot.turns, activeTurnId: snapshot.activeTurnId,
+    messages: paneMessages(snapshot.messages), turns: snapshot.turns, activeTurnId: snapshot.activeTurnId,
     busy: snapshot.busy, error: snapshot.error, historyLoading: snapshot.historyLoading,
     historyState: snapshot.historyState, contextUsage: snapshot.contextUsage,
     answeredClientRequestIds: snapshot.answeredClientRequestIds,

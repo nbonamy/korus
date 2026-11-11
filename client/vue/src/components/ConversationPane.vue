@@ -182,6 +182,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'AppConversationPane' });
 import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
+import type { PaneMessage } from '../conversation-presentation/pane-messages';
 import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
 import { slicePromptContent, replacePromptContentRange } from '@korus-dev/multi-agent-sdk/prompt';
 import ConversationShareActivity from './ConversationShareActivity.vue';
@@ -566,13 +567,13 @@ const activeThreadFlags = computed<ThreadFlagId[]>(() => (
 const textCatalogs = computed(() => resolveConversationPaneValue(props.controller.state).catalogs);
 const messageTextSelection = ref<ChatTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();
-let transformedMessageCache = new WeakMap<object, ChatMessage | ConversationMessage>();
+let transformedMessageCache = new WeakMap<object, ChatMessage | PaneMessage>();
 watch(conversationKey, () => {
   annotationFocusRequest.value = null;
   annotationRenderAll.value = false;
   messageTextSelection.value = null;
   collaborationMessagePresentations.clear();
-  transformedMessageCache = new WeakMap<object, ChatMessage | ConversationMessage>();
+  transformedMessageCache = new WeakMap<object, ChatMessage | PaneMessage>();
 });
 const heroHeadline = computed(() => {
   if (props.emptyHeadline?.trim()) return props.emptyHeadline.trim();
@@ -634,8 +635,8 @@ function annotationActionLabel(attachment: NativeAttachment | undefined): string
 }
 
 function transformConversationMessage(
-  message: ChatMessage | ConversationMessage,
-): ChatMessage | ConversationMessage {
+  message: ChatMessage | PaneMessage,
+): ChatMessage | PaneMessage {
   const deferred = deferredContent(message);
   if (deferred && loadedContent.has(deferred.contentId)) message = loadedContent.get(deferred.contentId)!;
   const cached = transformedMessageCache.get(message);
@@ -648,7 +649,7 @@ function transformConversationMessage(
     collaborationMessagePresentations.set(message.id, result.presentation);
   }
   // Work phases come tagged from the harness, so the pane renders them as they arrive.
-  const transformed = result.message as ChatMessage | ConversationMessage;
+  const transformed = result.message as ChatMessage | PaneMessage;
   transformedMessageCache.set(message, transformed);
   return transformed;
 }

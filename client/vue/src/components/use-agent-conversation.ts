@@ -1,6 +1,8 @@
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
+import { paneMessages } from '../conversation-presentation/pane-messages';
 import { ref } from 'vue';
-import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ClientSendMessageOptions, type ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
+import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
@@ -90,7 +92,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
         const pending = pendingMessages();
         const messages = pending.length ? [...(provider()?.messages ?? []), ...pending] : provider()?.messages ?? [];
         const preview = extensions.previewMessage?.();
-        return preview ? [...messages, preview] : messages;
+        return preview ? [...messages, ...paneMessages([preview])] : messages;
       },
       get busy() { return pendingMessages().length > 0 || (provider()?.busy ?? view().sending); },
       get disabled() { return Boolean(view().history.failed || view().history.hydrating) && (provider()?.messages ?? []).length === 0; },
@@ -206,7 +208,7 @@ export function useAgentConversation(options: {
       threadFlagBusy.value = false;
     }
   }
-  async function forward(prompt: string, sendOptions: ClientSendMessageOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
+  async function forward(prompt: string, sendOptions: ReferenceSendPromptOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
     const id = agentId();
     if (!id) return;
     const capturedImages = imageAnnotation.capture();
