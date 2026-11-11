@@ -1,7 +1,7 @@
 import type { Agent, ClaudeConversationSnapshot, ThreadPlan } from '@workspace/core/contracts';
 import { planReviewDelivery } from '@workspace/core/plan-review';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
-import type { ConversationPaneIdentityState as CodexConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
+import type { ConversationPaneIdentityState } from '@korus-dev/agent-ui-sdk';
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 
@@ -30,10 +30,10 @@ export function pendingConversationPrompts(
     return !accepted;
   });
 }
-export type { ConversationPresentation } from '@korus-dev/multi-agent-sdk/conversations/presentation';
+export type { ConversationPresentation } from '@korus-dev/multi-agent-sdk/renderer';
 import { projectCodexConversation as codexPresentation, projectClaudeConversation as claudePresentation,
   projectCursorConversation as cursorPresentation, projectAntigravityConversation as antigravityPresentation,
-  type ConversationPresentation } from '@korus-dev/multi-agent-sdk/conversations/presentation';
+  type ConversationPresentation } from '@korus-dev/multi-agent-sdk/renderer';
 type Project<S> = (snapshot: S | null | undefined, agent: Agent) => ConversationPresentation | null;
 export const projectCodexConversation: Project<CodexConversationSnapshot> = codexPresentation;
 export const projectClaudeConversation: Project<ClaudeConversationSnapshot> = claudePresentation;
@@ -61,7 +61,7 @@ const legacyBindings = {
   antigravity: (agent: Agent, sources: NativeConversationSources) => projectAntigravityConversation(sources.antigravitySnapshot, agent),
 };
 export function conversationForView(view: NativeConversationSources & { agent: Agent; conversation?: ConversationPresentation | null }): ConversationPresentation | null {
-  return view.conversation !== undefined ? view.conversation : legacyBindings[view.agent.backend](view.agent, view);
+  return view.conversation !== undefined ? view.conversation : legacyBindings[view.agent.provider](view.agent, view);
 }
 export function legacyConversationPresentation(agent: Agent, sources: {
   codexConversationSnapshot?: CodexConversationSnapshot | null;
@@ -69,19 +69,19 @@ export function legacyConversationPresentation(agent: Agent, sources: {
   cursorConversationSnapshot?: CursorConversationSnapshot | null;
   antigravityConversationSnapshot?: AntigravityConversationSnapshot | null;
 }): ConversationPresentation | null {
-  return legacyBindings[agent.backend](agent, {
+  return legacyBindings[agent.provider](agent, {
     codexSnapshot: sources.codexConversationSnapshot,
     claudeSnapshot: sources.claudeConversationSnapshot,
     cursorSnapshot: sources.cursorConversationSnapshot,
     antigravitySnapshot: sources.antigravityConversationSnapshot,
   });
 }
-export function conversationKeyForAgent(agent: Agent): NonNullable<CodexConversationPaneIdentityState['conversationKey']> {
-  const session = agent.backendSession;
+export function conversationKeyForAgent(agent: Agent): NonNullable<ConversationPaneIdentityState['conversationKey']> {
+  const session = agent.providerSession;
   return session?.kind === 'codex' ? `codex:${session.threadId}` : session ? `${session.kind}:${session.sessionId}` : `agent:${agent.id}`;
 }
 
 export function conversationPlanForAgent(agent: Agent, presentation: ConversationPresentation | null): ThreadPlan | null {
   // Claude's plan belongs to its native cache; other providers may use an app-owned plan.
-  return agent.backend === 'claude' ? presentation?.plan ?? null : presentation?.plan ?? agent.plan ?? null;
+  return agent.provider === 'claude' ? presentation?.plan ?? null : presentation?.plan ?? agent.plan ?? null;
 }

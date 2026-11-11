@@ -48,7 +48,7 @@ export function planReviewDelivery(review: Pick<PlanReview, 'requestId'>): PlanR
 }
 
 export function agentConversationId(agent: Agent): string | null {
-  const session = agent.backendSession;
+  const session = agent.providerSession;
   return session?.kind === 'codex' ? session.threadId : (session?.sessionId ?? null);
 }
 

@@ -28,7 +28,7 @@ export function createAgentHistoryState(options: {
   const activeHistoryHasOlder = computed(() => {
     const snapshot = options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
-    if (!agent || agent.backend !== 'codex') return false;
+    if (!agent || agent.provider !== 'codex') return false;
     return hasOlderByAgentId.value[agent.id] ?? true;
   });
   const isLoadingOlderHistory = computed(() => {
@@ -44,7 +44,7 @@ export function createAgentHistoryState(options: {
 
   async function hydrate(agentId: string): Promise<void> {
     const agent = options.getSnapshot().agents.find((candidate) => candidate.id === agentId);
-    if (!agent?.backendSession || !appApi?.loadConversationHistory || hydratingAgentIds.value.has(agent.id)) {
+    if (!agent?.providerSession || !appApi?.loadConversationHistory || hydratingAgentIds.value.has(agent.id)) {
       return;
     }
     markHydrating(agent.id, true);
@@ -56,9 +56,10 @@ export function createAgentHistoryState(options: {
       options.adoptSnapshot(await appApi.loadConversationHistory(agent.id));
       timing('history.response-adopted');
       options.synchronizeComposerSelection(agent.id);
-    } catch (error) {
+    } catch {
       failedAgentIds.value = new Set(failedAgentIds.value).add(agent.id);
-      throw error;
+      // The conversation pane owns hydration errors, including writer locks.
+      // Rejecting here also sends the same failure to generic action toasts.
     } finally {
       markHydrating(agent.id, false);
       timing(failedAgentIds.value.has(agent.id) ? 'history.failed' : 'history.settled');
@@ -67,7 +68,7 @@ export function createAgentHistoryState(options: {
 
   function statusFor(agentId: string): { failed: boolean; hasOlder: boolean; hydrating: boolean; loadingOlder: boolean } {
     const failed = failedAgentIds.value.has(agentId);
-    const pending = Boolean(options.getSnapshot().agents.find(agent => agent.id === agentId)?.backendSession) && !options.hasHistory(agentId);
+    const pending = Boolean(options.getSnapshot().agents.find(agent => agent.id === agentId)?.providerSession) && !options.hasHistory(agentId);
     return {
       failed,
       hasOlder: hasOlderByAgentId.value[agentId] ?? true,

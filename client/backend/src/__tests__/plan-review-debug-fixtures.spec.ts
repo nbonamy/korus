@@ -12,7 +12,7 @@ it('injects diagrams in both Markdown review fixtures and preserves feedback acr
   const store = new AppStateStore(home);
   const snapshot = createInitialSnapshot();
   const agent = snapshot.agents[0]!;
-  agent.backendSession = { kind: 'codex', threadId: 'fixture-conversation' };
+  agent.providerSession = { kind: 'codex', threadId: 'fixture-conversation' };
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: next => store.save(next) });
   try {
     const inject = (format: 'text' | 'choices') => server.handleMessage({

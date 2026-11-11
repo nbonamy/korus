@@ -1,18 +1,18 @@
-import type { Agent, BackendConversationRef } from './contracts';
+import type { Agent, ProviderConversationRef } from './contracts';
 
-export function conversationRefFromAgent(agent: Agent): BackendConversationRef | null {
-  if (agent.backendSession?.kind === 'codex') {
-    return { backend: 'codex', threadId: agent.backendSession.threadId };
+export function conversationRefFromAgent(agent: Agent): ProviderConversationRef | null {
+  if (agent.providerSession?.kind === 'codex') {
+    return { provider: 'codex', threadId: agent.providerSession.threadId };
   }
-  if (agent.backendSession?.kind === 'claude') {
+  if (agent.providerSession?.kind === 'claude') {
     return {
-      backend: 'claude',
-      folder: agent.backendSession.transcriptFolder ?? agent.folder,
-      sessionId: agent.backendSession.transcriptSessionId ?? agent.backendSession.sessionId,
+      provider: 'claude',
+      folder: agent.providerSession.transcriptFolder ?? agent.folder,
+      sessionId: agent.providerSession.transcriptSessionId ?? agent.providerSession.sessionId,
     };
   }
-  if (agent.backendSession?.kind === 'antigravity' || agent.backendSession?.kind === 'cursor') {
-    return { backend: agent.backendSession.kind, folder: agent.folder, sessionId: agent.backendSession.sessionId };
+  if (agent.providerSession?.kind === 'antigravity' || agent.providerSession?.kind === 'cursor') {
+    return { provider: agent.providerSession.kind, folder: agent.folder, sessionId: agent.providerSession.sessionId };
   }
   return null;
 }

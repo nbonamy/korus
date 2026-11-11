@@ -5,7 +5,7 @@ import { computed, nextTick, ref } from 'vue';
 import { computerUseLockKey } from '../computer-use-lock';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamRail from '../TeamRail.vue';
-import type { AccountRateLimits, AgentBackend, RemoteConnection, Team } from '@workspace/core/contracts';
+import type { AccountRateLimits, HarnessProvider, RemoteConnection, Team } from '@workspace/core/contracts';
 import { setElectronTestClient } from '../../../tests/support/client';
 
 let mountedWrappers: ReturnType<typeof mount>[] = [];
@@ -388,7 +388,7 @@ describe('TeamRail', () => {
     const wrapper = mountRail({
       teams,
       activeTeamId: 'team-sk',
-      enabledBackends: ['codex'],
+      enabledProviders: ['codex'],
       rateLimits: {
         limitId: 'codex',
         limitName: 'Codex',
@@ -524,7 +524,7 @@ function mountRail(props: {
   cockpitActive?: boolean;
   automationsActive?: boolean;
   rateLimits?: AccountRateLimits;
-  enabledBackends?: AgentBackend[];
+  enabledProviders?: HarnessProvider[];
   settingsActive?: boolean;
   agentSidebarExpanded?: boolean;
   spokenAnnouncementsEnabled?: boolean;

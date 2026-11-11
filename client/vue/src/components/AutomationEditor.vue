@@ -39,7 +39,7 @@
       </FormSection>
       <AutomationScheduleEditor v-model="schedule" :automation="automation" />
       <FormSection v-if="form.kind === 'newQuickChat'" class="automation-editor__model" density="compact" :title="$t('promptAutomation.model')" title-id="automation-model">
-        <BackendModelSelector v-model:selection="selection" :agent-id="catalogAgentId"
+        <ProviderModelSelector v-model:selection="selection" :agent-id="catalogAgentId"
           :disabled="saving" @loading="modelsLoading = $event" @error="modelsError = true" />
         <p v-if="modelsError" class="automation-editor__notice" role="status">{{ $t('promptAutomation.modelsUnavailable') }}</p>
       </FormSection>
@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import { computed, provide, reactive, ref, watch } from 'vue';
-import type { Agent, AgentBackend, Automation, AutomationSchedule, AutomationTarget, BackendModelOption, CreateAutomationInput, ExecutionSelection, Team } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, Automation, AutomationSchedule, AutomationTarget, ProviderModelOption, CreateAutomationInput, ExecutionSelection, Team } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
 import AutomationScheduleEditor from './AutomationScheduleEditor.vue';
@@ -63,15 +63,15 @@ import VoiceTextarea from '../shared/VoiceTextarea.vue';
 import FormGrid from '../shared/form/FormGrid.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import FormField from '../shared/form/FormField.vue';
-import BackendModelSelector from './BackendModelSelector.vue';
+import ProviderModelSelector from './ProviderModelSelector.vue';
 import { defaultExecutionSelection } from '@workspace/core/execution-selection';
-import { backendModelCatalogKey, useBackendModelCatalog } from './backend-model-catalog';
-import { useBackendChoices } from './backend-selection';
+import { providerModelCatalogKey, useProviderModelCatalog } from './provider-model-catalog';
+import { useProviderChoices } from './provider-selection';
 
 const props = withDefaults(defineProps<{
   automation?: Automation | null; mode: 'create' | 'edit'; agents: Agent[]; teams: Team[];
   error?: string | null; saving?: boolean;
-  listModels?: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
+  listModels?: (agentId: string | null, provider: HarnessProvider) => Promise<ProviderModelOption[]>;
 }>(), { automation: null, error: null, saving: false });
 const emit = defineEmits<{ cancel: []; submit: [input: CreateAutomationInput] }>();
 const target = props.automation?.target;
@@ -83,9 +83,9 @@ const form = reactive({
   agentId: target && target.kind !== 'newQuickChat' && props.agents.some(agent => agent.id === target.agentId) ? target.agentId : '',
 
 });
-const selection = ref<ExecutionSelection | undefined>(target?.kind === 'newQuickChat' ? { ...defaultExecutionSelection(target.selection.backend), ...target.selection } : undefined);
-const inheritedCatalog = useBackendModelCatalog();
-provide(backendModelCatalogKey, { listModels: (agentId, backend) => props.listModels?.(agentId, backend) ?? inheritedCatalog.listModels(agentId, backend) });
+const selection = ref<ExecutionSelection | undefined>(target?.kind === 'newQuickChat' ? { ...defaultExecutionSelection(target.selection.provider), ...target.selection } : undefined);
+const inheritedCatalog = useProviderModelCatalog();
+provide(providerModelCatalogKey, { listModels: (agentId, backend) => props.listModels?.(agentId, backend) ?? inheritedCatalog.listModels(agentId, backend) });
 const catalogAgentId = computed(() => props.agents.find(agent => agent.teamId === form.teamId)?.id ?? props.agents[0]?.id ?? '');
 const schedule = ref<AutomationSchedule>(props.automation?.schedule ?? { rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
 // The saved conversation was removed; keep saving blocked until the user picks another.
@@ -94,7 +94,7 @@ const targetRemoved = computed(() => Boolean(target && target.kind !== 'newQuick
 const promptBusy = ref(false);
 const modelsLoading = ref(false);
 const modelsError = ref(false);
-const engineChoices = useBackendChoices();
+const engineChoices = useProviderChoices();
 const teamAgents = computed(() => props.agents.filter(agent => agent.teamId === form.teamId));
 const quickChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind === 'quickChat'));
 const agentChats = computed(() => teamAgents.value.filter(agent => agent.sessionKind !== 'quickChat'));
@@ -118,7 +118,7 @@ function conversationLabel(agent: Agent): string {
 }
 const canSubmit = computed(() => !props.saving && !promptBusy.value && Boolean(form.prompt.trim()) && normalizeAutomationSchedule(schedule.value) !== null &&
   (form.kind === 'newQuickChat'
-    ? props.teams.some(team => team.id === form.teamId) && Boolean(selection.value && engineChoices.value.includes(selection.value.backend))
+    ? props.teams.some(team => team.id === form.teamId) && Boolean(selection.value && engineChoices.value.includes(selection.value.provider))
     : targetAgents.value.some(agent => agent.id === form.agentId)));
 watch(() => form.teamId, () => { form.agentId = ''; });
 function submit() {

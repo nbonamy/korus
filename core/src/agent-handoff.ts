@@ -1,6 +1,7 @@
 import type { ExecutionSelection } from './contracts/execution';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
 import { isExecutionSelection, readPersistedExecutionSelection } from './execution-selection';
-import type { Agent, AppSnapshot, BackendConversationRef } from './contracts';
+import type { Agent, AppSnapshot, ProviderConversationRef } from './contracts';
 
 export type AgentHandoffInput = {
   operationId: string;
@@ -12,7 +13,7 @@ export type AgentHandoffInput = {
 export type AgentHandoff = AgentHandoffInput & {
   sourceAgentId: string;
   sourceTitle: string;
-  sourceRef: BackendConversationRef;
+  sourceRef: ProviderConversationRef;
   targetAgentId?: string;
   phase: 'preparing' | 'closing' | 'starting' | 'complete' | 'failed';
   note?: string;
@@ -27,7 +28,7 @@ export function handoffInProgress(agent: Agent): boolean {
 
 export function agentHandoffBlocker(snapshot: AppSnapshot, agent: Agent): string | null {
   if (!agent.folder || agent.sessionKind === 'quickChat') return 'Hand off is available for agents with a workspace.';
-  if (!agent.backendSession) return 'Start a conversation before handing it off.';
+  if (!agent.providerSession) return 'Start a conversation before handing it off.';
   if (agent.status.type !== 'idle' || handoffInProgress(agent)) return 'Wait for the agent to finish before handing it off.';
   if ((snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id)) return 'Resolve queued prompts before handing off.';
   if ((snapshot.agentRequests?.[agent.id]?.length ?? 0) > 0) return 'Resolve pending requests before handing off.';
@@ -51,13 +52,12 @@ export function isAgentHandoff(value: unknown): value is AgentHandoff {
     && (v.instructions === undefined || (typeof v.instructions === 'string' && v.instructions.length <= 4000))
     && (v.note === undefined || (typeof v.note === 'string' && v.note.length <= handoffNoteLimit))
     && (v.error === undefined || typeof v.error === 'string')
-    && Boolean(ref && !Array.isArray(ref) && ((ref.backend === 'codex' && typeof ref.threadId === 'string')
-      || ((ref.backend === 'claude' || ref.backend === 'antigravity' || ref.backend === 'cursor') && typeof ref.sessionId === 'string' && (typeof ref.folder === 'string' || ref.folder === null))));
+    && isProviderConversationRef(ref);
 }
 
 export function readPersistedAgentHandoff(value: unknown): AgentHandoff | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const { backend: _backend, model: _model, ...record } = value as Record<string, unknown>;
+  const { provider: _provider, model: _model, ...record } = value as Record<string, unknown>;
   const selection = readPersistedExecutionSelection(record.selection ?? value);
   const migrated = { ...record, selection };
   return isAgentHandoff(migrated) ? migrated : undefined;

@@ -4,7 +4,7 @@ import { readBundledSkill } from '../bundled-skills/catalog';
 import { z } from 'zod';
 import { diffVizIcons, diffVizStatuses, type DiffVizDiagram, type DiffVisualizationMode } from '@workspace/core/git-diff-viz';
 import type { AgentGitDiffTarget, AgentGitDiffScope } from '@workspace/core/contracts';
-import type { BackendTextGenerationInput } from '@workspace/core/backend-driver';
+import type { ProviderTextGenerationInput } from '@workspace/core/provider-driver';
 import { isCanvasDocument, type CanvasElement } from '@workspace/core/visualize-canvas';
 import { diffForPath } from '@workspace/core/file-diff';
 import type { DiffVizNode, DiffVizLocation } from '@workspace/core/git-diff-viz';
@@ -36,7 +36,7 @@ const draftSchema = z.object({
   })).min(1),
 });
 
-export async function generateDiffViz(comparison: { target: AgentGitDiffTarget; scopes?: AgentGitDiffScope[]; paths: string[]; diff?: string }, cwd: string, generate: (input: BackendTextGenerationInput) => Promise<unknown>, mode: DiffVisualizationMode = 'polished'): Promise<DiffVizDiagram> {
+export async function generateDiffViz(comparison: { target: AgentGitDiffTarget; scopes?: AgentGitDiffScope[]; paths: string[]; diff?: string }, cwd: string, generate: (input: ProviderTextGenerationInput) => Promise<unknown>, mode: DiffVisualizationMode = 'polished'): Promise<DiffVizDiagram> {
   const paths = new Set(comparison.paths);
   if (!paths.size) throw new Error('There are no changed files to visualize.');
   if ([...paths].some(path => path.startsWith('/') || path.split('/').includes('..'))) throw new Error('The patch contains an invalid changed file path.');
@@ -72,7 +72,7 @@ export async function generateDiffViz(comparison: { target: AgentGitDiffTarget; 
       const required = new Set(jsonSchema.required ?? []);
       for (const [key, property] of Object.entries(jsonSchema.properties)) if (!required.has(key) && typeof property === 'object') jsonSchema.properties[key] = { anyOf: [property, { type: 'null' }] };
       jsonSchema.required = Object.keys(jsonSchema.properties);
-    } }) as BackendTextGenerationInput['outputSchema'],
+    } }) as ProviderTextGenerationInput['outputSchema'],
   });
   let raw: unknown;
   try { raw = omitNullProperties(JSON.parse((response as { text: string }).text)); }

@@ -51,7 +51,7 @@ function addRosterLinks(snapshot: import('@workspace/core/contracts').AppSnapsho
   snapshot.agentGitStatuses[removedId] = { folder: '/repo', ahead: 0, behind: 0, changedFiles: 0, addedLines: 0, removedLines: 0, hasUntracked: false, state: 'clean', updatedAt: 'now' };
   snapshot.turnGitDiffs['removed-turn'] = { agentId: removedId, turnId: 'removed-turn', addedLines: 1, removedLines: 0, updatedAt: 'now' };
   snapshot.subagentTrees[removedId] = { rootConversationId: 'thread-parent', nodes: {}, operations: {}, activities: {} };
-  snapshot.backendApprovals[removedId] = [];
+  snapshot.providerApprovals[removedId] = [];
   snapshot.agentRequests = { [removedId]: [] };
   snapshot.workBacklog.assignments['github:issue'] = { provider: 'github', itemId: 'issue', agentId: removedId, assignedAt: 'now', policy: 'review', status: 'inProgress' };
   snapshot.clientPreferences = { desktop: {
@@ -79,8 +79,8 @@ describe('provider onboarding setup', () => {
     const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/setup/get' })).toMatchObject({ result: expect.arrayContaining([
-        expect.objectContaining({ backend: 'cursor', ...saved, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } }),
-        expect.objectContaining({ backend: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: true } } }),
+        expect.objectContaining({ provider: 'cursor', ...saved, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } }),
+        expect.objectContaining({ provider: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: true } } }),
       ]) });
       await expect(setup.configure('cursor', { isolated: false, shareSkills: false })).rejects.toThrow('setup');
       expect((await loadBackendSnapshot()).general.providerHomes?.cursor).toEqual(saved);
@@ -108,7 +108,7 @@ describe('provider onboarding setup', () => {
 
   it('keeps legacy Codex conversations in their original isolated home', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ ...createRemoteAgent(), backend: 'codex' }];
+    snapshot.agents = [{ ...createRemoteAgent(), provider: 'codex' }];
     await new ProviderSetup(snapshot, vi.fn(), vi.fn()).initialize();
     expect(snapshot.general.providerHomes?.codex).toMatchObject({ isolated: true, homePath: path.join(root, 'app/codex-home') });
   });
@@ -126,22 +126,22 @@ describe('provider onboarding setup', () => {
     const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
     try {
       expect(install).not.toHaveBeenCalled();
-      const request = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/install', params: { backend: 'antigravity' } });
+      const request = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/install', params: { provider: 'antigravity' } });
       await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
       await expect(setup.refresh('antigravity')).rejects.toThrow('already in progress');
       finish();
-      expect(await request).toMatchObject({ result: { backend: 'antigravity', installed: true } });
+      expect(await request).toMatchObject({ result: { provider: 'antigravity', installed: true } });
       expect(setup.list()[0]?.installed).toBe(true);
       expect(reconnect).toHaveBeenCalledWith('antigravity');
-      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/install', params: { backend: 'antigravity' } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/install', params: { provider: 'antigravity' } });
       expect(install).toHaveBeenCalledOnce();
     } finally { await server.close(); }
   });
   it('requires exact confirmation, then removes only local engine agents and keeps provider history across reload', async () => {
     const snapshot = createTestSnapshot();
-    const local = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude' as const, status: { type: 'idle' as const } };
+    const local = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', provider: 'claude' as const, status: { type: 'idle' as const } };
     const quick = { ...local, id: 'quick', folder: null, sessionKind: 'quickChat' as const };
-    const other = { ...local, id: 'other', backend: 'codex' as const };
+    const other = { ...local, id: 'other', provider: 'codex' as const };
     const remote = { ...local, id: 'remote', teamId: 'team-remote', remoteConnectionId: 'remote-host' };
     snapshot.agents = [local, quick, other, remote];
     snapshot.teams[0]!.agentIds = ['local', 'quick', 'other'];
@@ -183,7 +183,7 @@ describe('provider onboarding setup', () => {
 
   it('does not touch the home or roster if its verified backup cannot be made', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ ...createRemoteAgent(), backend: 'claude' }];
+    snapshot.agents = [{ ...createRemoteAgent(), provider: 'claude' }];
     const reconnect = vi.fn();
     const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), reconnect, undefined, async () => { throw new Error('backup failed'); });
     await setup.initialize();
@@ -195,7 +195,7 @@ describe('provider onboarding setup', () => {
 
   it('rechecks consent after preparation and refuses a newly active agent without removing it', async () => {
     const snapshot = createTestSnapshot();
-    const agent: Agent = { ...createRemoteAgent(), backend: 'claude' };
+    const agent: Agent = { ...createRemoteAgent(), provider: 'claude' };
     snapshot.agents = [agent];
     const reconnect = vi.fn().mockImplementationOnce(async () => { agent.status = { type: 'working' }; });
     const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), reconnect);
@@ -209,8 +209,8 @@ describe('provider onboarding setup', () => {
 
   it('rejects an active agent and rolls back the roster/home if saving the switch fails', async () => {
     const snapshot = createTestSnapshot();
-    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude', status: { type: 'working' } };
-    const other: Agent = { ...agent, id: 'other', backend: 'codex', status: { type: 'working' } };
+    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', provider: 'claude', status: { type: 'working' } };
+    const other: Agent = { ...agent, id: 'other', provider: 'codex', status: { type: 'working' } };
     snapshot.agents = [agent, other];
     snapshot.teams[0]!.agentIds = [agent.id, other.id];
     snapshot.activeAgentId = agent.id;
@@ -246,8 +246,8 @@ describe('provider onboarding setup', () => {
 
   it.each(['review', 'mission'] as const)('requires finishing linked %s work before resetting its engine', async kind => {
     const snapshot = createTestSnapshot();
-    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude' };
-    const other: Agent = { ...agent, id: 'other', backend: 'codex' };
+    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', provider: 'claude' };
+    const other: Agent = { ...agent, id: 'other', provider: 'codex' };
     snapshot.agents = [agent, other]; snapshot.teams[0]!.agentIds = [agent.id, other.id];
     if (kind === 'review') other.codeReview = { id: 'review', targetAgentId: agent.id, reviewerAgentId: other.id, scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready', activeRoundId: 'round', rounds: [], createdAt: 'now', updatedAt: 'now' };
     else addRosterLinks(snapshot, agent.id, other.id).execution!.runs[0]!.status = 'awaitingReview';
@@ -261,8 +261,8 @@ describe('provider onboarding setup', () => {
 
   it('restores a sparse roster after a failed switch without reviving consumed prompts or discarding new background agents', async () => {
     const snapshot = createTestSnapshot();
-    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude' };
-    const other: Agent = { ...agent, id: 'other', backend: 'codex' };
+    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', provider: 'claude' };
+    const other: Agent = { ...agent, id: 'other', provider: 'codex' };
     snapshot.agents = [agent, other];
     snapshot.teams[0]!.agentIds = [agent.id, other.id];
     snapshot.teams[0]!.activeAgentId = other.id;
@@ -305,7 +305,7 @@ describe('provider onboarding setup', () => {
     const reconnect = vi.fn();
     const setup = new ProviderSetup(snapshot, vi.fn(), reconnect, new Map([['claude', lifecycle]]));
     await setup.initialize();
-    expect(setup.list()).toEqual([{ backend: 'claude', installed: false, locked: false, affectedAgentIds: [], homePath: '/engine-owned/home', isolated: true, shareSkills: false,
+    expect(setup.list()).toEqual([{ provider: 'claude', installed: false, locked: false, affectedAgentIds: [], homePath: '/engine-owned/home', isolated: true, shareSkills: false,
       capabilities: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code' } } }]);
     const clearedBefore = cli.cacheCleared;
     expect(await setup.refresh('claude')).toMatchObject({ installed: false });
@@ -322,52 +322,52 @@ describe('provider onboarding setup', () => {
     expect(reconnect).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['codex', 'claude'] as const)('changes %s skills reuse without removing chats, but rejects running agents', async backend => {
+  it.each(['codex', 'claude'] as const)('changes %s skills reuse without removing chats, but rejects running agents', async provider => {
     const snapshot = createTestSnapshot();
     const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), vi.fn());
-    await mkdir(path.join(root, backend, 'skills'), { recursive: true });
-    await writeFile(path.join(root, backend, 'skills/existing.md'), 'keep my skill');
+    await mkdir(path.join(root, provider, 'skills'), { recursive: true });
+    await writeFile(path.join(root, provider, 'skills/existing.md'), 'keep my skill');
     await setup.initialize();
-    await setup.configure(backend, { isolated: true, shareSkills: true });
-    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend, status: { type: 'working' } };
+    await setup.configure(provider, { isolated: true, shareSkills: true });
+    const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', provider: provider, status: { type: 'working' } };
     snapshot.agents = [agent];
     snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.teams[0]!.activeAgentId = agent.id;
     snapshot.activeAgentId = agent.id;
-    const home = snapshot.general.providerHomes![backend]!;
+    const home = snapshot.general.providerHomes![provider]!;
     await writeFile(path.join(home.homePath, 'conversation.txt'), 'keep my chats');
     const choice = { isolated: true, shareSkills: false };
-    await expect(setup.configure(backend, choice)).rejects.toThrow('idle');
+    await expect(setup.configure(provider, choice)).rejects.toThrow('idle');
     expect(await readFile(path.join(home.homePath, 'skills/existing.md'), 'utf8')).toBe('keep my skill');
     agent.status = { type: 'idle' };
-    await setup.configure(backend, choice);
+    await setup.configure(provider, choice);
     expect((await loadBackendSnapshot()).agents).toHaveLength(1);
     expect(snapshot.agents).toEqual([agent]);
     expect(snapshot.teams[0]!.activeAgentId).toBe(agent.id);
-    expect(snapshot.general.providerHomes![backend]).toEqual({ ...home, shareSkills: false });
+    expect(snapshot.general.providerHomes![provider]).toEqual({ ...home, shareSkills: false });
     await expect(readlink(path.join(home.homePath, 'skills'))).rejects.toBeDefined();
-    expect(await readFile(path.join(root, backend, 'skills/existing.md'), 'utf8')).toBe('keep my skill');
+    expect(await readFile(path.join(root, provider, 'skills/existing.md'), 'utf8')).toBe('keep my skill');
     expect(await readFile(path.join(home.homePath, 'conversation.txt'), 'utf8')).toBe('keep my chats');
-    await setup.configure(backend, { isolated: true, shareSkills: true });
+    await setup.configure(provider, { isolated: true, shareSkills: true });
     expect(await readFile(path.join(home.homePath, 'skills/existing.md'), 'utf8')).toBe('keep my skill');
     expect(snapshot.agents).toEqual([agent]);
   });
 
-  it.each(['codex', 'claude'] as const)('restores %s skills reuse if saving the change fails', async backend => {
+  it.each(['codex', 'claude'] as const)('restores %s skills reuse if saving the change fails', async provider => {
     const snapshot = createTestSnapshot();
     let fail = false;
     const setup = new ProviderSetup(snapshot, async () => {
       if (fail) { fail = false; throw new Error('disk full'); }
       await saveBackendSnapshot(snapshot);
     }, vi.fn());
-    await mkdir(path.join(root, backend, 'skills'), { recursive: true });
-    await writeFile(path.join(root, backend, 'skills/existing.md'), 'keep my skill');
+    await mkdir(path.join(root, provider, 'skills'), { recursive: true });
+    await writeFile(path.join(root, provider, 'skills/existing.md'), 'keep my skill');
     await setup.initialize();
-    await setup.configure(backend, { isolated: true, shareSkills: true });
-    const home = { ...snapshot.general.providerHomes![backend]! };
+    await setup.configure(provider, { isolated: true, shareSkills: true });
+    const home = { ...snapshot.general.providerHomes![provider]! };
     fail = true;
-    await expect(setup.configure(backend, { isolated: true, shareSkills: false })).rejects.toThrow('disk full');
-    expect((await loadBackendSnapshot()).general.providerHomes![backend]).toEqual(home);
+    await expect(setup.configure(provider, { isolated: true, shareSkills: false })).rejects.toThrow('disk full');
+    expect((await loadBackendSnapshot()).general.providerHomes![provider]).toEqual(home);
     expect(await readFile(path.join(home.homePath, 'skills/existing.md'), 'utf8')).toBe('keep my skill');
   });
 
@@ -383,7 +383,7 @@ describe('provider onboarding setup', () => {
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'settings/codexResourceSharing/get' }))
         .toMatchObject({ result: { enabled: false, migrationRequired: false } });
-      expect(restarted.list().find(home => home.backend === 'codex')?.shareSkills).toBe(false);
+      expect(restarted.list().find(home => home.provider === 'codex')?.shareSkills).toBe(false);
       expect(reloaded.general).not.toHaveProperty('shareCodexSkillsAndPlugins');
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'settings/codexResourceSharing/set', params: { input: { enabled: true } } });
       expect((await loadBackendSnapshot()).general.providerHomes?.codex?.shareSkills).toBe(true);
@@ -421,11 +421,11 @@ describe('provider onboarding setup', () => {
   it('preserves an existing Claude setup and rejects changing a provider that owns chats', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.agents = [{ ...createRemoteAgent(), backend: 'claude' }];
+    snapshot.agents = [{ ...createRemoteAgent(), provider: 'claude' }];
     const reconnect = vi.fn();
     const setup = new ProviderSetup(snapshot, vi.fn(), reconnect);
     await setup.initialize();
-    expect(setup.list().find(item => item.backend === 'claude')).toMatchObject({ isolated: false, homePath: path.join(root, 'claude'), locked: true });
+    expect(setup.list().find(item => item.provider === 'claude')).toMatchObject({ isolated: false, homePath: path.join(root, 'claude'), locked: true });
     await expect(setup.configure('claude', { isolated: true, shareSkills: true })).rejects.toThrow('already has chats');
     expect(reconnect).not.toHaveBeenCalled();
   });
@@ -439,7 +439,7 @@ describe('provider onboarding setup', () => {
     const setup = new ProviderSetup(snapshot, vi.fn(), vi.fn());
     await setup.initialize();
     expect(await readFile(path.join(privateSkills, 'mine.md'), 'utf8')).toBe('keep');
-    expect(setup.list().find(item => item.backend === 'claude')?.shareSkills).toBe(false);
+    expect(setup.list().find(item => item.provider === 'claude')?.shareSkills).toBe(false);
     await expect(setup.configure('claude', { isolated: true, shareSkills: true })).rejects.toThrow('private skills');
     expect(await readFile(path.join(privateSkills, 'mine.md'), 'utf8')).toBe('keep');
   });
@@ -474,15 +474,15 @@ describe('provider onboarding setup', () => {
     await setup.initialize();
     const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
     const request = (method: string, params?: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 1, method, params });
-    expect(await request('provider/setup/get')).toMatchObject({ result: [expect.objectContaining({ backend: 'codex', installed: true }), expect.objectContaining({ backend: 'claude', installed: false }), expect.objectContaining({ backend: 'antigravity', installed: false }), expect.objectContaining({ backend: 'cursor', installed: false, isolated: false, shareSkills: false })] });
+    expect(await request('provider/setup/get')).toMatchObject({ result: [expect.objectContaining({ provider: 'codex', installed: true }), expect.objectContaining({ provider: 'claude', installed: false }), expect.objectContaining({ provider: 'antigravity', installed: false }), expect.objectContaining({ provider: 'cursor', installed: false, isolated: false, shareSkills: false })] });
     expect(cli.installs).toBe(0);
-    expect(await request('provider/refresh', { backend: 'claude' })).toMatchObject({ result: { backend: 'claude', installed: false } });
+    expect(await request('provider/refresh', { provider: 'claude' })).toMatchObject({ result: { provider: 'claude', installed: false } });
     cli.installed.add('claude');
-    expect(await request('provider/refresh', { backend: 'claude' })).toMatchObject({ result: { backend: 'claude', installed: true } });
-    expect(await request('provider/connections/get')).toMatchObject({ result: expect.arrayContaining([expect.objectContaining({ backend: 'claude', installed: true })]) });
-    await expect(request('provider/install', { backend: 'claude' })).rejects.toThrow('official instructions');
+    expect(await request('provider/refresh', { provider: 'claude' })).toMatchObject({ result: { provider: 'claude', installed: true } });
+    expect(await request('provider/connections/get')).toMatchObject({ result: expect.arrayContaining([expect.objectContaining({ provider: 'claude', installed: true })]) });
+    await expect(request('provider/install', { provider: 'claude' })).rejects.toThrow('official instructions');
     expect(cli.installs).toBe(0);
-    await expect(request('provider/setup/configure', { backend: 'claude', choice: { isolated: 'yes' } })).rejects.toThrow('Invalid provider setup');
+    await expect(request('provider/setup/configure', { provider: 'claude', choice: { isolated: 'yes' } })).rejects.toThrow('Invalid provider setup');
     await expect(request('settings/update', { input: { general: { providerHomes: { claude: { homePath: '/arbitrary' } } } } })).rejects.toThrow('provider setup');
   });
 });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { BackendDefaults } from '../contracts';
+import type { ProviderDefaults } from '../contracts';
 import {
   codexApprovalPresetFromDefaults,
   codexApprovalPresetFromThreadSettings,
-  codexBackendDefaultsWithApprovalPreset,
+  codexProviderDefaultsWithApprovalPreset,
   defaultCodexApprovalPreset,
   isCodexApprovalPreset,
   isCodexApprovalsReviewer,
@@ -80,7 +80,7 @@ describe('codex approval presets', () => {
   });
 
   it('writes presets back to codex backend defaults without losing existing defaults', () => {
-    const defaults: BackendDefaults = {
+    const defaults: ProviderDefaults = {
       kind: 'codex',
       model: 'gpt-5',
       reasoningEffort: 'high',
@@ -89,7 +89,7 @@ describe('codex approval presets', () => {
       sandboxMode: 'workspace-write',
     };
 
-    expect(codexBackendDefaultsWithApprovalPreset(defaults, 'full-access')).toStrictEqual({
+    expect(codexProviderDefaultsWithApprovalPreset(defaults, 'full-access')).toStrictEqual({
       kind: 'codex',
       model: 'gpt-5',
       reasoningEffort: 'high',
@@ -98,14 +98,14 @@ describe('codex approval presets', () => {
       approvalsReviewer: 'user',
       sandboxMode: 'danger-full-access',
     });
-    expect(codexBackendDefaultsWithApprovalPreset(undefined, 'approve-for-me')).toStrictEqual({
+    expect(codexProviderDefaultsWithApprovalPreset(undefined, 'approve-for-me')).toStrictEqual({
       kind: 'codex',
       approvalPreset: 'approve-for-me',
       approvalPolicy: 'on-request',
       approvalsReviewer: 'auto_review',
       sandboxMode: 'workspace-write',
     });
-    expect(codexBackendDefaultsWithApprovalPreset({ kind: 'claude' }, 'ask-for-approval')).toStrictEqual({
+    expect(codexProviderDefaultsWithApprovalPreset({ kind: 'claude' }, 'ask-for-approval')).toStrictEqual({
       kind: 'codex',
       approvalPreset: 'ask-for-approval',
       approvalPolicy: 'on-request',

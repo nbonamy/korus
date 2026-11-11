@@ -161,7 +161,7 @@ describe('AppStateStore', () => {
     expect(restored.teams.find(team => team.id === 'remote-pointer')?.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: 'team-app' }]);
     expect(restored.agents.map(agent => agent.id)).toStrictEqual(snapshot.agents.map(agent => agent.id));
     expect(restored.activeTeamId).toBe('remote-pointer');
-    expect((await readJson('roster.json')).schemaVersion).toBe(4);
+    expect((await readJson('roster.json')).schemaVersion).toBe(5);
     expect((await readdir(file('backups'))).some(name => name.includes('roster-v3'))).toBe(true);
     await new AppStateStore(home).save(restored);
     expect((await new AppStateStore(home).load()).teams).toStrictEqual(restored.teams);
@@ -169,7 +169,7 @@ describe('AppStateStore', () => {
   it.each(['roster', 'legacy'] as const)('removes stale pointer-owned rows before %s import and later saves', async format => {
     const snapshot = createInitialSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', backendSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', providerSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
     const pointer = { id: 'remote-pointer', name: 'Remote', agentIds: [foreign.id, 'foreign-unknown'], activeAgentId: foreign.id, remoteConnectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id };
     if (format === 'legacy') {
       await writeFile(file('state.json'), JSON.stringify({ ...persistedStateFromSnapshot(snapshot), teams: [...snapshot.teams, pointer], agents: [...snapshot.agents, foreign] }));
@@ -218,11 +218,11 @@ describe('AppStateStore', () => {
   it.each(['codex', 'claude', 'antigravity'] as const)('loads additive store fields without blocking existing %s agents', async backend => {
     const snapshot = snapshotWithVisualizations();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendSession = backend === 'codex' ? { kind: backend, threadId: 'thread' }
+    agent.provider = backend;
+    agent.providerSession = backend === 'codex' ? { kind: backend, threadId: 'thread' }
       : backend === 'claude' ? { kind: backend, sessionId: 'session', transport: 'stdio' }
         : { kind: backend, sessionId: 'session' };
-    delete agent.backendDefaults;
+    delete agent.providerDefaults;
     snapshot.subagentTrees[agent.id] = { rootConversationId: 'root', nodes: {}, operations: {}, activities: {} };
     await new AppStateStore(home).save(snapshot);
     const expected = await new AppStateStore(home).load();
@@ -254,7 +254,7 @@ describe('AppStateStore', () => {
     expect(restarted.repositoryVisualizations).toStrictEqual(expected.repositoryVisualizations);
   });
 
-  it.each([1, 2, 3, 4])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
+  it.each([1, 2, 3, 4, 5])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
     const snapshot = createInitialSnapshot();
     await new AppStateStore(home).save(snapshot);
     const roster = await readJson('roster.json');
@@ -369,9 +369,9 @@ describe('AppStateStore', () => {
     roster.schemaVersion = 1;
     const calendar = (roster.data.automations as Array<Record<string, unknown>>)[0]!;
     calendar.target = { kind: 'newQuickChat', teamId: snapshot.teams[0]!.id, backend: 'codex', model: 'chosen', reasoningEffort: 'high' };
-    snapshot.automations[0]!.target = { kind: 'newQuickChat', teamId: snapshot.teams[0]!.id, selection: { backend: 'codex', model: 'chosen', reasoningEffort: 'high' } };
+    snapshot.automations[0]!.target = { kind: 'newQuickChat', teamId: snapshot.teams[0]!.id, selection: { provider: 'codex', model: 'chosen', reasoningEffort: 'high' } };
     (roster.data.automations as unknown[]).push({ id: 'old-loop', name: 'Old loop', enabled: true,
-      teamId: snapshot.teams[0]!.id, backend: 'codex', repositories: [{ provider: 'github', id: 'org/repo' }],
+      teamId: snapshot.teams[0]!.id, provider: 'codex', repositories: [{ provider: 'github', id: 'org/repo' }],
       schedule: { intervalMinutes: 60 }, createdAt: '', updatedAt: '', executionLog: [] });
     const original = JSON.stringify(roster);
     await writeFile(file('roster.json'), original);
@@ -415,7 +415,7 @@ describe('AppStateStore', () => {
 
     expect((await readdir(home)).sort()).toStrictEqual(['roster.json', 'settings.json', 'visualizations']);
     expect((await readJson('roster.json')).schemaVersion).toBe(rosterSchemaVersion);
-    expect((await readJson('settings.json')).schemaVersion).toBe(1);
+    expect((await readJson('settings.json')).schemaVersion).toBe(2);
     const [directory] = await readdir(file('visualizations'));
     expect(directory).toMatch(/^app-[0-9a-f]{8}$/);
     expect((await readdir(file('visualizations', directory!))).sort()).toStrictEqual(['visualization-a.json', 'visualization-b.json']);
@@ -426,7 +426,7 @@ describe('AppStateStore', () => {
     snapshot.agents[0]!.autoResumePending = true;
     snapshot.general.autoResumeOnStartup = false;
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval', claude: 'acceptEdits' };
-    snapshot.general.codeReviewDefaults = { backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {backend: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } };
+    snapshot.general.codeReviewDefaults = { provider: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {provider: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {provider: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } };
     await new AppStateStore(home).save(snapshot);
 
     const restored = await new AppStateStore(home).load();
@@ -439,8 +439,8 @@ describe('AppStateStore', () => {
     expected.teams[0]!.activeAgentId = expected.activeAgentId ?? undefined;
     expect(restored).toStrictEqual(expected);
     expect(restored.general.providerApprovalDefaults).toStrictEqual({ codex: 'ask-for-approval', claude: 'acceptEdits' });
-    expect(restored.general.codeReviewDefaults).toStrictEqual({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {backend: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {backend: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } });
-    expect((await readJson('settings.json')).schemaVersion).toBe(1);
+    expect(restored.general.codeReviewDefaults).toStrictEqual({ provider: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true }, providers: { codex: {provider: 'codex',  model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' }, claude: {provider: 'claude', reasoningEffort: null,  model: 'sonnet', serviceTier: null } } });
+    expect((await readJson('settings.json')).schemaVersion).toBe(2);
     expect(restored.repositoryVisualizations?.['/projects/app']?.map((item) => item.id)).toStrictEqual(['visualization-a', 'visualization-b']);
   });
 

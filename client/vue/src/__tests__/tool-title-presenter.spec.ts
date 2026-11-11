@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it } from 'vitest';
-import type { ToolTitlePresenterContext as CodexToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
+import type { ToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
 import { messages } from '../i18n/messages';
 import { presentAppToolTitle } from '../tool-title-presenter';
 
@@ -216,7 +216,7 @@ function context(
   args: unknown,
   state: 'running' | 'completed' | 'error',
   descriptor?: { params?: Record<string, unknown>; phase: string },
-): CodexToolTitlePresenterContext {
+): ToolTitlePresenterContext {
   return {
     descriptor: descriptor ? { action: 'run', source: 'mcp', ...descriptor } : undefined,
     toolCall: {
@@ -227,7 +227,7 @@ function context(
       result: undefined,
       state,
     },
-    translate: translate as CodexToolTitlePresenterContext['translate'],
+    translate: translate as ToolTitlePresenterContext['translate'],
   };
 }
 

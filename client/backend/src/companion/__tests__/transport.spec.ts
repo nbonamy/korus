@@ -12,7 +12,7 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
-import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { sdkSnapshot } from '../../codex/__tests__/sdk-host-fixture';
 import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
 import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, readFirstCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
@@ -234,9 +234,9 @@ describe('encrypted companion circuit', () => {
   it('loads screenshot-heavy provider data beyond the legacy response limit over a negotiated circuit', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const image = `data:image/png;base64,${randomBytes(26 * 1024 * 1024).toString('base64')}`;
-    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] }) } } as unknown as CompanionReset;
+    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] }) } } as unknown as CompanionReset;
     expect(Buffer.byteLength(JSON.stringify(frame))).toBeGreaterThan(companionResponseLimit);
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => frame,
       loadOlderHistory: async () => ({ hasOlder: false }), save: async () => {},
@@ -270,15 +270,15 @@ describe('encrypted companion circuit', () => {
   it('pushes provider events over one authenticated duplex stream and closes it on revocation', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const events = new Set<(event: AppBackendEvent) => void>();
-    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: {} } } as CompanionReset;
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: {} } } as CompanionReset;
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
     workspace.agentRequests = { agent: [{ id: 'question', conversationId: 'thread', kind: 'question', question: { itemId: 'item', delivery: 'tool', blocking: true, questions: [] } }] };
     const responses: unknown[] = [];
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       respondRequest: async (response) => { responses.push(response); workspace.agentRequests = { agent: [] }; for (const listener of events) listener({ type: 'agentRequest.resolved', agentId: 'agent', payload: { id: 'question' } } as AppBackendEvent); },
       onEvent: (listener) => { events.add(listener); return () => { events.delete(listener); }; },
       workspace: async () => workspace, conversation: async () => frame,
-      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setBackend: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: (peer) => connector.revoke(peer),
+      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setProvider: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: (peer) => connector.revoke(peer),
     });
     const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
@@ -347,12 +347,12 @@ describe('encrypted companion circuit', () => {
   }, 20_000);
   it('streams a catch-up replay longer than the send queue without aborting the updates stream', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
-    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: index + 2, occurredAt: 'now', payload: { revision: index + 2, event: { type: 'provider-event', payload: { text: `Event ${index}` } } } }));
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: index + 2, occurredAt: 'now', payload: { revision: index + 2, event: { type: 'provider-event', payload: { text: `Event ${index}` } } } }));
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => { throw new Error('No snapshot.'); },
       synchronize: async () => ({ checkpoint: { epoch: 'epoch', revision: 601 }, frames: replay }) as never,
-      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setBackend: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: () => {},
+      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setProvider: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: () => {},
     });
     const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
@@ -379,7 +379,7 @@ describe('encrypted companion circuit', () => {
     const gateway = new CompanionGateway(hostId, { grants: [], commands: {} }, {
       workspace: async () => ({ teams: [{ id: 'team', name: 'Actual gateway team', agentIds: [] }], agents: [] }),
       loadOlderHistory: async () => ({ hasOlder: false }),
-      conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setBackend: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {},
+      conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setProvider: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {},
       revoked: (peer) => connectorRef.current?.revoke(peer),
     });
     const connector = new CompanionOutboundConnector(hostKey, gateway); connectorRef.current = connector;

@@ -65,8 +65,9 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/renderer';
 import { computed, ref } from 'vue';
-import type { BackendConversationRef, Automation, AutomationExecutionStatus, RendererMessage } from '@workspace/core/contracts';
+import type { ProviderConversationRef, Automation, AutomationExecutionStatus, RendererMessage } from '@workspace/core/contracts';
 import AppDataList from './AppDataList.vue';
 import type { AppDataListColumn, AppDataListRow } from './app-data-list';
 import AutomationExecutionConversationOverlay from './AutomationExecutionConversationOverlay.vue';
@@ -74,7 +75,7 @@ import AutomationExecutionStatusActions from './AutomationExecutionStatusActions
 
 const props = defineProps<{
   automation: Automation;
-  readConversationMessages: (ref: BackendConversationRef, agentId: string) => Promise<RendererMessage[]>;
+  readConversationMessages: (ref: ProviderConversationRef, agentId: string) => Promise<RendererMessage[]>;
 }>();
 
 const emit = defineEmits<{
@@ -168,15 +169,15 @@ function ticketForRow(row: AppDataListRow): string {
   return typeof row.ticket === 'string' && row.ticket.trim() ? row.ticket : 'execution';
 }
 
-function conversationRefForRow(row: AppDataListRow): BackendConversationRef | null {
-  if (!isBackendConversationRef(row.conversationRef)) {
+function conversationRefForRow(row: AppDataListRow): ProviderConversationRef | null {
+  if (!isProviderConversationRef(row.conversationRef)) {
     return null;
   }
 
-  return row.conversationRef.backend === 'codex'
-    ? { backend: 'codex', threadId: row.conversationRef.threadId }
+  return row.conversationRef.provider === 'codex'
+    ? { provider: 'codex', threadId: row.conversationRef.threadId }
     : {
-        backend: row.conversationRef.backend,
+        provider: row.conversationRef.provider,
         folder: row.conversationRef.folder,
         sessionId: row.conversationRef.sessionId,
       };
@@ -250,21 +251,6 @@ function closeConversation(): void {
   selectedConversation.value = null;
 }
 
-function isBackendConversationRef(value: unknown): value is BackendConversationRef {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<BackendConversationRef>;
-  if (candidate.backend === 'codex') {
-    return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
-  }
-
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
-    typeof candidate.sessionId === 'string' &&
-    candidate.sessionId.trim().length > 0 &&
-    (candidate.folder === null || typeof candidate.folder === 'string');
-}
 
 function formatDate(value: string): string {
   const date = new Date(value);

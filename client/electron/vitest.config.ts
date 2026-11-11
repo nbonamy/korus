@@ -10,6 +10,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Keep SDK host adapters in Vitest's graph so Electron mocks apply to
+    // installed packages as well as sibling source checkouts.
+    server: { deps: { inline: [/@korus-dev\/agent-ui-sdk/] } },
     testTimeout: 2_500,
     hookTimeout: 2_500,
     environment: 'jsdom',

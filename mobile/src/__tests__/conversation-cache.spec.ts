@@ -1,13 +1,13 @@
 import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { supportsCompanionBackend, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { supportsCompanionProvider, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import { ConversationCache } from '../conversation-cache';
 const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'claude', sessionId }) });
-const reset = (agentId: string, revision = 1): CompanionReset => ({ type: 'claude.conversationSnapshotChanged', agentId, backend: 'claude', seq: revision, occurredAt: 'now', payload: { revision, snapshot: {
+const reset = (agentId: string, revision = 1): CompanionReset => ({ type: 'claude.conversationSnapshotChanged', agentId, provider: 'claude', seq: revision, occurredAt: 'now', payload: { revision, snapshot: {
   agentId, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null,
 } } }) as CompanionReset;
-const delta = (agentId: string, revision: number): ProviderConversationFrame => ({ type: 'claude.conversationEventReceived', agentId, backend: 'claude', seq: revision, occurredAt: 'now', payload: { revision, event: { type: 'turn.started', agentId, backend: 'claude', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', backend: 'claude' } } } } }) as ProviderConversationFrame;
+const delta = (agentId: string, revision: number): ProviderConversationFrame => ({ type: 'claude.conversationEventReceived', agentId, provider: 'claude', seq: revision, occurredAt: 'now', payload: { revision, event: { type: 'turn.started', agentId, provider: 'claude', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', provider: 'claude' } } } } }) as ProviderConversationFrame;
 afterEach(() => vi.useRealTimers());
 function fixture() {
   const changed = vi.fn();
@@ -19,14 +19,14 @@ describe('recent mobile conversations', () => {
   it('rehydrates an unsupported provider event without publishing an invalid snapshot or poisoning cached selection', async () => {
     const changed = vi.fn();
     const selected = { ...target('a'), sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-    const frame = (revision: number): CompanionReset => ({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'a', threadId: 'thread', seq: revision, occurredAt: 'now',
+    const frame = (revision: number): CompanionReset => ({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'a', threadId: 'thread', seq: revision, occurredAt: 'now',
       payload: { revision, snapshot: codexConversationSnapshot([codexTextMessage('answer', 'assistant', 'Authoritative answer')], { activeConversationId: 'thread' }) } });
     let reads = 0;
     const request = vi.fn(async () => { cache.receive(frame(++reads)); });
     const cache = new ConversationCache(request, changed);
     try {
       await cache.select(selected);
-      cache.receive({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'a', threadId: 'thread', seq: 2, occurredAt: 'now', payload: {
+      cache.receive({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: 'a', threadId: 'thread', seq: 2, occurredAt: 'now', payload: {
         revision: 2, event: { type: 'conversation.futureEvent', conversationId: 'thread', seq: 2, payload: {} },
       } } as unknown as ProviderConversationFrame);
       await Promise.resolve(); await Promise.resolve();
@@ -125,8 +125,8 @@ describe('recent mobile conversations', () => {
     const f = fixture();
     try {
       await f.cache.select(target('a'));
-      expect(supportsCompanionBackend('cursor')).toBe(false);
-      f.cache.receive({ type: 'cursor.conversationSnapshotChanged', agentId: 'a', backend: 'cursor', seq: 2, occurredAt: 'now', payload: { revision: 2, snapshot: {} } } as unknown as ProviderConversationFrame);
+      expect(supportsCompanionProvider('cursor')).toBe(false);
+      f.cache.receive({ type: 'cursor.conversationSnapshotChanged', agentId: 'a', provider: 'cursor', seq: 2, occurredAt: 'now', payload: { revision: 2, snapshot: {} } } as unknown as ProviderConversationFrame);
       expect(f.changed).toHaveBeenCalledTimes(1);
       expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
     } finally { f.cache.close(); }

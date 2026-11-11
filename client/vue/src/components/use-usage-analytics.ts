@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import type { UsageFilter, UsageSummary } from "@workspace/core/usage";
-import type { AgentBackend } from "@workspace/core/contracts";
+import type { HarnessProvider } from "@workspace/core/contracts";
 import { appApi } from "../platform-api";
 import { translate } from "../i18n";
 import {
@@ -102,7 +102,7 @@ export function useUsageAnalytics() {
   let disposed = false;
   const providerQuery = () =>
     filter.value.provider
-      ? { provider: filter.value.provider as AgentBackend }
+      ? { provider: filter.value.provider as HarnessProvider }
       : {};
 
   async function loadActivity(): Promise<void> {

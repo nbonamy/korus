@@ -16,7 +16,7 @@ import { conversationShareTarget, type ConversationShareControl } from '@workspa
 import { useConversationSharePresence } from '../../../../src/components/use-conversation-share-presence';
 
 // Presentation-only fixture. No credentials, provider sessions or relay connections.
-const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', backend: 'codex', backendSession: { kind: 'codex', threadId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', provider: 'codex', providerSession: { kind: 'codex', threadId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 const team = { id: agent.teamId!, name: 'Synthetic workspace', agentIds: [agent.id] };
 createApp({
   setup() {
@@ -24,7 +24,7 @@ createApp({
     if (guestMode) {
       const lastControl = ref<GuestJoinControl | null>(null);
       const view: GuestJoinView = { id: 'synthetic-guest', name: 'Alex', title: 'Shared conversation', status: 'ready', participant: null, target: null,
-        frame: { type: 'claude.conversationSnapshotChanged', backend: 'claude', agentId: 'owner', backendSessionId: 'synthetic-session', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'synthetic-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
+        frame: { type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: 'owner', providerSessionId: 'synthetic-session', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'synthetic-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
         proposalState: { proposals: [], authors: [], writeAccess: guestMode !== 'readonly' } };
       return () => h('main', { style: 'display:flex;height:100vh;background:var(--color-shell-main);color:var(--color-text)', 'data-guest-control': JSON.stringify(lastControl.value) }, [
         h(SharedConversationPane, { view, busy: false, followUpBehavior: guestMode === 'queue' ? 'queue' : 'steer', control: async input => { lastControl.value = input; return true; } }),
@@ -50,7 +50,7 @@ createApp({
     return () => h('main', { style: 'display:flex;height:100vh;background:var(--color-shell-main);color:var(--color-text)' }, [
       h(AgentSidebar, { agents: [agent], activeAgentId: agent.id, teamId: team.id, teamName: team.name, teams: [team], width: 260, onShareAgent: () => { open.value = true; } }),
       h('section', { style: 'flex:1;min-width:0' }, [
-        h(AgentHeader, { agent, shareAvailable: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false, onShare: () => { open.value = true; } }),
+        h(AgentHeader, { agent, shareAvailable: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false, onShare: () => { open.value = true; } }),
         h('div', { style: 'padding:32px;max-width:720px;margin:auto' }, [h('p', 'Synthetic conversation'), h('p', 'The owner keeps execution local. Guests can read the available history and propose messages for the owner to approve.')]),
       ]),
       open.value ? h(ConversationShareDialog, { target: target.value, control, onClose: () => { open.value = false; } }) : null,

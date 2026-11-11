@@ -9,7 +9,7 @@ describe('unified backend → app state request lifecycle', () => {
   it('keeps a background proposal attached to its owner and opens it after navigation', async () => {
     const snapshot = createInitialSnapshot();
     const other = snapshot.agents[1]!;
-    other.backendSession = undefined;
+    other.providerSession = undefined;
     const { api, emit } = installBackendFixture(snapshot);
     const state = useAppState();
     await state.loadSnapshot();
@@ -36,7 +36,7 @@ describe('unified backend → app state request lifecycle', () => {
   it('accepts a revised plan event when the existing feedback is reactive renderer state', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = undefined;
+    agent.providerSession = undefined;
     const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Keep my files.' }], choices: [{ id: 's0-g0', quote: 'Storage', selected: ['Local'] }] };
     agent.planReview = { id: 'previous', conversationId: null, turnId: 'first', markdown: '# First plan', status: 'revise', draft };
     const { emit } = installBackendFixture(snapshot);
@@ -71,18 +71,18 @@ describe('unified backend → app state request lifecycle', () => {
     expect(api.selectAgent).not.toHaveBeenCalled();
   });
 
-  it.each(['codex', 'claude'] as const)('keeps %s requests on their agent through navigation and failed response', async (backend) => {
+  it.each(['codex', 'claude'] as const)('keeps %s requests on their agent through navigation and failed response', async (provider) => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = backend;
-    snapshot.agents[0]!.backendDefaults = undefined;
+    snapshot.agents[0]!.provider = provider;
+    snapshot.agents[0]!.providerDefaults = undefined;
     const { api, emit } = installBackendFixture(snapshot);
     const state = useAppState();
     await state.loadSnapshot();
     const agentId = snapshot.agents[0]!.id;
     const otherId = snapshot.agents[1]!.id;
     const request = { id: '0', conversationId: 'conversation', turnId: 'turn', kind: 'question' as const, question: { itemId: 'item', delivery: 'async' as const, blocking: false, questions: [] } };
-    emit({ type: 'agentRequest.created', backend, agentId, payload: { request } });
-    emit({ type: 'agentRequest.created', backend, agentId: otherId, payload: { request: { ...request, conversationId: 'other' } } });
+    emit({ type: 'agentRequest.created', provider: provider, agentId, payload: { request } });
+    emit({ type: 'agentRequest.created', provider: provider, agentId: otherId, payload: { request: { ...request, conversationId: 'other' } } });
     expect(state.snapshot.value.agentRequests?.[agentId]).toStrictEqual([request]);
     const navigated = { ...snapshot, activeAgentId: otherId, agentRequests: { [agentId]: [request], [otherId]: [{ ...request, conversationId: 'other' }] } };
     api.selectAgent.mockResolvedValue(navigated);
@@ -94,7 +94,7 @@ describe('unified backend → app state request lifecycle', () => {
     api.respondToClientRequest.mockResolvedValue(navigated);
     await state.respondToClientRequest({ agentId, id: '0', payload: { answers: {} } });
     expect(api.respondToClientRequest).toHaveBeenLastCalledWith({ agentId, id: '0', payload: { answers: {} } });
-    emit({ type: 'agentRequest.resolved', backend, agentId, conversationId: 'conversation', payload: { id: '0', outcome: { kind: 'answered', answers: {} } } });
+    emit({ type: 'agentRequest.resolved', provider: provider, agentId, conversationId: 'conversation', payload: { id: '0', outcome: { kind: 'answered', answers: {} } } });
     expect(state.snapshot.value.agentRequests?.[agentId]).toStrictEqual([]);
     expect(state.snapshot.value.agentRequests?.[otherId]).toHaveLength(1);
   });

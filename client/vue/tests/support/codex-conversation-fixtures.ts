@@ -1,7 +1,7 @@
-import type { CodexConversationSnapshot, SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
+import type { CodexConversationSnapshot, ConversationMessage } from '@korus-dev/multi-agent-sdk';
 
 export function codexConversationSnapshot(
-  messages: SurfaceMessage[] = [],
+  messages: ConversationMessage[] = [],
   overrides: Partial<CodexConversationSnapshot> = {},
 ): CodexConversationSnapshot {
   return {
@@ -29,7 +29,7 @@ export function codexTextMessage(
   role: 'assistant' | 'user',
   text: string,
   turnId = 'turn-1',
-): SurfaceMessage {
+): ConversationMessage {
   return {
     id,
     role,

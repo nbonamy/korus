@@ -8,7 +8,7 @@ import {
 } from '../provisioning-operations';
 
 const progress = (id: string, state: 'running' | 'success' | 'error' = 'running') => ({
-  id, state, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: true,
+  id, state, provider: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: true,
 });
 
 describe('provisioning operations', () => {

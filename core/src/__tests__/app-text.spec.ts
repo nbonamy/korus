@@ -4,9 +4,9 @@ import { appText, isAppTextDescriptor } from '../app-text';
 describe('app text', () => {
   it('accepts literal strings and valid descriptors', () => {
     expect(appText('Git failed')).toBe('Git failed');
-    expect(appText({ key: 'backend.connected', params: { backend: 'Codex', attempts: 2 } })).toEqual({
+    expect(appText({ key: 'backend.connected', params: { provider: 'Codex', attempts: 2 } })).toEqual({
       key: 'backend.connected',
-      params: { backend: 'Codex', attempts: 2 },
+      params: { provider: 'Codex', attempts: 2 },
     });
   });
 

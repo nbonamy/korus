@@ -166,7 +166,7 @@ describe('VisualizeService', () => {
     await service.saveCanvas(agentId, { visualizationId, sessionId: snapshot.agents[0].visualize!.id, expectedSource: '', expectedRevision: 2, document });
     await expect(service.saveCanvas(agentId, { visualizationId, sessionId: 'old-session', expectedSource: '', expectedRevision: 3, document })).rejects.toThrow('not active');
     await service.setOpen(agentId, true);
-    snapshot.agents[0].visualize!.conversationRef = { backend: 'codex', threadId: 'other-conversation' };
+    snapshot.agents[0].visualize!.conversationRef = { provider: 'codex', threadId: 'other-conversation' };
     await expect(service.saveCanvas(agentId, { visualizationId, sessionId: snapshot.agents[0].visualize!.id, expectedSource: '', expectedRevision: 2, document })).rejects.toThrow('not active');
   });
 
@@ -191,7 +191,7 @@ describe('VisualizeService', () => {
   it('runs the durable suggest, add, select, read, and replace workflow', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0];
-    agent.backendSession = { kind: 'codex', threadId: 'thread-visualize' };
+    agent.providerSession = { kind: 'codex', threadId: 'thread-visualize' };
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-visualize-'));
     const generatedImagesRoot = path.join(temporaryDirectory, 'generated_images');
     await mkdir(generatedImagesRoot);
@@ -211,7 +211,7 @@ describe('VisualizeService', () => {
     const entered = await service.enter(agent.id);
     expect(entered.created).toBe(true);
     expect(entered.visualize.isOpen).toBe(true);
-    expect(entered.visualize.conversationRef).toStrictEqual({ backend: 'codex', threadId: 'thread-visualize' });
+    expect(entered.visualize.conversationRef).toStrictEqual({ provider: 'codex', threadId: 'thread-visualize' });
 
     const suggested = await service.suggest(agent.id, [
       { title: 'System map', description: 'Show services and data movement.' },
@@ -430,7 +430,7 @@ describe('VisualizeService', () => {
   it('does not expose a Visualize session after its owning conversation is released', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0];
-    agent.backendSession = { kind: 'codex', threadId: 'thread-visualize' };
+    agent.providerSession = { kind: 'codex', threadId: 'thread-visualize' };
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-visualize-'));
     const generatedImagesRoot = path.join(temporaryDirectory, 'generated_images');
     await mkdir(generatedImagesRoot);
@@ -444,7 +444,7 @@ describe('VisualizeService', () => {
     await service.enter(agent.id);
     expect(service.contextForAgent(agent.id)).toBeDefined();
 
-    delete agent.backendSession;
+    delete agent.providerSession;
 
     expect(service.contextForAgent(agent.id)).toBeUndefined();
   });

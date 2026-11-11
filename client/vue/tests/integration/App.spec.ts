@@ -121,8 +121,8 @@ describe('App', () => {
 
   it('loads the main-process snapshot on mount', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes = [{
-      backend: 'codex',
+    snapshot.providerRuntimes = [{
+      provider: 'codex',
       status: 'running',
       detail: 'ready',
     }];
@@ -173,7 +173,7 @@ describe('App', () => {
 
   it('submits bare compact without opening the session-compression flow', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
     const sendPrompt = vi.fn().mockResolvedValue(snapshot);
     setElectronTestClient({
       getSnapshot: vi.fn().mockResolvedValue(snapshot),

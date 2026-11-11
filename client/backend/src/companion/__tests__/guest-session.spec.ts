@@ -29,7 +29,7 @@ import { CompanionGateway } from '../gateway';
 import { ConversationSource } from '../conversation-source';
 import { createCompanionRelay } from '../relay';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
-import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { sdkSnapshot } from '../../codex/__tests__/sdk-host-fixture';
 import { AppBackendServer } from '../../server';
 
 vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
@@ -37,14 +37,14 @@ const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const stop of cleanup.reverse()) await stop(); cleanup.length = 0; });
 // Failure modes: a bearer is claimed once; foreign targets or phone operations leak data;
 // async reads/event replay outlive revocation; cached pages cross sessions; slow peers grow queues.
-async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: import('@workspace/core/conversation-sharing').ConversationShareTarget, text: string) => Promise<{ turnId: string; messageId: string }>) {
+async function fixture(provider: Agent['provider'] = 'claude', submit?: (target: import('@workspace/core/conversation-sharing').ConversationShareTarget, text: string) => Promise<{ turnId: string; messageId: string }>) {
   const directory = await mkdtemp(path.join(tmpdir(), 'guest-boundary-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: `/ip4/127.0.0.1/tcp/${await freePort()}/ws` }); cleanup.push(() => relay.stop());
   const address = relay.getMultiaddrs()[0]!.toString();
   const pin = { origin: `ws://127.0.0.1:${/\/tcp\/(\d+)/.exec(address)![1]}`, peerId: relay.peerId.toString() };
   const key = await generateKeyPair('Ed25519'); const ownerId = peerIdFromPrivateKey(key).toString();
   const snapshot = createTestSnapshot();
-  const agent: Agent = { id: 'shared', name: 'Synthetic shared chat', teamId: 'team-test', backend, folder: '/fixture', backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'bound' } : backend === 'claude' ? { kind: 'claude', sessionId: 'bound', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
+  const agent: Agent = { id: 'shared', name: 'Synthetic shared chat', teamId: 'team-test', provider: provider, folder: '/fixture', providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'bound' } : provider === 'claude' ? { kind: 'claude', sessionId: 'bound', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = ['shared'];
   let shareChanged: (agentId: string, state: import('@workspace/core/conversation-sharing').ConversationShareState) => void = () => {};
   const shares = new ConversationShares({ directory: path.join(directory, 'shares'), endpoint: async () => ({ ownerId, relay: pin }), submit, canSubmit: () => !['working', 'awaitingInput'].includes(agent.status.type) }, () => snapshot, (agentId, state) => shareChanged(agentId, state)); cleanup.push(() => shares.close());
@@ -53,14 +53,14 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
   const created = await shares.control({ action: 'create', target }); const link = decodeConversationShareLink(created.link!, pin)!; handles.push(link.handle);
   const listeners = new Set<(event: AppBackendEvent) => void>();
   let revision = 1; let messages = [message('before-share')]; let blocked: (() => Promise<void>) | undefined;
-  const reset = (): CompanionReset => ({ type: `${backend}.conversationSnapshotChanged`, backend, agentId: agent.id, threadId: backend === 'codex' ? 'bound' : undefined, backendSessionId: backend === 'codex' ? undefined : 'bound', conversationId: 'bound', seq: revision, occurredAt: 'now', payload: { revision,
-    snapshot: backend === 'codex' ? sdkSnapshot('bound', { messages: messages as never, conversations: [{ id: 'PRIVATE_OTHER_CHAT' }] as never, queuedPrompts: [{ text: 'PRIVATE_QUEUED' }] as never }) : backend === 'antigravity' ? { ...emptyAntigravitySnapshot(agent.id, 'bound'), messages } : { agentId: agent.id, sessionId: 'bound', activeTurnId: null, turnIds: [], turns: [], messages, answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: true, loadingOlder: false }, contextUsage: null, plan: null, error: null },
+  const reset = (): CompanionReset => ({ type: `${provider}.conversationSnapshotChanged`, provider: provider, agentId: agent.id, threadId: provider === 'codex' ? 'bound' : undefined, providerSessionId: provider === 'codex' ? undefined : 'bound', conversationId: 'bound', seq: revision, occurredAt: 'now', payload: { revision,
+    snapshot: provider === 'codex' ? sdkSnapshot('bound', { messages: messages as never, conversations: [{ id: 'PRIVATE_OTHER_CHAT' }] as never, queuedPrompts: [{ text: 'PRIVATE_QUEUED' }] as never }) : provider === 'antigravity' ? { ...emptyAntigravitySnapshot(agent.id, 'bound'), messages } : { agentId: agent.id, sessionId: 'bound', activeTurnId: null, turnIds: [], turns: [], messages, answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: true, loadingOlder: false }, contextUsage: null, plan: null, error: null },
   } }) as CompanionReset;
   const source = new ConversationSource(async id => {
     await blocked?.(); const frame = reset();
     if (id !== agent.id && frame.type === 'claude.conversationSnapshotChanged') {
-      const other = snapshot.agents.find(candidate => candidate.id === id)!; const sessionId = other.backendSession!.kind === 'claude' ? other.backendSession!.sessionId : '';
-      frame.agentId = id; frame.backendSessionId = sessionId; frame.conversationId = sessionId; frame.payload.snapshot = { ...frame.payload.snapshot, agentId: id, sessionId };
+      const other = snapshot.agents.find(candidate => candidate.id === id)!; const sessionId = other.providerSession!.kind === 'claude' ? other.providerSession!.sessionId : '';
+      frame.agentId = id; frame.providerSessionId = sessionId; frame.conversationId = sessionId; frame.payload.snapshot = { ...frame.payload.snapshot, agentId: id, sessionId };
     }
     emit(frame);
   });
@@ -80,8 +80,8 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
     }),
     loadOlderHistory: vi.fn(async () => {
       await blocked?.(); const older = Array.from({ length: 120 }, (_, i) => message(`old-${i}`)); messages = [...older, ...messages]; revision++;
-      if (backend === 'claude') {
-        const frame = { ...reset(), type: 'claude.conversationEventReceived', payload: { revision, event: { type: 'history.prepended', agentId: 'shared', backend: 'claude', backendSessionId: 'bound', seq: revision, occurredAt: 'now', payload: { messages: older, hasOlder: false } } } } as Extract<ProviderConversationFrame, { type: 'claude.conversationEventReceived' }>;
+      if (provider === 'claude') {
+        const frame = { ...reset(), type: 'claude.conversationEventReceived', payload: { revision, event: { type: 'history.prepended', agentId: 'shared', provider: 'claude', providerSessionId: 'bound', seq: revision, occurredAt: 'now', payload: { messages: older, hasOlder: false } } } } as Extract<ProviderConversationFrame, { type: 'claude.conversationEventReceived' }>;
         emit(frame); return { frame, hasOlder: false };
       }
       emit(reset()); return { hasOlder: false };
@@ -97,16 +97,16 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
   async function open(route = link, identity?: number) { let transport = identity === undefined ? undefined : transports.get(identity); if (!transport) { transport = new GuestConversationTransport(await generateKeyPair('Ed25519'), pin); cleanup.push(() => transport!.stop()); if (identity !== undefined) transports.set(identity, transport); } const opened = await transport.open(route); if (opened.status !== 'ready') throw new Error(opened.status); return opened.stream; }
   async function client(name = ' Alex ', route = link, identity?: number) { const stream = await open(route, identity); const client = new GuestConversationClient(stream); cleanup.push(() => client.close()); const joined = await client.join(route, name); return { client, joined }; }
   return { addEmbeddedImage: (reference: string) => { messages.push({ ...message('embedded-image'), parts: [{ type: 'media', media: { url: reference, mimeType: 'image/png' } }] } as never); revision++; }, manyReferences: () => { messages = [{ ...message('many-media'), parts: [{ type: 'text', text: Array.from({ length: 2049 }, (_, index) => `![image](/fixture/${index}.png)`).join('\n') }] }]; revision++; }, forgetMedia: () => { messages = [message('recent-only')]; revision++; source.clear(); }, addLink: async (index: number) => {
-    const other = { ...agent, id: `shared-${index}`, backendSession: { kind: 'claude' as const, sessionId: `bound-${index}`, transport: 'stdio' as const } }; snapshot.agents.push(other);
+    const other = { ...agent, id: `shared-${index}`, providerSession: { kind: 'claude' as const, sessionId: `bound-${index}`, transport: 'stdio' as const } }; snapshot.agents.push(other);
     const value = await shares.control({ action: 'create', target: conversationShareTarget(other)! });
     const route = decodeConversationShareLink(value.link!, pin)!; handles.push(route.handle); await connector.advertise(); return route;
   }, delta: (gap = false) => {
     messages.push(message(gap ? 'after-gap' : 'delta')); revision += gap ? 3 : 1;
-    const event = backend === 'codex' ? { type: 'message.appended', origin: 'notification', conversationId: 'bound', seq: revision, occurredAt: 'now', payload: { message: messages.at(-1) } }
-      : backend === 'claude' ? { type: 'message.userSubmitted', agentId: 'shared', backendSessionId: 'bound', seq: revision, occurredAt: 'now', payload: { message: messages.at(-1) } }
+    const event = provider === 'codex' ? { type: 'message.appended', origin: 'notification', conversationId: 'bound', seq: revision, occurredAt: 'now', payload: { message: messages.at(-1) } }
+      : provider === 'claude' ? { type: 'message.userSubmitted', agentId: 'shared', providerSessionId: 'bound', seq: revision, occurredAt: 'now', payload: { message: messages.at(-1) } }
       : { type: 'message.upsert', agentId: 'shared', sessionId: 'bound', turnId: 'turn', occurredAt: 'now', payload: { message: messages.at(-1) } };
-    emit({ ...reset(), type: `${backend}.conversationEventReceived`, payload: { revision, event } } as ProviderConversationFrame);
-  }, directory, pin, ownerId, connector, gateway, shares, target, link, snapshot, port, listeners, client, open, emit, reset, source, block: (work?: () => Promise<void>) => { blocked = work; }, addMedia: () => { messages.push({ ...message('media'), parts: [{ type: 'text', text: '![image](/fixture/output.png)' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: 19 } } as never); revision++; }, live: () => { messages.push(message('live')); revision++; emit(reset()); }, replace: () => { agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'OTHER' } : backend === 'claude' ? { kind: 'claude', sessionId: 'OTHER', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'OTHER' }; void shares.reconcile(); } };
+    emit({ ...reset(), type: `${provider}.conversationEventReceived`, payload: { revision, event } } as ProviderConversationFrame);
+  }, directory, pin, ownerId, connector, gateway, shares, target, link, snapshot, port, listeners, client, open, emit, reset, source, block: (work?: () => Promise<void>) => { blocked = work; }, addMedia: () => { messages.push({ ...message('media'), parts: [{ type: 'text', text: '![image](/fixture/output.png)' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: 19 } } as never); revision++; }, live: () => { messages.push(message('live')); revision++; emit(reset()); }, replace: () => { agent.providerSession = provider === 'codex' ? { kind: 'codex', threadId: 'OTHER' } : provider === 'claude' ? { kind: 'claude', sessionId: 'OTHER', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'OTHER' }; void shares.reconcile(); } };
 }
 function message(id: string) { return { id, agentId: 'shared', role: 'user' as const, status: 'complete' as const, parts: [{ type: 'text' as const, text: id }], createdAt: '2026-01-01T00:00:00Z' }; }
 async function freePort() { const server = createServer(); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port; }
@@ -196,7 +196,7 @@ describe('encrypted guest conversation authorization', () => {
     await vi.waitFor(async () => expect((await call({ action: 'state' })).view?.status).toBe('ready'));
     expect(snapshot.agents).toHaveLength(1);
     expect(snapshot.agents[0]).toMatchObject({ teamId: 'team-test', sessionKind: 'quickChat', sharedConversation: { joinId: prepared.view!.id } });
-    expect(snapshot.agents[0]!.backendSession).toBeUndefined();
+    expect(snapshot.agents[0]!.providerSession).toBeUndefined();
     const suggestion = { id: randomUUID(), text: 'A suggestion to withdraw' };
     await call({ action: 'propose', id: prepared.view!.id, proposalId: suggestion.id, text: suggestion.text, followUpBehavior: 'steer' });
     const withdrawn = await call({ action: 'withdraw', id: prepared.view!.id, proposalId: suggestion.id });
@@ -523,37 +523,37 @@ describe('encrypted guest conversation authorization', () => {
     await expect(blocked.control({ action: 'state' })).rejects.toThrow('Guest storage is unavailable');
     expect(f.listeners.size).toBe(0);
   }, 30_000);
-  it.each(['codex', 'claude', 'antigravity'] as const)('serves only the bound %s conversation to multiple holders, including history and live provider frames', async backend => {
-    const f = await fixture(backend); const first = await f.client(); const second = await f.client('Alex');
+  it.each(['codex', 'claude', 'antigravity'] as const)('serves only the bound %s conversation to multiple holders, including history and live provider frames', async provider => {
+    const f = await fixture(provider); const first = await f.client(); const second = await f.client('Alex');
     expect(first.joined.participant.name).toBe('Alex'); expect(first.joined.participant.discriminator).not.toBe(second.joined.participant.discriminator);
     await first.client.synchronize(); await second.client.synchronize();
     expect(first.client.snapshot?.payload.snapshot.messages.map(m => m.id)).toStrictEqual(['before-share']);
     expect(JSON.stringify(first.client.snapshot)).not.toMatch(/PRIVATE_OTHER_CHAT|PRIVATE_QUEUED|team-test/);
     expect((await f.shares.control({ action: 'status', target: f.target })).state.connectedGuests).toBe(2);
     await first.client.loadOlder(); expect(first.client.snapshot?.payload.snapshot.messages).toHaveLength(121);
-    if (backend === 'codex') { await first.client.loadTurnHistory('old-turn'); expect(first.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('turn-working-details'); expect(f.port.loadTurnHistory).toHaveBeenCalledExactlyOnceWith('shared', 'old-turn'); }
+    if (provider === 'codex') { await first.client.loadTurnHistory('old-turn'); expect(first.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('turn-working-details'); expect(f.port.loadTurnHistory).toHaveBeenCalledExactlyOnceWith('shared', 'old-turn'); }
     f.delta(); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('delta'));
     f.delta(true); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('after-gap'));
     f.live(); await vi.waitFor(() => expect(second.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('live'));
-    if (backend === 'codex') { const privateEvent = { ...f.reset(), type: 'codex.conversationEventReceived', payload: { revision: (first.client.snapshot?.payload.revision ?? 0) + 1, event: { type: 'conversation.queueChanged', origin: 'notification', conversationId: 'bound', seq: 999, occurredAt: 'now', payload: { queuedPrompts: [{ id: 'private-queued', text: 'PRIVATE_PENDING' }] } } } } as ProviderConversationFrame; f.emit(privateEvent); await vi.waitFor(() => expect(first.client.snapshot?.payload.revision).toBe(privateEvent.payload.revision)); expect(JSON.stringify(first.client.snapshot)).not.toContain('PRIVATE_PENDING'); }
+    if (provider === 'codex') { const privateEvent = { ...f.reset(), type: 'codex.conversationEventReceived', payload: { revision: (first.client.snapshot?.payload.revision ?? 0) + 1, event: { type: 'conversation.queueChanged', origin: 'notification', conversationId: 'bound', seq: 999, occurredAt: 'now', payload: { queuedPrompts: [{ id: 'private-queued', text: 'PRIVATE_PENDING' }] } } } } as ProviderConversationFrame; f.emit(privateEvent); await vi.waitFor(() => expect(first.client.snapshot?.payload.revision).toBe(privateEvent.payload.revision)); expect(JSON.stringify(first.client.snapshot)).not.toContain('PRIVATE_PENDING'); }
     const checkpoint = first.client.checkpoint; await first.client.synchronize(checkpoint); expect(first.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('live');
     f.source.clear(); await first.client.synchronize(checkpoint); expect(first.client.snapshot?.payload.snapshot.messages.at(-1)?.id).toBe('live');
     await f.shares.control({ action: 'revoke', handle: f.link.handle, target: f.target });
     await vi.waitFor(() => expect(f.listeners.size).toBe(0)); await vi.waitFor(() => expect(first.client.snapshot).toBeNull());
     expect(second.client.snapshot).toBeNull();
-    await evidence(backend, { holders: 2, historyRows: 121, revokedSubscriptions: f.listeners.size, fixtureOnly: true });
+    await evidence(provider, { holders: 2, historyRows: 121, revokedSubscriptions: f.listeners.size, fixtureOnly: true });
   }, 30_000);
   it('keeps admitted guest streams alive when mobile access is disabled through the daemon manager', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'guest-manager-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const port = await freePort(); const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: `/ip4/127.0.0.1/tcp/${port}/ws` }); cleanup.push(() => relay.stop());
     const pin = { origin: `ws://127.0.0.1:${port}`, peerId: relay.peerId.toString() };
-    const snapshot = createTestSnapshot(); const agent: Agent = { id: 'shared', teamId: 'team-test', name: 'Synthetic', folder: null, backend: 'antigravity', backendSession: { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }; snapshot.agents = [agent];
+    const snapshot = createTestSnapshot(); const agent: Agent = { id: 'shared', teamId: 'team-test', name: 'Synthetic', folder: null, provider: 'antigravity', providerSession: { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }; snapshot.agents = [agent];
     let shares!: ConversationShares; let manager!: CompanionManager;
     manager = new CompanionManager(path.join(directory, 'companion'), {
       authorizeGuest: (handle, credential) => shares.authorize(handle, credential), guestCount: (handle, count) => shares.connected(handle, count),
       request: async <T>(method: string): Promise<T> => {
         if (method !== backendMethods.agentConversationLoad) throw new Error('Unexpected owner operation');
-        manager.event({ type: 'antigravity.conversationSnapshotChanged', agentId: 'shared', backend: 'antigravity', backendSessionId: 'bound', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { ...emptyAntigravitySnapshot('shared', 'bound'), messages: [message('before-share')] } } }); return undefined as T;
+        manager.event({ type: 'antigravity.conversationSnapshotChanged', agentId: 'shared', provider: 'antigravity', providerSessionId: 'bound', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { ...emptyAntigravitySnapshot('shared', 'bound'), messages: [message('before-share')] } } }); return undefined as T;
       },
     }, { APP_COMPANION_RELAY_URL: pin.origin, APP_COMPANION_RELAY_PEER_ID: pin.peerId }); cleanup.push(() => manager.stop());
     const endpoint = (await manager.shareEndpoint())!;
@@ -622,7 +622,7 @@ describe('encrypted guest conversation authorization', () => {
     for (const name of ['', '  ', 'A\nB', 'A\u202eB', 'a'.repeat(81)]) expect((await request('guest.join', { handle: f.link.handle, credential: f.link.credential, name })).error).toBe('denied');
     const joined = (await request('guest.join', { handle: f.link.handle, credential: f.link.credential, name: 'Alex' })).result as import('@workspace/core/guest-conversation').GuestConversationJoined;
     expect(joined).toBeDefined();
-    const denied = ['snapshot.get', 'pair.claim', 'agent.prompt', 'prompt.send', 'prompt.submit', 'agent/prompt/send', 'conversation/read', 'skills.list', 'agent.git.diff', 'team.create', 'agent.backend.set', 'agent.approvalPreset.set', 'agent.interrupt', 'agent.request.respond', 'agent.model.select', 'agent.permissionMode.set', 'rpc', 'conversation.subscribe'];
+    const denied = ['snapshot.get', 'pair.claim', 'agent.prompt', 'prompt.send', 'prompt.submit', 'agent/prompt/send', 'conversation/read', 'skills.list', 'agent.git.diff', 'team.create', 'agent.provider.set', 'agent.approvalPreset.set', 'agent.interrupt', 'agent.request.respond', 'agent.model.select', 'agent.permissionMode.set', 'rpc', 'conversation.subscribe'];
     for (const method of denied) expect((await request(method, {})).error).toBe('denied');
     await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity: joined.participant.identity, writeAccess: true });
     for (const method of denied) expect((await request(method, {})).error).toBe('denied');

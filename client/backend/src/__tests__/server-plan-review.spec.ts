@@ -2,30 +2,30 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { AppStateStore } from '../persistence/store';
 
 it('routes a native proposal → saved feedback → revision → explicit approval through the owning server', async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), 'markdown-review-roundtrip-'));
   const store = new AppStateStore(home);
   const snapshot = createInitialSnapshot();
-  snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+  snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   const agent = snapshot.agents[0]!;
-  agent.backendSession = { kind: 'codex', threadId: 'review-thread' };
+  agent.providerSession = { kind: 'codex', threadId: 'review-thread' };
   let publish!: (event: BackendEvent) => void;
-  const sendPrompt = vi.fn().mockResolvedValue({ backendSession: agent.backendSession, turnId: 'revision-turn' });
-  const driver: AgentBackendDriver = {
-    backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-    getCapabilities: () => codexBackendCapabilities, sendPrompt,
-    interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'review-thread' } }),
+  const sendPrompt = vi.fn().mockResolvedValue({ providerSession: agent.providerSession, turnId: 'revision-turn' });
+  const driver: AgentProviderDriver = {
+    provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+    getCapabilities: () => codexProviderCapabilities, sendPrompt,
+    interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'review-thread' } }),
     respondToAgentRequest: async () => undefined,
     onEvent: listener => { publish = listener; return () => undefined; }, close: async () => undefined,
   };
-  const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: next => store.save(next) });
+  const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: next => store.save(next) });
   const proposal = (turnId: string, markdown: string) => publish({ type: 'plan.readyForReview', agentId: agent.id, conversationId: 'review-thread', turnId, payload: { markdown, itemId: turnId } });
   const respond = (response: object) => server.handleMessage({ jsonrpc: '2.0', id: 'respond', method: 'agent/planReview/respond', params: { agentId: agent.id, response } });
   try {

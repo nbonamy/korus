@@ -1,13 +1,13 @@
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type {
   Agent,
   ExecutionSelection,
   AgentFileSearchItem,
   AppSnapshot,
-  BackendCapabilities,
-  BackendModelOption,
-  BackendPluginSummary,
-  BackendSkillSummary,
+  ProviderCapabilities,
+  ProviderModelOption,
+  ProviderPluginSummary,
+  ProviderSkillSummary,
   MainToRendererEvent,
   ReasoningEffort,
   RendererSendPromptOptions,
@@ -15,16 +15,16 @@ import type {
 import { computed, reactive, ref } from 'vue';
 import { AsyncCatalogCache, type AsyncCatalogEntry, type AsyncCatalogStatus } from './async-catalog-cache';
 import { appApi } from './platform-api';
-import { projectSessionSelection } from '@korus-dev/multi-agent-sdk/conversations/presentation';
+import { projectSessionSelection } from '@korus-dev/multi-agent-sdk/renderer';
 
 export type AgentComposerConfiguration = {
-  backend: Agent['backend'] | undefined;
+  provider: Agent['provider'] | undefined;
   selectionSource: string;
-  models: BackendModelOption[];
+  models: ProviderModelOption[];
   modelStatus: AsyncCatalogStatus;
   modelError: string | null;
-  skills: BackendSkillSummary[];
-  plugins: BackendPluginSummary[];
+  skills: ProviderSkillSummary[];
+  plugins: ProviderPluginSummary[];
   skillStatus: AsyncCatalogStatus;
   skillError: string | null;
   files: AgentFileSearchItem[];
@@ -59,11 +59,11 @@ export function createAgentComposerState(options: {
       },
     });
   }
-  const backendModels = activeField('models', []);
+  const providerModels = activeField('models', []);
   const modelCatalogStatus = activeField('modelStatus', 'notLoaded');
   const modelCatalogError = activeField('modelError', null);
-  const backendSkills = activeField('skills', []);
-  const backendPlugins = activeField('plugins', []);
+  const providerSkills = activeField('skills', []);
+  const providerPlugins = activeField('plugins', []);
   const skillCatalogStatus = activeField('skillStatus', 'notLoaded');
   const skillCatalogError = activeField('skillError', null);
   const agentFiles = activeField('files', []);
@@ -74,13 +74,13 @@ export function createAgentComposerState(options: {
   const selectedServiceTier = activeField('selectedServiceTier', null);
   const planMode = activeField('planMode', false);
   const selectedModel = computed(() => (
-    backendModels.value.find((model) => model.id === selectedModelId.value) ?? null
+    providerModels.value.find((model) => model.id === selectedModelId.value) ?? null
   ));
 
   const loadsByAgentId = new Map<string, Promise<void>>();
-  const modelCache = new AsyncCatalogCache<string, BackendModelOption>((value) => ({ ...value }));
-  const skillCache = new AsyncCatalogCache<string, BackendSkillSummary>((value) => ({ ...value }));
-  const pluginCache = new AsyncCatalogCache<string, BackendPluginSummary>((value) => ({ ...value }));
+  const modelCache = new AsyncCatalogCache<string, ProviderModelOption>((value) => ({ ...value }));
+  const skillCache = new AsyncCatalogCache<string, ProviderSkillSummary>((value) => ({ ...value }));
+  const pluginCache = new AsyncCatalogCache<string, ProviderPluginSummary>((value) => ({ ...value }));
   const fileCache = new AsyncCatalogCache<string, AgentFileSearchItem>((value) => ({ ...value }));
   const selectionSavesByAgentId = new Map<string, Promise<void>>();
   let catalogSessionSource: unknown = null;
@@ -98,7 +98,7 @@ export function createAgentComposerState(options: {
     }
     const selection = selectionFromAgent(agent);
     const created: AgentComposerConfiguration = {
-      backend: agent?.backend,
+      provider: agent?.provider,
       selectionSource: selection.source,
       models: [],
       modelStatus: 'notLoaded',
@@ -175,16 +175,16 @@ export function createAgentComposerState(options: {
     rememberSelectionForAgent(agentId, model, current.selectedReasoningEffort, serviceTier);
   }
 
-  function rememberSelectionForAgent(agentId: string, model: BackendModelOption, reasoningEffort: ReasoningEffort | null, serviceTier: string | null): void {
+  function rememberSelectionForAgent(agentId: string, model: ProviderModelOption, reasoningEffort: ReasoningEffort | null, serviceTier: string | null): void {
     const agent = snapshot().agents.find((candidate) => candidate.id === agentId);
     if (!agent) return;
-    const backend = agent.backend;
-    const selection: ExecutionSelection = { backend, model: model.model, reasoningEffort, serviceTier };
+    const provider = agent.provider;
+    const selection: ExecutionSelection = { provider: provider, model: model.model, reasoningEffort, serviceTier };
     configuration(agentId).pendingSelection = selection;
     if (!options.persistSelection) return;
     const previous = selectionSavesByAgentId.get(agentId) ?? Promise.resolve();
     const save = previous.then(() => {
-      if (snapshot().agents.find((candidate) => candidate.id === agentId)?.backend !== backend) return;
+      if (snapshot().agents.find((candidate) => candidate.id === agentId)?.provider !== provider) return;
       return options.persistSelection!(agentId, selection);
     }).catch((error: unknown) => {
       options.onSelectionSaveError?.(error);
@@ -206,7 +206,7 @@ export function createAgentComposerState(options: {
 
   async function loadActive(agentId = snapshot().activeAgentId): Promise<void> {
     if (!agentId || snapshot().agents.find(agent => agent.id === agentId)?.sharedConversation) return;
-    const key = `${agentId}:${snapshot().agents.find(agent => agent.id === agentId)?.backend}`;
+    const key = `${agentId}:${snapshot().agents.find(agent => agent.id === agentId)?.provider}`;
     const existing = loadsByAgentId.get(key);
     if (existing) return existing;
     const load = Promise.all([
@@ -228,7 +228,7 @@ export function createAgentComposerState(options: {
     const source = appApi;
     const agent = agentId ? snapshot().agents.find((candidate) => candidate.id === agentId) : null;
     const initial = agentId ? configuration(agentId) : null;
-    if (!agent || !source?.listBackendModels) {
+    if (!agent || !source?.listProviderModels) {
       if (initial) {
         initial.models = [];
         initial.modelStatus = 'notLoaded';
@@ -242,8 +242,8 @@ export function createAgentComposerState(options: {
       cache: modelCache,
       key: modelKey(agent),
       session: source,
-      source: source.listBackendModels,
-      load: () => source.listBackendModels!(agent.id),
+      source: source.listProviderModels,
+      load: () => source.listProviderModels!(agent.id),
       sync: syncModels,
     });
   }
@@ -252,7 +252,7 @@ export function createAgentComposerState(options: {
     const source = appApi;
     const agent = agentId ? snapshot().agents.find((candidate) => candidate.id === agentId) : null;
     const initial = agentId ? configuration(agentId) : null;
-    if (!agent || !source?.listBackendSkills) {
+    if (!agent || !source?.listProviderSkills) {
       if (initial) {
         initial.skills = [];
         initial.skillStatus = 'notLoaded';
@@ -265,8 +265,8 @@ export function createAgentComposerState(options: {
       cache: skillCache,
       key: catalogKey(agent),
       session: source,
-      source: source.listBackendSkills,
-      load: () => source.listBackendSkills!(agent.id),
+      source: source.listProviderSkills,
+      load: () => source.listProviderSkills!(agent.id),
       sync: syncSkills,
     });
   }
@@ -275,7 +275,7 @@ export function createAgentComposerState(options: {
     const source = appApi;
     const agent = agentId ? snapshot().agents.find((candidate) => candidate.id === agentId) : null;
     const initial = agentId ? configuration(agentId) : null;
-    if (!agent || !source?.listBackendPlugins || !capabilitiesForAgent(agent).plugins) {
+    if (!agent || !source?.listProviderPlugins || !capabilitiesForAgent(agent).plugins) {
       if (initial) {
         initial.plugins = [];
       }
@@ -286,8 +286,8 @@ export function createAgentComposerState(options: {
       cache: pluginCache,
       key: catalogKey(agent),
       session: source,
-      source: source.listBackendPlugins,
-      load: () => source.listBackendPlugins!(agent.id),
+      source: source.listProviderPlugins,
+      load: () => source.listProviderPlugins!(agent.id),
       sync: syncPlugins,
     });
   }
@@ -357,7 +357,7 @@ export function createAgentComposerState(options: {
     synchronizeSelectionWithAgent(configurationByAgentId.get(agentId)!, agent);
   }
 
-  function syncModels(agentId: string, cache: AsyncCatalogEntry<BackendModelOption>): void {
+  function syncModels(agentId: string, cache: AsyncCatalogEntry<ProviderModelOption>): void {
     const current = configuration(agentId);
     current.models = cache.value;
     current.modelStatus = cache.status;
@@ -365,14 +365,14 @@ export function createAgentComposerState(options: {
     if (cache.status === 'loaded') selectDefaultModel(current);
   }
 
-  function syncSkills(agentId: string, cache: AsyncCatalogEntry<BackendSkillSummary>): void {
+  function syncSkills(agentId: string, cache: AsyncCatalogEntry<ProviderSkillSummary>): void {
     const current = configuration(agentId);
     current.skills = cache.value;
     current.skillStatus = cache.status;
     current.skillError = cache.error;
   }
 
-  function syncPlugins(agentId: string, cache: AsyncCatalogEntry<BackendPluginSummary>): void {
+  function syncPlugins(agentId: string, cache: AsyncCatalogEntry<ProviderPluginSummary>): void {
     configuration(agentId).plugins = cache.value;
   }
 
@@ -394,13 +394,13 @@ export function createAgentComposerState(options: {
     /** Read the catalog again even if it is already loaded. */
     refresh?: boolean;
   }): Promise<void> {
-    const backend = snapshot().agents.find(agent => agent.id === catalog.agentId)?.backend;
+    const backend = snapshot().agents.find(agent => agent.id === catalog.agentId)?.provider;
     const entry = catalog.refresh
       ? catalog.cache.refresh(catalog.key, catalog.source, catalog.load)
       : catalog.cache.load(catalog.key, catalog.source, catalog.load);
     catalog.sync(catalog.agentId, entry);
     await entry.promise;
-    if (catalog.session !== appApi || snapshot().agents.find(agent => agent.id === catalog.agentId)?.backend !== backend) return;
+    if (catalog.session !== appApi || snapshot().agents.find(agent => agent.id === catalog.agentId)?.provider !== backend) return;
     catalog.sync(catalog.agentId, entry);
   }
 
@@ -408,12 +408,12 @@ export function createAgentComposerState(options: {
     const cwd = event.payload.cwd;
     const skills = event.payload.skills.map((skill) => ({ ...skill }));
     const agents = snapshot().agents.filter((agent) => (
-      agent.backend === event.backend &&
+      agent.provider === event.provider &&
       (event.agentId === agent.id || (!event.agentId && !connectionId(agent) && agent.folder === cwd))
     ));
     for (const agent of agents) {
       const cache = skillCache.entry(catalogKey(agent));
-      if (cache.status === 'loaded' && sameBackendSkills(cache.value, skills)) continue;
+      if (cache.status === 'loaded' && sameProviderSkills(cache.value, skills)) continue;
       skillCache.replace(catalogKey(agent), skills);
       syncSkills(agent.id, cache);
     }
@@ -423,7 +423,7 @@ export function createAgentComposerState(options: {
     const models = event.payload.models.map((model) => ({ ...model }));
     const owner = event.agentId ? snapshot().agents.find((agent) => agent.id === event.agentId) : undefined;
     if (event.agentId && !owner) return;
-    const key = owner ? modelKey(owner) : JSON.stringify([event.backend, 'local']);
+    const key = owner ? modelKey(owner) : JSON.stringify([event.provider, 'local']);
     const cache = modelCache.entry(key);
     if (cache.status === 'loaded' && JSON.stringify(cache.value) === JSON.stringify(models)) return;
     modelCache.replace(key, models);
@@ -438,7 +438,7 @@ export function createAgentComposerState(options: {
   }
 
   function modelKey(agent: Agent): string {
-    return JSON.stringify([agent.backend, connectionId(agent) ?? 'local']);
+    return JSON.stringify([agent.provider, connectionId(agent) ?? 'local']);
   }
 
   function catalogKey(agent: Agent): string {
@@ -504,17 +504,17 @@ export function createAgentComposerState(options: {
     };
   }
 
-  function capabilitiesForAgent(agent: Agent | null): BackendCapabilities {
-    const backend = agent?.backend ?? 'codex';
-    const runtime = snapshot().backendRuntimes.find((candidate) => candidate.backend === backend);
-    return { ...defaultBackendCapabilities(backend), ...runtime?.capabilities };
+  function capabilitiesForAgent(agent: Agent | null): ProviderCapabilities {
+    const backend = agent?.provider ?? 'codex';
+    const runtime = snapshot().providerRuntimes.find((candidate) => candidate.provider === backend);
+    return { ...defaultProviderCapabilities(backend), ...runtime?.capabilities };
   }
 
   return {
     agentFiles,
-    backendModels,
-    backendPlugins,
-    backendSkills,
+    providerModels,
+    providerPlugins,
+    providerSkills,
     fileCatalogError,
     fileCatalogStatus,
     handleMainEvent,
@@ -566,17 +566,17 @@ function selectDefaultModel(configuration: AgentComposerConfiguration): void {
 }
 
 function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { source: string } {
-  if (!agent) return { source: 'missing', backend: 'codex', model: null, reasoningEffort: null, serviceTier: null };
-  const defaults = agent.backendDefaults?.kind === agent.backend ? agent.backendDefaults : undefined;
-  const native = projectSessionSelection(agent.backendSession);
+  if (!agent) return { source: 'missing', provider: 'codex', model: null, reasoningEffort: null, serviceTier: null };
+  const defaults = agent.providerDefaults?.kind === agent.provider ? agent.providerDefaults : undefined;
+  const native = projectSessionSelection(agent.providerSession);
   const model = native?.model ?? defaults?.model ?? null;
   const reasoningEffort = native ? native.reasoningEffort ?? null : defaults?.reasoningEffort ?? null;
   const serviceTier = defaults && defaults.kind !== 'antigravity' ? defaults.serviceTier ?? null : null;
-  const sessionId = agent.backendSession?.kind === 'codex'
-    ? agent.backendSession.threadId
-    : agent.backendSession?.sessionId ?? 'new';
+  const sessionId = agent.providerSession?.kind === 'codex'
+    ? agent.providerSession.threadId
+    : agent.providerSession?.sessionId ?? 'new';
   return {
-    backend: agent.backend, source: JSON.stringify([agent.backend, sessionId, model, reasoningEffort, serviceTier]),
+    provider: agent.provider, source: JSON.stringify([agent.provider, sessionId, model, reasoningEffort, serviceTier]),
     model,
     reasoningEffort,
     serviceTier,
@@ -585,10 +585,10 @@ function selectionFromAgent(agent: Agent | undefined): ExecutionSelection & { so
 
 function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration, agent: Agent): void {
   const selection = selectionFromAgent(agent);
-  if (configuration.backend !== agent.backend) configuration.pendingSelection = null;
+  if (configuration.provider !== agent.provider) configuration.pendingSelection = null;
   else if (configuration.pendingSelection) return;
   if (configuration.selectionSource === selection.source) return;
-  if (configuration.backend !== agent.backend) {
+  if (configuration.provider !== agent.provider) {
     configuration.models = [];
     configuration.modelStatus = 'notLoaded';
     configuration.modelError = null;
@@ -598,7 +598,7 @@ function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration
     configuration.skillError = null;
     configuration.planMode = false;
   }
-  configuration.backend = agent.backend;
+  configuration.provider = agent.provider;
   configuration.selectionSource = selection.source;
   configuration.selectedModelId = selection.model;
   configuration.selectedReasoningEffort = selection.reasoningEffort;
@@ -606,27 +606,27 @@ function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration
   if (configuration.modelStatus === 'loaded') selectDefaultModel(configuration);
 }
 
-function modelMatchesSelection(model: BackendModelOption, selection: string | null): boolean {
+function modelMatchesSelection(model: ProviderModelOption, selection: string | null): boolean {
   return Boolean(selection && (
     model.id === selection || model.model === selection || model.providerMetadata?.resolvedModel === selection
   ));
 }
 
-function defaultReasoningEffort(model: BackendModelOption): ReasoningEffort | null {
+function defaultReasoningEffort(model: ProviderModelOption): ReasoningEffort | null {
   return model.defaultReasoningEffort || model.supportedReasoningEfforts?.[0]?.reasoningEffort || null;
 }
 
-function serviceTierForModel(model: BackendModelOption, serviceTier: string | null): string | null {
+function serviceTierForModel(model: ProviderModelOption, serviceTier: string | null): string | null {
   return serviceTier === null || model.serviceTiers?.some((tier) => tier.id === serviceTier)
     ? serviceTier
     : defaultServiceTier(model);
 }
 
-function defaultServiceTier(model: BackendModelOption): string | null {
+function defaultServiceTier(model: ProviderModelOption): string | null {
   return model.defaultServiceTier ?? null;
 }
 
-function sameBackendSkills(left: readonly BackendSkillSummary[], right: readonly BackendSkillSummary[]): boolean {
+function sameProviderSkills(left: readonly ProviderSkillSummary[], right: readonly ProviderSkillSummary[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((skill, index) => {
     const other = right[index];

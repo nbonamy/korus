@@ -17,11 +17,11 @@ import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
-import type { Agent, BackendConversationRef, SystemPermissionsStatus } from '@workspace/core/contracts';
+import type { Agent, ProviderConversationRef, SystemPermissionsStatus } from '@workspace/core/contracts';
 import { formatConversationTitle, shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
-import type { AgentBackendDriver, BackendSendResult } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver, ProviderSendResult } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import { BackendDriverRpc, createBackendDriver, createDefaultBackendDrivers, type BackendDriverRegistryOptions } from './driver-rpc';
+import { ProviderDriverRpc, createProviderDriver, createDefaultProviderDrivers, type ProviderDriverRegistryOptions } from './driver-rpc';
 import { ProviderSetup } from './provider-setup';
 import { ProviderUpdates } from './provider-updates';
 import { ProviderUpdateRuntime } from './provider-update-runtime';
@@ -98,11 +98,11 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   }).catch(() => undefined); // Optional telemetry must never prevent normal startup.
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
-  const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
-    if (backend === 'codex') {
+  const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async provider => {
+    if (provider === 'codex') {
       pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
     }
-    await driverRpc.replaceDriver(backend, () => createBackendDriver(backend, { ...driverOptions, generalSettings: snapshot.general }));
+    await driverRpc.replaceDriver(provider, () => createProviderDriver(provider, { ...driverOptions, generalSettings: snapshot.general }));
   }, undefined, () => backupProviderSetup(snapshot));
   await providerSetup.initialize();
   let pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
@@ -222,7 +222,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     resolveWorkspaceIdentity: (folder) => agentGitService.identity(folder),
     worktreeManager,
     agentCreation,
-    createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
+    createProject: (agentId, name, prompt, provider) => server.createProjectFromQuickChat(agentId, name, prompt, provider),
     startMission: (agentId, input) => server.startMissionFromAgent(agentId, input),
     gitDiff: (folder, target) => agentGitService.diff(folder, target as Exclude<typeof target, { type: 'turn' }>),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
@@ -234,7 +234,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       createDebugToolModuleProvider(options.features?.debugTools === true, (agentId, reason) => options.requestClient(backendMethods.clientDebugBackendRestart, { agentId, reason })),
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
-        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,
+        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/provider-driver').ProviderImageGenerationResult>,
       })),
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
@@ -245,7 +245,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     ],
   });
   const mcpServerUrl = await mcpService.start();
-  const driverOptions: BackendDriverRegistryOptions = {
+  const driverOptions: ProviderDriverRegistryOptions = {
     appMcpServerUrl: mcpServerUrl,
     hostedMcpServerUrls: () => mcpService.hostedMcpServerUrls(),
     generalSettings: snapshot.general,
@@ -263,53 +263,53 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       visualizeService.developerInstructions(),
     ].filter(Boolean).join('\n\n') || undefined,
   };
-  const backendDrivers = createDefaultBackendDrivers(driverOptions);
-  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend), requirements);
+  const providerDrivers = createDefaultProviderDrivers(driverOptions);
+  const driverRpc: ProviderDriverRpc = new ProviderDriverRpc(providerDrivers, worktreeManager, provider => server.requireConnectedEngine(provider), provider => providerUpdates.isUpdating(provider), requirements);
   const updater = new ProviderUpdateRuntime({
-    command: backend => backend === 'codex'
+    command: provider => provider === 'codex'
       ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
       : resolveClaudeLaunch().command,
     cursorHome: () => snapshot.general.providerHomes?.cursor,
     claudeHome: () => snapshot.general.providerHomes?.claude?.homePath ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude'),
   });
   const providerUpdates: ProviderUpdates = new ProviderUpdates({
-    inspect: backend => updater.inspect(backend),
+    inspect: provider => updater.inspect(provider),
     upgrade: installation => updater.upgrade(installation),
-    busy: backend => {
-      const agents = localProviderAgents(snapshot, backend);
+    busy: provider => {
+      const agents = localProviderAgents(snapshot, provider);
       const ids = new Set(agents.map(agent => agent.id));
-      return providerSetup.isChanging() || driverRpc.isBusy(backend)
+      return providerSetup.isChanging() || driverRpc.isBusy(provider)
         || agents.some(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput' || handoffInProgress(agent))
         || (snapshot.queuedPrompts ?? []).some(prompt => ids.has(prompt.agentId));
     },
-    withStoppedProvider: async (backend, work) => {
-      const agents = localProviderAgents(snapshot, backend).filter(agent => agent.backendSession);
-      const current = backendDrivers.get(backend)!;
+    withStoppedProvider: async (provider, work) => {
+      const agents = localProviderAgents(snapshot, provider).filter(agent => agent.providerSession);
+      const current = providerDrivers.get(provider)!;
       for (const agent of agents) await current.assertHandoffReady?.(agent);
-      await driverRpc.replaceDriver(backend, () => createBackendDriver(backend, { ...driverOptions, generalSettings: snapshot.general }), work);
+      await driverRpc.replaceDriver(provider, () => createProviderDriver(provider, { ...driverOptions, generalSettings: snapshot.general }), work);
       // Rehydrate the same sessions, never restart/reset the conversation identity.
-      const replacement = backendDrivers.get(backend)!;
+      const replacement = providerDrivers.get(provider)!;
       for (const agent of agents) await replacement.loadConversation?.(agent);
     },
   });
   const automationRunner = new AutomationRunner({
-    requireConnectedEngine: backend => server.requireConnectedEngine(backend),
+    requireConnectedEngine: provider => server.requireConnectedEngine(provider),
     getSnapshot: () => snapshot,
     notifySnapshotUpdated: () => server.emitEvent({
       type: 'snapshot.updated',
       payload: snapshot,
     }),
     saveSnapshot: () => saveBackendSnapshot(snapshot),
-    sendPrompt: (agentId, prompt) => new Promise<BackendConversationRef>((resolve, reject) => {
+    sendPrompt: (agentId, prompt) => new Promise<ProviderConversationRef>((resolve, reject) => {
       const agent = snapshot.agents.find(candidate => candidate.id === agentId);
       if (!agent || agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
         reject(new Error('The automation target is unavailable or busy.'));
         return;
       }
-      const driver = requireBackendDriver(backendDrivers, agent);
+      const driver = requireProviderDriver(providerDrivers, agent);
       mcpService.recordPromptInputMethod(agentId, 'typed');
       sendAgentPrompt(snapshot, driver, agentId, prompt, undefined, event => server.emitEvent(event), {
-        onBackendSessionUpdated: (_result, wasNewSession) => setNewConversationTitle(agent, driver, wasNewSession),
+        onProviderSessionUpdated: (_result, wasNewSession) => setNewConversationTitle(agent, driver, wasNewSession),
         onPromptStarted: result => resolve(conversationRefFromSendResult(agent, result)),
         onPromptFailed: reject,
       });
@@ -474,15 +474,15 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   };
 }
 
-function requireBackendDriver(drivers: Map<Agent['backend'], AgentBackendDriver>, agent: Agent): AgentBackendDriver {
-  const driver = drivers.get(agent.backend);
+function requireProviderDriver(drivers: Map<Agent['provider'], AgentProviderDriver>, agent: Agent): AgentProviderDriver {
+  const driver = drivers.get(agent.provider);
   if (!driver) {
-    throw new Error(`Backend driver is not configured: ${agent.backend}`);
+    throw new Error(`Backend driver is not configured: ${agent.provider}`);
   }
   return driver;
 }
 
-function setNewConversationTitle(agent: Agent, driver: AgentBackendDriver, wasNewSession: boolean): void {
+function setNewConversationTitle(agent: Agent, driver: AgentProviderDriver, wasNewSession: boolean): void {
   if (!wasNewSession || !driver.setConversationTitle || !shouldSyncConversationTitleFromAgent(agent)) {
     return;
   }
@@ -496,6 +496,6 @@ function setNewConversationTitle(agent: Agent, driver: AgentBackendDriver, wasNe
   });
 }
 
-function conversationRefFromSendResult(agent: Agent, result: BackendSendResult): BackendConversationRef {
-  return conversationRefFromAgent({ ...agent, backendSession: result.backendSession })!;
+function conversationRefFromSendResult(agent: Agent, result: ProviderSendResult): ProviderConversationRef {
+  return conversationRefFromAgent({ ...agent, providerSession: result.providerSession })!;
 }

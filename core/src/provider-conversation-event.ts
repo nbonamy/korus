@@ -12,7 +12,7 @@ export type ProviderConversationEventView = {
 export function providerConversationEventView(
   event: MainToRendererEvent,
 ): ProviderConversationEventView {
-  let conversationId = event.conversationId ?? event.threadId ?? event.backendSessionId;
+  let conversationId = event.conversationId ?? event.threadId ?? event.providerSessionId;
   if (
     event.type === 'cursor.conversationEventReceived' ||
     event.type === 'antigravity.conversationEventReceived' ||
@@ -21,7 +21,7 @@ export function providerConversationEventView(
   ) {
     const frame = event.payload.event;
     const frameId = 'conversationId' in frame && typeof frame.conversationId === 'string' ? frame.conversationId
-      : 'backendSessionId' in frame && typeof frame.backendSessionId === 'string' ? frame.backendSessionId
+      : 'providerSessionId' in frame && typeof frame.providerSessionId === 'string' ? frame.providerSessionId
         : 'sessionId' in frame && typeof frame.sessionId === 'string' ? frame.sessionId : undefined;
     if (frameId) conversationId = frameId;
     return {

@@ -17,17 +17,17 @@ describe('snapshot runtime reducer', () => {
       seq: 1,
       agentId: 'agent-dina',
       conversationId: 'thread-1',
-      backend: 'codex',
+      provider: 'codex',
       type: 'agent.conversationAttached',
       payload: { cwd: '/Users/nbonamy/src/agent-workspace' },
       occurredAt: '2026-06-05T00:00:01.000Z',
     } as unknown as SnapshotEventOwnedBy<'runtime'>);
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
-      type: 'backend.statusChanged',
-      backend: 'claude',
+      type: 'provider.statusChanged',
+      provider: 'claude',
       payload: {
-        backend: 'codex',
+        provider: 'codex',
         status: 'running',
         detail: 'connected',
         capabilities: {
@@ -46,10 +46,10 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:02.000Z',
     } as unknown as SnapshotEventOwnedBy<'runtime'>);
 
-    expect(snapshot.agents[0].backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-1' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-1' });
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
-    expect(snapshot.backendRuntimes).toContainEqual({
-      backend: 'codex',
+    expect(snapshot.providerRuntimes).toContainEqual({
+      provider: 'codex',
       status: 'running',
       detail: 'connected',
       capabilities: {
@@ -66,61 +66,61 @@ describe('snapshot runtime reducer', () => {
 
   it('keeps Cursor attached to its native session instead of falling back to Codex', () => {
     const snapshot = createInitialSnapshot(), agent = snapshot.agents[0]!;
-    agent.backend = 'cursor'; agent.backendDefaults = { kind: 'cursor', model: 'native-model' };
-    applyMainEventToSnapshot(snapshot, { seq: 1, agentId: agent.id, backend: 'cursor', conversationId: 'cursor-review',
+    agent.provider = 'cursor'; agent.providerDefaults = { kind: 'cursor', model: 'native-model' };
+    applyMainEventToSnapshot(snapshot, { seq: 1, agentId: agent.id, provider: 'cursor', conversationId: 'cursor-review',
       type: 'agent.conversationAttached', payload: {}, occurredAt: '' });
-    expect(agent.backend).toBe('cursor');
-    expect(agent.backendSession).toStrictEqual({ kind: 'cursor', sessionId: 'cursor-review' });
-    expect(agent.backendDefaults).toStrictEqual({ kind: 'cursor', model: 'native-model' });
+    expect(agent.provider).toBe('cursor');
+    expect(agent.providerSession).toStrictEqual({ kind: 'cursor', sessionId: 'cursor-review' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'cursor', model: 'native-model' });
   });
 
   it('records Claude session starts without requiring a Codex thread id', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backend = 'claude';
-    snapshot.agents[0].backendDefaults = { kind: 'claude' };
+    snapshot.agents[0].provider = 'claude';
+    snapshot.agents[0].providerDefaults = { kind: 'claude' };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       conversationId: 'claude-session-1',
       type: 'agent.conversationAttached',
       payload: {},
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.agents[0].backendSession).toStrictEqual({
+    expect(snapshot.agents[0].providerSession).toStrictEqual({
       kind: 'claude',
       sessionId: 'claude-session-1',
       transport: 'stdio',
     });
-    expect(snapshot.agents[0].backendDefaults).toStrictEqual({
+    expect(snapshot.agents[0].providerDefaults).toStrictEqual({
       kind: 'claude',
     });
 
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       conversationId: 'claude-session-2',
       type: 'agent.conversationAttached',
       payload: {},
       occurredAt: '2026-06-05T00:00:02.000Z',
     });
 
-    expect(snapshot.agents[0].backendDefaults).toStrictEqual({
+    expect(snapshot.agents[0].providerDefaults).toStrictEqual({
       kind: 'claude',
     });
   });
 
   it('records common conversation settings without changing the conversation binding', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       conversationId: 'thread-old',
       type: 'conversation.settingsUpdated',
       payload: {
@@ -134,8 +134,8 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.agents[0].backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-old' });
-    expect(snapshot.agents[0].backendDefaults).toStrictEqual({
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-old' });
+    expect(snapshot.agents[0].providerDefaults).toStrictEqual({
       kind: 'codex',
       model: 'gpt-5.5',
       approvalPreset: 'approve-for-me',
@@ -149,7 +149,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       conversationId: 'thread-old',
       type: 'conversation.settingsUpdated',
       payload: {
@@ -161,7 +161,7 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:02.000Z',
     });
 
-    expect(snapshot.agents[0].backendDefaults).toMatchObject({
+    expect(snapshot.agents[0].providerDefaults).toMatchObject({
       kind: 'codex',
       approvalPreset: 'full-access',
       serviceTier: null,
@@ -170,22 +170,22 @@ describe('snapshot runtime reducer', () => {
 
   it('records backend-reported settings even when a saved model preference exists', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
-    snapshot.agents[0].backendDefaults = {
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerDefaults = {
       kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true,
     };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       conversationId: 'thread-old',
       type: 'conversation.settingsUpdated',
       payload: { settings: { model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', approvalPreset: 'full-access' } },
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.agents[0].backendDefaults).toMatchObject({
+    expect(snapshot.agents[0].providerDefaults).toMatchObject({
       model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', userSelectedModel: true, approvalPreset: 'full-access',
     });
   });
@@ -262,7 +262,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       turnId: 'turn-1',
       type: 'conversation.contextUsageUpdated',
@@ -305,7 +305,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.contextUsageUpdated',
       payload: { contextUsage: flatContextUsage },
@@ -320,7 +320,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: {
         rateLimits: {
           limitId: 'codex',
@@ -367,13 +367,13 @@ describe('snapshot runtime reducer', () => {
   it('does not let Claude quota updates replace Codex account state', () => {
     const snapshot = createInitialSnapshot();
     const limits = { limitId: null, limitName: null, primary: null, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null };
-    applyMainEventToSnapshot(snapshot, { seq: 1, type: 'account.rateLimitsUpdated', backend: 'codex', payload: { rateLimits: { ...limits, primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
-    applyMainEventToSnapshot(snapshot, { seq: 2, type: 'account.rateLimitsUpdated', backend: 'claude', payload: { rateLimits: { ...limits, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
+    applyMainEventToSnapshot(snapshot, { seq: 1, type: 'account.rateLimitsUpdated', provider: 'codex', payload: { rateLimits: { ...limits, primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
+    applyMainEventToSnapshot(snapshot, { seq: 2, type: 'account.rateLimitsUpdated', provider: 'claude', payload: { rateLimits: { ...limits, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null } } }, occurredAt: '' });
     expect(snapshot.accountRateLimits?.primary?.usedPercent).toBe(5);
     const restored = decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))?.value;
-    expect(restored?.backendAccountRateLimits?.codex?.primary?.usedPercent).toBe(5);
-    expect(restored?.backendAccountRateLimits?.claude?.primary?.usedPercent).toBe(20);
-    expect(decodeAppSnapshot({ ...snapshot, backendAccountRateLimits: { claude: 'invalid' } })).toBeNull();
+    expect(restored?.providerAccountRateLimits?.codex?.primary?.usedPercent).toBe(5);
+    expect(restored?.providerAccountRateLimits?.claude?.primary?.usedPercent).toBe(20);
+    expect(decodeAppSnapshot({ ...snapshot, providerAccountRateLimits: { claude: 'invalid' } })).toBeNull();
   });
 
   it('keeps the label that tells apart same-length quota windows', () => {
@@ -382,18 +382,18 @@ describe('snapshot runtime reducer', () => {
     const rateLimits = { ...base,
       primary: { label: 'Gemini', usedPercent: 3, windowDurationMins: 10_080, resetsAt: 1_780_000_000 },
       secondary: { label: 'Claude and GPT', usedPercent: 0, windowDurationMins: 10_080, resetsAt: null } };
-    const event = { seq: 1, type: 'account.rateLimitsUpdated', backend: 'antigravity', payload: { rateLimits }, occurredAt: '' } as const;
+    const event = { seq: 1, type: 'account.rateLimitsUpdated', provider: 'antigravity', payload: { rateLimits }, occurredAt: '' } as const;
     expect(() => decodeAppBackendEvent(event)).not.toThrow();
     applyMainEventToSnapshot(snapshot, event);
-    expect(snapshot.backendAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
-    expect(decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))?.value.backendAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
+    expect(snapshot.providerAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
+    expect(decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))?.value.providerAccountRateLimits?.antigravity).toStrictEqual(rateLimits);
   });
 
   it('rejects legacy flat account rate-limit payloads', () => {
     const decode = () => decodeAppBackendEvent({
       seq: 1,
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: {
         limitId: 'codex',
         limitName: 'Codex',
@@ -425,7 +425,7 @@ describe('snapshot runtime reducer', () => {
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [],
@@ -501,8 +501,8 @@ describe('snapshot runtime reducer', () => {
       name: 'Dina',
       avatar: 'DI',
       folder: '~/src/agent-workspace',
-      backend: 'codex',
-      backendDefaults: { kind: 'codex' },
+      provider: 'codex',
+      providerDefaults: { kind: 'codex' },
       isRegistered: true,
       mcpSessionId: 'mcp-session-1',
       statusText: 'Reviewing MCP shape',
@@ -740,16 +740,16 @@ describe('snapshot runtime reducer', () => {
 
   it('preserves missing thread guards and rejects malformed payloads at the decoder boundary', () => {
     const snapshot = createInitialSnapshot();
-    const backendRuntimes = snapshot.backendRuntimes;
+    const providerRuntimes = snapshot.providerRuntimes;
 
     expect(() => decodeAppBackendEvent({
       seq: 1,
-      backend: 'codex',
-      type: 'backend.statusChanged',
-      payload: { backend: 'invalid', status: 'running' },
+      provider: 'codex',
+      type: 'provider.statusChanged',
+      payload: { provider: 'invalid', status: 'running' },
       occurredAt: '2026-06-05T00:00:01.000Z',
     })).toThrow();
-    expect(snapshot.backendRuntimes).toBe(backendRuntimes);
+    expect(snapshot.providerRuntimes).toBe(providerRuntimes);
 
     applyMainEventToSnapshot(snapshot, {
       seq: 3,
@@ -758,7 +758,7 @@ describe('snapshot runtime reducer', () => {
       payload: { settings: { model: 'ignored-without-thread' } },
       occurredAt: '2026-06-05T00:00:03.000Z',
     } as unknown as SnapshotEventOwnedBy<'runtime'>);
-    expect(snapshot.agents[0].backendSession).toBeUndefined();
+    expect(snapshot.agents[0].providerSession).toBeUndefined();
 
     const goal = snapshot.agents[0].goal;
     const contextUsage = snapshot.agents[0].contextUsage;
@@ -773,7 +773,7 @@ describe('snapshot runtime reducer', () => {
     expect(() => decodeAppBackendEvent({
       seq: 5,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.contextUsageUpdated',
       payload: { contextUsage: { totalTokens: 10 } },

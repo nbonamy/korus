@@ -2,7 +2,7 @@ import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { closeAgentInSnapshot, updateAgentFolder } from '@workspace/core/agent-manager';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { realpath } from 'node:fs/promises';
-import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import { agentGitBackendMethods, backendMethods, type AgentGitBackendMethod } from '@workspace/core/backend-protocol/methods';
 import { repositoryPeersForAgent, requireAgentFolder } from '@workspace/core/agent-folder';
 import type {

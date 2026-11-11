@@ -1,15 +1,15 @@
 import type { Agent } from '@workspace/core/contracts';
-import type { CodexConversationSnapshot, SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
+import type { CodexConversationSnapshot, ConversationMessage } from '@korus-dev/multi-agent-sdk';
 import type { CompanionConnector, CompanionSession } from './companion-port';
 
 /** Explicit offline demo; no daemon, network, credentials or provider execution. */
 export function createDemoConnector(): CompanionConnector {
   const agents: Agent[] = ['demo-agent', 'demo-reviewer'].map((id, index) => ({
     id, teamId: 'demo-team', name: index ? 'Reviewer' : 'Builder', folder: null,
-    backend: 'codex', status: { type: 'idle' },
+    provider: 'codex', status: { type: 'idle' },
     createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
   }));
-  const messages = new Map<string, SurfaceMessage[]>(agents.map((agent) => [agent.id, [textMessage(
+  const messages = new Map<string, ConversationMessage[]>(agents.map((agent) => [agent.id, [textMessage(
     `welcome-${agent.id}`, 'assistant', 'The companion is ready. This is a local demo conversation. Prompts stay on this device.',
   )]]));
   const sessions = new Set<{ close(): void }>();
@@ -37,7 +37,7 @@ export function createDemoConnector(): CompanionConnector {
           requireSession(agentId);
           return {
             type: 'codex.conversationSnapshotChanged', seq: ++sequence,
-            occurredAt: new Date().toISOString(), agentId, backend: 'codex', threadId: agentId,
+            occurredAt: new Date().toISOString(), agentId, provider: 'codex', threadId: agentId,
             payload: { revision: sequence, snapshot: snapshot(agentId, [...messages.get(agentId)!]) },
           };
         },
@@ -68,11 +68,11 @@ export function createDemoConnector(): CompanionConnector {
   };
 }
 
-function textMessage(id: string, role: 'user' | 'assistant', text: string): SurfaceMessage {
+function textMessage(id: string, role: 'user' | 'assistant', text: string): ConversationMessage {
   return { id, role, status: 'complete', createdAt: new Date().toISOString(), parts: [{ type: 'text', text }] };
 }
 
-function snapshot(agentId: string, messages: SurfaceMessage[]): CodexConversationSnapshot {
+function snapshot(agentId: string, messages: ConversationMessage[]): CodexConversationSnapshot {
   return {
     status: 'ready', authentication: {
       status: 'loaded', account: null, requiresOpenaiAuth: false, error: null,

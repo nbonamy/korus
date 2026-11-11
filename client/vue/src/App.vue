@@ -53,15 +53,15 @@
     :answered-client-request-ids="answeredClientRequestIds"
     :agent-files="agentFiles"
     :load-agent-files="loadAgentFiles"
-    :backend-models="backendModels"
-    :backend-commands="activeBackendCommands"
-    :backend-plugins="backendPlugins"
-    :backend-skills="backendSkills"
-    :backend-capabilities="activeBackendCapabilities"
+    :provider-models="providerModels"
+    :provider-commands="activeProviderCommands"
+    :provider-plugins="providerPlugins"
+    :provider-skills="providerSkills"
+    :provider-capabilities="activeProviderCapabilities"
     :model-catalog-status="modelCatalogStatus"
     :skill-catalog-status="skillCatalogStatus"
     :goal="activeGoal"
-    :approvals="activeBackendApprovals"
+    :approvals="activeProviderApprovals"
     :approval-preset="activeApprovalPreset"
     :permission-mode="activePermissionMode"
     :plan-mode="planMode"
@@ -190,7 +190,7 @@
     @select-service-tier="selectServiceTier"
     @select-approval-preset="setApprovalPreset"
     @select-permission-mode="setPermissionMode"
-    @resolve-approval="resolveBackendApproval"
+    @resolve-approval="resolveProviderApproval"
     @update:plan-mode="setPlanMode"
     @clear-goal="clearActiveGoal"
     @client-response="respondToClientRequest"
@@ -282,7 +282,7 @@ const {
   snapshot,
   activeAgent,
   activeGoal,
-  activeBackendApprovals,
+  activeProviderApprovals,
   activeApprovalPreset,
   activePermissionMode,
   activeQueuedPrompts,
@@ -301,15 +301,15 @@ const {
   answeredClientRequestIds,
   agentFiles,
   loadAgentFiles,
-  backendModels,
-  activeBackendCommands,
+  providerModels,
+  activeProviderCommands,
   activeConversationPresentation,
   agentConversationFor,
   prepareAgentConversation,
-  backendPlugins,
-  activeBackendCapabilities,
+  providerPlugins,
+  activeProviderCapabilities,
   modelCatalogStatus,
-  backendSkills,
+  providerSkills,
   skillCatalogStatus,
   selectedModelId,
   selectedReasoningEffort,
@@ -337,8 +337,8 @@ const {
   missionFocusRequest,
   sourceRepositories,
   openInApplications,
-  loadBackendModels,
-  loadBackendSkills,
+  loadProviderModels,
+  loadProviderSkills,
   loadSnapshot,
   loadOlderAgentHistory,
   loadAgentTurnHistory,
@@ -431,8 +431,8 @@ const {
   loadAssignedWorkItems,
   assignWorkItemToAgent,
   removeWorkItemAssignment,
-  resolveBackendApproval,
-  resolveBackendApprovalForAgent,
+  resolveProviderApproval,
+  resolveProviderApprovalForAgent,
   respondToClientRequest,
   selectModel,
   selectModelForAgent,
@@ -510,7 +510,7 @@ const agentConversationActions: AgentConversationActions = {
   prepare: prepareAgentConversation,
   loadOlder: loadOlderAgentHistory,
   loadTurn: loadAgentTurnHistory,
-  requestSkills: loadBackendSkills,
+  requestSkills: loadProviderSkills,
   send: sendPromptToAgent,
   steer: steerPromptToAgent,
   interrupt: interruptAgentById,
@@ -519,7 +519,7 @@ const agentConversationActions: AgentConversationActions = {
   forkTurn: forkAgent,
   retryTurn: retryTurnForAgent,
   continueInterruptedTurn: continueInterruptedTurnForAgent,
-  resolveApproval: resolveBackendApprovalForAgent,
+  resolveApproval: resolveProviderApprovalForAgent,
   clientResponse: respondToClientRequest,
   selectModel: selectModelForAgent,
   selectReasoningEffort: selectReasoningEffortForAgent,
@@ -651,8 +651,8 @@ function requestSessionCompression(agentId: string): void {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (
     !agent ||
-    agent.backend !== 'codex' ||
-    agent.backendSession?.kind !== 'codex' ||
+    agent.provider !== 'codex' ||
+    agent.providerSession?.kind !== 'codex' ||
     agent.status.type !== 'idle'
   ) {
     return;
@@ -706,7 +706,7 @@ onMounted(() => {
   syncRendererWindowFocus();
   unsubscribeSystemAppearance = subscribeToSystemAppearance();
   void loadSnapshot();
-  void loadBackendModels();
+  void loadProviderModels();
   void loadOpenInApplications();
   const updateStatusPromise = appHostCapabilities.appUpdates
     ? appApi?.getUpdateStatus?.()
@@ -740,7 +740,7 @@ watch(() => snapshot.value.theme, (theme) => {
 </script>
 
 <style scoped>
-.backend-restart-overlay {
+.provider-restart-overlay {
   position: fixed;
   z-index: 10000;
   inset: 0;
@@ -751,7 +751,7 @@ watch(() => snapshot.value.theme, (theme) => {
   backdrop-filter: blur(6px);
 }
 
-.backend-restart-overlay__card {
+.provider-restart-overlay__card {
   display: flex;
   align-items: center;
   gap: var(--space-6);
@@ -763,30 +763,30 @@ watch(() => snapshot.value.theme, (theme) => {
   box-shadow: var(--shadow-lg);
 }
 
-.backend-restart-overlay__copy {
+.provider-restart-overlay__copy {
   display: grid;
   gap: var(--space-1);
   color: var(--color-text);
 }
 
-.backend-restart-overlay__copy strong {
+.provider-restart-overlay__copy strong {
   font-size: var(--font-size-16);
   line-height: var(--line-height-22);
 }
 
-.backend-restart-overlay__copy span {
+.provider-restart-overlay__copy span {
   color: var(--color-text-muted);
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
 }
 
-.backend-restart-overlay-enter-active,
-.backend-restart-overlay-leave-active {
+.provider-restart-overlay-enter-active,
+.provider-restart-overlay-leave-active {
   transition: opacity 120ms ease;
 }
 
-.backend-restart-overlay-enter-from,
-.backend-restart-overlay-leave-to {
+.provider-restart-overlay-enter-from,
+.provider-restart-overlay-leave-to {
   opacity: 0;
 }
 

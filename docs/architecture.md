@@ -360,8 +360,12 @@ transport primitives. Its primary consumer interface uses opaque durable session
 neutral events and capability-driven operations. Native compatibility contracts
 remain available through explicit entry points for shipped product transports. `agent-ui-sdk` owns conversation/composer rendering, document
 and diff controls, code annotations, host bridges, speech, browser controls and
-the Electron browser engine. Each library is one package with runtime
-subpath exports; browser-safe contracts do not import trusted runtime code.
+the Electron browser engine. Each library is one package with explicit public
+entry files. Multi's `renderer` holds portable presentation helpers,
+`native` holds native drivers, and `codex` holds the Codex adapter.
+Browser-safe contracts do not import trusted runtime code. Local SDK tooling
+resolves the public entry files to source and uses the consumer's Vue types to
+match the renderer's Vue deduplication.
 Korus's thin provider adapters bind these drivers to product prompts, permission
 policy, existing native homes and journal namespaces. Generic completed prompt
 execution uses caller-owned MCP scopes; CodeReviewService retains the review
@@ -398,7 +402,7 @@ Every backend-dependent feature enters through the app seam:
 
 1. Define an app-owned contract for behavior outside the transcript.
 2. Express native operations through the native driver contract in `multi-agent-sdk/native`;
-   `AgentBackendDriver` adds Korus workflow policy behind `daemon`.
+   `AgentProviderDriver` adds Korus workflow policy behind `daemon`.
 3. Keep native provider execution in the SDK adapters. Korus provider directories
    supply product policy, native installation lifecycle and host composition.
 4. Route renderer requests through preload, `BackendClient` and the app-owned

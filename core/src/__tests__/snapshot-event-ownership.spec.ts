@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
 import type { MainToRendererEvent } from '../contracts';
 import { applyMainEventToSnapshot, createInitialSnapshot } from '../snapshot';
 import { applyCoordinationEventToSnapshot } from '../snapshot-coordination-reducer';
@@ -14,7 +14,7 @@ import { applyRuntimeEventToSnapshot } from '../snapshot-runtime-reducer';
 import { applySubagentEventToSnapshot } from '../snapshot-subagent-reducer';
 
 const runtimeEventTypes = [
-  'backend.statusChanged',
+  'provider.statusChanged',
   'snapshot.updated',
   'account.rateLimitsUpdated',
   'workItem.assignmentUpdated',
@@ -134,13 +134,13 @@ const rendererOnlyEvents = [
   {
     ...base,
     type: 'models.changed',
-    backend: 'codex',
+    provider: 'codex',
     payload: { models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] },
   },
   {
     ...base,
     type: 'skills.changed',
-    backend: 'codex',
+    provider: 'codex',
     payload: {
       cwd: null,
       status: 'loaded',
@@ -149,14 +149,14 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'codex',
+    provider: 'codex',
     threadId: 'thread-1',
     type: 'codex.conversationSnapshotChanged',
     payload: { revision: 1, snapshot: codexConversationSnapshot },
   },
   {
     ...agent,
-    backend: 'codex',
+    provider: 'codex',
     threadId: 'thread-1',
     type: 'codex.conversationEventReceived',
     payload: {
@@ -174,7 +174,7 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'claude',
+    provider: 'claude',
     type: 'claude.conversationSnapshotChanged',
     payload: {
       revision: 1,
@@ -197,13 +197,13 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'claude',
+    provider: 'claude',
     type: 'claude.conversationEventReceived',
     payload: {
       revision: 2,
       event: {
         ...agent,
-        backend: 'claude',
+        provider: 'claude',
         turnId: 'turn-1',
         type: 'message.delta',
         payload: { delta: 'Hello' },
@@ -226,7 +226,7 @@ const rendererOnlyEvents = [
     payload: {
       id: 'creation-1',
       state: 'running',
-      backend: 'codex',
+      provider: 'codex',
       repositoryName: 'repo',
       createWorktree: true,
       hasPrompt: true,
@@ -266,7 +266,7 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'codex',
+    provider: 'codex',
     threadId: 'thread-1',
     type: 'conversation.modeUpdated',
     payload: { mode: 'plan' },
@@ -278,7 +278,7 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'codex',
+    provider: 'codex',
     threadId: 'thread-1',
     turnId: 'turn-1',
     type: 'workspace.fileActivityDetected',

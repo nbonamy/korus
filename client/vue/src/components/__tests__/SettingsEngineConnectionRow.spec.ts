@@ -7,7 +7,7 @@ import SettingsEngineConnectionRow from '../SettingsEngineConnectionRow.vue';
 describe('SettingsEngineConnectionRow', () => {
   it('keeps an external-only installation external in the compact overflow control', async () => {
     const wrapper = mount(SettingsEngineConnectionRow, { props: {
-      backend: 'codex', installed: false, compact: true, overflow: true, installable: true,
+      provider: 'codex', installed: false, compact: true, overflow: true, installable: true,
       capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://example.com/install', command: 'official-install' } },
     } });
     expect(wrapper.get('code').text()).toBe('official-install');
@@ -18,8 +18,8 @@ describe('SettingsEngineConnectionRow', () => {
     expect(wrapper.emitted('install')).toBeUndefined();
     wrapper.unmount();
   });
-  it.each([{ backend: 'antigravity', title: 'Antigravity' }, { backend: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', async ({ backend, title }) => {
-    const wrapper = mount(SettingsEngineConnectionRow, { props: { backend, title, connected: true, enabled: true,
+  it.each([{ provider: 'antigravity', title: 'Antigravity' }, { provider: 'cursor', title: 'Cursor' }] as const)('renders a connected $title account without inventing account metadata', async ({ provider: backend, title }) => {
+    const wrapper = mount(SettingsEngineConnectionRow, { props: { provider: backend, title, connected: true, enabled: true,
       authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home' } } } });
     expect(wrapper.text()).not.toContain('/private/home');
     expect(wrapper.find('.engine-hero__account').exists()).toBe(false);

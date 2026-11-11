@@ -29,7 +29,7 @@ describe('native attachment submission', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const original = await session.getWorkspace();
-      const workspace = { ...original, agents: original.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      const workspace = { ...original, agents: original.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: agent.id } })) };
       return { ...session,
         getWorkspace: async () => workspace,
         onUpdate(listener) { update = listener; return () => {}; },

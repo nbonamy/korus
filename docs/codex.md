@@ -170,7 +170,7 @@ and exhaustive reads for handoffs and other backend consumers use SDK `readHisto
   omits approval/sandbox overrides and lets app-server use its effective
   configuration rather than sending a known-invalid request. The generated
   `SandboxPolicy` shape is returned directly.
-- **Models and effort** come from `model/list`, adapted to `BackendModelOption[]`.
+- **Models and effort** come from `model/list`, adapted to `ProviderModelOption[]`.
   Korus prefers 6.1 Sol with High effort when advertised by the catalog and uses
   that combination for new conversations without an explicit selection.
   An explicit picker choice is saved immediately in
@@ -180,7 +180,7 @@ and exhaustive reads for handoffs and other backend consumers use SDK `readHisto
   ones. The service tier (Fast mode) is emitted with thread settings, including an
   explicit `null`, so a stale toggle never survives an agent switch or reload.
 - **Skills** are folder-scoped (`skills/list` per agent `cwd`), adapted to
-  `BackendSkillSummary[]`. Picker selection records the canonical target and frozen
+  `ProviderSkillSummary[]`. Picker selection records the canonical target and frozen
   display label in authored prompt parts. The SDK sends explicit skill and mention
   inputs; typed or pasted `$skill` and `@name` text carries no selected identity.
   `skills/changed` becomes `skills.changed` and invalidates folder-keyed caches.

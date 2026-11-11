@@ -7,7 +7,7 @@
     
     <SettingsSidebar
       :active-tab="activeTab"
-      :available-backends="providerConnections?.map(provider => provider.backend) ?? []"
+      :available-providers="providerConnections?.map(provider => provider.provider) ?? []"
       class="settings-view__sidebar"
       @select="selectTab"
     />
@@ -42,13 +42,13 @@
         <SettingsPersonalizationPanel v-else-if="activeTab === 'personalization'" />
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
-          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'codex')?.capabilities"
+          :setup-capabilities="providerSetup?.find(setup => setup.provider === 'codex')?.capabilities"
           @install="installProvider?.('codex')"
           :connected="codexConnected"
           :remote-connection-id="remoteConnectionId"
-          :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
+          :installed="providerConnections?.find(engine => engine.provider === 'codex')?.installed ?? false"
           @refresh="refreshProvider?.('codex')"
-          :authentication="providerConnections?.find(engine => engine.backend === 'codex')?.authentication"
+          :authentication="providerConnections?.find(engine => engine.provider === 'codex')?.authentication"
           @customize="customizeProvider?.('codex')"
           :set-enabled="enabled => setProviderEnabled?.('codex', enabled)"
           :connection-busy="codexConnectionBusy || updatingProvider === 'codex'"
@@ -62,18 +62,18 @@
         />
         <SettingsCursorPanel
           v-else-if="activeTab === 'cursor'"
-          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'cursor')?.capabilities"
+          :setup-capabilities="providerSetup?.find(setup => setup.provider === 'cursor')?.capabilities"
           @install="installProvider?.('cursor')"
-          :installed="providerConnections?.find(engine => engine.backend === 'cursor')?.installed ?? false"
-          :connected="providerConnections?.some(engine => engine.backend === 'cursor' && engine.connected)"
-          :authentication="providerConnections?.find(engine => engine.backend === 'cursor')?.authentication"
+          :installed="providerConnections?.find(engine => engine.provider === 'cursor')?.installed ?? false"
+          :connected="providerConnections?.some(engine => engine.provider === 'cursor' && engine.connected)"
+          :authentication="providerConnections?.find(engine => engine.provider === 'cursor')?.authentication"
           :enabled="generalSettings.providerEnabled?.cursor !== false"
           :set-enabled="enabled => setProviderEnabled?.('cursor', enabled)"
           :steering-fallback-enabled="generalSettings.cursorSteeringFallbackEnabled === true"
           :set-steering-fallback-enabled="enabled => updateSettings?.({ general: { cursorSteeringFallbackEnabled: enabled } })"
           :busy="cursorConnectionBusy || updatingProvider === 'cursor'"
           :pending="cursorLoginPending"
-          :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.backend === 'cursor')?.error"
+          :error="cursorConnectionError || providerSetupError || providerConnections?.find(engine => engine.provider === 'cursor')?.error"
           :remote-connection-id="remoteConnectionId"
           @refresh="refreshProvider?.('cursor')"
           @connect="connectCursor"
@@ -82,12 +82,12 @@
         />
         <SettingsAntigravityPanel
           v-else-if="activeTab === 'antigravity'"
-          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'antigravity')?.capabilities"
-          :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
+          :setup-capabilities="providerSetup?.find(setup => setup.provider === 'antigravity')?.capabilities"
+          :installed="providerConnections?.find(engine => engine.provider === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
           @install="installProvider?.('antigravity')"
-          :connected="providerConnections?.some(engine => engine.backend === 'antigravity' && engine.connected)"
-          :authentication="providerConnections?.find(engine => engine.backend === 'antigravity')?.authentication"
+          :connected="providerConnections?.some(engine => engine.provider === 'antigravity' && engine.connected)"
+          :authentication="providerConnections?.find(engine => engine.provider === 'antigravity')?.authentication"
           :home="generalSettings.providerHomes?.antigravity"
           :enabled="generalSettings.providerEnabled?.antigravity !== false"
           :set-enabled="enabled => setProviderEnabled?.('antigravity', enabled)"
@@ -101,12 +101,12 @@
         />
         <SettingsClaudeCodePanel
           v-else-if="activeTab === 'claude-code'"
-          :setup-capabilities="providerSetup?.find(setup => setup.backend === 'claude')?.capabilities"
+          :setup-capabilities="providerSetup?.find(setup => setup.provider === 'claude')?.capabilities"
           @install="installProvider?.('claude')"
           :connected="claudeConnected"
-          :installed="providerConnections?.find(engine => engine.backend === 'claude')?.installed ?? false"
+          :installed="providerConnections?.find(engine => engine.provider === 'claude')?.installed ?? false"
           @refresh="refreshProvider?.('claude')"
-          :authentication="providerConnections?.find(engine => engine.backend === 'claude')?.authentication"
+          :authentication="providerConnections?.find(engine => engine.provider === 'claude')?.authentication"
           :home="generalSettings.providerHomes?.claude"
           @customize="customizeProvider?.('claude')"
           :enabled="generalSettings.providerEnabled?.claude !== false"
@@ -200,9 +200,9 @@ import SettingsDictationPanel from './SettingsDictationPanel.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
 import type { ProviderConnection, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
-import type { AgentBackend, BackendRuntimeStatus } from '@workspace/core/contracts';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import type { HarnessProvider, ProviderRuntimeStatus } from '@workspace/core/contracts';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { appHostCapabilities } from '../platform-api';
 import appPackage from '../../package.json';
 
@@ -212,15 +212,15 @@ const props = withDefaults(defineProps<{
   codexConnected?: boolean;
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
-  backendRuntimes?: BackendRuntimeStatus[];
+  providerRuntimes?: ProviderRuntimeStatus[];
   providerSetup?: ProviderSetupStatus[];
-  refreshProvider?: (backend: AgentBackend) => Promise<void>;
-  installProvider?: (backend: AgentBackend) => Promise<void>;
-  updatingProvider?: AgentBackend | null;
+  refreshProvider?: (provider: HarnessProvider) => Promise<void>;
+  installProvider?: (provider: HarnessProvider) => Promise<void>;
+  updatingProvider?: HarnessProvider | null;
   providerSetupError?: string | null;
-  customizeProvider?: (backend: AgentBackend) => unknown;
-  setProviderEnabled?: (backend: AgentBackend, enabled: boolean) => unknown;
-  disconnectProvider?: (backend: AgentBackend) => Promise<void>;
+  customizeProvider?: (provider: HarnessProvider) => unknown;
+  setProviderEnabled?: (provider: HarnessProvider, enabled: boolean) => unknown;
+  disconnectProvider?: (provider: HarnessProvider) => Promise<void>;
   claudeConnected?: boolean;
   codexConnectionBusy?: boolean;
   claudeConnectionBusy?: boolean;
@@ -259,7 +259,7 @@ const props = withDefaults(defineProps<{
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
-  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => Promise<void>;
+  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: HarnessProvider[]) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
@@ -318,12 +318,12 @@ const emit = defineEmits<{
 }>();
 
 const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [])
-  .filter(engine => engine.installed && engine.enabled !== false && props.generalSettings.providerEnabled?.[engine.backend] !== false)
-  .filter(engine => (props.backendRuntimes?.find(runtime => runtime.backend === engine.backend)?.capabilities?.reportsTokens
-    ?? defaultBackendCapabilities(engine.backend).reportsTokens) === false)
-  .map(engine => backendDisplayName(engine.backend)));
+  .filter(engine => engine.installed && engine.enabled !== false && props.generalSettings.providerEnabled?.[engine.provider] !== false)
+  .filter(engine => (props.providerRuntimes?.find(runtime => runtime.provider === engine.provider)?.capabilities?.reportsTokens
+    ?? defaultProviderCapabilities(engine.provider).reportsTokens) === false)
+  .map(engine => providerDisplayName(engine.provider)));
 
-const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.backend === 'antigravity') ? 'general' : props.activeTab);
+const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.provider === 'antigravity') ? 'general' : props.activeTab);
 const busyIntegrationProviders = ref<WorkProviderKind[]>([]);
 
 async function runIntegrationAction(provider: WorkProviderKind, action: (provider: WorkProviderKind) => Promise<void>): Promise<void> {

@@ -80,9 +80,9 @@ describe('remote target', () => {
   it('hands the chosen engine and model to the conversation it opens, not to a worktree', async () => {
     const { target, openMain } = setup({ devbox: [checkout('/srv/korus')] });
     await target.open(request);
-    target.selection.value = { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null };
+    target.selection.value = { provider: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null };
     await target.confirm();
-    expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request, { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null });
+    expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request, { provider: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: null });
     await target.open(request);
     expect(target.selection.value).toBeUndefined();
   });

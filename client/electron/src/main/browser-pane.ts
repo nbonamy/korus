@@ -1,9 +1,9 @@
 import path from 'node:path';
-import { BrowserPane as NativeBrowserPane, type BrowserPaneOptions } from '@korus-dev/agent-ui-sdk/browser/electron';
+import { BrowserPane as NativeBrowserPane, type BrowserPaneOptions } from '@korus-dev/agent-ui-sdk/electron/browser';
 import { annotationFromBrowserOwner, viewportFromBrowserOwner, type BrowserAnnotation, type BrowserViewportRequest } from '@workspace/core/browser-contracts';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { supportedBrowserExtensions } from '@workspace/core/browser-extensions';
-export { browserPaneKey } from '@korus-dev/agent-ui-sdk/browser/electron';
+export { browserPaneKey } from '@korus-dev/agent-ui-sdk/electron/browser';
 type AppBrowserPaneOptions = Omit<BrowserPaneOptions, 'partitionFor' | 'sharedPartition' | 'preservedOrigins' | 'annotationEditor' | 'onAnnotation' | 'onViewportRequest'> & {
   onAnnotation(annotation: BrowserAnnotation): void;
   onViewportRequest?(request: BrowserViewportRequest, window: Parameters<NonNullable<BrowserPaneOptions['onViewportRequest']>>[1]): void;

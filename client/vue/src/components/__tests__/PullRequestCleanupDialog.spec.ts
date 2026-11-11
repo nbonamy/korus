@@ -7,7 +7,7 @@ const agent: Agent = {
   id: 'agent-pr',
   name: 'PR agent',
   folder: '/repo-worktree',
-  backend: 'codex',
+  provider: 'codex',
   status: { type: 'idle' },
   pullRequest: {
     provider: 'github',

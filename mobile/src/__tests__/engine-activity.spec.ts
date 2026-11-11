@@ -98,9 +98,9 @@ describe('native activity drawer feed', () => {
     const selectModel = vi.fn(async () => {}); const sendPrompt = vi.fn(async () => {});
     connector.connect = async id => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents = workspace.agents.map(a => ({ ...a, backend: 'claude', backendDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }));
+      workspace.agents = workspace.agents.map(a => ({ ...a, provider: 'claude', providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }));
       return { ...session, getWorkspace: async () => projectCompanionWorkspace(workspace), selectModel, sendPrompt,
-        loadConversation: async agentId => ({ type: 'claude.conversationSnapshotChanged', agentId, backend: 'claude', seq: 1, occurredAt: '2026-10-15T12:00:00Z',
+        loadConversation: async agentId => ({ type: 'claude.conversationSnapshotChanged', agentId, provider: 'claude', seq: 1, occurredAt: '2026-10-15T12:00:00Z',
           payload: { revision: 1, snapshot: { agentId, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [],
             answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } }),
         listModels: async () => [{ id: 'opus', model: 'opus', displayName: 'Opus', isDefault: true, supportedReasoningEfforts: [],
@@ -116,7 +116,7 @@ describe('native activity drawer feed', () => {
       await engine.dispatch({ type: 'send', text: 'Continue' });
       expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier: 'fast' }) }));
       await engine.dispatch({ type: 'composer', change: { serviceTier: null } });
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'opus', reasoningEffort: null, serviceTier: null, backend: 'claude' });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'opus', reasoningEffort: null, serviceTier: null, provider: 'claude' });
       await engine.dispatch({ type: 'send', text: 'Continue normally' });
       expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue normally', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier: null }) }));
     } finally { engine.dispose(); }

@@ -35,10 +35,10 @@ export class AutoResumeService {
         : ['error', 'turn.error', 'turn.completed'].includes(view.type) && payload.willRetry !== true ? payload.message ?? error.message : undefined;
       if (providerSafetyBlockMessage(error) || providerSafetyBlockMessage(message)) { this.cancel(agent.id); this.sync(); return; }
       if (typeof message === 'string' && /(?:usage.?limit|session.?limit|rate.?limit|quota)/i.test(message)) {
-        const now = Date.now(), resumeAt = resetTime(message, this.options.snapshot.backendAccountRateLimits?.[agent.backend], now, record(payload.rateLimit));
+        const now = Date.now(), resumeAt = resetTime(message, this.options.snapshot.providerAccountRateLimits?.[agent.provider], now, record(payload.rateLimit));
         const conversationId = agentConversationId(agent);
         if (resumeAt && conversationId && (!view.conversationId || view.conversationId === conversationId)) {
-          this.options.update(agent.id, { backend: agent.backend, conversationId, ...(view.turnId ? { turnId: view.turnId } : {}), detectedAt: now, resumeAt,
+          this.options.update(agent.id, { provider: agent.provider, conversationId, ...(view.turnId ? { turnId: view.turnId } : {}), detectedAt: now, resumeAt,
             enabled: this.options.snapshot.general.autoResumeAfterLimit !== false });
         }
       }
@@ -64,7 +64,7 @@ export class AutoResumeService {
     for (const agent of this.options.snapshot.agents) {
       let pause = agent.rateLimitPause;
       if (!pause || !this.options.isLocal(agent)) continue;
-      if (!isRateLimitPause(pause) || pause.backend !== agent.backend || pause.conversationId !== agentConversationId(agent)) {
+      if (!isRateLimitPause(pause) || pause.provider !== agent.provider || pause.conversationId !== agentConversationId(agent)) {
         this.cancel(agent.id); continue;
       }
       if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) { this.cancel(agent.id); continue; }
@@ -86,7 +86,7 @@ export class AutoResumeService {
     for (const agent of this.options.snapshot.agents) {
       const pause = agent.rateLimitPause;
       if (this.closed || !pause?.enabled || !this.options.isLocal(agent) || pause.resumeAt + RESET_GRACE_MS > Date.now() || !this.available(agent)) continue;
-      if (pause.backend !== agent.backend || pause.conversationId !== agentConversationId(agent)) { this.cancel(agent.id); continue; }
+      if (pause.provider !== agent.provider || pause.conversationId !== agentConversationId(agent)) { this.cancel(agent.id); continue; }
       const token = Symbol();
       this.options.update(agent.id, null);
       this.pendingSends.set(agent.id, token);

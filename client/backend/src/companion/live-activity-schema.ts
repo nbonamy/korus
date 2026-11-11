@@ -11,5 +11,5 @@ export const liveActivityPushSchema = z.object({ hostId: z.string().min(1).max(1
   startedAt: z.number().int().positive().safe(), timestamp: z.number().int().positive().safe(), event: z.enum(['start', 'update', 'end']),
   state: z.object({ hostName: z.string().max(160).optional(), active: z.number().int().min(0).max(1_000_000).optional(), running: z.number().int().min(0).max(1_000_000), attention: z.number().int().min(0).max(1_000_000),
     agents: z.array(z.object({ id: z.string().min(1).max(128), name: z.string().max(160), detail: z.string().max(200),
-      backend: z.enum(['codex', 'claude', 'antigravity']).optional(), startedAt: z.number().int().positive().safe().optional(),
+      provider: z.enum(['codex', 'claude', 'antigravity']).optional(), startedAt: z.number().int().positive().safe().optional(),
       status: z.enum(['idle', 'working', 'approval', 'question', 'waiting', 'error']) }).strict()).max(2), more: z.number().int().min(0).max(1_000_000) }).strict() }).strict();

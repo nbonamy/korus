@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ToolPresentationContext as CodexToolPresentationContext } from '@korus-dev/agent-ui-sdk';
+import type { ToolPresentationContext } from '@korus-dev/agent-ui-sdk';
 import { presentClaudeToolTitle } from '../claude-tool-titles';
 import { messages } from '../i18n/messages';
 import { presentAppTool } from '../tool-presentation';
@@ -67,7 +67,7 @@ describe('Claude tool titles', () => {
   });
 });
 
-function call(scope: string, operation: string, params: Record<string, unknown>, phase: Phase): CodexToolPresentationContext {
+function call(scope: string, operation: string, params: Record<string, unknown>, phase: Phase): ToolPresentationContext {
   return {
     descriptor: { source: 'claude', action: 'run', phase, params: { scope, operation, ...params } },
     kind: 'generic',

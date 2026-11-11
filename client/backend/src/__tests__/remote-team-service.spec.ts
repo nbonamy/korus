@@ -14,7 +14,7 @@ describe('RemoteTeamService', () => {
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
-    remote.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    remote.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     const service = new RemoteTeamService({
       clients: { request: vi.fn().mockResolvedValue({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }) } as never,
       getSnapshot: () => snapshot,
@@ -253,7 +253,7 @@ describe('RemoteTeamService', () => {
     });
 
     await expect(service.request('connection-devbox', 'agent/quickChat/create', {
-      input: { teamId: 'team-remote', selection: { ...{ backend: 'claude' } } },
+      input: { teamId: 'team-remote', selection: { ...{ provider: 'claude' } } },
     })).resolves.toMatchObject({ general: { claudeCodeEnabled: false } });
     expect(requests).toStrictEqual(['agent/quickChat/create']);
 
@@ -279,7 +279,7 @@ describe('RemoteTeamService', () => {
       seq: 1,
       occurredAt: '2026-06-13T00:00:01.000Z',
       agentId: remoteAgent.id,
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-remote',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -305,9 +305,9 @@ describe('RemoteTeamService', () => {
         onEvent?.({
           seq: 4,
           occurredAt: '2026-06-13T00:00:04.000Z',
-          backend: 'codex',
-          type: 'backend.statusChanged',
-          payload: { backend: 'codex', status: 'running' },
+          provider: 'codex',
+          type: 'provider.statusChanged',
+          payload: { provider: 'codex', status: 'running' },
         });
         return null;
       }),

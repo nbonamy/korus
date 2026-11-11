@@ -254,8 +254,8 @@ Search by behavior first.
 | Command palettes | `QuickOpenDialog` | `client/vue/src/shared/` |
 | Voice multiline input | `VoiceTextarea` | `client/vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `client/vue/src/shared/identity/` |
-| Enabled coding backend picker | `BackendSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `client/vue/src/components/` |
-| New-work provider, model and effort picker | `BackendModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `client/vue/src/components/` |
+| Enabled coding backend picker | `ProviderSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `client/vue/src/components/` |
+| New-work provider, model and effort picker | `ProviderModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `client/vue/src/components/` |
 | Settings structure | `SettingsPanelFrame`, `SettingsTextareaField` (compose `FormSection`/`FormRow`) | `client/vue/src/components/` |
 | Dense structured data | `AppDataList` | `client/vue/src/components/` |
 | Operation feedback | `GitOperationFeedback` | `client/vue/src/components/` |

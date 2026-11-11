@@ -6,8 +6,8 @@ import type { CompanionBackendPort } from '../manager';
 
 function fixture() {
   const snapshot = createTestSnapshot();
-  snapshot.agents = [{ id: 'a', teamId: 'team-test', name: 'Agent', backend: 'codex', folder: '/private/workspace', status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
-  snapshot.general.codeReviewDefaults = { backend: 'claude', automation: { enabled: true, maxPriority: 'p1', maxRounds: 2, autoCommit: true }, providers: { claude: {backend: 'claude', serviceTier: null,  model: 'reviewer', reasoningEffort: 'high' } } };
+  snapshot.agents = [{ id: 'a', teamId: 'team-test', name: 'Agent', provider: 'codex', folder: '/private/workspace', status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
+  snapshot.general.codeReviewDefaults = { provider: 'claude', automation: { enabled: true, maxPriority: 'p1', maxRounds: 2, autoCommit: true }, providers: { claude: {provider: 'claude', serviceTier: null,  model: 'reviewer', reasoningEffort: 'high' } } };
   const request = vi.fn(async (method: string) => {
     if (method === backendMethods.snapshotGet) return { snapshot };
     if (method === backendMethods.agentModelsList) return [{ id: 'id', model: 'reviewer', displayName: 'Reviewer', supportedReasoningEfforts: [{ reasoningEffort: 'high' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: 'Faster responses' }] }, { id: 'hidden', model: 'hidden', hidden: true }];
@@ -26,12 +26,12 @@ describe('companion review initialization', () => {
     expect(await readReviewSetup(f.port, 'host', 'a')).toStrictEqual({
       target: { hostId: 'host', locationId: 'local', teamId: 'team-test', agentId: 'a', sessionId: null },
       branch: 'feature', baseRef: 'main', uncommitted: false, branchChanges: true, currentThread: false, activeReview: false, reviewerAgentId: null,
-      agentBackend: 'codex', backend: 'claude', backends: ['codex', 'claude'], models: [{ id: 'reviewer', name: 'Reviewer', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }] }], preferences: f.snapshot.general.codeReviewDefaults,
+      agentProvider: 'codex', provider: 'claude', providers: ['codex', 'claude'], models: [{ id: 'reviewer', name: 'Reviewer', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }] }], preferences: f.snapshot.general.codeReviewDefaults,
     });
-    expect(f.request).toHaveBeenLastCalledWith(backendMethods.agentModelsList, { agentId: 'a', backend: 'claude', _clientId: 'companion-read' });
+    expect(f.request).toHaveBeenLastCalledWith(backendMethods.agentModelsList, { agentId: 'a', provider: 'claude', _clientId: 'companion-read' });
     f.snapshot.agentGitStatuses.a.diffCatalog!.commits = [];
     expect((await readReviewSetup(f.port, 'host', 'a', 'codex')).branchChanges).toBe(false);
-    expect(f.request).toHaveBeenLastCalledWith(backendMethods.agentModelsList, { agentId: 'a', backend: 'codex', _clientId: 'companion-read' });
+    expect(f.request).toHaveBeenLastCalledWith(backendMethods.agentModelsList, { agentId: 'a', provider: 'codex', _clientId: 'companion-read' });
   });
   it('rejects unavailable engines and missing workspaces; unknown git status does not masquerade as clean', async () => {
     const f = fixture();
@@ -39,7 +39,7 @@ describe('companion review initialization', () => {
     await expect(readReviewSetup(f.port, 'host', 'a', 'antigravity')).rejects.toThrow('unavailable');
     f.snapshot.general.codeReviewDefaults = undefined;
     f.snapshot.providerConnections![0]!.connected = false;
-    expect((await readReviewSetup(f.port, 'host', 'a')).backend).toBe('claude');
+    expect((await readReviewSetup(f.port, 'host', 'a')).provider).toBe('claude');
     f.snapshot.agents[0]!.folder = null;
     await expect(readReviewSetup(f.port, 'host', 'a')).rejects.toThrow('workspace');
   });

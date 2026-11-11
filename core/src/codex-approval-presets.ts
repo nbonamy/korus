@@ -1,6 +1,6 @@
-import type { ApprovalPreset, BackendDefaults, CodexApprovalPreset } from './contracts';
+import type { ApprovalPreset, ProviderDefaults } from './contracts';
 import {
-  approvalBackendDefaultsWithPreset,
+  approvalProviderDefaultsWithPreset,
   approvalPresetFromDefaults,
   defaultApprovalPreset,
   isApprovalPreset,
@@ -11,9 +11,9 @@ export const defaultCodexApprovalPreset = defaultApprovalPreset;
 export const isCodexApprovalPreset = isApprovalPreset;
 export const isCodexApprovalsReviewer = isApprovalsReviewer;
 export const codexApprovalPresetFromDefaults = approvalPresetFromDefaults;
-export const codexBackendDefaultsWithApprovalPreset = approvalBackendDefaultsWithPreset;
+export const codexProviderDefaultsWithApprovalPreset = approvalProviderDefaultsWithPreset;
 
-export function codexApprovalPresetFromThreadSettings(threadSettings: unknown): CodexApprovalPreset | null {
+export function codexApprovalPresetFromThreadSettings(threadSettings: unknown): ApprovalPreset | null {
   if (!isRecord(threadSettings)) {
     return null;
   }
@@ -44,7 +44,7 @@ export function codexApprovalPresetFromThreadSettings(threadSettings: unknown): 
   return null;
 }
 
-export type { ApprovalPreset, BackendDefaults };
+export type { ApprovalPreset, ProviderDefaults };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));

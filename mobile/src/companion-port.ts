@@ -1,7 +1,7 @@
-import type { CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
+import type { PromptPart } from '@korus-dev/multi-agent-sdk';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
-import type { AgentBackend, ExecutionSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { HarnessProvider, ExecutionSelection, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository } from '@workspace/core/companion-protocol';
@@ -13,7 +13,7 @@ export type CompanionConversation = Extract<ProviderConversationFrame, {
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
-export type CompanionPromptOptions = Omit<import('@workspace/core/contracts').RendererSendPromptOptions, 'attachments' | 'backendOptions'> & { followUpBehavior?: 'queue' | 'steer' };
+export type CompanionPromptOptions = Omit<import('@workspace/core/contracts').RendererSendPromptOptions, 'attachments' | 'providerOptions'> & { followUpBehavior?: 'queue' | 'steer' };
 
 /** Where and how a review of an agent's changes starts. */
 export type { CompanionReviewInput } from '@workspace/core/companion-review';
@@ -48,7 +48,7 @@ type CompanionOperations = {
   githubRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
   localRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
   localBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
-  duplicateAgent?(target: CompanionTarget, backend: AgentBackend): Promise<string>;
+  duplicateAgent?(target: CompanionTarget, provider: HarnessProvider): Promise<string>;
   renameAgent?(target: CompanionTarget, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, signal?: AbortSignal): Promise<string>;
   getUsage?(): Promise<CompanionUsage[]>;
@@ -66,9 +66,9 @@ type CompanionOperations = {
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   /** Prompts and reviews name the target captured when the person acted, so a replaced session is refused rather than retargeted. */
   sendPrompt(target: CompanionTarget, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
-  listModels?(agentId: string): Promise<BackendModelOption[]>;
-  listPlugins?(agentId: string): Promise<BackendPluginSummary[]>;
-  listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
+  listModels?(agentId: string): Promise<ProviderModelOption[]>;
+  listPlugins?(agentId: string): Promise<ProviderPluginSummary[]>;
+  listSkills?(agentId: string): Promise<ProviderSkillSummary[]>;
   selectModel?(agentId: string, selection: ExecutionSelection): Promise<void>;
   changeGoal?(target: CompanionTarget, objective: string | null): Promise<void>;
   updateQueuedPrompt?(target: CompanionTarget, promptId: string, action: 'steer' | 'delete'): Promise<void>;
@@ -79,11 +79,11 @@ type CompanionOperations = {
   listBranches?(teamId: string, repositoryId: string): Promise<CompanionBranch[]>;
   /** Resolves with the new agent once the laptop has made the worktree, if any, and the chat. */
   createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
-  createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
-  setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
+  createQuickChat?(chat: { teamId: string; provider: HarnessProvider }, signal?: AbortSignal): Promise<string>;
+  setProvider?(agentId: string, provider: HarnessProvider): Promise<void>;
   readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
   reviewAction?(target: CompanionTarget, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
-  reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
+  reviewSetup?(agentId: string, provider?: HarnessProvider): Promise<CompanionReviewSetup>;
   startReview?(target: CompanionTarget, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;

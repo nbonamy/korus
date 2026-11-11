@@ -16,13 +16,13 @@ const exec = promisify(execFile);
 
 
 it.each([
-  { backend: 'codex', parallel: false, mode: undefined },
-  { backend: 'codex', parallel: false, mode: 'lead' },
-  { backend: 'codex', parallel: false, mode: 'perRepository' },
-  { backend: 'antigravity', parallel: false, mode: undefined },
-  { backend: 'cursor', parallel: true, mode: 'multiplePerRepository' },
-  { backend: 'codex', parallel: true, mode: 'multiplePerRepository' },
-] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ backend, parallel, mode }) => {
+  { provider: 'codex', parallel: false, mode: undefined },
+  { provider: 'codex', parallel: false, mode: 'lead' },
+  { provider: 'codex', parallel: false, mode: 'perRepository' },
+  { provider: 'antigravity', parallel: false, mode: undefined },
+  { provider: 'cursor', parallel: true, mode: 'multiplePerRepository' },
+  { provider: 'codex', parallel: true, mode: 'multiplePerRepository' },
+] as const)('keeps $backend workers through the full Mission (parallel: $parallel)', async ({ provider: backend, parallel, mode }) => {
   const folder = await mkdtemp(join(tmpdir(), 'app-mission-workflow-'));
   const repo = join(folder, 'repo');
   await exec('git', ['init', repo]);
@@ -36,8 +36,8 @@ it.each([
     const baseline = await readWorktreeHead(repo);
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.folder = repo;
-    snapshot.agents[0]!.backend = backend;
-    snapshot.agents[0]!.backendDefaults = { kind: backend, model: 'selected-model' };
+    snapshot.agents[0]!.provider = backend;
+    snapshot.agents[0]!.providerDefaults = { kind: backend, model: 'selected-model' };
     const prompts: string[] = [];
     const mission = createMission(snapshot, { outcome: 'Team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     let disk: unknown;
@@ -49,9 +49,9 @@ it.each([
       validateRepository: async path => { await readWorktreeHead(path); }, refreshWorkspace: async () => {}, refreshConversationContext: async () => {},
       continueStage: async (id, prompt) => {
         const worker = snapshot.agents.find(agent => agent.id === id)!;
-        expect(worker.backend).toBe(backend);
-        expect(worker.backendDefaults).toEqual({ kind: backend, model: 'selected-model' });
-        worker.backendSession = backend === 'codex' ? { kind: backend, threadId: id } : { kind: backend, sessionId: id };
+        expect(worker.provider).toBe(backend);
+        expect(worker.providerDefaults).toEqual({ kind: backend, model: 'selected-model' });
+        worker.providerSession = backend === 'codex' ? { kind: backend, threadId: id } : { kind: backend, sessionId: id };
         prompts.push(prompt);
       }, startRemediation: async () => {},
       createWorktree: createSourceWorktree, getHead: readWorktreeHead,
@@ -147,11 +147,11 @@ it.each([
       expect(current().execution!.runs[2]!.workerId).toBe(current().execution!.runs[1]!.workerId);
       const lead = snapshot.agents.find(agent => agent.id === current().execution!.runs[1]!.workerId)!;
       expect(lead.folder).toBe(folder);
-      expect(lead.backendSession).toBeDefined();
+      expect(lead.providerSession).toBeDefined();
       const delivery = snapshot.agents.find(agent => agent.id === current().execution!.deliveries![0]!.agentId)!;
       expect(delivery.id).not.toBe(lead.id);
       expect(delivery.folder).toBe(current().execution!.workspaces![0]!.path);
-      expect(delivery.backendSession).toBeUndefined();
+      expect(delivery.providerSession).toBeUndefined();
     } else expect(current().execution!.runs[2]!.workerId).not.toBe(current().execution!.runs[1]!.workerId);
     expect(current().execution!.runs.at(-1)!.workerId).toBe(current().execution!.runs[1]!.workerId);
     expect(new Set(current().execution!.runs.map(run => run.workerId)).size).toBe(mode === 'lead' ? 1 : parallel ? 3 : 2);

@@ -9,7 +9,7 @@ over native tools.
 Use this checklist for each provider. An item is complete only for its stated
 scope; partial or unsupported native behavior stays explicit and its controls
 remain unavailable. The driver contract and capability catalog live in
-[`AgentBackendDriver`](../core/src/backend-driver.ts) and
+[`AgentProviderDriver`](../core/src/backend-driver.ts) and
 [`backend-capabilities`](../core/src/backend-capabilities.ts). Capability flags
 are an admission boundary, not acceptance evidence.
 

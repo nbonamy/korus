@@ -1,7 +1,7 @@
-import type { ToolPresentationContext as CodexToolPresentationContext, ToolTitlePresenterContext as CodexToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
+import type { ToolPresentationContext, ToolTitlePresenterContext } from '@korus-dev/agent-ui-sdk';
 import { messages } from './i18n/messages';
 
-type Translate = CodexToolTitlePresenterContext['translate'];
+type Translate = ToolTitlePresenterContext['translate'];
 type Phase = 'completed' | 'failed' | 'running';
 
 const claudeTitles: Record<string, Record<string, unknown> | undefined> = messages.en.chat.tool.claude;
@@ -12,7 +12,7 @@ const claudeTitles: Record<string, Record<string, unknown> | undefined> = messag
  * falls back to its generic title.
  */
 export function presentClaudeToolTitle(
-  { descriptor, toolCall }: CodexToolPresentationContext,
+  { descriptor, toolCall }: ToolPresentationContext,
   translate: Translate,
 ): string | undefined {
   const params = descriptor?.params;

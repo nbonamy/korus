@@ -4,11 +4,11 @@ import type { Agent } from '../contracts';
 
 describe('companion wire framing', () => {
   it('keeps a session target stable when private provider connection metadata changes', () => {
-    const agent: Agent = { id: 'agent', teamId: 'team', name: 'Agent', backend: 'claude', folder: null,
-      status: { type: 'idle' }, createdAt: '', updatedAt: '', backendSession: { kind: 'claude', sessionId: 'session', transport: 'websocket', serverUrl: 'https://private.example' }, remoteConnectionId: 'owner' };
+    const agent: Agent = { id: 'agent', teamId: 'team', name: 'Agent', provider: 'claude', folder: null,
+      status: { type: 'idle' }, createdAt: '', updatedAt: '', providerSession: { kind: 'claude', sessionId: 'session', transport: 'websocket', serverUrl: 'https://private.example' }, remoteConnectionId: 'owner' };
     const team = { id: 'team', name: 'Team', agentIds: ['agent'] };
     const first = companionTarget('laptop', team, agent);
-    const changed = companionTarget('laptop', team, { ...agent, backendSession: { ...agent.backendSession!, kind: 'claude', sessionId: 'session', transport: 'stdio', serverUrl: 'https://other-private.example' } });
+    const changed = companionTarget('laptop', team, { ...agent, providerSession: { ...agent.providerSession!, kind: 'claude', sessionId: 'session', transport: 'stdio', serverUrl: 'https://other-private.example' } });
     expect(changed).toEqual(first);
     expect(first.locationId).toBe('owner'); expect(first.sessionId).not.toContain('private.example');
   });

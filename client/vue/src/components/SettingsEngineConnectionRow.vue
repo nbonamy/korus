@@ -3,7 +3,7 @@
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
         <template v-if="overflow">
-          <ProviderInstallActions v-if="installed === false && backend && !setupCapabilities?.installation.managed" :backend="backend" :capabilities="setupCapabilities" :busy="busy" :disabled="saving || updateBusy" @refresh="emit('refresh')" />
+          <ProviderInstallActions v-if="installed === false && provider && !setupCapabilities?.installation.managed" :provider="provider" :capabilities="setupCapabilities" :busy="busy" :disabled="saving || updateBusy" @refresh="emit('refresh')" />
           <el-button v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
           <el-button v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
           <el-button v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
@@ -13,7 +13,7 @@
             </template>
           </AppMenuButton>
         </template>
-        <ProviderInstallActions v-else-if="installed === false && backend" :backend="backend" :capabilities="setupCapabilities" :busy="busy" :automated="installable" @refresh="emit('refresh')" @install="emit('install')" />
+        <ProviderInstallActions v-else-if="installed === false && provider" :provider="provider" :capabilities="setupCapabilities" :busy="busy" :automated="installable" @refresh="emit('refresh')" @install="emit('install')" />
         <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
         <el-button v-else-if="connected" size="small" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
         <el-button v-else size="small" :disabled="busy || saving" @click="emit('connect')">
@@ -32,7 +32,7 @@
   </div>
   <div v-else class="engine-hero" :data-state="state">
     <div class="engine-hero__summary">
-      <BackendIcon v-if="backend" class="engine-hero__logo" :backend="backend" :monochrome="backend === 'codex'" />
+      <ProviderIcon v-if="provider" class="engine-hero__logo" :provider="provider" :monochrome="provider === 'codex'" />
       <div class="engine-hero__copy">
         <strong>{{ title ?? $t('engineConnection.title') }}</strong>
         <StatusPill class="engine-hero__status" role="status" :tone="tone">{{ statusLabel }}</StatusPill>
@@ -40,7 +40,7 @@
         <span v-if="error" class="engine-hero__error" role="alert">{{ error }}</span>
       </div>
       <div class="engine-hero__action">
-        <ProviderInstallActions v-if="installed === false && backend" :backend="backend" :capabilities="setupCapabilities" :busy="busy" @refresh="emit('refresh')" @install="emit('install')" />
+        <ProviderInstallActions v-if="installed === false && provider" :provider="provider" :capabilities="setupCapabilities" :busy="busy" @refresh="emit('refresh')" @install="emit('install')" />
         <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
         <el-button v-else-if="connected" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
         <el-button v-else type="primary" :disabled="busy || saving" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
@@ -59,19 +59,19 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { HarnessProvider } from '@workspace/core/contracts';
 import { resolveProviderSetupCapabilities, type ProviderAuthentication, type ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import FormRow from '../shared/form/FormRow.vue';
-import BackendIcon from './BackendIcon.vue';
+import ProviderIcon from './ProviderIcon.vue';
 import ProviderInstallActions from './ProviderInstallActions.vue';
 import StatusPill from '../shared/form/StatusPill.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { DotsVerticalIcon, RefreshIcon, QuitIcon } from '../shared/icons/app-icons';
-const props = withDefaults(defineProps<{ backend?: AgentBackend; installed?: boolean; compact?: boolean; installable?: boolean; capabilities?: ProviderSetupCapabilities; overflow?: boolean; version?: string; updateAvailable?: boolean; updateBusy?: boolean; menuItems?: AppMenuItem[]; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
-const setupCapabilities = computed(() => props.backend ? resolveProviderSetupCapabilities(props.backend, props.capabilities, props.installable) : undefined);
+const props = withDefaults(defineProps<{ provider?: HarnessProvider; installed?: boolean; compact?: boolean; installable?: boolean; capabilities?: ProviderSetupCapabilities; overflow?: boolean; version?: string; updateAvailable?: boolean; updateBusy?: boolean; menuItems?: AppMenuItem[]; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
+const setupCapabilities = computed(() => props.provider ? resolveProviderSetupCapabilities(props.provider, props.capabilities, props.installable) : undefined);
 const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: []; upgrade: []; 'menu-select': [id: string] }>();
 const { t } = useI18n();
 const enabledLabel = computed(() => t('engineConnection.enabled', { name: props.title ?? t('engineConnection.title') }));

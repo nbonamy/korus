@@ -138,10 +138,10 @@ describe('app startup', () => {
     api.updateSettings.mockImplementation(async input => structuredClone(updateSettingsInSnapshot(snapshot, input)));
     api.guestConversationControl.mockImplementation(async input => {
       if (input.action === 'prepare') state = { entries: [], view: { ...entry, name: '', status: 'needsName', participant: null, target: null, frame: null } };
-      if (input.action === 'join' || input.action === 'open') state = { entries: [entry, other], view: { ...(input.id === other.id ? other : entry), status: 'ready', participant: { identity: 'fixture', name: 'Alex', discriminator: '1234abcd' }, target: { agentId: 'shared', backend: 'claude', sessionId: 'session', conversation: { backend: 'claude', sessionId: 'session', folder: null } }, frame: { type: 'claude.conversationSnapshotChanged', agentId: 'shared', backend: 'claude', backendSessionId: 'session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'shared', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [{ id: 'past', agentId: 'shared', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'History from before sharing' }], createdAt: 'now' }], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } } };
+      if (input.action === 'join' || input.action === 'open') state = { entries: [entry, other], view: { ...(input.id === other.id ? other : entry), status: 'ready', participant: { identity: 'fixture', name: 'Alex', discriminator: '1234abcd' }, target: { agentId: 'shared', provider: 'claude', sessionId: 'session', conversation: { provider: 'claude', sessionId: 'session', folder: null } }, frame: { type: 'claude.conversationSnapshotChanged', agentId: 'shared', provider: 'claude', providerSessionId: 'session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'shared', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [{ id: 'past', agentId: 'shared', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'History from before sharing' }], createdAt: 'now' }], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } } };
       if (input.action === 'leave') state = { entries: [], view: null };
       if (input.action === 'join' || input.action === 'open') {
-        snapshot.agents = [{ id: 'shared-row', teamId: snapshot.teams[0]!.id, name: entry.title, sessionKind: 'quickChat', sharedConversation: { joinId: id }, backend: 'codex', folder: null, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
+        snapshot.agents = [{ id: 'shared-row', teamId: snapshot.teams[0]!.id, name: entry.title, sessionKind: 'quickChat', sharedConversation: { joinId: id }, provider: 'codex', folder: null, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
         snapshot.teams[0]!.agentIds = ['shared-row']; snapshot.activeAgentId = 'shared-row';
         emit({ type: 'snapshot.updated', seq: 10, occurredAt: 'now', payload: structuredClone(snapshot) });
       }
@@ -176,7 +176,7 @@ describe('app startup', () => {
   it('keeps a revoked shared chat in an access-ended screen until Close without opening the invite dialog', async () => {
     vi.useFakeTimers();
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
     const id = 'e'.repeat(64);
     agent.sharedConversation = { joinId: id }; agent.sessionKind = 'quickChat'; agent.folder = null;
@@ -219,7 +219,7 @@ describe('app startup', () => {
   });
   it('waits for the saved workspace before deciding whether to show onboarding', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api } = createClientApiMock(snapshot);
     const pending = deferred<RendererSnapshotState>();
     api.getSnapshotState.mockReturnValue(pending.promise);
@@ -237,7 +237,7 @@ describe('app startup', () => {
 
   it.each(['rejected', 'disconnected'] as const)('keeps loading through a %s initial snapshot and recovers automatically', async mode => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = createClientApiMock(snapshot);
     if (mode === 'rejected') api.getSnapshotState.mockRejectedValueOnce(new Error('daemon socket is not connected.'));
     else api.getSnapshotState.mockResolvedValueOnce({ snapshot: createEmptySnapshot(), connection: { status: 'error', detail: 'daemon socket is not connected.' }, lastBackendEventSeq: 0 });
@@ -258,7 +258,7 @@ describe('app startup', () => {
 
   it.each(['cached', 'rejected'] as const)('re-reads the workspace when the daemon connects during a %s initial snapshot request', async mode => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = createClientApiMock(snapshot);
     const pending = deferred<RendererSnapshotState>();
     api.getSnapshotState.mockReturnValueOnce(pending.promise);
@@ -278,7 +278,7 @@ describe('app startup', () => {
   it('explains delayed startup after fifteen seconds and recovers without interaction', async () => {
     vi.useFakeTimers();
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = createClientApiMock(snapshot);
     api.getSnapshotState.mockRejectedValueOnce(new Error('snapshot unavailable'));
     const wrapper = await mountStartup(api);
@@ -310,7 +310,7 @@ describe('app startup', () => {
 
   it('keeps the workspace visible through a later disconnect and a failed provider probe', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = createClientApiMock(snapshot);
     api.getProviderSetup.mockRejectedValue(new Error('provider probe unavailable'));
     api.getProviderConnections.mockRejectedValue(new Error('provider probe unavailable'));

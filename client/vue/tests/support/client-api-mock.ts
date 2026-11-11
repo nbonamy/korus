@@ -78,9 +78,9 @@ export function createClientApiMock(
     listGlobalWorkItems: unscripted<'listGlobalWorkItems'>('listGlobalWorkItems'),
     listAssignedWorkItems: unscripted<'listAssignedWorkItems'>('listAssignedWorkItems'),
     listWorkItems: unscripted<'listWorkItems'>('listWorkItems'),
-    listBackendModels: unscripted<'listBackendModels'>('listBackendModels'),
-    listBackendPlugins: unscripted<'listBackendPlugins'>('listBackendPlugins'),
-    listBackendSkills: unscripted<'listBackendSkills'>('listBackendSkills'),
+    listProviderModels: unscripted<'listProviderModels'>('listProviderModels'),
+    listProviderPlugins: unscripted<'listProviderPlugins'>('listProviderPlugins'),
+    listProviderSkills: unscripted<'listProviderSkills'>('listProviderSkills'),
     getRunProfiles: unscripted<'getRunProfiles'>('getRunProfiles'),
     getRunProfileActions: unscripted<'getRunProfileActions'>('getRunProfileActions'),
     saveRunProfile: unscripted<'saveRunProfile'>('saveRunProfile'),
@@ -198,7 +198,7 @@ export function createClientApiMock(
     getCodexAuthentication: unscripted<'getCodexAuthentication'>('getCodexAuthentication'),
     getClaudeAuthentication: unscripted<'getClaudeAuthentication'>('getClaudeAuthentication'),
     getProviderSetup: unscripted<'getProviderSetup'>('getProviderSetup'),
-    getProviderUpdate: vi.fn<Api['getProviderUpdate']>(async backend => ({ backend, status: 'unavailable', method: 'manual', canUpgrade: false, busy: false })),
+    getProviderUpdate: vi.fn<Api['getProviderUpdate']>(async provider => ({ provider: provider, status: 'unavailable', method: 'manual', canUpgrade: false, busy: false })),
     setProviderUpdate: unscripted<'setProviderUpdate'>('setProviderUpdate'),
     getProviderConnections: unscripted<'getProviderConnections'>('getProviderConnections'),
     getBankedResets: vi.fn<Api['getBankedResets']>(async () => ({ status: 'unsupported' })),
@@ -297,9 +297,9 @@ export function createClientApiMock(
   api.listWorkItems.mockResolvedValue([]);
   api.listAssignedWorkItems.mockResolvedValue([]);
   api.listGlobalWorkItems.mockResolvedValue({ items: [], totalItems: 0 });
-  api.listBackendModels.mockResolvedValue([]);
-  api.listBackendPlugins.mockResolvedValue([]);
-  api.listBackendSkills.mockResolvedValue([]);
+  api.listProviderModels.mockResolvedValue([]);
+  api.listProviderPlugins.mockResolvedValue([]);
+  api.listProviderSkills.mockResolvedValue([]);
   api.listAgentFiles.mockResolvedValue([]);
   api.listAgentDirectory.mockResolvedValue({ entries: [], nextCursor: null });
   api.listSourceRepositories.mockResolvedValue([]);
@@ -314,8 +314,8 @@ export function createClientApiMock(
   api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: false, login: { status: 'idle', error: null } });
   api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false });
   api.getProviderConnections.mockResolvedValue(snapshot.providerConnections ?? []);
-  api.getProviderUsage.mockImplementation(async backend => snapshot.backendAccountRateLimits?.[backend] ?? (backend === 'codex' ? snapshot.accountRateLimits : undefined) ?? null);
-  api.getProviderSetup.mockResolvedValue(['codex', 'claude'].map(backend => ({ backend, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${backend}-home` })) as Awaited<ReturnType<AppApi['getProviderSetup']>>);
+  api.getProviderUsage.mockImplementation(async provider => snapshot.providerAccountRateLimits?.[provider] ?? (provider === 'codex' ? snapshot.accountRateLimits : undefined) ?? null);
+  api.getProviderSetup.mockResolvedValue(['codex', 'claude'].map(provider => ({ provider: provider, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${provider}-home` })) as Awaited<ReturnType<AppApi['getProviderSetup']>>);
   api.getSystemPermissions.mockResolvedValue({ platform: 'darwin', accessibility: { required: true, trusted: true }, screenRecording: { required: true, trusted: true } });
   api.getUpdateStatus.mockResolvedValue({ state: 'idle' });
   api.getOpenInApplications.mockResolvedValue({ defaultApplication: 'vscode', applications: [] });

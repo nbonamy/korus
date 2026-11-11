@@ -1,7 +1,7 @@
 import { providerSafetyBlockMessage } from './provider-safety-block';
 import type { AgentStatus, AppSnapshot, SendPromptOptions } from './contracts';
-import type { AgentBackendDriver, BackendEvent, BackendSendResult } from './backend-driver';
-import { backendDisplayName } from './backend-driver';
+import type { AgentProviderDriver, BackendEvent, ProviderSendResult } from './provider-driver';
+import { providerDisplayName } from './provider-driver';
 import { handoffInProgress } from './agent-handoff';
 import { interactivePlanPrompt } from './plan-review';
 import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from './delegation-context';
@@ -18,14 +18,14 @@ export type SendAgentPromptHooks = {
   /** Trusted guest admission: no product commands, exact owner-approved text. */
   plainText?: boolean;
   appendUserMessage?: boolean;
-  onBackendSessionUpdated?: (result: BackendSendResult, wasNewSession: boolean) => void | Promise<void>;
+  onProviderSessionUpdated?: (result: ProviderSendResult, wasNewSession: boolean) => void | Promise<void>;
   onPromptFailed?: (error: Error) => void | Promise<void>;
-  onPromptStarted?: (result: BackendSendResult) => void | Promise<void>;
+  onPromptStarted?: (result: ProviderSendResult) => void | Promise<void>;
 };
 
 export function sendAgentPrompt(
   snapshot: AppSnapshot,
-  backendDriver: AgentBackendDriver,
+  providerDriver: AgentProviderDriver,
   agentId: string,
   prompt: string,
   options: SendPromptOptions | undefined,
@@ -39,39 +39,39 @@ export function sendAgentPrompt(
   if (!agent || (!trimmedPrompt && !hasAttachments) || isBusy(agent.status)) {
     return snapshot;
   }
-  if (hooks?.goal && (!backendDriver.getCapabilities(agent).goals || !backendDriver.setGoal)) throw new Error('This backend does not support goals.');
+  if (hooks?.goal && (!providerDriver.getCapabilities(agent).goals || !providerDriver.setGoal)) throw new Error('This backend does not support goals.');
   if (options?.delegation !== undefined && !isDelegationOverrides(options.delegation)) throw new Error('Invalid worktree delegation overrides.');
 
   agent.hasSubmittedPrompt = true;
   // Only app-submitted controls can override saved user preferences. Agent-
   // generated create-agent instructions never populate this field.
   const delegationControls = captureUserDelegationOverrides(agent, options?.delegation);
-  const promptResult = hooks?.plainText || hooks?.goal ? null : backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
-  const hadBackendSession = Boolean(agent.backendSession);
+  const promptResult = hooks?.plainText || hooks?.goal ? null : providerDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
+  const hadProviderSession = Boolean(agent.providerSession);
 
   updateAgentStatus(agentId, { type: 'working' }, emit, snapshot);
-  updateBackendRuntimeStatus({
-    backend: backendDriver.backend,
+  updateProviderRuntimeStatus({
+    provider: providerDriver.provider,
     status: 'starting',
-    detail: `Starting ${backendDisplayName(backendDriver.backend)} backend...`,
-    capabilities: backendDriver.getCapabilities(agent),
+    detail: `Starting ${providerDisplayName(providerDriver.provider)} backend...`,
+    capabilities: providerDriver.getCapabilities(agent),
   }, emit, snapshot);
 
-  if (agent.backend !== 'antigravity' && options?.selection?.serviceTier !== undefined) {
-    const defaults = agent.backendDefaults?.kind === agent.backend
-      ? agent.backendDefaults
-      : { kind: agent.backend };
-    agent.backendDefaults = { ...defaults, serviceTier: options.selection?.serviceTier };
+  if (agent.provider !== 'antigravity' && options?.selection?.serviceTier !== undefined) {
+    const defaults = agent.providerDefaults?.kind === agent.provider
+      ? agent.providerDefaults
+      : { kind: agent.provider };
+    agent.providerDefaults = { ...defaults, serviceTier: options.selection?.serviceTier };
   }
   const routedOptions = hooks?.appendUserMessage === false
     ? { ...options, recordUserMessage: false }
     : options;
-  const preparedOptions = backendDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
+  const preparedOptions = providerDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
   const deliveredPrompt = hooks?.plainText ? prompt : options?.planMode === true && snapshot.general.useInteractivePlans !== false
     ? interactivePlanPrompt(trimmedPrompt) : trimmedPrompt;
   const sendResult = hooks?.goal
-    ? backendDriver.setGoal!(agent, trimmedPrompt).then(result => {
-      agent.backendSession = result.backendSession;
+    ? providerDriver.setGoal!(agent, trimmedPrompt).then(result => {
+      agent.providerSession = result.providerSession;
       if (result.goal) {
         agent.goal = result.goal;
         emit({ agentId, threadId: result.goal.threadId, type: 'conversation.goalUpdated', payload: { goal: result.goal } });
@@ -80,23 +80,23 @@ export function sendAgentPrompt(
     })
     : promptResult
     ?? (hasPromptOptions(preparedOptions)
-      ? backendDriver.sendPrompt(agent, deliveredPrompt, preparedOptions)
-      : backendDriver.sendPrompt(agent, deliveredPrompt));
+      ? providerDriver.sendPrompt(agent, deliveredPrompt, preparedOptions)
+      : providerDriver.sendPrompt(agent, deliveredPrompt));
 
   void sendResult
     .then((result) => {
       bindUserDelegationOverrides(agent, delegationControls, result);
-      agent.backend = backendDriver.backend;
-      agent.backendSession = result.backendSession;
-      void Promise.resolve(hooks?.onBackendSessionUpdated?.(result, !hadBackendSession)).catch(() => undefined);
-      updateBackendRuntimeStatus({
-        backend: backendDriver.backend,
+      agent.provider = providerDriver.provider;
+      agent.providerSession = result.providerSession;
+      void Promise.resolve(hooks?.onProviderSessionUpdated?.(result, !hadProviderSession)).catch(() => undefined);
+      updateProviderRuntimeStatus({
+        provider: providerDriver.provider,
         status: 'running',
         detail: {
           key: 'backend.connected',
-          params: { backend: backendDisplayName(backendDriver.backend) },
+          params: { provider: providerDisplayName(providerDriver.provider) },
         },
-        capabilities: backendDriver.getCapabilities(agent),
+        capabilities: providerDriver.getCapabilities(agent),
       }, emit, snapshot);
       void Promise.resolve(hooks?.onPromptStarted?.(result)).catch(() => undefined);
     })
@@ -105,8 +105,8 @@ export function sendAgentPrompt(
       const normalizedError = error instanceof Error ? error : new Error(String(error));
       const message = providerSafetyBlockMessage(normalizedError) ?? normalizedError.message;
       updateAgentStatus(agentId, { type: 'error', message }, emit, snapshot);
-      updateBackendRuntimeStatus({
-        backend: backendDriver.backend,
+      updateProviderRuntimeStatus({
+        provider: providerDriver.provider,
         status: 'error',
         detail: message,
       }, emit, snapshot);
@@ -126,7 +126,7 @@ function hasPromptOptions(options: SendPromptOptions | undefined): options is Se
     (options?.skills?.length ?? 0) > 0 ||
     options?.inputMethod ||
     options?.recordUserMessage === false ||
-    options?.backendOptions,
+    options?.providerOptions,
   );
 }
 
@@ -152,21 +152,21 @@ function updateAgentStatus(
   });
 }
 
-function updateBackendRuntimeStatus(
-  status: AppSnapshot['backendRuntimes'][number],
+function updateProviderRuntimeStatus(
+  status: AppSnapshot['providerRuntimes'][number],
   emit: AgentChatEventEmitter,
   snapshot: AppSnapshot,
 ): void {
-  const existingIndex = snapshot.backendRuntimes.findIndex((runtime) => runtime.backend === status.backend);
+  const existingIndex = snapshot.providerRuntimes.findIndex((runtime) => runtime.provider === status.provider);
   if (existingIndex === -1) {
-    snapshot.backendRuntimes.push(status);
+    snapshot.providerRuntimes.push(status);
   } else {
-    snapshot.backendRuntimes[existingIndex] = status;
+    snapshot.providerRuntimes[existingIndex] = status;
   }
 
   emit({
-    backend: status.backend,
-    type: 'backend.statusChanged',
+    provider: status.provider,
+    type: 'provider.statusChanged',
     payload: status,
   });
 }

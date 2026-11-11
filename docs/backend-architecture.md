@@ -32,9 +32,9 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   A controller-provided installer needs an explicit grant; local installation
   support alone does not grant remote installation. Shared controls consume this
   policy, with registered compatibility defaults for older daemons.
-  Authentication enters through the optional `AgentBackendDriver.authenticate`
+  Authentication enters through the optional `AgentProviderDriver.authenticate`
   capability; the server caches the app-owned result and never interprets
-  credentials or probes provider CLIs itself. `AgentBackendDriver.coordinationPolicy`
+  credentials or probes provider CLIs itself. `AgentProviderDriver.coordinationPolicy`
   declares authentication freshness and enablement, permission-default scope and
   rollback storage semantics. Shared coordination follows resolved policy rather
   than provider names. Settings changes refresh published capabilities from live

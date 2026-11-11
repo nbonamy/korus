@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { createTestSnapshot, createRemoteTeamSnapshot, readyRemoteConnection } from './server-test-fixtures';
 
 const exec = promisify(execFile);
@@ -25,7 +25,7 @@ describe('repository-backed agent creation', () => {
     await git('branch', 'feature'); await git('remote', 'add', 'origin', 'https://github.com/example/repo.git');
     await git('checkout', '-b', 'feature-primary');
     const remoteSnapshot = createRemoteTeamSnapshot(); remoteSnapshot.sourceFolder = { path: parent, initialized: true, recentRepoNames: [] };
-    const remote = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: new BackendDriverRpc(new Map()) });
+    const remote = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: new ProviderDriverRpc(new Map()) });
     const connection = readyRemoteConnection();
     const request = vi.fn(async (_connection: unknown, method: string, params: unknown) => {
       const result = await remote.handleMessage({ jsonrpc: '2.0', id: 'remote', method, params });
@@ -40,7 +40,7 @@ describe('repository-backed agent creation', () => {
     expect(acquired).toMatchObject({ result: { path: root } });
     expect(request.mock.calls.some(([, method]) => method === 'source/repository/clone')).toBe(false);
     const created = await server.handleMessage({ jsonrpc: '2.0', id: 'create', method: 'agent/create', params: { entityResult: true,
-      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, repositorySession: { existingBranch: 'feature' }, selection: { backend: 'codex' } } } });
+      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, repositorySession: { existingBranch: 'feature' }, selection: { provider: 'codex' } } } });
     expect(created).not.toHaveProperty('error');
     const agent = remoteSnapshot.agents.find(candidate => candidate.folder === `${root}-feature`)!;
     expect(agent).toBeDefined();
@@ -50,7 +50,7 @@ describe('repository-backed agent creation', () => {
     expect(preview).toHaveProperty('result');
     expect(request.mock.calls.some(([, method]) => method === 'agent/close/preview')).toBe(false);
     const defaultSession = await server.handleMessage({ jsonrpc: '2.0', id: 'default', method: 'agent/create', params: { entityResult: true,
-      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, repositorySession: {}, selection: { backend: 'codex' } } } });
+      input: { name: null, folder: root, teamId: 'pointer', remoteConnectionId: connection.id, repositorySession: {}, selection: { provider: 'codex' } } } });
     expect(defaultSession).not.toHaveProperty('error');
     expect(remoteSnapshot.agents.at(-1)?.folder).toBe(`${root}-main`);
     expect((await exec('git', ['-C', `${root}-main`, 'branch', '--show-current'])).stdout.trim()).toBe('main');
@@ -64,7 +64,7 @@ describe('repository-backed agent creation', () => {
     await exec('git', ['-C', folder, 'init', '-b', 'main']);
     await exec('git', ['-C', folder, 'remote', 'add', 'origin', 'git@github.com:example/repo.git']);
     const snapshot = createTestSnapshot(); snapshot.sourceFolder.path = parent; snapshot.sourceFolder.initialized = true;
-    const driver = new BackendDriverRpc(new Map()); const original = driver.handle.bind(driver);
+    const driver = new ProviderDriverRpc(new Map()); const original = driver.handle.bind(driver);
     const clone = vi.fn(() => { throw new Error('A known checkout must not be cloned.'); });
     vi.spyOn(driver, 'handle').mockImplementation((method, params) => method === 'source/repository/clone' ? clone() : original(method, params));
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: driver, saveSnapshot: async () => {} });
@@ -88,13 +88,13 @@ describe('repository-backed agent creation', () => {
     await git('branch', '--set-upstream-to', 'origin/main', 'feature');
     await writeFile(path.join(root, 'keep.txt'), 'uncommitted work');
     const snapshot = createTestSnapshot();
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map()), saveSnapshot: async () => {} });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map()), saveSnapshot: async () => {} });
     cleanup.push(() => server.close());
     const destination = `${root}-feature`;
     cleanup.unshift(() => rm(destination, { recursive: true, force: true }));
     for (const client of ['desktop', 'companion-write']) {
       const reply = await server.handleMessage({ jsonrpc: '2.0', id: client, method: 'agent/create', params: {
-        _clientId: client, entityResult: true, input: { name: null, folder: root, teamId: 'team-test', repositorySession: { existingBranch: 'feature' }, selection: { ...{ backend: 'codex' } } },
+        _clientId: client, entityResult: true, input: { name: null, folder: root, teamId: 'team-test', repositorySession: { existingBranch: 'feature' }, selection: { ...{ provider: 'codex' } } },
       } });
       expect(reply).not.toHaveProperty('error');
       expect(snapshot.agents.at(-1)?.folder).toBe(destination);

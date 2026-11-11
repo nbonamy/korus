@@ -1,7 +1,8 @@
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
+import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/renderer';
 import { isExecutionSelection, isExecutionSelectionOverrides, readPersistedExecutionSelection } from './execution-selection';
-import type { BackendSession } from './contracts/backend';
-import type { Agent, AgentBackend, AgentGitStatus } from './contracts';
+import type { ProviderSessionData } from './contracts/provider';
+import type { Agent, HarnessProvider, AgentGitStatus } from './contracts';
 
 /** Shared setup decisions; rendering and form state remain client-owned. */
 export function codeReviewAvailability(agent: Agent, status?: AgentGitStatus | null) {
@@ -10,12 +11,12 @@ export function codeReviewAvailability(agent: Agent, status?: AgentGitStatus | n
   return {
     uncommitted: !catalog || status?.state === 'unknown' || changed(catalog.uncommitted),
     branchChanges: Boolean(catalog?.branch && catalog.commits.length > 0 && changed(catalog.branch)),
-    currentThread: Boolean(agent.backendSession),
+    currentThread: Boolean(agent.providerSession),
   };
 }
 
-export function preferredReviewBackend(agentBackend: AgentBackend, backends: readonly AgentBackend[], preferred?: AgentBackend): AgentBackend | undefined {
-  return preferred && backends.includes(preferred) ? preferred : backends.includes(agentBackend) ? agentBackend : backends[0];
+export function preferredReviewProvider(agentProvider: HarnessProvider, providers: readonly HarnessProvider[], preferred?: HarnessProvider): HarnessProvider | undefined {
+  return preferred && providers.includes(preferred) ? preferred : providers.includes(agentProvider) ? agentProvider : providers[0];
 }
 
 export function activeReviewForAgent(agents: readonly Agent[], agent: Agent): CodeReviewSession | undefined {
@@ -50,7 +51,7 @@ export type CodeReviewAutomationSettings = {
 };
 
 export type CodeReviewPreferences = {
-  backend: 'codex' | 'claude' | 'antigravity' | 'cursor';
+  provider: 'codex' | 'claude' | 'antigravity' | 'cursor';
   automation: CodeReviewAutomationSettings;
   providers: Partial<Record<'codex' | 'claude' | 'antigravity' | 'cursor', ExecutionSelection>>;
 };
@@ -112,7 +113,7 @@ export type CodeReviewRound = {
   number: number;
   status: 'reviewing' | 'ready' | 'submitted' | 'completed' | 'failed';
   /** Provider conversation used for review, clarification, and fixes in this round. */
-  reviewerSession?: BackendSession;
+  reviewerSession?: ProviderSessionData;
   /** Provider's final inspection summary; full conversation remains provider-owned. */
   summary?: string;
   /** Explicit model acknowledgment of the current round's registered findings. */
@@ -275,10 +276,10 @@ export function isCodeReviewAutomationSettings(value: unknown): value is CodeRev
 }
 
 export function isCodeReviewPreferences(value: unknown): value is CodeReviewPreferences {
-  return isRecord(value) && (value.backend === 'codex' || value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor')
+  return isRecord(value) && isHarnessProvider(value.provider)
     && isCodeReviewAutomationSettings(value.automation) && isRecord(value.providers)
-    && Object.entries(value.providers).every(([backend, selection]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor')
-      && isExecutionSelection(selection) && selection.backend === backend);
+    && Object.entries(value.providers).every(([backend, selection]) => isHarnessProvider(backend)
+      && isExecutionSelection(selection) && selection.provider === backend);
 }
 
 export function isCodeReviewDecisionInput(value: unknown): value is CodeReviewDecisionInput {
@@ -346,7 +347,7 @@ function isCodeReviewRound(value: unknown): value is CodeReviewRound {
   return isRecord(value)
     && typeof value.id === 'string'
     && Number.isInteger(value.number)
-    && (value.reviewerSession === undefined || isBackendSession(value.reviewerSession))
+    && (value.reviewerSession === undefined || isProviderSession(value.reviewerSession))
     && (value.summary === undefined || typeof value.summary === 'string')
     && (value.inspectionCompletion === undefined || (isRecord(value.inspectionCompletion)
       && Number.isSafeInteger(value.inspectionCompletion.findingCount)
@@ -358,7 +359,7 @@ function isCodeReviewRound(value: unknown): value is CodeReviewRound {
     && typeof value.startedAt === 'string';
 }
 
-function isBackendSession(value: unknown): value is BackendSession {
+function isProviderSession(value: unknown): value is ProviderSessionData {
   if (!isRecord(value)) return false;
   if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
   if (value.kind === 'codex') return typeof value.threadId === 'string';
@@ -435,11 +436,11 @@ function optionalSelection(value: unknown): boolean {
 export function readPersistedReviewPreferences(value: unknown): CodeReviewPreferences | undefined {
   if (!isRecord(value) || !isRecord(value.providers)) return undefined;
   const providers: CodeReviewPreferences['providers'] = {};
-  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
-    if (value.providers[backend] === undefined) continue;
-    const selection = readPersistedExecutionSelection(value.providers[backend], backend);
+  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+    if (value.providers[provider] === undefined) continue;
+    const selection = readPersistedExecutionSelection(value.providers[provider], provider);
     if (!selection) return undefined;
-    providers[backend] = selection;
+    providers[provider] = selection;
   }
   const result = { ...value, providers };
   return isCodeReviewPreferences(result) ? result : undefined;

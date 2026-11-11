@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CompanionJournal } from '../companion-journal';
 import type { ProviderConversationFrame } from '../contracts';
-const frame = (revision: number, reset = false, agentId = 'agent') => ({ type: reset ? 'codex.conversationSnapshotChanged' : 'codex.conversationEventReceived', agentId, backend: 'codex', threadId: 'thread', payload: { revision, ...(reset ? { snapshot: {} } : { event: { type: 'conversation.updated', text: 'small update' } }) } }) as unknown as ProviderConversationFrame;
+const frame = (revision: number, reset = false, agentId = 'agent') => ({ type: reset ? 'codex.conversationSnapshotChanged' : 'codex.conversationEventReceived', agentId, provider: 'codex', threadId: 'thread', payload: { revision, ...(reset ? { snapshot: {} } : { event: { type: 'conversation.updated', text: 'small update' } }) } }) as unknown as ProviderConversationFrame;
 // Owns transport continuity and bounded retention; provider semantics stay opaque.
 describe('companion frame checkpoints', () => {
   it('replays only missing frames, ignores duplicates, and rejects gaps and replaced baselines', () => {

@@ -58,7 +58,7 @@ describe('AgentGitWorkflowService', () => {
       expect(test.sendPrompt.mock.calls[0]?.[1]).toContain(provider === 'gitlab' ? 'without a merge request' : 'without a pull request');
       expect(test.merge).not.toHaveBeenCalled();
       test.reports.handleEvent({
-        type: 'codex.conversationEventReceived', agentId: test.source.id, backend: 'codex',
+        type: 'codex.conversationEventReceived', agentId: test.source.id, provider: 'codex',
         threadId: 'handoff', seq: 1, occurredAt: '', payload: { revision: 1, event: {
           type: 'turn.completed', seq: 1, occurredAt: '', origin: 'notification', conversationId: 'handoff', turnId: 'report',
           payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
@@ -228,8 +228,8 @@ describe('AgentGitWorkflowService', () => {
   it.each([false, true])('closes an agent after a merged-branch push despite provider archive failure=%s', async providerFailure => {
     const snapshot = createInitialSnapshot();
     const agent: Agent = {
-      id: 'agent-1', name: 'Agent', folder: '/repo', backend: 'codex',
-      backendSession: { kind: 'codex', threadId: 'thread-1' }, status: { type: 'idle' },
+      id: 'agent-1', name: 'Agent', folder: '/repo', provider: 'codex',
+      providerSession: { kind: 'codex', threadId: 'thread-1' }, status: { type: 'idle' },
       createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
     };
     snapshot.agents = [agent];

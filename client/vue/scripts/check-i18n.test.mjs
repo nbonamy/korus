@@ -22,7 +22,7 @@ test('indexes nested renderer messages', () => {
   const paths = messagePaths(`
     export const messages = {
       en: {
-        backend: { connected: 'Connected' },
+        provider: { connected: 'Connected' },
         permissions: { approval: { ask: { label: 'Ask' } } },
       },
     } as const;

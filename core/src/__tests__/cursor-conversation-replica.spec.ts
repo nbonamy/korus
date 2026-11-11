@@ -16,10 +16,10 @@ describe('Cursor conversation ownership', () => {
   });
 
   it('validates provider frames and binds inner and outer conversation identities', () => {
-    const frame = { seq: 1, occurredAt: identity.occurredAt, agentId: identity.agentId, backend: 'cursor', backendSessionId: identity.sessionId,
+    const frame = { seq: 1, occurredAt: identity.occurredAt, agentId: identity.agentId, provider: 'cursor', providerSessionId: identity.sessionId,
       type: 'cursor.conversationSnapshotChanged', payload: { revision: 1, snapshot: emptyCursorSnapshot(identity.agentId, identity.sessionId) } };
     expect(decodeAppBackendEvent(frame)).toEqual(frame);
-    expect(() => decodeAppBackendEvent({ ...frame, backendSessionId: 'another-session' })).toThrow();
+    expect(() => decodeAppBackendEvent({ ...frame, providerSessionId: 'another-session' })).toThrow();
     expect(() => decodeAppBackendEvent({ ...frame, payload: { ...frame.payload, revision: -1 } })).toThrow();
   });
 });

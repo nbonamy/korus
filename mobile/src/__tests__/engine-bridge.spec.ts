@@ -14,7 +14,7 @@ const clock = () => Number(process.hrtime.bigint()) / 1e6;
 const fakeTimers = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
 
 function frameOf(agentId: string, messages: ReturnType<typeof codexTextMessage>[], revision: number, busy = false): CompanionConversation {
-  return { type: 'codex.conversationSnapshotChanged', seq: revision, occurredAt: '2026-10-14T00:00:00Z', agentId, backend: 'codex', threadId: agentId,
+  return { type: 'codex.conversationSnapshotChanged', seq: revision, occurredAt: '2026-10-14T00:00:00Z', agentId, provider: 'codex', threadId: agentId,
     payload: { revision, snapshot: codexConversationSnapshot(messages, { busy }) } } as CompanionConversation;
 }
 const history = (agentId: string, count: number) => Array.from({ length: count }, (_, index) => codexTextMessage(`${agentId}-${index}`, index % 2 ? 'assistant' : 'user', 'x'.repeat(1000), `turn-${index}`));
@@ -26,7 +26,7 @@ async function open(options: { messages?: number } = {}) {
   frames.set('demo-reviewer', frameOf('demo-reviewer', history('demo-reviewer', 20), 1));
   connector.connect = async (id) => {
     const session = await original(id); const initial = await session.getWorkspace();
-    workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: agent.id } })) };
+    workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', threadId: agent.id } })) };
     return { ...session, getWorkspace: async () => workspace, loadConversation: async (agentId) => frames.get(agentId) ?? null,
       onUpdate: (listener) => { deliver = listener; return () => { deliver = () => {}; }; } };
   };

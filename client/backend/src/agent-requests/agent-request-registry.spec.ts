@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AgentBackend, MainToRendererEvent } from '@workspace/core/contracts';
+import type { HarnessProvider, MainToRendererEvent } from '@workspace/core/contracts';
 import { AgentRequestRegistry } from './agent-request-registry';
 import { approvalAgentRequest } from '@workspace/core/agent-request';
 
-function setup(backend: AgentBackend = 'codex', remoteConnectionId: string | null = null) {
+function setup(provider: HarnessProvider = 'codex', remoteConnectionId: string | null = null) {
   const snapshot = createInitialSnapshot();
-  snapshot.agents[0]!.backend = backend;
+  snapshot.agents[0]!.provider = provider;
   const registry = new AgentRequestRegistry({ getSnapshot: () => snapshot, remoteConnectionIdForAgent: () => remoteConnectionId });
   const event: MainToRendererEvent = {
-    seq: 1, occurredAt: '2026-09-16T00:00:00Z', agentId: 'agent-dina', backend,
+    seq: 1, occurredAt: '2026-09-16T00:00:00Z', agentId: 'agent-dina', provider: provider,
     type: 'agentRequest.created', payload: { request: {
       id: '0', conversationId: 'conversation-1', turnId: 'turn-1', kind: 'question',
       question: { itemId: 'question-1', delivery: 'async', blocking: false, questions: [] },
@@ -42,20 +42,20 @@ describe('AgentRequestRegistry', () => {
     const { registry, event } = setup();
     let accepted!: () => void;
     const first = registry.respond({ id: '0', outcome: { kind: 'cancelled' } }, () => new Promise<void>((resolve) => { accepted = resolve; }));
-    registry.record({ type: 'agent.conversationAttached', agentId: 'agent-dina', backend: 'codex', conversationId: 'next', payload: {}, seq: 2, occurredAt: 'now' });
+    registry.record({ type: 'agent.conversationAttached', agentId: 'agent-dina', provider: 'codex', conversationId: 'next', payload: {}, seq: 2, occurredAt: 'now' });
     registry.record({ ...event, payload: { request: { ...event.payload.request, conversationId: 'next' } } });
     accepted();
     await first;
-    registry.record({ type: 'agentRequest.resolved', agentId: 'agent-dina', backend: 'codex', conversationId: 'conversation-1', payload: { id: '0', outcome: { kind: 'completed' } }, seq: 3, occurredAt: 'now' });
+    registry.record({ type: 'agentRequest.resolved', agentId: 'agent-dina', provider: 'codex', conversationId: 'conversation-1', payload: { id: '0', outcome: { kind: 'completed' } }, seq: 3, occurredAt: 'now' });
     expect(registry.owner('0')).toBeDefined();
     await registry.respond({ id: '0', outcome: { kind: 'cancelled' } }, async () => undefined);
     expect(registry.owner('0')).toBeUndefined();
   });
-  it.each(['codex', 'claude'] as const)('routes normalized %s requests including ID zero without inspecting provider frames', async (backend) => {
-    const { registry } = setup(backend, 'devbox');
+  it.each(['codex', 'claude'] as const)('routes normalized %s requests including ID zero without inspecting provider frames', async (provider) => {
+    const { registry } = setup(provider, 'devbox');
     const send = vi.fn().mockResolvedValue(undefined);
     await registry.respond({ id: '0', outcome: { kind: 'answered', answers: {} } }, send);
-    expect(send).toHaveBeenCalledWith({ kind: 'driver', backend, remoteConnectionId: 'devbox' });
+    expect(send).toHaveBeenCalledWith({ kind: 'driver', provider: provider, remoteConnectionId: 'devbox' });
     expect(registry.owner('0')).toBeUndefined();
     await expect(registry.respond({ id: '0', outcome: { kind: 'cancelled' } }, send)).rejects.toThrow('no longer pending');
   });
@@ -78,7 +78,7 @@ describe('AgentRequestRegistry', () => {
 
   it('invalidates handles on resolution and conversation release', () => {
     const { registry, event } = setup();
-    registry.record({ seq: 2, occurredAt: event.occurredAt, agentId: 'agent-dina', backend: 'codex', type: 'agentRequest.resolved', payload: { id: '0', outcome: { kind: 'cancelled' } } });
+    registry.record({ seq: 2, occurredAt: event.occurredAt, agentId: 'agent-dina', provider: 'codex', type: 'agentRequest.resolved', payload: { id: '0', outcome: { kind: 'cancelled' } } });
     expect(registry.owner('0')).toBeUndefined();
     registry.record(event);
     registry.clearAgent('agent-dina');
@@ -87,12 +87,12 @@ describe('AgentRequestRegistry', () => {
 
   it('requires a target when two agents have the same provider request ID', async () => {
     const { registry, event } = setup();
-    registry.record({ ...event, agentId: 'agent-other', backend: 'claude' });
+    registry.record({ ...event, agentId: 'agent-other', provider: 'claude' });
     const send = vi.fn().mockResolvedValue(undefined);
     await expect(registry.respond({ id: '0', outcome: { kind: 'cancelled' } }, send)).rejects.toThrow('Agent identity is required');
     expect(send).not.toHaveBeenCalled();
     await registry.respond({ agentId: 'agent-other', id: '0', outcome: { kind: 'cancelled' } }, send);
-    expect(send).toHaveBeenCalledWith({ kind: 'driver', backend: 'claude' });
-    expect(registry.owner('0')).toStrictEqual({ kind: 'driver', backend: 'codex' });
+    expect(send).toHaveBeenCalledWith({ kind: 'driver', provider: 'claude' });
+    expect(registry.owner('0')).toStrictEqual({ kind: 'driver', provider: 'codex' });
   });
 });

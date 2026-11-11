@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +15,7 @@ test('Mission workspace pairs horizontal workflow steps with persistent conversa
   const require = createRequire(path.join(root, 'client/vue/package.json'));
   const server = await createServer({ configFile: false, root, cacheDir: path.join(artifacts, 'vite-cache'), server: { host: '127.0.0.1', port: 0, watch: null },
    resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), '@korus-dev/agent-ui-sdk/styles.css': require.resolve('@korus-dev/agent-ui-sdk/styles.css') }, dedupe: ['vue'] },
-   plugins: [vue(), { name: 'mission-tabs-check', configureServer(server) {
+   plugins: [sdkSourcePlugin, vue(), { name: 'mission-tabs-check', configureServer(server) {
    server.middlewares.use('/tabs-check', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><style>html,body,#app{height:100%;margin:0}#app{display:flex;flex-direction:column}</style></head><body><div id="app"></div><script type="module" src="/tabs-fixture.js"></script></body></html>'); });
    }, resolveId(id) { if (id === '/tabs-fixture.js') return '\0tabs-fixture'; }, load(id) { if (id !== '\0tabs-fixture') return; return `
    import { createApp, h, reactive, ref } from 'vue';

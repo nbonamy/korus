@@ -11,10 +11,10 @@ import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGro
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
 import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
-import { useBackendChoices } from './backend-selection';
-import { backendDisplayName } from '@workspace/core/backend-driver';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import { useProviderChoices } from './provider-selection';
+import { providerDisplayName } from '@workspace/core/provider-driver';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
@@ -129,7 +129,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
     () => workspaceGroups.value.map(group => `${group.id}:${group.sessions.map(session => session.agentId).join(',')}`).join('|'));
   const agentsById = computed(() => new Map(props.agents.map(agent => [agent.id, agent])));
-  const backendChoices = useBackendChoices();
+  const providerChoices = useProviderChoices();
   const contextMenuAgentId = ref<string | null>(null);
   const contextMenuMissionId = ref<string | null>(null);
   const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
@@ -146,24 +146,24 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   ));
   const canForkContextMenuAgent = computed(() => (
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession) &&
+    Boolean(contextMenuAgent.value.providerSession) &&
     (props.forkableAgentIds ?? []).includes(contextMenuAgent.value.id)
   ));
   const canCompressContextMenuAgent = computed(() => (
     canReplaceContextMenuConversation.value &&
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession)
+    Boolean(contextMenuAgent.value.providerSession)
   ));
   const canCompactContextMenuAgent = computed(() => (
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession) &&
-    defaultBackendCommands(contextMenuAgent.value.backend).some(command => command.slashName === 'compact')
+    Boolean(contextMenuAgent.value.providerSession) &&
+    defaultProviderCommands(contextMenuAgent.value.provider).some(command => command.slashName === 'compact')
   ));
   const canReplaceContextMenuConversation = computed(() => {
     const agent = contextMenuAgent.value;
     return Boolean(agent && (props.summaryReplacementAgentIds
       ? props.summaryReplacementAgentIds.includes(agent.id)
-      : defaultBackendCapabilities(agent.backend).conversationReplaceWithSummary));
+      : defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary));
   });
   const contextMenuAgentIsLocal = computed(() => {
     const agent = contextMenuAgent.value;
@@ -563,9 +563,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     clientAgentOrderUpdate,
     selectAgent,
     openAgentMenu,
-    backendChoices,
+    providerChoices,
     agentsById,
-    backendDisplayName,
+    providerDisplayName,
     isPullRequestFinished,
     statusLabel,
     showQuickSwitchShortcut,

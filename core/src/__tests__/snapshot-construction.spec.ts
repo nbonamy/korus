@@ -24,8 +24,8 @@ describe('snapshot construction', () => {
         name: 'Dina',
         avatar: 'DI',
         folder: '~/src/agent-workspace',
-        backend: 'codex',
-        backendDefaults: { kind: 'codex' },
+        provider: 'codex',
+        providerDefaults: { kind: 'codex' },
         status: { type: 'idle' },
         createdAt: '2026-06-05T00:00:00.000Z',
         updatedAt: '2026-06-05T00:00:00.000Z',
@@ -35,8 +35,8 @@ describe('snapshot construction', () => {
         name: 'Jesse',
         avatar: 'JE',
         folder: '~/src/agent-workspace',
-        backend: 'codex',
-        backendDefaults: { kind: 'codex' },
+        provider: 'codex',
+        providerDefaults: { kind: 'codex' },
         status: { type: 'idle' },
         createdAt: '2026-06-05T00:00:00.000Z',
         updatedAt: '2026-06-05T00:00:00.000Z',
@@ -56,12 +56,12 @@ describe('snapshot construction', () => {
     expect(first.agents).not.toBe(second.agents);
     expect(first.automations).not.toBe(second.automations);
     expect(first.queuedPrompts).not.toBe(second.queuedPrompts);
-    expect(first.backendApprovals).not.toBe(second.backendApprovals);
+    expect(first.providerApprovals).not.toBe(second.providerApprovals);
     expect(first.agentGitStatuses).not.toBe(second.agentGitStatuses);
     expect(first.turnGitDiffs).not.toBe(second.turnGitDiffs);
     expect(first.subagentTrees).not.toBe(second.subagentTrees);
-    expect(first.backendRuntimes).not.toBe(second.backendRuntimes);
-    expect(first.backendRuntimes[0]).not.toBe(second.backendRuntimes[0]);
+    expect(first.providerRuntimes).not.toBe(second.providerRuntimes);
+    expect(first.providerRuntimes[0]).not.toBe(second.providerRuntimes[0]);
     expect(first.workBacklog).not.toBe(second.workBacklog);
     expect(first.workBacklog.connections).not.toBe(second.workBacklog.connections);
     expect(first.workBacklog.providerConfigurations).not.toBe(second.workBacklog.providerConfigurations);
@@ -80,7 +80,7 @@ describe('snapshot construction', () => {
 
     first.teams[0].agentIds.push('agent-mutated');
     first.agents.push(createInitialSnapshot().agents[0]);
-    first.backendRuntimes[0].status = 'running';
+    first.providerRuntimes[0].status = 'running';
     first.workBacklog.assignments.mutated = {
       provider: 'github',
       itemId: 'owner/repo#1',
@@ -143,16 +143,16 @@ function expectedEmptySnapshot(): AppSnapshot {
     activeTeamId: 'team-app',
     activeAgentId: null,
     queuedPrompts: [],
-    backendApprovals: {},
+    providerApprovals: {},
     agentGitStatuses: {},
     turnGitDiffs: {},
     subagentTrees: {},
-    backendRuntimes: [{
-      backend: 'codex',
+    providerRuntimes: [{
+      provider: 'codex',
       status: 'notConfigured',
       detail: { key: 'backend.codexNotConnected' },
     }, {
-      backend: 'claude',
+      provider: 'claude',
       status: 'notConfigured',
       detail: { key: 'backend.claudeNotStarted' },
     }],

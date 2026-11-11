@@ -11,7 +11,7 @@ export class CompanionJournal {
   private bytes = 0;
   constructor(private readonly limits = { maxBytes: 8 * 1024 * 1024, maxConversations: 32 }) {}
   observe(frame: ProviderConversationFrame): void {
-    frame = Object.fromEntries(['type', 'agentId', 'backend', 'threadId', 'backendSessionId', 'conversationId', 'turnId', 'seq', 'occurredAt', 'payload']
+    frame = Object.fromEntries(['type', 'agentId', 'provider', 'threadId', 'providerSessionId', 'conversationId', 'turnId', 'seq', 'occurredAt', 'payload']
       .filter(key => Object.hasOwn(frame, key)).map(key => [key, frame[key as keyof ProviderConversationFrame]])) as ProviderConversationFrame;
     let entry = this.entries.get(frame.agentId);
     if (isConversationReset(frame)) {

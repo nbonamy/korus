@@ -1,0 +1,120 @@
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type {
+  Agent,
+  AgentFileActivity,
+  AgentGitStatus,
+  AppSnapshot, BrowserAnnotation, SendPromptOptions,
+  SubagentOperationChange,
+  TurnGitDiff
+} from '../contracts';
+import { createEmptySnapshot } from '../snapshot';
+import {
+  providerDisplayName,
+  resolveProviderCoordinationPolicy,
+  providerRuntimeFromSnapshot,
+  codexPromptOptions,
+  unsupportedProviderFeature,
+  type BackendEvent,
+} from '../provider-driver';
+
+describe('backend driver helpers', () => {
+  it('resolves provider-independent legacy coordination defaults and explicit auth overrides', () => {
+    expect(resolveProviderCoordinationPolicy()).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    expect(resolveProviderCoordinationPolicy({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } })).toStrictEqual({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+  });
+  it('uses product-facing backend names in unsupported feature errors', () => {
+    expect(providerDisplayName('codex')).toBe('Codex');
+    expect(providerDisplayName('claude')).toBe('Claude Code');
+    expect(providerDisplayName('cursor')).toBe('Cursor');
+    expect(unsupportedProviderFeature(agent('claude'), 'rollback').message)
+      .toBe('Claude Code does not support rollback.');
+  });
+
+  it('finds a runtime in a snapshot and supplies a safe fallback', () => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerRuntimes = [{ provider: 'codex', status: 'running' }];
+
+    expect(providerRuntimeFromSnapshot(snapshot, 'codex')).toStrictEqual({
+      provider: 'codex',
+      status: 'running',
+    });
+    expect(providerRuntimeFromSnapshot(snapshot, 'claude')).toStrictEqual({
+      provider: 'claude',
+      status: 'notConfigured',
+    });
+  });
+
+  it('extracts only Codex prompt options', () => {
+    const codexOptions = {
+      providerOptions: {
+        kind: 'codex',
+        model: 'gpt-5',
+      },
+    } as SendPromptOptions;
+    const claudeOptions = {
+      providerOptions: {
+        kind: 'claude',
+      },
+    } as SendPromptOptions;
+
+    expect(codexPromptOptions(codexOptions)).toBe(codexOptions.providerOptions);
+    expect(codexPromptOptions(claudeOptions)).toBeUndefined();
+    expect(codexPromptOptions(undefined)).toBeUndefined();
+  });
+
+  it('preserves typed payloads through the backend event input envelope', () => {
+    type ConnectionEvent = Extract<BackendEvent, { type: 'snapshot.updated' }>;
+
+    expectTypeOf<Extract<BackendEvent, { type: 'client.connectionChanged' }>>()
+      .toEqualTypeOf<never>();
+    expectTypeOf<Extract<BackendEvent, { type: 'snapshot.updated' }>['payload']>()
+      .toEqualTypeOf<AppSnapshot>();
+    expectTypeOf<Extract<BackendEvent, { type: 'browser.annotationCreated' }>['payload']>()
+      .toEqualTypeOf<BrowserAnnotation>();
+    type SubagentOperationEvent = Extract<BackendEvent, { type: 'subagent.operationChanged' }>;
+    expectTypeOf<SubagentOperationEvent['payload']>().toEqualTypeOf<SubagentOperationChange>();
+    expectTypeOf<Pick<SubagentOperationEvent, 'agentId' | 'provider' | 'threadId' | 'turnId' | 'source'>>()
+      .toEqualTypeOf<{
+        agentId: string;
+        provider: Agent['provider'];
+        threadId?: string;
+        turnId?: string;
+        source?: 'provider' | 'client';
+      }>();
+    type DiffUpdatedEvent = Extract<BackendEvent, { type: 'conversation.turnDiffUpdated' }>;
+    expectTypeOf<DiffUpdatedEvent['payload']>()
+      .toEqualTypeOf<Omit<TurnGitDiff, 'agentId' | 'turnId' | 'updatedAt'>>();
+    expectTypeOf<Pick<DiffUpdatedEvent, 'agentId' | 'provider' | 'threadId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider: Agent['provider']; threadId?: string; turnId: string }>();
+    expectTypeOf<Extract<BackendEvent, { type: 'workspace.fileActivityDetected' }>['payload']>()
+      .toEqualTypeOf<Omit<AgentFileActivity, 'agentId' | 'turnId' | 'occurredAt'>>();
+    type GitStatusUpdatedEvent = Extract<BackendEvent, { type: 'git.statusUpdated' }>;
+    expectTypeOf<GitStatusUpdatedEvent['payload']>().toEqualTypeOf<AgentGitStatus>();
+    expectTypeOf<Pick<GitStatusUpdatedEvent, 'agentId' | 'provider' | 'threadId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider?: Agent['provider']; threadId?: string; turnId?: string }>();
+    expectTypeOf<Extract<BackendEvent, { type: 'agentRequest.created' }>['payload']>()
+      .toEqualTypeOf<{ request: import('../agent-request').AgentRequest }>();
+    expectTypeOf<Extract<BackendEvent, { type: 'agentRequest.resolved' }>['payload']>()
+      .toEqualTypeOf<{
+        id: string; outcome: import('../agent-request').AgentRequestOutcome;
+      }>();
+    expectTypeOf<ConnectionEvent['seq']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<ConnectionEvent['occurredAt']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<ConnectionEvent['source']>().toEqualTypeOf<'provider' | 'client' | undefined>();
+  });
+});
+
+function agent(provider: Agent['provider']): Agent {
+  return {
+    id: 'agent-dina',
+    teamId: 'team-app',
+    name: 'Dina',
+    avatar: 'DI',
+    folder: '/tmp/app',
+    provider: provider,
+    providerDefaults: provider === 'codex' ? { kind: 'codex' } : { kind: 'claude' },
+    status: { type: 'idle' },
+    createdAt: '2026-08-02T00:00:00.000Z',
+    updatedAt: '2026-08-02T00:00:00.000Z',
+  };
+}

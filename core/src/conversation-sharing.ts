@@ -2,14 +2,14 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { shareInvitationPattern } from './conversation-share-relay';
 import type { ShareRoutingStatus } from './conversation-share-relay';
-import type { Agent, BackendConversationRef } from './contracts';
+import type { Agent, ProviderConversationRef } from './contracts';
 import { conversationRefFromAgent } from './conversation-ref';
 import { companionPeerIdPattern, relayAddress } from './companion-relay';
-import { defaultBackendCapabilities } from './backend-capabilities';
+import { defaultProviderCapabilities } from './provider-capabilities';
 import { product } from './product';
 
 export function supportsConversationSharing(agent: Agent | null | undefined): boolean {
-  return Boolean(agent && defaultBackendCapabilities(agent.backend).conversationShare !== false && !agent.sharedConversation && conversationShareTarget(agent));
+  return Boolean(agent && defaultProviderCapabilities(agent.provider).conversationShare !== false && !agent.sharedConversation && conversationShareTarget(agent));
 }
 
 export type ShareRelay = { origin: string; peerId: string };
@@ -17,7 +17,7 @@ export type ConversationShareRoute = { relay: ShareRelay; ownerId: string; handl
 /** Owner identity is discovered through the pinned relay and pinned locally on first connection. */
 export type ConversationShareLink = { v: 2; relay: ShareRelay; ownerId?: string; handle: string; credential: string };
 /** Both execution identity and history identity are immutable grant bindings. */
-export type ConversationShareTarget = { agentId: string; backend: Agent['backend']; sessionId: string; conversation: BackendConversationRef };
+export type ConversationShareTarget = { agentId: string; provider: Agent['provider']; sessionId: string; conversation: ProviderConversationRef };
 export type GuestAuthor = { messageId: string; identity: string; name: string; discriminator: string };
 export type GuestPromptInput = { id: string; text: string; followUpBehavior?: 'queue' | 'steer' };
 export type GuestProposal = { id: string; handle: string; identity: string; name: string; discriminator: string; text: string; status: 'pending' | 'queued' | 'dispatching' | 'dismissed' | 'submitted' | 'rejected' | 'unresolved'; createdAt: string; messageId?: string; turnId?: string };
@@ -34,12 +34,12 @@ export type ConversationShareControl = { target: ConversationShareTarget } & (
 export type ConversationShareResult = { state: ConversationShareState; link?: string; invitation?: string };
 
 export function conversationShareTarget(agent: Agent): ConversationShareTarget | null {
-  if (defaultBackendCapabilities(agent.backend).conversationShare === false) return null;
+  if (defaultProviderCapabilities(agent.provider).conversationShare === false) return null;
   const conversation = conversationRefFromAgent(agent);
-  const session = agent.backendSession;
-  if (!conversation || !session || session.kind !== agent.backend) return null;
+  const session = agent.providerSession;
+  if (!conversation || !session || session.kind !== agent.provider) return null;
   const sessionId = session.kind === 'codex' ? session.threadId : session.sessionId;
-  return sessionId ? { agentId: agent.id, backend: agent.backend, sessionId, conversation } : null;
+  return sessionId ? { agentId: agent.id, provider: agent.provider, sessionId, conversation } : null;
 }
 
 /** Domain-separated routing hash; the relay never receives the UUID bearer. */

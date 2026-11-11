@@ -7,7 +7,7 @@ import { copyFile, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createCodexSurface } from '@korus-dev/multi-agent-sdk/codex';
+import { createHarness } from '@korus-dev/multi-agent-sdk';
 
 const scriptFolder = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptFolder, '..', '..', '..');
@@ -40,20 +40,20 @@ export function agentRecovery(currentState, backupState, agentFolder) {
 }
 
 // Current state is roster.json ({ data: { agents: [{ engine }] } }); backups of older builds hold state.json
-// ({ agents: [{ backend, backendSession }] }). Both shapes are understood.
+// ({ agents: [{ backend, providerSession }] }). Both shapes are understood.
 function agentsOf(state) {
   if (Array.isArray(state?.data?.agents)) return state.data.agents;
   return Array.isArray(state?.agents) ? state.agents : null;
 }
 
 function isCodexAgent(agent) {
-  return agent?.engine?.kind === 'codex' || agent?.backend === 'codex';
+  return agent?.engine?.kind === 'codex' || agent?.provider === 'codex';
 }
 
 export function stateWithRecoveredThread(currentState, agentId, recoveredThreadId, now) {
   const recovered = (agent) => (agent.engine
     ? { ...agent, engine: { ...agent.engine, session: { threadId: recoveredThreadId } }, updatedAt: now }
-    : { ...agent, backendSession: { kind: 'codex', threadId: recoveredThreadId }, updatedAt: now });
+    : { ...agent, providerSession: { kind: 'codex', threadId: recoveredThreadId }, updatedAt: now });
   const replace = (agents) => agents.map((agent) => (agent.id === agentId ? recovered(agent) : agent));
   return Array.isArray(currentState.data?.agents)
     ? { ...currentState, data: { ...currentState.data, agents: replace(currentState.data.agents) } }
@@ -83,16 +83,16 @@ async function main() {
 
   assertAppStopped();
   const codexCommand = await resolveCodexCommand(statePath);
-  const surface = createCodexSurface({
-    autoSelectFirstConversation: false,
-    codexHome,
-    transport: { command: codexCommand },
+  const harness = createHarness('codex', {
+    client: { name: product.mcpServerName },
+    home: codexHome,
+    codex: { launch: { command: codexCommand } },
   });
   try {
-    await surface.connect();
-    await surface.unarchiveConversation(recoveredThreadId);
+    const ref = harness.restoreRef({ provider: 'codex', data: { provider: 'codex', threadId: recoveredThreadId } });
+    await harness.setConversationStorage(ref, 'active');
   } finally {
-    await surface.close();
+    await harness.close();
   }
 
   const timestamp = new Date().toISOString().replaceAll(':', '-');
@@ -148,7 +148,7 @@ function uniqueCodexAgent(state, agentFolder, source) {
 function codexThreadId(agent, source) {
   const threadId = agent.engine?.kind === 'codex'
     ? agent.engine.session?.threadId
-    : agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : null;
+    : agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : null;
   if (typeof threadId !== 'string' || !threadId.trim()) {
     throw new Error(`The ${source} agent does not have a Codex thread id.`);
   }

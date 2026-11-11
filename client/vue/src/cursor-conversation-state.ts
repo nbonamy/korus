@@ -5,7 +5,7 @@ import { createCursorConversationReplica } from '@workspace/core/cursor-conversa
 import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
 
 type Frame = { replica: ReturnType<typeof createCursorConversationReplica>; snapshot: CursorConversationSnapshot; revision: number };
-type Event = Extract<ProviderConversationFrame, { backend: 'cursor' }>;
+type Event = Extract<ProviderConversationFrame, { provider: 'cursor' }>;
 
 /** App routing/cache only. Cursor's replica owns every transcript transition. */
 export function createCursorConversationState(recover: (agentId: string) => Promise<unknown>) {
@@ -13,8 +13,8 @@ export function createCursorConversationState(recover: (agentId: string) => Prom
   const pending = new Set<string>();
   const lastAttachedSessions = new Map<string, string>();
   function matchesAgent(agent: Agent, frame: Frame): boolean {
-    if (agent.backend !== 'cursor') return false;
-    if (agent.backendSession?.kind === 'cursor') return frame.snapshot.sessionId === agent.backendSession.sessionId;
+    if (agent.provider !== 'cursor') return false;
+    if (agent.providerSession?.kind === 'cursor') return frame.snapshot.sessionId === agent.providerSession.sessionId;
     // New session frames can precede attachment. A detached old session cannot.
     return frame.snapshot.sessionId !== lastAttachedSessions.get(agent.id);
   }
@@ -26,7 +26,7 @@ export function createCursorConversationState(recover: (agentId: string) => Prom
   }
   return {
     select(agent: Agent): CursorConversationSnapshot | null {
-      if (agent.backend !== 'cursor') return null;
+      if (agent.provider !== 'cursor') return null;
       const frame = frames.value[agent.id];
       return frame && matchesAgent(agent, frame) ? frame.snapshot : null;
     },
@@ -47,10 +47,10 @@ export function createCursorConversationState(recover: (agentId: string) => Prom
     reconcile(agents: Agent[]) {
       const agentsById = new Map(agents.map(agent => [agent.id, agent]));
       for (const id of lastAttachedSessions.keys()) {
-        if (agentsById.get(id)?.backend !== 'cursor') lastAttachedSessions.delete(id);
+        if (agentsById.get(id)?.provider !== 'cursor') lastAttachedSessions.delete(id);
       }
       for (const agent of agents) {
-        if (agent.backend === 'cursor' && agent.backendSession?.kind === 'cursor') lastAttachedSessions.set(agent.id, agent.backendSession.sessionId);
+        if (agent.provider === 'cursor' && agent.providerSession?.kind === 'cursor') lastAttachedSessions.set(agent.id, agent.providerSession.sessionId);
       }
       frames.value = Object.fromEntries(Object.entries(frames.value).filter(([id, frame]) => {
         const agent = agentsById.get(id);

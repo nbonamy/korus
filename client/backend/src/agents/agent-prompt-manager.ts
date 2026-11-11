@@ -1,7 +1,7 @@
 import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { PromptRejectedError } from './prompt-rejected';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
-import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver, BackendEvent, ProviderSendResult } from '@workspace/core/provider-driver';
 import type { Agent, AppSnapshot, SendPromptOptions } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
@@ -9,7 +9,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 export type AgentPromptManagerOptions = {
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   getSnapshot: () => AppSnapshot;
-  driverForAgent: (agent: Agent, expectedSessionId?: string | null, plainText?: boolean) => AgentBackendDriver;
+  driverForAgent: (agent: Agent, expectedSessionId?: string | null, plainText?: boolean) => AgentProviderDriver;
   applyEvent: (event: BackendEvent) => void;
   persistSnapshot: () => Promise<unknown>;
   setNewConversationTitle: (agentId: string, wasNewSession: boolean) => void;
@@ -33,7 +33,7 @@ export class AgentPromptManager {
     return this.sendWithReceipt(agent, prompt, options, expectedSessionId, clientId).then(() => undefined);
   }
 
-  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string, goal?: boolean): Promise<BackendSendResult> {
+  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string, goal?: boolean): Promise<ProviderSendResult> {
     if (!canStartPrompt(agent)) return Promise.reject(new PromptRejectedError('Agent is busy. Try the review decision again when idle.'));
     return new Promise((resolve, reject) => {
       this.start(agent, prompt, options, undefined, { resolve, reject, expectedSessionId, goal }, clientId);
@@ -104,7 +104,7 @@ export class AgentPromptManager {
     this.inFlightQueuedPrompts.clear();
   }
 
-  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null; goal?: boolean }, clientId?: string): AppSnapshot {
+  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: ProviderSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null; goal?: boolean }, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     if (isSafetyBlocked(agent)) {
       const error = new PromptRejectedError(providerSafetyBlockMessage(agent.status.type === 'error' ? agent.status.message : null)!);
@@ -137,7 +137,7 @@ export class AgentPromptManager {
           goal: acceptance?.goal,
           plainText: clientId === 'guest:approved',
           appendUserMessage: !queuedPrompt || (!queuedPrompt.submitted && (queuedPrompt.attempts ?? 0) === 0),
-          onBackendSessionUpdated: async (_result, wasNewSession) => {
+          onProviderSessionUpdated: async (_result, wasNewSession) => {
             this.options.setNewConversationTitle(agent.id, wasNewSession);
             await this.options.persistSnapshot();
           },

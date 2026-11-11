@@ -1,4 +1,4 @@
-import type { HarnessDiagnostic } from '@korus-dev/multi-agent-sdk/diagnostics';
+import type { HarnessDiagnostic } from '@korus-dev/multi-agent-sdk';
 
 /** Korus owns diagnostic opt-in and output formatting. */
 export function traceCodexDiagnostic(record: HarnessDiagnostic): void {

@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { createServer as createHttpServer } from 'node:http';
@@ -44,7 +45,7 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     optimizeDeps: { entries: [path.join(root, 'client/vue/src/components/GitReviewPanel.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')] },
     server: { middlewareMode: true, host: '127.0.0.1', port, hmr: { server: httpServer } },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
-    plugins: [vue(), excalidrawAssets(), {
+    plugins: [sdkSourcePlugin, vue(), excalidrawAssets(), {
       name: 'diff-treemap-fixture',
       configureServer(server) {
         server.middlewares.use('/diff-map', (_req, res) => {

@@ -1,5 +1,5 @@
-import type { Agent, AgentBackend } from './contracts';
-import type { BackendSendResult } from './backend-driver';
+import type { Agent, HarnessProvider } from './contracts';
+import type { ProviderSendResult } from './provider-driver';
 
 /** Upper bound for user-authored delegation text; durable task persistence enforces the same limit. */
 export const MAX_DELEGATION_INSTRUCTIONS_LENGTH = 100_000;
@@ -9,13 +9,13 @@ export type DelegationOverrides = {
   instructions?: string;
 };
 
-type DelegationExecution = { backend: AgentBackend; conversationId: string; turnId: string };
+type DelegationExecution = { provider: HarnessProvider; conversationId: string; turnId: string };
 export type TurnDelegationOverrides = DelegationOverrides & { execution?: DelegationExecution };
 
 // Terminal notifications can precede admission receipts. Retain only identities
 // for a pending prompt, not provider conversation state or transcript content.
 const pendingTerminals = new WeakMap<TurnDelegationOverrides, Set<string>>();
-const executionKey = (execution: DelegationExecution) => JSON.stringify([execution.backend, execution.conversationId, execution.turnId]);
+const executionKey = (execution: DelegationExecution) => JSON.stringify([execution.provider, execution.conversationId, execution.turnId]);
 
 export function captureUserDelegationOverrides(agent: Agent, input?: DelegationOverrides): TurnDelegationOverrides | undefined {
   const controls = input ? { startingContext: input.startingContext, ...(input.instructions !== undefined ? { instructions: input.instructions } : {}) } : undefined;
@@ -24,10 +24,10 @@ export function captureUserDelegationOverrides(agent: Agent, input?: DelegationO
   return controls;
 }
 
-export function bindUserDelegationOverrides(agent: Agent, controls: TurnDelegationOverrides | undefined, receipt: BackendSendResult): void {
+export function bindUserDelegationOverrides(agent: Agent, controls: TurnDelegationOverrides | undefined, receipt: ProviderSendResult): void {
   if (!controls || agent.userDelegationOverrides !== controls || !receipt.turnId) return;
-  const session = receipt.backendSession;
-  controls.execution = { backend: session.kind, conversationId: session.kind === 'codex' ? session.threadId : session.sessionId, turnId: receipt.turnId };
+  const session = receipt.providerSession;
+  controls.execution = { provider: session.kind, conversationId: session.kind === 'codex' ? session.threadId : session.sessionId, turnId: receipt.turnId };
   if (pendingTerminals.get(controls)?.has(executionKey(controls.execution))) delete agent.userDelegationOverrides;
   pendingTerminals.delete(controls);
 }
@@ -43,7 +43,7 @@ export function isTurnDelegationOverrides(value: unknown): value is TurnDelegati
   if (!isDelegationOverrides(value)) return false;
   const execution = (value as TurnDelegationOverrides).execution;
   return execution === undefined || Boolean(execution && typeof execution === 'object'
-    && ['codex', 'claude', 'antigravity', 'cursor'].includes(execution.backend)
+    && ['codex', 'claude', 'antigravity', 'cursor'].includes(execution.provider)
     && typeof execution.conversationId === 'string' && typeof execution.turnId === 'string');
 }
 

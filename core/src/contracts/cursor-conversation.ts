@@ -1,1 +1,1 @@
-export * from '@korus-dev/multi-agent-sdk/contracts/cursor-conversation';
+export type { CursorTurn, CursorConversationSnapshot, CursorConversationEvent } from '@korus-dev/multi-agent-sdk';

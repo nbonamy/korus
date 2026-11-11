@@ -1,9 +1,9 @@
 import {
-  provideToolPresentation as provideCodexToolPresentation,
-  type ToolPresentation as CodexToolPresentation,
-  type ToolPresentationContext as CodexToolPresentationContext,
-  type ToolVisibility as CodexToolVisibility,
-  type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
+  provideToolPresentation,
+  type ToolPresentation,
+  type ToolPresentationContext,
+  type ToolVisibility,
+  type ToolTitlePresenterContext,
 } from '@korus-dev/agent-ui-sdk';
 import {
   IconDeviceMobile as MobileIcon,
@@ -25,8 +25,8 @@ import {
 import { presentClaudeToolTitle } from './claude-tool-titles';
 import { appMcpToolName, appToolName, presentAppToolTitle } from './tool-title-presenter';
 
-type Translate = CodexToolTitlePresenterContext['translate'];
-type ToolIcon = Exclude<CodexToolPresentation['icon'], null | undefined>;
+type Translate = ToolTitlePresenterContext['translate'];
+type ToolIcon = Exclude<ToolPresentation['icon'], null | undefined>;
 type AgentNameResolver = (identifier: string) => string | undefined;
 
 // The linked SDK and App resolve Vue through separate package roots during
@@ -92,14 +92,14 @@ const TASK_TOOLS = new Set(['wait-tasks', 'complete-task', 'cancel-task']);
 const WORKSPACE_TOOLS = new Set(['attach-mission-repository', 'create-automation', 'create-project', 'create-worktree', 'list-repos', 'list-worktrees']);
 const HIDDEN_HOUSEKEEPING_TOOLS = new Set(['set-status', 'finish-turn']);
 
-export const isAppToolVisible: CodexToolVisibility = (toolCall) =>
+export const isAppToolVisible: ToolVisibility = (toolCall) =>
   !HIDDEN_HOUSEKEEPING_TOOLS.has(appToolName(toolCall.function, toolCall.kind, toolCall.metadata) ?? '');
 
 export function presentAppTool(
-  context: CodexToolPresentationContext,
+  context: ToolPresentationContext,
   translate: Translate,
   resolveAgentName?: AgentNameResolver,
-): CodexToolPresentation | undefined {
+): ToolPresentation | undefined {
   if (typeof context.metadata?.displayTitle === 'string') return { title: context.metadata.displayTitle };
   if (context.descriptor?.action === 'search' && context.descriptor.params?.scope === 'tools') {
     const phase = context.descriptor.phase === 'failed' || context.toolCall.state === 'error'
@@ -139,7 +139,7 @@ export function presentAppTool(
 }
 
 export function provideAppToolPresentation(translate: Translate, resolveAgentName?: AgentNameResolver): void {
-  provideCodexToolPresentation((context) => presentAppTool(context, translate, resolveAgentName));
+  provideToolPresentation((context) => presentAppTool(context, translate, resolveAgentName));
 }
 
 function appToolIcon(tool: string): ToolIcon | undefined {

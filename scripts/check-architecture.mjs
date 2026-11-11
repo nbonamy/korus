@@ -180,9 +180,11 @@ function checkTelemetryCalls(node, file) {
 }
 
 function forbiddenImport(area, file, specifier, typeOnly = false) {
-  const consumerRuntime = !typeOnly && (specifier === '@korus-dev/multi-agent-sdk' || isPackage(specifier, '@korus-dev/multi-agent-sdk/native'));
+  const runtimeDiscovery = file === path.join(root, 'core/src/runtime-discovery.ts') && isPackage(specifier, '@korus-dev/multi-agent-sdk/runtime');
+  // Node-only entries: the root factory and the testing doubles. `/renderer` and `/prompt` are safe everywhere.
+  const consumerRuntime = !typeOnly && (specifier === '@korus-dev/multi-agent-sdk' || isPackage(specifier, '@korus-dev/multi-agent-sdk/testing'));
   const providerRuntime = [
-    "@korus-dev/codex-sdk", "@korus-dev/multi-agent-sdk/codex", "@korus-dev/multi-agent-sdk/backend", "@korus-dev/multi-agent-sdk/providers",
+    "@korus-dev/codex-sdk", "@korus-dev/multi-agent-sdk/backend", "@korus-dev/multi-agent-sdk/providers",
     "@korus-dev/multi-agent-sdk/acp", "@korus-dev/multi-agent-sdk/tools",
   ].some((name) => isPackage(specifier, name)) || consumerRuntime;
   if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "@korus-dev/multi-agent-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
@@ -191,7 +193,7 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
     "@korus-dev/agent-ui-sdk/speech", "@korus-dev/agent-ui-sdk/browser/electron",
   ].some((name) => isPackage(specifier, name));
   if (["core", "renderer", "mobile", "console"].includes(area)
-      && (providerRuntime || nativeHostRuntime)) {
+      && (providerRuntime || nativeHostRuntime) && !runtimeDiscovery) {
     // Keep the more specific core UI diagnostic for the existing entry points.
     if (!(area === "core" && isPackage(specifier, "@korus-dev/agent-ui-sdk")))
       return `${area} cannot import trusted SDK runtimes`;
@@ -368,9 +370,8 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
     // these leaf modules, never its renderer or trusted runtime entry points.
     const portableUiContract = [
       "@korus-dev/agent-ui-sdk/host",
-      "@korus-dev/agent-ui-sdk/browser/contracts",
-      "@korus-dev/agent-ui-sdk/browser/viewport",
-      "@korus-dev/agent-ui-sdk/documents/files",
+      "@korus-dev/agent-ui-sdk/browser",
+      "@korus-dev/agent-ui-sdk/documents",
     ].includes(specifier);
     if (
       [
@@ -448,7 +449,7 @@ function isTelemetryProjection(file) {
 }
 
 function isPackage(specifier, name) {
-  return specifier === name || specifier.startsWith(`${name}/`);
+  return specifier === name || specifier === `${name}.js` || specifier.startsWith(`${name}/`);
 }
 
 function isFileSystemImport(specifier) {

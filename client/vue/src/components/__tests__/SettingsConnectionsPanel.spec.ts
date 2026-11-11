@@ -145,7 +145,7 @@ describe('SettingsConnectionsPanel', () => {
           id: 'agent-remote',
           name: 'Remote agent',
           folder: '/home/nicolas/src',
-          backend: 'codex',
+          provider: 'codex',
           status: { type: 'idle' },
           remoteConnectionId: 'connection-devbox',
           createdAt: '2026-06-14T10:00:00.000Z',
@@ -260,7 +260,7 @@ describe('SettingsConnectionsPanel', () => {
 
   it('shows one activity indicator and keeps host health independent of coding-engine connections', async () => {
     const { api } = createClientApiMock();
-    api.getProviderConnections.mockResolvedValue([{ backend: 'claude', installed: true, connected: true, checking: false }]);
+    api.getProviderConnections.mockResolvedValue([{ provider: 'claude', installed: true, connected: true, checking: false }]);
     let finishVersionCheck!: (value: import('@workspace/core/contracts/provider-updates').ProviderUpdateStatus) => void;
     api.getProviderUpdate.mockImplementation(() => new Promise(resolve => { finishVersionCheck = resolve; }));
     configureAppClient({ platform: 'desktop', api });
@@ -273,7 +273,7 @@ describe('SettingsConnectionsPanel', () => {
           host: 'devbox',
           status: 'ready',
           detail: 'Ready (daemon 0.21.1, Codex 0.155.1, Claude 2.1.283)',
-          providerConnections: [{ backend: 'claude', installed: true, connected: false, checking: false }],
+          providerConnections: [{ provider: 'claude', installed: true, connected: false, checking: false }],
           createdAt: '2026-06-14T10:00:00.000Z',
           updatedAt: '2026-06-14T10:00:00.000Z',
         }],
@@ -284,13 +284,13 @@ describe('SettingsConnectionsPanel', () => {
     await flushPromises();
     expect(wrapper.findAll('.app-spinner')).toHaveLength(1);
     expect(wrapper.find('.settings-connections-panel__indicator .app-spinner').exists()).toBe(true);
-    finishVersionCheck({ backend: 'claude', installedVersion: '2.1.283', status: 'current', method: 'native', canUpgrade: false, busy: false });
+    finishVersionCheck({ provider: 'claude', installedVersion: '2.1.283', status: 'current', method: 'native', canUpgrade: false, busy: false });
     await flushPromises();
     expect(wrapper.get('.remote-engine-connections').text()).toContain('2.1.283');
     expect(wrapper.get('.settings-connections-panel__identity').text()).toContain('Connected');
     expect(wrapper.get('.settings-connections-panel__identity').text()).not.toContain('Needs attention');
     const ready = wrapper.props('connections')![0]!;
-    await wrapper.setProps({ connections: [{ ...ready, providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }] }] });
+    await wrapper.setProps({ connections: [{ ...ready, providerConnections: [{ provider: 'claude', installed: true, connected: true, checking: false }] }] });
     expect(wrapper.find('.settings-connections-panel__dot--ready').exists()).toBe(true);
     await wrapper.setProps({ connections: [{ ...ready, providerConnections: undefined }] });
     expect(wrapper.get('.settings-connections-panel__identity').text()).toContain('Connected');
@@ -328,9 +328,9 @@ describe('SettingsConnectionsPanel', () => {
       appVersion: '0.45.1', addSshConnection, checkRemoteConnection,
       listSshHosts: async () => [{ host: 'devbox' }],
       providerConnections: [
-        { backend: 'codex', installed: true, connected: true, checking: false },
-        { backend: 'claude', installed: true, connected: true, checking: false },
-        { backend: 'antigravity', installed: false, connected: false, checking: false },
+        { provider: 'codex', installed: true, connected: true, checking: false },
+        { provider: 'claude', installed: true, connected: true, checking: false },
+        { provider: 'antigravity', installed: false, connected: false, checking: false },
       ],
     } });
     await wrapper.findAll('button').find(button => button.text() === 'Add remote')!.trigger('click');

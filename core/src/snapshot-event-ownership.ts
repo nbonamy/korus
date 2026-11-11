@@ -9,7 +9,7 @@ export const snapshotEventOwnership = {
   'antigravity.conversationSnapshotChanged': 'renderer',
   'antigravity.conversationEventReceived': 'renderer',
   'provider.authenticationChanged': 'renderer',
-  'backend.statusChanged': 'runtime',
+  'provider.statusChanged': 'runtime',
   'client.connectionChanged': 'renderer',
   'snapshot.updated': 'runtime',
   'account.rateLimitsUpdated': 'runtime',

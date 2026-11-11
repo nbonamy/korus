@@ -39,7 +39,7 @@ test("collector stays independently runnable without importing the desktop or co
     "server/backend/src/collector/server.ts":
       "import { BackendServer } from '../../../../client/backend/src/server';",
     "server/backend/src/collector/driver.ts":
-      "import type { AgentBackendDriver } from '../../../../client/backend/src/drivers/types';",
+      "import type { AgentProviderDriver } from '../../../../client/backend/src/drivers/types';",
     "server/backend/src/collector/private-settings.ts":
       "import type { Settings } from '@workspace/core/types';",
     "server/backend/src/collector/alias.ts":
@@ -108,7 +108,7 @@ test("architecture lint rejects imports across owned process boundaries", async 
   const result = await checkFixture({
     "core/src/ui.ts": "import type { Ref } from 'vue';\n",
     "core/src/desktop.ts": "import { BrowserPane } from '@korus-dev/agent-ui-sdk/browser/electron'; import { CodexComposer } from '@korus-dev/agent-ui-sdk';",
-    "core/src/native-factory.ts": "import { createNativeHarnessDriver } from '@korus-dev/multi-agent-sdk/native';",
+    "core/src/native-factory.ts": "import { createNativeHarnessDriver } from '@korus-dev/multi-agent-sdk';",
     "client/vue/src/factory.ts": "import { createHarnessDriver } from '@korus-dev/multi-agent-sdk';",
     "core/src/provider.ts": "import { ClaudeAgentSdkTransport } from '@korus-dev/multi-agent-sdk/providers/claude/agent-sdk-transport';",
     "client/vue/src/native.ts": "import { executeComputerUseCommand } from '@korus-dev/multi-agent-sdk/computer-use';",

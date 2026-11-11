@@ -136,7 +136,7 @@ describe('useAppState', () => {
       teamId: 'team-app',
       name: 'Jesse',
       folder: '/Users/nbonamy/src/multi-llm-ts',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-05T00:00:00.000Z',
       updatedAt: '2026-06-05T00:00:00.000Z',
@@ -374,7 +374,7 @@ describe('useAppState', () => {
       id: 'agent-joel',
       teamId: 'team-other',
       name: 'Joel',
-      backendSession: { kind: 'codex', threadId: 'thread-joel' },
+      providerSession: { kind: 'codex', threadId: 'thread-joel' },
     });
     remoteSnapshot.teams.push({
       id: 'team-other',
@@ -423,7 +423,7 @@ describe('useAppState', () => {
       activeTeamId: 'team-other',
     });
     await teamPromise;
-    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent-joel', threadId: 'thread-joel',
+    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent-joel', threadId: 'thread-joel',
       payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
     expect(state.isLoading.value).toBe(false);
     expect(state.activeAgent.value?.id).toBe('agent-joel');
@@ -437,7 +437,7 @@ describe('useAppState', () => {
       ...remoteSnapshot.agents[0],
       id: 'agent-jesse',
       name: 'Jesse',
-      backendSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', threadId: 'thread-jesse' },
     });
     const setDockBadgeCount = vi.fn().mockResolvedValue(undefined);
     stubElectronTestWindow({
@@ -462,7 +462,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -498,7 +498,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       type: 'subagent.statusChanged',
       payload: {
@@ -515,7 +515,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       turnId: 'turn-jesse-2',
       type: 'agentRequest.created',
@@ -778,7 +778,7 @@ describe('useAppState', () => {
     await state.selectTeam('team-app');
     await state.updateTeam({ id: 'team-app', name: 'Core Team', color: '#46A857' });
     await state.reorderAgents({ teamId: 'team-app', agentId: 'agent-jesse', beforeAgentId: 'agent-dina' });
-    await state.createAgent({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { backend: 'claude' } });
+    await state.createAgent({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { provider: 'claude' } });
     await state.updateAgent({ id: 'agent-jules', name: 'Jules Prime' });
     await state.forkActiveAgentTurn('turn-4');
     await state.duplicateAgent('agent-jules');
@@ -793,7 +793,7 @@ describe('useAppState', () => {
     expect(selectTeam).toHaveBeenCalledWith('team-app');
     expect(updateTeam).toHaveBeenCalledWith({ id: 'team-app', name: 'Core Team', color: '#46A857' });
     expect(reorderAgents).toHaveBeenCalledWith({ teamId: 'team-app', agentId: 'agent-jesse', beforeAgentId: 'agent-dina' });
-    expect(createAgent).toHaveBeenCalledWith({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { ...{ backend: 'claude' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'Jules', avatar: '🤖', folder: '/Users/nbonamy/src/jules', selection: { ...{ provider: 'claude' } } });
     expect(updateAgent).toHaveBeenCalledWith({ id: 'agent-jules', name: 'Jules Prime' });
     expect(duplicateAgent).toHaveBeenCalledWith('agent-jules');
     expect(forkAgent).toHaveBeenNthCalledWith(1, 'agent-jules', 'turn-4');
@@ -869,10 +869,10 @@ describe('useAppState', () => {
     await expect(state.clearAutomationHistory('missing')).resolves.toBeUndefined();
     await expect(state.deleteAutomationExecution('missing', 'execution')).resolves.toBeUndefined();
     await expect(state.deleteAutomation('missing')).resolves.toBeUndefined();
-    await expect(state.readConversationMessages({ backend: 'codex', threadId: 'thread' }, 'agent-dina')).resolves.toStrictEqual([]);
+    await expect(state.readConversationMessages({ provider: 'codex', threadId: 'thread' }, 'agent-dina')).resolves.toStrictEqual([]);
     await expect(state.listAgentConversations('agent-dina')).resolves.toStrictEqual([]);
     await state.resumeAgentConversation('agent-dina', {
-      ref: { backend: 'codex', threadId: 'thread' },
+      ref: { provider: 'codex', threadId: 'thread' },
       storageState: 'archived',
     });
     await state.updateSettings({});
@@ -904,7 +904,7 @@ describe('useAppState', () => {
     await state.forkAgent('agent-dina');
     state.snapshot.value.activeAgentId = null;
     await state.forkActiveAgentTurn('turn-1');
-    await state.resolveBackendApproval('missing', 'approve', 'once');
+    await state.resolveProviderApproval('missing', 'approve', 'once');
     state.selectModel('missing');
     state.selectReasoningEffort('high');
     state.selectServiceTier('fast');
@@ -920,12 +920,12 @@ describe('useAppState', () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const initialSnapshot = createInitialSnapshot();
     const first = initialSnapshot.agents[0]!;
-    first.backend = 'antigravity';
-    first.backendSession = { kind: 'antigravity', sessionId: 'native-first' };
-    const second = { ...first, id: 'other-antigravity', backendSession: { kind: 'antigravity' as const, sessionId: 'native-second' } };
+    first.provider = 'antigravity';
+    first.providerSession = { kind: 'antigravity', sessionId: 'native-first' };
+    const second = { ...first, id: 'other-antigravity', providerSession: { kind: 'antigravity' as const, sessionId: 'native-second' } };
     initialSnapshot.agents.push(second);
     const restartedSnapshot = structuredClone(initialSnapshot);
-    delete restartedSnapshot.agents[0]!.backendSession;
+    delete restartedSnapshot.agents[0]!.providerSession;
     stubElectronTestWindow({ app: {
       getSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
       onEvent: vi.fn(listener => { listeners.push(listener); return () => {}; }),
@@ -934,15 +934,15 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     for (const [index, agent] of [first, second].entries()) {
-      if (agent.backendSession?.kind !== 'antigravity') throw new Error('Missing fixture native session');
-      const native = emptyAntigravitySnapshot(agent.id, agent.backendSession.sessionId);
+      if (agent.providerSession?.kind !== 'antigravity') throw new Error('Missing fixture native session');
+      const native = emptyAntigravitySnapshot(agent.id, agent.providerSession.sessionId);
       native.messages = [{ id: agent.id + '-answer', agentId: agent.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: agent.id + ' previous answer' }] }];
-      listeners[0]?.({ seq: index + 1, occurredAt: '', agentId: agent.id, backend: 'antigravity', backendSessionId: native.sessionId,
+      listeners[0]?.({ seq: index + 1, occurredAt: '', agentId: agent.id, provider: 'antigravity', providerSessionId: native.sessionId,
         type: 'antigravity.conversationSnapshotChanged', payload: { revision: 1, snapshot: native } });
     }
     expect(state.activeAntigravityConversationSnapshot.value?.messages).toHaveLength(1);
     await state.restartAgent(first.id);
-    expect(state.activeAgent.value?.backendSession).toBeUndefined();
+    expect(state.activeAgent.value?.providerSession).toBeUndefined();
     expect(state.activeAntigravityConversationSnapshot.value).toBeNull();
     expect(state.agentConversationFor(second.id)?.conversation?.messages).toHaveLength(1);
   });
@@ -951,10 +951,10 @@ describe('useAppState', () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const initialSnapshot = createInitialSnapshot();
     const agent = initialSnapshot.agents[0]!;
-    agent.backend = 'claude';
-    agent.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    agent.provider = 'claude';
+    agent.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
     const restartedSnapshot = structuredClone(initialSnapshot);
-    delete restartedSnapshot.agents[0]!.backendSession;
+    delete restartedSnapshot.agents[0]!.providerSession;
     stubElectronTestWindow({ app: {
       getSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
       onEvent: vi.fn(listener => { listeners.push(listener); return () => {}; }),
@@ -962,14 +962,14 @@ describe('useAppState', () => {
     } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
-    listeners[0]?.({ seq: 1, occurredAt: '', agentId: agent.id, backend: 'claude',
+    listeners[0]?.({ seq: 1, occurredAt: '', agentId: agent.id, provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'claude-session-1' }) } });
     expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
 
     await state.restartAgent(agent.id);
 
-    expect(state.activeAgent.value?.backendSession).toBeUndefined();
+    expect(state.activeAgent.value?.providerSession).toBeUndefined();
     expect(state.activeClaudeConversationSnapshot.value).toBeNull();
     expect(state.agentConversationFor(agent.id)?.conversation).toBeNull();
   });
@@ -977,10 +977,10 @@ describe('useAppState', () => {
   it('loads the conversation of a freshly forked Claude agent', async () => {
     const initialSnapshot = createInitialSnapshot();
     const source = initialSnapshot.agents[0]!;
-    source.backend = 'claude';
-    source.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    source.provider = 'claude';
+    source.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
     const forkedSnapshot = structuredClone(initialSnapshot);
-    const fork = { ...structuredClone(source), id: 'agent-fork', backendSession: { kind: 'claude' as const, sessionId: 'claude-fork-1', transport: 'stdio' as const } };
+    const fork = { ...structuredClone(source), id: 'agent-fork', providerSession: { kind: 'claude' as const, sessionId: 'claude-fork-1', transport: 'stdio' as const } };
     forkedSnapshot.agents.push(fork);
     forkedSnapshot.activeAgentId = fork.id;
     const loadConversationHistory = vi.fn().mockResolvedValueOnce(structuredClone(initialSnapshot)).mockResolvedValue(forkedSnapshot);
@@ -1002,9 +1002,9 @@ describe('useAppState', () => {
   it('clears a failed history state when the agent is restarted', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const restartedSnapshot = structuredClone(remoteSnapshot);
-    delete restartedSnapshot.agents[0]!.backendSession;
+    delete restartedSnapshot.agents[0]!.providerSession;
     const restartAgent = vi.fn().mockResolvedValue(restartedSnapshot);
     stubElectronTestWindow({
       app: {
@@ -1193,7 +1193,7 @@ describe('useAppState', () => {
       reloadRenderer: vi.fn().mockResolvedValue(undefined),
       getDaemonStatus,
       setDaemonEnabled: vi.fn().mockRejectedValue(new Error('cannot stop daemon')),
-      listBackendSkills: vi.fn().mockRejectedValue('skills unavailable'),
+      listProviderSkills: vi.fn().mockRejectedValue('skills unavailable'),
       listAgentFiles: vi.fn().mockRejectedValue(new Error('files unavailable')),
       loadOlderAgentHistory: vi.fn().mockReturnValue(history.promise),
     } satisfies Partial<AppApi>;
@@ -1217,7 +1217,7 @@ describe('useAppState', () => {
     expect(state.workBacklogStatus.value).toBe('error');
     expect(state.workBacklogError.value).toBe('Start authorization before opening the provider login page.');
 
-    await state.loadBackendSkills();
+    await state.loadProviderSkills();
     expect(state.skillCatalogStatus.value).toBe('error');
     expect(state.skillCatalogError.value).toBe('skills unavailable');
     await state.loadAgentFiles();

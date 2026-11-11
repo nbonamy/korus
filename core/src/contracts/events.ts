@@ -1,23 +1,24 @@
 import type {
-  AccountRateLimits, Agent, AgentBackend, AgentContextUsage, AgentCreationProgress,
-  AgentFileActivity, AgentGitOperationProgress, AgentGitStatus, AgentStatus, AppSnapshot, BackendConnectionState,
-  BackendModelOption, BackendRuntimeStatus, BackendSkillSummary, BrowserAnnotation,
+  AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentCreationProgress,
+  AgentFileActivity, AgentGitOperationProgress, AgentGitStatus, AgentStatus, AppSnapshot, ProviderConnectionState,
+  ProviderModelOption, ProviderRuntimeStatus, ProviderSkillSummary, BrowserAnnotation,
   CelebrationKind, ClaudeConversationEvent, ClaudeConversationSnapshot, DevicePairingStatus,
   SendPromptOptions, SidePanelMarkdownRequest, SubagentActivityChange, SubagentIdentityChange,
   SubagentOperationChange, SubagentStatusChange, ThreadGoal, TurnGitDiff,
   WorkBacklogAssignment, WorkBacklogAssignmentPolicy, WorkBacklogAssignmentStatus
 } from '../contracts';
-import type { CodexConversationEvent, CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
+import type { CodexWireConversationEvent as CodexConversationEvent } from '../codex-event-wire';
 import type { MissionImplementationStartProgress } from '../mission-execution';
 import type { CursorConversationEvent, CursorConversationSnapshot } from './cursor-conversation';
 import type { AntigravityConversationEvent, AntigravityConversationSnapshot } from './antigravity-conversation';
 
 type EventEnvelope = {
   seq: number;
-  source?: 'backend' | 'client';
+  source?: 'provider' | 'client';
   agentId?: string;
-  backend?: AgentBackend;
-  backendSessionId?: string;
+  provider?: HarnessProvider;
+  providerSessionId?: string;
   /** Opaque provider conversation identity for app-owned projections. */
   conversationId?: string;
   snapshot?: AppSnapshot;
@@ -48,7 +49,7 @@ type AgentUpdatedPayload = Omit<Partial<Agent>, 'threadFlags' | 'id' | 'statusTe
 type ThreadMode = 'default' | 'plan';
 type TurnEventContext = {
   agentId: string;
-  backend: AgentBackend;
+  provider: HarnessProvider;
   turnId: string;
 };
 type ThreadTurnEventContext = TurnEventContext;
@@ -65,23 +66,23 @@ type AgentPromptRetryScheduledPayload = {
   retryAt?: string;
 };
 type AppEvent =
-  | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; backend: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
-  | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; backend: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
+  | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; provider: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
+  | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; provider: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
   | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
-  | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; backend: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
-  | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; backend: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
+  | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; provider: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
+  | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; provider: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
   | EventWith<{
       type: 'provider.authenticationChanged';
       payload: import('./provider-setup').ProviderAuthentication;
     }>
   | EventWith<{
-      type: 'backend.statusChanged';
-      backend: AgentBackend;
-      payload: BackendRuntimeStatus;
+      type: 'provider.statusChanged';
+      provider: HarnessProvider;
+      payload: ProviderRuntimeStatus;
     }>
   | EventWith<{
       type: 'client.connectionChanged';
-      payload: BackendConnectionState;
+      payload: ProviderConnectionState;
     }>
   | EventWith<{
       type: 'snapshot.updated';
@@ -89,7 +90,7 @@ type AppEvent =
     }>
   | EventWith<{
       type: 'account.rateLimitsUpdated';
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: { rateLimits: AccountRateLimits };
     }>
   | EventWith<{
@@ -98,22 +99,22 @@ type AppEvent =
     }>
   | EventWith<{
       type: 'models.changed';
-      backend: AgentBackend;
-      payload: { models: BackendModelOption[] };
+      provider: HarnessProvider;
+      payload: { models: ProviderModelOption[] };
     }>
   | EventWith<{
       type: 'skills.changed';
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: {
         cwd: string | null;
         status: 'loaded';
-        skills: BackendSkillSummary[];
+        skills: ProviderSkillSummary[];
       };
     }>
   | EventWith<{
       type: 'codex.conversationSnapshotChanged';
       agentId: string;
-      backend: 'codex';
+      provider: 'codex';
       threadId: string;
       payload: {
         revision: number;
@@ -123,7 +124,7 @@ type AppEvent =
   | EventWith<{
       type: 'codex.conversationEventReceived';
       agentId: string;
-      backend: 'codex';
+      provider: 'codex';
       threadId: string;
       payload: {
         revision: number;
@@ -133,7 +134,7 @@ type AppEvent =
   | EventWith<{
       type: 'claude.conversationSnapshotChanged';
       agentId: string;
-      backend: 'claude';
+      provider: 'claude';
       payload: {
         revision: number;
         snapshot: ClaudeConversationSnapshot;
@@ -142,7 +143,7 @@ type AppEvent =
   | EventWith<{
       type: 'claude.conversationEventReceived';
       agentId: string;
-      backend: 'claude';
+      provider: 'claude';
       payload: {
         revision: number;
         event: ClaudeConversationEvent;
@@ -213,20 +214,20 @@ type AppEvent =
   | EventWith<{
       type: 'agent.conversationAttached';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       conversationId: string;
       payload: { cwd?: string };
     }>
   | EventWith<{
       type: 'conversation.settingsUpdated';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: { settings: ConversationSettings };
     }>
   | EventWith<{
       type: 'conversation.modeUpdated';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: { mode: ThreadMode; permissionMode?: string };
     }>
   | EventWith<{
@@ -242,7 +243,7 @@ type AppEvent =
   | EventWith<{
       type: 'conversation.contextUsageUpdated';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: { contextUsage: AgentContextUsage };
     }>
   | EventWith<{
@@ -253,25 +254,25 @@ type AppEvent =
   | EventWith<{
       type: 'subagent.operationChanged';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: SubagentOperationChange;
     }>
   | EventWith<{
       type: 'subagent.activityChanged';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: SubagentActivityChange;
     }>
   | EventWith<{
       type: 'subagent.identityChanged';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: SubagentIdentityChange;
     }>
   | EventWith<{
       type: 'subagent.statusChanged';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       payload: SubagentStatusChange;
     }>
   | EventWith<{
@@ -305,14 +306,14 @@ type AppEvent =
   | EventWith<{
       type: 'agentRequest.created';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       turnId?: string;
       payload: { request: import('../agent-request').AgentRequest };
     }>
   | EventWith<{
       type: 'agentRequest.resolved';
       agentId: string;
-      backend: AgentBackend;
+      provider: HarnessProvider;
       turnId?: string;
       payload: {
         id: string;

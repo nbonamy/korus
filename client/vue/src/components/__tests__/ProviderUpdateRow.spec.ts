@@ -13,11 +13,11 @@ describe('provider update controls', () => {
   it('simulates a repeatable, cancellable upgrade without sending any real update commands', async () => {
     vi.useFakeTimers();
     const { api } = createClientApiMock();
-    api.getProviderUpdate.mockResolvedValue({ backend: 'claude', status: 'current', installedVersion: '9.0.0', method: 'native', canUpgrade: false, busy: false });
+    api.getProviderUpdate.mockResolvedValue({ provider: 'claude', status: 'current', installedVersion: '9.0.0', method: 'native', canUpgrade: false, busy: false });
     configureAppClient({ platform: 'web', api });
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
     const preview = ref(true);
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'claude' }, global: { provide: { [providerUpdatePreviewKey as symbol]: preview } } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'claude' }, global: { provide: { [providerUpdatePreviewKey as symbol]: preview } } });
     const click = async (label: string) => { await wrapper.findAll('button').find(button => button.text() === label)!.trigger('click'); await flushPromises(); };
     try {
       await flushPromises();
@@ -50,7 +50,7 @@ describe('provider update controls', () => {
     let confirm!: () => void;
     vi.spyOn(ElMessageBox, 'confirm').mockImplementation(() => new Promise(resolve => { confirm = () => resolve('confirm' as never); }));
     const preview = ref(true);
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'codex' }, global: { provide: { [providerUpdatePreviewKey as symbol]: preview } } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'codex' }, global: { provide: { [providerUpdatePreviewKey as symbol]: preview } } });
     try {
       await flushPromises();
       await wrapper.findAll('button').find(button => button.text() === 'Upgrade')!.trigger('click');
@@ -66,9 +66,9 @@ describe('provider update controls', () => {
     { status: 'error' as const, error: 'upgradeFailed' as const, label: 'Upgrade failed.' },
   ])('keeps $status feedback with the version instead of adding a third line', async ({ status, label, ...error }) => {
     const { api } = createClientApiMock();
-    api.getProviderUpdate.mockResolvedValue({ backend: 'claude', status, installedVersion: '2.1.293', method: 'native', canUpgrade: false, busy: false, ...error });
+    api.getProviderUpdate.mockResolvedValue({ provider: 'claude', status, installedVersion: '2.1.293', method: 'native', canUpgrade: false, busy: false, ...error });
     configureAppClient({ platform: 'web', api });
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'claude' } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'claude' } });
     try {
       await flushPromises();
       expect(wrapper.get('.provider-update__version').text()).toContain(`2.1.293 · ${label}`);
@@ -78,11 +78,11 @@ describe('provider update controls', () => {
 
   it('shows the versions and confirms an upgrade on the selected remote host', async () => {
     const { api } = createClientApiMock();
-    api.getProviderUpdate.mockResolvedValue({ backend: 'codex', status: 'available', installedVersion: '1.0.0', latestVersion: '1.1.0', method: 'npm', canUpgrade: true, busy: false, token: 'checked' });
-    api.setProviderUpdate.mockResolvedValue({ backend: 'codex', status: 'current', installedVersion: '1.1.0', method: 'npm', canUpgrade: false, busy: false });
+    api.getProviderUpdate.mockResolvedValue({ provider: 'codex', status: 'available', installedVersion: '1.0.0', latestVersion: '1.1.0', method: 'npm', canUpgrade: true, busy: false, token: 'checked' });
+    api.setProviderUpdate.mockResolvedValue({ provider: 'codex', status: 'current', installedVersion: '1.1.0', method: 'npm', canUpgrade: false, busy: false });
     configureAppClient({ platform: 'web', api });
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'codex', remoteConnectionId: 'wall-e' } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'codex', remoteConnectionId: 'wall-e' } });
     await flushPromises();
     expect(wrapper.text()).toContain('1.1.0 available');
     expect(wrapper.get('.provider-update__version').classes()).toContain('provider-update__available');
@@ -99,12 +99,12 @@ describe('provider update controls', () => {
 
   it('does not upgrade after cancelling confirmation and offers cancellation for queued upgrades', async () => {
     const { api } = createClientApiMock();
-    const available = { backend: 'claude' as const, status: 'available' as const, method: 'native' as const, canUpgrade: true, busy: true, token: 'checked' };
+    const available = { provider: 'claude' as const, status: 'available' as const, method: 'native' as const, canUpgrade: true, busy: true, token: 'checked' };
     api.getProviderUpdate.mockResolvedValue(available);
     api.setProviderUpdate.mockResolvedValue({ ...available, status: 'waiting' });
     configureAppClient({ platform: 'web', api });
     const confirmation = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel');
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'claude' } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'claude' } });
     await flushPromises();
     const button = wrapper.findAll('button').find(item => item.text() === 'Upgrade when idle')!;
     await button.trigger('click'); await flushPromises();
@@ -119,9 +119,9 @@ describe('provider update controls', () => {
 
   it.each(['available', 'manual'] as const)('offers instructions rather than an upgrade for unmanaged installations (%s)', async status => {
     const { api } = createClientApiMock();
-    api.getProviderUpdate.mockResolvedValue({ backend: 'claude', status, method: 'manual', canUpgrade: false, busy: false });
+    api.getProviderUpdate.mockResolvedValue({ provider: 'claude', status, method: 'manual', canUpgrade: false, busy: false });
     configureAppClient({ platform: 'web', api });
-    const wrapper = mount(ProviderUpdateRow, { props: { backend: 'claude' } });
+    const wrapper = mount(ProviderUpdateRow, { props: { provider: 'claude' } });
     await flushPromises();
     expect(wrapper.get('a').attributes('href')).toContain('code.claude.com');
     expect(wrapper.findAll('button').some(button => button.text() === 'Upgrade')).toBe(false);

@@ -1,1 +1,1 @@
-export * from '@korus-dev/multi-agent-sdk/conversations/claude-conversation-reducer';
+export { applyClaudeConversationEvent } from '@korus-dev/multi-agent-sdk/renderer';

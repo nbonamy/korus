@@ -1,23 +1,24 @@
 import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { executionSelectionSchema, executionSelectionOverridesSchema, executionSelectionRequestSchema } from '../execution-selection-schema';
 import type { ExecutionSelection } from '@workspace/core/contracts/execution';
-import { normalizePromptContent, type CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import { type PromptPart } from '@korus-dev/multi-agent-sdk';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
-import type { BackendHistoryLoadResult } from '@workspace/core/backend-driver';
+import type { ProviderHistoryLoadResult } from '@workspace/core/provider-driver';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AgentBackend, AgentGitDiff, AgentGitDiffTarget, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
+import type { HarnessProvider, AgentGitDiff, AgentGitDiffTarget, ProviderSkillSummary, ProviderPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { supportsCompanionBackend, companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { supportsCompanionProvider, companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
 import { isCodeReviewStartInput } from '@workspace/core/code-review';
 import { opaquePath, projectCompanionWorkspace, supportedCompanionWorkspace } from '@workspace/core/companion-projection';
@@ -44,7 +45,7 @@ function legacySelection(value: unknown, keys: readonly string[]): unknown {
   return { ...result, selection };
 }
 const promptSelectionKeys = ['model', 'reasoningEffort', 'serviceTier'] as const;
-const reviewSelectionKeys = ['backend', 'model', 'reasoningEffort'] as const;
+const reviewSelectionKeys = ['provider', 'model', 'reasoningEffort'] as const;
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -56,7 +57,7 @@ const requestOutcomeSchema = z.discriminatedUnion('kind', [
 const closeInputSchema = z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.preprocess(value => legacySelection(value, promptSelectionKeys), z.object({
-  content: z.custom<CodexPromptPart[]>(value => {
+  content: z.custom<PromptPart[]>(value => {
     try { return Array.isArray(value) && value.length <= 1000 && JSON.stringify(normalizePromptContent(value)).length <= 100_000; }
     catch { return false; }
   }).optional(),
@@ -76,9 +77,9 @@ const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const catalogSchema = z.object({ teamId: identity, provider: z.enum(['github', 'gitlab']) }).strict();
 const catalogBranchesSchema = catalogSchema.extend({ repositoryId: z.string().regex(/^repo:[a-f0-9]{64}$/) }).strict();
-const companionSelectionRequestSchema = executionSelectionRequestSchema.refine(selection => supportsCompanionBackend(selection.backend), 'Provider is unavailable on this companion protocol.');
-const newChatSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, repositoryId: identity, selection: companionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
-const projectSchema = z.preprocess(value => legacySelection(value, ['backend']), z.object({ teamId: identity, selection: companionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+const companionSelectionRequestSchema = executionSelectionRequestSchema.refine(selection => supportsCompanionProvider(selection.provider), 'Provider is unavailable on this companion protocol.');
+const newChatSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, repositoryId: identity, selection: companionSelectionRequestSchema, existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.'));
+const projectSchema = z.preprocess(value => legacySelection(value, ['provider']), z.object({ teamId: identity, selection: companionSelectionRequestSchema, source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
   if ((input.branch || input.worktree) && !['github', 'gitlab', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
@@ -111,7 +112,7 @@ export type GatewayPort = {
   githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
   localRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
   localBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
-  duplicateAgent?(agentId: string, backend: AgentBackend): Promise<string>;
+  duplicateAgent?(agentId: string, provider: HarnessProvider): Promise<string>;
   renameAgent?(agentId: string, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
@@ -124,21 +125,21 @@ export type GatewayPort = {
   workspace(): Promise<CompanionWorkspace>;
   synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
-  loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  loadOlderHistory(agentId: string): Promise<ProviderHistoryLoadResult>;
   loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   submit(target: CompanionTarget, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
-  plugins?(agentId: string): Promise<BackendPluginSummary[]>;
-  skills(agentId: string): Promise<BackendSkillSummary[]>;
+  plugins?(agentId: string): Promise<ProviderPluginSummary[]>;
+  skills(agentId: string): Promise<ProviderSkillSummary[]>;
   changeGoal?(agentId: string, objective: string | null): Promise<void>;
   updateQueuedPrompt?(target: CompanionTarget, promptId: string, action: 'steer' | 'delete'): Promise<void>;
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
   branches(repositoryRoot: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
   createChat(request: NewChatRequest): Promise<string>;
-  createQuickChat(request: { teamId: string; backend: AgentBackend }): Promise<string>;
-  setBackend(agentId: string, backend: AgentBackend): Promise<void>;
+  createQuickChat(request: { teamId: string; provider: HarnessProvider }): Promise<string>;
+  setProvider(agentId: string, provider: HarnessProvider): Promise<void>;
   closePreview(agentId: string): Promise<Omit<CompanionClosePreview, 'target'>>;
   close(agentId: string, input?: CompanionCloseOptions): Promise<void>;
   setApprovalPreset(agentId: string, preset: string): Promise<void>;
@@ -146,7 +147,7 @@ export type GatewayPort = {
   startReview(agentId: string, input: z.infer<typeof reviewSchema>['input']): Promise<string | void>;
   readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
   reviewAction?(agentId: string, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
-  reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
+  reviewSetup?(agentId: string, provider?: HarnessProvider): Promise<CompanionReviewSetup>;
   selectModel(agentId: string, selection: ExecutionSelection): Promise<void>;
   save(state: GatewayState): Promise<void>;
   revoked(peerId: string): void;
@@ -187,8 +188,8 @@ const queuedPromptOperation = (action: 'steer' | 'delete') => agentOperation(wit
 });
 /** Provider snapshots must belong to the agent's current session; Claude and Antigravity can rebind a session id mid-conversation, so their frame is this agent's own replica. */
 function currentReset(frame: CompanionReset, current: CompanionAgent, target: CompanionTarget) {
-  const session = current.backendSession;
-  if (frame.backend !== current.backend || (session?.kind === 'codex' && (frame.type !== 'codex.conversationSnapshotChanged' || frame.threadId !== session.threadId))
+  const session = current.providerSession;
+  if (frame.provider !== current.provider || (session?.kind === 'codex' && (frame.type !== 'codex.conversationSnapshotChanged' || frame.threadId !== session.threadId))
     || (session?.kind === 'claude' && frame.type !== 'claude.conversationSnapshotChanged')
     || (session?.kind === 'antigravity' && frame.type !== 'antigravity.conversationSnapshotChanged')) throw new Error('Conversation session mismatch.');
   if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
@@ -223,7 +224,7 @@ const agentOperations = {
     act: async (port, agent, { path }, target) => {
       const embedded = conversationImageInput(path);
       if (embedded) {
-        if (agent.backendSession?.kind !== 'codex' || agent.backendSession.threadId !== embedded.sessionId || !port.readConversationContent) throw new Error('Conversation image is unavailable.');
+        if (agent.providerSession?.kind !== 'codex' || agent.providerSession.threadId !== embedded.sessionId || !port.readConversationContent) throw new Error('Conversation image is unavailable.');
         // The provider checks the reference against its current snapshot. Reloading
         // history here can discard the very image the phone is trying to display.
         return { dataUrl: await readEmbeddedConversationImage(path, input => port.readConversationContent!(agent.id, input)) };
@@ -250,7 +251,7 @@ const agentOperations = {
     read: { verify: (result, current, target) => {
       for (const frame of result.frames) {
         if (isConversationReset(frame)) currentReset(frame as CompanionReset, current, target);
-        else if (frame.agentId !== target.agentId || frame.backend !== current.backend || (current.backendSession?.kind === 'codex' && frame.threadId !== current.backendSession.threadId)) throw new Error('Conversation session mismatch.');
+        else if (frame.agentId !== target.agentId || frame.provider !== current.provider || (current.providerSession?.kind === 'codex' && frame.threadId !== current.providerSession.threadId)) throw new Error('Conversation session mismatch.');
       }
       return result;
     } },
@@ -270,15 +271,15 @@ const agentOperations = {
     },
     read: { verify: ({ page, reset }, current, target) => {
       if (reset) return { frame: currentReset(reset, current, target), hasOlder: page.hasOlder };
-      if (!page.frame || page.frame.agentId !== target.agentId || current.backendSession?.kind !== 'claude'
-        || page.frame.payload.event.backendSessionId !== current.backendSession.sessionId
+      if (!page.frame || page.frame.agentId !== target.agentId || current.providerSession?.kind !== 'claude'
+        || page.frame.payload.event.providerSessionId !== current.providerSession.sessionId
         || page.frame.payload.event.type !== 'history.prepended') throw new Error('Conversation identity mismatch.');
       return { frame: page.frame, hasOlder: page.hasOlder };
     } },
   }),
   'conversation.content.read': agentOperation(withTarget(z.object({ input: z.object({ sessionId: identity, contentId: z.string().regex(/^[a-f0-9]{64}$/), offset: z.number().int().nonnegative().safe() }).strict() }).strict()))({
     check: (agent, { input }) => {
-      const session = agent.backendSession;
+      const session = agent.providerSession;
       if ((session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null) !== input.sessionId) throw new Error('Conversation content is unavailable.');
     },
     act: async (port, agent, { input }) => {
@@ -301,7 +302,7 @@ const agentOperations = {
   'plugins.list': agentOperation(onlyTarget)({ act: async (port, agent) => ({ plugins: await port.plugins?.(agent.id) ?? [] }), read: {} }),
   'models.list': agentOperation(onlyTarget)({ act: async (port, agent) => ({ models: await port.models(agent.id) }), read: {} }),
   'agent.model.select': agentOperation(withTarget(z.union([z.strictObject({ selection: executionSelectionSchema }), z.strictObject({ model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() })])))({
-    act: async (port, agent, input) => { const selection = 'selection' in input ? input.selection : { backend: agent.backend, ...input }; if (selection.backend !== agent.backend) throw new Error('Execution selection does not match the agent provider.'); await port.selectModel(agent.id, selection); return {}; },
+    act: async (port, agent, input) => { const selection = 'selection' in input ? input.selection : { provider: agent.provider, ...input }; if (selection.provider !== agent.provider) throw new Error('Execution selection does not match the agent provider.'); await port.selectModel(agent.id, selection); return {}; },
   }),
   'agent.interrupt': agentOperation(onlyTarget)({ act: async (port, agent) => { await port.interrupt(agent.id); return {}; } }),
   'agent.approvalPreset.set': agentOperation(withTarget(z.object({ preset: z.string().min(1).max(40) }).strict()))({
@@ -311,18 +312,18 @@ const agentOperations = {
     act: async (port, agent, { mode }) => { await port.setPermissionMode(agent.id, mode); return {}; },
   }),
   'agent.goal.set': agentOperation(withTarget(z.object({ objective: z.string().trim().min(1).max(100_000).nullable() }).strict()))({
-    check: (agent) => { if (!defaultBackendCapabilities(agent.backend).goals) throw new Error('Goals unavailable.'); },
+    check: (agent) => { if (!defaultProviderCapabilities(agent.provider).goals) throw new Error('Goals unavailable.'); },
     act: async (port, agent, { objective }) => {
       if (!port.changeGoal) throw new Error('Goals unavailable.');
       await port.changeGoal(agent.id, objective); return {};
     },
   }),
-  'agent.backend.set': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
-    check: (agent, { backend }, { backends }) => {
-      if (!canSelectAgentBackend(agent)) throw new Error('The engine can only change before the first prompt.');
+  'agent.provider.set': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+    check: (agent, { provider: backend }, { providers: backends }) => {
+      if (!canSelectAgentProvider(agent)) throw new Error('The engine can only change before the first prompt.');
       if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
-    act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
+    act: async (port, agent, { provider: backend }) => { await port.setProvider(agent.id, backend); return {}; },
   }),
   'agent.rename': agentOperation(withTarget(z.object({ name: z.string().trim().min(1).max(200) }).strict()))({
     act: async (port, agent, { name }) => {
@@ -330,11 +331,11 @@ const agentOperations = {
       await port.renameAgent(agent.id, name); return {};
     },
   }),
-  'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
-    check: (agent, { backend }, { backends }) => {
+  'agent.duplicate': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+    check: (agent, { provider: backend }, { providers: backends }) => {
       if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
-    act: async (port, agent, { backend }) => {
+    act: async (port, agent, { provider: backend }) => {
       if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');
       return { agentId: await port.duplicateAgent(agent.id, backend) };
     },
@@ -347,8 +348,8 @@ const agentOperations = {
   'agent.close': agentOperation(withTarget(z.object({ input: closeInputSchema.optional() }).strict()))({
     act: async (port, agent, { input }) => { await port.close(agent.id, input); return {}; },
   }),
-  'agent.review.setup': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']).optional() }).strict()))({
-    act: async (port, agent, { backend }) => {
+  'agent.review.setup': agentOperation(withTarget(z.object({ provider: z.enum(['codex', 'claude', 'antigravity']).optional() }).strict()))({
+    act: async (port, agent, { provider: backend }) => {
       if (!port.reviewSetup) throw new Error('Review setup unavailable.');
       return port.reviewSetup(agent.id, backend);
     },
@@ -378,7 +379,7 @@ const agentOperations = {
     act: async (port, agent, input) => ({ reviewerAgentId: await port.startReview(agent.id, input) ?? null }),
   }),
 } satisfies Record<string, AgentOperation<unknown, unknown>>;
-for (const method of ['agent.backend.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start', 'agent.review.read', 'agent.review.action'] as const) agentOperations[method].structural = true;
+for (const method of ['agent.provider.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start', 'agent.review.read', 'agent.review.action'] as const) agentOperations[method].structural = true;
 export const companionAgentMethods = Object.keys(agentOperations);
 type Peer = { peerId: string; grant: CompanionGrant };
 type Operation = (peer: Peer, args: unknown) => Promise<unknown>;
@@ -579,7 +580,7 @@ export class CompanionGateway {
         const current = await this.workspace();
         this.requireGrant(peer);
         if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Team changed.');
-        if (!current.backends?.[team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
+        if (!current.providers?.[team.id]?.includes(input.selection.provider)) throw new Error('That engine is not available.');
       };
       await authorize();
       if (!this.port.createProject) throw new Error('Project creation is unavailable.');
@@ -643,18 +644,18 @@ export class CompanionGateway {
       const workspace = await this.workspace();
       this.requireGrant(peer);
       const { team, repository, remoteConnectionId } = this.repository(workspace, input);
-      if (workspace.backends && !workspace.backends[remoteConnectionId ?? team.id]?.includes(input.selection.backend)) throw new Error('That engine is not available.');
+      if (workspace.providers && !workspace.providers[remoteConnectionId ?? team.id]?.includes(input.selection.provider)) throw new Error('That engine is not available.');
       const request: NewChatRequest = { teamId: team.id, ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: input.selection,
         repositoryName: repository.repositoryName, repositoryRoot: repository.primaryWorktreeRoot, ...(repository.defaultBranch ? { defaultBranch: repository.defaultBranch } : {}),
         ...(input.existingBranch ? { existingBranch: input.existingBranch } : {}), ...(input.worktree ? { worktree: input.worktree } : {}) };
       return { creationId: this.creations.start(peer.peerId, () => this.port.createChat(request)) };
     },
     'agent.quickChat.create': async (peer, args) => {
-      const input = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
+      const input = z.object({ teamId: identity, provider: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
       const workspace = await this.workspace();
       this.requireGrant(peer);
       if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Team not found.');
-      if (workspace.backends && !workspace.backends[input.teamId]?.includes(input.backend)) throw new Error('That engine is not available.');
+      if (workspace.providers && !workspace.providers[input.teamId]?.includes(input.provider)) throw new Error('That engine is not available.');
       return { creationId: this.creations.start(peer.peerId, () => this.port.createQuickChat(input)) };
     },
     'agent.create.status': async (peer, args) => {
@@ -719,7 +720,7 @@ export class CompanionGateway {
         const catalog = await this.port.skills(agent.id);
         if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
         const current = await this.validateTarget(command.target, true);
-        if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
+        if (current.provider !== agent.provider || current.folder !== agent.folder) throw new Error('Target is stale.');
         this.requireGrant(peer);
       }
       if (command.attachments?.length && command.target.locationId !== 'local') throw new Error('Remote attachments require a trusted file transfer.');
@@ -755,7 +756,7 @@ export class CompanionGateway {
     if (!operation.read) return result;
     const current = await this.validateTarget(target, worker);
     this.requireGrant(peer);
-    if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
+    if (current.provider !== agent.provider || current.folder !== agent.folder) throw new Error('Target is stale.');
     return operation.read.verify ? operation.read.verify(result, current, target) : result;
   }
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {

@@ -4,41 +4,39 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { DurableTaskService } from '../../agents/durable-task-service';
 import { AppStateStore } from '../../persistence/store';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { AppBackendServer } from '../../server';
 import { AppMcpService } from '../service';
 import { createTaskToolModuleProvider } from '../task-tools';
-import { codexSdkFixture, sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
-import { ClaudeBackendDriver } from '../../claude/claude-driver';
-import { ClaudeAgentSdkTransport } from '../../claude/agent-sdk-transport';
-import { AntigravityHost } from '../../antigravity/antigravity-host';
+import { codexSdkFixture, sdkSnapshot } from '../../codex/__tests__/sdk-host-fixture';
+import { createAntigravityDriver } from '../../harness-drivers';
 import { createQueryHarness } from '../../claude/__tests__/sdk-query-fixture';
 
-vi.mock('@workspace/core/runtime-discovery', () => ({ resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }) }));
+vi.mock('@workspace/core/runtime-discovery', () => ({ resolveRuntimeExecutable: () => '/test/bin/codex', resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }) }));
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 
-async function setup(parentBackend: 'codex' | 'claude') {
+async function setup(parentProvider: 'codex' | 'claude') {
   const home = await mkdtemp(path.join(os.tmpdir(), 'app-task-mcp-'));
   cleanup.push(() => rm(home, { recursive: true, force: true }));
   const store = new AppStateStore(home);
   const snapshot = createInitialSnapshot();
   snapshot.general.claudeCodeEnabled = true;
-  snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+  snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
   const parent = snapshot.agents[0]!;
-  parent.backend = parentBackend;
-  parent.backendSession = parentBackend === 'codex' ? { kind: 'codex', threadId: 'codex-parent' } : { kind: 'claude', sessionId: 'claude-parent', transport: 'stdio' };
+  parent.provider = parentProvider;
+  parent.providerSession = parentProvider === 'codex' ? { kind: 'codex', threadId: 'codex-parent' } : { kind: 'claude', sessionId: 'claude-parent', transport: 'stdio' };
   parent.status = { type: 'idle' };
   const codex = codexSdkFixture();
   const claudeSdk = createQueryHarness([{ value: 'claude-sonnet-5-5', supportsFastMode: true }]);
-  const claude = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: claudeSdk.createQuery }));
-  const rpc = new BackendDriverRpc(new Map< 'codex' | 'claude', AgentBackendDriver>([['codex', codex.driver], ['claude', claude]]));
+  const claude = claudeSdk.driver();
+  const rpc = new ProviderDriverRpc(new Map< 'codex' | 'claude', AgentProviderDriver>([['codex', codex.driver], ['claude', claude]]));
   const metadata = { seq: 1, origin: 'notification' as const, occurredAt: '2026-10-04T00:00:00Z', conversationId: 'codex-worker', turnId: 'codex-turn' };
   codex.surface.createConversation.mockResolvedValue(sdkSnapshot('codex-worker'));
   for (const id of ['codex-worker', 'codex-parent']) {
@@ -77,7 +75,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     const native = f.codex.conversation('codex-worker');
     const input = { planMode: true, selection: { model: 'codex-only-model', reasoningEffort: 'high' }, targets: [
       { repoPath: '/api', prompt: 'Plan the API.', requestId: 'api', task: { title: 'API', doneWhen: 'Plan approved' } },
-      { repoPath: '/web', prompt: 'Inspect the client.', planMode: false, selection: { backend: 'claude' }, requestId: 'web', task: { title: 'Client', doneWhen: 'Inspection complete' } },
+      { repoPath: '/web', prompt: 'Inspect the client.', planMode: false, selection: { provider: 'claude' }, requestId: 'web', task: { title: 'Client', doneWhen: 'Inspection complete' } },
     ] };
     const creating = f.call(f.parent.id, 'create-agent', input);
     await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
@@ -87,8 +85,8 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     expect(native.handle.sendMessage).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ planMode: true }));
     expect(f.claudeSdk.options[0]!.permissionMode).not.toBe('plan');
     const workers = result.results.map((entry: { agentId: string }) => f.snapshot.agents.find(agent => agent.id === entry.agentId)!);
-    expect(workers[0].backendDefaults).toMatchObject({ kind: 'codex', model: 'codex-only-model' });
-    expect(workers[1].backendDefaults?.model).not.toBe('codex-only-model');
+    expect(workers[0].providerDefaults).toMatchObject({ kind: 'codex', model: 'codex-only-model' });
+    expect(workers[1].providerDefaults?.model).not.toBe('codex-only-model');
     const saved = await f.store.loadTasks();
     expect(saved.map(task => task.requestId)).toStrictEqual(['api', 'web']);
     expect(new Set(saved.map(task => task.workerAgentId)).size).toBe(2);
@@ -113,13 +111,13 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
   });
 
   it.each([
-    { backend: 'codex', durable: false }, { backend: 'codex', durable: true },
-    { backend: 'claude', durable: false }, { backend: 'claude', durable: true },
-  ] as const)('starts the first prompt in Plan mode and waits for approval ($backend, durable: $durable)', async ({ backend, durable }) => {
+    { provider: 'codex', durable: false }, { provider: 'codex', durable: true },
+    { provider: 'claude', durable: false }, { provider: 'claude', durable: true },
+  ] as const)('starts the first prompt in Plan mode and waits for approval ($backend, durable: $durable)', async ({ provider: backend, durable }) => {
     const f = await setup('codex');
     const native = f.codex.conversation('codex-worker');
     const input = { repoPath: '/repo', prompt: 'Plan the assignment before implementing', planMode: true,
-      ...(durable ? { requestId: 'plan-worker', task: { title: 'Planned assignment', doneWhen: 'Implemented and verified' } } : {}), selection: { backend } };
+      ...(durable ? { requestId: 'plan-worker', task: { title: 'Planned assignment', doneWhen: 'Implemented and verified' } } : {}), selection: { provider: backend } };
     native.handle.updateSettings.mockImplementation(async settings => {
       native.setSnapshot({ ...native.handle.getSnapshot(), planMode: settings.planMode === true });
       native.emit({ ...f.metadata, type: 'conversation.settingsChanged', payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: settings.planMode === true } });
@@ -197,16 +195,16 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
   });
 
   it.each([
-    { backend: 'codex', durable: false }, { backend: 'codex', durable: true },
-    { backend: 'claude', durable: false }, { backend: 'claude', durable: true },
-  ] as const)('starts the delegated assignment as a native goal ($backend, durable: $durable)', async ({ backend, durable }) => {
+    { provider: 'codex', durable: false }, { provider: 'codex', durable: true },
+    { provider: 'claude', durable: false }, { provider: 'claude', durable: true },
+  ] as const)('starts the delegated assignment as a native goal ($backend, durable: $durable)', async ({ provider: backend, durable }) => {
     const f = await setup('codex');
     const native = f.codex.conversation('codex-worker');
     native.handle.setGoal.mockImplementation(async objective => {
       native.setSnapshot({ goal: { threadId: 'codex-worker', objective, status: 'active', tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 } });
       return native.handle.getSnapshot();
     });
-    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true, ...(durable ? { requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' } } : {}), selection: { backend } });
+    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true, ...(durable ? { requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' } } : {}), selection: { provider: backend } });
     if (backend === 'claude') {
       await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
       f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
@@ -222,7 +220,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     if (backend === 'codex') expect(native.handle.setGoal).toHaveBeenCalledOnce();
     if (durable) {
       expect((await f.store.loadTasks())[0]).toMatchObject({ goal: true });
-      const retry = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true, requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' }, selection: { backend } });
+      const retry = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Implement the assignment', instructions: 'Verify the result', goal: true, requestId: 'goal-worker', task: { title: 'Goal worker', doneWhen: 'Verified' }, selection: { provider: backend } });
       expect(retry.structuredContent.agentId).toBe(worker.id);
       expect(backend === 'claude' ? f.claudeSdk.inputs.length : native.handle.setGoal.mock.calls.length).toBe(1);
     }
@@ -230,14 +228,14 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
 
   it('rejects a missing goal prompt or unsupported provider before creating a worker', async () => {
     const f = await setup('codex');
-    await f.rpc.replaceDriver('antigravity', () => new AntigravityHost());
-    f.snapshot.providerConnections!.push({ backend: 'antigravity', installed: true, connected: true, checking: false });
+    await f.rpc.replaceDriver('antigravity', () => createAntigravityDriver());
+    f.snapshot.providerConnections!.push({ provider: 'antigravity', installed: true, connected: true, checking: false });
     const count = f.snapshot.agents.length;
     for (const [input, message] of [
       [{ repoPath: '/repo', goal: true }, 'prompt is required when goal is true'],
       [{ repoPath: '/repo', planMode: true }, 'prompt is required when planMode is true'],
       [{ repoPath: '/repo', planMode: true, goal: true, prompt: 'Work' }, 'planMode and goal cannot be enabled together.'],
-      [{ repoPath: '/repo', goal: true, prompt: 'Work', selection: { backend: 'antigravity' } }, 'This backend does not support goals.'],
+      [{ repoPath: '/repo', goal: true, prompt: 'Work', selection: { provider: 'antigravity' } }, 'This backend does not support goals.'],
     ] as const) {
       const result = await f.call(f.parent.id, 'create-agent', input);
       expect(result.structuredContent).toStrictEqual({ success: false, message });
@@ -267,26 +265,26 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
   ] as const)('applies saved $permissionMode permissions and the explicit model before startup ($parent parent, durable: $durable)', async ({ durable, parent, permissionMode }) => {
     const f = await setup(parent);
     f.snapshot.general.providerApprovalDefaults = { claude: permissionMode };
-    f.snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'opus', reasoningEffort: 'low', serviceTier: null } };
-    f.parent.backendDefaults = parent === 'codex'
+    f.snapshot.general.providerModelDefaults = { claude: {provider: 'claude',  model: 'opus', reasoningEffort: 'low', serviceTier: null } };
+    f.parent.providerDefaults = parent === 'codex'
       ? { kind: 'codex', model: 'codex-parent-model', reasoningEffort: 'max' }
       : { kind: 'claude', model: 'opus', reasoningEffort: 'max', serviceTier: 'fast', permissionMode: 'bypassPermissions' };
-    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', ...(durable ? { requestId: 'configured-worker', task: { title: 'Configured worker', doneWhen: 'Verified' } } : {}), selection: { backend: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high' } });
+    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', ...(durable ? { requestId: 'configured-worker', task: { title: 'Configured worker', doneWhen: 'Verified' } } : {}), selection: { provider: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high' } });
     await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
     f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker', model: 'claude-sonnet-5-5' });
     const created = await creating;
     expect(created.isError).toBe(false);
     expect(f.claudeSdk.options[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', permissionMode, settings: { fastMode: parent === 'claude' } });
     const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
-    expect(worker.backendDefaults).toStrictEqual({
+    expect(worker.providerDefaults).toStrictEqual({
       kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: parent === 'claude' ? 'fast' : null, userSelectedModel: true, permissionMode,
     });
-    if (durable) expect((await f.store.load()).agents.find(agent => agent.id === worker.id)?.backendDefaults).toStrictEqual(worker.backendDefaults);
+    if (durable) expect((await f.store.load()).agents.find(agent => agent.id === worker.id)?.providerDefaults).toStrictEqual(worker.providerDefaults);
   });
 
   it('honors Stop while automatic parent delivery is awaiting a turn identity', async () => {
     const f = await setup('codex');
-    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', requestId: 'stopped-delivery', task: { title: 'Assignment', doneWhen: 'Verified' }, selection: { backend: 'codex' } });
+    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', requestId: 'stopped-delivery', task: { title: 'Assignment', doneWhen: 'Verified' }, selection: { provider: 'codex' } });
     const task = created.structuredContent.task as DelegatedTask;
     await f.call(task.workerAgentId, 'complete-task', { summary: 'Verified', evidence: ['Checked'], artifacts: [], caveats: [] });
     const parent = f.codex.conversation('codex-parent');
@@ -324,7 +322,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
 
   it.each(['error result', 'unexpected iterator end', 'explicit interruption'] as const)('retains the provisional Claude result without delivering success after %s', async outcome => {
     const f = await setup('codex');
-    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Write bonjour', requestId: 'claude-outcome', task: { title: 'French readme', doneWhen: 'Verified' }, selection: { backend: 'claude' } });
+    const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Write bonjour', requestId: 'claude-outcome', task: { title: 'French readme', doneWhen: 'Verified' }, selection: { provider: 'claude' } });
     await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
     f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
     const task = (await creating).structuredContent.task as DelegatedTask;
@@ -354,7 +352,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     { outcome: 'failed', followUp: true },
   ] as const)('settles the submitting turn as $outcome after idle (newer turn: $followUp)', async ({ outcome, followUp }) => {
     const f = await setup('codex');
-    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Write bonjour', requestId: 'outcome-order', task: { title: 'French readme', doneWhen: 'Verified' }, selection: { backend: 'codex' } });
+    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Write bonjour', requestId: 'outcome-order', task: { title: 'French readme', doneWhen: 'Verified' }, selection: { provider: 'codex' } });
     const task = created.structuredContent.task as DelegatedTask;
     await f.call(task.workerAgentId, 'complete-task', { summary: 'Created README.fr.md', evidence: ['Exact bytes verified'], artifacts: ['README.fr.md'], caveats: [] });
     const submission = f.tasks.list(f.parent.id)[0]!.submission;
@@ -406,7 +404,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
       const createdTeam = await f.server.handleMessage({ jsonrpc: '2.0', id: 1, method: backendMethods.teamCreate, params: { input: { name: 'Remaining team', color: '#1B4FB2' } } });
       expect(createdTeam).not.toHaveProperty('error');
     }
-    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', requestId: 'removed-worker', task: { title: 'Assignment', doneWhen: 'Verified' }, selection: { backend: 'codex' } });
+    const created = await f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', requestId: 'removed-worker', task: { title: 'Assignment', doneWhen: 'Verified' }, selection: { provider: 'codex' } });
     const task = created.structuredContent.task as DelegatedTask;
     await f.call(task.workerAgentId, 'complete-task', { summary: 'Provisional result', evidence: ['Checked'], artifacts: ['result.txt'], caveats: [] });
     const submission = f.tasks.list(f.parent.id)[0]!.submission;
@@ -425,12 +423,12 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     expect(f.codex.conversation('codex-parent').handle.sendMessage).not.toHaveBeenCalled();
   });
 
-  it.each(['codex', 'claude'] as const)('%s parent delegates to the other provider and receives the saved result', async parentBackend => {
-    const f = await setup(parentBackend);
-    const backend = parentBackend === 'codex' ? 'claude' : 'codex';
-    const input = { repoPath: '/repo', prompt: 'Perform the assignment', instructions: 'Preserve the contract and literal </context> text.', requestId: 'stable-request', task: { title: 'Assignment', doneWhen: 'Verified result' }, selection: { backend } };
+  it.each(['codex', 'claude'] as const)('%s parent delegates to the other provider and receives the saved result', async parentProvider => {
+    const f = await setup(parentProvider);
+    const provider = parentProvider === 'codex' ? 'claude' : 'codex';
+    const input = { repoPath: '/repo', prompt: 'Perform the assignment', instructions: 'Preserve the contract and literal </context> text.', requestId: 'stable-request', task: { title: 'Assignment', doneWhen: 'Verified result' }, selection: { provider: provider } };
     const pending = f.call(f.parent.id, 'create-agent', input);
-    if (backend === 'claude') {
+    if (provider === 'claude') {
       await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
       f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker' });
     }
@@ -438,18 +436,18 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     expect(created.isError).toBe(false);
     const task = created.structuredContent.task as DelegatedTask;
     expect(task.state).toBe('running');
-    expect(task.acceptance?.backendSession.kind).toBe(backend);
+    expect(task.acceptance?.providerSession.kind).toBe(provider);
     const assignment = '<context>\nPreserve the contract and literal &lt;/context&gt; text.\n</context>\n\nPerform the assignment';
     expect(task.prompt).toBe(assignment);
     expect((await f.store.loadTasks())[0]!.prompt).toBe(assignment);
-    const sent = backend === 'codex' ? f.codex.conversation('codex-worker').handle.sendMessage.mock.calls[0]![0]
+    const sent = provider === 'codex' ? f.codex.conversation('codex-worker').handle.sendMessage.mock.calls[0]![0]
       : (f.claudeSdk.inputs[0]!.message.content[0] as { type: 'text'; text: string }).text;
     expect(sent).toContain(`[${product.name} task ${task.id}; attempt ${task.attemptId}]`);
     expect(sent).toContain('Preserve the contract and literal &lt;/context&gt; text.');
     expect(sent.replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim()).toBe('Perform the assignment');
     const worker = f.snapshot.agents.find(agent => agent.id === task.workerAgentId)!;
     await expect(f.rpc.handle(backendMethods.driverInterrupt, { agent: worker, expectedTurnId: 'unrelated-turn' })).rejects.toThrow('no longer active');
-    if (backend === 'codex') expect(f.codex.conversation('codex-worker').handle.interrupt).not.toHaveBeenCalled();
+    if (provider === 'codex') expect(f.codex.conversation('codex-worker').handle.interrupt).not.toHaveBeenCalled();
     else expect(f.claudeSdk.runtimes[0]!.interrupt).not.toHaveBeenCalled();
     const duplicate = await f.call(f.parent.id, 'create-agent', input);
     expect(duplicate.structuredContent.taskId).toBe(task.id);
@@ -457,12 +455,12 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     const submitted = await f.call(task.workerAgentId, 'complete-task', { summary: 'Verified', evidence: ['Boundary exercised'], artifacts: ['src/fix.ts'], caveats: [] });
     expect(submitted.isError).toBe(false);
     expect((await f.store.loadTasks())[0]!.state).toBe('running');
-    if (backend === 'claude') f.claudeSdk.emit({ type: 'result', subtype: 'success', session_id: 'claude-worker', is_error: false });
+    if (provider === 'claude') f.claudeSdk.emit({ type: 'result', subtype: 'success', session_id: 'claude-worker', is_error: false });
     else {
       f.codex.conversation('codex-worker').setSnapshot({ activeTurnId: null, busy: false });
       f.codex.conversation('codex-worker').emit({ ...f.metadata, type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
     }
-    if (parentBackend === 'claude') {
+    if (parentProvider === 'claude') {
       await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
       f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-parent' });
     }

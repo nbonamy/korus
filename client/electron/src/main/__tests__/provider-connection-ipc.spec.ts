@@ -86,17 +86,17 @@ describe('provider sign-out IPC', () => {
   });
 
   it('carries explicit installation through preload to the selected host and returns failures for retry', async () => {
-    const result = { backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/app/antigravity-home' };
+    const result = { provider: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/app/antigravity-home' };
     const request = vi.fn().mockResolvedValue(result);
     const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
     controller.registerIpcHandlers();
     await import('../../preload/index');
     const api = bridge.exposed.get('app') as AppApi;
     await expect(api.installProvider('antigravity', 'remote')).resolves.toStrictEqual(result);
-    expect(request).toHaveBeenCalledExactlyOnceWith('provider/install', { backend: 'antigravity', remoteConnectionId: 'remote' });
+    expect(request).toHaveBeenCalledExactlyOnceWith('provider/install', { provider: 'antigravity', remoteConnectionId: 'remote' });
     request.mockRejectedValueOnce(new Error('Download failed'));
     await expect(api.installProvider('antigravity')).rejects.toThrow('Download failed');
-    expect(request).toHaveBeenLastCalledWith('provider/install', { backend: 'antigravity', remoteConnectionId: undefined });
+    expect(request).toHaveBeenLastCalledWith('provider/install', { provider: 'antigravity', remoteConnectionId: undefined });
   });
   it('routes read-only banked reset reads through preload with owning-host identity and errors', async () => {
     const result = { status: 'ready', summary: { availableCount: '18446744073709551615', credits: null, detailCount: null } };
@@ -121,17 +121,17 @@ describe('provider sign-out IPC', () => {
     request.mockRejectedValueOnce(new Error('Uncertain response')); await expect(api.useBankedReset(input)).rejects.toThrow('Uncertain response');
   });
   it('routes provider version checks and confirmed upgrades through preload to the owning host', async () => {
-    const state = { backend: 'claude', status: 'waiting', method: 'native', canUpgrade: true, busy: true };
+    const state = { provider: 'claude', status: 'waiting', method: 'native', canUpgrade: true, busy: true };
     const request = vi.fn().mockResolvedValue(state);
     const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
     controller.registerIpcHandlers();
     await import('../../preload/index');
     const api = bridge.exposed.get('app') as AppApi;
     await expect(api.getProviderUpdate('claude', 'wall-e', true)).resolves.toEqual(state);
-    expect(request).toHaveBeenLastCalledWith('provider/update/get', { backend: 'claude', remoteConnectionId: 'wall-e', refresh: true });
+    expect(request).toHaveBeenLastCalledWith('provider/update/get', { provider: 'claude', remoteConnectionId: 'wall-e', refresh: true });
     const input = { action: 'upgrade' as const, confirmed: true, token: 'checked-installation' };
     await expect(api.setProviderUpdate('claude', input, 'wall-e')).resolves.toEqual(state);
-    expect(request).toHaveBeenLastCalledWith('provider/update/set', { backend: 'claude', input, remoteConnectionId: 'wall-e' });
+    expect(request).toHaveBeenLastCalledWith('provider/update/set', { provider: 'claude', input, remoteConnectionId: 'wall-e' });
   });
   it('carries sign-out from the real preload API to daemon with the selected engine and host', async () => {
     const result = { kind: 'claude', connected: false, state: { loggedIn: false } };
@@ -141,14 +141,14 @@ describe('provider sign-out IPC', () => {
     await import('../../preload/index');
     const api = bridge.exposed.get('app') as AppApi;
     await expect(api.disconnectProvider('claude', 'wall-e')).resolves.toEqual(result);
-    expect(request).toHaveBeenLastCalledWith('provider/disconnect', { backend: 'claude', remoteConnectionId: 'wall-e' });
+    expect(request).toHaveBeenLastCalledWith('provider/disconnect', { provider: 'claude', remoteConnectionId: 'wall-e' });
     await api.authenticateProvider('antigravity', 'login');
-    expect(request).toHaveBeenLastCalledWith('provider/authenticate', { backend: 'antigravity', action: 'login' });
+    expect(request).toHaveBeenLastCalledWith('provider/authenticate', { provider: 'antigravity', action: 'login' });
     await api.authenticateProvider('antigravity', 'cancel');
-    expect(request).toHaveBeenLastCalledWith('provider/authenticate', { backend: 'antigravity', action: 'cancel' });
+    expect(request).toHaveBeenLastCalledWith('provider/authenticate', { provider: 'antigravity', action: 'cancel' });
     request.mockRejectedValueOnce(new Error('Sign-out failed'));
     await expect(api.disconnectProvider('codex')).rejects.toThrow('Sign-out failed');
-    expect(request).toHaveBeenLastCalledWith('provider/disconnect', { backend: 'codex', remoteConnectionId: undefined });
+    expect(request).toHaveBeenLastCalledWith('provider/disconnect', { provider: 'codex', remoteConnectionId: undefined });
   });
 });
 

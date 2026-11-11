@@ -28,7 +28,7 @@ export class TranscriptReplicas {
           const snapshot = frame as CompanionReset;
           entry = { checkpoint: { epoch: checkpoint.epoch, revision: frame.payload.revision }, frame: snapshot, replica: createCompanionReplica(snapshot), bytes: new TextEncoder().encode(JSON.stringify(frame)).byteLength };
         } else if (entry && frame.payload.revision > entry.checkpoint.revision) {
-          if (frame.agentId !== entry.frame.agentId || frame.backend !== entry.frame.backend) return null;
+          if (frame.agentId !== entry.frame.agentId || frame.provider !== entry.frame.provider) return null;
           entry.replica.apply(frame.payload.event as never);
           const snapshot = entry.replica.getSnapshot();
           if (!snapshot) return null;

@@ -12,7 +12,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
-import type { BackendHistoryLoadResult } from '@workspace/core/backend-driver';
+import type { ProviderHistoryLoadResult } from '@workspace/core/provider-driver';
 import type { GuestConversationGrant } from './conversation-shares';
 import { WindowBudget } from '../companion/source-budget';
 import { conversationImageReferences, imagePath } from '../companion/images';
@@ -28,7 +28,7 @@ export type GuestConversationPort = {
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
   synchronize(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
-  loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  loadOlderHistory(agentId: string): Promise<ProviderHistoryLoadResult>;
   loadTurnHistory?(agentId: string, turnId: string): Promise<void>;
   readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   readImage(agentId: string, path: string): Promise<CompanionImage>;
@@ -42,15 +42,15 @@ const contentSchema = z.object({ input: z.object({ sessionId: z.string().min(1).
 const imageSchema = z.object({ path: z.string().min(1).max(4096) }).strict();
 /** Strict immutable identity checks apply to provider resets, pages, events and replay. */
 function bound(frame: ProviderConversationFrame, target: ConversationShareTarget): boolean {
-  if (frame.agentId !== target.agentId || frame.backend !== target.backend) return false;
+  if (frame.agentId !== target.agentId || frame.provider !== target.provider) return false;
   if (frame.conversationId && frame.conversationId !== target.sessionId) return false;
-  if (frame.backend === 'codex') {
+  if (frame.provider === 'codex') {
     if (frame.threadId !== target.sessionId) return false;
     return frame.type === 'codex.conversationSnapshotChanged' ? frame.payload.snapshot.activeConversationId === target.sessionId : frame.type === 'codex.conversationEventReceived' && frame.payload.event.conversationId === target.sessionId;
   }
-  if (frame.backendSessionId && frame.backendSessionId !== target.sessionId) return false;
+  if (frame.providerSessionId && frame.providerSessionId !== target.sessionId) return false;
   if (frame.type === 'claude.conversationSnapshotChanged' || frame.type === 'antigravity.conversationSnapshotChanged') return frame.payload.snapshot.agentId === target.agentId && frame.payload.snapshot.sessionId === target.sessionId;
-  if (frame.type === 'claude.conversationEventReceived') return frame.payload.event.agentId === target.agentId && (!frame.payload.event.backendSessionId || frame.payload.event.backendSessionId === target.sessionId);
+  if (frame.type === 'claude.conversationEventReceived') return frame.payload.event.agentId === target.agentId && (!frame.payload.event.providerSessionId || frame.payload.event.providerSessionId === target.sessionId);
   return frame.type === 'antigravity.conversationEventReceived' && frame.payload.event.agentId === target.agentId && frame.payload.event.sessionId === target.sessionId;
 }
 
@@ -189,7 +189,7 @@ export class GuestConversationGateway {
                 const { path } = imageSchema.parse(request.args);
                 const embedded = conversationImageInput(path);
                 if (embedded) {
-                  if (target.backend !== 'codex' || embedded.sessionId !== target.sessionId || !images.has(path)) throw new Error('denied');
+                  if (target.provider !== 'codex' || embedded.sessionId !== target.sessionId || !images.has(path)) throw new Error('denied');
                   result = { dataUrl: await readEmbeddedConversationImage(path, async input => {
                     assert(); const chunk = await this.port.readConversationContent(target.agentId, input); assert(); return chunk;
                   }) };

@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentBackend, RemoteConnection, AppSnapshot } from '@workspace/core/contracts';
+import type { HarnessProvider, RemoteConnection, AppSnapshot } from '@workspace/core/contracts';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { createFileRemoteSnapshotCache } from '../connections/remote-snapshot-cache';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import {
@@ -81,19 +81,19 @@ describe('AppBackendServer', () => {
     }
   });
 
-  it.each(['codex', 'claude'] as const)('installs %s over SSH and rechecks the owning host', async (backend) => {
+  it.each(['codex', 'claude'] as const)('installs %s over SSH and rechecks the owning host', async (provider) => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
     const install = vi.fn().mockResolvedValue('1.0.0');
-    const remoteClients = { request: vi.fn().mockResolvedValue({ backend, installed: true }), close: vi.fn() };
+    const remoteClients = { request: vi.fn().mockResolvedValue({ provider: provider, installed: true }), close: vi.fn() };
     const server = new AppBackendServer({ version: 'test', snapshot,
       sshConnections: { ensureRemoteClaudeInstalled: install, ensureRemoteCodexInstalled: install } as never,
       remoteClients: remoteClients as never });
     try {
-      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'install', method: 'provider/install', params: { backend, remoteConnectionId: connection.id } })).toMatchObject({ result: { backend, installed: true } });
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'install', method: 'provider/install', params: { provider: provider, remoteConnectionId: connection.id } })).toMatchObject({ result: { provider: provider, installed: true } });
       expect(install).toHaveBeenCalledExactlyOnceWith(connection.host);
-      expect(remoteClients.request).toHaveBeenCalledWith(connection, 'provider/refresh', { backend, _clientId: 'remote-controller' }, expect.any(Function));
+      expect(remoteClients.request).toHaveBeenCalledWith(connection, 'provider/refresh', { provider: provider, _clientId: 'remote-controller' }, expect.any(Function));
     } finally { await server.close(); }
   });
 
@@ -162,17 +162,17 @@ describe('AppBackendServer', () => {
     const models = [{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }];
     const remoteClients = { request: vi.fn().mockResolvedValue(models) };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
-    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex', remoteConnectionId: connection.id } })).toMatchObject({ result: models });
-    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'agent/models/list', { backend: 'codex', _clientId: 'remote-controller' }, expect.any(Function));
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { provider: 'codex', remoteConnectionId: connection.id } })).toMatchObject({ result: models });
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'agent/models/list', { provider: 'codex', _clientId: 'remote-controller' }, expect.any(Function));
   });
 
   it('lists the local model catalog of a provider without an agent', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const listModels = vi.fn().mockResolvedValue([{ id: 'gpt-test', model: 'gpt-test', displayName: 'GPT Test' }]);
-    const driver = { backend: 'codex', listModels, onEvent: () => () => undefined, close: async () => undefined } as unknown as ConstructorParameters<typeof BackendDriverRpc>[0] extends Map<string, infer D> ? D : never;
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
-    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { backend: 'codex' } })).toMatchObject({ result: [{ id: 'gpt-test' }] });
+    const driver = { provider: 'codex', listModels, onEvent: () => () => undefined, close: async () => undefined } as unknown as ConstructorParameters<typeof ProviderDriverRpc>[0] extends Map<string, infer D> ? D : never;
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/models/list', params: { provider: 'codex' } })).toMatchObject({ result: [{ id: 'gpt-test' }] });
     expect(listModels).toHaveBeenCalledOnce();
   });
 
@@ -180,11 +180,11 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
-    const setup = { backend: 'claude', installed: true, isolated: true, shareSkills: true, locked: false, homePath: '/remote/claude' };
+    const setup = { provider: 'claude', installed: true, isolated: true, shareSkills: true, locked: false, homePath: '/remote/claude' };
     const remoteClients = { request: vi.fn().mockResolvedValue(setup) };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
-    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/refresh', params: { backend: 'claude', remoteConnectionId: connection.id } })).toMatchObject({ result: setup });
-    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'provider/refresh', { backend: 'claude', _clientId: 'remote-controller' }, expect.any(Function));
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/refresh', params: { provider: 'claude', remoteConnectionId: connection.id } })).toMatchObject({ result: setup });
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'provider/refresh', { provider: 'claude', _clientId: 'remote-controller' }, expect.any(Function));
   });
 
   it('inspects remote versions without closing or upgrading the connection', async () => {
@@ -196,7 +196,7 @@ describe('AppBackendServer', () => {
       inspectVersions: vi.fn().mockResolvedValue({ ...connection, daemonVersion: '0.19.1', codexVersion: '0.143.0', detail: 'versions' }),
       checkConnection: vi.fn(),
     };
-    const engines = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const engines = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const remoteClients = { request: vi.fn().mockResolvedValue(engines), closeConnection: vi.fn(), isConnected: vi.fn().mockReturnValue(false) };
     const server = new AppBackendServer({ version: '0.19.1', pid: 1, snapshot, sshConnections: sshConnections as never, remoteClients: remoteClients as never });
     const result = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'connections/runtime/inspect', params: { connectionId: connection.id } });
@@ -305,8 +305,8 @@ describe('AppBackendServer', () => {
     let inspect!: (value: RemoteConnection) => void;
     const sshConnections = {
       inspectVersions: vi.fn(() => new Promise<RemoteConnection>(resolve => { inspect = resolve; })),
-      checkConnection: vi.fn(async (saved: RemoteConnection, backends: AgentBackend[], progress: (detail: string) => Promise<void>) => {
-        expect(backends).toStrictEqual([backend]);
+      checkConnection: vi.fn(async (saved: RemoteConnection, providers: HarnessProvider[], progress: (detail: string) => Promise<void>) => {
+        expect(providers).toStrictEqual([backend]);
         if (backend === 'claude') await progress('Installing Claude Code…');
         return { ...readyRemoteConnection(), id: saved.id };
       }),
@@ -314,7 +314,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({ version: 'test', snapshot,
       saveSnapshot: async value => { phases.push(value.remoteConnections.connections[0]?.detail ?? ''); },
       sshConnections: sshConnections as never,
-      remoteClients: { request: vi.fn(async (_connection: RemoteConnection, method: string) => method === 'provider/install' ? { backend: 'antigravity', installed: true } : createTestSnapshot()), closeConnection: vi.fn(), close: vi.fn() } as never,
+      remoteClients: { request: vi.fn(async (_connection: RemoteConnection, method: string) => method === 'provider/install' ? { provider: 'antigravity', installed: true } : createTestSnapshot()), closeConnection: vi.fn(), close: vi.fn() } as never,
     });
     try {
       const inspecting = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'connections/runtime/inspect', params: { connectionId: connection.id } });
@@ -323,7 +323,7 @@ describe('AppBackendServer', () => {
       inspect(connection);
       await inspecting;
       expect(snapshot.remoteConnections.connections[0]?.status).toBe('saved');
-      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'connections/runtime/sync', params: { connectionId: connection.id, backends: [backend] } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'connections/runtime/sync', params: { connectionId: connection.id, providers: [backend] } });
       expect(phases).toContain(backend === 'claude' ? 'Installing Claude Code…' : 'Installing Antigravity…');
       expect(snapshot.remoteConnections.connections[0]?.status).toBe('ready');
     } finally { await server.close(); }
@@ -607,7 +607,7 @@ describe('AppBackendServer', () => {
       remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }],
       agentIds: [],
     }];
-    const remoteAgent = { ...createRemoteAgent(), backend: 'claude' as const, folder: null, sessionKind: 'quickChat' as const };
+    const remoteAgent = { ...createRemoteAgent(), provider: 'claude' as const, folder: null, sessionKind: 'quickChat' as const };
     const remoteSnapshot = createRemoteTeamSnapshot([remoteAgent]);
     remoteSnapshot.general.claudeCodeEnabled = true;
     const order: string[] = [];
@@ -637,17 +637,17 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'create-remote-claude-chat',
       method: 'agent/quickChat/create',
-      params: { input: { teamId: 'team-pointer', selection: { backend: 'claude' }, remoteConnectionId: 'connection-devbox' } },
+      params: { input: { teamId: 'team-pointer', selection: { provider: 'claude' }, remoteConnectionId: 'connection-devbox' } },
     });
 
     expect(sshConnections.ensureRemoteClaudeInstalled).not.toHaveBeenCalled();
     expect(order).toStrictEqual(['snapshot/get', 'collaboration/team/bind', 'agent/quickChat/create']);
-    expect(response).toMatchObject({ result: { agents: [expect.objectContaining({ backend: 'claude' })] } });
+    expect(response).toMatchObject({ result: { agents: [expect.objectContaining({ provider: 'claude' })] } });
   });
 
   it('creates team-scoped quick chats without a workspace', async () => {
     const snapshot = createTestSnapshot();
-    const driverRpc = new BackendDriverRpc(new Map());
+    const driverRpc = new ProviderDriverRpc(new Map());
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -672,7 +672,7 @@ describe('AppBackendServer', () => {
           sessionKind: 'quickChat',
           name: null,
           folder: null,
-          backend: 'codex',
+          provider: 'codex',
         })],
       },
     });
@@ -701,8 +701,8 @@ describe('AppBackendServer', () => {
     snapshot.activeTeamId = 'team-pointer';
     snapshot.activeAgentId = 'agent-remote';
     const remoteAgent = createRemoteAgent();
-    remoteAgent.backend = 'antigravity';
-    remoteAgent.backendSession = { kind: 'antigravity', sessionId: 'remote-acp' };
+    remoteAgent.provider = 'antigravity';
+    remoteAgent.providerSession = { kind: 'antigravity', sessionId: 'remote-acp' };
     const remoteSnapshot = createRemoteTeamSnapshot([remoteAgent]);
     const remoteSnapshotAfterPrompt = structuredClone(remoteSnapshot);
     remoteSnapshotAfterPrompt.agents[0]!.status = { type: 'working' };
@@ -1124,7 +1124,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-local',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-14T10:00:00.000Z',
       updatedAt: '2026-06-14T10:00:00.000Z',
@@ -1277,7 +1277,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-local',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-14T10:00:00.000Z',
       updatedAt: '2026-06-14T10:00:00.000Z',
@@ -1403,7 +1403,7 @@ describe('AppBackendServer', () => {
     onRemoteEvent?.({
       seq: 3,
       type: 'models.changed',
-      backend: remoteAgent.backend,
+      provider: remoteAgent.provider,
       payload: { models: [] },
       occurredAt: '2026-06-13T00:00:02.000Z',
       snapshot: remoteSnapshot,
@@ -1415,7 +1415,7 @@ describe('AppBackendServer', () => {
     onRemoteEvent?.({
       seq: 4,
       type: 'skills.changed',
-      backend: remoteAgent.backend,
+      provider: remoteAgent.provider,
       payload: { skills: [], cwd: remoteAgent.folder },
       occurredAt: '2026-06-13T00:00:03.000Z',
       snapshot: remoteSnapshot,
@@ -1425,7 +1425,7 @@ describe('AppBackendServer', () => {
     ]);
     events.length = 0;
     onRemoteEvent?.({
-      seq: 5, type: 'account.rateLimitsUpdated', backend: 'claude', occurredAt: '2026-06-13T00:00:04.000Z',
+      seq: 5, type: 'account.rateLimitsUpdated', provider: 'claude', occurredAt: '2026-06-13T00:00:04.000Z',
       payload: { rateLimits: { limitId: 'claude', limitName: null, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null }, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null } },
     });
     expect(events).toEqual([]);

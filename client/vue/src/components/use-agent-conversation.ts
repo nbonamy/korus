@@ -1,10 +1,10 @@
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createConversationPaneController as createCodexConversationPaneController, type ConversationPaneActions as CodexConversationPaneActions, type ConversationPaneState as CodexConversationPaneState, type ClientSendMessageOptions as CodexRendererSendMessageOptions, type ComposerMenuItem as CodexComposerMenuItem } from '@korus-dev/agent-ui-sdk';
-import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
+import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ClientSendMessageOptions, type ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
+import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentConversationView } from '../app-state';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
@@ -31,7 +31,7 @@ export type AgentConversationActions = {
   forkTurn: (agentId: string, turnId: string) => void | Promise<void>;
   retryTurn: (agentId: string, turnId: string) => void | Promise<void>;
   continueInterruptedTurn: (agentId: string) => void | Promise<void>;
-  resolveApproval: (agentId: string, approvalId: string, decision: BackendApprovalDecision, scope: BackendApprovalScope) => void | Promise<void>;
+  resolveApproval: (agentId: string, approvalId: string, decision: ProviderApprovalDecision, scope: ProviderApprovalScope) => void | Promise<void>;
   clientResponse: (response: ClientRequestResponse) => void | Promise<void>;
   selectModel: (agentId: string, modelId: string) => void;
   selectReasoningEffort: (agentId: string, effort: ReasoningEffort) => void;
@@ -61,12 +61,12 @@ function stableSet() {
 
 export function agentConversationState(view: () => AgentConversationView, extensions: {
   followUpBehavior?: () => AppGeneralSettings['followUpBehavior'];
-  mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
-  modelMenuItems?: () => CodexComposerMenuItem[];
+  mentionGroups?: () => NonNullable<ConversationPaneState['catalogs']>['mentionGroups'];
+  modelMenuItems?: () => ComposerMenuItem[];
   placeholder?: () => string | undefined;
-  previewMessage?: () => import('@korus-dev/multi-agent-sdk/surface').SurfaceMessage | undefined;
-  previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
-} = {}): CodexConversationPaneState {
+  previewMessage?: () => import('@korus-dev/multi-agent-sdk').ConversationMessage | undefined;
+  previewApproval?: () => import('@workspace/core/contracts').ProviderApprovalRequest | undefined;
+} = {}): ConversationPaneState {
   const provider = () => conversationForView(view());
   const pendingMessages = (): import('@workspace/core/contracts').RendererMessage[] =>
     pendingConversationPrompts(view().agent.pendingPrompts ?? [], provider()?.messages ?? [])
@@ -78,7 +78,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
     const allowed = view().capabilities.approvalPresets ?? [];
     const native = provider()?.permission;
     if (native !== undefined) return native && allowed.includes(native as ApprovalPreset) ? native as ApprovalPreset : null;
-    const stored = approvalPresetFromDefaults(view().agent.backendDefaults);
+    const stored = approvalPresetFromDefaults(view().agent.providerDefaults);
     return view().capabilities.approvals ? (allowed.includes(stored) ? stored : allowed[0] ?? null) : null;
   };
   return {
@@ -98,7 +98,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
     },
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
-      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
+      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.providerSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
@@ -137,7 +137,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get files() { return view().composer.files; },
       get models() { return view().composer.models; },
       get mentionGroups() { return extensions.mentionGroups?.(); },
-      get commands() { return defaultBackendCommands(view().agent.backend); },
+      get commands() { return defaultProviderCommands(view().agent.provider); },
       get plugins() { return view().composer.plugins; },
       get skills() { return view().composer.skills; },
       get modelCatalogStatus() { return view().composer.modelStatus; },
@@ -167,14 +167,14 @@ export function agentConversationState(view: () => AgentConversationView, extens
 
 export function useAgentConversation(options: {
   agentId: () => string | undefined;
-  state: CodexConversationPaneState;
+  state: ConversationPaneState;
   actions: AgentConversationActions;
-  openLink: NonNullable<CodexConversationPaneActions['openLink']>;
-  openImage: NonNullable<CodexConversationPaneActions['openImage']>;
-  openVisualization: NonNullable<CodexConversationPaneActions['openVisualization']>;
-  overrides?: CodexConversationPaneActions;
+  openLink: NonNullable<ConversationPaneActions['openLink']>;
+  openImage: NonNullable<ConversationPaneActions['openImage']>;
+  openVisualization: NonNullable<ConversationPaneActions['openVisualization']>;
+  overrides?: ConversationPaneActions;
   beforeSubmit?: () => Promise<void>;
-  onMenuSelect?: NonNullable<CodexConversationPaneActions['menuSelect']>;
+  onMenuSelect?: NonNullable<ConversationPaneActions['menuSelect']>;
   onThreadFlag?: (agentId: string, response: ThreadFlagResponse) => void;
   debugFallbackImageSource: string;
   notifyError: (message: string) => void;
@@ -206,7 +206,7 @@ export function useAgentConversation(options: {
       threadFlagBusy.value = false;
     }
   }
-  async function forward(prompt: string, sendOptions: CodexRendererSendMessageOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
+  async function forward(prompt: string, sendOptions: ClientSendMessageOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
     const id = agentId();
     if (!id) return;
     const capturedImages = imageAnnotation.capture();
@@ -216,7 +216,7 @@ export function useAgentConversation(options: {
         chatTextAnnotation.forward(codeText, codeOptions, (annotatedText, textOptions) =>
           imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => send(id, finalText, finalOptions), capturedImages))));
   }
-  const actions: CodexConversationPaneActions = {
+  const actions: ConversationPaneActions = {
     clearGoal: () => options.actions.clearGoal(agentId()),
     openLink: options.openLink,
     openImage: options.openImage,
@@ -256,12 +256,12 @@ export function useAgentConversation(options: {
     },
     ...options.overrides,
   };
-  const controller = createCodexConversationPaneController({ state: options.state, actions });
+  const controller = createConversationPaneController({ state: options.state, actions });
   return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, codeAnnotation, threadFlagBusy, respondToThreadFlag };
 }
 
-function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
-  const defaults = view.agent.backendDefaults;
+function permissionMenuItems(view: AgentConversationView): ComposerMenuItem[] {
+  const defaults = view.agent.providerDefaults;
   const selected = view.conversation?.permission ?? (defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined);
   return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
 }

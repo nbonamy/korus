@@ -420,7 +420,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconPalette, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
-import type { ConversationLink as CodexConversationLink, ConversationVisualization as CodexConversationVisualization } from '@korus-dev/agent-ui-sdk';
+import type { ConversationLink, ConversationVisualization } from '@korus-dev/agent-ui-sdk';
 import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, SquareXIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -507,7 +507,7 @@ const props = withDefaults(defineProps<{
   browserId?: string;
   browserInitialUrl?: string;
   browserOpenRequestId?: number;
-  browserVisualization?: CodexConversationVisualization | null;
+  browserVisualization?: ConversationVisualization | null;
   browserAvailable?: boolean;
   openInAvailable?: boolean;
   openInCatalog?: OpenInApplicationCatalog;
@@ -572,7 +572,7 @@ const emit = defineEmits<{
   closeTab: [tab: RightWorkspaceTab];
   openTab: [tab: RightWorkspaceTab];
   openIn: [payload: { application: OpenInApplication; filePath: string }];
-  openLink: [link: CodexConversationLink];
+  openLink: [link: ConversationLink];
   refreshGitDiff: [target?: import('@workspace/core/contracts').AgentGitDiffTarget];
   clarifyFinding: [payload: {
     sessionId: string;

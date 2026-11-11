@@ -1,9 +1,9 @@
-import type { BackendCapabilities, ProviderConversationFrame } from './contracts';
+import type { ProviderCapabilities, ProviderConversationFrame } from './contracts';
 import type { CompanionCheckpoint } from './companion-journal';
 import type { ConversationShareTarget } from './conversation-sharing';
 
 /** Shared navigation references carry no local execution or owner controls. */
-export const guestConversationCapabilities: BackendCapabilities = {
+export const guestConversationCapabilities: ProviderCapabilities = {
   codeReview: false, planReview: false, questions: false,
   plugins: false, conversationArchive: false, conversationResume: false,
   conversationReplaceWithSummary: false, remoteControl: false, conversationShare: false,

@@ -3,8 +3,8 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { CompanionSubscription } from '../subscription';
 const target: CompanionTarget = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] }) as CompanionWorkspace;
-const frame = (revision: number, reset = false) => ({ type: reset ? 'codex.conversationSnapshotChanged' : 'codex.conversationEventReceived', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: revision, occurredAt: 'now', payload: { revision, ...(reset ? { snapshot: {} } : { event: { type: 'test' } }) } }) as AppBackendEvent;
+const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] }) as CompanionWorkspace;
+const frame = (revision: number, reset = false) => ({ type: reset ? 'codex.conversationSnapshotChanged' : 'codex.conversationEventReceived', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: revision, occurredAt: 'now', payload: { revision, ...(reset ? { snapshot: {} } : { event: { type: 'test' } }) } }) as AppBackendEvent;
 afterEach(() => vi.useRealTimers());
 function fixture() {
   let listener: ((event: AppBackendEvent) => void) | undefined;
@@ -21,7 +21,7 @@ describe('companion event subscriptions', () => {
     try {
       await f.subscription.request('snapshot.get', {});
       for (let index = 0; index < 20; index++) {
-        f.event({ type: 'conversation.contextUsageUpdated', agentId: 'agent', backend: 'codex', payload: { contextUsage: {} } } as AppBackendEvent);
+        f.event({ type: 'conversation.contextUsageUpdated', agentId: 'agent', provider: 'codex', payload: { contextUsage: {} } } as AppBackendEvent);
         f.event({ type: 'conversation.turnDiffUpdated', agentId: 'agent', turnId: 'turn', payload: { addedLines: 1, removedLines: 0 } } as AppBackendEvent);
         f.event({ type: 'workspace.fileActivityDetected', agentId: 'agent', turnId: 'turn', payload: {} } as AppBackendEvent);
         await vi.advanceTimersByTimeAsync(60);

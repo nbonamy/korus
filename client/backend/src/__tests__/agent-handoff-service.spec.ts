@@ -9,8 +9,8 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state
 function fixture() {
   const snapshot = createTestSnapshot();
   const source: Agent = {
-    id: 'source', name: 'Worker', backend: 'codex', teamId: 'team-test', folder: '/repo/worktree',
-    backendSession: { kind: 'codex', threadId: 'original' }, status: { type: 'idle' },
+    id: 'source', name: 'Worker', provider: 'codex', teamId: 'team-test', folder: '/repo/worktree',
+    providerSession: { kind: 'codex', threadId: 'original' }, status: { type: 'idle' },
     createdAt: '', updatedAt: '',
   };
   snapshot.agents.push(source);
@@ -27,20 +27,20 @@ function fixture() {
     expect(prompt).toContain('Goal: finish the fix.');
   });
   const service = new AgentHandoffService({ snapshot, create: input => new AgentCreationService(snapshot).create(input), persist, requestNote: note, assertReady: async () => undefined, retire, start });
-  const input = { operationId: 'one', selection: { backend: 'claude' as const, model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' }, instructions: 'Mention the flaky test.' };
+  const input = { operationId: 'one', selection: { provider: 'claude' as const, model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' }, instructions: 'Mention the flaky test.' };
   return { snapshot, source, events, persist, note, retire, start, service, input };
 }
 
 describe('agent handoff', () => {
-  it.each(['claude', 'antigravity'] as const)('hands off to %s once with a saved note and preserved workspace linkage', async backend => {
+  it.each(['claude', 'antigravity'] as const)('hands off to %s once with a saved note and preserved workspace linkage', async provider => {
     const f = fixture();
-    f.snapshot.providerConnections?.push({ backend: 'antigravity', installed: true, connected: true, checking: false });
-    const input = { ...f.input, selection: { ...f.input.selection, backend } };
+    f.snapshot.providerConnections?.push({ provider: 'antigravity', installed: true, connected: true, checking: false });
+    const input = { ...f.input, selection: { ...f.input.selection, provider: provider } };
     await f.service.run(f.source.id, input);
     const target = f.snapshot.agents[0]!;
     expect(f.snapshot.agents).toHaveLength(1);
-    expect(target).toMatchObject({ backend, folder: '/repo/worktree', backendDefaults: { kind: backend, model: 'sonnet' }, handoff: { sourceAgentId: 'source', sourceRef: { backend: 'codex', threadId: 'original' }, phase: 'complete' } });
-    expect(f.note).toHaveBeenCalledWith(f.source, expect.stringContaining(backend === 'antigravity' ? 'Antigravity' : 'Claude Code'));
+    expect(target).toMatchObject({ provider: provider, folder: '/repo/worktree', providerDefaults: { kind: provider, model: 'sonnet' }, handoff: { sourceAgentId: 'source', sourceRef: { provider: 'codex', threadId: 'original' }, phase: 'complete' } });
+    expect(f.note).toHaveBeenCalledWith(f.source, expect.stringContaining(provider === 'antigravity' ? 'Antigravity' : 'Claude Code'));
     expect(f.note).toHaveBeenCalledWith(f.source, expect.stringContaining('Mention the flaky test.'));
     expect(f.events.slice(f.events.indexOf('close') - 1, f.events.indexOf('close') + 3)).toEqual(['save', 'close', 'save', 'start']);
     await f.service.run(f.source.id, input);
@@ -102,7 +102,7 @@ describe('agent handoff', () => {
     const f = fixture();
     f.source.status = { type: 'working' };
     await expect(f.service.run(f.source.id, f.input)).rejects.toThrow('finish');
-    f.source.handoff = { ...f.input, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: { backend: 'codex', threadId: 'original' }, phase: 'preparing' };
+    f.source.handoff = { ...f.input, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: { provider: 'codex', threadId: 'original' }, phase: 'preparing' };
     await f.service.recover();
     expect(f.source.handoff.phase).toBe('failed');
     expect(f.note).not.toHaveBeenCalled();

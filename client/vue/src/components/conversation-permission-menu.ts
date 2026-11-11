@@ -1,13 +1,13 @@
-import type { BackendPermissionModeOption } from '@workspace/core/contracts';
-import type { ComposerMenuItem as CodexComposerMenuItem } from '@korus-dev/agent-ui-sdk';
+import type { ProviderPermissionModeOption } from '@workspace/core/contracts';
+import type { ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import { ShieldCheckIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 
 export function conversationPermissionMenuItems(
-  modes: readonly BackendPermissionModeOption[],
+  modes: readonly ProviderPermissionModeOption[],
   selectedMode?: string | null,
-): CodexComposerMenuItem[] {
+): ComposerMenuItem[] {
   if (modes.length === 0) return [];
 
   return [{
@@ -22,9 +22,9 @@ export function conversationPermissionMenuItems(
 }
 
 function permissionModeMenuItem(
-  mode: BackendPermissionModeOption,
+  mode: ProviderPermissionModeOption,
   selectedMode: string | null | undefined,
-): CodexComposerMenuItem {
+): ComposerMenuItem {
   return {
     id: `permission-mode:${mode.id}`,
     type: 'radio',

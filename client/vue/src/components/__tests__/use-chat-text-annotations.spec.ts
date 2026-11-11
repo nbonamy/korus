@@ -1,4 +1,4 @@
-import type { MessageTextSelection as CodexMessageTextSelection } from '@korus-dev/agent-ui-sdk';
+import type { MessageTextSelection } from '@korus-dev/agent-ui-sdk';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -6,7 +6,7 @@ import {
   useChatTextAnnotations,
 } from '../use-chat-text-annotations';
 
-const selection: CodexMessageTextSelection = {
+const selection: MessageTextSelection = {
   text: 'Keep this branch\nand cover the failure.',
   messageId: 'message-7',
   turnId: 'turn-3',

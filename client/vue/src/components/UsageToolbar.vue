@@ -100,7 +100,7 @@
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
-import { backendDisplayName } from "@workspace/core/backend-driver";
+import { providerDisplayName } from "@workspace/core/provider-driver";
 import { translate } from "../i18n";
 import AppMenuButton from "../shared/menu/AppMenuButton.vue";
 import type { AppMenuItem } from "../shared/menu/app-menu";
@@ -143,7 +143,7 @@ const providerOptions = computed<
   { value: "", label: translate("analytics.allProviders") },
   ...providers.map(([value, slot]) => ({
     value: value as string,
-    label: backendDisplayName(value),
+    label: providerDisplayName(value),
     color: `var(--chart-${slot})`,
   })),
 ]);

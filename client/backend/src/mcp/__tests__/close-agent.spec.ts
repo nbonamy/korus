@@ -8,8 +8,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent } from '@workspace/core/contracts';
 import type { DelegatedTask } from '@workspace/core/delegated-task';
-import { codexSdkFixture } from '../../codex/__tests__/sdk-surface-fixture';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { codexSdkFixture } from '../../codex/__tests__/sdk-host-fixture';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { AppStateStore } from '../../persistence/store';
 import { AppBackendServer } from '../../server';
 import { WorktreeManager } from '../../worktrees/worktree-manager';
@@ -24,15 +24,15 @@ async function harness(taskState?: DelegatedTask['state']) {
   const home = await mkdtemp(path.join(os.tmpdir(), 'close-agent-'));
   cleanup.push(() => rm(home, { recursive: true, force: true }));
   const snapshot = createInitialSnapshot();
-  snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+  snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   const [parent, other] = snapshot.agents;
   parent!.status = { type: 'working' };
-  const worker: Agent = { ...parent!, id: 'worker', name: 'Worker', delegatedByAgentId: parent!.id, status: { type: 'idle' }, backendSession: { kind: 'codex', threadId: 'worker-thread' } };
+  const worker: Agent = { ...parent!, id: 'worker', name: 'Worker', delegatedByAgentId: parent!.id, status: { type: 'idle' }, providerSession: { kind: 'codex', threadId: 'worker-thread' } };
   snapshot.agents.push(worker);
   snapshot.teams[0]!.agentIds.push(worker.id);
   const task: DelegatedTask = {
     id: 'task', requestId: 'request', requestFingerprint: 'fingerprint', parentAgentId: parent!.id, workerAgentId: worker.id,
-    backend: 'codex', assignment: { title: 'Work', doneWhen: 'Done' }, prompt: 'Work', attemptId: 'attempt',
+    provider: 'codex', assignment: { title: 'Work', doneWhen: 'Done' }, prompt: 'Work', attemptId: 'attempt',
     state: taskState ?? 'completed', createdAt: 'now', updatedAt: 'now', parentWakeBlocked: true,
   };
   const store = new AppStateStore(path.join(home, 'state'));
@@ -40,7 +40,7 @@ async function harness(taskState?: DelegatedTask['state']) {
     agent: id => snapshot.agents.find(agent => agent.id === id), send: vi.fn(), interrupt: vi.fn(), onError: error => { throw error; } });
   cleanup.push(async () => { tasks.close(); });
   const codex = codexSdkFixture();
-  const rpc = new BackendDriverRpc(new Map([['codex', codex.driver]]));
+  const rpc = new ProviderDriverRpc(new Map([['codex', codex.driver]]));
   let server!: AppBackendServer;
   const mcp = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({ getInitializationMode: () => 'off' }),
     closeAgent: (callerId, agentId) => server.closeAgentFromMcp(callerId, agentId) });
@@ -68,7 +68,7 @@ it('closes a creator-owned worker through MCP, persists removal, and preserves d
   expect(created.isError).toBe(false);
   const child = f.snapshot.agents.find(agent => agent.id === created.structuredContent!.agentId)!;
   expect(child.delegatedByAgentId).toBe(f.parent.id);
-  child.backendSession = { kind: 'codex', threadId: 'child-thread' };
+  child.providerSession = { kind: 'codex', threadId: 'child-thread' };
   await writeFile(path.join(child.folder!, 'uncommitted.txt'), 'keep my work');
   expect((await f.call(f.parent.id, { agentId: child.id })).structuredContent).toMatchObject({ success: true, agentId: child.id });
   expect((await f.store.load()).agents.some(agent => agent.id === child.id)).toBe(false);
@@ -100,7 +100,7 @@ it('rejects other callers, missing ownership, self-close, busy workers and injec
   f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Still pending', createdAt: 'now' }];
   await denied(f.parent.id, { agentId: f.worker.id });
   f.snapshot.queuedPrompts = [];
-  f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { backend: 'codex', threadId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'claude' } };
+  f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { provider: 'codex', threadId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
   await denied(f.parent.id, { agentId: f.worker.id });
   delete f.worker.handoff;
   f.codex.surface.archiveConversation.mockRejectedValueOnce(new Error('Provider unavailable'));

@@ -20,6 +20,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.319",
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
+    "@korus-dev/multi-agent-sdk": "0.26.0",
     "@libp2p/circuit-relay-v2": "4.2.14",
     "@libp2p/crypto": "5.1.24",
     "@libp2p/identify": "4.1.15",
@@ -36,8 +37,7 @@
     "postcss": "^8.5.15",
     "postcss-selector-parser": "^7.1.1",
     "yauzl": "^3.4.0",
-    "zod": "^4.4.3",
-    "@korus-dev/multi-agent-sdk": "0.0.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

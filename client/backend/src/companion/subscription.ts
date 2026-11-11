@@ -17,8 +17,8 @@ const maxBufferedFrames = 256;
 const maxWatched = 64;
 type Watched = { target: CompanionTarget; revision: number; pending: boolean; overflowed: boolean; buffered: ProviderConversationFrame[] };
 const cleanFrame = (event: ProviderConversationFrame): ProviderConversationFrame => {
-  const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
-  return { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
+  const { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
+  return { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
 };
 const isConversation = (event: AppBackendEvent): event is ProviderConversationFrame => isConversationFrame(event);
 
@@ -127,8 +127,8 @@ export class CompanionSubscription {
   private deliver(entry: Watched, frame: ProviderConversationFrame): void | Promise<void> {
     if (this.closed || !this.port.authorized()) return;
     const agent = this.workspace && companionAgents(this.workspace).find((agent) => agent.id === frame.agentId);
-    if (!agent || agent.backend !== frame.backend) return;
-    if (frame.backend === 'codex' && agent.backendSession?.kind === 'codex' && frame.threadId !== agent.backendSession.threadId) { this.refreshSoon(); return; }
+    if (!agent || agent.provider !== frame.provider) return;
+    if (frame.provider === 'codex' && agent.providerSession?.kind === 'codex' && frame.threadId !== agent.providerSession.threadId) { this.refreshSoon(); return; }
     if (frame.payload.revision <= entry.revision) return;
     entry.revision = frame.payload.revision;
     return this.emit({ type: 'conversation', frame });

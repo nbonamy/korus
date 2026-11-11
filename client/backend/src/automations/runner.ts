@@ -1,5 +1,5 @@
 import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
-import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, BackendConversationRef, MainToRendererEvent } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, ProviderConversationRef, MainToRendererEvent } from '@workspace/core/contracts';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { automationExecutionIsActive, canTargetAutomationAgent, failAutomationExecution, failOrphanedAutomationExecutionsInSnapshot, recordAutomationExecutionInSnapshot } from '@workspace/core/automation-manager';
@@ -12,9 +12,9 @@ export type AutomationRunnerOptions = {
   getSnapshot: () => AppSnapshot;
   notifySnapshotUpdated: () => void;
   saveSnapshot: () => Promise<void>;
-  sendPrompt: (agentId: string, prompt: string) => Promise<BackendConversationRef>;
+  sendPrompt: (agentId: string, prompt: string) => Promise<ProviderConversationRef>;
   now?: () => Date;
-  requireConnectedEngine?: (backend: Agent['backend']) => Promise<unknown>;
+  requireConnectedEngine?: (provider: Agent['provider']) => Promise<unknown>;
 };
 
 export class AutomationRunner {
@@ -58,7 +58,7 @@ export class AutomationRunner {
       if (target.kind !== 'newQuickChat' && (!existing || !canTargetAutomationAgent(snapshot, existing)
         || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat'))) throw new Error('The automation target is no longer available.');
       if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId)) throw new Error('The automation team is no longer available.');
-      await this.options.requireConnectedEngine?.(existing?.backend ?? (target.kind === 'newQuickChat' ? target.selection.backend : 'codex'));
+      await this.options.requireConnectedEngine?.(existing?.provider ?? (target.kind === 'newQuickChat' ? target.selection.provider : 'codex'));
       if (!snapshot.automations.includes(automation) || !automation.enabled) {
         this.fail(automation, run, 'Automation was disabled or deleted before dispatch.');
         await this.publish();
@@ -67,7 +67,7 @@ export class AutomationRunner {
       let agent = existing;
       if (target.kind === 'newQuickChat') {
         const id = createEntityId('agent');
-        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, selection: { backend: target.selection.backend } }, run.startedAt, id, { select: false });
+        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, selection: { provider: target.selection.provider } }, run.startedAt, id, { select: false });
         agent = snapshot.agents.find(item => item.id === id)!;
         agent.name = automation.name;
         applyExecutionSelection(agent, resolveExecutionSelection(executionSelectionForAgent(agent), target.selection));

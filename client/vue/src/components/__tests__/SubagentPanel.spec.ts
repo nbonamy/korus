@@ -67,7 +67,7 @@ describe('SubagentPanel', () => {
       props: { tree, conversationId: 'thread-scout', loadMessages },
       global: {
         stubs: {
-          CodexMessageList: {
+          MessageList: {
             props: ['messages', 'actionsDisabled', 'canDeleteTurn', 'canEditTurn', 'canRetryTurn'],
             template: '<div class="message-list-stub" :data-message-id="messages[0] && messages[0].id">{{ messages.length }} messages</div>',
           },
@@ -148,7 +148,7 @@ describe('SubagentPanel', () => {
         conversationId: 'thread-scout',
         loadMessages,
       },
-      global: { stubs: { CodexMessageList: true } },
+      global: { stubs: { MessageList: true } },
     });
     await flushPromises();
 
@@ -161,7 +161,7 @@ describe('SubagentPanel', () => {
 
     expect(loadMessages).toHaveBeenCalledTimes(2);
     expect(wrapper.find('.subagent-panel__state--error').exists()).toBe(false);
-    expect(wrapper.findComponent({ name: 'CodexMessageList' }).props('messages')).toStrictEqual(messages);
+    expect(wrapper.findComponent({ name: 'MessageList' }).props('messages')).toStrictEqual(messages);
   });
 
   it('refreshes a visible running conversation until the child completes', async () => {
@@ -173,7 +173,7 @@ describe('SubagentPanel', () => {
       props: { tree, conversationId: 'thread-scout', visible: true, loadMessages },
       global: {
         stubs: {
-          CodexMessageList: {
+          MessageList: {
             props: ['messages'],
             template: '<div class="message-list-stub">{{ messages.length }} messages</div>',
           },

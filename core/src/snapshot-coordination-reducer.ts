@@ -66,8 +66,8 @@ export function applyCoordinationEventToSnapshot(
     const request = event.payload.request;
     requests[event.agentId] = [...(requests[event.agentId] ?? []).filter((item) => item.id !== request.id), request];
     if (request.kind !== 'approval') return;
-    const approvals = snapshot.backendApprovals[event.agentId] ?? [];
-    snapshot.backendApprovals[event.agentId] = [
+    const approvals = snapshot.providerApprovals[event.agentId] ?? [];
+    snapshot.providerApprovals[event.agentId] = [
       ...approvals.filter((candidate) => candidate.id !== request.id),
       request.approval,
     ];
@@ -89,7 +89,7 @@ export function applyCoordinationEventToSnapshot(
         : outcome.kind === 'decision' && outcome.feedback ? 'revise' : 'cancel';
     }
     if (snapshot.agentRequests) snapshot.agentRequests[event.agentId] = (snapshot.agentRequests[event.agentId] ?? []).filter((request) => request.id !== event.payload.id);
-    snapshot.backendApprovals[event.agentId] = (snapshot.backendApprovals[event.agentId] ?? [])
+    snapshot.providerApprovals[event.agentId] = (snapshot.providerApprovals[event.agentId] ?? [])
       .filter((candidate) => candidate.id !== event.payload.id);
     return;
   }

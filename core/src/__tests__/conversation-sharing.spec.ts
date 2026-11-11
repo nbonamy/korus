@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeConversationInvitation, decodeConversationInvitation, encodeConversationShareLink, decodeConversationShareLink, supportsConversationSharing, conversationShareTarget } from '../conversation-sharing';
-import { defaultBackendCapabilities } from '../backend-capabilities';
+import { defaultProviderCapabilities } from '../provider-capabilities';
 import { product } from '../product';
 
 const relay = product.companionRelay;
@@ -31,11 +31,11 @@ describe('conversation share deep links', () => {
 });
 
 it('gates sharing on the capability catalog rather than provider-name exceptions', () => {
-  for (const backend of ['codex','claude','antigravity','cursor'] as const) {
-    const agent: import('../contracts').Agent = {id:'agent',name:'Synthetic',backend,folder:null,status:{type:'idle'},createdAt:'now',updatedAt:'now',backendSession: backend === 'codex' ? {kind:'codex',threadId:'session'} : backend === 'claude' ? {kind:'claude',sessionId:'session',transport:'stdio'} : {kind:backend,sessionId:'session'}};
-    const allowed = defaultBackendCapabilities(backend).conversationShare !== false;
+  for (const provider of ['codex','claude','antigravity','cursor'] as const) {
+    const agent: import('../contracts').Agent = {id:'agent',name:'Synthetic',provider: provider,folder:null,status:{type:'idle'},createdAt:'now',updatedAt:'now',providerSession: provider === 'codex' ? {kind:'codex',threadId:'session'} : provider === 'claude' ? {kind:'claude',sessionId:'session',transport:'stdio'} : {kind:provider,sessionId:'session'}};
+    const allowed = defaultProviderCapabilities(provider).conversationShare !== false;
     expect(supportsConversationSharing(agent)).toBe(allowed);
-    if (allowed) expect(conversationShareTarget(agent)).toMatchObject({agentId:'agent',backend,sessionId:'session'});
+    if (allowed) expect(conversationShareTarget(agent)).toMatchObject({agentId:'agent',provider: provider,sessionId:'session'});
     else expect(conversationShareTarget(agent)).toBeNull();
   }
 });

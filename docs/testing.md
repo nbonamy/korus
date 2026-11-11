@@ -277,7 +277,7 @@ compatibility evidence. Desktop-only changes need no mobile compatibility fixtur
 
 ## Fixtures
 
-Scripted, never simulators: `client/backend/src/codex/__tests__/sdk-surface-fixture.ts`
+Scripted, never simulators: `client/backend/src/codex/__tests__/sdk-host-fixture.ts`
 (typed SDK methods, per-conversation snapshots, explicit events; tests supply the
 provider's resulting state, so the fixture must not grow a reducer),
 `client/backend/src/claude/__tests__/sdk-query-fixture.ts` (independently controlled query

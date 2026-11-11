@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentBackend, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, BackendConversationRef, BrowserBounds, ClientRequestResponse, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, ProviderConversationRef, BrowserBounds, ClientRequestResponse, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
-import { exposeNativeRendererApi as exposeCodexNativeRendererApi, TypedIpcRenderer } from '@korus-dev/agent-ui-sdk/electron/preload';
+import { exposeNativeRendererApi, TypedIpcRenderer } from '@korus-dev/agent-ui-sdk/electron/preload';
 
 const ipc = new TypedIpcRenderer<AppIpcRequests, AppIpcEvents>(ipcRenderer);
 
@@ -30,7 +30,7 @@ const api: AppApi = {
   getSnapshotState: () => ipc.invoke(ipcChannels.getSnapshotState),
   listSshHosts: () => ipc.invoke(ipcChannels.listSshHosts),
   addSshConnection: (input: AddSshConnectionInput) => ipc.invoke(ipcChannels.addSshConnection, input),
-  checkRemoteConnection: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => ipc.invoke(ipcChannels.checkRemoteConnection, connectionId, inspectOnly, backends),
+  checkRemoteConnection: (connectionId: string, inspectOnly?: boolean, providers?: HarnessProvider[]) => ipc.invoke(ipcChannels.checkRemoteConnection, connectionId, inspectOnly, providers),
   updateRemoteConnection: (connectionId: string, input: UpdateRemoteConnectionInput) => ipc.invoke(ipcChannels.updateRemoteConnection, connectionId, input),
   removeRemoteConnection: (connectionId: string) => ipc.invoke(ipcChannels.removeRemoteConnection, connectionId),
   guestConversationControl: input => ipc.invoke(ipcChannels.guestConversationControl, input),
@@ -54,9 +54,9 @@ const api: AppApi = {
   listGlobalWorkItems: (provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery) => ipc.invoke(ipcChannels.listGlobalWorkItems, provider, location, query),
   listAssignedWorkItems: (provider: WorkProviderKind, location?: AutomationLocation) => ipc.invoke(ipcChannels.listAssignedWorkItems, provider, location),
   listWorkItems: (provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery) => ipc.invoke(ipcChannels.listWorkItems, provider, repositoryId, location, query),
-  listBackendModels: (agentId, backend, remoteConnectionId) => ipc.invoke(ipcChannels.listBackendModels, agentId, backend, remoteConnectionId),
-  listBackendPlugins: (agentId: string) => ipc.invoke(ipcChannels.listBackendPlugins, agentId),
-  listBackendSkills: (agentId: string) => ipc.invoke(ipcChannels.listBackendSkills, agentId),
+  listProviderModels: (agentId, provider, remoteConnectionId) => ipc.invoke(ipcChannels.listProviderModels, agentId, provider, remoteConnectionId),
+  listProviderPlugins: (agentId: string) => ipc.invoke(ipcChannels.listProviderPlugins, agentId),
+  listProviderSkills: (agentId: string) => ipc.invoke(ipcChannels.listProviderSkills, agentId),
   getRunProfiles: (agentId: string) => ipc.invoke(ipcChannels.getRunProfiles, agentId),
   getRunProfileActions: (agentId: string, directory: string) => ipc.invoke(ipcChannels.getRunProfileActions, agentId, directory),
   saveRunProfile: (agentId: string, input: import('@workspace/core/run-profiles').RunProfileInput) => ipc.invoke(ipcChannels.saveRunProfile, agentId, input),
@@ -128,7 +128,7 @@ const api: AppApi = {
   listAgentConversations: (agentId: string, input?: ConversationListInput) => ipc.invoke(ipcChannels.listAgentConversations, agentId, input),
   resumeAgentConversation: (agentId: string, target: ConversationResumeTarget) => ipc.invoke(ipcChannels.resumeAgentConversation, agentId, target),
   compressAgentSession: (agentId: string) => ipc.invoke(ipcChannels.compressAgentSession, agentId),
-  readConversationMessages: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => ipc.invoke(ipcChannels.readConversationMessages, ref, agentId, location),
+  readConversationMessages: (ref: ProviderConversationRef, agentId: string, location?: AutomationLocation) => ipc.invoke(ipcChannels.readConversationMessages, ref, agentId, location),
   createAgent: (input: CreateAgentInput) => ipc.invoke(ipcChannels.createAgent, input),
   executeMission: (input) => ipc.invoke(ipcChannels.executeMission, input),
   createMission: (input) => ipc.invoke(ipcChannels.createMission, input),
@@ -174,18 +174,18 @@ const api: AppApi = {
   getCodexAuthentication: (remoteConnectionId?: string) => ipc.invoke(ipcChannels.getCodexAuthentication, remoteConnectionId),
   getClaudeAuthentication: (remoteConnectionId?: string) => ipc.invoke(ipcChannels.getClaudeAuthentication, remoteConnectionId),
   getProviderSetup: remoteConnectionId => ipc.invoke(ipcChannels.getProviderSetup, remoteConnectionId),
-  getProviderUpdate: (backend, remoteConnectionId, refresh) => ipc.invoke(ipcChannels.getProviderUpdate, backend, remoteConnectionId, refresh),
-  setProviderUpdate: (backend, input, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderUpdate, backend, input, remoteConnectionId),
+  getProviderUpdate: (provider, remoteConnectionId, refresh) => ipc.invoke(ipcChannels.getProviderUpdate, provider, remoteConnectionId, refresh),
+  setProviderUpdate: (provider, input, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderUpdate, provider, input, remoteConnectionId),
   getProviderConnections: (remoteConnectionId) => ipc.invoke(ipcChannels.getProviderConnections, remoteConnectionId),
   getBankedResets: (remoteConnectionId) => ipc.invoke(ipcChannels.getBankedResets, remoteConnectionId),
   useBankedReset: (input, remoteConnectionId) => ipc.invoke(ipcChannels.useBankedReset, input, remoteConnectionId),
-  getProviderUsage: (backend) => ipc.invoke(ipcChannels.getProviderUsage, backend),
-  setProviderEnabled: (backend, enabled, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderEnabled, backend, enabled, remoteConnectionId),
-  disconnectProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.disconnectProvider, backend, remoteConnectionId),
-  authenticateProvider: (backend, action) => ipc.invoke(ipcChannels.authenticateProvider, backend, action),
-  configureProviderSetup: (backend, choice) => ipc.invoke(ipcChannels.configureProviderSetup, backend, choice),
-  installProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.installProvider, backend, remoteConnectionId),
-  refreshProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.refreshProvider, backend, remoteConnectionId),
+  getProviderUsage: (provider) => ipc.invoke(ipcChannels.getProviderUsage, provider),
+  setProviderEnabled: (provider, enabled, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderEnabled, provider, enabled, remoteConnectionId),
+  disconnectProvider: (provider, remoteConnectionId) => ipc.invoke(ipcChannels.disconnectProvider, provider, remoteConnectionId),
+  authenticateProvider: (provider, action) => ipc.invoke(ipcChannels.authenticateProvider, provider, action),
+  configureProviderSetup: (provider, choice) => ipc.invoke(ipcChannels.configureProviderSetup, provider, choice),
+  installProvider: (provider, remoteConnectionId) => ipc.invoke(ipcChannels.installProvider, provider, remoteConnectionId),
+  refreshProvider: (provider, remoteConnectionId) => ipc.invoke(ipcChannels.refreshProvider, provider, remoteConnectionId),
   cancelCodexChatGptLogin: (remoteConnectionId?: string, loginId?: string) => ipc.invoke(ipcChannels.cancelCodexChatGptLogin, remoteConnectionId, loginId),
   startCodexChatGptDeviceCodeLogin: (remoteConnectionId: string) => ipc.invoke(ipcChannels.startCodexChatGptDeviceCodeLogin, remoteConnectionId),
   startCodexChatGptLogin: () => ipc.invoke(ipcChannels.startCodexChatGptLogin),
@@ -264,4 +264,4 @@ const api: AppApi = {
 
 contextBridge.exposeInMainWorld('app', api);
 contextBridge.exposeInMainWorld('appTraceConversationLoad', process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1');
-exposeCodexNativeRendererApi(contextBridge, ipcRenderer, { transcription: true, streamingTranscription: true, speechPreparation: true });
+exposeNativeRendererApi(contextBridge, ipcRenderer, { transcription: true, streamingTranscription: true, speechPreparation: true });

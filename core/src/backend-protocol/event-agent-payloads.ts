@@ -69,7 +69,7 @@ function expectWorkspace(value: unknown, path: string): void {
   expectOptional(value, 'originUrl', path, expectString);
 }
 
-function expectBackendSession(value: unknown, path: string): void {
+function expectProviderSession(value: unknown, path: string): void {
   expectRecord(value, path);
   expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   if (value.kind === 'codex') {
@@ -84,7 +84,7 @@ function expectBackendSession(value: unknown, path: string): void {
   );
 }
 
-function expectBackendDefaults(value: unknown, path: string): void {
+function expectProviderDefaults(value: unknown, path: string): void {
   expectRecord(value, path);
   expectLiteral(value.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.kind`);
   ['model', 'reasoningEffort'].forEach((key) =>
@@ -249,11 +249,11 @@ function expectAgentUpdate(value: unknown, path: string): void {
   expectOptional(value, 'worktreeInitialization', path, (candidate, candidatePath) => {
     if (!isWorktreeInitializationState(candidate)) throw new Error(`${candidatePath}: invalid worktree initialization state`);
   });
-  expectOptional(value, 'backend', path, (candidate, candidatePath) =>
+  expectOptional(value, 'provider', path, (candidate, candidatePath) =>
     expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], candidatePath),
   );
-  expectOptional(value, 'backendSession', path, expectBackendSession);
-  expectOptional(value, 'backendDefaults', path, expectBackendDefaults);
+  expectOptional(value, 'providerSession', path, expectProviderSession);
+  expectOptional(value, 'providerDefaults', path, expectProviderDefaults);
   expectOptional(
     value,
     'openInApplication',

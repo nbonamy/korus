@@ -11,7 +11,7 @@ How Korus picks Codex, Claude Code, Antigravity or Cursor for new work.
   used automatically and the selector is hidden; with none, new work is rejected and
   Settings offers connection. Existing chats stay accessible.
 - Surfaces differ in presentation, not policy. Dialogs (New agent, worktree,
-  project, branch/work-item, repository URL) carry a conditional `BackendSelector`;
+  project, branch/work-item, repository URL) carry a conditional `ProviderSelector`;
   direct actions (new session on main, open folder, Quick Chat, duplicate agent,
   new Mission) create immediately and let the user choose on the empty chat. An explicit selection
   carries through acquisition and progress dialogs. Assigning to an existing session

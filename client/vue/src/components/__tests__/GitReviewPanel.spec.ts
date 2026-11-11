@@ -91,7 +91,7 @@ describe('GitReviewPanel', () => {
           name: 'Dina',
           avatar: 'D',
           folder: '/Users/nicolas/src/agent-workspace',
-          backend: 'codex',
+          provider: 'codex',
           status: { type: 'idle' },
           createdAt: '2026-08-01T00:00:00.000Z',
           updatedAt: '2026-08-01T00:00:00.000Z',
@@ -127,7 +127,7 @@ describe('GitReviewPanel', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
         agent: {
-          id: 'agent-1', teamId: 'team-1', name: 'Dina', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
         },
         gitStatus: {
           folder: '/repo', ahead: 0, behind: 0, changedFiles: 1, addedLines: 2, removedLines: 1, hasUntracked: false, state: 'dirty', updatedAt: '2026-08-01T00:00:00.000Z',
@@ -148,7 +148,7 @@ describe('GitReviewPanel', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
         agent: {
-          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
         },
         panel: { kind: 'gitDiff', title: 'Review', diff, state: 'idle' },
       },
@@ -167,7 +167,7 @@ describe('GitReviewPanel', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
         agent: {
-          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
         },
         panel: { kind: 'gitDiff', title: 'Review', diff, state: 'idle' },
       },
@@ -186,7 +186,7 @@ describe('GitReviewPanel', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
         agent: {
-          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
         },
         panel: { kind: 'gitDiff', title: 'Review', diff: scopedDiffs.map((section) => section.diff).join('\n'), sections: scopedDiffs, state: 'idle' },
       },
@@ -210,7 +210,7 @@ describe('GitReviewPanel', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
         agent: {
-          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
         },
         panel: {
           kind: 'gitDiff',
@@ -232,7 +232,7 @@ describe('GitReviewPanel', () => {
   it('keeps the review workspace focused on the diff', () => {
     const wrapper = mount(GitReviewPanel, {
       props: {
-        agent: { id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
+        agent: { id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
         panel: { kind: 'gitDiff', title: 'Review', diff, state: 'idle' },
       },
     });

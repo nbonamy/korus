@@ -1,4 +1,4 @@
-import type { BackendConversationRef, RendererPromptAttachment } from './contracts';
+import type { ProviderConversationRef, RendererPromptAttachment } from './contracts';
 import { isDesignTweaks, type DesignTweak, type DesignTweakEdit } from './design-tweaks';
 
 export type DesignInteraction =
@@ -24,7 +24,7 @@ export type DesignContent = { title: string; css: string; artboards: DesignArtbo
 export type DesignDocument = { id: string; revision: number; content: DesignContent };
 export type DesignCheckpoint = { id: string; title: string; revision: number; content: DesignContent };
 export type DesignWorkspace = {
-  conversationRef: BackendConversationRef | null;
+  conversationRef: ProviderConversationRef | null;
   isOpen: boolean;
   document: DesignDocument | null;
   selectedArtboardId: string | null;
@@ -139,7 +139,7 @@ export function isDesignWorkspace(value: unknown): value is DesignWorkspace {
   if (!record(value) || typeof value.isOpen !== 'boolean' || !Array.isArray(value.undo) || value.undo.length > 30
     || !Array.isArray(value.checkpoints) || value.checkpoints.length > 10) return false;
   const ref = value.conversationRef;
-  if (ref !== null && (!record(ref) || !['codex', 'claude', 'antigravity', 'cursor'].includes(String(ref.backend)))) return false;
+  if (ref !== null && (!record(ref) || !['codex', 'claude', 'antigravity', 'cursor'].includes(String(ref.provider)))) return false;
   const document = value.document;
   return (document === null || (record(document) && identifier(document.id) && Number.isInteger(document.revision) && Number(document.revision) > 0 && isDesignContent(document.content)))
     && (value.selectedArtboardId === null || identifier(value.selectedArtboardId))

@@ -1,15 +1,16 @@
+import { codexEventFromWire } from '@workspace/core/codex-event-wire';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionSync } from '@workspace/core/companion-journal';
 import { isConversationReset, type CompanionReset } from '@workspace/core/companion-protocol';
 import type { GuestConversationUpdate, GuestConversationSync } from '@workspace/core/guest-conversation';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/conversation-replica';
+import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/renderer';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 
 /** Keep only the routing envelope. App snapshots, proposals and workspace projections never cross this boundary. */
 export function guestConversationFrame(frame: ProviderConversationFrame): GuestConversationUpdate {
-  const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = frame;
-  const clean = { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
+  const { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } = frame;
+  const clean = { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
   if (clean.type === 'codex.conversationSnapshotChanged') {
     const s = clean.payload.snapshot;
     // A conversation SDK snapshot also carries account/catalog/queue state for its owner UI.
@@ -49,9 +50,9 @@ export class GuestConversationCache {
     const current = this.snapshot;
     if (!current || !this.replica) return false;
     if (revision <= current.payload.revision) return true;
-    if (revision !== current.payload.revision + 1 || (frame && (frame.agentId !== current.agentId || frame.backend !== current.backend))) return false;
+    if (revision !== current.payload.revision + 1 || (frame && (frame.agentId !== current.agentId || frame.provider !== current.provider))) return false;
     try {
-      if (frame && !isConversationReset(frame)) this.replica.apply(frame.payload.event as never);
+      if (frame && !isConversationReset(frame)) this.replica.apply((frame.provider === 'codex' ? codexEventFromWire(frame.payload.event) : frame.payload.event) as never);
       const snapshot = this.replica.getSnapshot(); if (!snapshot) return false;
       this.snapshot = { ...current, payload: { revision, snapshot } } as CompanionReset; return true;
     } catch { return false; }

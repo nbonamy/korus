@@ -9,10 +9,10 @@ describe('AppController', () => {
 
   it('routes agent restart through daemon', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
     const backendSnapshot = {
       ...snapshot,
-      agents: [{ ...snapshot.agents[0]!, backendSession: undefined }],
+      agents: [{ ...snapshot.agents[0]!, providerSession: undefined }],
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
@@ -54,7 +54,7 @@ describe('AppController', () => {
       ...snapshot,
       agents: [{
         ...snapshot.agents[0]!,
-        backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+        providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
         goal: {
           threadId: 'thread-dina',
           objective: 'Ship the goal shelf',
@@ -92,8 +92,8 @@ describe('AppController', () => {
       ...snapshot,
       agents: [{
         ...snapshot.agents[0]!,
-        backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
-        backendDefaults: {
+        providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+        providerDefaults: {
           kind: 'codex' as const,
           approvalPreset: 'approve-for-me' as const,
           approvalPolicy: 'on-request' as const,
@@ -117,8 +117,8 @@ describe('AppController', () => {
     snapshot.sourceFolder.initialized = true;
     snapshot.agents[0] = {
       ...snapshot.agents[0]!,
-      backend: 'claude',
-      backendDefaults: { kind: 'claude', permissionMode: 'acceptEdits' },
+      provider: 'claude',
+      providerDefaults: { kind: 'claude', permissionMode: 'acceptEdits' },
     };
     const request = vi.fn().mockResolvedValue(snapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
@@ -136,7 +136,7 @@ describe('AppController', () => {
       ...snapshot,
       agents: [{
         ...snapshot.agents[0]!,
-        backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+        providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
       }],
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
@@ -198,7 +198,7 @@ describe('AppController', () => {
       ...snapshot,
       agents: [{
         ...snapshot.agents[0]!,
-        backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+        providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
       }],
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
@@ -213,13 +213,13 @@ describe('AppController', () => {
 
   it('routes prompts through daemon by agent id', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backend = 'claude';
-    snapshot.agents[0].backendDefaults = { kind: 'claude' };
+    snapshot.agents[0].provider = 'claude';
+    snapshot.agents[0].providerDefaults = { kind: 'claude' };
     const backendSnapshot = {
       ...snapshot,
       agents: [{
         ...snapshot.agents[0]!,
-        backendSession: { kind: 'claude' as const, sessionId: 'claude-session-1', transport: 'stdio' as const },
+        providerSession: { kind: 'claude' as const, sessionId: 'claude-session-1', transport: 'stdio' as const },
       }],
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
@@ -264,13 +264,13 @@ describe('AppController', () => {
 
     await controller.initialize();
 
-    const loaded = await readConversationMessages(controller, { backend: 'codex', threadId: 'thread-dina' }, 'agent-dina');
+    const loaded = await readConversationMessages(controller, { provider: 'codex', threadId: 'thread-dina' }, 'agent-dina');
     expect(loaded[0]).toStrictEqual(messages[0]);
     const media = loaded[1]?.parts.find((part) => part.type === 'media');
     expect(media?.type === 'media' ? media.media.url : null).toMatch(/^agent-workspace-media:\/\/generated\//);
     expect(media?.type === 'media' ? media.media.url : null).not.toBe(generatedImageUrl);
     expect(request).toHaveBeenCalledWith('agent/conversation/messages/get', {
-      ref: { backend: 'codex', threadId: 'thread-dina' },
+      ref: { provider: 'codex', threadId: 'thread-dina' },
       agentId: 'agent-dina',
     });
   });
@@ -283,7 +283,7 @@ describe('AppController', () => {
       updatedAt: '2026-06-09T10:00:00.000Z',
       messageCount: 3,
       storageState: 'archived',
-      ref: { backend: 'codex', threadId: 'thread-dina' },
+      ref: { provider: 'codex', threadId: 'thread-dina' },
     }];
     const request = vi.fn().mockResolvedValue(conversations);
     const controller = new AppController(snapshot, createBackendClient({ request }));
@@ -296,14 +296,14 @@ describe('AppController', () => {
 
   it('routes agent conversation resume through daemon', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
     const backendSnapshot = {
       ...snapshot,
-      agents: [{ ...snapshot.agents[0]!, backendSession: { kind: 'codex' as const, threadId: 'thread-dina' } }],
+      agents: [{ ...snapshot.agents[0]!, providerSession: { kind: 'codex' as const, threadId: 'thread-dina' } }],
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const target = { ref: { backend: 'codex' as const, threadId: 'thread-dina' }, storageState: 'archived' as const };
+    const target = { ref: { provider: 'codex' as const, threadId: 'thread-dina' }, storageState: 'archived' as const };
 
     await controller.initialize();
 
@@ -317,7 +317,7 @@ describe('AppController', () => {
     snapshot.agents[0].status = { type: 'working' };
     const request = vi.fn().mockRejectedValue(new Error('Agent must be idle before resuming a conversation.'));
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const target = { ref: { backend: 'codex' as const, threadId: 'thread-dina' }, storageState: 'archived' as const };
+    const target = { ref: { provider: 'codex' as const, threadId: 'thread-dina' }, storageState: 'archived' as const };
 
     await controller.initialize();
 
@@ -332,9 +332,9 @@ describe('AppController', () => {
 
     await controller.initialize();
 
-    await expect(readConversationMessages(controller, { backend: 'codex', threadId: 'thread-dina' }, 'agent-dina')).rejects.toThrow('Conversation reference is not available.');
+    await expect(readConversationMessages(controller, { provider: 'codex', threadId: 'thread-dina' }, 'agent-dina')).rejects.toThrow('Conversation reference is not available.');
     expect(request).toHaveBeenCalledWith('agent/conversation/messages/get', {
-      ref: { backend: 'codex', threadId: 'thread-dina' },
+      ref: { provider: 'codex', threadId: 'thread-dina' },
       agentId: 'agent-dina',
     });
   });
@@ -346,9 +346,9 @@ describe('AppController', () => {
 
     await controller.initialize();
 
-    await expect(readConversationMessages(controller, { backend: 'codex' }, 'agent-dina')).rejects.toThrow('Invalid conversation reference.');
+    await expect(readConversationMessages(controller, { provider: 'codex' }, 'agent-dina')).rejects.toThrow('Invalid conversation reference.');
     expect(request).toHaveBeenCalledWith('agent/conversation/messages/get', {
-      ref: { backend: 'codex' },
+      ref: { provider: 'codex' },
       agentId: 'agent-dina',
     });
   });
@@ -380,7 +380,7 @@ describe('AppController', () => {
   it('routes Codex turn deletion through daemon', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder.initialized = true;
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const rollbackSnapshot = { ...snapshot };
     const request = vi.fn().mockResolvedValue(rollbackSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
@@ -395,7 +395,7 @@ describe('AppController', () => {
   it('routes retry and interrupted-turn continuation to distinct backend operations', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder.initialized = true;
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const rollbackSnapshot = { ...snapshot };
     const request = vi.fn().mockResolvedValue(rollbackSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
@@ -414,7 +414,7 @@ describe('AppController', () => {
   it('edits a Codex turn', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder.initialized = true;
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const rollbackSnapshot = { ...snapshot };
     const request = vi.fn().mockResolvedValue(rollbackSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));

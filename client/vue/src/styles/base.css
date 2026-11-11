@@ -38,8 +38,8 @@ html[data-platform='windows'] .window-edge {
   border-color: var(--color-border);
 }
 
-/* codex-app-sdk 0.1.0 incorrectly hides its dark/system theme host. */
-html[data-codex-theme] {
+/* Keep SDK theme hosts visible in the app shell. */
+html[data-theme] {
   display: block;
 }
 

@@ -27,7 +27,7 @@ function expectAppText(value: unknown, path: string): void {
   }
 }
 
-function expectBackendCapabilities(value: unknown, path: string): void {
+function expectProviderCapabilities(value: unknown, path: string): void {
   expectRecord(value, path);
   const booleans = [
     'attachments',
@@ -75,16 +75,16 @@ function expectBackendCapabilities(value: unknown, path: string): void {
   });
 }
 
-function expectBackendRuntimeStatus(value: unknown, path: string): void {
+function expectProviderRuntimeStatus(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
+  expectLiteral(value.provider, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.provider`);
   expectLiteral(
     value.status,
     ['notConfigured', 'starting', 'running', 'error'],
     `${path}.status`,
   );
   expectOptional(value, 'detail', path, expectAppText);
-  expectOptional(value, 'capabilities', path, expectBackendCapabilities);
+  expectOptional(value, 'capabilities', path, expectProviderCapabilities);
 }
 
 function expectConnectionState(value: unknown, path: string): void {
@@ -180,7 +180,7 @@ function expectModel(value: unknown, path: string): void {
       expectNullable(candidate, candidatePath, expectString),
   );
   expectOptional(value, 'isDefault', path, expectBoolean);
-  expectOptional(value, 'capabilities', path, expectBackendCapabilities);
+  expectOptional(value, 'capabilities', path, expectProviderCapabilities);
   expectOptional(value, 'providerMetadata', path, expectRecord);
 }
 
@@ -222,7 +222,7 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
   expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
+  expectLiteral(value.provider, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.provider`);
   expectString(value.repositoryName, `${path}.repositoryName`);
   expectBoolean(value.createWorktree, `${path}.createWorktree`);
   expectOptional(value, 'createProject', path, expectBoolean);
@@ -369,7 +369,7 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
   expectNumber(value.seq, `${path}.seq`);
   expectString(value.occurredAt, `${path}.occurredAt`);
   expectString(value.agentId, `${path}.agentId`);
-  expectLiteral(value.backend, ['claude'], `${path}.backend`);
+  expectLiteral(value.provider, ['claude'], `${path}.provider`);
   expectLiteral(value.type, [
     'history.prepended',
     'turn.historyUpdated',
@@ -391,7 +391,7 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
     'clientRequest.resolved',
     'error',
   ], `${path}.type`);
-  expectOptional(value, 'backendSessionId', path, expectString);
+  expectOptional(value, 'providerSessionId', path, expectString);
   expectOptional(value, 'threadId', path, expectString);
   expectOptional(value, 'turnId', path, expectString);
   expectRecord(value.payload, `${path}.payload`);
@@ -421,7 +421,7 @@ export const runtimePayloadValidators = {
       throw new Error(`Invalid ${product.name} backend event at ${path}: expected provider authentication.`);
     }
   },
-  'backend.statusChanged': expectBackendRuntimeStatus,
+  'provider.statusChanged': expectProviderRuntimeStatus,
   'snapshot.updated': expectAppSnapshot,
   'account.rateLimitsUpdated': expectRateLimits,
   'remoteControl.statusChanged': expectDevicePairingStatus,

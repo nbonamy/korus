@@ -75,7 +75,7 @@ describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [{ ...snapshot.agents[0]!, id: f.agent.id, folder: f.source }];
     snapshot.teams[0]!.agentIds = [f.agent.id];
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.general.worktreeInitializationMode = scenario === 'off' ? 'off' : 'automatic';
     const runCommand = vi.fn<NonNullable<WorktreeManagerOptions['runCommand']>>(async (_command, _args, options) => {
       expect(await f.git('status', '--porcelain')).toBe('');

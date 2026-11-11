@@ -5,7 +5,7 @@ import { createInitialSnapshot } from '../snapshot';
 describe('plan review identity', () => {
   it('keeps provider identity opaque and derives stable proposal identity', () => {
     const agent = createInitialSnapshot().agents[0]!;
-    delete agent.backendSession;
+    delete agent.providerSession;
     expect(agentConversationId(agent)).toBeNull();
     const event = { type: 'plan.readyForReview' as const, agentId: agent.id, turnId: 'turn', seq: 1, occurredAt: 'now', payload: { markdown: '# Plan' } };
     const draft = planReviewFromEvent(agent, event);
@@ -13,9 +13,9 @@ describe('plan review identity', () => {
     expect(isPlanReview(draft)).toBe(true);
     expect(planReviewDelivery(draft)).toStrictEqual({ kind: 'prompt' });
     expect(planReviewDelivery({ ...draft, requestId: 'native-request' })).toStrictEqual({ kind: 'request', requestId: 'native-request', lifetime: 'process' });
-    agent.backendSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
     expect(planReviewFromEvent(agent, event).conversationId).toBe('session');
-    agent.backendSession = { kind: 'codex', threadId: 'thread' };
+    agent.providerSession = { kind: 'codex', threadId: 'thread' };
     expect(agentConversationId(agent)).toBe('thread');
     const targeted = planReviewFromEvent(agent, { ...event, conversationId: 'explicit', payload: { markdown: '# Plan', itemId: 'item' } });
     expect(targeted).toMatchObject({ conversationId: 'explicit', itemId: 'item', status: 'pending' });

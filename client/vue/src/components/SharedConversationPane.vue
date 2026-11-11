@@ -6,7 +6,7 @@
     <p v-if="closeFailed" role="alert">{{ t('guest.storageFailed') }}</p>
     <button type="button" class="app-button app-button--secondary" :disabled="busy || closing" @click="close">{{ t('common.close') }}</button>
   </div>
-  <CodexConversationPane
+  <ConversationPane
     v-else
     :key="view.id"
     v-model="draft"
@@ -59,14 +59,14 @@
       <p v-if="failed" role="alert">{{ t('guest.proposalFailed') }}</p>
       <p v-if="withdrawFailed" role="alert">{{ t('guest.deleteSuggestionFailed') }}</p>
     </template>
-  </CodexConversationPane>
+  </ConversationPane>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ConversationPane as CodexConversationPane, provideHostCapabilities as provideCodexHostCapabilities, useHostCapabilities as useCodexHostCapabilities, type ChatMessage as CodexChatMessage, type SurfaceMessage, type ConversationLink as CodexConversationLink } from '@korus-dev/agent-ui-sdk';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -95,7 +95,7 @@ async function withdraw(proposalId: string) {
   finally { withdrawing.value = false; }
 }
 let pending: { text: string; proposalId: string; followUpBehavior?: 'queue' | 'steer' } | undefined;
-const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultBackendCapabilities(props.view.target?.backend ?? props.view.frame?.backend ?? 'codex').steerPrompt) }));
+const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultProviderCapabilities(props.view.target?.provider ?? props.view.frame?.provider ?? 'codex').steerPrompt) }));
 function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
 async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
   if (!text.trim() || props.view.status !== 'ready') return;
@@ -105,9 +105,9 @@ async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
 }
 const { t } = useI18n();
 provideAppToolPresentation((key, params) => t(key, params ?? {}));
-const host = useCodexHostCapabilities();
+const host = useHostCapabilities();
 // This subtree must never resolve an owner's file path through the local/native attachment host.
-provideCodexHostCapabilities({
+provideHostCapabilities({
   capabilities: { attachments: false, clipboard: Boolean(host?.capabilities.clipboard), externalLinks: Boolean(host?.capabilities.externalLinks), transcription: false },
   copyToClipboard: content => host ? host.copyToClipboard(content) : Promise.resolve(),
   ingestAttachments: async () => [], pickAttachments: async () => [], transcribeAudio: async () => ({ text: '', error: 'Unavailable' }),
@@ -123,14 +123,14 @@ const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props
 const loaded = reactive(new Map<string, RendererMessage>());
 watch(() => [props.view.id, props.view.status === 'rejected', props.view.frame === null], () => loaded.clear());
 function deferred(id: string | undefined) { const message = snapshot.value?.messages.find(message => message.id === id); return (message as RendererMessage | undefined)?.deferredContent; }
-function transform(message: CodexChatMessage | SurfaceMessage) {
+function transform(message: ChatMessage | ConversationMessage) {
   const content = deferred(message.id); return content && loaded.has(content.contentId) ? loaded.get(content.contentId)! : message;
 }
 const readContent = (_agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => {
   if (!appApi || props.view.status !== 'ready') return Promise.reject(new Error('Guest unavailable.'));
   return appApi.guestConversationContent(props.view.id, input);
 };
-function openLink(link: CodexConversationLink) {
+function openLink(link: ConversationLink) {
   if (link.kind === 'external' && /^https?:\/\//i.test(link.href)) void host?.openExternal(link.href);
 }
 </script>

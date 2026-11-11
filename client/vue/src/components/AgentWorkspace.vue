@@ -117,8 +117,8 @@ import type {
   AgentSubagentTree,
   AppSnapshot,
   AutomationLocation,
-  BackendConversationRef,
-  BackendRuntimeStatus,
+  ProviderConversationRef,
+  ProviderRuntimeStatus,
   DesktopUpdateStatus,
   OpenInApplication,
   OpenInApplicationCatalog,
@@ -131,10 +131,10 @@ import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
 import type { FileKind } from '@workspace/core/file-kind';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
-  ConversationLink as CodexConversationLink,
-  ConversationVisualization as CodexConversationVisualization,
-  MessageImage as CodexMessageImage,
-  MessageImageContext as CodexMessageImageContext,
+  ConversationLink,
+  ConversationVisualization,
+  MessageImage,
+  MessageImageContext,
 } from '@korus-dev/agent-ui-sdk';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';
@@ -186,7 +186,7 @@ const props = withDefaults(defineProps<{
   splitHeaders?: boolean;
   latestTurnIdForAgent?: (agentId: string) => string | null;
   currentAgentGitStatus: AgentGitStatus | null;
-  currentBackendRuntime: BackendRuntimeStatus;
+  currentProviderRuntime: ProviderRuntimeStatus;
   forwardPrompt: (prompt: string, options?: RendererSendPromptOptions) => void;
   generateAgentGitMessage: (
     agentId: string,
@@ -209,7 +209,7 @@ const props = withDefaults(defineProps<{
   updateAgent: (input: import('@workspace/core/contracts').UpdateAgentInput) => Promise<void>;
   openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind) => Promise<void>;
   openAgentIn: (agentId: string, application: OpenInApplication, filePath?: string) => Promise<void>;
-  openConversationLink: (agentId: string, link: CodexConversationLink) => void | Promise<void>;
+  openConversationLink: (agentId: string, link: ConversationLink) => void | Promise<void>;
   openFilePreviewForAgent: (agentId: string, filePath: string) => Promise<void>;
   openInApplications: OpenInApplicationCatalog;
   openRightWorkspaceTab: (tab: RightWorkspaceTab, agentId?: string) => void;
@@ -219,7 +219,7 @@ const props = withDefaults(defineProps<{
   rightWorkspaceVisible: boolean;
   rightWorkspaceResizing?: boolean;
   readConversationMessages: (
-    ref: BackendConversationRef,
+    ref: ProviderConversationRef,
     agentId: string,
     location?: AutomationLocation,
   ) => Promise<RendererMessage[]>;
@@ -432,7 +432,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
   const turnId = focused ? props.latestConversationTurnId : agentId ? props.latestTurnIdForAgent?.(agentId) : null;
   const diff = turnId ? props.snapshot.turnGitDiffs[turnId] : null;
   const recipient = props.snapshot.agents.find(candidate => candidate.id === agent?.delegatedByAgentId);
-  const backend = agent?.backend ?? props.currentBackendRuntime.backend;
+  const backend = agent?.provider ?? props.currentProviderRuntime.provider;
   return {
     ref: (instance: Element | ComponentPublicInstance | null) => {
       if (!agentId) return;
@@ -450,7 +450,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     repositoryIcon: agent ? repositoryIconForAgent(agent, props.snapshot.general.repositoryIcons) : undefined,
     gitStatus: focused ? props.currentAgentGitStatus : agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null,
     lastTurnGitDiff: diff?.agentId === agentId && diff.diff ? diff : null,
-    backendRuntime: focused ? props.currentBackendRuntime : props.snapshot.backendRuntimes.find(runtime => runtime.backend === backend) ?? { backend, status: 'notConfigured' as const },
+    providerRuntime: focused ? props.currentProviderRuntime : props.snapshot.providerRuntimes.find(runtime => runtime.provider === backend) ?? { provider: backend, status: 'notConfigured' as const },
     workspaceOpen: props.rightWorkspaceVisible && !props.emptySplitPane,
     workspaceExpanded: rightWorkspaceExpanded.value,
     workspaceToggleAvailable: topRight && !agent?.sharedConversation,
@@ -514,7 +514,7 @@ function openRightWorkspaceTab(tab: RightWorkspaceTab, agentId?: string): void {
   props.openRightWorkspaceTab(tab, agentId);
 }
 
-function readConversationMessages(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]> {
+function readConversationMessages(ref: ProviderConversationRef, agentId: string): Promise<RendererMessage[]> {
   return props.readConversationMessages(ref, agentId);
 }
 
@@ -533,7 +533,7 @@ function openRequestedBrowser(agentId: string, command: Extract<AppCommand, { ty
   openRightWorkspaceTab('browser', agentId);
 }
 
-function openConversationVisualization(visualization: CodexConversationVisualization, agentId = currentAgent.value?.id): void {
+function openConversationVisualization(visualization: ConversationVisualization, agentId = currentAgent.value?.id): void {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
   if (!agent || !appHostCapabilities.embeddedBrowser) return;
   const workspace = rightWorkspaceFor(agent.id);
@@ -550,7 +550,7 @@ function handleBrowserOpenCommand(command: Extract<AppCommand, { type: 'open-bro
   openRequestedBrowser(agentId, command);
 }
 
-function openConversationImage(image: CodexMessageImage, context?: CodexMessageImageContext, agentId = currentAgent.value?.id): boolean {
+function openConversationImage(image: MessageImage, context?: MessageImageContext, agentId = currentAgent.value?.id): boolean {
   if (context?.intent === 'fullscreen') return false;
 
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
@@ -634,7 +634,7 @@ function effectiveGitReviewPanelFor(agent: Agent): SidePanelGitDiffState {
 function subagentTreeFor(agentId: string): AgentSubagentTree | null {
   const agent = props.snapshot.agents.find((candidate) => candidate.id === agentId);
   const tree = props.snapshot.subagentTrees[agentId];
-  const session = agent?.backendSession;
+  const session = agent?.providerSession;
   const rootId = session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null;
   return rootId && tree?.rootConversationId === rootId
     ? tree
@@ -645,7 +645,7 @@ watch(
   () =>
     props.snapshot.agents.map(
       (agent) =>
-        `${agent.id}:${agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
+        `${agent.id}:${agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession?.kind === 'claude' ? agent.providerSession.sessionId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
           props.snapshot.subagentTrees[agent.id]?.nodes ?? {},
         )
           .sort()
@@ -680,8 +680,8 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
     return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
   const ref = agent ? conversationRefFromAgent(agent) : null;
-  if (!ref || (ref.backend !== 'codex' && ref.backend !== 'claude')) return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
-  return readConversationMessages(ref.backend === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
+  if (!ref || (ref.provider !== 'codex' && ref.provider !== 'claude')) return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
+  return readConversationMessages(ref.provider === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
 }
 
 function openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void {

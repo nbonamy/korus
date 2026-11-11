@@ -11,9 +11,7 @@ import { FileMissionArtifactStore } from '../../mission-artifact-store';
 import { missionStageSkills } from '../../bundled-skills/catalog';
 import { createMission } from '@workspace/core/missions';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
-import { BackendDriverRpc } from '../../driver-rpc';
-import { ClaudeBackendDriver } from '../claude-driver';
-import { ClaudeAgentSdkTransport } from '../agent-sdk-transport';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { createQueryHarness } from './sdk-query-fixture';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
@@ -31,20 +29,20 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
     const root = await mkdtemp(path.join(tmpdir(), 'korus-mission-handoff-'));
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    snapshot.agents[0]!.backend = 'claude';
-    snapshot.agents[0]!.backendDefaults = { kind: 'claude', model: 'sonnet' };
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.agents[0]!.provider = 'claude';
+    snapshot.agents[0]!.providerDefaults = { kind: 'claude', model: 'sonnet' };
     const sdk = createQueryHarness();
     const events: AppBackendEvent[] = [];
     let conversation: ClaudeConversationReplica | undefined;
     let service!: MissionExecutionService;
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), undefined, {
+    const driver = sdk.driver({
       homeDir: root,
       appMcpServerUrl: 'http://mission.test/mcp',
       additionalDeveloperInstructions: agent => service.developerInstructionsForAgent(agent.id),
     });
     const artifactsStore = new FileMissionArtifactStore(async () => root);
-    const rpc = new BackendDriverRpc(new Map([['claude', driver]]));
+    const rpc = new ProviderDriverRpc(new Map([['claude', driver]]));
     service = new MissionExecutionService({
       snapshot, missions: new MissionService(snapshot, async () => {}), publish: async () => {},
       ensureMissionHome: async () => root,
@@ -57,7 +55,7 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       refreshConversationContext: agent => rpc.refreshConversationContext(agent),
       continueStage: async (id, prompt) => {
         const agent = snapshot.agents.find(candidate => candidate.id === id)!;
-        agent.backendSession = (await driver.sendPrompt(agent, prompt)).backendSession;
+        agent.providerSession = (await driver.sendPrompt(agent, prompt)).providerSession;
       },
       startRemediation: async () => { throw new Error('No review in this scenario'); },
       interrupt: agent => driver.interrupt(agent),
@@ -88,7 +86,7 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       const sending = driver.sendPrompt(lead, 'Shape the requirements');
       await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
       sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
-      lead.backendSession = (await sending).backendSession;
+      lead.providerSession = (await sending).providerSession;
       await service.writeArtifact(lead.id, { stage: 'requirements', content: '# Requirements\nChoose configuration.' });
       const artifacts = structuredClone(current().artifacts);
       artifacts.requirements = { problem: 'Configuration choices', acceptance: 'The user can settle open choices' };

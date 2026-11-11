@@ -5,10 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AppBackendServer } from '../server';
 import { ProviderSetup } from '../provider-setup';
 import { createRemoteAgent, createTestSnapshot } from './server-test-fixtures';
-import { BackendDriverRpc } from '../driver-rpc';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import type { BackendPublishedEvent, BackendSkillSummary } from '@workspace/core/contracts';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { ProviderDriverRpc } from '../driver-rpc';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import type { BackendPublishedEvent, ProviderSkillSummary } from '@workspace/core/contracts';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { curatedSkills } from '@workspace/core/skill-manager';
 
 let root: string;
@@ -50,10 +50,10 @@ function host(options: { multiRootAntigravity?: boolean } = {}) {
   const installed = new Set(['codex', 'claude']);
   const snapshot = createTestSnapshot();
   snapshot.agents = [{ ...createRemoteAgent(), id: 'local-agent', teamId: 'team-test', folder: root }];
-  let catalog: BackendSkillSummary[] = [];
-  const driver: AgentBackendDriver = {
-    backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-    getCapabilities: () => codexBackendCapabilities, sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
+  let catalog: ProviderSkillSummary[] = [];
+  const driver: AgentProviderDriver = {
+    provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+    getCapabilities: () => codexProviderCapabilities, sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
     onEvent: () => () => undefined, close: async () => undefined,
     async listSkills(_agent, forceReload = false) {
       if (forceReload) catalog = (await readdir(path.join(root, 'codex/skills')).catch(() => [])).map(name => ({ name, description: '', enabled: true, path: path.join(root, 'codex/skills', name, 'SKILL.md') }));
@@ -61,16 +61,16 @@ function host(options: { multiRootAntigravity?: boolean } = {}) {
     },
   };
   const events: BackendPublishedEvent[] = [];
-  const lifecycles = new Map((['codex', 'claude', 'antigravity'] as const).map(backend => [backend, {
-    home: () => ({ isolated: true, shareSkills: false, homePath: path.join(root, backend) }),
-    installed: () => installed.has(backend), prepareHome: async () => {},
-    skillDirectories: (home: { homePath: string }) => options.multiRootAntigravity && backend === 'antigravity'
+  const lifecycles = new Map((['codex', 'claude', 'antigravity'] as const).map(provider => [provider, {
+    home: () => ({ isolated: true, shareSkills: false, homePath: path.join(root, provider) }),
+    installed: () => installed.has(provider), prepareHome: async () => {},
+    skillDirectories: (home: { homePath: string }) => options.multiRootAntigravity && provider === 'antigravity'
       ? ['config', 'antigravity-cli'].map(directory => path.join(home.homePath, directory, 'skills'))
       : [path.join(home.homePath, 'skills')],
-    skillDiscoveryDirectories: () => backend === 'codex' ? [path.join(root, 'shared/skills')] : [],
+    skillDiscoveryDirectories: () => provider === 'codex' ? [path.join(root, 'shared/skills')] : [],
   }]));
   const setup = new ProviderSetup(snapshot, async () => {}, async () => {}, lifecycles);
-  const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), onBackendEventApplied: event => events.push(event) });
+  const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), onBackendEventApplied: event => events.push(event) });
   let id = 0;
   const request = (input: object) => server.handleMessage({ jsonrpc: '2.0', id: ++id, method: 'settings/skills/manage', params: { input } });
   return { server, setup, installed, request, events };
@@ -82,9 +82,9 @@ it('installs a selected skill for all providers, restores its catalog, syncs a n
   try {
     const result = await request({ action: 'install', source: 'npx skills add https://github.com/example/skills --skill example-review' });
     expect(result).toMatchObject({ result: { skills: [{ name: 'example-review', managed: true, revision: sha, providers: [
-      { backend: 'codex', status: 'installed' }, { backend: 'claude', status: 'installed' },
+      { provider: 'codex', status: 'installed' }, { provider: 'claude', status: 'installed' },
     ] }] } });
-    expect(events.filter(event => event.type === 'skills.changed').at(-1)).toMatchObject({ backend: 'codex', payload: { skills: [{ name: 'example-review' }] } });
+    expect(events.filter(event => event.type === 'skills.changed').at(-1)).toMatchObject({ provider: 'codex', payload: { skills: [{ name: 'example-review' }] } });
     expect(await readFile(path.join(root, 'claude/skills/example-review/references/checks.md'), 'utf8')).toBe('Check behavior.\n');
     expect(await readdir(path.join(root, 'codex/skills'))).toStrictEqual(['example-review']);
     installed.add('antigravity');
@@ -94,7 +94,7 @@ it('installs a selected skill for all providers, restores its catalog, syncs a n
       await mkdir(path.join(root, 'antigravity/skills/example-review'), { recursive: true });
       await writeFile(path.join(root, 'antigravity/skills/example-review/SKILL.md'), 'Personal skill');
       expect(await request({ action: 'sync' })).toMatchObject({ result: { skills: [{ providers: [
-        { status: 'installed' }, { status: 'installed' }, { backend: 'antigravity', status: 'conflict' },
+        { status: 'installed' }, { status: 'installed' }, { provider: 'antigravity', status: 'conflict' },
       ] }] } });
       expect(await readFile(path.join(root, 'antigravity/skills/example-review/SKILL.md'), 'utf8')).toBe('Personal skill');
       await rm(path.join(root, 'antigravity/skills/example-review'), { recursive: true });
@@ -139,9 +139,9 @@ it('installs only for the selected coding agents and leaves other agents alone u
   await download();
   const { server, request } = host();
   try {
-    const result = await request({ action: 'install', source: 'https://github.com/example/skills/tree/main/skills/review', backends: ['claude'] });
+    const result = await request({ action: 'install', source: 'https://github.com/example/skills/tree/main/skills/review', providers: ['claude'] });
     expect(result).toMatchObject({ result: { skills: [{ name: 'example-review', providers: [
-      { backend: 'codex', status: 'missing' }, { backend: 'claude', status: 'installed' },
+      { provider: 'codex', status: 'missing' }, { provider: 'claude', status: 'installed' },
     ] }] } });
     expect(await readdir(path.join(root, 'codex/skills')).catch(() => [])).toStrictEqual([]);
     expect(await readdir(path.join(root, 'claude/skills'))).toStrictEqual(['example-review']);
@@ -150,7 +150,7 @@ it('installs only for the selected coding agents and leaves other agents alone u
     expect(await readdir(path.join(root, 'codex/skills')).catch(() => [])).not.toContain('example-review');
     const synced = await request({ action: 'sync' }) as { result: { skills: { name: string; providers: { status: string }[] }[] } };
     expect(synced.result.skills.find(skill => skill.name === 'example-review')!.providers.map(provider => provider.status)).toEqual(['installed', 'installed']);
-    await expect(request({ action: 'install', source: 'https://github.com/example/skills/tree/main/skills/review', backends: [] })).rejects.toThrow();
+    await expect(request({ action: 'install', source: 'https://github.com/example/skills/tree/main/skills/review', providers: [] })).rejects.toThrow();
   } finally { await server.close(); }
 });
 
@@ -283,10 +283,10 @@ it('discovers native skills, views their distinct contents and deletes installat
   try {
     const listed = await request({ action: 'list' });
     expect(listed).toMatchObject({ result: { skills: [
-      { name: 'ask-matt', managed: false, description: 'A useful skill already installed.', providers: [{ backend: 'codex', status: 'installed' }, { backend: 'claude', status: 'installed' }] },
-      { name: 'bundled-tool', managed: false, builtIn: true, providers: [{ backend: 'codex', status: 'installed' }, { backend: 'claude', status: 'installed' }, { backend: 'claude', status: 'installed' }] },
-      { name: 'chrome-browser', managed: false, providers: [{ backend: 'codex', status: 'missing' }, { backend: 'claude', status: 'installed', path: path.join(root, 'claude/skills/browser-link') }] },
-      { name: 'global-only', managed: false, providers: [{ backend: 'codex', status: 'installed' }, { backend: 'claude', status: 'missing' }] },
+      { name: 'ask-matt', managed: false, description: 'A useful skill already installed.', providers: [{ provider: 'codex', status: 'installed' }, { provider: 'claude', status: 'installed' }] },
+      { name: 'bundled-tool', managed: false, builtIn: true, providers: [{ provider: 'codex', status: 'installed' }, { provider: 'claude', status: 'installed' }, { provider: 'claude', status: 'installed' }] },
+      { name: 'chrome-browser', managed: false, providers: [{ provider: 'codex', status: 'missing' }, { provider: 'claude', status: 'installed', path: path.join(root, 'claude/skills/browser-link') }] },
+      { name: 'global-only', managed: false, providers: [{ provider: 'codex', status: 'installed' }, { provider: 'claude', status: 'missing' }] },
     ] } });
     expect(await request({ action: 'view', name: 'chrome-browser' })).toMatchObject({ result: { document: { name: 'chrome-browser', files: [{ content: expect.stringContaining('name: chrome-browser'), providers: ['claude'] }] } } });
     await request({ action: 'sync' });

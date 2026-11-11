@@ -101,7 +101,7 @@ function createFixtures(): EventFixtures {
   const agent = { ...base, agentId: 'agent-1' };
   const codexThread = {
     ...agent,
-    backend: 'codex' as const,
+    provider: 'codex' as const,
     threadId: 'thread-1',
   };
   const turn = { ...codexThread, turnId: 'turn-1' };
@@ -113,19 +113,19 @@ function createFixtures(): EventFixtures {
       authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
     } },
     'cursor.conversationSnapshotChanged': {
-      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', provider: 'cursor', providerSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-1', 'session-1') },
     },
     'cursor.conversationEventReceived': {
-      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
+      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', provider: 'cursor', providerSessionId: 'session-1',
       payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
     },
     'antigravity.conversationSnapshotChanged': {
-      ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
+      ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', provider: 'antigravity', providerSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
     },
     'antigravity.conversationEventReceived': {
-      ...base, type: 'antigravity.conversationEventReceived', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
+      ...base, type: 'antigravity.conversationEventReceived', agentId: 'agent-1', provider: 'antigravity', providerSessionId: 'session-1',
       payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
     },
     'provider.authenticationChanged': {
@@ -136,11 +136,11 @@ function createFixtures(): EventFixtures {
       ...base, agentId: 'agent-1', type: 'plan.reviewResolved',
       payload: { reviewId: 'review-1', resolution: 'accept' },
     },
-    'backend.statusChanged': {
+    'provider.statusChanged': {
       ...base,
-      type: 'backend.statusChanged',
-      backend: 'codex',
-      payload: { backend: 'codex', status: 'running' },
+      type: 'provider.statusChanged',
+      provider: 'codex',
+      payload: { provider: 'codex', status: 'running' },
     },
     'snapshot.updated': {
       ...base,
@@ -150,7 +150,7 @@ function createFixtures(): EventFixtures {
     'account.rateLimitsUpdated': {
       ...base,
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: { rateLimits: {
         limitId: null,
         limitName: null,
@@ -170,13 +170,13 @@ function createFixtures(): EventFixtures {
     'models.changed': {
       ...base,
       type: 'models.changed',
-      backend: 'codex',
+      provider: 'codex',
       payload: { models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] },
     },
     'skills.changed': {
       ...base,
       type: 'skills.changed',
-      backend: 'codex',
+      provider: 'codex',
       payload: {
         cwd: null,
         status: 'loaded',
@@ -251,7 +251,7 @@ function createFixtures(): EventFixtures {
     },
     'claude.conversationSnapshotChanged': {
       ...agent,
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: {
         revision: 1,
@@ -274,7 +274,7 @@ function createFixtures(): EventFixtures {
     },
     'claude.conversationEventReceived': {
       ...agent,
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 2,
@@ -282,8 +282,8 @@ function createFixtures(): EventFixtures {
           seq: 2,
           occurredAt,
           agentId: 'agent-1',
-          backend: 'claude',
-          backendSessionId: 'claude-session-1',
+          provider: 'claude',
+          providerSessionId: 'claude-session-1',
           turnId: 'turn-1',
           type: 'message.delta',
           payload: { delta: 'Hello' },
@@ -312,7 +312,7 @@ function createFixtures(): EventFixtures {
       payload: {
         id: 'creation-1',
         state: 'running',
-        backend: 'codex',
+        provider: 'codex',
         repositoryName: 'repo',
         createWorktree: false,
         createProject: true,
@@ -515,7 +515,7 @@ describe(`${product.name} backend event decoder`, () => {
     const event = createFixtures()['account.rateLimitsUpdated'];
     expect(decodeAppBackendEvent(event)).toStrictEqual(event);
     const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } };
-    const frame = { ...event, backend: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
+    const frame = { ...event, provider: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
     expect(decodeAppBackendEvent(frame)).toStrictEqual(frame);
     for (const invalid of [{ ...billing, includedBalanceUsd: 'private' }, { ...billing, onDemand: { ...billing.onDemand, usedUsd: -1 } }, { ...billing, onDemand: { ...billing.onDemand, enabled: 'false' } }]) {
       expect(() => decodeAppBackendEvent({ ...frame, payload: { rateLimits: { ...frame.payload.rateLimits, billing: invalid } } })).toThrow();
@@ -523,11 +523,11 @@ describe(`${product.name} backend event decoder`, () => {
   });
   it('decodes Cursor identity, session and authentication in app-owned envelopes', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = 'cursor';
-    snapshot.agents[0]!.backendSession = { kind: 'cursor', sessionId: 'cursor-session' };
-    snapshot.agents[0]!.backendDefaults = { kind: 'cursor', permissionMode: 'allowlist' };
+    snapshot.agents[0]!.provider = 'cursor';
+    snapshot.agents[0]!.providerSession = { kind: 'cursor', sessionId: 'cursor-session' };
+    snapshot.agents[0]!.providerDefaults = { kind: 'cursor', permissionMode: 'allowlist' };
     const authentication = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
-    snapshot.providerConnections = [{ backend: 'cursor', installed: false, connected: false, checking: false, authentication }];
+    snapshot.providerConnections = [{ provider: 'cursor', installed: false, connected: false, checking: false, authentication }];
     const event = { seq: 1, occurredAt, type: 'snapshot.updated', payload: snapshot };
     expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
     const authEvent = { seq: 2, occurredAt, type: 'provider.authenticationChanged', payload: authentication };
@@ -578,7 +578,7 @@ describe(`${product.name} backend event decoder`, () => {
               name: 'report.txt',
               mimeType: 'text/plain',
             },
-          ], planMode: true, skills: [{ name: 'review', path: '/skills/review/SKILL.md' }], inputMethod: 'dictated', recordUserMessage: false, backendOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review/SKILL.md' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
+          ], planMode: true, skills: [{ name: 'review', path: '/skills/review/SKILL.md' }], inputMethod: 'dictated', recordUserMessage: false, providerOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review/SKILL.md' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
       },
     };
     const claudePrompt = {
@@ -588,7 +588,7 @@ describe(`${product.name} backend event decoder`, () => {
         text: 'Use extended thinking',
         options: {
           inputMethod: 'typed',
-          backendOptions: {
+          providerOptions: {
             kind: 'claude',
             thinkingBudgetTokens: 8_000,
             permissionMode: null,
@@ -612,7 +612,7 @@ describe(`${product.name} backend event decoder`, () => {
         retryAt: '2026-09-04T12:01:00.000Z',
       },
     };
-    const richApproval: import('../contracts').BackendApprovalRequest = {
+    const richApproval: import('../contracts').ProviderApprovalRequest = {
       id: 'approval-permissions',
       kind: 'permissions',
       conversationId: 'thread-1',
@@ -729,7 +729,7 @@ describe(`${product.name} backend event decoder`, () => {
     const claudeFrame = structuredClone(
       fixtures['claude.conversationEventReceived'],
     );
-    claudeFrame.payload.event.backendSessionId = 'claude-session-1';
+    claudeFrame.payload.event.providerSessionId = 'claude-session-1';
     claudeFrame.payload.event.threadId = 'claude-session-1';
     claudeFrame.payload.event.turnId = 'turn-1';
 

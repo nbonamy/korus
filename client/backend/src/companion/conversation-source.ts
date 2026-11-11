@@ -54,9 +54,9 @@ export class ConversationSource {
 
   private retain(event: CompanionReset): void {
     // Provider routing data only: daemon app snapshots must not stay alive with the transcript.
-    const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
+    const { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
     this.frames.delete(agentId);
-    this.frames.set(agentId, { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as CompanionReset);
+    this.frames.set(agentId, { type, agentId, provider: provider, threadId, providerSessionId: providerSessionId, conversationId, turnId, seq, occurredAt, payload } as CompanionReset);
     while (this.frames.size > maxConversations) this.forget(this.frames.keys().next().value!);
   }
 

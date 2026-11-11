@@ -7,8 +7,8 @@ import {
   type UsageCost,
   type UsageSummary,
 } from "@workspace/core/usage";
-import type { AgentBackend } from "@workspace/core/contracts";
-import { backendDisplayName } from "@workspace/core/backend-driver";
+import type { HarnessProvider } from "@workspace/core/contracts";
+import { providerDisplayName } from "@workspace/core/provider-driver";
 import { translate } from "../i18n";
 export type UsageMeasure =
   | "turns"
@@ -188,7 +188,7 @@ export function chartSeries(
                   : repositoryNames.get(row.label)!
                 : group === "provider" &&
                     ["claude", "codex", "antigravity", "cursor"].includes(row.label)
-                  ? backendDisplayName(row.label as AgentBackend)
+                  ? providerDisplayName(row.label as HarnessProvider)
                   : row.label,
         color: seriesColor(
           row.label === "Unknown" ? row.label : usageRowKey(row),

@@ -1,12 +1,12 @@
 import { readPersistedExecutionSelection } from './execution-selection';
-import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
-import { isAgentBackend } from './contracts/shared';
-import { spokenAnnouncementVoices, type AgentBackend, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
+import { isHarnessProvider } from './contracts/shared';
+import { spokenAnnouncementVoices, type HarnessProvider, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { isApprovalPreset } from './approval-presets';
-import { claudeBackendCapabilities, cursorBackendCapabilities } from './backend-capabilities';
+import { claudeProviderCapabilities, cursorProviderCapabilities } from './provider-capabilities';
 import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
@@ -82,8 +82,8 @@ export function updateSettingsInSnapshot(snapshot: AppSnapshot, input: UpdateSet
     const enabledChanges = input.general.providerEnabled;
     if (enabledChanges) {
       const authenticated = (snapshot.providerConnections ?? []).filter(engine => engine.installed && engine.connected);
-      const disablesActiveEngine = authenticated.some(engine => engine.enabled !== false && enabledChanges[engine.backend] === false);
-      const leavesAvailableEngine = authenticated.some(engine => (enabledChanges[engine.backend] ?? engine.enabled) !== false);
+      const disablesActiveEngine = authenticated.some(engine => engine.enabled !== false && enabledChanges[engine.provider] === false);
+      const leavesAvailableEngine = authenticated.some(engine => (enabledChanges[engine.provider] ?? engine.enabled) !== false);
       if (disablesActiveEngine && !leavesAvailableEngine) {
         throw new Error('Cannot disable the last engine. Enable another one first.');
       }
@@ -167,10 +167,10 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     ...(typeof value.diffVisualizationMode === 'string' && ['fast', 'polished'].includes(value.diffVisualizationMode) ? { diffVisualizationMode: value.diffVisualizationMode as import('./git-diff-viz').DiffVisualizationMode } : {}),
     ...(value.providerOnboardingComplete === true || typeof value.codexEnabled === 'boolean' ? { providerOnboardingComplete: true } : {}),
     ...(isRecord(value.providerHomes) ? { providerHomes: normalizeProviderHomes(value.providerHomes) } : {}),
-    ...(isRecord(value.providerEnabled) ? { providerEnabled: Object.fromEntries(Object.entries(value.providerEnabled).filter(([backend, enabled]) => (isAgentBackend(backend)) && typeof enabled === 'boolean')) } : {}),
+    ...(isRecord(value.providerEnabled) ? { providerEnabled: Object.fromEntries(Object.entries(value.providerEnabled).filter(([provider, enabled]) => (isHarnessProvider(provider)) && typeof enabled === 'boolean')) } : {}),
     ...(isRecord(value.githubStarPrompt) && Number.isSafeInteger(value.githubStarPrompt.sentPrompts) && (value.githubStarPrompt.sentPrompts as number) >= 0 && typeof value.githubStarPrompt.dismissed === 'boolean'
       ? { githubStarPrompt: { sentPrompts: Math.min(value.githubStarPrompt.sentPrompts as number, 5), dismissed: value.githubStarPrompt.dismissed } } : {}),
-    ...(isRecord(value.preferredProviders) ? { preferredProviders: Object.fromEntries(Object.entries(value.preferredProviders).filter((pair): pair is [string, AgentBackend] => pair[0].trim().length > 0 && isAgentBackend(pair[1]))) } : {}),
+    ...(isRecord(value.preferredProviders) ? { preferredProviders: Object.fromEntries(Object.entries(value.preferredProviders).filter((pair): pair is [string, HarnessProvider] => pair[0].trim().length > 0 && isHarnessProvider(pair[1]))) } : {}),
     ...(isRecord(value.gitMergeCleanup) && typeof value.gitMergeCleanup.deleteWorktree === 'boolean' && typeof value.gitMergeCleanup.deleteBranch === 'boolean'
       ? { gitMergeCleanup: { deleteWorktree: value.gitMergeCleanup.deleteWorktree, deleteBranch: value.gitMergeCleanup.deleteBranch } } : {}),
     ...(isRecord(value.providerModelDefaults) ? { providerModelDefaults: normalizeProviderModelDefaults(value.providerModelDefaults) } : {}),
@@ -198,11 +198,11 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
 
 function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerHomes']> {
   const homes: NonNullable<AppGeneralSettings['providerHomes']> = {};
-  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
-    const entry = value[backend];
+  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+    const entry = value[provider];
     if (isRecord(entry) && typeof entry.homePath === 'string' && entry.homePath.trim()
       && typeof entry.isolated === 'boolean' && typeof entry.shareSkills === 'boolean') {
-      homes[backend] = { homePath: entry.homePath, isolated: entry.isolated, shareSkills: entry.shareSkills };
+      homes[provider] = { homePath: entry.homePath, isolated: entry.isolated, shareSkills: entry.shareSkills };
     }
   }
   return homes;
@@ -210,12 +210,12 @@ function normalizeProviderHomes(value: Record<string, unknown>): NonNullable<App
 
 function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerModelDefaults']> {
   const defaults: NonNullable<AppGeneralSettings['providerModelDefaults']> = {};
-  for (const backend of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
-    const entry = value[backend];
+  for (const provider of ['codex', 'claude', 'antigravity', 'cursor'] as const) {
+    const entry = value[provider];
     if (isRecord(entry) && entry.model !== undefined && entry.model !== null && !normalizeString(entry.model)) continue;
-    const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, backend);
+    const selection = readPersistedExecutionSelection(isRecord(entry) ? { ...entry, model: normalizeString(entry.model) || null, reasoningEffort: normalizeString(entry.reasoningEffort) || null, serviceTier: normalizeString(entry.serviceTier) || null } : entry, provider);
     if (!selection) continue;
-    defaults[backend] = backend === 'antigravity' ? { ...selection, reasoningEffort: null, serviceTier: null } : selection;
+    defaults[provider] = provider === 'antigravity' ? { ...selection, reasoningEffort: null, serviceTier: null } : selection;
   }
   return defaults;
 }
@@ -224,9 +224,9 @@ function normalizeProviderApprovalDefaults(value: Record<string, unknown>): NonN
   const { codex, claude, antigravity, cursor } = value;
   return {
     ...(isApprovalPreset(codex) ? { codex } : {}),
-    ...(typeof claude === 'string' && claudeBackendCapabilities.permissionModes?.some(option => option.id === claude) ? { claude } : {}),
+    ...(typeof claude === 'string' && claudeProviderCapabilities.permissionModes?.some(option => option.id === claude) ? { claude } : {}),
     ...(typeof antigravity === 'string' && ['default', 'auto_edit'].includes(antigravity) ? { antigravity } : {}),
-    ...(typeof cursor === 'string' && cursorBackendCapabilities.permissionModes?.some(option => option.id === cursor) ? { cursor } : {}),
+    ...(typeof cursor === 'string' && cursorProviderCapabilities.permissionModes?.some(option => option.id === cursor) ? { cursor } : {}),
   };
 }
 
@@ -276,9 +276,7 @@ function normalizeModelFavorites(value: unknown): ModelFavorite[] {
   const seen = new Set<string>();
   for (const candidate of value) {
     if (!isRecord(candidate)) continue;
-    const backend = candidate.backend === 'codex' || candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor'
-      ? candidate.backend
-      : null;
+    const provider = isHarnessProvider(candidate.provider) ? candidate.provider : null;
     const modelId = normalizeFavoriteValue(candidate.modelId);
     const reasoningEffort = candidate.reasoningEffort === null
       ? null
@@ -287,8 +285,8 @@ function normalizeModelFavorites(value: unknown): ModelFavorite[] {
       ? null
       : normalizeFavoriteValue(candidate.serviceTier);
     const serviceTier = normalizedServiceTier === 'default' ? null : normalizedServiceTier;
-    if (!backend || !modelId || reasoningEffort === undefined || serviceTier === undefined) continue;
-    const favorite: ModelFavorite = { backend, modelId, reasoningEffort, serviceTier };
+    if (!provider || !modelId || reasoningEffort === undefined || serviceTier === undefined) continue;
+    const favorite: ModelFavorite = { provider: provider, modelId, reasoningEffort, serviceTier };
     const key = JSON.stringify(favorite);
     if (seen.has(key)) continue;
     seen.add(key);

@@ -5,8 +5,8 @@ import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 
 const snapshot = (sessionId = 'session', messages: unknown[] = []) => ({ agentId: 'agent', sessionId, activeTurnId: null, turnIds: [], turns: [], messages, answeredClientRequestIds: [],
   busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null });
-const reset = (revision: number, state = snapshot(), type: string = 'claude.conversationSnapshotChanged', agentId = 'agent') => ({ type, agentId, backend: type.split('.')[0], seq: revision, occurredAt: 'now', payload: { revision, snapshot: { ...state, agentId } } }) as unknown as AppBackendEvent;
-const delta = (revision: number, event: Record<string, unknown>) => ({ type: 'claude.conversationEventReceived', agentId: 'agent', backend: 'claude', seq: revision, occurredAt: 'now',
+const reset = (revision: number, state = snapshot(), type: string = 'claude.conversationSnapshotChanged', agentId = 'agent') => ({ type, agentId, provider: type.split('.')[0], seq: revision, occurredAt: 'now', payload: { revision, snapshot: { ...state, agentId } } }) as unknown as AppBackendEvent;
+const delta = (revision: number, event: Record<string, unknown>) => ({ type: 'claude.conversationEventReceived', agentId: 'agent', provider: 'claude', seq: revision, occurredAt: 'now',
   payload: { revision, event: { agentId: 'agent', occurredAt: 'now', ...event } } }) as unknown as AppBackendEvent;
 const userMessage = (id: string, text: string) => ({ id, agentId: 'agent', role: 'user', status: 'complete', parts: [{ type: 'text', text }] });
 const messages = (frame: { payload: { snapshot: unknown } }) => (frame.payload.snapshot as { messages: { id: string }[] }).messages.map((message) => message.id);
@@ -34,7 +34,7 @@ describe('conversation source', () => {
     const load = vi.fn(async () => { source.observe(reset(load.mock.calls.length, recent)); });
     source = new ConversationSource(load);
     await source.read('agent');
-    source.observe(delta(2, { type: 'history.prepended', backendSessionId: 'session', payload: { messages: Array.from({ length: 60 }, (_, i) => userMessage(`old-${i}`, 'old')), hasOlder: false } }));
+    source.observe(delta(2, { type: 'history.prepended', providerSessionId: 'session', payload: { messages: Array.from({ length: 60 }, (_, i) => userMessage(`old-${i}`, 'old')), hasOlder: false } }));
     const frame = await source.read('agent');
     expect(messages(frame)).toStrictEqual(['recent']);
     expect(load).toHaveBeenCalledTimes(2);
@@ -55,7 +55,7 @@ describe('conversation source', () => {
     source = new ConversationSource(async () => { source.observe(reset(1)); });
     await source.read('agent');
     source.observe(delta(2, { type: 'message.userSubmitted', payload: { message: userMessage('prompt', 'Fix it') } }));
-    source.observe(delta(3, { type: 'turn.started', turnId: 'turn-1', payload: { turn: { id: 'turn-1', backend: 'claude' } } }));
+    source.observe(delta(3, { type: 'turn.started', turnId: 'turn-1', payload: { turn: { id: 'turn-1', provider: 'claude' } } }));
     const frame = await source.read('agent');
     expect(messages(frame)).toContain('prompt');
     expect((frame.payload.snapshot as { busy?: boolean; activeTurnId: string | null }).activeTurnId).toBe('turn-1');
@@ -105,7 +105,7 @@ describe('resumable companion conversations', () => {
     const first = await source.synchronize('agent', null);
     expect(first.frames).toHaveLength(1);
     expect(await source.synchronize('agent', first.checkpoint)).toStrictEqual({ checkpoint: first.checkpoint, frames: [] });
-    const update = delta(2, { type: 'turn.started', turnId: 'turn', payload: { turn: { id: 'turn', backend: 'claude' } } });
+    const update = delta(2, { type: 'turn.started', turnId: 'turn', payload: { turn: { id: 'turn', provider: 'claude' } } });
     source.observe(update);
     const resumed = await source.synchronize('agent', first.checkpoint);
     expect(resumed.frames).toStrictEqual([update]);

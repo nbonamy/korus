@@ -18,11 +18,11 @@ describe('useAppState', () => {
     let receive!: (event: MainToRendererEvent) => void;
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'cursor'; agent.backendDefaults = { kind: 'cursor' }; agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native' };
+    agent.provider = 'cursor'; agent.providerDefaults = { kind: 'cursor' }; agent.providerSession = { kind: 'cursor', sessionId: 'cursor-native' };
     stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(snapshot), onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } satisfies Partial<AppApi> });
     const state = useAppState(); await state.loadSnapshot();
     const before = state.snapshot.value;
-    const identity = { agentId: agent.id, backend: 'cursor' as const, backendSessionId: 'cursor-native', occurredAt: '2026-11-03T12:00:00Z' };
+    const identity = { agentId: agent.id, provider: 'cursor' as const, providerSessionId: 'cursor-native', occurredAt: '2026-11-03T12:00:00Z' };
     receive({ ...identity, seq: 1, type: 'cursor.conversationSnapshotChanged', payload: { revision: 1, snapshot: emptyCursorSnapshot(agent.id, 'cursor-native') } });
     const eventIdentity = { agentId: agent.id, sessionId: 'cursor-native', turnId: 'turn', occurredAt: identity.occurredAt };
     receive({ ...identity, seq: 2, type: 'cursor.conversationEventReceived', payload: { revision: 2, event: { ...eventIdentity, type: 'turn.started', payload: { turn: { id: 'turn' } } } } });
@@ -39,7 +39,7 @@ describe('useAppState', () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents.push({
       id: 'agent-jesse', teamId: 'team-app', name: 'Jesse', avatar: 'J',
-      folder: '/Users/nbonamy/src/other', backend: 'codex', status: { type: 'working' },
+      folder: '/Users/nbonamy/src/other', provider: 'codex', status: { type: 'working' },
       createdAt: '2026-06-05T00:00:00.000Z', updatedAt: '2026-06-05T00:00:00.000Z',
     });
     stubElectronTestWindow({
@@ -58,7 +58,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       turnId: 'turn-jesse',
       type: 'workspace.fileActivityDetected',
@@ -83,7 +83,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       turnId: 'turn-jesse',
       type: 'workspace.fileActivityDetected',
@@ -95,7 +95,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       type: 'workspace.fileActivityDetected',
       payload: {
@@ -265,7 +265,7 @@ describe('useAppState', () => {
     const progress = {
       id: 'agent-creation-1',
       state: 'running' as const,
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       repositoryName: 'codex-app-sdk',
       createWorktree: true,
       branchName: 'feature/contracts',
@@ -316,7 +316,7 @@ describe('useAppState', () => {
     });
     const state = useAppState();
     await state.loadSnapshot();
-    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'repo', createWorktree: true, hasPrompt: true };
+    const base = { state: 'running' as const, provider: 'codex' as const, repositoryName: 'repo', createWorktree: true, hasPrompt: true };
     const emit = (seq: number, payload: Record<string, unknown>) => listeners[0]?.({
       seq, agentId: 'agent-dina', type: 'agentCreation.progress', payload: { ...base, ...payload }, occurredAt: '2026-06-05T00:00:00.000Z',
     } as MainToRendererEvent);
@@ -346,7 +346,7 @@ describe('useAppState', () => {
     const progress = {
       id: 'agent-creation-1',
       state: 'running' as const,
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       repositoryName: 'codex-app-sdk',
       createWorktree: true,
       hasPrompt: true,

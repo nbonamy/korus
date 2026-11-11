@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,7 @@ test('desktop pairing keeps the QR and manual code compact, legible and within t
     root: fileURLToPath(new URL('../../..', import.meta.url)),
     server: { host: '127.0.0.1', port: 0 },
     resolve: { dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'pairing-layout-test',
       configureServer(server) {
         server.middlewares.use('/pairing-layout', (_req, res) => {

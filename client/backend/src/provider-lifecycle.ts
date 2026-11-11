@@ -1,7 +1,7 @@
 import { createCursorLifecycle } from './cursor/provider-lifecycle';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import type { AgentBackend, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
+import type { HarnessProvider, AppSnapshot, CodexResourceSharingStatus, SetCodexResourceSharingInput } from '@workspace/core/contracts';
 import type { ProviderHomeSettings, ProviderSetupCapabilities, ProviderSetupChange, ProviderSetupChoice } from '@workspace/core/contracts/provider-setup';
 import { backendHomeDir } from './state';
 import { createCodexLifecycle } from './codex/provider-lifecycle';
@@ -25,14 +25,14 @@ export type ProviderLifecycle = {
   };
 };
 
-export function createProviderLifecycles(): ReadonlyMap<AgentBackend, ProviderLifecycle> {
+export function createProviderLifecycles(): ReadonlyMap<HarnessProvider, ProviderLifecycle> {
   return new Map([['codex', createCodexLifecycle()], ['claude', createClaudeLifecycle()], ['antigravity', createAntigravityLifecycle()], ['cursor', createCursorLifecycle()]]);
 }
 
-export function providerHomePaths(backend: AgentBackend, configured: string | undefined) {
-  const isolated = path.join(backendHomeDir(), `${backend}-home`);
+export function providerHomePaths(provider: HarnessProvider, configured: string | undefined) {
+  const isolated = path.join(backendHomeDir(), `${provider}-home`);
   const candidate = configured ? path.resolve(configured) : null;
   // A launcher can inherit App's private home; that is not the external setup.
-  const existing = candidate && candidate !== isolated ? candidate : path.join(homedir(), `.${backend}`);
+  const existing = candidate && candidate !== isolated ? candidate : path.join(homedir(), `.${provider}`);
   return { isolated, existing };
 }

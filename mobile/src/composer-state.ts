@@ -1,5 +1,5 @@
 import { computed, reactive, shallowRef } from 'vue';
-import type { Agent, BackendModelOption } from '@workspace/core/contracts';
+import type { Agent, ProviderModelOption } from '@workspace/core/contracts';
 import { companionAgents } from '@workspace/core/companion-protocol';
 import type { CompanionSession, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
@@ -18,26 +18,26 @@ export function createComposerState(deps: {
   /** Takes in a workspace the laptop just reported, and reselects the chat if its session changed. */
   applyWorkspace(next: CompanionWorkspace): void;
 }) {
-  const catalog = shallowRef<Record<string, BackendModelOption[]>>({});
+  const catalog = shallowRef<Record<string, ProviderModelOption[]>>({});
   const choices = reactive<Record<string, ComposerChoice>>({});
   const permissionChoices = reactive<Record<string, PermissionChoice>>({});
   const permissionRequests = new Map<string, symbol>();
 
-  const modelKey = (id: string, backend: string | undefined) => `${id}:${backend ?? ''}`;
-  const currentKey = () => modelKey(deps.agentId(), deps.agent()?.backend);
+  const modelKey = (id: string, provider: string | undefined) => `${id}:${provider ?? ''}`;
+  const currentKey = () => modelKey(deps.agentId(), deps.agent()?.provider);
   const models = computed(() => catalog.value[currentKey()] ?? []);
   const composerSettings = computed(() => { const agent = deps.agent(); return agent ? resolveComposerSettings(agent, models.value, choices[currentKey()]) : null; });
   const modelFavorites = computed(() => deps.workspace().modelFavorites ?? []);
   /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
   const permissions = computed(() => {
     const current = deps.agent(); if (!current) return null;
-    const choice = permissionChoices[current.id] ?? {}; const saved = current.backendDefaults;
+    const choice = permissionChoices[current.id] ?? {}; const saved = current.providerDefaults;
     return { approvalPreset: choice.approvalPreset ?? (saved?.kind === 'codex' ? saved.approvalPreset : undefined) ?? null,
       permissionMode: choice.permissionMode ?? (saved && saved.kind !== 'codex' ? saved.permissionMode : undefined) ?? null };
   });
 
   async function loadModels(id: string, capturedSession: CompanionSession) {
-    const backendOf = () => companionAgents(deps.workspace()).find((candidate) => candidate.id === id)?.backend;
+    const backendOf = () => companionAgents(deps.workspace()).find((candidate) => candidate.id === id)?.provider;
     const requested = backendOf(); const key = modelKey(id, requested);
     if (!capturedSession.listModels || catalog.value[key]) return;
     try {
@@ -57,7 +57,7 @@ export function createComposerState(deps: {
     const id = deps.agentId(); const active = deps.session();
     if (!id || !active || !deps.agent()) return;
     const key = currentKey();
-    const { choice, save } = applyComposerChoice(deps.agent()!.backend, models.value, choices[key] ?? currentChoice(), change);
+    const { choice, save } = applyComposerChoice(deps.agent()!.provider, models.value, choices[key] ?? currentChoice(), change);
     choices[key] = choice;
     if (save && active.selectModel) void active.selectModel(id, save).catch(() => {});
   }

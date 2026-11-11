@@ -7,7 +7,7 @@ import type { CompanionMission, CompanionWorkspace } from '@workspace/core/compa
 import type { CompanionSession } from '../companion-port';
 
 const now = '2026-01-01T00:00:00Z';
-const worker = (id: string, teamId: string): Agent => ({ id, teamId, name: null, folder: null, backend: 'codex', status: { type: 'working' }, createdAt: now, updatedAt: now, conversationTitle: `Ticket ${id}` });
+const worker = (id: string, teamId: string): Agent => ({ id, teamId, name: null, folder: null, provider: 'codex', status: { type: 'working' }, createdAt: now, updatedAt: now, conversationTitle: `Ticket ${id}` });
 const mission = (id: string, teamId: string, tickets: CompanionMission['tickets'], leadAgentId?: string): CompanionMission =>
   ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', revision: 7, startedAt: now, updatedAt: now, tickets, ...(leadAgentId ? { leadAgentId } : {}) });
 

@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -19,7 +20,7 @@ test('Mission message links reveal a usable document beside the conversation', a
       '@workspace/core': path.join(root, 'core/src'),
       '@korus-dev/agent-ui-sdk/styles.css': require.resolve('@korus-dev/agent-ui-sdk/styles.css'),
     }, dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'conversation-links-fixture',
       configureServer(server) {
         server.middlewares.use('/conversation-links', (_req, res) => {
@@ -44,7 +45,7 @@ test('Mission message links reveal a usable document beside the conversation', a
           import { codexConversationSnapshot, codexTextMessage } from '/client/vue/tests/support/codex-conversation-fixtures.ts';
           import AppShell from '/client/vue/src/components/AppShell.vue';
           const snapshot = createInitialSnapshot();
-          snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+          snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
           const agent = snapshot.agents[0];
           agent.folder = ${JSON.stringify(root)};
           const mission = createMission(snapshot, { outcome: 'Read linked documents', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });

@@ -16,7 +16,7 @@ vi.mock('node:child_process', async original => ({
 const { root: sdkSourceRoot, enabled: sdkSourcesEnabled } = sdkSources(fileURLToPath(new URL('../../../../../', import.meta.url)));
 const sdkBinary = createRequire(sdkSourcesEnabled
   ? path.join(sdkSourceRoot, 'multi-agent-sdk/package.json')
-  : import.meta.resolve('@korus-dev/multi-agent-sdk/providers/claude')).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${process.platform === 'win32' ? 'claude.exe' : 'claude'}`);
+  : import.meta.resolve('@korus-dev/multi-agent-sdk')).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${process.platform === 'win32' ? 'claude.exe' : 'claude'}`);
 const packaged = '/app/resources/claude/claude';
 
 afterEach(() => { vi.unstubAllEnvs(); host.files.clear(); });

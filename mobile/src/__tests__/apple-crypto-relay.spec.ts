@@ -37,10 +37,10 @@ describe('Apple companion over a real relay', () => {
     const connector = createRelayConnector({ read: async ({ key }) => ({ value: values.get(key) ?? null }),
       write: async ({ key, value }) => { values.set(key, value); }, remove: async ({ key }) => { values.delete(key); } }, relayConfig);
     const text = 'history '.repeat(800_000);
-    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: '',
+    const frame = { type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: '',
       payload: { revision: 1, snapshot: { ...codexConversationSnapshot([codexTextMessage('large', 'assistant', text)]), historyState: { hasOlder: false, loadingOlder: false } } } };
-    const workspace = { repositoryIcons: {}, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', name: 'Agent', folder: null,
-      status: { type: 'idle' }, backendSession: { kind: 'codex', threadId: 'thread' }, createdAt: '', updatedAt: '' }] };
+    const workspace = { repositoryIcons: {}, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', name: 'Agent', folder: null,
+      status: { type: 'idle' }, providerSession: { kind: 'codex', threadId: 'thread' }, createdAt: '', updatedAt: '' }] };
     const failures: string[] = [];
     const serving = new Set<Promise<void>>();
     vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: async ({ command }: any) => {

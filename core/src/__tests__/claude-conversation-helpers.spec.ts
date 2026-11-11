@@ -61,24 +61,24 @@ describe('Claude conversation payload helpers', () => {
 describe('provider conversation boundaries', () => {
   it('derives Codex and Claude references from provider sessions', () => {
     expect(conversationRefFromAgent(agent({ kind: 'codex', threadId: 'thread-1' }))).toStrictEqual({
-      backend: 'codex', threadId: 'thread-1',
+      provider: 'codex', threadId: 'thread-1',
     });
     expect(conversationRefFromAgent(agent({
       kind: 'claude', sessionId: 'session-live', transcriptSessionId: 'session-history', transport: 'stdio',
-    }))).toStrictEqual({ backend: 'claude', folder: '/repo', sessionId: 'session-history' });
+    }))).toStrictEqual({ provider: 'claude', folder: '/repo', sessionId: 'session-history' });
     expect(conversationRefFromAgent(agent({ kind: 'claude', sessionId: 'session-live', transport: 'stdio' }))).toStrictEqual({
-      backend: 'claude', folder: '/repo', sessionId: 'session-live',
+      provider: 'claude', folder: '/repo', sessionId: 'session-live',
     });
     expect(conversationRefFromAgent(agent({ kind: 'claude', sessionId: 'native-child', transport: 'stdio', transcriptFolder: '/source-store' }))).toStrictEqual({
-      backend: 'claude', folder: '/source-store', sessionId: 'native-child',
+      provider: 'claude', folder: '/source-store', sessionId: 'native-child',
     });
     expect(conversationRefFromAgent(agent())).toBeNull();
     expect(conversationRefFromAgent(agent({ kind: 'antigravity', sessionId: 'acp-session' }))).toStrictEqual({
-      backend: 'antigravity', folder: '/repo', sessionId: 'acp-session',
+      provider: 'antigravity', folder: '/repo', sessionId: 'acp-session',
     });
     expect(conversationRefFromAgent({
       ...agent({ kind: 'claude', sessionId: 'session-live', transport: 'stdio' }), folder: null,
-    })).toStrictEqual({ backend: 'claude', folder: null, sessionId: 'session-live' });
+    })).toStrictEqual({ provider: 'claude', folder: null, sessionId: 'session-live' });
   });
 
   it('unwraps provider frames and preserves ordinary app-owned events', () => {
@@ -86,7 +86,7 @@ describe('provider conversation boundaries', () => {
       seq: 1,
       occurredAt: createdAt,
       agentId: 'agent-1',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 2,
@@ -94,7 +94,7 @@ describe('provider conversation boundaries', () => {
           seq: 2,
           occurredAt: createdAt,
           agentId: 'agent-1',
-          backend: 'claude',
+          provider: 'claude',
           turnId: 'turn-1',
           type: 'error',
           payload: { message: 'failed' },
@@ -111,13 +111,13 @@ describe('provider conversation boundaries', () => {
       type: 'error', agentId: 'agent-1', payload: { message: 'failed' },
     });
     expect(providerConversationEventView({
-      seq: 3, occurredAt: createdAt, backend: 'claude', type: 'backend.statusChanged', payload: { backend: 'claude', status: 'running' },
-    })).toStrictEqual({ type: 'backend.statusChanged', payload: { backend: 'claude', status: 'running' } });
+      seq: 3, occurredAt: createdAt, provider: 'claude', type: 'provider.statusChanged', payload: { provider: 'claude', status: 'running' },
+    })).toStrictEqual({ type: 'provider.statusChanged', payload: { provider: 'claude', status: 'running' } });
     expect(providerConversationEventView({
       seq: 4,
       occurredAt: createdAt,
       agentId: 'agent-1',
-      backend: 'claude',
+      provider: 'claude',
       threadId: 'session-1',
       turnId: 'turn-1',
       type: 'client.markdownDisplayRequested',
@@ -440,12 +440,12 @@ describe('Claude conversation reducer ownership', () => {
   it('ignores events for another agent and leaves resolved-request bookkeeping to the replica', () => {
     const snapshot = emptySnapshot();
     const otherAgentError = {
-      seq: 1, occurredAt: createdAt, agentId: 'agent-2', backend: 'claude' as const,
+      seq: 1, occurredAt: createdAt, agentId: 'agent-2', provider: 'claude' as const,
       type: 'error' as const, payload: { message: 'wrong owner' },
     };
     applyClaudeConversationEvent(snapshot, otherAgentError);
     applyClaudeConversationEvent(snapshot, {
-      seq: 2, occurredAt: createdAt, agentId: 'agent-1', backend: 'claude',
+      seq: 2, occurredAt: createdAt, agentId: 'agent-1', provider: 'claude',
       type: 'clientRequest.resolved', payload: { id: 'request-1' },
     });
     expect(snapshot).toStrictEqual(emptySnapshot());
@@ -493,10 +493,10 @@ function approval(id: string, integrationId: string, toolName: string, arguments
   };
 }
 
-function agent(backendSession?: Agent['backendSession']): Agent {
+function agent(providerSession?: Agent['providerSession']): Agent {
   return {
-    id: 'agent-1', name: 'Dina', folder: '/repo', backend: backendSession?.kind ?? 'codex',
-    ...(backendSession ? { backendSession } : {}), status: { type: 'idle' },
+    id: 'agent-1', name: 'Dina', folder: '/repo', provider: providerSession?.kind ?? 'codex',
+    ...(providerSession ? { providerSession: providerSession } : {}), status: { type: 'idle' },
     createdAt, updatedAt: createdAt,
   };
 }

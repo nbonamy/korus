@@ -30,9 +30,9 @@
     "stylelint-config-recommended-vue": "^1.6.1",
     "typescript": "^6.0.3",
     "vitepress": "1.6.4",
-    "vue-tsc": "3.3.3",
     "vitest": "4.1.8",
-    "zod": "4.4.3"
+    "vue-tsc": "3.3.3",
+    "zod": "4.6.7"
   },
   "workspaces": [
     "core",

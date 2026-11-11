@@ -26,9 +26,9 @@ test('retained conversations switch locally and apply incremental refreshes thro
       }
       const firstInstance = await restoredEngineInstance();
       const nextInstance = await restoredEngineInstance();
-      const agent = id => ({ id, teamId: 'team', backend: 'claude', backendSession: { kind: 'claude', sessionId: id }, name: id, status: { type: 'idle' } });
+      const agent = id => ({ id, teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', sessionId: id }, name: id, status: { type: 'idle' } });
       const context = id => ({ engineInstance: firstInstance, agentId: id, agent: agent(id), peers: [], ready: true, generation: 1, history: { hasOlder: false, loadingOlder: false, failed: false } });
-      const reset = id => ({ type: 'claude.conversationSnapshotChanged', backend: 'claude', agentId: id, payload: { revision: 1, snapshot: { agentId: id, sessionId: id, activeTurnId: null, turnIds: [], turns: [], messages: Array.from({ length: 70 }, (_, i) => ({ id: `${id}-${i}`, agentId: id, role: 'assistant', status: 'complete', parts: [{ type: 'text', text: `${id} message ${i}. `.repeat(20) }] })), answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } });
+      const reset = id => ({ type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: id, payload: { revision: 1, snapshot: { agentId: id, sessionId: id, activeTurnId: null, turnIds: [], turns: [], messages: Array.from({ length: 70 }, (_, i) => ({ id: `${id}-${i}`, agentId: id, role: 'assistant', status: 'complete', parts: [{ type: 'text', text: `${id} message ${i}. `.repeat(20) }] })), answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } });
       const transfer = (id, revision, frames) => ({ type: 'conversationTransfer', identity: id, checkpoint: { epoch: id, revision }, ...context(id), frames });
       const api = window.companionTranscript;
       await api.setTransfer(JSON.stringify(transfer('a', 1, [reset('a')])));
@@ -39,7 +39,7 @@ test('retained conversations switch locally and apply incremental refreshes thro
       const warm = transfer('a', 1, []); const start = performance.now();
       const receipt = await api.setTransfer(JSON.stringify(warm)); const elapsedMs = performance.now() - start;
       const restoredPosition = scroller().scrollTop;
-      const event = { type: 'claude.conversationEventReceived', backend: 'claude', agentId: 'a', payload: { revision: 2, event: { type: 'message.replaced', agentId: 'a', backend: 'claude', backendSessionId: 'a', occurredAt: 'now', payload: { message: { id: 'new-answer', agentId: 'a', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Incremental answer received' }] } } } } };
+      const event = { type: 'claude.conversationEventReceived', provider: 'claude', agentId: 'a', payload: { revision: 2, event: { type: 'message.replaced', agentId: 'a', provider: 'claude', providerSessionId: 'a', occurredAt: 'now', payload: { message: { id: 'new-answer', agentId: 'a', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Incremental answer received' }] } } } } };
       const incremental = transfer('a', 2, [event]);
       await api.setTransfer(JSON.stringify(incremental));
       await api.setTransfer(JSON.stringify(incremental));

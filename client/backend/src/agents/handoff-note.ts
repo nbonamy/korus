@@ -1,15 +1,15 @@
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
-import type { BackendSendResult } from '@workspace/core/backend-driver';
+import type { ProviderSendResult } from '@workspace/core/provider-driver';
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 
 /** Observe a single accepted turn, then read its final text through the provider's history boundary. */
 export async function requestHandoffNote(agent: Agent, prompt: string, port: {
   subscribe(listener: (event: BackendPublishedEvent) => void): () => void;
-  send(agent: Agent, prompt: string): Promise<BackendSendResult>;
+  send(agent: Agent, prompt: string): Promise<ProviderSendResult>;
   read(agent: Agent): Promise<RendererMessage[]>;
   timeoutMs?: number;
 }): Promise<string> {
-  let accepted: BackendSendResult | undefined;
+  let accepted: ProviderSendResult | undefined;
   const completions = new Map<string, string>();
   let resolve!: () => void;
   let reject!: (error: Error) => void;

@@ -179,7 +179,7 @@ import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { FileKind } from '@workspace/core/file-kind';
-import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, BackendRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
+import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, ProviderRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { conversationShareTarget } from '@workspace/core/conversation-sharing';
 import type { GuestJoinStatus } from '@workspace/core/guest-navigation';
@@ -211,7 +211,7 @@ const props = withDefaults(defineProps<{
   repositoryIcon?: string;
   gitStatus?: AgentGitStatus | null;
   lastTurnGitDiff?: TurnGitDiff | null;
-  backendRuntime: BackendRuntimeStatus;
+  providerRuntime: ProviderRuntimeStatus;
   workspaceOpen?: boolean;
   workspaceExpanded?: boolean;
   workspaceToggleAvailable?: boolean;
@@ -318,17 +318,17 @@ const statusLabel = computed(() => {
     return translate('surface.agentHeader.loading');
   }
 
-  if (props.backendRuntime.status === 'running') {
+  if (props.providerRuntime.status === 'running') {
     return translate('surface.agentHeader.connected');
   }
 
-  if (props.backendRuntime.status === 'error') {
+  if (props.providerRuntime.status === 'error') {
     return `${backendLabel.value} error`;
   }
 
   return `${backendLabel.value} pending`;
 });
-const backendLabel = computed(() => (props.backendRuntime.backend === 'claude' ? translate('surface.agentHeader.claude') : translate('surface.agentHeader.codex')));
+const backendLabel = computed(() => (props.providerRuntime.provider === 'claude' ? translate('surface.agentHeader.claude') : translate('surface.agentHeader.codex')));
 const agentLocationLabel = computed(() => {
   const agent = props.agent;
   const gitStatus = props.gitStatus;

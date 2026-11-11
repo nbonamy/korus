@@ -60,8 +60,8 @@ describe('owner Share workflow', () => {
 
   it('renders pushed suggestions without reloading and moves or deletes them without submitting', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
-    agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'owner', transport: 'stdio' };
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    agent.provider = 'claude'; agent.providerSession = { kind: 'claude', sessionId: 'owner', transport: 'stdio' };
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     const proposal = { id: '11111111-1111-4111-8111-111111111111', handle: 'a'.repeat(32), identity: 'guest-identity', name: 'Alex', discriminator: '1234abcd', text: 'Please inspect the retry path', status: 'pending' as const, createdAt: 'now' };
     const second = { ...proposal, id: '22222222-2222-4222-8222-222222222222', text: 'Another suggestion' };
     let proposals: typeof proposal[] = [];
@@ -133,7 +133,7 @@ describe('owner Share workflow', () => {
     snapshot.general.followUpBehavior = preference;
     agent.sharedConversation = { joinId: 'shared-join' };
     const view: GuestJoinView = { id: 'shared-join', name: 'Guest', title: 'Owner chat', status: 'ready', participant: null, target: null,
-      frame: { type: 'claude.conversationSnapshotChanged', backend: 'claude', agentId: 'owner', backendSessionId: 'owner-session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'owner-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
+      frame: { type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: 'owner', providerSessionId: 'owner-session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'owner', sessionId: 'owner-session', activeTurnId: 'turn', turnIds: ['turn'], turns: [], messages: [], answeredClientRequestIds: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } },
       proposalState: { writeAccess: true, proposals: [], authors: [] } };
     const control = vi.fn().mockResolvedValue(true);
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
@@ -158,7 +158,7 @@ describe('owner Share workflow', () => {
   });
   it('shows connected names and synchronizes individual owner-controlled write switches', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'owner' };
+    agent.providerSession = { kind: 'codex', threadId: 'owner' };
     const guests = [{ identity: 'one', name: 'Alex', discriminator: '11111111', writeAccess: false }, { identity: 'two', name: 'Alex', discriminator: '22222222', writeAccess: false }];
     const state = { active: true, handle: 'a'.repeat(32), connectedGuests: 2, availability: 'ready' as const, guests };
     const client = createClientApiMock();
@@ -204,7 +204,7 @@ describe('owner Share workflow', () => {
   });
   it('uses one dialog and the same backend link from the header and context menu', async () => {
     const snapshot = createInitialSnapshot();
-    const agent = snapshot.agents[0]!; agent.backend = 'antigravity'; agent.backendSession = { kind: 'antigravity', sessionId: 'share-fixture' };
+    const agent = snapshot.agents[0]!; agent.provider = 'antigravity'; agent.providerSession = { kind: 'antigravity', sessionId: 'share-fixture' };
     const inactive = { active: false, handle: null, connectedGuests: null, availability: 'transportPending' as const };
     const active = { ...inactive, active: true, handle: 'a'.repeat(32) };
     let shared = false;
@@ -248,7 +248,7 @@ describe('owner Share workflow', () => {
     } finally { wrapper.unmount(); vi.unstubAllGlobals(); }
   });
   it('recovers from status and clipboard errors without creating another grant', async () => {
-    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'fixture' };
+    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'fixture' };
     const state = { active: false, handle: null, connectedGuests: null, availability: 'transportPending' as const };
     const active = { ...state, active: true, handle: 'a'.repeat(32) };
     const conversationShareControl = vi.fn().mockRejectedValueOnce(new Error('storage-secret'))
@@ -279,7 +279,7 @@ describe('owner Share workflow', () => {
     ['Conversation is unavailable for sharing.', 'conversation has changed'],
     ['Share storage is unavailable. Check local storage and try again.', 'local share data'],
   ])('explains a failed status check without leaving a disabled create action: %s', async (message, expected) => {
-    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'fixture' };
+    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'fixture' };
     setElectronTestClient({ conversationShareControl: vi.fn().mockRejectedValue(new Error(message)) });
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {
@@ -291,7 +291,7 @@ describe('owner Share workflow', () => {
     } finally { wrapper.unmount(); }
   });
   it('keeps relay diagnostics internal while preserving active link controls', async () => {
-    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'fixture' };
+    const snapshot = createInitialSnapshot(); snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'fixture' };
     let availability: 'capacity' | 'upgradeRequired' | 'unavailable' = 'capacity';
     let active = true;
     setElectronTestClient({ conversationShareControl: async () => ({ state: { active, handle: active ? 'a'.repeat(32) : null, connectedGuests: null, availability } }) });
@@ -314,7 +314,7 @@ describe('owner Share workflow', () => {
   });
   it('hides sharing for remote-host conversations', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'remote' };
+    snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'remote' };
     snapshot.agents[0]!.remoteConnectionId = 'remote';
     const wrapper = mountShell({ snapshot, realAgentSidebar: true, stubRightWorkspacePanel: true, stubTeamRail: true });
     try {

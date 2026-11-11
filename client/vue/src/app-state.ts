@@ -1,3 +1,4 @@
+import { codexEventFromWire } from '@workspace/core/codex-event-wire';
 import { bindConversation, projectCodexConversation, projectClaudeConversation, projectCursorConversation, projectAntigravityConversation, type NativeConversationSources, type ConversationPresentation } from './provider-conversation-bindings';
 import { createCursorConversationState } from './cursor-conversation-state';
 import { normalizeThreadFlags } from '@workspace/core/thread-flags';
@@ -14,21 +15,21 @@ import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import type { AgentGitBranchInput, AgentGitCommitInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow } from '@workspace/core/contracts';
 import type { AgentCreationProgress, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import type { AgentBackend, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, BackendApprovalDecision, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, DaemonStatus, ClientRequestResponse, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, ClientRequestResponse, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
 import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-manager';
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { type ComposerState as CodexComposerState, type NativeAttachment as CodexNativeAttachment } from '@korus-dev/agent-ui-sdk';
+import { type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-sdk';
 import {
   createCodexConversationReplica,
   type CodexConversationReplica,
-} from '@korus-dev/multi-agent-sdk/conversation-replica';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/surface';
+} from '@korus-dev/multi-agent-sdk/renderer';
+import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk';
 import {
   createClaudeConversationReplica,
   type ClaudeConversationReplica,
@@ -64,10 +65,10 @@ const generalPreferences = createGeneralPreferences(() => snapshot.value.general
 const threadFlagState = createAgentThreadFlagState({ getSnapshot: () => snapshot.value });
 const hasLoadedSnapshot = ref(false);
 const isLoading = ref(false);
-const connectionState = ref<BackendConnectionState>({ status: 'connecting' });
+const connectionState = ref<ProviderConnectionState>({ status: 'connecting' });
 const sendingAgentIds = ref(new Set<string>());
-const composerStatesByAgentId = ref<Record<string, CodexComposerState>>({});
-const composerAttachmentsByAgentId = ref<Record<string, CodexNativeAttachment[]>>({});
+const composerStatesByAgentId = ref<Record<string, ComposerState>>({});
+const composerAttachmentsByAgentId = ref<Record<string, NativeAttachment[]>>({});
 const answeredClientRequestIds = ref(new Set<string>());
 const sidePanelRequest = ref<SidePanelRequest | null>(null);
 const markdownDisplayRequests = ref<Array<Extract<SidePanelRequest, { kind: 'markdown' }>>>([]);
@@ -140,18 +141,18 @@ const antigravityConversations = createAntigravityConversationState(async agentI
 });
 const conversationBindings = {
   codex: bindConversation(agent => {
-    const session = agent.backendSession, frame = codexConversationFramesByAgentId.value[agent.id];
+    const session = agent.providerSession, frame = codexConversationFramesByAgentId.value[agent.id];
     return session?.kind === 'codex' && frame?.threadId === session.threadId ? frame.snapshot : null;
   }, projectCodexConversation, agent => {
-    const session = agent.backendSession, frame = codexConversationFramesByAgentId.value[agent.id];
+    const session = agent.providerSession, frame = codexConversationFramesByAgentId.value[agent.id];
     return session?.kind === 'codex' && (frame?.threadId !== session.threadId || frame.revision === AWAITING_RECOVERY_REVISION);
   }),
   claude: bindConversation(agent => {
     const frame = claudeConversationFramesByAgentId.value[agent.id];
-    const sessionId = agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : null;
+    const sessionId = agent.providerSession?.kind === 'claude' ? agent.providerSession.sessionId : null;
     return frame && (!sessionId || frame.snapshot.sessionId === sessionId) ? frame.snapshot : null;
   }, projectClaudeConversation, agent => {
-    const session = agent.backendSession, frame = claudeConversationFramesByAgentId.value[agent.id];
+    const session = agent.providerSession, frame = claudeConversationFramesByAgentId.value[agent.id];
     return session?.kind === 'claude' && (frame?.snapshot.sessionId !== session.sessionId || frame.revision === AWAITING_RECOVERY_REVISION);
   }),
   cursor: bindConversation(cursorConversations.select, projectCursorConversation, agent => !cursorConversations.select(agent)),
@@ -202,9 +203,9 @@ const agentComposer = createAgentComposerState({
 });
 const {
   agentFiles,
-  backendModels,
-  backendPlugins,
-  backendSkills,
+  providerModels,
+  providerPlugins,
+  providerSkills,
   fileCatalogError,
   fileCatalogStatus,
   handleMainEvent: syncComposerStateFromMainEvent,
@@ -212,9 +213,9 @@ const {
   loadActive: loadActiveAgentCatalogs,
   loadAllModels: loadAllAgentModels,
   loadFiles: loadAgentFilesForActiveAgent,
-  loadModels: loadBackendModelsForActiveAgent,
-  loadPlugins: loadBackendPluginsForActiveAgent,
-  loadSkills: loadBackendSkillsForActiveAgent,
+  loadModels: loadProviderModelsForActiveAgent,
+  loadPlugins: loadProviderPluginsForActiveAgent,
+  loadSkills: loadProviderSkillsForActiveAgent,
   modelCatalogError,
   modelCatalogStatus,
   planMode,
@@ -272,10 +273,10 @@ export type AgentConversationView = NativeConversationSources & {
   agent: Agent;
   conversation?: ConversationPresentation | null;
   composer: AgentComposerConfiguration;
-  composerState: CodexComposerState;
-  attachments: readonly CodexNativeAttachment[];
-  capabilities: BackendCapabilities;
-  approvals: AppSnapshot['backendApprovals'][string];
+  composerState: ComposerState;
+  attachments: readonly NativeAttachment[];
+  capabilities: ProviderCapabilities;
+  approvals: AppSnapshot['providerApprovals'][string];
   queuedPrompts: NonNullable<AppSnapshot['queuedPrompts']>;
   history: ReturnType<typeof agentHistoryStatusFor>;
   sending: boolean;
@@ -434,15 +435,15 @@ export function useAppState() {
     return snapshot.value.agents.find((agent) => agent.id === snapshot.value.activeAgentId) ?? null;
   });
 
-  const activeBackendCapabilities = computed(() => backendCapabilitiesForAgent(activeAgent.value));
-  const activeBackendCommands = computed<BackendCommandSummary[]>(() => defaultBackendCommands(activeAgent.value?.backend ?? 'codex'));
+  const activeProviderCapabilities = computed(() => providerCapabilitiesForAgent(activeAgent.value));
+  const activeProviderCommands = computed<ProviderCommandSummary[]>(() => defaultProviderCommands(activeAgent.value?.provider ?? 'codex'));
   const activeCodexConversationSnapshot = computed(() => {
     const agent = activeAgent.value;
-    return agent?.backend === 'codex' ? conversationBindings.codex.selectNative(agent) : null;
+    return agent?.provider === 'codex' ? conversationBindings.codex.selectNative(agent) : null;
   });
   const activeClaudeConversationSnapshot = computed(() => {
     const agent = activeAgent.value;
-    return agent?.backend === 'claude' ? conversationBindings.claude.selectNative(agent) : null;
+    return agent?.provider === 'claude' ? conversationBindings.claude.selectNative(agent) : null;
   });
 
   function agentConversationFor(agentId: string): AgentConversationView | null {
@@ -450,12 +451,12 @@ export function useAppState() {
     if (!agent) return null;
     return {
       agent,
-      conversation: conversationBindings[agent.backend].select(agent),
+      conversation: conversationBindings[agent.provider].select(agent),
       composer: configurationForAgent(agentId),
       composerState: composerStatesByAgentId.value[agentId] ?? emptyComposerState(),
       attachments: composerAttachmentsByAgentId.value[agentId] ?? [],
-      capabilities: backendCapabilitiesForAgent(agent),
-      approvals: snapshot.value.backendApprovals[agentId] ?? [],
+      capabilities: providerCapabilitiesForAgent(agent),
+      approvals: snapshot.value.providerApprovals[agentId] ?? [],
       queuedPrompts: (snapshot.value.queuedPrompts ?? []).filter((prompt) => prompt.agentId === agentId),
       history: agentHistoryStatusFor(agentId),
       sending: isAgentSending(agentId),
@@ -476,19 +477,19 @@ export function useAppState() {
     return agentId ? (snapshot.value.queuedPrompts ?? []).filter((prompt) => prompt.agentId === agentId) : [];
   });
 
-  const activeComposerState = computed<CodexComposerState>(() => {
+  const activeComposerState = computed<ComposerState>(() => {
     const agentId = activeAgent.value?.id;
     return agentId
       ? composerStatesByAgentId.value[agentId] ?? emptyComposerState()
       : emptyComposerState();
   });
 
-  const activeComposerAttachments = computed<readonly CodexNativeAttachment[]>(() => {
+  const activeComposerAttachments = computed<readonly NativeAttachment[]>(() => {
     const agentId = activeAgent.value?.id;
     return agentId ? composerAttachmentsByAgentId.value[agentId] ?? [] : [];
   });
 
-  function updateComposerState(agentId: string, state: CodexComposerState): void {
+  function updateComposerState(agentId: string, state: ComposerState): void {
     if (!snapshot.value.agents.some((agent) => agent.id === agentId)) return;
     composerStatesByAgentId.value = {
       ...composerStatesByAgentId.value,
@@ -497,7 +498,7 @@ export function useAppState() {
     shareComposerDraft(agentId);
   }
 
-  function updateComposerAttachments(agentId: string, attachments: readonly CodexNativeAttachment[]): void {
+  function updateComposerAttachments(agentId: string, attachments: readonly NativeAttachment[]): void {
     if (!snapshot.value.agents.some((agent) => agent.id === agentId)) return;
     composerAttachmentsByAgentId.value = {
       ...composerAttachmentsByAgentId.value,
@@ -506,21 +507,21 @@ export function useAppState() {
     shareComposerDraft(agentId);
   }
 
-  const activeBackendApprovals = computed(() => {
+  const activeProviderApprovals = computed(() => {
     const agentId = activeAgent.value?.id;
-    return agentId ? snapshot.value.backendApprovals[agentId] ?? [] : [];
+    return agentId ? snapshot.value.providerApprovals[agentId] ?? [] : [];
   });
 
   const activeGoal = computed(() => activeAgent.value?.goal ?? null);
   const activeApprovalPreset = computed<ApprovalPreset | null>(() => {
     const agent = activeAgent.value;
-    const capabilities = backendCapabilitiesForAgent(agent);
+    const capabilities = providerCapabilitiesForAgent(agent);
     if (!agent || !capabilities.approvals) {
       return null;
     }
 
     const allowedPresets = capabilities.approvalPresets ?? [];
-    const storedPreset = approvalPresetFromDefaults(agent.backendDefaults);
+    const storedPreset = approvalPresetFromDefaults(agent.providerDefaults);
     if (allowedPresets.includes(storedPreset)) {
       return storedPreset;
     }
@@ -534,9 +535,9 @@ export function useAppState() {
       return null;
     }
 
-    const modes = backendCapabilitiesForAgent(agent).permissionModes ?? [];
-    const storedMode = agent.backendDefaults && 'permissionMode' in agent.backendDefaults
-      ? agent.backendDefaults.permissionMode
+    const modes = providerCapabilitiesForAgent(agent).permissionModes ?? [];
+    const storedMode = agent.providerDefaults && 'permissionMode' in agent.providerDefaults
+      ? agent.providerDefaults.permissionMode
       : undefined;
     if (storedMode && modes.some((option) => option.id === storedMode)) {
       return storedMode;
@@ -852,7 +853,7 @@ export function useAppState() {
 
   async function continueInterruptedTurnForAgent(agentId: string): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    if (!agent?.backendSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
+    if (!agent?.providerSession || !appApi?.continueInterruptedTurn || isAgentSending(agent.id)) {
       return;
     }
 
@@ -1318,7 +1319,7 @@ export function useAppState() {
     return nextSnapshot;
   }
 
-  async function readConversationMessages(ref: BackendConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]> {
+  async function readConversationMessages(ref: ProviderConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]> {
     if (!appApi?.readConversationMessages) {
       return [];
     }
@@ -1366,7 +1367,7 @@ export function useAppState() {
     }
 
     adoptBackgroundSnapshot(await appApi.updateAgent(input));
-    if (input.selection?.backend) synchronizeComposerSelectionForAgent(input.id);
+    if (input.selection?.provider) synchronizeComposerSelectionForAgent(input.id);
     await loadActiveAgentCatalogs(input.id);
   }
 
@@ -1430,12 +1431,12 @@ export function useAppState() {
     adoptBackgroundSnapshot(await appApi.addSshConnection(input));
   }
 
-  async function checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]): Promise<void> {
+  async function checkRemoteConnection(connectionId: string, inspectOnly?: boolean, providers?: HarnessProvider[]): Promise<void> {
     if (!appApi?.checkRemoteConnection) {
       return;
     }
 
-    adoptBackgroundSnapshot(await appApi.checkRemoteConnection(connectionId, inspectOnly, backends));
+    adoptBackgroundSnapshot(await appApi.checkRemoteConnection(connectionId, inspectOnly, providers));
   }
 
   async function updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<void> {
@@ -1688,23 +1689,23 @@ export function useAppState() {
     markClientRequestAnswered(response.id);
   }
 
-  async function resolveBackendApproval(
+  async function resolveProviderApproval(
     approvalId: string,
-    decision: BackendApprovalDecision,
-    scope: BackendApprovalScope,
+    decision: ProviderApprovalDecision,
+    scope: ProviderApprovalScope,
   ): Promise<void> {
     const agentId = activeAgent.value?.id;
-    if (agentId) await resolveBackendApprovalForAgent(agentId, approvalId, decision, scope);
+    if (agentId) await resolveProviderApprovalForAgent(agentId, approvalId, decision, scope);
   }
 
-  async function resolveBackendApprovalForAgent(
+  async function resolveProviderApprovalForAgent(
     agentId: string,
     approvalId: string,
-    decision: BackendApprovalDecision,
-    scope: BackendApprovalScope,
+    decision: ProviderApprovalDecision,
+    scope: ProviderApprovalScope,
   ): Promise<void> {
     const approval = agentId
-      ? snapshot.value.backendApprovals[agentId]?.find((candidate) => candidate.id === approvalId)
+      ? snapshot.value.providerApprovals[agentId]?.find((candidate) => candidate.id === approvalId)
       : undefined;
     if (
       !agentId ||
@@ -1756,7 +1757,7 @@ export function useAppState() {
 
   async function setPermissionModeForAgent(agentId: string, mode: string): Promise<void> {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    const supportedModes = agent ? backendCapabilitiesForAgent(agent).permissionModes ?? [] : [];
+    const supportedModes = agent ? providerCapabilitiesForAgent(agent).permissionModes ?? [] : [];
     if (
       !agent ||
       !supportedModes.some((option) => option.id === mode) ||
@@ -1772,7 +1773,7 @@ export function useAppState() {
     snapshot,
     activeAgent,
     activeGoal,
-    activeBackendApprovals,
+    activeProviderApprovals,
     activeApprovalPreset,
     activePermissionMode,
     activeQueuedPrompts,
@@ -1791,20 +1792,20 @@ export function useAppState() {
     loadAgentTurnHistory,
     isSending,
     answeredClientRequestIds,
-    backendModels,
-    activeBackendCommands,
+    providerModels,
+    activeProviderCommands,
     activeCodexConversationSnapshot,
     activeClaudeConversationSnapshot,
-    activeConversationPresentation: computed(() => activeAgent.value ? conversationBindings[activeAgent.value.backend].select(activeAgent.value) : null),
+    activeConversationPresentation: computed(() => activeAgent.value ? conversationBindings[activeAgent.value.provider].select(activeAgent.value) : null),
     activeCursorConversationSnapshot: computed(() => activeAgent.value ? cursorConversations.select(activeAgent.value) : null),
     agentConversationFor,
     activeAntigravityConversationSnapshot: computed(() => activeAgent.value ? antigravityConversations.select(activeAgent.value) : null),
     prepareAgentConversation,
-    activeBackendCapabilities,
+    activeProviderCapabilities,
     modelCatalogStatus,
     modelCatalogError,
-    backendSkills,
-    backendPlugins,
+    providerSkills,
+    providerPlugins,
     skillCatalogStatus,
     skillCatalogError,
     agentFiles,
@@ -1838,9 +1839,9 @@ export function useAppState() {
     agentCreationProgresses,
     missionImplementationStartProgress,
     missionFocusRequest,
-    loadBackendModels: loadBackendModelsForActiveAgent,
-    loadBackendPlugins: loadBackendPluginsForActiveAgent,
-    loadBackendSkills: loadBackendSkillsForActiveAgent,
+    loadProviderModels: loadProviderModelsForActiveAgent,
+    loadProviderPlugins: loadProviderPluginsForActiveAgent,
+    loadProviderSkills: loadProviderSkillsForActiveAgent,
     /** Reads the active agent's files again; the list is otherwise loaded once per session. */
     loadAgentFiles: () => loadAgentFilesForActiveAgent(undefined, true),
     loadWorkRepositories,
@@ -1955,8 +1956,8 @@ export function useAppState() {
     reorderRepositories,
     restartAgent,
     closeAgent,
-    resolveBackendApproval,
-    resolveBackendApprovalForAgent,
+    resolveProviderApproval,
+    resolveProviderApprovalForAgent,
     respondToClientRequest,
     selectModel,
     selectModelForAgent,
@@ -2030,15 +2031,15 @@ function upsertAgentCreationProgress(progress: AgentCreationProgress): void {
     : agentCreationProgresses.value.map((entry, position) => position === index ? progress : entry);
 }
 
-function emptyComposerState(): CodexComposerState {
+function emptyComposerState(): ComposerState {
   return { text: '', selectionStart: 0, selectionEnd: 0 };
 }
 
-function plainConversationRef(ref: BackendConversationRef): BackendConversationRef {
-  return ref.backend === 'codex'
-    ? { backend: 'codex', threadId: ref.threadId }
-    : { backend: ref.backend, folder: ref.folder, sessionId: ref.sessionId,
-      ...(ref.backend === 'claude' && ref.subagentId !== undefined ? { subagentId: ref.subagentId } : {}),
+function plainConversationRef(ref: ProviderConversationRef): ProviderConversationRef {
+  return ref.provider === 'codex'
+    ? { provider: 'codex', threadId: ref.threadId }
+    : { provider: ref.provider, folder: ref.folder, sessionId: ref.sessionId,
+      ...(ref.provider === 'claude' && ref.subagentId !== undefined ? { subagentId: ref.subagentId } : {}),
     };
 }
 
@@ -2075,14 +2076,14 @@ function cloneWorkItemForIpc(item: WorkItem): WorkItem {
 
 function messageActionCapabilities(agentId: string) {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-  return backendCapabilitiesForAgent(agent ?? null);
+  return providerCapabilitiesForAgent(agent ?? null);
 }
 
-function backendCapabilitiesForAgent(agent: Agent | null): BackendCapabilities {
+function providerCapabilitiesForAgent(agent: Agent | null): ProviderCapabilities {
   if (agent?.sharedConversation) return guestConversationCapabilities;
-  const backend = agent?.backend ?? 'codex';
-  const defaults = defaultBackendCapabilities(backend);
-  const runtime = snapshot.value.backendRuntimes.find((candidate) => candidate.backend === backend);
+  const backend = agent?.provider ?? 'codex';
+  const defaults = defaultProviderCapabilities(backend);
+  const runtime = snapshot.value.providerRuntimes.find((candidate) => candidate.provider === backend);
   return {
     ...defaults,
     ...runtime?.capabilities,
@@ -2273,7 +2274,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       }
       let nextSnapshot: CodexConversationSnapshot;
       try {
-        nextSnapshot = current.replica.apply(event.payload.event);
+        nextSnapshot = current.replica.apply(codexEventFromWire(event.payload.event));
       } catch {
         invalidateAndRecoverCodexConversation(event.agentId);
         return;
@@ -2451,7 +2452,7 @@ function recoverRendererAfterBackendConnection(): Promise<void> {
 }
 
 function isBackendMainEvent(event: MainToRendererEvent): boolean {
-  return event.source === 'backend' || (
+  return event.source === 'provider' || (
     event.source === undefined &&
     event.type !== 'browser.annotationCreated' &&
     event.type !== 'client.connectionChanged'
@@ -2479,7 +2480,7 @@ function adoptSnapshotFromMainEvent(event: MainToRendererEvent): void {
   }
   applyMainEventToSnapshot(snapshot.value, event);
   if (event.type === 'agent.updated' && Object.hasOwn(event.payload, 'threadFlags')) threadFlagState.project(snapshot.value, event.agentId);
-  if (event.type === 'agent.conversationAttached' && event.backend === 'claude') {
+  if (event.type === 'agent.conversationAttached' && event.provider === 'claude') {
     synchronizeComposerSelectionForAgent(event.agentId);
   }
 }
@@ -2519,18 +2520,18 @@ function pruneConversationFrames(): void {
   codexConversationFramesByAgentId.value = Object.fromEntries(
     Object.entries(codexConversationFramesByAgentId.value).filter(([agentId, frame]) => {
       const agent = agentsById.get(agentId);
-      return agent?.backend === 'codex'
-        && agent.backendSession?.kind === 'codex'
-        && agent.backendSession.threadId === frame.threadId;
+      return agent?.provider === 'codex'
+        && agent.providerSession?.kind === 'codex'
+        && agent.providerSession.threadId === frame.threadId;
     }),
   );
   claudeConversationFramesByAgentId.value = Object.fromEntries(
     Object.entries(claudeConversationFramesByAgentId.value).filter(([agentId, frame]) => {
       const agent = agentsById.get(agentId);
-      if (agent?.backend !== 'claude') return false;
-      return agent.backendSession?.kind !== 'claude'
+      if (agent?.provider !== 'claude') return false;
+      return agent.providerSession?.kind !== 'claude'
         || frame.snapshot.sessionId === null
-        || frame.snapshot.sessionId === agent.backendSession.sessionId;
+        || frame.snapshot.sessionId === agent.providerSession.sessionId;
     }),
   );
   cursorConversations.reconcile([...agentsById.values()]);
@@ -2566,8 +2567,8 @@ function syncFileActivityFromMainEvent(event: Extract<RendererOnlySnapshotEvent,
 
 function agentNeedsHistory(agentId: string): boolean {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-  if (!agent?.backendSession) return false;
-  return conversationBindings[agent.backend].needsHistory(agent);
+  if (!agent?.providerSession) return false;
+  return conversationBindings[agent.provider].needsHistory(agent);
 }
 
 async function refreshTeamSelection(

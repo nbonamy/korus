@@ -9,7 +9,7 @@ const connection = (id: string): RemoteConnection => ({ id, kind: 'ssh', name: i
 function mountDialog(checkouts: Record<string, RemoteCheckout>, overrides: Record<string, unknown> = {}) {
   return mount(RemoteTargetDialog, {
     props: { visible: true, repositoryName: 'korus', action: 'main', connections: [connection('wall-e'), connection('devbox')], checkouts, canConfirm: false, busy: false, error: null, selectedId: 'wall-e', ...overrides },
-    global: { stubs: { ElDialog: { props: ['modelValue'], template: '<section v-if="modelValue"><slot name="header" /><slot /><slot name="footer" /></section>' }, BackendModelSelector: true } },
+    global: { stubs: { ElDialog: { props: ['modelValue'], template: '<section v-if="modelValue"><slot name="header" /><slot /><slot name="footer" /></section>' }, ProviderModelSelector: true } },
   });
 }
 

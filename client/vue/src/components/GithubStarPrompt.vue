@@ -1,19 +1,19 @@
 <template>
-  <CodexComposerDrawer v-if="visible" class="github-star-prompt" :aria-label="t('githubStar.title')">
-    <CodexComposerDrawerRow>
+  <ComposerDrawer v-if="visible" class="github-star-prompt" :aria-label="t('githubStar.title')">
+    <ComposerDrawerRow>
       <template #leading><IconStarFilled class="github-star-prompt__icon" aria-hidden="true" /></template>
       <span>{{ t('githubStar.notice', { product: product.name }) }}</span>
       <template #actions>
         <button class="app-button app-button--small app-button--tertiary github-star-prompt__button" type="button" @click="star">
-          <span class="codex-text-shimmer github-star-prompt__label">{{ t('githubStar.action') }}</span>
+          <span class="agent-ui-text-shimmer github-star-prompt__label">{{ t('githubStar.action') }}</span>
         </button>
-        <CodexIconButton :label="t('githubStar.dismiss')" @click="dismiss"><XIcon aria-hidden="true" /></CodexIconButton>
+        <IconButton :label="t('githubStar.dismiss')" @click="dismiss"><XIcon aria-hidden="true" /></IconButton>
       </template>
-    </CodexComposerDrawerRow>
-  </CodexComposerDrawer>
+    </ComposerDrawerRow>
+  </ComposerDrawer>
 </template>
 <script setup lang="ts">
-import { ComposerDrawer as CodexComposerDrawer, ComposerDrawerRow as CodexComposerDrawerRow, IconButton as CodexIconButton } from '@korus-dev/agent-ui-sdk';
+import { ComposerDrawer, ComposerDrawerRow, IconButton } from '@korus-dev/agent-ui-sdk';
 import { useI18n } from 'vue-i18n';
 import { product } from '@workspace/core/product';
 import { appPlatformActions } from '../platform-api';

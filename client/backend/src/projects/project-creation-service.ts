@@ -1,13 +1,13 @@
 import type { ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentBackend, AgentCreationProgress, BackendDefaults, SourceRepository } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AgentCreationProgress, ProviderDefaults, SourceRepository } from '@workspace/core/contracts';
 import { requireRepositoryName } from '../create-source-repository';
 
 export type ProjectCreationInput = {
   name: string;
   teamId: string;
   selection?: ExecutionSelectionOverrides;
-  backendDefaults?: BackendDefaults;
+  providerDefaults?: ProviderDefaults;
   prompt?: string;
 };
 
@@ -24,7 +24,7 @@ export class ProjectCreationService {
       repository: SourceRepository;
       teamId: string;
       selection?: ExecutionSelectionOverrides;
-      backendDefaults?: BackendDefaults;
+      providerDefaults?: ProviderDefaults;
     }): Promise<Agent>;
     startAgent(agent: Agent, prompt: string): Promise<void>;
   }) {}
@@ -34,7 +34,7 @@ export class ProjectCreationService {
     const progress: AgentCreationProgress = {
       id: `project-creation-${randomUUID()}`,
       state: 'running',
-      backend: input.selection?.backend ?? 'codex',
+      provider: input.selection?.provider ?? 'codex',
       repositoryName: name,
       createWorktree: false,
       createProject: true,
@@ -66,7 +66,7 @@ export class ProjectCreationService {
         repository,
         teamId: input.teamId,
         ...(input.selection ? { selection: input.selection } : {}),
-        ...(input.backendDefaults ? { backendDefaults: input.backendDefaults } : {}),
+        ...(input.providerDefaults ? { providerDefaults: input.providerDefaults } : {}),
       });
     } catch (error) {
       throw new Error(`Created the project folder at ${repository.path}, but could not finish setting up its agent. The folder remains on disk; check the agent list before retrying. ${error instanceof Error ? error.message : String(error)}`, { cause: error });

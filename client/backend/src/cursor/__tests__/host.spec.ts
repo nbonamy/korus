@@ -2,15 +2,15 @@ import { mkdtemp, copyFile, chmod, writeFile, readFile, rm, access, symlink, mkd
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
+import { ProviderDriverRpc, createProviderDriver } from '../../driver-rpc';
 import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { CodeReviewService } from '../../review/code-review-service';
 import { AgentCreationService } from '../../agents/agent-creation-service';
 import { AppMcpService } from '../../mcp/service';
-import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
+import type { ProviderCodeReviewResult } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentInSnapshot, createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { companionSessionId } from '@workspace/core/companion-protocol';
@@ -21,10 +21,10 @@ import { UsageService } from '../../usage/usage-service';
 import { TurnClock } from '../../usage/turn-clock';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
 vi.mock('node:fs/promises', async importOriginal => { const actual = await importOriginal<typeof import('node:fs/promises')>(); return {...actual,open:vi.fn(actual.open),realpath:vi.fn(actual.realpath)}; });
-let root: string, host: AgentBackendDriver;
+let root: string, host: AgentProviderDriver;
 let events: BackendEvent[];
 const observedPng='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jK1cAAAAASUVORK5CYII=';
-const agent = { ...createInitialSnapshot().agents[0]!, id: 'cursor-fixture', backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
+const agent = { ...createInitialSnapshot().agents[0]!, id: 'cursor-fixture', provider: 'cursor' as const, providerDefaults: { kind: 'cursor' as const }, providerSession: undefined };
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'cursor-host-'));
   vi.stubEnv('HOME', root); vi.stubEnv('PATH', root); vi.stubEnv('SHELL', path.join(root, 'missing-shell')); vi.stubEnv('CURSOR_API_KEY', 'synthetic-must-not-leak');
@@ -32,7 +32,7 @@ beforeEach(async () => {
   await writeFile(path.join(root, 'agent'), `#!${process.execPath}\nrequire(${JSON.stringify(path.join(root, 'fixture.cjs'))});\n`);
   await chmod(path.join(root, 'agent'), 0o700);
   await writeFile(path.join(root, 'version'), '2026.10.22-27dcf5f');
-  agent.folder = root; events = []; host = createBackendDriver('cursor'); host.onEvent(event => events.push(event));
+  agent.folder = root; events = []; host = createProviderDriver('cursor'); host.onEvent(event => events.push(event));
 });
 afterEach(async () => { vi.useRealTimers(); await host.close(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 const completions = () => events.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed');
@@ -49,22 +49,22 @@ describe('Cursor ACP host transport boundary', () => {
     const state = createInitialSnapshot();
     const owner = { ...agent, id: 'review-owner' };
     state.agents = [owner]; state.general.providerEnabled = { cursor: true };
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const mcp = new AppMcpService({ snapshot: state });
     const url = await mcp.start();
-    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: url });
-    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url });
+    const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     const creation = new AgentCreationService(state);
     const checkpoint = { head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'fixture' };
     const commit = vi.fn();
     const dispose = vi.fn(async (reviewer: import('@workspace/core/contracts').Agent) => {
-      if (reviewer.backendSession) await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: reviewer.backendSession });
+      if (reviewer.providerSession) await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: reviewer.providerSession });
       state.agents = state.agents.filter(candidate => candidate.id !== reviewer.id);
     });
     const review = new CodeReviewService({ snapshot: state, tools: mcp,
       createAgent: (input, options) => creation.create(input, options),
-      runReview: (reviewer, prompt, reviewMcpServerUrl, reviewerSession) => rpc.handle('driver/codeReview/run', { agent: reviewer, prompt, cwd: root, reviewMcpServerUrl, reviewerSession }) as Promise<BackendCodeReviewResult>,
-      resetReviewer: async reviewer => { await host.releaseConversation!(reviewer.id); delete reviewer.backendSession; },
+      runReview: (reviewer, prompt, reviewMcpServerUrl, reviewerSession) => rpc.handle('driver/codeReview/run', { agent: reviewer, prompt, cwd: root, reviewMcpServerUrl, reviewerSession }) as Promise<ProviderCodeReviewResult>,
+      resetReviewer: async reviewer => { await host.releaseConversation!(reviewer.id); delete reviewer.providerSession; },
       deleteReviewer: dispose, saveReport: async () => path.join(root, 'report.md'), changed: () => {},
       git: { prepare: async () => ({ ...checkpoint, baseRef: 'a'.repeat(40) }), inspect: async () => checkpoint, hasChanges: async () => false, commit },
     });
@@ -100,26 +100,26 @@ describe('Cursor ACP host transport boundary', () => {
     const state = createInitialSnapshot(); state.agents = [{ ...agent, ...(kind === 'quickChat' ? { folder: null, sessionKind: 'quickChat' as const } : {}) }];
     const current = state.agents[0]!;
     state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    await host.close(); host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    await host.close(); host = createProviderDriver('cursor', { getGeneralSettings: () => state.general });
     const boundAtStart: unknown[] = [];
     let persisted: ReturnType<typeof persistedStateFromSnapshot> | undefined;
     const server = new AppBackendServer({ version: 'fixture', snapshot: state,
       saveSnapshot: async value => { persisted = JSON.parse(JSON.stringify(persistedStateFromSnapshot(value))); },
-      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])), onEvent: event => {
-        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.backendSession));
+      driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])), onEvent: event => {
+        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
       } });
     try {
       await host.listModels!(current);
-      expect(current.backendSession).toBeUndefined();
+      expect(current.providerSession).toBeUndefined();
       await server.handleMessage({ jsonrpc: '2.0', id: 'first', method: 'agent/prompt/send', params: { agentId: current.id, prompt: 'wait' } });
       await vi.waitFor(async () => expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1));
       expect(boundAtStart).toStrictEqual([expect.objectContaining({ kind: 'cursor' })]);
-      const saved = structuredClone(current.backendSession);
-      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === current.id)?.backendSession).toStrictEqual(saved));
+      const saved = structuredClone(current.providerSession);
+      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === current.id)?.providerSession).toStrictEqual(saved));
       await server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: current.id, prompt: 'Correction', expectedSessionId: companionSessionId(current) } });
       await vi.waitFor(async () => { await host.loadConversation!(current); expect(boundAtStart).toHaveLength(2); });
-      expect(current.backendSession).toStrictEqual(saved);
+      expect(current.providerSession).toStrictEqual(saved);
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
     } finally { await server.close(); }
   });
@@ -128,28 +128,28 @@ describe('Cursor ACP host transport boundary', () => {
     const state = createInitialSnapshot(); state.agents = [{ ...agent }];
     const current = state.agents[0]!;
     state.general.providerEnabled = { cursor: true };
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    await host.close(); host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    await host.close(); host = createProviderDriver('cursor', { getGeneralSettings: () => state.general });
     host.onEvent(event => events.push(event));
     const boundAtStart: unknown[] = [];
     const server = new AppBackendServer({ version: 'fixture', snapshot: state,
-      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])), onEvent: event => {
-        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.backendSession));
+      driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])), onEvent: event => {
+        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
       } });
     try {
       await host.listModels!(current);
-      expect(current.backendSession).toBeUndefined();
+      expect(current.providerSession).toBeUndefined();
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
       const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged');
       if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing catalog snapshot');
       const pid = Number(String(frame.payload.snapshot.sessionId).replace(/^session-/, ''));
       process.kill(pid);
       await vi.waitFor(() => expect(host.getRuntimeStatus().status).toBe('error'));
-      expect(current.backendSession).toBeUndefined();
+      expect(current.providerSession).toBeUndefined();
       await server.handleMessage({ jsonrpc: '2.0', id: 'first', method: 'agent/prompt/send', params: { agentId: current.id, prompt: 'hello' } });
       await vi.waitFor(async () => expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1));
       expect(boundAtStart).toStrictEqual([expect.objectContaining({ kind: 'cursor' })]);
-      expect(current.backendSession).toMatchObject({ kind: 'cursor' });
+      expect(current.providerSession).toMatchObject({ kind: 'cursor' });
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(2);
     } finally { await server.close(); }
   });
@@ -157,21 +157,21 @@ describe('Cursor ACP host transport boundary', () => {
   it.each(['complete', 'invalid-model'] as const)('steers a live review without losing its saved session, tool scope or completion (%s)', async outcome => {
     const state = createInitialSnapshot(); state.agents = [{ ...agent }];
     state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const mcp = new AppMcpService({ snapshot: state }); const url = await mcp.start();
-    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: url, getGeneralSettings: () => state.general });
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url, getGeneralSettings: () => state.general });
     const usage: import('@workspace/core/usage').ExecutionObservation[] = [];
     host.onEvent(event => events.push(event)); host.onUsage!(event => usage.push(event));
     let persisted: ReturnType<typeof persistedStateFromSnapshot> | undefined;
     const server = new AppBackendServer({ version: 'fixture', snapshot: state, codeReviewTools: mcp,
       saveSnapshot: async value => { persisted = JSON.parse(JSON.stringify(persistedStateFromSnapshot(value))); },
-      driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+      driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     await writeFile(path.join(root, 'hold-review'), '');
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'review', method: 'agent/codeReview/start', params: { agentId: agent.id, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
       await vi.waitFor(async () => expect((await wire()).some(call => call.fixture === 'review-held')).toBe(true));
       const reviewer = state.agents.find(candidate => candidate.codeReview)!;
-      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === reviewer.id)?.backendSession).toMatchObject({ kind: 'cursor' }));
+      await vi.waitFor(() => expect(snapshotFromPersistedState(persisted).agents.find(candidate => candidate.id === reviewer.id)?.providerSession).toMatchObject({ kind: 'cursor' }));
       const steer = (prompt: string, options?: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: reviewer.id, prompt,
         expectedSessionId: companionSessionId(reviewer), options } });
       if (outcome === 'invalid-model') {
@@ -179,18 +179,18 @@ describe('Cursor ACP host transport boundary', () => {
         await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('failed'));
         expect(reviewer.codeReview?.rounds[0]?.error).toMatch(/Unknown Cursor model/);
         expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
-        const retry = await host.runCodeReview!(reviewer, { prompt: 'Retry inspection', cwd: root, reviewerSession: reviewer.backendSession, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
+        const retry = await host.runCodeReview!(reviewer, { prompt: 'Retry inspection', cwd: root, reviewerSession: reviewer.providerSession, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
         expect(retry.text).toBe('Hello Cursor');
       } else {
         await steer('STEER_REVIEW_WAIT');
-        expect(reviewer.backend).toBe('cursor');
-        expect(reviewer.backendSession).toMatchObject({ kind: 'cursor' });
-        const saved = structuredClone(reviewer.backendSession);
+        expect(reviewer.provider).toBe('cursor');
+        expect(reviewer.providerSession).toMatchObject({ kind: 'cursor' });
+        const saved = structuredClone(reviewer.providerSession);
         await vi.waitFor(async () => expect((await wire()).filter(call => call.fixture === 'review-held')).toHaveLength(2));
         expect(reviewer.codeReview?.status).toBe('reviewing');
         await steer('STEER_REVIEW_FINAL');
         await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
-        expect(reviewer.backendSession).toStrictEqual(saved);
+        expect(reviewer.providerSession).toStrictEqual(saved);
         expect(reviewer.codeReview?.rounds[0]).toMatchObject({ summary: 'Review turn complete.', inspectionCompletion: { findingCount: 1 }, reviewerSession: saved });
         await host.loadConversation!(reviewer);
         const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged' && event.agentId === reviewer.id).at(-1);
@@ -206,23 +206,25 @@ describe('Cursor ACP host transport boundary', () => {
 
   it('preserves the native conversation and selected model while entering and leaving a scoped review', async () => {
     await writeFile(path.join(root, 'rich-models'), '');
-    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ external: 'http://127.0.0.1:1235/mcp' }) }); host.onEvent(event => events.push(event));
-    const reviewer = { ...agent, backendDefaults: { kind: 'cursor' as const, model: 'fixture-beta', reasoningEffort: 'xhigh' } };
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ external: 'http://127.0.0.1:1235/mcp' }) }); host.onEvent(event => events.push(event));
+    const reviewer = { ...agent, providerDefaults: { kind: 'cursor' as const, model: 'fixture-beta', reasoningEffort: 'xhigh' } };
     const sent = await host.sendPrompt(reviewer, 'hello');
     await vi.waitFor(async () => expect((await wire()).filter(call => call.fixture === 'prompt-admission')).toHaveLength(1));
     await vi.waitFor(async () => expect((await snapshot()).busy).toBe(false));
-    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     try {
       const reviewMcpServerUrl = 'http://127.0.0.1:1234/review';
-      const result = await rpc.handle('driver/codeReview/run', { agent: reviewer, prompt: 'Inspect changes', cwd: root, reviewMcpServerUrl, reviewerSession: sent.backendSession }) as BackendCodeReviewResult;
-      expect(result).toStrictEqual({ text: 'Hello Cursor', reviewerSession: sent.backendSession });
+      const result = await rpc.handle('driver/codeReview/run', { agent: reviewer, prompt: 'Inspect changes', cwd: root, reviewMcpServerUrl, reviewerSession: sent.providerSession }) as ProviderCodeReviewResult;
+      expect(result).toStrictEqual({ text: 'Hello Cursor', reviewerSession: sent.providerSession });
       const loaded = (await wire()).filter(call => call.method === 'session/load').at(-1);
       expect(loaded.params.mcpServers).toHaveLength(1);
       expect(loaded.params.mcpServers[0].env).toEqual(expect.arrayContaining([{ name: 'HARNESS_ACP_MCP_URL', value: reviewMcpServerUrl }]));
       expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'fixture-beta', thoughts: { reasoning_effort: 'xhigh' } });
-      await host.sendPrompt({ ...reviewer, backendSession: result.reviewerSession }, 'Back to normal');
+      await host.sendPrompt({ ...reviewer, providerSession: result.reviewerSession }, 'Back to normal');
       await vi.waitFor(async () => expect((await snapshot()).busy).toBe(false));
-      expect((await wire()).filter(call => call.method === 'session/load').at(-1).params.mcpServers).toHaveLength(2);
+      // The agent's own session was never closed, so it keeps its own tool scope without reloading.
+      expect((await wire()).filter(call => call.fixture === 'prompt-admission')).toHaveLength(3);
+      expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
       await expect(rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: { kind: 'cursor', sessionId: 'stale' } })).rejects.toThrow(/changed/);
       await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: result.reviewerSession });
     } finally { await rpc.close(); }
@@ -230,10 +232,10 @@ describe('Cursor ACP host transport boundary', () => {
 
   it('preapproves observed review MCP calls without granting native tool access', async () => {
     await writeFile(path.join(root, 'mcp-permission.json'), JSON.stringify({ input: { providerIdentifier: 'korus', toolName: 'report_finding', args: { title: 'Fixture' } } }));
-    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     try {
       const reviewMcpServerUrl = 'http://127.0.0.1:1234/review';
-      const result = await rpc.handle('driver/codeReview/run', { agent, prompt: 'mcp-permission', cwd: root, reviewMcpServerUrl }) as BackendCodeReviewResult;
+      const result = await rpc.handle('driver/codeReview/run', { agent, prompt: 'mcp-permission', cwd: root, reviewMcpServerUrl }) as ProviderCodeReviewResult;
       expect((await wire()).find(call => call.id === 8 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'selected', optionId: 'native-mcp-once' } });
       expect(events.some(event => event.type === 'agentRequest.created')).toBe(false);
       const native = rpc.handle('driver/codeReview/run', { agent, prompt: 'permission', cwd: root, reviewMcpServerUrl, reviewerSession: result.reviewerSession });
@@ -247,7 +249,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
 
   it.each(['wait', 'quota'])('settles a %s review through the normal cancellation and failure path', async prompt => {
-    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     try {
       const reviewing = rpc.handle('driver/codeReview/run', { agent, prompt, cwd: root, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
       const rejected = expect(reviewing).rejects.toThrow(prompt === 'wait' ? /interrupted/ : /usage limit/);
@@ -261,7 +263,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
 
   it('rejects unsupported native controls at the driver boundary without launching ACP or falling back to another provider', async () => {
-    const rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     const controls = [
       ['driver/prompt/steer', { prompt: 'Adjust the task', expectedSessionId: null }, 'prompt steering'],
       ['driver/goal/update', { objective: 'Finish the task' }, 'goals'],
@@ -275,26 +277,26 @@ describe('Cursor ACP host transport boundary', () => {
       }
       await expect(access(path.join(root, 'wire.jsonl'))).rejects.toThrow();
       expect(events).toStrictEqual([]);
-      expect(agent.backendSession).toBeUndefined();
+      expect(agent.providerSession).toBeUndefined();
     } finally { await rpc.close(); }
   });
   it('refreshes published steering availability immediately when the host setting changes without starting Cursor', async () => {
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
     await host.close();
-    host = createBackendDriver('cursor', { getGeneralSettings: () => state.general });
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    host = createProviderDriver('cursor', { getGeneralSettings: () => state.general });
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     try {
       for (const enabled of [true, false]) {
         const result = await server.handleMessage({ jsonrpc: '2.0', id: 'setting', method: 'settings/update', params: { input: { general: { cursorSteeringFallbackEnabled: enabled } } } });
-        expect(result).toMatchObject({ result: { backendRuntimes: expect.arrayContaining([expect.objectContaining({ backend: 'cursor', capabilities: expect.objectContaining({ steerPrompt: enabled }) })]) } });
+        expect(result).toMatchObject({ result: { providerRuntimes: expect.arrayContaining([expect.objectContaining({ provider: 'cursor', capabilities: expect.objectContaining({ steerPrompt: enabled }) })]) } });
       }
       await expect(access(path.join(root, 'wire.jsonl'))).rejects.toThrow();
     } finally { await server.close(); }
   });
   it('switches live permission handling through the daemon, persists the choice, and seeds future model/permission defaults, and keeps native plan review explicit', async () => {
     const state = createInitialSnapshot(); state.agents = [{ ...agent }];
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     const select = (mode: string) => server.handleMessage({ jsonrpc: '2.0', id: 'mode', method: 'agent/permissionMode/update', params: { agentId: agent.id, mode } });
     const send = (prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: 'agent/prompt/send', params: { agentId: agent.id, prompt } });
     try {
@@ -304,20 +306,20 @@ describe('Cursor ACP host transport boundary', () => {
       await vi.waitFor(() => expect(completions()).toHaveLength(1));
       expect(state.agentRequests?.[agent.id]).toStrictEqual([]);
       expect((await wire()).find(call => call.id === 1 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'selected', optionId: 'allow-once' } });
-      await server.handleMessage({ jsonrpc: '2.0', id: 'model', method: 'agent/update', params: { input: { id: agent.id, selection: { backend: 'cursor', model: 'composer-2.5' } } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'model', method: 'agent/update', params: { input: { id: agent.id, selection: { provider: 'cursor', model: 'composer-2.5' } } } });
       const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(persistedStateFromSnapshot(state))));
-      expect(restored.agents[0]!.backendDefaults).toMatchObject({ kind: 'cursor', permissionMode: 'full-access' });
+      expect(restored.agents[0]!.providerDefaults).toMatchObject({ kind: 'cursor', permissionMode: 'full-access' });
       expect(restored.general.providerApprovalDefaults?.cursor).toBe('full-access');
       // Runtime connections are re-established rather than restored from disk.
       restored.providerConnections = structuredClone(state.providerConnections);
-      createAgentInSnapshot(restored, { name: 'Next Cursor', folder: root, selection: { backend: 'cursor' } }, undefined, 'next-workspace');
-      createQuickChatInSnapshot(restored, { selection: { backend: 'cursor' } }, undefined, 'next-quick-chat');
-      const inheritedHost = createBackendDriver('cursor'), inheritedEvents: BackendEvent[] = [];
+      createAgentInSnapshot(restored, { name: 'Next Cursor', folder: root, selection: { provider: 'cursor' } }, undefined, 'next-workspace');
+      createQuickChatInSnapshot(restored, { selection: { provider: 'cursor' } }, undefined, 'next-quick-chat');
+      const inheritedHost = createProviderDriver('cursor'), inheritedEvents: BackendEvent[] = [];
       inheritedHost.onEvent(event => inheritedEvents.push(event));
       try {
         for (const [index, id] of ['next-workspace', 'next-quick-chat'].entries()) {
           const next = restored.agents.find(candidate => candidate.id === id)!;
-          expect(next.backendDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permissionMode: 'full-access' });
+          expect(next.providerDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permissionMode: 'full-access' });
           await inheritedHost.sendPrompt(next, 'permission');
           await vi.waitFor(() => expect(inheritedEvents.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toHaveLength(index + 1));
           expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'composer-2.5' });
@@ -325,7 +327,7 @@ describe('Cursor ACP host transport boundary', () => {
         expect(inheritedEvents.some(event => event.type === 'agentRequest.created')).toBe(false);
       } finally { await inheritedHost.close(); }
       await expect(select('auto_edit')).rejects.toThrow(/Unsupported permission mode/);
-      expect(state.agents[0]!.backendDefaults).toMatchObject({ permissionMode: 'full-access' });
+      expect(state.agents[0]!.providerDefaults).toMatchObject({ permissionMode: 'full-access' });
       await select('default');
       expect(snapshotFromPersistedState(persistedStateFromSnapshot(state)).general.providerApprovalDefaults?.cursor).toBe('default');
       await send('permission');
@@ -344,7 +346,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it.each([false, true])('restores full-access policy on session startup and uses only once-only permission options (missingOnce=%s)', async missingOnce => {
     await writeFile(path.join(root, 'mcp-permission.json'), JSON.stringify({ noOnce: missingOnce }));
-    await host.sendPrompt({ ...agent, backendDefaults: { kind: 'cursor', permissionMode: 'full-access' } }, 'mcp-permission');
+    await host.sendPrompt({ ...agent, providerDefaults: { kind: 'cursor', permissionMode: 'full-access' } }, 'mcp-permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 8 && call.result)?.result).toStrictEqual({ outcome: missingOnce ? { outcome: 'cancelled' } : { outcome: 'selected', optionId: 'native-mcp-once' } });
     expect((await snapshot()).clientRequests).toStrictEqual([]);
@@ -358,7 +360,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await snapshot()).clientRequests).toStrictEqual([]);
   });
   it('does not apply one conversation full-access policy to another agent', async () => {
-    const full = { ...agent, backendDefaults: { kind: 'cursor' as const, permissionMode: 'full-access' } };
+    const full = { ...agent, providerDefaults: { kind: 'cursor' as const, permissionMode: 'full-access' } };
     const manual = { ...agent, id: 'manual-agent' };
     await host.sendPrompt(full, 'permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
@@ -407,7 +409,7 @@ describe('Cursor ACP host transport boundary', () => {
       await writeFile(path.join(root, 'usage-response.json'), JSON.stringify({ result: { stopReason, usage: counts(n) } }));
       const before = completions().length;
       const sent = await host.sendPrompt(current, 'usage');
-      current = { ...current, backendSession: sent.backendSession };
+      current = { ...current, providerSession: sent.providerSession };
       await vi.waitFor(() => expect(completions()).toHaveLength(before + 1));
       await usage.drain();
     };
@@ -420,9 +422,9 @@ describe('Cursor ACP host transport boundary', () => {
       });
       await host.releaseConversation!(current.id);
       const before = completions().length;
-      const saved = current.backendSession;
+      const saved = current.providerSession;
       if (saved?.kind !== 'cursor') throw new Error('Expected Cursor session');
-      await host.resumeConversation!(current, { ref: { backend: 'cursor', folder: root, sessionId: saved.sessionId }, storageState: 'active' });
+      await host.resumeConversation!(current, { ref: { provider: 'cursor', folder: root, sessionId: saved.sessionId }, storageState: 'active' });
       await usage.drain();
       expect(completions()).toHaveLength(before);
       await sample(4); // A cold resume's first cumulative sample establishes a baseline, not new work.
@@ -503,7 +505,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('cold loads native history once without executing or counting replay, then continues that session', async () => {
     const observations: unknown[] = []; host.onUsage!(event => observations.push(event));
-    const saved = { ...agent, backendSession: { kind: 'cursor' as const, sessionId: 'saved-session' } };
+    const saved = { ...agent, providerSession: { kind: 'cursor' as const, sessionId: 'saved-session' } };
     await host.loadConversation!(saved);
     await host.loadConversation!(saved);
     const frames = events.filter(event => event.type === 'cursor.conversationSnapshotChanged');
@@ -523,7 +525,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('rejects missing or foreign-workspace native history before load and never creates a replacement', async () => {
     for (const sessionId of ['missing-session', 'foreign-session']) {
-      await expect(host.loadConversation!({ ...agent, backendSession: { kind: 'cursor', sessionId } })).rejects.toThrow(/missing|workspace/i);
+      await expect(host.loadConversation!({ ...agent, providerSession: { kind: 'cursor', sessionId } })).rejects.toThrow(/missing|workspace/i);
     }
     expect((await wire()).some(call => ['session/new', 'session/load', 'session/prompt'].includes(call.method))).toBe(false);
   });
@@ -563,8 +565,8 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     const liveUser = (await snapshot()).messages.find(message => message.role === 'user')!;
     expect(liveUser.parts).toContainEqual({ type: 'attachment', attachment: { kind: 'file', name: 'notes.txt', path: file } });
-    await host.close(); host = createBackendDriver('cursor'); events = []; host.onEvent(event => events.push(event));
-    const saved = { ...agent, backendSession: first.backendSession };
+    await host.close(); host = createProviderDriver('cursor'); events = []; host.onEvent(event => events.push(event));
+    const saved = { ...agent, providerSession: first.providerSession };
     await host.loadConversation!(saved);
     const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged')!;
     if (frame.type !== 'cursor.conversationSnapshotChanged') throw new Error('No snapshot');
@@ -576,18 +578,18 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('lists workspace history without creating a session and explicitly resumes only idle validated targets', async () => {
     const history = await host.listConversations!(agent, { searchTerm: 'saved', limit: 1 });
-    expect(history).toMatchObject([{ sessionId: 'saved-session', updatedAt: '', ref: { backend: 'cursor', folder: root, sessionId: 'saved-session' } }]);
+    expect(history).toMatchObject([{ sessionId: 'saved-session', updatedAt: '', ref: { provider: 'cursor', folder: root, sessionId: 'saved-session' } }]);
     expect((await wire()).some(call => call.method === 'session/new')).toBe(false);
-    await expect(host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: 'foreign-session' }, storageState: 'active' })).rejects.toThrow(/workspace/);
+    await expect(host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: 'foreign-session' }, storageState: 'active' })).rejects.toThrow(/workspace/);
     const resumed = await host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' });
-    expect(resumed.backendSession).toStrictEqual({ kind: 'cursor', sessionId: 'saved-session' });
-    const active = await host.sendPrompt({ ...agent, backendSession: resumed.backendSession }, 'wait');
+    expect(resumed.providerSession).toStrictEqual({ kind: 'cursor', sessionId: 'saved-session' });
+    const active = await host.sendPrompt({ ...agent, providerSession: resumed.providerSession }, 'wait');
     await expect(host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' })).rejects.toThrow(/current|finish/i);
     await host.interrupt(agent, active.turnId);
   });
   it('cancels an explicit resume during replay without adopting its session', async () => {
     await writeFile(path.join(root, 'hold-load'), '');
-    const pending = host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: 'saved-session' }, storageState: 'active' }).catch(error => error);
+    const pending = host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: 'saved-session' }, storageState: 'active' }).catch(error => error);
     await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/load')).toBe(true));
     await host.releaseConversation!(agent.id);
     expect(await pending).toBeInstanceOf(Error);
@@ -596,12 +598,12 @@ describe('Cursor ACP host transport boundary', () => {
   it('reads validated stored messages without replacing the live session or emitting execution frames', async () => {
     const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
     const before = events.length; const observations: unknown[] = []; host.onUsage!(value => observations.push(value));
-    const messages = await host.readConversationMessages!({backend:'cursor',folder:root,sessionId:'saved-session'},agent.id);
+    const messages = await host.readConversationMessages!({provider:'cursor',folder:root,sessionId:'saved-session'},agent.id);
     expect(JSON.stringify(messages)).toContain('Remember synthetic marker');
     expect(events.slice(before).filter(event => event.type.startsWith('cursor.'))).toStrictEqual([]);
     expect(observations).toStrictEqual([]);
-    await expect(host.readConversationMessages!({backend:'cursor',folder:root,sessionId:'foreign-session'},agent.id)).rejects.toThrow(/workspace/i);
-    await host.sendPrompt({...agent,backendSession:first.backendSession},'continue'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    await expect(host.readConversationMessages!({provider:'cursor',folder:root,sessionId:'foreign-session'},agent.id)).rejects.toThrow(/workspace/i);
+    await host.sendPrompt({...agent,providerSession:first.providerSession},'continue'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
     expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
   });
   it.each([
@@ -625,7 +627,7 @@ describe('Cursor ACP host transport boundary', () => {
     const loggedIn = {isAuthenticated:true,userInfo:{email:'owner@example.invalid',teamName:'Team'}};
     await writeFile(path.join(root,'status.json'),JSON.stringify(loggedIn));
     const first = await host.sendPrompt(agent,'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    const saved = {...agent,backendSession:first.backendSession};
+    const saved = {...agent,providerSession:first.providerSession};
     await writeFile(path.join(root,'status.json'),JSON.stringify({isAuthenticated:false})); await host.authenticate!({action:'check'});
     const before = await snapshot();
     await expect(host.sendPrompt(saved,'signed-out')).rejects.toThrow(/sign in|disconnected/i);
@@ -641,7 +643,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('selects catalog plan mode before a prompt and restores agent mode for the following normal prompt', async () => {
     const first = await host.sendPrompt(agent,'hello',{planMode:true}); await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    await host.sendPrompt({...agent,backendSession:first.backendSession},'normal'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
+    await host.sendPrompt({...agent,providerSession:first.providerSession},'normal'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
     const calls = (await wire()).filter(call => call.method === 'session/set_config_option' || call.method === 'session/prompt');
     expect(calls.map(call => [call.method,call.params.value ?? call.params.prompt[0].text.split('\n')[0]])).toStrictEqual([
       ['session/set_config_option','plan'],['session/prompt','hello'],['session/set_config_option','agent'],['session/prompt','normal'],
@@ -685,8 +687,8 @@ describe('Cursor ACP host transport boundary', () => {
       expect(mcp?.type==='tool' && mcp.metadata?.displayTitle).toBeUndefined();
     };
     verify(await snapshot());
-    await host.close(); host=createBackendDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));
-    await host.loadConversation!({...agent,backendSession:first.backendSession});
+    await host.close(); host=createProviderDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));
+    await host.loadConversation!({...agent,providerSession:first.providerSession});
     verify(await snapshot());
   });
   it.each([false,true])('observes a validated workspace image without claiming generated success (notification=%s)', async notification => {
@@ -753,12 +755,12 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('clears inherited effort on model changes and honors explicit null without resetting native thought settings', async () => {
     await writeFile(path.join(root,'rich-models'),'');
-    const defaults={...agent,backendDefaults:{kind:'cursor' as const,model:'fixture-alpha',reasoningEffort:'extra-high'}};
+    const defaults={...agent,providerDefaults:{kind:'cursor' as const,model:'fixture-alpha',reasoningEffort:'extra-high'}};
     await host.sendPrompt(defaults,'hello'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
     await host.sendPrompt(defaults,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
     await host.sendPrompt(defaults,'hello',{selection:{model:'fixture-beta'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(3));
     await writeFile(path.join(root,'native-thinking-change'),'');
-    const dual={...agent,backendDefaults:{kind:'cursor' as const,model:'fixture-dual'}};
+    const dual={...agent,providerDefaults:{kind:'cursor' as const,model:'fixture-dual'}};
     await host.sendPrompt(dual,'hello'); await vi.waitFor(()=>expect(completions()).toHaveLength(4));
     await host.sendPrompt(dual,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(5));
     expect((await wire()).filter(call=>call.fixture==='prompt-admission').map(call=>({model:call.model,thoughts:call.thoughts}))).toStrictEqual([
@@ -821,17 +823,17 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('switches an untouched agent to Cursor through the app boundary and accepts its first prompt', async () => {
     const state = createTestSnapshot();
-    state.agents = [{ ...agent, backend: 'codex', backendDefaults: { kind: 'codex', model: 'must-not-leak' }, backendSession: undefined }];
+    state.agents = [{ ...agent, provider: 'codex', providerDefaults: { kind: 'codex', model: 'must-not-leak' }, providerSession: undefined }];
     state.teams[0]!.agentIds = [agent.id]; state.teams[0]!.activeAgentId = agent.id; state.activeAgentId = agent.id;
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     try {
-      await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/update', params: { input: { id: agent.id, selection: { backend: 'cursor' } } } });
-      expect(state.agents[0]).toMatchObject({ backend: 'cursor', backendDefaults: { kind: 'cursor' } });
-      expect(state.agents[0]!.backendDefaults?.model).toBeUndefined();
+      await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/update', params: { input: { id: agent.id, selection: { provider: 'cursor' } } } });
+      expect(state.agents[0]).toMatchObject({ provider: 'cursor', providerDefaults: { kind: 'cursor' } });
+      expect(state.agents[0]!.providerDefaults?.model).toBeUndefined();
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'hello', expectedSessionId: null } });
       await vi.waitFor(() => expect(completions()).toHaveLength(1));
-      expect(state.agents[0]!.backendSession).toMatchObject({ kind: 'cursor' });
+      expect(state.agents[0]!.providerSession).toMatchObject({ kind: 'cursor' });
       expect(state.agents[0]!.status.type).toBe('idle');
     } finally { await server.close(); }
   });
@@ -839,20 +841,20 @@ describe('Cursor ACP host transport boundary', () => {
     const second = { ...agent, id: 'second-cursor-agent' };
     const results = await Promise.all([host.sendPrompt(agent, 'hello'), host.sendPrompt(second, 'hello')]);
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
-    expect(results[0]!.backendSession).not.toEqual(results[1]!.backendSession);
+    expect(results[0]!.providerSession).not.toEqual(results[1]!.providerSession);
     await host.loadConversation!(second);
     const frames = events.filter(event => event.type === 'cursor.conversationSnapshotChanged');
     expect(frames.at(-1)).toMatchObject({ agentId: second.id, payload: { snapshot: { agentId: second.id } } });
   });
   it('handshakes, streams split text/thought/tool frames and serializes two prompts with developer context', async () => {
     const first = await host.sendPrompt(agent, 'hello');
-    const second = await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'again');
+    const second = await host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'again');
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
     const state = await snapshot();
     expect(state.turns.map(turn => turn.status)).toEqual(['completed', 'completed']);
     expect(state.messages.flatMap(message => message.parts).filter(part => part.type === 'text')).toContainEqual({ type: 'text', text: 'Hello Cursor' });
     expect(state.messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({ type: 'tool', title: 'Read synthetic.txt', status: 'completed', body: 'synthetic contents' }));
-    expect(second.backendSession).toEqual(first.backendSession);
+    expect(second.providerSession).toEqual(first.providerSession);
     const calls = await wire();
     expect(calls.slice(0, 3).map(call => call.method)).toEqual(['initialize', 'authenticate', 'session/new']);
     expect(calls[0].params.clientCapabilities).toEqual({ _meta: { parameterizedModelPicker: true } });
@@ -878,8 +880,8 @@ describe('Cursor ACP host transport boundary', () => {
   ] as const)('round-trips $prompt through the daemon request registry', async ({prompt,outcome,nativeId,native}) => {
     const state = createTestSnapshot(); state.agents = [{...agent}]; state.activeAgentId=agent.id;
     state.teams[0]!.agentIds=[agent.id]; state.teams[0]!.activeAgentId=agent.id;
-    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
-    const server = new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    state.providerConnections=[{provider:'cursor',installed:true,connected:true,checking:false}];
+    const server = new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new ProviderDriverRpc(new Map([['cursor',host]]))});
     try {
       await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt,expectedSessionId:null,options:{planMode:prompt==='extension'}}});
       await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
@@ -895,8 +897,8 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it.each(['accept','cancel','revise','interrupt'] as const)('uses the shared sidebar review for a blocking native Cursor plan: %s', async resolution => {
     const state=createTestSnapshot();state.agents=[{...agent}];state.activeAgentId=agent.id;state.teams[0]!.agentIds=[agent.id];state.teams[0]!.activeAgentId=agent.id;
-    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
-    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    state.providerConnections=[{provider:'cursor',installed:true,connected:true,checking:false}];
+    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new ProviderDriverRpc(new Map([['cursor',host]]))});
     const respond=(response:object)=>server.handleMessage({jsonrpc:'2.0',id:'sidebar',method:'agent/planReview/respond',params:{agentId:agent.id,response}});
     try {
       await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt:'extension',expectedSessionId:null,options:{planMode:true}}});
@@ -924,8 +926,8 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('publishes ordinary native Plan-mode Markdown to the shared interactive sidebar', async () => {
     const state=createTestSnapshot();state.agents=[{...agent}];state.activeAgentId=agent.id;state.teams[0]!.agentIds=[agent.id];state.teams[0]!.activeAgentId=agent.id;
-    state.providerConnections=[{backend:'cursor',installed:true,connected:true,checking:false}];
-    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new BackendDriverRpc(new Map([['cursor',host]]))});
+    state.providerConnections=[{provider:'cursor',installed:true,connected:true,checking:false}];
+    const server=new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new ProviderDriverRpc(new Map([['cursor',host]]))});
     try {
       await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt:'markdown-plan',expectedSessionId:null,options:{planMode:true}}});
       await vi.waitFor(()=>expect(state.agents[0]!.planReview?.status).toBe('pending'));
@@ -944,7 +946,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',status:'completed',metadata:expect.objectContaining({plan:'# Synthetic plan',todos:[]})}));
     for (const event of events) if (event.type === 'cursor.conversationEventReceived') expect(isCursorEvent(event.payload.event)).toBe(true);
     await expect(host.respondToAgentRequest({ id: request.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'allow' } })).rejects.toThrow(/pending/i);
-    const next = await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'extension');
+    const next = await host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'extension');
     await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
     await host.interrupt(agent, next.turnId);
     expect((await snapshot()).clientRequests).toStrictEqual([]);
@@ -971,7 +973,7 @@ describe('Cursor ACP host transport boundary', () => {
     await expect(host.respondToAgentRequest({id:next.id,agentId:agent.id,outcome:{kind:'answered',answers:{}}})).rejects.toThrow(/pending/i);
   });
   it('preapproves only observed app MCP calls in the active turn without persistent permissions', async () => {
-    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp' }); host.onEvent(event => events.push(event));
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp' }); host.onEvent(event => events.push(event));
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({}));
     const first = await host.sendPrompt(agent,'mcp-permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
@@ -979,7 +981,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect(events.some(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='request.created')).toBe(false);
     expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-once'}});
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({omitObservation:true}));
-    await host.sendPrompt({...agent,backendSession:first.backendSession},'mcp-permission');
+    await host.sendPrompt({...agent,providerSession:first.providerSession},'mcp-permission');
     await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
     await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).clientRequests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
     await vi.waitFor(()=>expect(completions()).toHaveLength(2));
@@ -993,7 +995,7 @@ describe('Cursor ACP host transport boundary', () => {
     {name:'no app gateway',config:{},noGateway:true},
     {name:'duplicate server identity',config:{},duplicate:true},
   ])('keeps manual permission for $name', async ({config,noGateway,duplicate}) => {
-    await host.close(); host = createBackendDriver('cursor', { ...(!noGateway?{appMcpServerUrl:'http://127.0.0.1:1234/mcp'}:{}), ...(duplicate?{hostedMcpServerUrls:()=>({korus:'http://127.0.0.1:1235/mcp'})}:{}) }); host.onEvent(event=>events.push(event));
+    await host.close(); host = createProviderDriver('cursor', { ...(!noGateway?{appMcpServerUrl:'http://127.0.0.1:1234/mcp'}:{}), ...(duplicate?{hostedMcpServerUrls:()=>({korus:'http://127.0.0.1:1235/mcp'})}:{}) }); host.onEvent(event=>events.push(event));
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify(config));
     await host.sendPrompt(agent,'mcp-permission');
     await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
@@ -1002,7 +1004,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-reject'}});
   });
   it('binds each supplied app and hosted MCP bridge to its owning agent', async () => {
-    await host.close(); host = createBackendDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ synthetic: 'http://127.0.0.1:1235/mcp' }) });
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: 'http://127.0.0.1:1234/mcp', hostedMcpServerUrls: () => ({ synthetic: 'http://127.0.0.1:1235/mcp' }) });
     const second = { ...agent, id: 'other-agent' };
     await host.listModels!(agent); await host.listModels!(second);
     const calls = (await wire()).filter(call => call.method === 'session/new');
@@ -1015,29 +1017,29 @@ describe('Cursor ACP host transport boundary', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     const reset = Math.ceil((Date.now() + 300_000) / 1000) * 1000;
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     try {
-      if (knownReset) server.emitEvent({ type: 'account.rateLimitsUpdated', backend: 'cursor', payload: { rateLimits: {
+      if (knownReset) server.emitEvent({ type: 'account.rateLimitsUpdated', provider: 'cursor', payload: { rateLimits: {
         limitId: 'cursor', limitName: 'Included', primary: { usedPercent: 100, windowDurationMins: 43200, resetsAt: reset / 1000 }, secondary: null,
         credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
       } } });
       await server.handleMessage({ jsonrpc: '2.0', id: 'quota', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'quota' } });
       await vi.waitFor(() => expect(completions()).toHaveLength(1));
-      const reference = state.agents[0]!.backendSession;
+      const reference = state.agents[0]!.providerSession;
       expect(host.getRuntimeStatus()).toMatchObject({ status: 'running' });
       expect(state.providerConnections[0]).toMatchObject({ connected: true });
       expect(events.filter(event => event.type === 'provider.authenticationChanged' && !event.payload.connected)).toStrictEqual([]);
       expect(JSON.stringify(events)).not.toContain('private.invalid');
       if (knownReset) {
-        expect(state.agents[0]!.rateLimitPause).toMatchObject({ backend: 'cursor', resumeAt: reset, enabled: true });
+        expect(state.agents[0]!.rateLimitPause).toMatchObject({ provider: 'cursor', resumeAt: reset, enabled: true });
         await vi.advanceTimersByTimeAsync(reset - Date.now() + 5_000);
       } else {
         expect(state.agents[0]!.rateLimitPause).toBeUndefined();
         await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'hello' } });
       }
       await vi.waitFor(() => expect(completions()).toHaveLength(2));
-      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      expect(state.agents[0]!.providerSession).toStrictEqual(reference);
       expect(state.agents[0]!.rateLimitPause).toBeFalsy();
       await vi.advanceTimersByTimeAsync(60_000);
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
@@ -1047,17 +1049,17 @@ describe('Cursor ACP host transport boundary', () => {
   it('keeps an unanswered native plan alive overnight and settles it only on explicit interruption', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'plan', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'extension', options: { planMode: true } } });
       await vi.waitFor(() => expect(state.agents[0]!.planReview?.status).toBe('pending'));
-      const reference = state.agents[0]!.backendSession;
+      const reference = state.agents[0]!.providerSession;
       await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
       expect(completions()).toStrictEqual([]);
       expect(state.providerConnections[0]).toMatchObject({ connected: true });
       expect(state.agentRequests?.[agent.id]).toHaveLength(1);
-      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      expect(state.agents[0]!.providerSession).toStrictEqual(reference);
       await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: 'agent/interrupt', params: { agentId: agent.id } });
       expect(state.agents[0]!.planReview?.status).toBe('cancel');
       expect(state.agentRequests?.[agent.id]).toStrictEqual([]);
@@ -1066,17 +1068,17 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('keeps provider authentication connected after a conversation process failure and reloads its saved session on retry', async () => {
     const state = createTestSnapshot(); state.agents = [{ ...agent }];
-    state.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
-    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new BackendDriverRpc(new Map([['cursor', host]])) });
+    state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
+    const server = new AppBackendServer({ version: 'fixture', snapshot: state, driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'fail', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'eof' } });
       await vi.waitFor(() => expect(completions()).toHaveLength(1));
-      const reference = state.agents[0]!.backendSession;
+      const reference = state.agents[0]!.providerSession;
       expect(events.filter(event => event.type === 'provider.authenticationChanged' && !event.payload.connected)).toStrictEqual([]);
       expect(state.providerConnections[0]).toMatchObject({ connected: true });
       await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'hello' } });
       await vi.waitFor(() => expect(completions()).toHaveLength(2));
-      expect(state.agents[0]!.backendSession).toStrictEqual(reference);
+      expect(state.agents[0]!.providerSession).toStrictEqual(reference);
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
       expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
     } finally { await server.close(); }
@@ -1086,8 +1088,8 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(() => expect(events.some(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'message.upsert' && JSON.stringify(event.payload.event).includes('Hello'))).toBe(true));
     await host.interrupt(agent, first.turnId);
     await host.interrupt(agent, first.turnId);
-    const continued = await host.continueInterruptedTurn!({ ...agent, backendSession: first.backendSession });
-    expect(continued.backendSession).toStrictEqual(first.backendSession);
+    const continued = await host.continueInterruptedTurn!({ ...agent, providerSession: first.providerSession });
+    expect(continued.providerSession).toStrictEqual(first.providerSession);
     expect(continued.activeTurnId).toBeTypeOf('string');
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
     expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
@@ -1119,15 +1121,15 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('rejects cross-session and workspace mutations without sending another prompt', async () => {
     const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    await expect(host.sendPrompt({ ...agent, backendSession: { kind: 'cursor', sessionId: 'wrong' } }, 'wrong')).rejects.toThrow('identity');
+    await expect(host.sendPrompt({ ...agent, providerSession: { kind: 'cursor', sessionId: 'wrong' } }, 'wrong')).rejects.toThrow('identity');
     await expect(host.sendPrompt({ ...agent, folder: path.join(root, 'different') }, 'wrong')).rejects.toThrow('workspace');
     expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
-    expect(first.backendSession.kind).toBe('cursor');
+    expect(first.providerSession.kind).toBe('cursor');
   });
   it('queues a prompt behind the active turn and releases it only after cancellation settles', async () => {
     const first = await host.sendPrompt(agent, 'wait');
     let admitted = false;
-    const queued = host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'again').then(result => { admitted = true; return result; });
+    const queued = host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'again').then(result => { admitted = true; return result; });
     await vi.waitFor(async () => expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1));
     expect(admitted).toBe(false);
     await host.interrupt(agent, first.turnId); await queued;
@@ -1144,9 +1146,9 @@ describe('Cursor ACP host transport boundary', () => {
       expect((await snapshot()).turns).toMatchObject([{ status: 'interrupted' }]);
       await expect(host.sendPrompt(agent, 'after-process-loss')).rejects.toThrow(/connection closed/i);
       vi.useRealTimers();
-      if (first.backendSession.kind !== 'cursor') throw new Error('Invalid session');
-      await host.resumeConversation!(agent, { ref: { backend: 'cursor', folder: root, sessionId: first.backendSession.sessionId }, storageState: 'active' });
-      await host.sendPrompt({ ...agent, backendSession: first.backendSession }, 'RECOVERED');
+      if (first.providerSession.kind !== 'cursor') throw new Error('Invalid session');
+      await host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: first.providerSession.sessionId }, storageState: 'active' });
+      await host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'RECOVERED');
       await vi.waitFor(() => expect(completions()).toHaveLength(2));
     } finally { vi.useRealTimers(); }
   });

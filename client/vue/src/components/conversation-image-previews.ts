@@ -1,13 +1,13 @@
 import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
-import { provideHostCapabilities as provideCodexHostCapabilities, useHostCapabilities as useCodexHostCapabilities } from '@korus-dev/agent-ui-sdk';
+import { provideHostCapabilities, useHostCapabilities } from '@korus-dev/agent-ui-sdk';
 import { appApi } from '../platform-api';
 
 /** Keep attachment capabilities native; read conversation file images on their owning host. */
 export function provideConversationImagePreviews(agentId: () => string | undefined): void {
-  const host = useCodexHostCapabilities();
+  const host = useHostCapabilities();
   // Native mobile hosts already provide their own reader and smaller preview pool.
   if (!host || !appApi) return;
-  provideCodexHostCapabilities({
+  provideHostCapabilities({
     ...host,
     async readImagePreview(reference) {
       const owner = agentId(); const api = appApi;

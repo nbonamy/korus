@@ -9,7 +9,7 @@ describe('createAgentHistoryState', () => {
   it('does not infer an empty transcript from a successful request before its provider frame arrives', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'delayed-frame' };
+    agent.providerSession = { kind: 'codex', threadId: 'delayed-frame' };
     let hasFrame = false;
     stubElectronTestWindow({ app: { loadConversationHistory: vi.fn().mockResolvedValue(snapshot) } satisfies Partial<AppApi> });
     const state = createAgentHistoryState({ adoptSnapshot: vi.fn(), getSnapshot: () => snapshot,
@@ -19,29 +19,29 @@ describe('createAgentHistoryState', () => {
     hasFrame = true;
     expect(state.statusFor(agent.id).hydrating).toBe(false);
   });
-  it('shows pending history in a late renderer and reports a lost-event failure through the request', async () => {
+  it('shows pending history in a late renderer and retains a lost-event failure in the pane', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-restored' };
+    agent.providerSession = { kind: 'codex', threadId: 'thread-restored' };
     let loadedThread: string | undefined;
     const loadConversationHistory = vi.fn().mockRejectedValueOnce(new Error('Unable to load conversation history.')).mockImplementation(async () => {
-      if (agent.backendSession?.kind === 'codex') loadedThread = agent.backendSession.threadId;
+      if (agent.providerSession?.kind === 'codex') loadedThread = agent.providerSession.threadId;
       return snapshot;
     });
     stubElectronTestWindow({ app: { loadConversationHistory } satisfies Partial<AppApi> });
     const state = createAgentHistoryState({ adoptSnapshot: vi.fn(), getSnapshot: () => snapshot, synchronizeComposerSelection: vi.fn(),
-      hasHistory: () => agent.backendSession?.kind === 'codex' && agent.backendSession.threadId === loadedThread });
+      hasHistory: () => agent.providerSession?.kind === 'codex' && agent.providerSession.threadId === loadedThread });
     expect(state.statusFor(agent.id).hydrating).toBe(true);
-    await expect(state.hydrate(agent.id)).rejects.toThrow('Unable to load');
+    await expect(state.hydrate(agent.id)).resolves.toBeUndefined();
     expect(state.statusFor(agent.id)).toMatchObject({ failed: true, hydrating: false });
     await state.hydrate(agent.id);
     expect(state.statusFor(agent.id)).toMatchObject({ failed: false, hydrating: false });
-    agent.backendSession = { kind: 'codex', threadId: 'another-thread' };
+    agent.providerSession = { kind: 'codex', threadId: 'another-thread' };
     expect(state.statusFor(agent.id).hydrating).toBe(true);
   });
   it('preserves an event-before-RPC failure until a later successful retry', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const first = deferred<AppSnapshot>();
     const second = deferred<AppSnapshot>();
     let hasFrame = false;

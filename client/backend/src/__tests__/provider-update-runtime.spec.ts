@@ -12,7 +12,7 @@ function fixture(resolved: string, options: Partial<ConstructorParameters<typeof
   const fetchText = vi.fn(async () => JSON.stringify({ version: '1.2.0' }));
   const read = vi.fn(async () => JSON.stringify({ name: '@openai/codex' }));
   const realpath = vi.fn(async (file: string) => file === '/tools/bin/npm' ? '/tools/lib/node_modules/npm/bin/npm-cli.js' : file.startsWith('/tools/lib/') ? file : resolved);
-  const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/user/.claude', ...options }, {
+  const runtime = new ProviderUpdateRuntime({ command: provider => provider, claudeHome: () => '/user/.claude', ...options }, {
     home: '/user', platform: 'darwin',
     resolve: command => command === '/tools/bin/node' ? command : command === 'npm' ? '/tools/bin/npm' : command === 'brew' ? '/brew/bin/brew' : `/user/.local/bin/${command}`,
     realpath,
@@ -139,12 +139,12 @@ describe('installed provider updates', () => {
     expect(f.run).toHaveBeenLastCalledWith('/user/.local/bin/codex', ['update'], 300_000, { CODEX_HOME: '/user/.codex' });
   });
 
-  it.each(['codex', 'claude'] as const)('keeps a custom %s wrapper manual and preserves the registry fallback', async backend => {
+  it.each(['codex', 'claude'] as const)('keeps a custom %s wrapper manual and preserves the registry fallback', async provider => {
     const f = fixture('/user/scripts/codex-wrapper');
     f.read.mockResolvedValue(JSON.stringify({ autoUpdatesChannel: 'stable' }));
-    const installation = await f.runtime.inspect(backend);
+    const installation = await f.runtime.inspect(provider);
     expect(installation).toMatchObject({ status: 'available', latestVersion: '1.2.0', method: 'manual', command: undefined });
-    expect(f.fetchText).toHaveBeenCalledWith(`https://registry.npmjs.org/${backend === 'codex' ? '@openai/codex' : '@anthropic-ai/claude-code'}/latest`);
+    expect(f.fetchText).toHaveBeenCalledWith(`https://registry.npmjs.org/${provider === 'codex' ? '@openai/codex' : '@anthropic-ai/claude-code'}/latest`);
   });
 
   it('reports registry failures instead of claiming the installed provider is current', async () => {

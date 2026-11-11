@@ -38,8 +38,8 @@
             </template>
           </el-tooltip>
         </div>
-        <div v-for="group in usageGroups" :key="group.backend" class="settings-menu__usage-group" :aria-label="group.name">
-          <strong class="settings-menu__engine"><BackendIcon class="settings-menu__engine-icon" :backend="group.backend" />{{ group.name }}</strong>
+        <div v-for="group in usageGroups" :key="group.provider" class="settings-menu__usage-group" :aria-label="group.name">
+          <strong class="settings-menu__engine"><ProviderIcon class="settings-menu__engine-icon" :provider="group.provider" />{{ group.name }}</strong>
           <span v-if="group.failed" class="settings-menu__usage-error">{{ $t('surface.settingsMenu.loadFailed') }}</span>
           <div v-for="row in group.rows" :key="row.label" class="settings-menu__rate-limit" :class="{ 'settings-menu__rate-limit--detail': row.detail }" :title="row.title ?? row.label" :aria-label="row.label">
             <span class="settings-menu__rate-limit-name">{{ row.label }}</span>
@@ -71,25 +71,25 @@
 <script setup lang="ts">
 import { i18n, translate } from '../i18n';
 import { computed, ref, unref, watch } from 'vue';
-import type { AccountRateLimitWindow, AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
+import type { AccountRateLimitWindow, AccountRateLimits, HarnessProvider, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { BrandSpeedTest, ChartBarIcon, InfoCircleIcon, ProductMarkIcon, QuitIcon, SettingsIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appHostCapabilities, appApi } from '../platform-api';
-import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
-import BackendIcon from './BackendIcon.vue';
+import { supportsSubscriptionQuota } from '@workspace/core/agent-providers';
+import ProviderIcon from './ProviderIcon.vue';
 import { isAccountBilling } from '@workspace/core/snapshot-guard-collections';
 
 const props = withDefaults(defineProps<{
   active?: boolean;
   rateLimits?: AccountRateLimits;
-  enabledBackends?: AgentBackend[];
-  backendRateLimits?: AppSnapshot['backendAccountRateLimits'];
+  enabledProviders?: HarnessProvider[];
+  providerRateLimits?: AppSnapshot['providerAccountRateLimits'];
   providerConnections?: AppSnapshot['providerConnections'];
   account?: CodexAccount | null;
 }>(), {
   active: false,
-  enabledBackends: () => [],
+  enabledProviders: () => [],
 });
 
 const emit = defineEmits<{
@@ -101,24 +101,24 @@ const emit = defineEmits<{
 const popoverVisible = ref(false);
 const menuTrigger = ref<HTMLElement | null>(null);
 const nowMs = ref(Date.now());
-const fetchedUsage = ref<Partial<Record<AgentBackend, AccountRateLimits | null>>>({});
-const usageErrors = ref<Partial<Record<AgentBackend, boolean>>>({});
-const quotaBackends = computed(() => props.enabledBackends.filter(backend => supportsSubscriptionQuota(backend, props.account)));
+const fetchedUsage = ref<Partial<Record<HarnessProvider, AccountRateLimits | null>>>({});
+const usageErrors = ref<Partial<Record<HarnessProvider, boolean>>>({});
+const quotaBackends = computed(() => props.enabledProviders.filter(backend => supportsSubscriptionQuota(backend, props.account)));
 watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify(props.account),
-  () => JSON.stringify(props.providerConnections?.map(provider => [provider.backend, provider.authentication]))], ([visible], _previous, onCleanup) => {
+  () => JSON.stringify(props.providerConnections?.map(provider => [provider.provider, provider.authentication]))], ([visible], _previous, onCleanup) => {
   fetchedUsage.value = {};
   usageErrors.value = {};
   if (!visible) return;
   // Financial data from disk can belong to the previous native account. Wait
   // for a current read instead of flashing a persisted balance on opening.
-  for (const backend of quotaBackends.value) if (isAccountBilling(props.backendRateLimits?.[backend]?.billing)) fetchedUsage.value[backend] = null;
+  for (const backend of quotaBackends.value) if (isAccountBilling(props.providerRateLimits?.[backend]?.billing)) fetchedUsage.value[backend] = null;
   let cancelled = false;
-  async function refreshUsage(backend: AgentBackend): Promise<void> {
+  async function refreshUsage(provider: HarnessProvider): Promise<void> {
     try {
-      const limits = await appApi?.getProviderUsage(backend);
-      if (!cancelled && limits !== undefined) fetchedUsage.value[backend] = limits;
+      const limits = await appApi?.getProviderUsage(provider);
+      if (!cancelled && limits !== undefined) fetchedUsage.value[provider] = limits;
     } catch {
-      if (!cancelled) usageErrors.value[backend] = true;
+      if (!cancelled) usageErrors.value[provider] = true;
     }
   }
   for (const backend of quotaBackends.value) void refreshUsage(backend);
@@ -176,12 +176,12 @@ type RateLimitRow = {
 
 const usageGroups = computed(() => quotaBackends.value.map(backend => {
   const limits = fetchedUsage.value[backend] !== undefined ? fetchedUsage.value[backend]
-    : props.backendRateLimits?.[backend] ?? (backend === 'codex' ? props.rateLimits : undefined);
+    : props.providerRateLimits?.[backend] ?? (backend === 'codex' ? props.rateLimits : undefined);
   const rows = [
     rateLimitRow(limits?.primary ?? null, translate('surface.settingsMenu.usage')),
     ...(isAccountBilling(limits?.billing) ? [] : [rateLimitRow(limits?.secondary ?? null, translate('surface.settingsMenu.weekly'))]),
   ].filter((row): row is RateLimitRow => Boolean(row));
-  return { backend, name: translate(`surface.settingsMenu.engine.${backend}`), rows, failed: usageErrors.value[backend] && !rows.length };
+  return { provider: backend, name: translate(`surface.settingsMenu.engine.${backend}`), rows, failed: usageErrors.value[backend] && !rows.length };
 }).filter(group => group.rows.length > 0 || group.failed));
 
 function rateLimitRow(window: AccountRateLimitWindow | null, fallbackLabel: string): RateLimitRow | null {

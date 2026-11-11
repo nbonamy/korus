@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
-  NativeRendererApi as CodexNativeRendererApi,
+  NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -42,13 +42,13 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 describe('AppShell work routing', () => {
   it('creates a shared worktree and idle agent in each selected repository using its default branch', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const createAgent = vi.fn().mockResolvedValue(undefined);
     const listSourceBranches = vi.fn(async (path: string) => [{ name: path === '/src/api' ? 'main' : 'trunk', isDefault: true }]);
     let finishFirst!: (worktree: { name: string; path: string }) => void;
@@ -95,7 +95,7 @@ describe('AppShell work routing', () => {
 
   it('starts one agent on a new branch of the chosen repository, in a worktree made for it', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const createAgent = vi.fn().mockResolvedValue({ id: 'agent-1' });
     const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true }]);
     const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
@@ -122,7 +122,7 @@ describe('AppShell work routing', () => {
 
   it('opens the new agent dialog on a feature\'s branch', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const createAgent = vi.fn().mockResolvedValue({ id: 'agent-1' });
     const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true }]);
     const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
@@ -140,7 +140,7 @@ describe('AppShell work routing', () => {
 
   it('retries only failed repositories after partial worktree creation', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const createAgent = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Branch already exists')).mockResolvedValueOnce(undefined);
     const createSourceWorktree = vi.fn(async (input: { repoPath: string; branchName: string }) => ({ name: input.branchName, path: input.repoPath + '-search' }));
     const wrapper = mountShell({ snapshot, createAgent, createSourceWorktree, listSourceBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]) });
@@ -172,9 +172,9 @@ describe('AppShell work routing', () => {
   });
   it('requests default-branch resolution on the selected host when opening remotely', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '', providerConnections: snapshot.providerConnections }];
-    setElectronTestClient({ listBackendModels: async () => [] });
+    setElectronTestClient({ listProviderModels: async () => [] });
     const createAgent = vi.fn(async () => undefined);
     const wrapper = mountShell({ snapshot, createAgent,
       listSourceRepositories: async () => [{ name: 'repo', path: '/remote/repo', remoteIdentity: 'github.com/org/repo', worktrees: [] }],
@@ -355,8 +355,8 @@ describe('AppShell work routing', () => {
       name: 'prepared-issue',
       avatar: '🤖',
       folder: '/Users/nbonamy/src/agent-workspace-fix-gh-24',
-      backend: 'codex',
-      backendDefaults: { kind: 'codex' },
+      provider: 'codex',
+      providerDefaults: { kind: 'codex' },
       status: { type: 'idle' },
       createdAt: '2026-08-28T00:00:00.000Z',
       updatedAt: '2026-08-28T00:00:00.000Z',
@@ -396,7 +396,7 @@ describe('AppShell work routing', () => {
     await flushPromises();
     expect(listSourceBranches).not.toHaveBeenCalled();
     expect(createSourceWorktree).not.toHaveBeenCalled();
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'main' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'main' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
     listSourceBranches.mockClear();
     createAgent.mockClear();
 
@@ -441,13 +441,13 @@ describe('AppShell work routing', () => {
       repositoryRoot: '/Users/nbonamy/src/agent-workspace',
     });
     await flushPromises();
-    sourceDialog.vm.$emit('start-work-item', { action: 'fix', destination: 'new', item: issue, selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } });
+    sourceDialog.vm.$emit('start-work-item', { action: 'fix', destination: 'new', item: issue, selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } });
     await flushPromises();
     expect(createSourceWorktree).toHaveBeenCalledWith({
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-24',
     });
-    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ backend: 'codex' }, ...{ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast', backend: 'codex' } } }));
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ provider: 'codex' }, ...{ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast', provider: 'codex' } } }));
     expect(assignWorkItemAction).toHaveBeenCalledWith(expect.objectContaining({
       agentId: preparedAgent.id,
       item: issue,
@@ -468,7 +468,7 @@ describe('AppShell work routing', () => {
     sourceDialog.vm.$emit('select-branch', { name: 'feat/work-routing', isDefault: false });
     await flushPromises();
     expect(createSourceWorktree).not.toHaveBeenCalled();
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'feat/work-routing' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace', repositorySession: { existingBranch: 'feat/work-routing' }, sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(false);
 
     createAgent.mockClear();
@@ -490,7 +490,7 @@ describe('AppShell work routing', () => {
       path: '/Users/nbonamy/src/agent-workspace-feature-session',
     }, { select: false });
     await flushPromises();
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-feature-session', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'codex' } } }, { select: false });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-feature-session', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ provider: 'codex' } } }, { select: false });
   });
 
   it('creates quick chats inside the active team', async () => {
@@ -501,7 +501,7 @@ describe('AppShell work routing', () => {
     wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-quick-chat');
     await flushPromises();
 
-    expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
+    expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
   });
 
   it('creates a new Git project and opens an agent in it', async () => {
@@ -518,7 +518,7 @@ describe('AppShell work routing', () => {
     dialog.vm.$emit('create', 'fresh-project', 'claude');
     await flushPromises();
 
-    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-app', selection: { ...{ backend: 'claude' } } });
+    expect(createProject).toHaveBeenCalledWith({ name: 'fresh-project', teamId: 'team-app', selection: { ...{ provider: 'claude' } } });
     expect(dialog.props('visible')).toBe(false);
   });
 
@@ -538,7 +538,7 @@ describe('AppShell work routing', () => {
     await flushPromises();
 
     if (folder) {
-      expect(createAgent).toHaveBeenCalledExactlyOnceWith({ name: null, folder, teamId: 'team-app', selection: { ...{ backend: 'codex' } } });
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith({ name: null, folder, teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
     } else {
       expect(createAgent).not.toHaveBeenCalled();
     }
@@ -550,7 +550,7 @@ describe('AppShell work routing', () => {
     const snapshot = createEmptySnapshot();
     snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'github-user' }, { provider: 'gitlab', status: 'connected', accountLabel: 'gitlab-user' }];
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const project: WorkSource = { provider: 'gitlab', id: '42', fullName: 'group/subgroup/repo', name: 'repo', url: 'https://gitlab.com/group/subgroup/repo', isPrivate: true };
     const loadWorkRepositories = vi.fn(async (_provider: import('@workspace/core/contracts').WorkProviderKind) => [project]);
     const cloneSourceRepository = vi.fn(async () => ({ name: 'repo', path: '/src/repo', worktrees: [] }));
@@ -959,8 +959,8 @@ describe('AppShell work routing', () => {
       name: 'issue-agent',
       avatar: '🤖',
       folder: '/Users/nbonamy/src/issue-agent',
-      backend: 'codex',
-      backendDefaults: { kind: 'codex' },
+      provider: 'codex',
+      providerDefaults: { kind: 'codex' },
       status: { type: 'idle' },
       createdAt: '2026-06-09T12:00:00.000Z',
       updatedAt: '2026-06-09T12:00:00.000Z',
@@ -1015,7 +1015,7 @@ describe('AppShell work routing', () => {
       name: 'GitHub #12',
       color: '#1B4FB2',
     });
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-github-12', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-github-12', selection: { ...{ provider: 'codex' } } });
     expect(wrapper.emitted('assign-work-item')).toStrictEqual([[{
       agentId: 'agent-issue',
       item,
@@ -1036,8 +1036,8 @@ describe('AppShell work routing', () => {
       name: input.name,
       avatar: input.avatar,
       folder: input.folder,
-      backend: input.selection?.backend,
-      backendDefaults: { kind: 'codex' as const },
+      provider: input.selection?.provider,
+      providerDefaults: { kind: 'codex' as const },
       status: { type: 'idle' as const },
       createdAt: '2026-08-13T00:00:00.000Z',
       updatedAt: '2026-08-13T00:00:00.000Z',
@@ -1060,7 +1060,7 @@ describe('AppShell work routing', () => {
     const startWorkItemsAction = wrapper.findComponent({ name: 'BacklogView' }).props('startWorkItemsAction') as (input: {
       action: 'investigate' | 'fix'; items: WorkItem[]; teamId: string; selection?: import('@workspace/core/contracts').ExecutionSelectionOverrides;
     }) => Promise<void>;
-    await startWorkItemsAction({ action: 'fix', items: [first, second], teamId: 'team-app', selection: { backend: 'claude' } });
+    await startWorkItemsAction({ action: 'fix', items: [first, second], teamId: 'team-app', selection: { provider: 'claude' } });
 
     expect(createSourceWorktree).toHaveBeenNthCalledWith(1, {
       repoPath: '/Users/nbonamy/src/agent-workspace',
@@ -1070,8 +1070,8 @@ describe('AppShell work routing', () => {
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-13',
     });
-    expect(createAgent).toHaveBeenNthCalledWith(1, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'claude' } } }));
-    expect(createAgent).toHaveBeenNthCalledWith(2, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-13', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ backend: 'claude' } } }));
+    expect(createAgent).toHaveBeenNthCalledWith(1, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-12', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ provider: 'claude' } } }));
+    expect(createAgent).toHaveBeenNthCalledWith(2, expect.objectContaining({ name: null, folder: '/Users/nbonamy/src/agent-workspace-fix-gh-13', sourceRepositoryName: 'agent-workspace', teamId: 'team-app', selection: { ...{ provider: 'claude' } } }));
     expect(assignWorkItemAction).toHaveBeenCalledTimes(2);
     expect(assignWorkItemAction.mock.calls[0]?.[0].prompt).toContain('Fix this GitHub issue');
   });
@@ -1096,8 +1096,8 @@ describe('AppShell work routing', () => {
       name: 'agent-workspace - gh-38',
       avatar: '🤖',
       folder: '/Users/nbonamy/src/agent-workspace-feature-paginated-cockpit',
-      backend: 'codex',
-      backendDefaults: { kind: 'codex' },
+      provider: 'codex',
+      providerDefaults: { kind: 'codex' },
       status: { type: 'idle' },
       createdAt: '2026-08-13T00:00:00.000Z',
       updatedAt: '2026-08-13T00:00:00.000Z',
@@ -1319,7 +1319,7 @@ describe('AppShell work routing', () => {
 
   it('forwards agent context menu action intents', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-dina' };
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
 
     await wrapper.findAll('.agent-sidebar__agent')[0].trigger('contextmenu', {

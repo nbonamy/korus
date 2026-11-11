@@ -1,6 +1,6 @@
 import { isAppMcpServerName } from '@workspace/core/product';
 import {
-  type ToolTitlePresenterContext as CodexToolTitlePresenterContext,
+  type ToolTitlePresenterContext,
 } from '@korus-dev/agent-ui-sdk';
 
 type ToolPhase = 'completed' | 'failed' | 'running';
@@ -100,7 +100,7 @@ export function presentAppToolTitle({
   descriptor,
   toolCall,
   translate,
-}: CodexToolTitlePresenterContext, resolveAgentName?: AgentNameResolver): string | undefined {
+}: ToolTitlePresenterContext, resolveAgentName?: AgentNameResolver): string | undefined {
   const tool = appToolName(toolCall.function, toolCall.kind, toolCall.metadata, descriptor?.params?.tool);
   if (!tool) return undefined;
 

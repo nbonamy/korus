@@ -74,7 +74,7 @@
     >
     <AppShellNavigation
       ref="navigation"
-      :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
+      :active-mission-id="activeHost === 'mission' ? selectedMissionId : null"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
@@ -165,38 +165,38 @@
     />
     <section class="app-shell__content">
       <BackendConnectionBanner :connection-state="connectionState" />
-      <header v-if="compactViewport && !isAgentWorkspaceVisible && activeSurface !== 'mission'" class="app-shell__compact-bar">
+      <header v-if="compactViewport && !isAgentWorkspaceVisible && activeHost !== 'mission'" class="app-shell__compact-bar">
         <SidebarExpandButton :label="t('surface.agentHeader.showAgentSidebar')" @click="expandSidebar" />
       </header>
       <SettingsView
         v-if="settingsVisible"
         :codex-connected="!debugMissingEngines && codexConnected"
         :provider-connections="displayProviderConnections"
-        :backend-runtimes="snapshot.backendRuntimes"
+        :provider-runtimes="snapshot.providerRuntimes"
         :refresh-provider="refreshProvider"
         :install-provider="installProvider"
         :provider-setup-error="setupError"
         :updating-provider="updatingProvider"
         :customize-provider="customizeProvider"
         :claude-connected="!debugMissingEngines && claudeConnected"
-        :codex-connection-busy="!debugMissingEngines && (authenticationLoading || snapshot.providerConnections?.some(engine => engine.backend === 'codex' && engine.checking))"
+        :codex-connection-busy="!debugMissingEngines && (authenticationLoading || snapshot.providerConnections?.some(engine => engine.provider === 'codex' && engine.checking))"
         :set-provider-enabled="setEngineEnabled"
-        :claude-connection-busy="!debugMissingEngines && (claudeLoading || snapshot.providerConnections?.some(engine => engine.backend === 'claude' && engine.checking))"
+        :claude-connection-busy="!debugMissingEngines && (claudeLoading || snapshot.providerConnections?.some(engine => engine.provider === 'claude' && engine.checking))"
         :codex-login-pending="!debugMissingEngines && authentication?.login.status === 'pending'"
-        :codex-connection-error="debugMissingEngines ? null : authenticationError ?? authentication?.login.error ?? snapshot.providerConnections?.find(engine => engine.backend === 'codex')?.error"
-        :claude-connection-error="debugMissingEngines ? null : claudeError ?? snapshot.providerConnections?.find(engine => engine.backend === 'claude')?.error"
+        :codex-connection-error="debugMissingEngines ? null : authenticationError ?? authentication?.login.error ?? snapshot.providerConnections?.find(engine => engine.provider === 'codex')?.error"
+        :claude-connection-error="debugMissingEngines ? null : claudeError ?? snapshot.providerConnections?.find(engine => engine.provider === 'claude')?.error"
         :connect-codex="startChatGptLogin"
         :connect-claude="connectClaude"
         :connect-cursor="connectCursor"
         :cancel-cursor-login="cancelCursorLogin"
-        :cursor-connection-busy="!debugMissingEngines && (cursorLoading || snapshot.providerConnections?.some(engine => engine.backend === 'cursor' && engine.checking))"
+        :cursor-connection-busy="!debugMissingEngines && (cursorLoading || snapshot.providerConnections?.some(engine => engine.provider === 'cursor' && engine.checking))"
         :cursor-login-pending="!debugMissingEngines && cursorPending"
         :cursor-connection-error="debugMissingEngines ? null : cursorConnectionError"
         :connect-antigravity="connectAntigravity"
         :cancel-antigravity-login="cancelAntigravityLogin"
-        :antigravity-connection-busy="!debugMissingEngines && (antigravityLoading || snapshot.providerConnections?.some(engine => engine.backend === 'antigravity' && engine.checking))"
+        :antigravity-connection-busy="!debugMissingEngines && (antigravityLoading || snapshot.providerConnections?.some(engine => engine.provider === 'antigravity' && engine.checking))"
         :antigravity-login-pending="!debugMissingEngines && antigravityPending"
-        :antigravity-connection-error="debugMissingEngines ? null : antigravityError ?? snapshot.providerConnections?.find(engine => engine.backend === 'antigravity')?.error"
+        :antigravity-connection-error="debugMissingEngines ? null : antigravityError ?? snapshot.providerConnections?.find(engine => engine.provider === 'antigravity')?.error"
         :disconnect-provider="disconnectProvider"
         :cancel-codex-login="cancelChatGptLogin"
         :active-tab="settingsActiveTab"
@@ -285,7 +285,7 @@
         v-else
         :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
-        :show-header="activeSurface !== 'mission'"
+        :show-header="activeHost !== 'mission'"
         :add-visualization-annotation="addFocusedVisualizationAnnotation"
         :add-code-annotation="addFocusedCodeAnnotation"
         :agent-files="agentFiles"
@@ -297,16 +297,16 @@
         :conversation-plan="conversationPlan"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
-        :empty-split-pane="activeSurface !== 'mission' && !hasFocusedConversation"
-        :split-headers="activeSurface !== 'mission' && splitLayout !== 'single'"
+        :empty-split-pane="activeHost !== 'mission' && !hasFocusedConversation"
+        :split-headers="activeHost !== 'mission' && splitLayout !== 'single'"
         :latest-turn-id-for-agent="latestTurnIdForAgent"
         :current-agent-git-status="currentAgentGitStatus"
-        :current-backend-runtime="currentBackendRuntime"
+        :current-provider-runtime="currentProviderRuntime"
         :forward-prompt="forwardPrompt"
         :generate-agent-git-message="props.generateAgentGitMessage"
         :get-agent-git-workflow="props.getAgentGitWorkflow"
         :handle-start-work-action="handleStartWorkAction"
-        :is-agent-empty="activeSurface !== 'mission' && !cockpitVisible && isAgentEmpty"
+        :is-agent-empty="activeHost !== 'mission' && !cockpitVisible && isAgentEmpty"
         :is-conversation-loading="isConversationLoading"
         :is-loading="isLoading"
         :is-modal-dialog-visible="isModalDialogVisible"
@@ -327,10 +327,10 @@
         :open-right-workspace-tab="openRightWorkspaceTab"
         :push-agent-git-branch="props.pushAgentGitBranch"
         :right-workspace-for="rightWorkspaceFor"
-        :preview-dialog="activeSurface === 'mission'"
+        :preview-dialog="activeHost === 'mission'"
         :close-preview="closeWorkspacePreview"
         :right-workspaces="rightWorkspaces"
-        :right-workspace-visible="activeSurface === 'mission' ? missionWorkspaceVisible : rightWorkspaceVisible"
+        :right-workspace-visible="activeHost === 'mission' ? missionWorkspaceVisible : rightWorkspaceVisible"
         :read-conversation-messages="readConversationMessages"
         :select-agent-from-shell="selectAgentFromShell"
         :select-right-workspace-tab="selectRightWorkspaceTab"
@@ -363,10 +363,10 @@
         @open-browser-settings="openSettings('browser')"
         @update:plan-mode="emit('update:planMode', $event)"
       >
-        <template v-if="activeSurface !== 'mission' && !compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
+        <template v-if="activeHost !== 'mission' && !compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
-        <template v-if="activeSurface === 'mission' && selectedMission" #conversation>
+        <template v-if="activeHost === 'mission' && selectedMission" #conversation>
           <MissionWorkspace :repository-icons="snapshot.general.repositoryIcons" v-model:viewed-stage="missionViewedStage" :workspace-preview-open="missionWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
             <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
               <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
@@ -452,7 +452,7 @@
       </AgentWorkspace>
     </section>
     <RepositorySessionSourceDialog
-      v-model:backend="repositorySession.backend.value"
+      v-model:provider="repositorySession.provider.value"
       :visible="repositorySessionSourceVisible"
       :repository-name="repositorySessionSource?.repositoryName ?? ''"
       :branches="repositorySessionSourceBranches"
@@ -484,7 +484,7 @@
     />
     <NewSourceWorktreeDialog
       :remote-connection-id="repositorySession.worktreeRemoteConnectionId.value"
-      v-model:backend="repositorySession.backend.value"
+      v-model:provider="repositorySession.provider.value"
       :allow-destination-override="false"
       :branches="repositorySessionWorktreeBranches"
       :branches-loading="repositorySessionWorktreeBranchesLoading"
@@ -556,7 +556,7 @@
     />
     <ModelFavoritesDialog
       :favorites="managedModelFavorites"
-      :models="backendModels"
+      :models="providerModels"
       :visible="modelFavoritesDialogVisible"
       @change="updateManagedModelFavorites"
       @close="modelFavoritesDialogVisible = false"
@@ -618,7 +618,7 @@
       :create-agent="createAgent"
       :create-worktree="createSourceWorktree"
       :list-branches="listSourceBranches"
-      :backend-for-host="featureWorktreeBackend"
+      :provider-for-host="featureWorktreeBackend"
       @close="featureWorktreeRequest = null"
     />
     <MissionDeleteDialog
@@ -676,10 +676,10 @@ import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
-import type { AgentBackend, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, BackendApprovalDecision, BackendApprovalRequest, BackendApprovalScope, BackendCapabilities, BackendCommandSummary, BackendConnectionState, BackendConversationRef, BackendModelOption, BackendPluginSummary, BackendRuntimeStatus, BackendSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import type { HarnessProvider, AgentFileActivity } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, ClaudeConversationSnapshot, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { agentMentionGroups as projectAgentMentionGroups } from './agent-mention-groups';
@@ -703,7 +703,7 @@ import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
 import RemoteTargetDialog from './RemoteTargetDialog.vue';
 import { useRemoteTarget, type RemoteTargetRequest } from './use-remote-target';
 import NewProjectDialog from './NewProjectDialog.vue';
-import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } from './backend-selection';
+import { preferredProviderChoices, provideProviderChoices, provideProviderSwitch } from './provider-selection';
 import { createGeneralPreferences, generalPreferencesKey } from '../general-preferences';
 import BacklogView from './BacklogView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
@@ -761,18 +761,19 @@ import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigration
 import ModelFavoritesDialog from './ModelFavoritesDialog.vue';
 import type { SettingsTab } from './settings-tabs';
 import {
-  type ConversationLink as CodexConversationLink,
-  type ConversationPaneActions as CodexConversationPaneActions,
-  type ConversationVisualization as CodexConversationVisualization,
-  type ComposerMenuItem as CodexComposerMenuItem,
-  type ComposerMentionGroup as CodexComposerMentionGroup,
-  type MessageImage as CodexMessageImage,
-  type MessageImageContext as CodexMessageImageContext,
-  type NativeAttachment as CodexNativeAttachment,
-  type ComposerState as CodexComposerState,
+  type ConversationLink,
+  type ConversationPaneActions,
+  type ConversationVisualization,
+  type ComposerMenuItem,
+  type ComposerMentionGroup,
+  type MessageImage,
+  type MessageImageContext,
+  type NativeAttachment,
+  type ComposerState,
   type QueuedPromptData as QueuedChatPrompt,
 } from '@korus-dev/agent-ui-sdk';
-import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import { type CodexConversationSnapshot, type ConversationMessage } from '@korus-dev/multi-agent-sdk';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
 import {
@@ -816,17 +817,17 @@ const props = withDefaults(defineProps<{
   historyHasOlder?: boolean;
   historyLoadingOlder?: boolean;
   isSending: boolean;
-  connectionState?: BackendConnectionState;
+  connectionState?: ProviderConnectionState;
   goal?: ThreadGoal | null;
-  approvals?: BackendApprovalRequest[];
+  approvals?: ProviderApprovalRequest[];
   approvalPreset?: ApprovalPreset | null;
   permissionMode?: string | null;
   answeredClientRequestIds?: Set<string>;
-  backendModels?: BackendModelOption[];
-  backendCommands?: BackendCommandSummary[];
-  backendPlugins?: BackendPluginSummary[];
-  backendSkills?: BackendSkillSummary[];
-  backendCapabilities?: BackendCapabilities;
+  providerModels?: ProviderModelOption[];
+  providerCommands?: ProviderCommandSummary[];
+  providerPlugins?: ProviderPluginSummary[];
+  providerSkills?: ProviderSkillSummary[];
+  providerCapabilities?: ProviderCapabilities;
   conversationPresentation?: ConversationPresentation | null;
   codexConversationSnapshot?: CodexConversationSnapshot | null;
   claudeConversationSnapshot?: ClaudeConversationSnapshot | null;
@@ -839,8 +840,8 @@ const props = withDefaults(defineProps<{
   selectedServiceTier?: string | null;
   planMode?: boolean;
   queuedPrompts?: QueuedChatPrompt[];
-  composerState?: CodexComposerState;
-  composerAttachments?: readonly CodexNativeAttachment[];
+  composerState?: ComposerState;
+  composerAttachments?: readonly NativeAttachment[];
   updateStatus?: DesktopUpdateStatus;
   sidePanelRequest?: SidePanelRequest | null;
   markdownDisplayRequests?: Array<Extract<SidePanelRequest, { kind: 'markdown' }>>;
@@ -905,7 +906,7 @@ const props = withDefaults(defineProps<{
   getPluginStatus?: () => Promise<import('@workspace/core/contracts').AppPluginStatus>;
   listSshHosts?: () => Promise<SshHostCandidate[]>;
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
-  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => Promise<void>;
+  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: HarnessProvider[]) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
@@ -928,7 +929,7 @@ const props = withDefaults(defineProps<{
   listAgentConversations?: (agentId: string, input?: ConversationListInput) => Promise<ConversationSummary[]>;
   resumeAgentConversation?: (agentId: string, target: ConversationResumeTarget) => Promise<void>;
   handoffAgentAction?: (agentId: string, input: AgentHandoffInput) => Promise<void>;
-  readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
+  readConversationMessages?: (ref: ProviderConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
   connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
@@ -972,11 +973,11 @@ const props = withDefaults(defineProps<{
   answeredClientRequestIds: () => new Set<string>(),
   approvals: () => [],
   agentFiles: () => [],
-  backendModels: () => [],
-  backendCommands: () => [],
-  backendPlugins: () => [],
-  backendSkills: () => [],
-  backendCapabilities: () => defaultBackendCapabilities('codex'),
+  providerModels: () => [],
+  providerCommands: () => [],
+  providerPlugins: () => [],
+  providerSkills: () => [],
+  providerCapabilities: () => defaultProviderCapabilities('codex'),
   isConversationLoading: false,
   isConversationLoadFailed: false,
   historyHasOlder: true,
@@ -1129,7 +1130,7 @@ const emit = defineEmits<{
   'assign-work-item': [payload: { agentId: string; item: WorkItem }];
   'remove-work-item-assignment': [item: WorkItem];
   'restart-agent': [agentId: string];
-  'resolve-approval': [approvalId: string, decision: BackendApprovalDecision, scope: BackendApprovalScope];
+  'resolve-approval': [approvalId: string, decision: ProviderApprovalDecision, scope: ProviderApprovalScope];
   'retry-turn': [turnId: string];
   'send-agent-prompt': [payload: { agentId: string; prompt: string }];
   'select-agent': [agentId: string];
@@ -1142,8 +1143,8 @@ const emit = defineEmits<{
   'steer-queued-prompt': [promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>];
   'update-queued-prompt': [promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>];
   'update:planMode': [enabled: boolean];
-  'update:composerState': [payload: { agentId: string; state: CodexComposerState }];
-  'update:composerAttachments': [payload: { agentId: string; attachments: readonly CodexNativeAttachment[] }];
+  'update:composerState': [payload: { agentId: string; state: ComposerState }];
+  'update:composerAttachments': [payload: { agentId: string; attachments: readonly NativeAttachment[] }];
   'install-update': [];
   sendPrompt: [prompt: string, options?: RendererSendPromptOptions];
   steerPrompt: [prompt: string, options?: RendererSendPromptOptions];
@@ -1172,12 +1173,12 @@ provide(computerUseLockKey, {
   setHold: hold => props.updateSettings({ general: { plugins: { computerUseLockHold: hold } } }).catch(error => { ElMessage.error(localizedErrorMessage(error, t)); }),
 });
 provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.general, general => props.updateSettings({ general })));
-provideBackendChoices(() => props.snapshot, openSettings);
+provideProviderChoices(() => props.snapshot, openSettings);
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });
 provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
-const backendSwitch = provideBackendSwitch((id, backend) => props.updateAgent({ id, selection: { backend } }));
+const backendSwitch = provideProviderSwitch((id, backend) => props.updateAgent({ id, selection: { provider: backend } }));
 const agentSidebarCollapsed = ref(false);
 // A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
 const windowScope = computed(() => windowState.scope.value);
@@ -1250,7 +1251,7 @@ function rememberMissionId(id: string | null): void {
   }
 }
 let pendingMissionRestoreId = rememberedMissionId();
-const activeSurface = ref<AppSurface>('agent');
+const activeHost = ref<AppSurface>('agent');
 const cockpitScope = ref(false);
 const settingsReturnMissionId = ref<string | null>(null);
 const missionViewedStage = ref<MissionStage>();
@@ -1345,10 +1346,10 @@ const missionDeleteTarget = computed(() => props.snapshot.missions?.find(m => m.
 function selectMissionSurface(id: string): void {
   if (selectedMissionId.value !== id) missionViewedStage.value = undefined;
   selectedMissionId.value = id;
-  activeSurface.value = 'mission';
+  activeHost.value = 'mission';
 }
 watch(
-  () => activeSurface.value === 'mission' ? selectedMissionId.value : null,
+  () => activeHost.value === 'mission' ? selectedMissionId.value : null,
   missionId => { closeMissionIssuePicker(); if (!missionWindow.value) rememberMissionId(missionId); void props.selectMission(missionId); },
 );
 function missionTeamContext(): { team: Team; orchestrator: Agent } {
@@ -1401,8 +1402,8 @@ function openFeatureWorktreeDialog(repositories: SidebarRepositoryTarget[]): voi
 function openFeatureAgentDialog(repositories: SidebarRepositoryTarget[], branch?: string): void {
   if (activeTeam.value) featureWorktreeRequest.value = { mode: 'agent', teamId: activeTeam.value.id, repositories, ...(branch ? { branch } : {}) };
 }
-function featureWorktreeBackend(remoteConnectionId?: string): import('@workspace/core/contracts').AgentBackend | undefined {
-  return preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
+function featureWorktreeBackend(remoteConnectionId?: string): import('@workspace/core/contracts').HarnessProvider | undefined {
+  return preferredProviderChoices(props.snapshot, remoteConnectionId)[0];
 }
 function reorderFeature(feature: { branch: string; beforeBranch: string | null }): void {
   if (activeTeam.value) void props.featureControl({ type: 'reorder', teamId: activeTeam.value.id, ...feature }).catch(() => undefined);
@@ -1411,7 +1412,7 @@ function showFeatureDialog(mode: 'rename' | 'delete', feature: { branch: string;
   if (activeTeam.value) featureDialog.value = { ...feature, mode };
 }
 function openFeatureAgents(agentIds: string[]): void {
-  activeSurface.value = 'agent';
+  activeHost.value = 'agent';
   selectedMissionId.value = null;
   split.openAgents(agentIds);
 }
@@ -1437,10 +1438,10 @@ async function createAgentInMissionWorktree(input: { missionId: string; worktree
   const mission = props.snapshot.missions?.find(candidate => candidate.id === input.missionId);
   const workspace = missionCreatedWorkspaces(mission).find(candidate => candidate.path === input.worktreePath);
   if (!mission || !workspace) return;
-  const backend = preferredBackendChoices(props.snapshot)[0];
+  const backend = preferredProviderChoices(props.snapshot)[0];
   if (!backend) { openSettings(); return; }
   try {
-    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, selection: { backend }, teamId: mission.teamId });
+    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, selection: { provider: backend }, teamId: mission.teamId });
     if (agent) selectAgentFromShell(agent.id);
   } catch (error) {
     ElMessage.error(localizedErrorMessage(error, t));
@@ -1471,7 +1472,7 @@ async function confirmMissionDeletion(deleteWorktrees: boolean): Promise<void> {
     await props.deleteMission({ id: mission.id, revision: mission.revision, deleteWorktrees, confirmed: true });
     if (selectedMissionId.value === mission.id) {
       selectedMissionId.value = null;
-      if (activeSurface.value === 'mission') activeSurface.value = 'agent';
+      if (activeHost.value === 'mission') activeHost.value = 'agent';
     }
     if (missionDeleteTargetId.value === mission.id) missionDeleteTargetId.value = null;
     ElMessage.success(t('missions.deleted', { mission: mission.outcome }));
@@ -1489,8 +1490,8 @@ const fileQuickOpenVisible = ref(false);
 // Files created since the agent was opened would be missing from a list loaded only then.
 watch(fileQuickOpenVisible, (visible) => { if (visible) void props.loadAgentFiles?.(); });
 const agentQuickOpenVisible = ref(false);
-const debugApproval = ref<{ agentId: string; request: BackendApprovalRequest } | null>(null);
-const debugUserQuestions = ref<{ agentId: string; message: SurfaceMessage; requestId: string } | null>(null);
+const debugApproval = ref<{ agentId: string; request: ProviderApprovalRequest } | null>(null);
+const debugUserQuestions = ref<{ agentId: string; message: ConversationMessage; requestId: string } | null>(null);
 const debugAgentCreationProgress = ref<AgentCreationProgress | null>(null);
 const debugAgentCreationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const agentWorkspace = ref<{
@@ -1500,8 +1501,8 @@ const agentWorkspace = ref<{
   openSavedDraftPicker(): void;
   saveCurrentDraft(): void;
   handleBrowserOpenCommand(command: Extract<AppCommand, { type: 'open-browser' }>): void;
-  openConversationImage(image: CodexMessageImage, context?: CodexMessageImageContext, agentId?: string): boolean;
-  openConversationVisualization(visualization: CodexConversationVisualization, agentId?: string): void;
+  openConversationImage(image: MessageImage, context?: MessageImageContext, agentId?: string): boolean;
+  openConversationVisualization(visualization: ConversationVisualization, agentId?: string): void;
   showDebugGitOperationProgress(operation: 'pullRequest' | 'merge' | 'conflicts'): void | Promise<void>;
   workspaceBodyElement(): HTMLElement | null;
 } | null>(null);
@@ -1511,7 +1512,7 @@ const modelFavoritesDialogVisible = ref(false);
 const newProjectDialogVisible = ref(false);
 const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
-const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
+const modelFavoritesDialogBackend = ref<ModelFavorite['provider'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
 // IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
 const shareTarget = shallowRef<ConversationShareTarget | null>(null);
@@ -1544,8 +1545,8 @@ function openHandoff(agentId: string) {
   if (agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) return;
   handoffAgentId.value = agentId;
 }
-async function listHandoffModels(agentId: string | null, backend: AgentBackend) {
-  return await appApi?.listBackendModels(agentId, backend) ?? [];
+async function listHandoffModels(agentId: string | null, provider: HarnessProvider) {
+  return await appApi?.listProviderModels(agentId, provider) ?? [];
 }
 const agentDialogMode = ref<'create' | 'edit'>('create');
 const editingAgentId = ref<string | null>(null);
@@ -1578,7 +1579,7 @@ const {
   startChatGptLogin,
 } = firstRunOnboarding;
 const cursorConnectionError = computed(() => {
-  const connection = props.snapshot.providerConnections?.find(engine => engine.backend === 'cursor');
+  const connection = props.snapshot.providerConnections?.find(engine => engine.provider === 'cursor');
   const authentication = connection?.authentication;
   return cursorError.value ?? (authentication?.kind === 'cursor' ? authentication.state.error : undefined) ?? connection?.error;
 });
@@ -1601,11 +1602,11 @@ const displayProviderSetup = computed(() => debugMissingEngines.value
 const displayProviderConnections = computed(() => debugMissingEngines.value
   ? props.snapshot.providerConnections?.map(engine => ({ ...engine, installed: false, connected: false, checking: false, authentication: undefined, error: undefined }))
   : props.snapshot.providerConnections);
-async function installProvider(backend: AgentBackend): Promise<void> {
-  if (!debugMissingEngines.value) await installRealProvider(backend);
+async function installProvider(provider: HarnessProvider): Promise<void> {
+  if (!debugMissingEngines.value) await installRealProvider(provider);
 }
-async function refreshProvider(backend: AgentBackend): Promise<void> {
-  if (!debugMissingEngines.value) await refreshRealProvider(backend);
+async function refreshProvider(provider: HarnessProvider): Promise<void> {
+  if (!debugMissingEngines.value) await refreshRealProvider(provider);
 }
 watch(() => !debugMissingEngines.value && realOnboardingGate.value, (gated) => {
   if (!appHostCapabilities.appLifecycle) return;
@@ -1644,9 +1645,9 @@ watch([() => windowState.missionId.value, () => props.snapshot.missions], ([miss
   selectMissionSurface(missionId);
 }, { immediate: true });
 watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
-  if (activeSurface.value === 'mission' && ((previousMission && !mission) || (!cockpitScope.value && mission && mission.teamId !== team?.id))) {
+  if (activeHost.value === 'mission' && ((previousMission && !mission) || (!cockpitScope.value && mission && mission.teamId !== team?.id))) {
     selectedMissionId.value = null;
-    activeSurface.value = 'agent';
+    activeHost.value = 'agent';
   }
 });
 // The Mission may reach the renderer a moment after the request, so keep the request until it is known.
@@ -1797,14 +1798,14 @@ const remoteTarget = useRemoteTarget({
   cloneRepository: (input) => props.cloneSourceRepository(input),
   errorMessage: (error) => localizedErrorMessage(error, t),
   openMain: async (path, remoteConnectionId, request, selection) => {
-    const backend = selection?.backend ?? preferredBackendChoices(props.snapshot, remoteConnectionId)[0];
+    const backend = selection?.provider ?? preferredProviderChoices(props.snapshot, remoteConnectionId)[0];
     try {
       if (!backend) throw new Error(t('remoteTarget.noEngine'));
       await props.createAgent({
         name: null,
         folder: path,
         repositorySession: {},
-        selection: selection ?? { backend },
+        selection: selection ?? { provider: backend },
         sourceRepositoryName: request.repositoryName,
         remoteConnectionId,
         ...(activeTeam.value ? { teamId: activeTeam.value.id } : {}),
@@ -1842,12 +1843,12 @@ const repositoryAcquisition = useRepositoryAcquisition({
   },
   loadRepositories: (provider) => props.listWorkSources ? props.listWorkSources(provider) : props.loadWorkRepositories(provider),
   openFolder: async (folder, teamId) => {
-    const backend = preferredBackendChoices(props.snapshot)[0];
+    const backend = preferredProviderChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
     await props.createAgent({
       name: null,
       folder,
-      selection: { backend },
+      selection: { provider: backend },
       ...(teamId ? { teamId } : {}),
     });
   },
@@ -1905,10 +1906,10 @@ const quickOpenMissions = computed(() => {
 });
 const workspaceAgents = computed(() => (cockpitScope.value ? props.snapshot.agents : activeTeamAgents.value)
   .filter(agent => !missionOwnedAgentIds.value.has(agent.id)));
-const agentMentionGroups = computed<readonly CodexComposerMentionGroup[]>(() => projectAgentMentionGroups({
+const agentMentionGroups = computed<readonly ComposerMentionGroup[]>(() => projectAgentMentionGroups({
   agents: activeTeamAgents.value,
   missions: (props.snapshot.missions ?? []).filter(mission => mission.teamId === activeTeam.value?.id),
-  activeMissionId: activeSurface.value === 'mission' ? selectedMissionId.value : null,
+  activeMissionId: activeHost.value === 'mission' ? selectedMissionId.value : null,
   agentsLabel: translate('surface.appShell.agents'),
   missionLabel: t('chat.composerActions.mission'),
   quickChatsLabel: t('sidebar.quickChats'),
@@ -1919,7 +1920,7 @@ const unreadTeamIds = computed(() => {
   const unreadAgentIdSet = new Set(navigationUnreadAgentIds(props.snapshot.missions ?? [], props.unreadAgentIds ?? []));
   return props.snapshot.teams
     .filter((team) => (
-      (activeSurface.value !== 'agent' || cockpitScope.value || team.id !== activeTeam.value?.id)
+      (activeHost.value !== 'agent' || cockpitScope.value || team.id !== activeTeam.value?.id)
       && team.agentIds.some((agentId) => unreadAgentIdSet.has(agentId))
     ))
     .map((team) => team.id);
@@ -1934,15 +1935,15 @@ const workingTeamIds = computed(() => {
 });
 const forkableAgentIds = computed(() => props.snapshot.agents
   .filter((agent) => {
-    const defaults = defaultBackendCapabilities(agent.backend);
-    const runtime = props.snapshot.backendRuntimes.find((candidate) => candidate.backend === agent.backend);
+    const defaults = defaultProviderCapabilities(agent.provider);
+    const runtime = props.snapshot.providerRuntimes.find((candidate) => candidate.provider === agent.provider);
     return (runtime?.capabilities?.conversationFork ?? defaults.conversationFork) === true;
   })
   .map((agent) => agent.id));
 const summaryReplacementAgentIds = computed(() => props.snapshot.agents
   .filter((agent) => {
-    const runtime = props.snapshot.backendRuntimes.find((candidate) => candidate.backend === agent.backend);
-    return (runtime?.capabilities?.conversationReplaceWithSummary ?? defaultBackendCapabilities(agent.backend).conversationReplaceWithSummary) === true;
+    const runtime = props.snapshot.providerRuntimes.find((candidate) => candidate.provider === agent.provider);
+    return (runtime?.capabilities?.conversationReplaceWithSummary ?? defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary) === true;
   }).map((agent) => agent.id));
 const currentAgent = computed(() => {
   const team = activeTeam.value;
@@ -1955,7 +1956,7 @@ const currentAgent = computed(() => {
       ?? activeTeamAgents.value.find(agent => ids.includes(agent.id)) ?? null;
   }
 
-  if (activeSurface.value !== 'mission' && cockpitScope.value) {
+  if (activeHost.value !== 'mission' && cockpitScope.value) {
     return workspaceAgents.value.find(agent => agent.id === props.activeAgent?.id) ?? workspaceAgents.value[0] ?? null;
   }
 
@@ -1980,15 +1981,15 @@ const windowTitle = computed(() => {
 });
 watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
-  [compactViewport, activeSurface],
+  [compactViewport, activeHost],
   ([compact, surface]) => {
-    if (compact && surface !== 'agent' && !missionWindow.value) activeSurface.value = 'agent';
+    if (compact && surface !== 'agent' && !missionWindow.value) activeHost.value = 'agent';
   },
   { immediate: true },
 );
 // Getter-per-source: a getter returning a fresh array would fire on every snapshot update.
 watch(
-  [compactViewport, () => currentAgent.value?.id, activeSurface, selectedMissionId],
+  [compactViewport, () => currentAgent.value?.id, activeHost, selectedMissionId],
   ([compact]) => { if (!compact || compactNavOpen.value) compactNavOpen.value = false; },
 );
 watch(() => currentAgent.value?.id, (agentId) => {
@@ -1998,7 +1999,7 @@ watch(() => currentAgent.value?.id, (agentId) => {
 });
 const split = useSplitWorkspace({
   agentIds: () => chromeless.value ? [currentAgent.value?.id].filter((id): id is string => Boolean(id)) : featureWindow.value ? featureAgents.value : (cockpitScope.value ? workspaceAgents.value : activeTeamAgents.value).map(agent => agent.id),
-  currentAgentId: () => cockpitScope.value && activeSurface.value === 'mission' ? undefined : currentAgent.value?.id,
+  currentAgentId: () => cockpitScope.value && activeHost.value === 'mission' ? undefined : currentAgent.value?.id,
   teamId: () => cockpitScope.value ? 'surface:cockpit' : activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
   persist: () => !featureWindow.value && !chromeless.value,
@@ -2037,13 +2038,13 @@ function conversationViewFor(agentId: string): AgentConversationView | null {
   return {
     agent, conversation: props.conversationPresentation !== undefined ? props.conversationPresentation : legacyConversationPresentation(agent, props),
     composerState: props.composerState, attachments: props.composerAttachments,
-    capabilities: props.backendCapabilities, approvals: props.approvals, queuedPrompts: props.queuedPrompts.map(prompt => ({ ...prompt, agentId, text: prompt.text, createdAt: '' })),
+    capabilities: props.providerCapabilities, approvals: props.approvals, queuedPrompts: props.queuedPrompts.map(prompt => ({ ...prompt, agentId, text: prompt.text, createdAt: '' })),
     sending: props.isSending, answeredClientRequestIds: props.answeredClientRequestIds,
     history: { failed: props.isConversationLoadFailed, hydrating: props.isConversationLoading || props.isLoading,
       hasOlder: props.historyHasOlder, loadingOlder: props.historyLoadingOlder },
     composer: {
-      backend: agent.backend, selectionSource: '', models: props.backendModels, modelStatus: props.modelCatalogStatus,
-      modelError: null, skills: props.backendSkills, plugins: props.backendPlugins, skillStatus: props.skillCatalogStatus,
+      provider: agent.provider, selectionSource: '', models: props.providerModels, modelStatus: props.modelCatalogStatus,
+      modelError: null, skills: props.providerSkills, plugins: props.providerPlugins, skillStatus: props.skillCatalogStatus,
       skillError: null, files: props.agentFiles, fileStatus: 'loaded', fileError: null,
       selectedModelId: props.selectedModelId, selectedReasoningEffort: props.selectedReasoningEffort,
       selectedServiceTier: props.selectedServiceTier, planMode: props.planMode, pendingSelection: null,
@@ -2127,7 +2128,7 @@ onBeforeUnmount(() => {
   emit('visible-agents-change', []);
 });
 function focusedConversationPanel() {
-  return conversationPanels.get((activeSurface.value === 'mission' || splitLayout.value === 'single' ? currentAgent.value?.id : split.focusedPane.value.agentId) ?? '');
+  return conversationPanels.get((activeHost.value === 'mission' || splitLayout.value === 'single' ? currentAgent.value?.id : split.focusedPane.value.agentId) ?? '');
 }
 const pendingComposerFocusAgentId = ref<string | null>(null);
 // A cold conversation has no composer until history hydration replaces its loader.
@@ -2151,7 +2152,7 @@ watch([
   void nextTick(() => {
     if (pendingComposerFocusAgentId.value !== requestedId || currentAgent.value?.id !== requestedId) return;
     pendingComposerFocusAgentId.value = null;
-    if (activeSurface.value === 'agent' && !isModalDialogVisible.value) focusedConversationPanel()?.focusComposer();
+    if (activeHost.value === 'agent' && !isModalDialogVisible.value) focusedConversationPanel()?.focusComposer();
   });
 }, { flush: 'post' });
 function addFocusedCodeAnnotation(annotation: import('./use-code-annotations').CodeAnnotationInput): void {
@@ -2189,10 +2190,10 @@ const conversationActions = computed<AgentConversationActions>(() => ({
     return (props.agentConversationActions ?? legacyConversationActions).send(agentId, prompt, options);
   },
 }));
-function openConversationLink(agentId: string, link: CodexConversationLink): void | Promise<void> {
+function openConversationLink(agentId: string, link: ConversationLink): void | Promise<void> {
   if (link.kind === 'external') return appPlatformActions.openExternal?.(link.href);
-  if (activeSurface.value === 'mission') missionPreviewAgentId.value = agentId;
-  return workspacePreviews.openConversationFile({ ...link, kind: 'file' }, agentId, activeSurface.value !== 'mission');
+  if (activeHost.value === 'mission') missionPreviewAgentId.value = agentId;
+  return workspacePreviews.openConversationFile({ ...link, kind: 'file' }, agentId, activeHost.value !== 'mission');
 }
 const {
   closeTab: closeRightWorkspaceTabLocal,
@@ -2236,13 +2237,13 @@ const missionWorkspaceVisible = computed(() => {
   return Boolean(id && selectedMission.value && missionAgentIds(selectedMission.value).includes(id) && rightWorkspaceFor(id).open);
 });
 function isPresentedWorkspaceVisible(agentId: string): boolean {
-  return activeSurface.value === 'mission'
+  return activeHost.value === 'mission'
     ? missionWorkspaceVisible.value && agentId === (missionPreviewAgentId.value ?? currentAgent.value?.id)
     : isRightWorkspaceVisible(agentId);
 }
 function toggleRightWorkspace(): void {
   const id = missionPreviewAgentId.value ?? currentAgent.value?.id;
-  if (activeSurface.value === 'mission' && missionWorkspaceVisible.value && id) rightWorkspaceFor(id).open = false;
+  if (activeHost.value === 'mission' && missionWorkspaceVisible.value && id) rightWorkspaceFor(id).open = false;
   else {
     missionPreviewAgentId.value = currentAgent.value?.id ?? null;
     toggleRightWorkspaceLocal();
@@ -2253,7 +2254,7 @@ function closeWorkspacePreview(): void {
   if (id) rightWorkspaceFor(id).open = false;
 }
 function openRightWorkspaceTab(tab: RightWorkspaceTab, agentId = currentAgent.value?.id): void {
-  if (activeSurface.value === 'mission' && agentId) missionPreviewAgentId.value = agentId;
+  if (activeHost.value === 'mission' && agentId) missionPreviewAgentId.value = agentId;
   openRightWorkspaceTabLocal(tab, agentId);
 }
 
@@ -2339,7 +2340,7 @@ watch(
 const missionDocuments = useMissionDocuments({
   missions: () => props.snapshot.missions ?? [],
   agents: () => props.snapshot.agents,
-  activeMissionId: () => activeSurface.value === 'mission' ? selectedMissionId.value : null,
+  activeMissionId: () => activeHost.value === 'mission' ? selectedMissionId.value : null,
   currentAgentId: () => currentAgent.value?.id,
   open: request => openMarkdownRequest(request),
 });
@@ -2378,7 +2379,7 @@ const {
   openSidePanel: openSidePanelRequest,
 } = workspacePreviews;
 function openFilePreviewForAgent(agentId: string, path: string): Promise<void> {
-  if (activeSurface.value === 'mission') missionPreviewAgentId.value = agentId;
+  if (activeHost.value === 'mission') missionPreviewAgentId.value = agentId;
   return workspacePreviews.openFile(agentId, path);
 }
 function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget, focusKind?: import('@workspace/core/file-kind').FileKind): Promise<void> {
@@ -2426,10 +2427,10 @@ const {
   selectTag: selectWorkTagForCockpit,
   workBacklog: cockpitWorkBacklog,
 } = cockpitBacklogState;
-const currentBackendRuntime = computed<BackendRuntimeStatus>(() => {
-  const backend = currentAgent.value?.backend ?? 'codex';
-  return props.snapshot.backendRuntimes.find((runtime) => runtime.backend === backend) ?? {
-    backend,
+const currentProviderRuntime = computed<ProviderRuntimeStatus>(() => {
+  const backend = currentAgent.value?.provider ?? 'codex';
+  return props.snapshot.providerRuntimes.find((runtime) => runtime.provider === backend) ?? {
+    provider: backend,
     status: 'notConfigured',
   };
 });
@@ -2459,13 +2460,13 @@ const conversationHasRunningPlanTool = computed(() => conversationMessages.value
   ),
 ));
 const conversationPlan = computed(() => currentAgent.value ? conversationPlanForAgent(currentAgent.value, providerConversation.value) : null);
-const managedModelFavorites = computed(() => modelFavoritesDialogBackend.value ? props.snapshot.general.modelFavorites.filter(favorite => favorite.backend === modelFavoritesDialogBackend.value) : []);
-function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: BackendModelOption[]): CodexComposerMenuItem[] {
+const managedModelFavorites = computed(() => modelFavoritesDialogBackend.value ? props.snapshot.general.modelFavorites.filter(favorite => favorite.provider === modelFavoritesDialogBackend.value) : []);
+function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: ProviderModelOption[]): ComposerMenuItem[] {
   if (!current) return [];
   const availableModelIds = new Set(models.map(model => model.id));
-  const favorites = props.snapshot.general.modelFavorites.filter(favorite => favorite.backend === current.backend && availableModelIds.has(favorite.modelId));
+  const favorites = props.snapshot.general.modelFavorites.filter(favorite => favorite.provider === current.provider && availableModelIds.has(favorite.modelId));
   const currentIsFavorite = favorites.some((favorite) => sameModelFavorite(favorite, current));
-  const items: CodexComposerMenuItem[] = [];
+  const items: ComposerMenuItem[] = [];
   if (favorites.length > 0) {
     items.push({
       id: 'model-favorites-heading',
@@ -2511,7 +2512,7 @@ function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: Back
   }
   return items;
 }
-function conversationModelFavoriteMenuItems(agentId: string): CodexComposerMenuItem[] {
+function conversationModelFavoriteMenuItems(agentId: string): ComposerMenuItem[] {
   const view = conversationViewFor(agentId);
   if (!view) return [];
   const composer = view.composer;
@@ -2519,13 +2520,13 @@ function conversationModelFavoriteMenuItems(agentId: string): CodexComposerMenuI
     ?? composer.models.find(model => model.isDefault) ?? composer.models[0];
   if (!model) return [];
   return buildModelFavoriteMenuItems({
-    backend: view.agent.backend,
+    provider: view.agent.provider,
     modelId: model.id,
     reasoningEffort: composer.selectedReasoningEffort ?? model.defaultReasoningEffort ?? model.supportedReasoningEfforts?.[0]?.reasoningEffort ?? null,
     serviceTier: composer.selectedServiceTier === 'default' ? null : composer.selectedServiceTier,
   }, composer.models);
 }
-function selectConversationModelMenuItem(agentId: string, item: Parameters<NonNullable<CodexConversationPaneActions['menuSelect']>>[0]): void | Promise<void> {
+function selectConversationModelMenuItem(agentId: string, item: Parameters<NonNullable<ConversationPaneActions['menuSelect']>>[0]): void | Promise<void> {
   const command = modelFavoriteCommand(item.payload);
   if (command) return handleModelFavoriteCommand(command, props.agentConversationActions ? agentId : undefined);
 }
@@ -2539,7 +2540,7 @@ async function sendModelCommand(agentId: string, command: '/delegate' | '/missio
     if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
     if (props.agentConversationActions) await props.agentConversationActions.send(agentId, command);
     else if (currentAgent.value?.id === agentId) {
-      if (!preferredBackendChoices(props.snapshot, currentAgent.value?.remoteConnectionId).includes(currentAgent.value?.backend ?? 'codex')) throw new Error(t('engineConnection.required'));
+      if (!preferredProviderChoices(props.snapshot, currentAgent.value?.remoteConnectionId).includes(currentAgent.value?.provider ?? 'codex')) throw new Error(t('engineConnection.required'));
       if (props.sendPromptAction) await props.sendPromptAction(command);
       else emit('sendPrompt', command);
     } else throw new Error(t('delegation.agentUnavailable'));
@@ -2576,7 +2577,7 @@ function modelFavoriteCommand(payload: unknown): ModelFavoriteCommand | null {
 
 async function handleModelFavoriteCommand(command: ModelFavoriteCommand, agentId?: string): Promise<void> {
   if (command.kind === 'model-favorite-manage') {
-    modelFavoritesDialogBackend.value = (agentId ? props.snapshot.agents.find(agent => agent.id === agentId) : currentAgent.value)?.backend ?? null;
+    modelFavoritesDialogBackend.value = (agentId ? props.snapshot.agents.find(agent => agent.id === agentId) : currentAgent.value)?.provider ?? null;
     modelFavoritesDialogVisible.value = modelFavoritesDialogBackend.value !== null;
     return;
   }
@@ -2606,11 +2607,11 @@ async function updateManagedModelFavorites(favorites: ModelFavorite[]): Promise<
   const backend = modelFavoritesDialogBackend.value;
   if (!backend) return;
   const existing = props.snapshot.general.modelFavorites.map(copyModelFavorite);
-  const firstBackendIndex = existing.findIndex((favorite) => favorite.backend === backend);
-  const withoutBackend = existing.filter((favorite) => favorite.backend !== backend);
+  const firstBackendIndex = existing.findIndex((favorite) => favorite.provider === backend);
+  const withoutBackend = existing.filter((favorite) => favorite.provider !== backend);
   const insertionIndex = firstBackendIndex < 0
     ? withoutBackend.length
-    : existing.slice(0, firstBackendIndex).filter((favorite) => favorite.backend !== backend).length;
+    : existing.slice(0, firstBackendIndex).filter((favorite) => favorite.provider !== backend).length;
   withoutBackend.splice(insertionIndex, 0, ...favorites.map(copyModelFavorite));
   await props.updateSettings({ general: { modelFavorites: withoutBackend } });
 }
@@ -2627,7 +2628,7 @@ function openActiveSavedPromptDrafts(): void {
 
 function compactAgentSession(agentId: string): void {
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
-  if (!agent || !defaultBackendCommands(agent.backend).some(command => command.slashName === 'compact')) return;
+  if (!agent || !defaultProviderCommands(agent.provider).some(command => command.slashName === 'compact')) return;
   emit('send-agent-prompt', { agentId, prompt: '/compact' });
 }
 
@@ -2637,15 +2638,15 @@ const pendingNewAgentWorktreeBranchName = computed(() => (
   pendingNewAgentWorkItem.value ? pendingWorkItemBranchName.value : agentDialogSourceBranchName.value
 ));
 const isAgentEmpty = computed(() => activeTeamAgents.value.length === 0);
-const cockpitVisible = computed(() => cockpitScope.value && (activeSurface.value === 'agent' || activeSurface.value === 'mission'));
-const backlogVisible = computed(() => activeSurface.value === 'backlog');
-const automationsVisible = computed(() => activeSurface.value === 'automations');
-const settingsVisible = computed(() => activeSurface.value === 'settings');
-async function setEngineEnabled(backend: AgentBackend, enabled: boolean) {
+const cockpitVisible = computed(() => cockpitScope.value && (activeHost.value === 'agent' || activeHost.value === 'mission'));
+const backlogVisible = computed(() => activeHost.value === 'backlog');
+const automationsVisible = computed(() => activeHost.value === 'automations');
+const settingsVisible = computed(() => activeHost.value === 'settings');
+async function setEngineEnabled(provider: HarnessProvider, enabled: boolean) {
   if (!appApi) throw new Error('Backend connection is unavailable.');
-  await appApi.setProviderEnabled(backend, enabled);
+  await appApi.setProviderEnabled(provider, enabled);
 }
-const isAgentWorkspaceVisible = computed(() => activeSurface.value === 'agent');
+const isAgentWorkspaceVisible = computed(() => activeHost.value === 'agent');
 const isModalDialogVisible = computed(() => (
   agentDialogVisible.value
   || shareTarget.value !== null
@@ -2674,7 +2675,7 @@ const shortcutContext = computed<ShortcutContext>(() => ({
   agentCount: activeTeamAgents.value.length,
   teamCount: props.snapshot.teams.length,
   browser: appHostCapabilities.embeddedBrowser,
-  idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle' && defaultBackendCommands(currentAgent.value.backend).some(command => command.slashName === 'compact')),
+  idleSession: Boolean(currentAgent.value?.providerSession && currentAgent.value.status.type === 'idle' && defaultProviderCommands(currentAgent.value.provider).some(command => command.slashName === 'compact')),
 }));
 const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
@@ -2683,7 +2684,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     activeTeamAgents: () => featureWindow.value ? orderAgentsLikeWorktreeSidebar(activeTeamAgents.value, featureAgents.value, activeTeam.value?.featureOrder) : activeTeamAgents.value,
     quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
-    attachmentsEnabled: () => props.backendCapabilities.attachments,
+    attachmentsEnabled: () => props.providerCapabilities.attachments,
     composerAttachments: () => props.composerAttachments,
     currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
@@ -2706,7 +2707,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     newTeam: openNewTeam,
     openAgentPalette: () => { agentQuickOpenVisible.value = true; },
     openSavedPromptDrafts: openActiveSavedPromptDrafts,
-    openAgentSurface: () => { activeSurface.value = 'agent'; },
+    openAgentSurface: () => { activeHost.value = 'agent'; },
     openBrowser: (command) => agentWorkspace.value?.handleBrowserOpenCommand(command),
     openDebugImageAnnotation,
     openDebugOperationProgress,
@@ -2744,12 +2745,12 @@ const paletteActions = computed(() => {
   const remote = agent?.remoteConnectionId;
   return commandPaletteActions({
     shortcuts: shortcutContext.value, agent, team,
-    settings: { embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
+    settings: { embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableProviders: props.snapshot.providerConnections?.map(provider => provider.provider) ?? [] },
     connected: props.connectionState.status === 'connected',
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
-    engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.remoteConnectionId).includes(agent.backend)),
-    canCreateAgent: Boolean(preferredBackendChoices(props.snapshot).length),
-    capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
+    engineConnected: Boolean(agent && preferredProviderChoices(props.snapshot, agent.remoteConnectionId).includes(agent.provider)),
+    canCreateAgent: Boolean(preferredProviderChoices(props.snapshot).length),
+    capabilities: { ...defaultProviderCapabilities(agent?.provider ?? 'codex'), ...currentProviderRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
     simulatorAvailable: Boolean(appApi?.mobileSimulator),
@@ -2879,7 +2880,7 @@ function openDebugOperationProgress(
     return;
   }
 
-  activeSurface.value = 'agent';
+  activeHost.value = 'agent';
   void nextTick(() => agentWorkspace.value?.showDebugGitOperationProgress(kind));
 }
 
@@ -2889,7 +2890,7 @@ function startDebugAgentCreationProgress(): void {
   debugAgentCreationProgress.value = {
     id,
     state: 'running',
-    backend: 'codex',
+    provider: 'codex',
     repositoryName: 'agent-workspace',
     createWorktree: true,
     branchName: 'debug/worktree-preview',
@@ -2960,7 +2961,7 @@ function clearDebugAgentCreationTimers(): void {
 }
 
 onBeforeUnmount(clearDebugAgentCreationTimers);
-const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeSurface.value === 'mission') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
+const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeHost.value === 'mission') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
 const editingAgent = computed(() => (
   editingAgentId.value ? props.snapshot.agents.find((agent) => agent.id === editingAgentId.value) ?? null : null
 ));
@@ -2995,10 +2996,10 @@ function repositorySessionContext(source?: Pick<RepositorySessionSource, 'agentI
 async function createQuickChat(): Promise<void> {
   const { teamId } = repositorySessionContext(null);
   try {
-    const backend = preferredBackendChoices(props.snapshot)[0];
+    const backend = preferredProviderChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
-    const created = await props.createQuickChat({ selection: { backend }, ...(teamId ? { teamId } : {}) });
-    if (created !== null) activeSurface.value = 'agent';
+    const created = await props.createQuickChat({ selection: { provider: backend }, ...(teamId ? { teamId } : {}) });
+    if (created !== null) activeHost.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -3024,7 +3025,7 @@ function closeNewProjectDialog(): void {
   newProjectError.value = null;
 }
 
-async function createNewProject(name: string, backend: Agent['backend']): Promise<void> {
+async function createNewProject(name: string, provider: Agent['provider']): Promise<void> {
   if (newProjectBusy.value) return;
   const { teamId } = repositorySessionContext(null);
   newProjectBusy.value = true;
@@ -3037,7 +3038,7 @@ async function createNewProject(name: string, backend: Agent['backend']): Promis
     }
     await props.createProject({
       name,
-      selection: { backend },
+      selection: { provider },
       ...(teamId ? { teamId } : {}),
     });
     newProjectDialogVisible.value = false;
@@ -3102,27 +3103,27 @@ async function resolveSelectedTeam(teamId: string | null | undefined, newTeamNam
 
 function openCockpit(): void {
   cockpitScope.value = true;
-  activeSurface.value = 'agent';
+  activeHost.value = 'agent';
   if (currentAgent.value && currentAgent.value.id !== props.activeAgent?.id) emit('select-agent', currentAgent.value.id);
 }
 
 async function openBacklog(): Promise<void> {
   if (backlogVisible.value && backlogInitialized) return;
-  activeSurface.value = 'backlog';
+  activeHost.value = 'backlog';
   backlogInitialized = true;
   await initializeCockpitBacklog();
 }
 
 function openAutomations(): void {
-  activeSurface.value = 'automations';
+  activeHost.value = 'automations';
 }
 
 function openSettings(tab?: SettingsTab): void {
-  if (activeSurface.value !== 'settings') {
-    settingsReturnMissionId.value = activeSurface.value === 'mission' ? selectedMissionId.value : null;
+  if (activeHost.value !== 'settings') {
+    settingsReturnMissionId.value = activeHost.value === 'mission' ? selectedMissionId.value : null;
   }
   if (tab) settingsActiveTab.value = tab;
-  activeSurface.value = 'settings';
+  activeHost.value = 'settings';
 }
 
 function toggleSpokenAnnouncementsMuted(): void {
@@ -3162,7 +3163,7 @@ async function deleteAutomation(automationId: string, location?: AutomationLocat
   return props.deleteAutomation(automationId, location);
 }
 
-async function readConversationMessages(ref: BackendConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]> {
+async function readConversationMessages(ref: ProviderConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]> {
   return location
     ? props.readConversationMessages(ref, agentId, location)
     : props.readConversationMessages(ref, agentId);
@@ -3178,11 +3179,11 @@ async function resumeAgentConversation(agentId: string, target: ConversationResu
 
 function selectTeamFromRail(teamId: string): void {
   cockpitScope.value = false;
-  if (activeSurface.value === 'settings' && settingsReturnMissionId.value === selectedMission.value?.id
+  if (activeHost.value === 'settings' && settingsReturnMissionId.value === selectedMission.value?.id
     && selectedMission.value.teamId === teamId) {
     selectMissionSurface(selectedMission.value.id);
   } else {
-    activeSurface.value = 'agent';
+    activeHost.value = 'agent';
   }
   emit('select-team', teamId);
 }
@@ -3191,7 +3192,7 @@ function selectAgentFromShell(agentId: string): void {
   const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
   if (cockpitScope.value && missionOwnedAgentIds.value.has(agentId)) return;
   if (cockpitScope.value && agent?.teamId && agent.teamId !== activeTeam.value?.id) emit('select-team', agent.teamId);
-  activeSurface.value = 'agent';
+  activeHost.value = 'agent';
   pendingComposerFocusAgentId.value = agentId;
   split.select(agentId);
   emit('select-agent', agentId);
@@ -3199,7 +3200,7 @@ function selectAgentFromShell(agentId: string): void {
 
 function selectAgentFromBacklog(payload: { agentId: string; teamId: string }): void {
   cockpitScope.value = false;
-  activeSurface.value = 'agent';
+  activeHost.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   emit('select-team', payload.teamId);
   emit('select-agent', payload.agentId);
@@ -3210,7 +3211,7 @@ function selectAgentFromPalette(payload: { agentId: string; teamId: string }): v
   const teamId = agent?.teamId ?? props.snapshot.teams.find(team => team.agentIds.includes(payload.agentId))?.id;
   if (!agent || !teamId) return;
   pendingMissionFocusId.value = null;
-  activeSurface.value = missionWindow.value ? 'mission' : 'agent';
+  activeHost.value = missionWindow.value ? 'mission' : 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   if (teamId === activeTeam.value?.id) split.select(payload.agentId);
   if (teamId !== activeTeam.value?.id) emit('select-team', teamId);
@@ -3244,8 +3245,8 @@ async function updatePlanReview(agentId: string, response: import('@workspace/co
 
 function forwardApprovalResolution(
   approvalId: string,
-  decision: BackendApprovalDecision,
-  scope: BackendApprovalScope,
+  decision: ProviderApprovalDecision,
+  scope: ProviderApprovalScope,
 ): void {
   if (debugApproval.value?.request.id === approvalId) {
     debugApproval.value = null;
@@ -3349,7 +3350,7 @@ function copyPromptDraft(draft: AppSnapshot['general']['savedPromptDrafts'][numb
   return { ...draft, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }) };
 }
 
-async function savePromptDraft(agentId: string, text: string, content?: readonly import('@korus-dev/multi-agent-sdk/surface').CodexPromptPart[]): Promise<void> {
+async function savePromptDraft(agentId: string, text: string, content?: readonly import('@korus-dev/multi-agent-sdk').PromptPart[]): Promise<void> {
   if (!text.trim() || text.length > 131_072) throw new Error(t('chat.savedDrafts.invalid'));
   const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map(copyPromptDraft), {
     id: crypto.randomUUID(), agentId, text, ...(content === undefined ? {} : { content: normalizePromptContent(content) }), createdAt: Date.now(),

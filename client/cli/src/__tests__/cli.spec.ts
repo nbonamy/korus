@@ -191,7 +191,7 @@ describe('standalone CLI', () => {
   it('inspects agents and Missions without source labels or private provider data', async () => {
     const f = await fixture(); await f.seed();
     expect(await f.command(['agents', 'list', '--offline', '--json'])).toBe(0);
-    expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', agents: [{ id: 'agent-one', backend: 'codex' }] });
+    expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', agents: [{ id: 'agent-one', provider: 'codex' }] });
     expect(await f.command(['agents', 'list', '--offline'])).toBe(0);
     expect(f.out.pop()).toBe('Agents\nagent-one\tBuilder\tcodex\tworking');
     expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).toBe(0);
@@ -208,7 +208,7 @@ describe('standalone CLI', () => {
     const f = await fixture(); const seeded = await f.seed();
     const requests = await daemon(path.join(f.home, 'daemon.sock'), method => method === backendMethods.backendHealthGet
       ? { ok: true, version: '0.50.6', pid: 123, name: product.daemonName }
-      : method === backendMethods.snapshotGet ? { snapshot: { agents: seeded.agents.map(({ engine, ...agent }) => ({ ...agent, backend: engine.kind })), missions: seeded.missions } } : {});
+      : method === backendMethods.snapshotGet ? { snapshot: { agents: seeded.agents.map(({ engine, ...agent }) => ({ ...agent, provider: engine.kind })), missions: seeded.missions } } : {});
     expect(await f.command(['agents', 'send', 'agent:agent-one', 'Continue carefully', '--json'])).toBe(2);
     expect(await f.command(['agents', 'stop', 'id:agent-one', '--json'])).toBe(2);
     expect(requests).toStrictEqual([]);
@@ -414,10 +414,10 @@ describe('standalone CLI', () => {
   });
   it('lists live agent and Mission metadata without changing backend state', async () => {
     const f = await fixture(); await f.seed();
-    const agent = { name: 'Builder', backend: 'codex', status: { type: 'idle' } };
+    const agent = { name: 'Builder', provider: 'codex', status: { type: 'idle' } };
     await daemon(path.join(f.home, 'daemon.sock'), () => ({ snapshot: { agents: [{ ...agent, id: 'one' }, { ...agent, id: 'two' }], missions: [] } }));
     expect(await f.command(['agents', 'list', '--json'])).toBe(0);
-    expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: ['one', 'two'].map(id => ({ id, name: 'Builder', backend: 'codex', status: 'idle' })) });
+    expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: ['one', 'two'].map(id => ({ id, name: 'Builder', provider: 'codex', status: 'idle' })) });
     expect(await f.command(['missions', 'list', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', missions: [] });
     expect(await f.command(['missions', 'list'])).toBe(0);

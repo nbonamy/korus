@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CompanionNotifications } from '../companion/notifications';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
-import { sdkAgent } from '../codex/__tests__/sdk-surface-fixture';
+import { sdkAgent } from '../codex/__tests__/sdk-host-fixture';
 
 describe('shared conversation read state', () => {
   it('captures alert revisions before later turns and propagates only the read checkpoint', async () => {
@@ -12,7 +12,7 @@ describe('shared conversation read state', () => {
     const captured: ReturnType<CompanionNotifications['capture']> = [];
     const server = new AppBackendServer({ version: 'test', snapshot, onEvent: event => captured.push(...source.capture(event)) });
     try {
-      for (const revision of [1, 2]) server.emitEvent({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
+      for (const revision of [1, 2]) server.emitEvent({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
         type: 'turn.completed', conversationId: 'conversation-a', turnId: `turn-${revision}`, payload: { status: 'completed' },
       } } } as never);
       const notifications = captured.map(action => source.create(action.event, snapshot, action.revision));
@@ -30,7 +30,7 @@ describe('shared conversation read state', () => {
     snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
     const events = vi.fn(); const save = vi.fn(async () => {});
     const server = new AppBackendServer({ version: 'test', snapshot, onEvent: events, saveSnapshot: save });
-    const attention = (revision: number) => server.emitEvent({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
+    const attention = (revision: number) => server.emitEvent({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
       type: 'turn.completed', seq: revision, occurredAt: '', origin: 'notification', conversationId: 'conversation-a', turnId: `turn-${revision}`,
       payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
     } } });

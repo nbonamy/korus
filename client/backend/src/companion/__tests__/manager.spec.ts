@@ -67,14 +67,14 @@ describe('daemon companion persistence', () => {
     saved.activities = { phone: { start: { kind: 'start', token: 'ab'.repeat(32), environment: 'development' } } };
     await writeFile(file, JSON.stringify(saved));
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ id: 'working', teamId: 'team', name: 'Working', folder: null, backend: 'codex', status: { type: 'working' }, createdAt: '', updatedAt: '' }];
+    snapshot.agents = [{ id: 'working', teamId: 'team', name: 'Working', folder: null, provider: 'codex', status: { type: 'working' }, createdAt: '', updatedAt: '' }];
     snapshot.teams = [{ id: 'team', name: 'Team', agentIds: ['working'] }];
     const restored = new CompanionManager(directory, { request: async <T>() => ({ snapshot }) as T }, {});
     try {
       await restored.control({ action: 'status' });
       restored.event({ type: 'agent.updated', seq: 1, occurredAt: new Date().toISOString(), agentId: 'working', payload: { id: 'working', status: { type: 'working' } } });
       await vi.waitFor(() => expect(transport.liveActivity).toHaveBeenCalledWith('phone', saved.activities.phone.start,
-        expect.objectContaining({ event: 'start', state: { hostName: os.hostname(), active: 1, running: 1, attention: 0, agents: [{ id: 'working', name: 'Working', backend: 'codex', startedAt: expect.any(Number), status: 'working', detail: 'Working' }], more: 0 } })));
+        expect.objectContaining({ event: 'start', state: { hostName: os.hostname(), active: 1, running: 1, attention: 0, agents: [{ id: 'working', name: 'Working', provider: 'codex', startedAt: expect.any(Number), status: 'working', detail: 'Working' }], more: 0 } })));
       await restored.control({ action: 'disable' });
       const disabled = JSON.parse(await readFile(file, 'utf8'));
       expect(disabled.activities).toStrictEqual({});

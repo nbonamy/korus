@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it } from 'vitest';
-import type { ToolPresentationContext as CodexToolPresentationContext } from '@korus-dev/agent-ui-sdk';
+import type { ToolPresentationContext } from '@korus-dev/agent-ui-sdk';
 import {
   IconBrowser as BrowserIcon,
   IconDeviceDesktop as DeviceDesktopIcon,
@@ -168,7 +168,7 @@ function context(
   tool: string,
   args: unknown,
   server = 'workspace',
-): CodexToolPresentationContext {
+): ToolPresentationContext {
   return {
     kind: 'mcp',
     metadata: { server, tool },

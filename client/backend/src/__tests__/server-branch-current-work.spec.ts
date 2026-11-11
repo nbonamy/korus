@@ -23,7 +23,7 @@ describe('branch current work app boundary', { timeout: 3_000 }, () => {
     await writeFile(join(source, 'work'), 'base\n'); await git('add', '.'); await git('commit', '-m', 'initial');
     await writeFile(join(source, 'work'), 'feature\n');
     const snapshot = createTestSnapshot();
-    const parent: Agent = { id: 'parent', teamId: snapshot.teams[0]!.id, folder: source, name: 'Parent', backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+    const parent: Agent = { id: 'parent', teamId: snapshot.teams[0]!.id, folder: source, name: 'Parent', provider: 'codex', providerDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
     snapshot.agents = [parent]; snapshot.teams[0]!.agentIds = [parent.id];
     let savedSnapshot: AppSnapshot | undefined;
     const saveSnapshot = vi.fn(async (next: AppSnapshot) => { savedSnapshot = structuredClone(next); });
@@ -54,7 +54,7 @@ describe('branch current work app boundary', { timeout: 3_000 }, () => {
       expect((await exec('git', ['rev-parse', 'HEAD'], { cwd: retried.folder })).stdout.trim()).toBe(await git('rev-parse', 'HEAD'));
       expect(await readFile(join(retried.folder, 'work'), 'utf8')).toBe('feature\n');
       expect(snapshot.agents[1]?.status.type).toBe('idle');
-      expect(snapshot.agents[1]?.backendSession).toBeUndefined();
+      expect(snapshot.agents[1]?.providerSession).toBeUndefined();
     } finally { tasks.close(); await server.close(); await rm(root, { recursive: true, force: true }); }
   });
 });

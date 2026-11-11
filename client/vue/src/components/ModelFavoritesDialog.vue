@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import type { BackendModelOption, ModelFavorite } from '@workspace/core/contracts';
+import type { ProviderModelOption, ModelFavorite } from '@workspace/core/contracts';
 import { ref, watch } from 'vue';
 import { translate } from '../i18n';
 import { ArrowsVerticalIcon, Trash2Icon } from '../shared/icons/app-icons';
@@ -70,7 +70,7 @@ import {
 
 const props = defineProps<{
   favorites: readonly ModelFavorite[];
-  models: readonly BackendModelOption[];
+  models: readonly ProviderModelOption[];
   visible: boolean;
 }>();
 

@@ -2,19 +2,19 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, shallowReactive } from 'vue';
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { antigravityBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { createAntigravityConversationReplica, emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import type { AgentConversationActions } from '../use-agent-conversation';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
 
 it('renders the Antigravity replica, denies a native approval, and keeps unsupported turn controls absent', async () => {
   const snapshot = createInitialSnapshot();
   const agent = snapshot.agents[0]!;
-  agent.backend = 'antigravity'; agent.backendDefaults = { kind: 'antigravity', permissionMode: 'default' };
-  agent.backendSession = { kind: 'antigravity', sessionId: 'native-session' };
+  agent.provider = 'antigravity'; agent.providerDefaults = { kind: 'antigravity', permissionMode: 'default' };
+  agent.providerSession = { kind: 'antigravity', sessionId: 'native-session' };
   const replica = createAntigravityConversationReplica(emptyAntigravitySnapshot(agent.id, 'native-session'));
   const identity = { agentId: agent.id, sessionId: 'native-session', turnId: 'turn', occurredAt: '2026-10-06T10:00:00Z' };
   replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
@@ -25,7 +25,7 @@ it('renders the Antigravity replica, denies a native approval, and keeps unsuppo
   const view = shallowReactive<AgentConversationView>({
     agent, codexSnapshot: null, claudeSnapshot: null, antigravitySnapshot: replica.getSnapshot(),
     composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
-    composerState: { text: 'Keep my draft', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: antigravityBackendCapabilities,
+    composerState: { text: 'Keep my draft', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: antigravityProviderCapabilities,
     approvals: [], queuedPrompts: [], sending: false, history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
   });
   const actions: AgentConversationActions = {
@@ -37,7 +37,7 @@ it('renders the Antigravity replica, denies a native approval, and keeps unsuppo
   const wrapper = mount(AgentConversationPanel, { props: {
     view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
     savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-  }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['antigravity']) } } });
+  }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['antigravity']) } } });
   expect(wrapper.text()).toContain('Native Antigravity response');
   const confirmation = wrapper.get('.chat-tool-confirmation');
   expect(confirmation.findAll('button').map(button => button.text())).toEqual(['Allow', 'Deny']);

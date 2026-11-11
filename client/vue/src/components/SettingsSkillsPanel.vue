@@ -58,8 +58,8 @@
                 <span class="settings-skills__description" :title="String(row.description)">{{ row.description }}</span>
               </div>
               <span class="settings-skills__providers">
-                <span v-for="backend in state?.providers ?? []" :key="backend" class="settings-skills__availability" :data-status="statusFor(row, backend).status" :aria-label="availabilityLabel(row, backend)" :title="[availabilityLabel(row, backend), statusFor(row, backend).path].filter(Boolean).join('\n')" role="img">
-                  <BackendIcon :backend="backend" />
+                <span v-for="provider in state?.providers ?? []" :key="provider" class="settings-skills__availability" :data-status="statusFor(row, provider).status" :aria-label="availabilityLabel(row, provider)" :title="[availabilityLabel(row, provider), statusFor(row, provider).path].filter(Boolean).join('\n')" role="img">
+                  <ProviderIcon :provider="provider" />
                 </span>
               </span>
             </div>
@@ -75,14 +75,14 @@
     </el-tabs>
     <FormDialog v-model="documentDialog" :title="viewingName" width="720px">
       <el-tabs v-if="document && document.files.length > 1" v-model="documentVersion">
-        <el-tab-pane v-for="(file, index) in document.files" :key="index" :name="String(index)" :label="file.providers.map(backendDisplayName).join(', ') || $t('surface.skills.managedCopy')" />
+        <el-tab-pane v-for="(file, index) in document.files" :key="index" :name="String(index)" :label="file.providers.map(providerDisplayName).join(', ') || $t('surface.skills.managedCopy')" />
       </el-tabs>
       <div v-if="!document" class="settings-skills__document-loading" role="status" aria-busy="true" :aria-label="$t('surface.skills.loadingDocument')">
         <span v-for="width in [38, 92, 74, 86, 56, 90, 64]" :key="width" :style="{ width: `${width}%` }" />
       </div>
       <article v-else class="settings-skills__viewer" tabindex="0">
         <p v-if="viewed?.description" class="settings-skills__summary">{{ viewed.description }}</p>
-        <div class="codex-markdown settings-skills__body" v-html="viewedHtml" />
+        <div class="agent-ui-markdown settings-skills__body" v-html="viewedHtml" />
       </article>
       <template #footer><button class="app-button app-button--tertiary" @click="documentDialog = false">{{ $t('common.close') }}</button></template>
     </FormDialog>
@@ -93,8 +93,8 @@
         </FormField>
         <FormField v-if="providerChoices.length > 1" :label="$t('surface.skills.codingAgents')">
           <el-select v-model="installBackends" multiple :disabled="busy" :aria-label="$t('surface.skills.codingAgents')">
-            <el-option v-for="backend in providerChoices" :key="backend" :value="backend" :label="backendDisplayName(backend)">
-              <span class="settings-skills__agent"><BackendIcon :backend="backend" />{{ backendDisplayName(backend) }}</span>
+            <el-option v-for="provider in providerChoices" :key="provider" :value="provider" :label="providerDisplayName(provider)">
+              <span class="settings-skills__agent"><ProviderIcon :provider="provider" />{{ providerDisplayName(provider) }}</span>
             </el-option>
           </el-select>
         </FormField>
@@ -111,9 +111,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { HarnessProvider } from '@workspace/core/contracts';
 import { curatedSkills, parseSkillDocument, type InstalledSkill, type CuratedSkill, type SkillManagerInput, type SkillManagerState, type SkillDocument } from '@workspace/core/skill-manager';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { renderMarkdown } from '@korus-dev/agent-ui-sdk';
 import { appApi, appPlatformActions } from '../platform-api';
 import { translate } from '../i18n';
@@ -130,7 +130,7 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
-import BackendIcon from './BackendIcon.vue';
+import ProviderIcon from './ProviderIcon.vue';
 import AppDataList from './AppDataList.vue';
 import type { AppDataListRow } from './app-data-list';
 
@@ -142,11 +142,11 @@ const skillArtwork: Record<string, string> = {
 const document = ref<SkillDocument>(), documentDialog = ref(false), documentVersion = ref('0'), viewingName = ref('');
 const view = ref('discover'), query = ref(''), installDialog = ref(false), kind = ref<'personal' | 'builtIn'>('personal');
 const source = ref(''), error = ref(''), busy = ref(false), activeSource = ref(''), syncing = ref(false), rowTask = ref<{ name: string; action: 'remove' | 'sync' }>(), uninstalling = ref('');
-// Only the installed inventory waits on the backend; the featured list is static.
+// Only the installed inventory waits on the provider; the featured list is static.
 const loading = computed(() => !state.value && busy.value);
 const providerChoices = computed(() => state.value?.providers ?? []);
 // Every configured coding agent starts selected for a new install.
-const installBackends = ref<AgentBackend[]>([]);
+const installBackends = ref<HarnessProvider[]>([]);
 watch(installDialog, open => { if (open) installBackends.value = [...providerChoices.value]; });
 const columns = [{ id: 'skill', label: translate('surface.skills.skill'), width: 'minmax(0, 1fr)' }];
 const matches = (text: string) => text.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase());
@@ -161,13 +161,13 @@ const viewed = computed(() => {
   return file ? parseSkillDocument(file.content, document.value!.name) : undefined;
 });
 const viewedHtml = computed(() => viewed.value?.body.trim() ? renderMarkdown(viewed.value.body) : '');
-function statusFor(row: AppDataListRow, backend: AgentBackend) {
-  const locations = (row.providers as InstalledSkill['providers']).filter(provider => provider.backend === backend);
-  return { path: locations.map(provider => provider.path).join('\n'), status: locations.find(provider => provider.status === 'conflict')?.status ?? locations.find(provider => provider.status === 'installed')?.status ?? 'missing' };
+function statusFor(row: AppDataListRow, provider: HarnessProvider) {
+  const locations = (row.providers as InstalledSkill['providers']).filter(location => location.provider === provider);
+  return { path: locations.map(location => location.path).join('\n'), status: locations.find(location => location.status === 'conflict')?.status ?? locations.find(location => location.status === 'installed')?.status ?? 'missing' };
 }
-function availabilityLabel(row: AppDataListRow, backend: AgentBackend) {
-  const status = statusFor(row, backend).status;
-  return translate(status === 'installed' ? 'surface.skills.installedFor' : status === 'conflict' ? 'surface.skills.conflictFor' : 'surface.skills.missingFor', { provider: backendDisplayName(backend) });
+function availabilityLabel(row: AppDataListRow, provider: HarnessProvider) {
+  const status = statusFor(row, provider).status;
+  return translate(status === 'installed' ? 'surface.skills.installedFor' : status === 'conflict' ? 'surface.skills.conflictFor' : 'surface.skills.missingFor', { provider: providerDisplayName(provider) });
 }
 // A pack's skills are the ones Korus recorded when it installed the pack (older installs carry a marker instead).
 function packSkills(skill: CuratedSkill): string[] {
@@ -183,7 +183,7 @@ function installed(skill: CuratedSkill) {
   if (skill.kind !== 'pack') {
     const providers = state.value?.providers ?? [];
     return state.value?.skills.some(value => value.name === skill.name && (
-      value.managed || providers.length > 0 && providers.every(backend => value.providers.some(provider => provider.backend === backend && provider.status === 'installed'))
+      value.managed || providers.length > 0 && providers.every(choice => value.providers.some(location => location.provider === choice && location.status === 'installed'))
     ));
   }
   return packSkills(skill).length > 0;
@@ -252,7 +252,7 @@ async function run(input: SkillManagerInput) {
 function installSource() {
   if (!source.value.trim()) return;
   const subset = providerChoices.value.length > 1 && installBackends.value.length < providerChoices.value.length;
-  void run({ action: 'install', source: source.value.trim(), ...(subset ? { backends: installBackends.value } : {}) });
+  void run({ action: 'install', source: source.value.trim(), ...(subset ? { providers: installBackends.value } : {}) });
 }
 async function confirmSync() {
   try {

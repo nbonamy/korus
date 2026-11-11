@@ -8,7 +8,7 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../st
 
 function fixture() {
   const snapshot = createInitialSnapshot();
-  snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread' };
+  snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread' };
   const saved = persistedStateFromSnapshot(snapshot);
   const legacy = { agentId: snapshot.agents[0]!.id, conversationId: 'thread', id: 'old-plan', revision: 2, submitted: false, answers: { choices: { platform: 'mac' }, comments: { platform: 'Keep the original folder.' } }, history: [{ revision: 1, answers: { choices: {}, comments: { platform: 'Add a choice.' } }, submitted: true }], document: { title: 'Migration', sections: [{ id: 'platform', claim: 'Choose a platform', decision: { question: 'Where?', options: [{ id: 'mac', label: 'macOS' }, { id: 'linux', label: 'Linux' }], proposed: 'linux' } }] } };
   Object.assign(saved.agents[0]!, { interactivePlan: legacy });
@@ -42,7 +42,7 @@ describe('saved structured plan migration', () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'saved-plan-migration-'));
     try {
       const base = createInitialSnapshot();
-      base.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread' };
+      base.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread' };
       await new AppStateStore(home).save(base);
       const filename = path.join(home, 'roster.json');
       const roster = JSON.parse(await readFile(filename, 'utf8'));
@@ -59,8 +59,8 @@ describe('saved structured plan migration', () => {
   });
   it.each(['cursor', 'antigravity', 'claude', 'codex'] as const)('retains %s plan content and feedback after restart without restoring a dead request', backend => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = backend;
-    snapshot.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'session' } : backend === 'claude' ? { kind: backend, sessionId: 'session', transport: 'stdio' } : { kind: backend, sessionId: 'session' };
+    snapshot.agents[0]!.provider = backend;
+    snapshot.agents[0]!.providerSession = backend === 'codex' ? { kind: backend, threadId: 'session' } : backend === 'claude' ? { kind: backend, sessionId: 'session', transport: 'stdio' } : { kind: backend, sessionId: 'session' };
     snapshot.agents[0]!.planReview = { id: 'plan', conversationId: 'session', turnId: 'turn', requestId: 'lost-request', markdown: '# Translation', status: 'pending', deliveryPending: true, draft: { comments: [], choices: [{ id: 'choice', quote: 'French', selected: ['New file'], confirmed: true }] } };
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot)).agents[0]!.planReview!;
     expect(restored).toMatchObject({ markdown: '# Translation', status: 'cancel', canApprove: false, draft: snapshot.agents[0]!.planReview.draft });

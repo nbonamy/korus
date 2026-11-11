@@ -1,5 +1,5 @@
 import type { Agent, AppSnapshot, ConversationSummary } from '@workspace/core/contracts';
-import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 
 export type SubagentIdentityServiceOptions = {
   applyEvent: (event: BackendEvent) => void;
@@ -20,9 +20,9 @@ export class SubagentIdentityService {
     if (this.backfillPromise) return this.backfillPromise;
     const snapshot = this.options.getSnapshot();
     const targets = snapshot.agents.flatMap((agent) => {
-      if (agent.backendSession?.kind !== 'codex') return [];
+      if (agent.providerSession?.kind !== 'codex') return [];
       const tree = snapshot.subagentTrees[agent.id];
-      if (!tree || tree.rootConversationId !== agent.backendSession.threadId) return [];
+      if (!tree || tree.rootConversationId !== agent.providerSession.threadId) return [];
       return Object.values(tree.nodes)
         .filter((node) => !node.agentNickname && !node.agentRole)
         .map((node) => ({ agent, conversationId: node.conversationId, rootConversationId: tree.rootConversationId }));
@@ -38,7 +38,7 @@ export class SubagentIdentityService {
       }
       this.options.applyEvent({
         agentId: agent.id,
-        backend: 'codex',
+        provider: 'codex',
         threadId: rootConversationId,
         type: 'subagent.identityChanged',
         payload: {

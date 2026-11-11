@@ -28,7 +28,7 @@ test('transcript files open Source and Diff on demand, fit phones and wide scree
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     const select = (id, generation) => page.evaluate(async ({ id, generation }) => {
-      const agent = { id, name: id, backend: 'codex', backendSession: { kind: 'codex', threadId: id }, status: { type: 'idle' }, createdAt: '', updatedAt: '', readState: { revision: 1 } };
+      const agent = { id, name: id, provider: 'codex', providerSession: { kind: 'codex', threadId: id }, status: { type: 'idle' }, createdAt: '', updatedAt: '', readState: { revision: 1 } };
       await window.companionTranscript.setConversation(JSON.stringify({ agentId: id, generation, ready: true, agent, peers: [],
         frame: { payload: { snapshot: { messages: [{ id: 'message', role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Read [app.ts](src/app.ts:8) for details.' }] }], turns: [], activeTurnId: null, busy: false } } } }));
     }, { id, generation });
@@ -197,7 +197,7 @@ test('deferred Codex diffs load in bounded chunks when selected and retry withou
     await page.evaluate(() => {
       const change = { path: '/repo/screenshot.txt', kind: { type: 'add' }, diff: '', diffContent: { sessionId: 'thread', contentId: 'b'.repeat(64), byteLength: new TextEncoder().encode(window.diffText).length, changeKind: 'add' } };
       return window.companionTranscript.setConversation(JSON.stringify({ agentId: 'owner', generation: 1, ready: true,
-        agent: { id: 'owner', name: 'owner', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' } }, peers: [],
+        agent: { id: 'owner', name: 'owner', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' } }, peers: [],
         frame: { payload: { snapshot: { messages: [{ id: 'm', role: 'assistant', status: 'complete', parts: [{ type: 'tool', id: 'item', kind: 'fileChange', title: '1 file change', status: 'completed', statusText: JSON.stringify({ source: 'codex', action: 'create', phase: 'completed', params: { target: 'screenshot.txt' } }), input: { changes: [change] }, metadata: { changes: [change] } }] }], turns: [], activeTurnId: null, busy: false } } } }));
     });
     assert.equal(await page.evaluate(() => window.diffReads.length), 0);

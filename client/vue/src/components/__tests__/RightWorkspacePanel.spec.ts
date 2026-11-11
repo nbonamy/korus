@@ -48,7 +48,7 @@ function mountPanel(
     props: {
       activeTab,
       agent: {
-        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       },
       gitPanel: { kind: 'gitDiff', title: 'Review', diff: '', state: 'idle' },
       browserAvailable,
@@ -625,7 +625,7 @@ describe('RightWorkspacePanel', () => {
     if (kind === 'native review') {
       await wrapper.setProps({ agent: {
         ...wrapper.props('agent'),
-        backendSession: { kind: 'codex', threadId: 'plan-thread' },
+        providerSession: { kind: 'codex', threadId: 'plan-thread' },
         planReview: { id: 'plan-review', conversationId: 'plan-thread', turnId: 'plan-turn', markdown: '# Plan\n\nKeep Browser available.', status: 'pending' },
       } });
     }
@@ -649,7 +649,7 @@ describe('RightWorkspacePanel', () => {
       if (response.resolution === 'save') review = { ...review, draft: response.draft, draftVersion: (response.draftVersion ?? 0) + 1 };
       return review;
     });
-    await wrapper.setProps({ agent: { ...wrapper.props('agent'), backend: 'cursor', backendSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
     expect(wrapper.get('h1').text()).toBe('Translation');
     await wrapper.findAll('input[type="radio"]')[1]!.setValue();
     await wrapper.get('button[aria-label="Comment on this section: French text"]').trigger('click');

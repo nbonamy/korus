@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { agentResponseFromClientResponse, approvalAgentRequest, approvalOutcome, clientResponseFromAgentResponse, isAgentRequestResponse, requestFromClientRequest } from '../agent-request';
-import type { BackendApprovalRequest, ClientRequest, ClientRequestResponse } from '../contracts';
+import type { ProviderApprovalRequest, ClientRequest, ClientRequestResponse } from '../contracts';
+import { codexEventFromWire } from '../codex-event-wire';
+import { approvalOutcome as sdkApprovalOutcome } from '@korus-dev/multi-agent-sdk/renderer';
 
 describe('normalized agent input contracts', () => {
+  it('lets the renamed SDK cancel an approval received from a released-client frame', () => {
+    const native = codexEventFromWire({ type: 'approval.resolved', conversationId: 'thread', seq: 1,
+      occurredAt: 'now', origin: 'notification', payload: {
+        approval: { id: 'approval', conversationId: 'thread', itemId: 'item', title: 'Approve', kind: 'command' },
+        decision: null, scope: null, reason: 'surface_disconnected',
+      } });
+    if (native.type !== 'approval.resolved') throw new Error('Expected approval resolution');
+    expect(sdkApprovalOutcome(native.payload.decision, native.payload.scope, native.payload.reason))
+      .toStrictEqual({ kind: 'cancelled', reason: 'host_disconnected' });
+  });
   it.each([
     { answers: { choice: { answers: ['Yes'] } } },
     { decision: 'allow' as const },
@@ -40,7 +52,7 @@ describe('normalized agent input contracts', () => {
   });
 
   it('projects approvals without sharing mutable permission lists', () => {
-    const approval: BackendApprovalRequest = { id: 'approval', itemId: 'item', kind: 'command', conversationId: 'conversation', title: 'Run tests', allowedScopes: ['once'], requestedPermissions: [{ kind: 'network', enabled: true }] };
+    const approval: ProviderApprovalRequest = { id: 'approval', itemId: 'item', kind: 'command', conversationId: 'conversation', title: 'Run tests', allowedScopes: ['once'], requestedPermissions: [{ kind: 'network', enabled: true }] };
     const request = approvalAgentRequest(approval);
     expect(request).toMatchObject({ id: approval.id, conversationId: approval.conversationId, kind: 'approval', approval });
     if (request.kind !== 'approval') throw new Error('Expected approval');

@@ -237,7 +237,7 @@
         <el-option :label="t('missions.executionPerRepository')" value="perRepository" />
         <el-option :label="t('missions.executionMultiplePerRepository')" value="multiplePerRepository" />
       </el-select>
-      <BackendModelSelector
+      <ProviderModelSelector
         v-if="!leadExecutesImplementation"
         v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
@@ -269,7 +269,7 @@ import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } fr
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { missionImplementationBusy, pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { ArrowRightIcon, ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, CheckIcon, FileTextIcon, PlayerPlayIcon, TargetArrowIcon } from '../shared/icons/app-icons';
-import BackendModelSelector from './BackendModelSelector.vue';
+import ProviderModelSelector from './ProviderModelSelector.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
@@ -417,7 +417,7 @@ async function reassignMembers(): Promise<void> {
 const artifactError = ref('');
 const feedbackBusy = ref(false);
 const feedbackReset = ref(0);
-const { selection: implementationSelection, backend: implementationBackend, model: implementationModel, reasoningEffort: implementationEffort, serviceTier: implementationTier } = useExecutionSelection();
+const { selection: implementationSelection, provider: implementationBackend, model: implementationModel, reasoningEffort: implementationEffort, serviceTier: implementationTier } = useExecutionSelection();
 const implementationStarting = ref(false);
 const implementationStartRepositories = ref<string[]>([]);
 const implementationStartTicketCount = ref(0);
@@ -563,11 +563,11 @@ function resetImplementationModel(): void {
   implementationMode.value = props.mission.execution?.implementationMode ?? (props.mission.execution?.parallelImplementation ? 'multiplePerRepository' : 'perRepository');
   const selected = props.mission.execution?.implementationModel;
   const lead = missionLead.value;
-  implementationBackend.value = selected?.backend ?? lead?.backend;
-  implementationModel.value = selected?.model ?? lead?.backendDefaults?.model ?? '';
-  implementationEffort.value = selected?.reasoningEffort ?? lead?.backendDefaults?.reasoningEffort ?? '';
+  implementationBackend.value = selected?.provider ?? lead?.provider;
+  implementationModel.value = selected?.model ?? lead?.providerDefaults?.model ?? '';
+  implementationEffort.value = selected?.reasoningEffort ?? lead?.providerDefaults?.reasoningEffort ?? '';
   // The selector drops a tier the model does not offer, so the lead's tier can only prefill what still applies.
-  implementationTier.value = selected ? selected.serviceTier ?? '' : (lead?.backendDefaults && 'serviceTier' in lead.backendDefaults ? lead.backendDefaults.serviceTier : null) ?? '';
+  implementationTier.value = selected ? selected.serviceTier ?? '' : (lead?.providerDefaults && 'serviceTier' in lead.providerDefaults ? lead.providerDefaults.serviceTier : null) ?? '';
 }
 watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
 watch([() => props.mission.id, () => props.mission.revision, () => activeRun.value?.id, () => viewedStage.value], () => {

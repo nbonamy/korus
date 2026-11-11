@@ -32,19 +32,19 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     for (const item of snapshot.agents) item.lastActivityAt = item.createdAt;
     const agent = snapshot.agents[0]!;
-    agent.backend = 'cursor';
-    agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
-    agent.backendDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permissionMode: 'allowlist', userSelectedModel: true };
-    agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { backend: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
+    agent.provider = 'cursor';
+    agent.providerSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
+    agent.providerDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permissionMode: 'allowlist', userSelectedModel: true };
+    agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { provider: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
     agent.handoff = { operationId: 'cursor-handoff', sourceAgentId: agent.id, sourceTitle: 'Cursor source',
-      sourceRef: { backend: 'cursor', folder: agent.folder, sessionId: 'cursor-source' }, phase: 'complete',
-      selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } };
-    agent.visualize = { id: 'cursor-viz', conversationRef: { backend: 'cursor', folder: agent.folder, sessionId: 'cursor-native-session' },
+      sourceRef: { provider: 'cursor', folder: agent.folder, sessionId: 'cursor-source' }, phase: 'complete',
+      selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } };
+    agent.visualize = { id: 'cursor-viz', conversationRef: { provider: 'cursor', folder: agent.folder, sessionId: 'cursor-native-session' },
       isOpen: true, suggestions: [], visualizations: [], selectedVisualizationId: null, createdAt: '', updatedAt: '' };
     snapshot.general.preferredProviders = { local: 'cursor' };
     snapshot.general.providerHomes = { cursor: { homePath: '/cursor', isolated: false, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, cursor: false };
-    snapshot.general.providerModelDefaults = { cursor: { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } };
+    snapshot.general.providerModelDefaults = { cursor: { provider: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } };
     await new AppStateStore(home).save(snapshot);
     const rosterBefore = JSON.parse(await readFile(path.join(home, 'roster.json'), 'utf8'));
     const restored = await new AppStateStore(home).load();
@@ -61,13 +61,13 @@ describe('state persistence', () => {
   it.each(['codex', 'claude', 'antigravity'] as const)('drops mismatched %s session/defaults from a Cursor agent', backend => {
     const snapshot = createInitialSnapshot();
     const persisted = persistedStateFromSnapshot(snapshot);
-    persisted.agents[0]!.backend = 'cursor';
-    persisted.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'other' } : backend === 'claude' ? { kind: backend, sessionId: 'other', transport: 'stdio' } : { kind: backend, sessionId: 'other' };
-    persisted.agents[0]!.backendDefaults = { kind: backend, model: 'other-only' };
+    persisted.agents[0]!.provider = 'cursor';
+    persisted.agents[0]!.providerSession = backend === 'codex' ? { kind: backend, threadId: 'other' } : backend === 'claude' ? { kind: backend, sessionId: 'other', transport: 'stdio' } : { kind: backend, sessionId: 'other' };
+    persisted.agents[0]!.providerDefaults = { kind: backend, model: 'other-only' };
     const restored = snapshotFromPersistedState(persisted);
-    expect(restored.agents[0]!.backend).toBe('cursor');
-    expect(restored.agents[0]!.backendSession).toBeUndefined();
-    expect(restored.agents[0]!.backendDefaults).toBeUndefined();
+    expect(restored.agents[0]!.provider).toBe('cursor');
+    expect(restored.agents[0]!.providerSession).toBeUndefined();
+    expect(restored.agents[0]!.providerDefaults).toBeUndefined();
   });
 
   it('retains a guest display name saved through settings update after restart', async () => {
@@ -104,11 +104,11 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.', codeReviewInstructions: 'Check authorization.\nKeep findings actionable.', missionInstructions: 'Keep tickets small.\nInclude acceptance criteria.' } });
     snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
-    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { backend: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
+    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { provider: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
     snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
-    snapshot.agents[1]!.backend = 'claude';
-    snapshot.agents[1]!.backendDefaults = { kind: 'claude' };
-    snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
+    snapshot.agents[1]!.provider = 'claude';
+    snapshot.agents[1]!.providerDefaults = { kind: 'claude' };
+    snapshot.agents[1]!.providerSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
     await new AppStateStore(home).save(snapshot);
     const restored = await new AppStateStore(home).load();
     expect(restored.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
@@ -118,7 +118,7 @@ describe('state persistence', () => {
     expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
     expect(restored.agents[0]!.userDelegationOverrides).toStrictEqual(snapshot.agents[0]!.userDelegationOverrides);
     expect(restored.agents[1]!.delegationUserInstructions).toStrictEqual(snapshot.agents[1]!.delegationUserInstructions);
-    expect(restored.agents[1]!.backendSession).toStrictEqual(snapshot.agents[1]!.backendSession);
+    expect(restored.agents[1]!.providerSession).toStrictEqual(snapshot.agents[1]!.providerSession);
     expect(isAppSnapshot(restored)).toBe(true);
   });
   it('restores failed setup and reports interrupted background worktree initialization after restart', async () => {
@@ -157,17 +157,17 @@ describe('state persistence', () => {
     const store = new AppStateStore(home);
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'antigravity';
-    agent.backendSession = { kind: 'antigravity', sessionId: 'native-acp-session' };
-    agent.backendDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permissionMode: 'default' };
+    agent.provider = 'antigravity';
+    agent.providerSession = { kind: 'antigravity', sessionId: 'native-acp-session' };
+    agent.providerDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permissionMode: 'default' };
     snapshot.general.providerHomes = { antigravity: { homePath: '/private/acp', isolated: true, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, antigravity: false };
-    snapshot.general.providerModelDefaults = { antigravity: {backend: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
+    snapshot.general.providerModelDefaults = { antigravity: {provider: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
     snapshot.general.providerApprovalDefaults = { antigravity: 'auto_edit' };
     await store.save(snapshot);
     const restored = await store.load();
     expect(isAppSnapshot(restored)).toBe(true);
-    expect(restored.agents.find(value => value.id === agent.id)).toMatchObject({ backend: 'antigravity', backendSession: agent.backendSession, backendDefaults: agent.backendDefaults });
+    expect(restored.agents.find(value => value.id === agent.id)).toMatchObject({ provider: 'antigravity', providerSession: agent.providerSession, providerDefaults: agent.providerDefaults });
     expect(restored.general.providerHomes).toStrictEqual(snapshot.general.providerHomes);
     expect(restored.general.providerEnabled).toStrictEqual(snapshot.general.providerEnabled);
     expect(restored.general.providerModelDefaults).toStrictEqual(snapshot.general.providerModelDefaults);
@@ -194,19 +194,19 @@ describe('state persistence', () => {
     const persisted = persistedStateFromSnapshot(snapshot);
     const restored = snapshotFromPersistedState({ ...persisted, automations: [{
       id: 'old-rule', name: 'Old rule', enabled: true, teamId: snapshot.teams[0]!.id,
-      backend: 'codex', repositories: [{ provider: 'github', id: 'org/repo' }],
+      provider: 'codex', repositories: [{ provider: 'github', id: 'org/repo' }],
       selectionPrompt: 'Select bugs', assignmentPrompt: 'Fix them',
       schedule: { intervalMinutes: 60 }, executionLog: [], createdAt: '', updatedAt: '',
     }] });
     expect(restored.automations).toEqual([]);
     expect(restored.agents.map(agent => agent.id)).toEqual(snapshot.agents.map(agent => agent.id));
   });
-  it.each(['claude', 'antigravity', 'cursor'] as const)('creates, updates and runs a remote %s prompt automation, then reloads its configuration and conversation', async backend => {
+  it.each(['claude', 'antigravity', 'cursor'] as const)('creates, updates and runs a remote %s prompt automation, then reloads its configuration and conversation', async provider => {
     const persistence = new AppStateStore(await tempHome());
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     const runner = new AutomationRunner({ getSnapshot: () => snapshot,
-      sendPrompt: async () => ({ backend, sessionId: 'remote-chat', folder: null }), saveSnapshot: () => persistence.save(snapshot), notifySnapshotUpdated: () => {},
+      sendPrompt: async () => ({ provider: provider, sessionId: 'remote-chat', folder: null }), saveSnapshot: () => persistence.save(snapshot), notifySnapshotUpdated: () => {},
     });
     const remote = new AppBackendServer({ version: 'test', snapshot, automationRunner: runner, saveSnapshot: value => persistence.save(value) });
     const localSnapshot = createInitialSnapshot();
@@ -220,7 +220,7 @@ describe('state persistence', () => {
     } as never });
     const location = { kind: 'remote', remoteConnectionId: 'connection-devbox' };
     const input = { name: 'Engineering bugs', enabled: false,
-      prompt: 'Fix and verify', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { backend, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Fix and verify', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { provider: provider, model: null, reasoningEffort: null, serviceTier: null } },
         schedule: { intervalMinutes: 360 } };
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 'create', method: 'automation/create', params: { input, location } })).not.toHaveProperty('error');
@@ -230,7 +230,7 @@ describe('state persistence', () => {
       const saved = await persistence.load();
       expect(isAppSnapshot(saved)).toBe(true);
       expect(saved.automations).toEqual([expect.objectContaining({ ...input, id, enabled: true })]);
-      expect(saved.automations[0]?.executionLog[0]).toMatchObject({ status: 'working', conversationRef: { backend, sessionId: 'remote-chat', folder: null } });
+      expect(saved.automations[0]?.executionLog[0]).toMatchObject({ status: 'working', conversationRef: { provider: provider, sessionId: 'remote-chat', folder: null } });
       expect(localSnapshot.automations).toEqual([]);
       expect(localSnapshot.workBacklog.assignments).toEqual({});
       const invalid = { ...input, prompt: '' };
@@ -292,26 +292,26 @@ describe('state persistence', () => {
     const persistence = new AppStateStore(await tempHome());
     const snapshot = createInitialSnapshot();
     const selection = { kind: 'codex' as const, model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true };
-    snapshot.agents[0]!.backendDefaults = selection;
+    snapshot.agents[0]!.providerDefaults = selection;
 
     await persistence.save(snapshot);
     const restored = await persistence.load();
 
-    expect(restored.agents[0]!.backendDefaults).toStrictEqual(selection);
+    expect(restored.agents[0]!.providerDefaults).toStrictEqual(selection);
   });
 
   it('restores a user-selected Claude model after restarting', async () => {
     const persistence = new AppStateStore(await tempHome());
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = 'claude';
-    snapshot.agents[0]!.backendDefaults = {
+    snapshot.agents[0]!.provider = 'claude';
+    snapshot.agents[0]!.providerDefaults = {
       kind: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true,
     };
 
     await persistence.save(snapshot);
     const restored = await persistence.load();
 
-    expect(restored.agents[0]!.backendDefaults).toStrictEqual(snapshot.agents[0]!.backendDefaults);
+    expect(restored.agents[0]!.providerDefaults).toStrictEqual(snapshot.agents[0]!.providerDefaults);
     expect(isAppSnapshot(restored)).toBe(true);
   });
 
@@ -394,7 +394,7 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].visualize = {
       id: 'visualize-1',
-      conversationRef: { backend: 'codex', threadId: 'thread-visualize' },
+      conversationRef: { provider: 'codex', threadId: 'thread-visualize' },
       isOpen: true,
       suggestions: [{ id: 'suggestion-1', title: 'System map', description: 'Show the architecture.', visualizationId: 'visualization-1' }],
       visualizations: [{
@@ -513,7 +513,7 @@ describe('state persistence', () => {
     const persisted = structuredClone(persistedStateFromSnapshot(snapshot)) as unknown as { agents: Array<Record<string, unknown>> };
     persisted.agents[0].design = {
       id: 'legacy-design',
-      conversationRef: { backend: 'codex', threadId: 'thread-design' },
+      conversationRef: { provider: 'codex', threadId: 'thread-design' },
       suggestions: [{ id: 'suggestion-1', title: 'System map', description: 'Show the architecture.', diagramId: 'diagram-1' }],
       diagrams: [{
         id: 'diagram-1', title: 'System map', content: { kind: 'mermaid', source: 'flowchart LR\n A --> B' }, revision: 1,
@@ -737,7 +737,7 @@ describe('state persistence', () => {
     const home = await tempHome();
     const persistence = new AppStateStore(home);
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes = [{ backend: 'codex', status: 'running', detail: 'connected' }];
+    snapshot.providerRuntimes = [{ provider: 'codex', status: 'running', detail: 'connected' }];
     snapshot.accountRateLimits = {
       limitId: 'codex',
       limitName: null,
@@ -758,8 +758,8 @@ describe('state persistence', () => {
     };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
-      backendSession: { kind: 'codex', threadId: 'thread-dina' },
-      backendDefaults: {
+      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerDefaults: {
         kind: 'codex',
         approvalPreset: 'approve-for-me',
         approvalPolicy: 'on-request',
@@ -827,7 +827,7 @@ describe('state persistence', () => {
     const writtenSettings = await readData('settings.json');
     for (const data of [written, writtenSettings]) {
       expect(data).not.toHaveProperty('messages');
-      expect(data).not.toHaveProperty('backendRuntimes');
+      expect(data).not.toHaveProperty('providerRuntimes');
       expect(data).not.toHaveProperty('appServer');
     }
     expect(written.accountRateLimits).toStrictEqual(snapshot.accountRateLimits);
@@ -838,7 +838,7 @@ describe('state persistence', () => {
       session: { threadId: 'thread-dina' },
       settings: { approvalPreset: 'approve-for-me', serviceTier: 'fast' },
     });
-    expect(writtenAgent).not.toHaveProperty('backend');
+    expect(writtenAgent).not.toHaveProperty('provider');
     expect(writtenAgent).not.toHaveProperty('teamId');
     expect(writtenAgent).not.toHaveProperty('pendingPrompts');
     expect(writtenAgent.openInApplication).toBe('xcode');
@@ -918,8 +918,8 @@ describe('state persistence', () => {
     };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
-      backendSession: { kind: 'codex', threadId: 'thread-dina' },
-      backendDefaults: {
+      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerDefaults: {
         kind: 'codex',
         approvalPreset: 'approve-for-me',
         approvalPolicy: 'on-request',
@@ -1008,8 +1008,8 @@ describe('state persistence', () => {
       name: 'Dina',
       avatar: 'DI',
       folder: '~/src/agent-workspace',
-      backend: 'codex',
-      backendDefaults: {
+      provider: 'codex',
+      providerDefaults: {
         kind: 'codex',
         approvalPreset: 'approve-for-me',
         approvalPolicy: 'on-request',
@@ -1017,7 +1017,7 @@ describe('state persistence', () => {
         sandboxMode: 'workspace-write',
         serviceTier: 'fast',
       },
-      backendSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', threadId: 'thread-dina' },
       contextUsage: {
         totalTokens: 1200,
         inputTokens: 900,
@@ -1057,7 +1057,7 @@ describe('state persistence', () => {
       lastActivityAt: '2026-06-04T23:59:00.000Z',
       updatedAt: '2026-06-05T00:00:00.000Z',
     });
-    expect(restored.backendRuntimes).toStrictEqual(createEmptySnapshot().backendRuntimes);
+    expect(restored.providerRuntimes).toStrictEqual(createEmptySnapshot().providerRuntimes);
     expect(restored.accountRateLimits).toStrictEqual(snapshot.accountRateLimits);
     expect(restored.workBacklog.assignments).toStrictEqual({
       'github:nbonamy/agent-workspace#12': {
@@ -1237,7 +1237,7 @@ describe('state persistence', () => {
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Start by reproducing the issue.', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Start by reproducing the issue.', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
 
 
@@ -1253,7 +1253,7 @@ describe('state persistence', () => {
         completedAt: '2026-06-09T10:03:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { backend: 'codex', threadId: 'thread-dina' },
+        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', threadId: 'thread-dina' },
       }, {
         id: 'automation-exec-2',
         automationId: 'automation-bugs',
@@ -1347,8 +1347,8 @@ describe('state persistence', () => {
         teamId: 'team-app',
         name: 'Dina',
         folder: '~/src/agent-workspace',
-        backend: 'codex',
-        backendSession: { kind: 'codex', threadId: 'thread-dina' },
+        provider: 'codex',
+        providerSession: { kind: 'codex', threadId: 'thread-dina' },
         plan: {
           threadId: 'thread-dina',
           turnId: 'turn-plan',
@@ -1380,8 +1380,8 @@ describe('state persistence', () => {
         teamId: 'team-app',
         name: 'Dina',
         folder: '~/src/agent-workspace',
-        backend: 'codex',
-        backendSession: { kind: 'codex', threadId: 'thread-dina' },
+        provider: 'codex',
+        providerSession: { kind: 'codex', threadId: 'thread-dina' },
         contextUsage: {
           totalTokens: 1200,
           inputTokens: 900,
@@ -1411,9 +1411,9 @@ describe('state persistence', () => {
         teamId: 'team-app',
         name: 'Dina',
         folder: '~/src/agent-workspace',
-        backend: 'claude',
-        backendSession: { kind: 'codex', threadId: 'thread-dina' },
-        backendDefaults: { kind: 'codex', model: 'gpt-5.1-codex' },
+        provider: 'claude',
+        providerSession: { kind: 'codex', threadId: 'thread-dina' },
+        providerDefaults: { kind: 'codex', model: 'gpt-5.1-codex' },
         createdAt: '2026-06-05T00:00:00.000Z',
         updatedAt: '2026-06-05T00:00:00.000Z',
       }],
@@ -1422,17 +1422,17 @@ describe('state persistence', () => {
       theme: defaultThemeSettings,
     });
 
-    expect(restored.agents[0].backend).toBe('claude');
-    expect(restored.agents[0].backendSession).toBeUndefined();
-    expect(restored.agents[0].backendDefaults).toBeUndefined();
+    expect(restored.agents[0].provider).toBe('claude');
+    expect(restored.agents[0].providerSession).toBeUndefined();
+    expect(restored.agents[0].providerDefaults).toBeUndefined();
   });
 
   it('persists Claude thread and fallback model selections', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0] = {
       ...snapshot.agents[0],
-      backend: 'claude',
-      backendSession: {
+      provider: 'claude',
+      providerSession: {
         kind: 'claude',
         sessionId: 'claude-session-1',
         transport: 'stdio',
@@ -1440,7 +1440,7 @@ describe('state persistence', () => {
         model: 'claude-sonnet-5',
         reasoningEffort: 'xhigh',
       },
-      backendDefaults: {
+      providerDefaults: {
         kind: 'claude',
         model: 'sonnet',
         reasoningEffort: 'high',
@@ -1450,8 +1450,8 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.agents[0].backendSession).toStrictEqual(snapshot.agents[0].backendSession);
-    expect(restored.agents[0].backendDefaults).toStrictEqual(snapshot.agents[0].backendDefaults);
+    expect(restored.agents[0].providerSession).toStrictEqual(snapshot.agents[0].providerSession);
+    expect(restored.agents[0].providerDefaults).toStrictEqual(snapshot.agents[0].providerDefaults);
   });
 
   it('repairs team membership and selected agent when persisted ids drift', async () => {
@@ -1508,7 +1508,7 @@ describe('state persistence', () => {
       agentListCompact: true,
       collapsedRepositoryKeys: ['remote:github.com/nbonamy/agent-workspace'],
       modelFavorites: [{
-        backend: 'codex',
+        provider: 'codex',
         modelId: 'gpt-5.6-terra',
         reasoningEffort: 'high',
         serviceTier: 'priority',
@@ -1638,7 +1638,7 @@ describe('state persistence', () => {
         teamId: 'team-missing',
         name: 'Orphan',
         folder: '/Users/nicolas/src/local',
-        backend: 'codex',
+        provider: 'codex',
         createdAt: '2026-06-14T10:00:00.000Z',
         updatedAt: '2026-06-14T10:00:00.000Z',
       }],
@@ -1667,7 +1667,7 @@ describe('state persistence', () => {
         id: 'agent-remote',
         name: 'Remote',
         folder: '/home/nicolas/src/agent-workspace',
-        backend: 'codex',
+        provider: 'codex',
         createdAt: '2026-06-14T10:00:00.000Z',
         updatedAt: '2026-06-14T10:00:00.000Z',
       }],

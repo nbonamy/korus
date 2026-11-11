@@ -40,7 +40,7 @@ it.each(['clean', 'dirty', 'new commits', 'other branch', 'other repository', 'r
       }
     }
     let snapshot = createInitialSnapshot(); snapshot.agents = [snapshot.agents[0]!];
-    const agent = snapshot.agents[0]!; agent.folder = checkout; agent.backendSession = undefined;
+    const agent = snapshot.agents[0]!; agent.folder = checkout; agent.providerSession = undefined;
     agent.pullRequest = { provider: 'gitlab', repository: 'gitlab.com/group/sub/repo', branch: 'feature', number: 7, title: 'Draft: Work', url: 'https://gitlab.com/group/sub/repo/-/merge_requests/7', draft: true, headSha, state: 'open', createdAt: '2026-09-03T11:00:00.000Z', updatedAt: '2026-09-03T11:00:00.000Z' };
     const store = new AppStateStore(join(container, 'state')); await store.save(snapshot); snapshot = await new AppStateStore(join(container, 'state')).load();
     let current = { number: 7, title: 'Work', url: agent.pullRequest.url, draft: false, headSha, state: 'open' as 'open' | 'closed' | 'merged', mergedAt: undefined as string | undefined };

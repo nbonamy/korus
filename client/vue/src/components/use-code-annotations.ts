@@ -1,8 +1,8 @@
 import { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 export { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@korus-dev/multi-agent-sdk/surface';
-import type { ClientSendMessageOptions as CodexRendererSendMessageOptions } from '@korus-dev/agent-ui-sdk';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import type { ClientSendMessageOptions } from '@korus-dev/agent-ui-sdk';
 import { computed, reactive } from 'vue';
 
 /** Where the code is: a file and a run of lines, with the lines of a diff numbered on the side the person pointed at. */
@@ -41,8 +41,8 @@ export function useCodeAnnotations(options: { currentAgentId: () => string | und
 
   async function forward(
     prompt: string,
-    sendOptions: CodexRendererSendMessageOptions | undefined,
-    send: (nextPrompt: string, nextOptions?: CodexRendererSendMessageOptions) => void | Promise<void>,
+    sendOptions: ClientSendMessageOptions | undefined,
+    send: (nextPrompt: string, nextOptions?: ClientSendMessageOptions) => void | Promise<void>,
   ): Promise<void> {
     const agentId = options.currentAgentId();
     const annotations = agentId ? (draftsByAgentId[agentId] ?? []).map((annotation) => ({ ...annotation })) : [];

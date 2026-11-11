@@ -70,14 +70,14 @@ function expectRequiredString(
   expectString(event[key], `$.${key}`);
 }
 
-function expectRequiredBackend(
+function expectRequiredProvider(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
+  provider?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectLiteral(
-    event.backend,
-    backend ? [backend] : ['codex', 'claude', 'antigravity', 'cursor'],
-    '$.backend',
+    event.provider,
+    provider ? [provider] : ['codex', 'claude', 'antigravity', 'cursor'],
+    '$.provider',
   );
 }
 
@@ -85,19 +85,19 @@ function expectAgent(event: Record<string, unknown>): void {
   expectRequiredString(event, 'agentId');
 }
 
-function expectAgentBackend(
+function expectHarnessProvider(
   event: Record<string, unknown>,
-  backend?: 'codex' | 'claude' | 'antigravity' | 'cursor',
+  provider?: 'codex' | 'claude' | 'antigravity' | 'cursor',
 ): void {
   expectAgent(event);
-  expectRequiredBackend(event, backend);
+  expectRequiredProvider(event, provider);
 }
 
 function expectTurnContext(
   event: Record<string, unknown>,
   threadRequired: boolean,
 ): void {
-  expectAgentBackend(event);
+  expectHarnessProvider(event);
   expectRequiredString(event, 'turnId');
   if (threadRequired) expectRequiredString(event, 'threadId');
 }
@@ -106,37 +106,37 @@ function expectEventContext(event: EventRecord): void {
   switch (event.type) {
     case 'cursor.conversationSnapshotChanged':
     case 'cursor.conversationEventReceived': {
-      expectAgentBackend(event, 'cursor');
-      expectRequiredString(event, 'backendSessionId');
+      expectHarnessProvider(event, 'cursor');
+      expectRequiredString(event, 'providerSessionId');
       const payload = event.payload as Record<string, unknown>;
       const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
-      if (frame.agentId !== event.agentId || frame.sessionId !== event.backendSessionId) failEventValidation('$.payload', 'expected the outer Cursor identity');
+      if (frame.agentId !== event.agentId || frame.sessionId !== event.providerSessionId) failEventValidation('$.payload', 'expected the outer Cursor identity');
       return;
     }
     case 'antigravity.conversationSnapshotChanged':
     case 'antigravity.conversationEventReceived': {
-      expectAgentBackend(event, 'antigravity');
-      expectRequiredString(event, 'backendSessionId');
+      expectHarnessProvider(event, 'antigravity');
+      expectRequiredString(event, 'providerSessionId');
       const payload = event.payload as Record<string, unknown>;
       const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
-      if (frame.agentId !== event.agentId || frame.sessionId !== event.backendSessionId) failEventValidation('$.payload', 'expected the outer Antigravity identity');
+      if (frame.agentId !== event.agentId || frame.sessionId !== event.providerSessionId) failEventValidation('$.payload', 'expected the outer Antigravity identity');
       return;
     }
-    case 'backend.statusChanged':
+    case 'provider.statusChanged':
     case 'account.rateLimitsUpdated':
     case 'models.changed':
     case 'skills.changed':
-      expectRequiredBackend(event);
+      expectRequiredProvider(event);
       return;
     case 'codex.conversationSnapshotChanged':
-      expectAgentBackend(event, 'codex');
+      expectHarnessProvider(event, 'codex');
       expectRequiredString(event, 'threadId');
       return;
     case 'claude.conversationSnapshotChanged':
-      expectAgentBackend(event, 'claude');
+      expectHarnessProvider(event, 'claude');
       return;
     case 'codex.conversationEventReceived': {
-      expectAgentBackend(event, 'codex');
+      expectHarnessProvider(event, 'codex');
       expectRequiredString(event, 'threadId');
       const payload = event.payload as Record<string, unknown>;
       const providerEvent = payload.event as Record<string, unknown>;
@@ -149,7 +149,7 @@ function expectEventContext(event: EventRecord): void {
       return;
     }
     case 'claude.conversationEventReceived': {
-      expectAgentBackend(event, 'claude');
+      expectHarnessProvider(event, 'claude');
       const payload = event.payload as Record<string, unknown>;
       const providerEvent = payload.event as Record<string, unknown>;
       if (providerEvent.agentId !== event.agentId) {
@@ -179,14 +179,14 @@ function expectEventContext(event: EventRecord): void {
       expectRequiredString(event, 'turnId');
       return;
     case 'agent.conversationAttached':
-      expectAgentBackend(event);
+      expectHarnessProvider(event);
       expectRequiredString(event, 'conversationId');
       return;
     case 'conversation.settingsUpdated':
-      expectAgentBackend(event);
+      expectHarnessProvider(event);
       return;
     case 'conversation.modeUpdated':
-      expectAgentBackend(event);
+      expectHarnessProvider(event);
       return;
     case 'conversation.goalUpdated':
       expectAgent(event);
@@ -196,7 +196,7 @@ function expectEventContext(event: EventRecord): void {
     case 'subagent.activityChanged':
     case 'subagent.identityChanged':
     case 'subagent.statusChanged':
-      expectAgentBackend(event);
+      expectHarnessProvider(event);
       return;
     case 'conversation.turnDiffUpdated':
     case 'workspace.fileActivityDetected':
@@ -204,7 +204,7 @@ function expectEventContext(event: EventRecord): void {
       return;
     case 'agentRequest.created':
     case 'agentRequest.resolved':
-      expectAgentBackend(event);
+      expectHarnessProvider(event);
       return;
     case 'snapshot.updated':
     case 'provider.authenticationChanged':
@@ -226,10 +226,10 @@ export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   }
   const event = value as EventRecord;
   expectOptional(event, 'agentId', '$', expectString);
-  expectOptional(event, 'backend', '$', (candidate, path) =>
+  expectOptional(event, 'provider', '$', (candidate, path) =>
     expectLiteral(candidate, ['codex', 'claude', 'antigravity', 'cursor'], path),
   );
-  expectOptional(event, 'backendSessionId', '$', expectString);
+  expectOptional(event, 'providerSessionId', '$', expectString);
   expectOptional(event, 'conversationId', '$', expectString);
   expectOptional(event, 'threadId', '$', expectString);
   expectOptional(event, 'turnId', '$', expectString);

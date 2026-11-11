@@ -99,15 +99,15 @@ export function useSessionHistory(options: SessionHistoryOptions) {
 
   function isCurrentSession(session: ConversationSummary): boolean {
     const agent = options.agent();
-    const backendSession = agent.backendSession;
-    if (session.ref.backend === 'codex') {
-      return backendSession?.kind === 'codex' && backendSession.threadId === session.ref.threadId;
+    const providerSession = agent.providerSession;
+    if (session.ref.provider === 'codex') {
+      return providerSession?.kind === 'codex' && providerSession.threadId === session.ref.threadId;
     }
 
-    return (backendSession?.kind === 'claude' || backendSession?.kind === 'antigravity' || backendSession?.kind === 'cursor') &&
-      backendSession.kind === session.ref.backend &&
+    return (providerSession?.kind === 'claude' || providerSession?.kind === 'antigravity' || providerSession?.kind === 'cursor') &&
+      providerSession.kind === session.ref.provider &&
       session.ref.folder === agent.folder &&
-      (backendSession.kind === 'claude' ? backendSession.transcriptSessionId ?? backendSession.sessionId : backendSession.sessionId) === session.ref.sessionId;
+      (providerSession.kind === 'claude' ? providerSession.transcriptSessionId ?? providerSession.sessionId : providerSession.sessionId) === session.ref.sessionId;
   }
 
   function sessionTitle(session: ConversationSummary): string {

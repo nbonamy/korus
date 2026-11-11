@@ -17,7 +17,7 @@ it.each(['working', 'awaitingInput'] as const)('blocks a remote parent handoff w
   const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: { request, close: async () => {} } as never });
   try {
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/handoff/start', params: {
-      agentId: parent.id, input: { operationId: 'once', selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
+      agentId: parent.id, input: { operationId: 'once', selection: { provider: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
     } })).rejects.toThrow('delegated');
     expect(request.mock.calls.map(([, method]) => method)).not.toContain('agent/handoff/start');
   } finally { await server.close(); }
@@ -30,7 +30,7 @@ it('retains child creator authority after a lost handoff reply and controller re
   snapshot.teams[0]!.remoteLinks = [{ connectionId: connection.id, remoteTeamId: 'team-remote' }];
   const parent = createRemoteAgent();
   const remote = createRemoteTeamSnapshot([parent]);
-  const replacement = { ...parent, id: 'replacement-parent', handoff: { operationId: 'once', sourceAgentId: parent.id, targetAgentId: 'replacement-parent', sourceTitle: 'Parent', sourceRef: { backend: 'codex' as const, threadId: 'original' }, phase: 'complete' as const, selection: { backend: 'claude' as const, model: null, reasoningEffort: null, serviceTier: null } } };
+  const replacement = { ...parent, id: 'replacement-parent', handoff: { operationId: 'once', sourceAgentId: parent.id, targetAgentId: 'replacement-parent', sourceTitle: 'Parent', sourceRef: { provider: 'codex' as const, threadId: 'original' }, phase: 'complete' as const, selection: { provider: 'claude' as const, model: null, reasoningEffort: null, serviceTier: null } } };
   const after = createRemoteTeamSnapshot([replacement]);
   const child = { ...parent, id: 'local-child', teamId: snapshot.teams[0]!.id, delegatedByAgentId: parent.id };
   snapshot.agents = [child]; snapshot.teams[0]!.agentIds = [child.id];

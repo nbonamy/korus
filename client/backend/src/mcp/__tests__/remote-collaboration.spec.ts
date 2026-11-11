@@ -8,9 +8,9 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import { AppStateStore } from '../../persistence/store';
 import { AppBackendServer } from '../../server';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { DurableTaskService } from '../../agents/durable-task-service';
-import { codexSdkFixture, sdkSnapshot, sdkSummary } from '../../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkSnapshot, sdkSummary } from '../../codex/__tests__/sdk-host-fixture';
 import { readyRemoteConnection } from '../../__tests__/server-test-fixtures';
 import { AppMcpService } from '../service';
 import { createTaskToolModuleProvider } from '../task-tools';
@@ -45,7 +45,7 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
     closeAgent: (caller, worker) => server.closeAgentFromMcp(caller, worker),
     toolModuleProviders: [createTaskToolModuleProvider(tasks, id => Boolean(snapshot.teams.find(team => team.id === snapshot.agents.find(agent => agent.id === id)?.teamId)?.collaborationOwnerId), { wait: (id, input) => server.waitCollaborationTasks(id, input), cancel: (id, task) => server.cancelCollaborationTask(id, task) })],
   });
-  const rpc = new BackendDriverRpc(new Map([['codex', provider.driver]]));
+  const rpc = new ProviderDriverRpc(new Map([['codex', provider.driver]]));
   const events = new Set<(event: BackendPublishedEvent) => void>();
   server = new AppBackendServer({ version: 'test', snapshot, driverRpc: rpc, tasks,
     ...(remoteClients ? { remoteClients: remoteClients as never } : {}),
@@ -73,7 +73,7 @@ async function host(snapshot: AppSnapshot, label: string, remoteClients?: unknow
 
 async function connectedPair() {
   const local = createInitialSnapshot();
-  local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+  local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
   local.remoteConnections.connections = [readyRemoteConnection()];
   const remote = createInitialSnapshot();
   remote.agents = [];
@@ -96,11 +96,11 @@ async function connectedPair() {
   }) };
   owner = await host(local, 'local', clients);
   const created = await owner.server.handleMessage({ jsonrpc: '2.0', id: 'ui', method: backendMethods.agentQuickChatCreate,
-    params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' } }, entityResult: true } });
+    params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { provider: 'codex' } }, entityResult: true } });
   if (!created || 'error' in created) throw new Error('UI chat creation failed');
   const workerId = (created.result as { agentId: string }).agentId;
   const worker = remote.agents.find(agent => agent.id === workerId)!;
-  worker.backendSession = { kind: 'codex', threadId: 'remote-worker' };
+  worker.providerSession = { kind: 'codex', threadId: 'remote-worker' };
   return { owner, workerHost, network, clients, worker,
     send: (content: string) => owner.mcp.callTool(local.agents[0]!.id, 'send-message', { to: workerId, content }) };
 }
@@ -146,14 +146,14 @@ describe('collaboration across daemon ownership boundaries', () => {
     const childId = created.structuredContent!.agentId as string;
     expect(workerHost.snapshot.agents.find(agent => agent.id === childId)).toMatchObject({
       teamId: worker.teamId, delegatedByAgentId: worker.id, folder: '/remote/same-host-child',
-      backendSession: { kind: 'codex', threadId: 'remote-child' },
+      providerSession: { kind: 'codex', threadId: 'remote-child' },
     });
-    expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ id: childId }) });
+    expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ context: expect.objectContaining({ id: childId }) }) });
     expect(childConversation.handle.sendMessage).toHaveBeenCalledOnce();
     expect(childConversation.handle.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Inspect the inherited context'), expect.objectContaining({ planMode: true }));
     expect(owner.provider.conversation('remote-worker').handle.fork).not.toHaveBeenCalled();
     expect(parentConversation.handle.sendMessage).not.toHaveBeenCalled();
-    if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { backendSession: { kind: 'codex', threadId: 'remote-child' } } });
+    if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { providerSession: { kind: 'codex', threadId: 'remote-child' } } });
   });
 
   it.each(['missing', 'other-team', 'different-caller'])('rejects a %s local parent in remote provisioning', async invalid => {
@@ -174,10 +174,10 @@ describe('collaboration across daemon ownership boundaries', () => {
 
   it('gives a UI-created remote chat its controlling roster, messaging and delegation', async () => {
     const local = createInitialSnapshot();
-    local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+    local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
     local.remoteConnections.connections = [readyRemoteConnection()];
     const parent = local.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'local-parent' };
+    parent.providerSession = { kind: 'codex', threadId: 'local-parent' };
     const remote = createInitialSnapshot();
     remote.providerConnections = local.providerConnections;
     remote.agents = [];
@@ -193,7 +193,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     }) };
     owner = await host(local, 'local', clients);
     const created = await owner.server.handleMessage({ jsonrpc: '2.0', id: 'ui', method: backendMethods.agentQuickChatCreate,
-      params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' } }, entityResult: true } });
+      params: { input: { teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { provider: 'codex' } }, entityResult: true } });
     if (!created || 'error' in created) throw new Error('UI chat creation failed');
     const workerId = (created.result as { agentId: string }).agentId;
     const roster = await workerHost.mcp.callTool(workerId, 'list-agents', {});
@@ -351,9 +351,9 @@ describe('collaboration across daemon ownership boundaries', () => {
   it.each(['completion', 'cancellation', 'controller outage'] as const)('creates once on the selected host, exchanges messages, and persists remote %s', async lifecycle => {
     const local = createInitialSnapshot();
     const parent = local.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'local-parent' };
+    parent.providerSession = { kind: 'codex', threadId: 'local-parent' };
     local.remoteConnections.connections = [readyRemoteConnection()];
-    local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+    local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
     const remote = createInitialSnapshot();
     remote.agents = [];
     remote.teams.forEach(team => { team.agentIds = []; delete team.activeAgentId; });
@@ -463,13 +463,13 @@ describe('collaboration across daemon ownership boundaries', () => {
 
 it.each(['complete', 'cancel'] as const)('retains original task authority through binding and restart (%s)', async outcome => {
   const local = createInitialSnapshot();
-  local.providerConnections = [{ backend: 'codex', connected: true, installed: true, checking: false }];
+  local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
   local.remoteConnections.connections = [readyRemoteConnection()];
   const remote = createInitialSnapshot();
   remote.providerConnections = structuredClone(local.providerConnections);
   const remoteParent = remote.agents[0]!;
   remoteParent.id = 'existing-remote-parent';
-  remoteParent.backendSession = { kind: 'codex', threadId: 'remote-parent' };
+  remoteParent.providerSession = { kind: 'codex', threadId: 'remote-parent' };
   remote.agents = [remoteParent]; remote.teams[0]!.agentIds = [remoteParent.id];
   let owner!: Awaited<ReturnType<typeof host>>;
   let workerHost = await host(remote, 'remote', undefined, input => owner.server.handleRemoteCollaborationCall('connection-devbox', input));
@@ -493,7 +493,7 @@ it.each(['complete', 'cancel'] as const)('retains original task authority throug
   }) };
   owner = await host(local, 'local', clients);
   await owner.server.handleMessage({ jsonrpc: '2.0', id: 'new-remote', method: backendMethods.agentQuickChatCreate, params: { input: {
-    teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' },
+    teamId: local.teams[0]!.id, remoteConnectionId: 'connection-devbox', selection: { provider: 'codex' },
   } } });
   const retry = await workerHost.mcp.callTool(remoteParent.id, 'create-agent', {
     repoPath: '/remote/repo', requestId: 'pre-upgrade-task', task: { title: 'Inspect', doneWhen: 'Verified' }, prompt: 'Inspect the existing assignment',
@@ -575,7 +575,7 @@ it('activates an existing migrated link at startup without creating another remo
   local.providerConnections = [];
   local.remoteConnections.connections = [readyRemoteConnection()];
   const remote = createInitialSnapshot();
-  remote.agents = [{ ...remote.agents[0]!, id: 'existing-remote', backendSession: { kind: 'codex', threadId: 'remote-parent' } }];
+  remote.agents = [{ ...remote.agents[0]!, id: 'existing-remote', providerSession: { kind: 'codex', threadId: 'remote-parent' } }];
   remote.teams[0]!.agentIds = ['existing-remote'];
   local.teams[0]!.remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: remote.teams[0]!.id }];
   const localSecond = { ...local.agents[0]!, id: 'local-second', teamId: 'second-local' };
@@ -635,18 +635,18 @@ it.each([[false, false], [true, false], [true, true]] as const)('preserves distr
       return response.result;
     });
     const response = await pair.owner.server.handleMessage({ jsonrpc: '2.0', id: 'other-worker', method: backendMethods.agentQuickChatCreate,
-      params: { input: { teamId: pair.owner.snapshot.teams[0]!.id, remoteConnectionId: 'connection-other', selection: { backend: 'codex' } }, entityResult: true } });
+      params: { input: { teamId: pair.owner.snapshot.teams[0]!.id, remoteConnectionId: 'connection-other', selection: { provider: 'codex' } }, entityResult: true } });
     child = other.snapshot.agents.find(agent => agent.id === (response as { result: { agentId: string } }).result.agentId)!;
   }
   delete parent.sessionKind;
   parent.folder = remoteParent ? '/remote/repo' : '/local/repo';
-  parent.backendSession = { kind: 'codex', threadId: remoteParent ? 'remote-worker' : 'local-parent' };
+  parent.providerSession = { kind: 'codex', threadId: remoteParent ? 'remote-worker' : 'local-parent' };
   child.delegatedByAgentId = parent.id;
-  const native = parentHost.provider.conversation(parent.backendSession.threadId);
+  const native = parentHost.provider.conversation(parent.providerSession.threadId);
   parentHost.provider.surface.createConversation.mockResolvedValue(sdkSnapshot('replacement-thread'));
   child.status = { type: 'working' };
   await expect(pair.owner.server.handleMessage({ jsonrpc: '2.0', id: 'busy-handoff', method: backendMethods.agentHandoff,
-    params: { agentId: parent.id, input: { operationId: 'busy-parent', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } })).rejects.toThrow('delegated');
+    params: { agentId: parent.id, input: { operationId: 'busy-parent', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } })).rejects.toThrow('delegated');
   expect(native.handle.sendMessage).not.toHaveBeenCalled();
   child.status = { type: 'idle' };
 
@@ -659,17 +659,17 @@ it.each([[false, false], [true, false], [true, true]] as const)('preserves distr
     await vi.waitFor(() => expect(pair.owner.createWorktree).toHaveBeenCalledOnce());
   }
   const operation = pair.owner.server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: backendMethods.agentHandoff,
-    params: { agentId: parent.id, input: { operationId: 'distributed-parent', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } });
+    params: { agentId: parent.id, input: { operationId: 'distributed-parent', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } });
   await vi.waitFor(() => expect(native.handle.sendMessage).toHaveBeenCalledOnce());
   await expect(pair.owner.server.handleMessage({ jsonrpc: '2.0', id: 'competing-handoff', method: backendMethods.agentHandoff,
-    params: { agentId: parent.id, input: { operationId: 'competing-parent', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } })).rejects.toThrow('pending handoff');
+    params: { agentId: parent.id, input: { operationId: 'competing-parent', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } } } })).rejects.toThrow('pending handoff');
 
   const turnId = remoteParent ? 'remote-turn' : 'local-turn';
   native.setSnapshot({ activeTurnId: null, busy: false, messages: [{ id: 'handoff-note', role: 'assistant', status: 'complete', turnId,
     parts: [{ type: 'text', text: 'Continue the existing work.' }], createdAt: '', metadata: {} }] });
-  native.emit({ conversationId: parent.backendSession.threadId, seq: 2, origin: 'notification', occurredAt: '', type: 'conversation.activityChanged', payload: { busy: false, error: null, threadStatus: { type: 'idle' } } });
-  native.handle.readHistory.mockResolvedValue({ conversationId: parent.backendSession.threadId, messages: native.handle.getSnapshot().messages, threadStatus: { type: 'idle' } });
-  native.emit({ conversationId: parent.backendSession.threadId, turnId, seq: 2, origin: 'notification', occurredAt: '', type: 'turn.completed',
+  native.emit({ conversationId: parent.providerSession.threadId, seq: 2, origin: 'notification', occurredAt: '', type: 'conversation.activityChanged', payload: { busy: false, error: null, threadStatus: { type: 'idle' } } });
+  native.handle.readHistory.mockResolvedValue({ conversationId: parent.providerSession.threadId, messages: native.handle.getSnapshot().messages, threadStatus: { type: 'idle' } });
+  native.emit({ conversationId: parent.providerSession.threadId, turnId, seq: 2, origin: 'notification', occurredAt: '', type: 'turn.completed',
     payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
   await operation;
   const replacement = parentHost.snapshot.agents.find(agent => agent.handoff?.sourceAgentId === parent.id && agent.id !== parent.id)!;

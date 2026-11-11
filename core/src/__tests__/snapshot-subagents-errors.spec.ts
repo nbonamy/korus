@@ -24,7 +24,7 @@ describe('snapshot reducer', () => {
     expect(() => decodeAppBackendEvent({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       turnId: 'turn-with-empty-delta',
       type: 'message.delta',
@@ -47,7 +47,7 @@ describe('snapshot reducer', () => {
       itemId: 'command-1',
       title: 'Run tests',
     };
-    snapshot.backendApprovals['agent-dina'] = [approval];
+    snapshot.providerApprovals['agent-dina'] = [approval];
     applyMainEventToSnapshot(snapshot, {
       seq: 4,
       type: 'agentRequest.resolved',
@@ -61,7 +61,7 @@ describe('snapshot reducer', () => {
       occurredAt: '2026-06-05T00:00:05.000Z',
     } as unknown as MainToRendererEvent);
 
-    expect(snapshot.backendApprovals['agent-dina']).toStrictEqual([approval]);
+    expect(snapshot.providerApprovals['agent-dina']).toStrictEqual([approval]);
   });
 
 
@@ -78,7 +78,7 @@ describe('snapshot reducer', () => {
     applyMainEventToSnapshot(snapshot, { conversationId: 'thread-1',
       seq: 1,
       agentId,
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-new',
       type: 'agent.conversationAttached',
       payload: {},

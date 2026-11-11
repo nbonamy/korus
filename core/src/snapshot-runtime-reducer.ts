@@ -11,7 +11,7 @@ import {
   setAgentStatusInSnapshot as setAgentStatus,
 } from './agent-manager';
 import { appText } from './app-text';
-import { codexBackendDefaultsWithApprovalPreset } from './codex-approval-presets';
+import { codexProviderDefaultsWithApprovalPreset } from './codex-approval-presets';
 import { replaceAppSnapshot } from './snapshot-construction';
 import { decodeAppSnapshot } from './snapshot-guards';
 import type { SnapshotEventOwnedBy } from './snapshot-event-ownership';
@@ -29,21 +29,21 @@ export function applyRuntimeEventToSnapshot(
     return;
   }
 
-  if (event.type === 'backend.statusChanged') {
+  if (event.type === 'provider.statusChanged') {
     const payload = event.payload;
-    setBackendRuntimeStatus(snapshot, {
-      backend: payload.backend,
+    setProviderRuntimeStatus(snapshot, {
+      provider: payload.provider,
       status: payload.status,
       detail: appText(payload.detail),
-      capabilities: payload.capabilities ? backendCapabilities(payload.capabilities) : undefined,
+      capabilities: payload.capabilities ? providerCapabilities(payload.capabilities) : undefined,
     });
     return;
   }
 
   if (event.type === 'account.rateLimitsUpdated') {
     const limits = accountRateLimits(event.payload);
-    snapshot.backendAccountRateLimits = { ...snapshot.backendAccountRateLimits, [event.backend]: limits };
-    if (event.backend === 'codex') snapshot.accountRateLimits = limits;
+    snapshot.providerAccountRateLimits = { ...snapshot.providerAccountRateLimits, [event.provider]: limits };
+    if (event.provider === 'codex') snapshot.accountRateLimits = limits;
     return;
   }
 
@@ -88,14 +88,14 @@ export function applyRuntimeEventToSnapshot(
 
   if (event.type === 'agent.conversationAttached') {
     const agent = findAgent(snapshot, event.agentId);
-    if (agent && (event.backend === 'antigravity' || event.backend === 'cursor')) {
-      agent.backend = event.backend;
-      agent.backendSession = { kind: event.backend, sessionId: event.conversationId };
+    if (agent && (event.provider === 'antigravity' || event.provider === 'cursor')) {
+      agent.provider = event.provider;
+      agent.providerSession = { kind: event.provider, sessionId: event.conversationId };
       return;
     }
-    if (agent && event.backend === 'claude') {
-      agent.backend = 'claude';
-      agent.backendSession = {
+    if (agent && event.provider === 'claude') {
+      agent.provider = 'claude';
+      agent.providerSession = {
         kind: 'claude',
         sessionId: event.conversationId,
         transport: 'stdio',
@@ -104,8 +104,8 @@ export function applyRuntimeEventToSnapshot(
     }
 
     if (agent) {
-      agent.backend = 'codex';
-      agent.backendSession = { kind: 'codex', threadId: event.conversationId };
+      agent.provider = 'codex';
+      agent.providerSession = { kind: 'codex', threadId: event.conversationId };
     }
     return;
   }
@@ -116,13 +116,13 @@ export function applyRuntimeEventToSnapshot(
       if (agent) {
         const payload = event.payload;
         const approvalPreset = payload.settings.approvalPreset;
-        if (approvalPreset && event.backend === 'codex') {
-          agent.backendDefaults = codexBackendDefaultsWithApprovalPreset(agent.backendDefaults, approvalPreset);
+        if (approvalPreset && event.provider === 'codex') {
+          agent.providerDefaults = codexProviderDefaultsWithApprovalPreset(agent.providerDefaults, approvalPreset);
         }
-        const defaults = agent.backendDefaults?.kind === event.backend
-          ? agent.backendDefaults
-          : { kind: event.backend };
-        agent.backendDefaults = {
+        const defaults = agent.providerDefaults?.kind === event.provider
+          ? agent.providerDefaults
+          : { kind: event.provider };
+        agent.providerDefaults = {
           ...defaults,
           ...(payload.settings.model !== undefined
             ? { model: payload.settings.model }
@@ -258,21 +258,21 @@ function threadGoal(value: RuntimeEventPayload<'conversation.goalUpdated'>): Thr
   };
 }
 
-function setBackendRuntimeStatus(snapshot: AppSnapshot, status: AppSnapshot['backendRuntimes'][number]): void {
-  const existingIndex = snapshot.backendRuntimes.findIndex((candidate) => candidate.backend === status.backend);
+function setProviderRuntimeStatus(snapshot: AppSnapshot, status: AppSnapshot['providerRuntimes'][number]): void {
+  const existingIndex = snapshot.providerRuntimes.findIndex((candidate) => candidate.provider === status.provider);
   if (existingIndex === -1) {
-    snapshot.backendRuntimes.push(status);
+    snapshot.providerRuntimes.push(status);
     return;
   }
 
-  snapshot.backendRuntimes[existingIndex] = status;
+  snapshot.providerRuntimes[existingIndex] = status;
 }
 
-type BackendRuntimeCapabilities = NonNullable<AppSnapshot['backendRuntimes'][number]['capabilities']>;
+type ProviderRuntimeCapabilities = NonNullable<AppSnapshot['providerRuntimes'][number]['capabilities']>;
 
-function backendCapabilities(value: Record<string, unknown>): Partial<BackendRuntimeCapabilities> {
+function providerCapabilities(value: Record<string, unknown>): Partial<ProviderRuntimeCapabilities> {
   return {
-    ...Object.fromEntries(['nativeMonitor', 'reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare']
+    ...Object.fromEntries(['nativeMonitor', 'reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage']
       .filter((key) => typeof value[key] === 'boolean').map((key) => [key, value[key]])),
     ...(typeof value.attachments === 'boolean' ? { attachments: value.attachments } : {}),
     ...(typeof value.models === 'boolean' ? { models: value.models } : {}),
@@ -280,7 +280,7 @@ function backendCapabilities(value: Record<string, unknown>): Partial<BackendRun
     ...(typeof value.reasoningEffort === 'boolean' ? { reasoningEffort: value.reasoningEffort } : {}),
     ...(typeof value.serviceTier === 'boolean' ? { serviceTier: value.serviceTier } : {}),
     ...(typeof value.thinkingBudget === 'boolean' ? { thinkingBudget: value.thinkingBudget } : {}),
-    ...(isBackendPlanModeSupport(value.planMode) ? { planMode: value.planMode } : {}),
+    ...(isProviderPlanModeSupport(value.planMode) ? { planMode: value.planMode } : {}),
     ...(typeof value.goals === 'boolean' ? { goals: value.goals } : {}),
     ...(typeof value.steerPrompt === 'boolean' ? { steerPrompt: value.steerPrompt } : {}),
     ...(typeof value.interrupt === 'boolean' ? { interrupt: value.interrupt } : {}),
@@ -292,10 +292,11 @@ function backendCapabilities(value: Record<string, unknown>): Partial<BackendRun
     ...(typeof value.approvals === 'boolean' ? { approvals: value.approvals } : {}),
     ...(Array.isArray(value.approvalPresets) ? { approvalPresets: value.approvalPresets.filter(isApprovalPreset) } : {}),
     ...(Array.isArray(value.permissionModes) ? { permissionModes: value.permissionModes.flatMap(permissionModeOption) } : {}),
+    ...(Array.isArray(value.login) ? { login: value.login.filter((method): method is 'browser' | 'deviceCode' => method === 'browser' || method === 'deviceCode') } : {}),
   };
 }
 
-function permissionModeOption(value: unknown): NonNullable<BackendRuntimeCapabilities['permissionModes']> {
+function permissionModeOption(value: unknown): NonNullable<ProviderRuntimeCapabilities['permissionModes']> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   const record = value as Record<string, unknown>;
   if (
@@ -313,7 +314,7 @@ function permissionModeOption(value: unknown): NonNullable<BackendRuntimeCapabil
   }];
 }
 
-function isBackendPlanModeSupport(value: unknown): value is BackendRuntimeCapabilities['planMode'] {
+function isProviderPlanModeSupport(value: unknown): value is ProviderRuntimeCapabilities['planMode'] {
   return value === 'native' || value === 'prompted' || value === 'unsupported';
 }
 

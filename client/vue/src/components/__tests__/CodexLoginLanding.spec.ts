@@ -14,7 +14,7 @@ function mountLanding(props: InstanceType<typeof CodexLoginLanding>['$props'] = 
 
 describe('CodexLoginLanding', () => {
   it('uses provider setup policy for onboarding customization', async () => {
-    const setup = { backend: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
+    const setup = { provider: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
       capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: true } } };
     const wrapper = mountLanding({ providerSetup: [setup] });
     expect(wrapper.findAll('button').some(button => button.text() === 'Customize')).toBe(false);
@@ -29,7 +29,7 @@ describe('CodexLoginLanding', () => {
 
   it('offers Cursor browser login and keeps the enabled state separate when continuing', async () => {
     const wrapper = mountLanding({ cursorConnected: false, cursorEnabled: false, providerSetup: [
-      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+      { provider: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
     ] });
     await wrapper.findAll('button').find(button => button.text() === 'Connect Cursor')!.trigger('click');
     expect(wrapper.emitted('connect-cursor')).toStrictEqual([[]]);
@@ -51,7 +51,7 @@ describe('CodexLoginLanding', () => {
   });
   it('offers native Antigravity sign-in and can continue with it as the only connected engine', async () => {
     const wrapper = mountLanding({ antigravityConnected: false, providerSetup: [
-      { backend: 'antigravity', installed: true, isolated: true, shareSkills: false, homePath: '/app/acp', locked: false },
+      { provider: 'antigravity', installed: true, isolated: true, shareSkills: false, homePath: '/app/acp', locked: false },
     ] });
     await wrapper.findAll('button').find(button => button.text() === 'Connect Antigravity')!.trigger('click');
     expect(wrapper.emitted('connect-antigravity')).toEqual([[]]);
@@ -65,8 +65,8 @@ describe('CodexLoginLanding', () => {
   });
   it('offers official Install links for missing CLIs and rechecks without starting login', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    const wrapper = mountLanding({ providerSetup: (['codex', 'claude', 'antigravity'] as const).map(backend => ({
-      backend, installed: false, isolated: true, shareSkills: true, homePath: '/home', locked: false,
+    const wrapper = mountLanding({ providerSetup: (['codex', 'claude', 'antigravity'] as const).map(provider => ({
+      provider: provider, installed: false, isolated: true, shareSkills: true, homePath: '/home', locked: false,
     })) });
     expect(wrapper.findAll('a').map(link => [link.text(), link.attributes('href')])).toEqual([
       ['Install', 'https://learn.chatgpt.com/docs/codex/cli#getting-started'],
@@ -100,8 +100,8 @@ describe('CodexLoginLanding', () => {
   });
   it('offers independent customization and does not treat CLI detection as a connection', async () => {
     const wrapper = mountLanding({ providerSetup: [
-      { backend: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
-      { backend: 'claude', installed: false, isolated: true, shareSkills: true, homePath: '/app/claude-home', locked: false },
+      { provider: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
+      { provider: 'claude', installed: false, isolated: true, shareSkills: true, homePath: '/app/claude-home', locked: false },
     ] });
     const providers = wrapper.findAll('.codex-login__provider');
     expect(providers[0]!.text()).toContain('Detected');
@@ -158,12 +158,12 @@ describe('CodexLoginLanding', () => {
   });
 
   it.each([
-    { backend: 'codex', index: 0, pending: { updatingProvider: 'codex' as const } },
-    { backend: 'claude', index: 1, pending: { updatingProvider: 'claude' as const } },
-    { backend: 'claude', index: 1, pending: { claudeLoading: true } },
-  ])('keeps $backend checking feedback below the button for $pending', async ({ backend, index, pending }) => {
-    const wrapper = mountLanding({ providerSetup: (['codex', 'claude'] as const).map(backend => ({
-      backend, installed: true, isolated: true, shareSkills: true, homePath: '/home', locked: false,
+    { provider: 'codex', index: 0, pending: { updatingProvider: 'codex' as const } },
+    { provider: 'claude', index: 1, pending: { updatingProvider: 'claude' as const } },
+    { provider: 'claude', index: 1, pending: { claudeLoading: true } },
+  ])('keeps $backend checking feedback below the button for $pending', async ({ provider: backend, index, pending }) => {
+    const wrapper = mountLanding({ providerSetup: (['codex', 'claude'] as const).map(provider => ({
+      provider: provider, installed: true, isolated: true, shareSkills: true, homePath: '/home', locked: false,
     })) });
     const provider = wrapper.findAll('.codex-login__provider')[index]!;
     expect(provider.get('.codex-login__detection button').text()).toBe('Customize');
@@ -188,7 +188,7 @@ describe('CodexLoginLanding', () => {
 
   it('offers cancellation while Codex sign-in is pending without hiding Claude', async () => {
     const wrapper = mountLanding({ cancellable: false, providerSetup: [
-      { backend: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
+      { provider: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
     ] });
 
     expect(wrapper.find('.codex-login__cancel').exists()).toBe(false);

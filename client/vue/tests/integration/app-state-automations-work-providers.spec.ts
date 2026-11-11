@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useAppState } from '../../src/app-state';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { BackendConversationRef, AppApi, RendererMessage, WorkSource } from '@workspace/core/contracts';
+import type { ProviderConversationRef, AppApi, RendererMessage, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../support/client';
@@ -129,11 +129,11 @@ describe('useAppState', () => {
         expiresAt: '2026-06-09T12:05:00.000Z',
       },
     });
-    const backendOpenAuthorization = vi.fn();
+    const providerOpenAuthorization = vi.fn();
     const openExternal = vi.spyOn(window, 'open').mockReturnValue(null);
     const api = {
       connectWorkProvider,
-      openWorkProviderAuthorization: backendOpenAuthorization,
+      openWorkProviderAuthorization: providerOpenAuthorization,
     } as unknown as AppApi;
     configureAppClient({ api, platform: 'web' });
     const state = useAppState();
@@ -147,7 +147,7 @@ describe('useAppState', () => {
       '_blank',
       'noopener,noreferrer',
     );
-    expect(backendOpenAuthorization).not.toHaveBeenCalled();
+    expect(providerOpenAuthorization).not.toHaveBeenCalled();
     expect(state.workBacklogStatus.value).toBe('loaded');
     openExternal.mockRestore();
   });
@@ -492,7 +492,7 @@ describe('useAppState', () => {
     const remoteSnapshot = createInitialSnapshot();
     const automationInput = {
       name: 'GitHub bugs',
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -591,14 +591,14 @@ describe('useAppState', () => {
     await state.deleteAutomationExecution('automation-bugs', 'automation-exec-1');
     await state.clearAutomationHistory('automation-bugs');
     await state.deleteAutomation('automation-bugs');
-    await expect(state.readConversationMessages({ backend: 'codex', threadId: 'thread-dina' }, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
+    await expect(state.readConversationMessages({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
     const reactiveConversationRef = reactive({
-      backend: 'claude' as const,
+      provider: 'claude' as const,
       folder: '/Users/nbonamy/src/agent-workspace',
       sessionId: 'session-dina',
       subagentId: 'child-explore',
     });
-    await expect(state.readConversationMessages(reactiveConversationRef as BackendConversationRef, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
+    await expect(state.readConversationMessages(reactiveConversationRef as ProviderConversationRef, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
 
     expect(createAutomation).toHaveBeenCalledWith(automationInput);
     expect(updateAutomation).toHaveBeenCalledWith({
@@ -611,9 +611,9 @@ describe('useAppState', () => {
     expect(deleteAutomationExecution).toHaveBeenCalledWith('automation-bugs', 'automation-exec-1');
     expect(clearAutomationHistory).toHaveBeenCalledWith('automation-bugs');
     expect(deleteAutomation).toHaveBeenCalledWith('automation-bugs');
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-dina' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina');
     expect(readConversationMessages).toHaveBeenLastCalledWith({
-      backend: 'claude',
+      provider: 'claude',
       folder: '/Users/nbonamy/src/agent-workspace',
       sessionId: 'session-dina',
       subagentId: 'child-explore',

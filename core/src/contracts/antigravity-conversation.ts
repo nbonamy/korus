@@ -1,1 +1,1 @@
-export * from '@korus-dev/multi-agent-sdk/contracts/antigravity-conversation';
+export type { AntigravityTurn, AntigravityConversationSnapshot, AntigravityConversationEvent } from '@korus-dev/multi-agent-sdk';

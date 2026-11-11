@@ -149,7 +149,7 @@ describe('AppController', () => {
     const send = vi.fn();
     setMainWindowSend(controller, send);
     await controller.initialize();
-    const progress = { id: 'creation', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
+    const progress = { id: 'creation', state: 'running' as const, provider: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
     emitBackendEvent(controller, { seq: 1, agentId: 'agent-dina', type: 'agentCreation.progress', payload: progress });
     const refresh = getSnapshot(controller);
     await vi.waitFor(() => expect(reads).toBe(2));
@@ -222,7 +222,7 @@ describe('AppController', () => {
       seq: 2,
       occurredAt: '2026-09-06T20:00:00.000Z',
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-dina',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -279,7 +279,7 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent({
       seq: 1,
-      backend: 'codex',
+      provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -296,7 +296,7 @@ describe('AppController', () => {
     expect(currentSnapshot(controller).agents[0]?.status).toStrictEqual({ type: 'working' });
     expect(send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({
       seq: 1,
-      backend: 'codex',
+      provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -351,7 +351,7 @@ describe('AppController', () => {
     }).emitBackendEvent({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-dina',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -459,7 +459,7 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.contextUsageUpdated',
@@ -495,7 +495,7 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent(controller, {
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: { rateLimits },
     });
     await flushMicrotasks();
@@ -521,7 +521,7 @@ describe('AppController', () => {
 
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.turnDiffUpdated',

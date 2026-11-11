@@ -4,7 +4,7 @@ const auth = (connected: boolean) => ({ kind: 'claude' as const, connected, stat
 
 describe('host engine connections', () => {
   it('detects once and serves cached status without shell or auth work until an explicit refresh', async () => {
-    const detect = vi.fn(() => [{ backend: 'claude' as const, installed: true, homePath: '/claude' }]);
+    const detect = vi.fn(() => [{ provider: 'claude' as const, installed: true, homePath: '/claude' }]);
     const authenticate = vi.fn().mockResolvedValue(auth(true));
     const connections = new ProviderConnections({ detect, authenticate, changed: vi.fn() });
     await connections.refresh();
@@ -22,7 +22,7 @@ describe('host engine connections', () => {
   it('re-checks only disconnected engines on demand', async () => {
     const authenticate = vi.fn().mockResolvedValue(auth(false));
     const connections = new ProviderConnections({
-      detect: () => [{ backend: 'claude', installed: true, homePath: '/claude' }, { backend: 'codex', installed: true, homePath: '/codex' }], authenticate, changed: vi.fn(),
+      detect: () => [{ provider: 'claude', installed: true, homePath: '/claude' }, { provider: 'codex', installed: true, homePath: '/codex' }], authenticate, changed: vi.fn(),
     });
     await connections.refresh();
     connections.observe('codex', true);
@@ -30,7 +30,7 @@ describe('host engine connections', () => {
     authenticate.mockResolvedValue(auth(true));
     await connections.refreshDisconnected('claude');
     expect(authenticate.mock.calls).toStrictEqual([['claude']]);
-    expect(connections.list().find(item => item.backend === 'claude')?.connected).toBe(true);
+    expect(connections.list().find(item => item.provider === 'claude')?.connected).toBe(true);
     authenticate.mockClear();
     await connections.refreshDisconnected();
     expect(authenticate).not.toHaveBeenCalled();
@@ -39,26 +39,26 @@ describe('host engine connections', () => {
     const authenticate = vi.fn(async () => auth(true));
     const connections = new ProviderConnections({
       detect: () => [
-        { backend: 'codex', installed: false, homePath: '/codex' },
-        { backend: 'claude', installed: true, homePath: '/claude' },
+        { provider: 'codex', installed: false, homePath: '/codex' },
+        { provider: 'claude', installed: true, homePath: '/claude' },
       ], authenticate, changed: vi.fn(),
     });
     await Promise.all([connections.refresh(), connections.refresh()]);
     expect(authenticate.mock.calls).toStrictEqual([['claude']]);
     expect(connections.list()).toStrictEqual([
-      { backend: 'codex', installed: false, connected: false, checking: false, enabled: true },
-      { backend: 'claude', installed: true, connected: true, checking: false, enabled: true, authentication: auth(true) },
+      { provider: 'codex', installed: false, connected: false, checking: false, enabled: true },
+      { provider: 'claude', installed: true, connected: true, checking: false, enabled: true, authentication: auth(true) },
     ]);
   });
 
   it('reports a safe startup probe error, then accepts an explicit authentication result', async () => {
     const authenticate = vi.fn().mockRejectedValueOnce(new Error('secret'));
     const connections = new ProviderConnections({
-      detect: () => [{ backend: 'claude', installed: true, homePath: '/claude' }], authenticate, changed: vi.fn(),
+      detect: () => [{ provider: 'claude', installed: true, homePath: '/claude' }], authenticate, changed: vi.fn(),
     });
     expect((await connections.refresh())[0]).toMatchObject({ connected: false, checking: false, error: expect.not.stringContaining('secret') });
     connections.observe('claude', true);
-    expect(connections.list()[0]).toStrictEqual({ backend: 'claude', installed: true, connected: true, checking: false, enabled: true });
+    expect(connections.list()[0]).toStrictEqual({ provider: 'claude', installed: true, connected: true, checking: false, enabled: true });
     connections.observe('claude', false);
     expect(connections.list()[0]?.connected).toBe(false);
   });
@@ -68,7 +68,7 @@ describe('host engine connections', () => {
     let finish!: (value: ReturnType<typeof auth>) => void;
     const authenticate = vi.fn().mockImplementationOnce(() => new Promise<ReturnType<typeof auth>>(resolve => { finish = resolve; })).mockResolvedValueOnce(auth(false));
     const connections = new ProviderConnections({
-      detect: () => [{ backend: 'claude', installed: true, homePath }], authenticate, changed: vi.fn(),
+      detect: () => [{ provider: 'claude', installed: true, homePath }], authenticate, changed: vi.fn(),
     });
     const old = connections.refresh();
     await Promise.resolve();

@@ -5,7 +5,7 @@ import { createAntigravityConversationReplica } from '@workspace/core/antigravit
 import type { AntigravityConversationSnapshot } from '@workspace/core/contracts/antigravity-conversation';
 
 type Frame = { replica: ReturnType<typeof createAntigravityConversationReplica>; snapshot: AntigravityConversationSnapshot; revision: number };
-type Event = Extract<ProviderConversationFrame, { backend: 'antigravity' }>;
+type Event = Extract<ProviderConversationFrame, { provider: 'antigravity' }>;
 
 /** App routing/cache only. Antigravity's replica owns every transcript transition. */
 export function createAntigravityConversationState(recover: (agentId: string) => Promise<unknown>) {
@@ -13,8 +13,8 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
   const pending = new Set<string>();
   const lastAttachedSessions = new Map<string, string>();
   function matchesAgent(agent: Agent, frame: Frame): boolean {
-    if (agent.backend !== 'antigravity') return false;
-    if (agent.backendSession?.kind === 'antigravity') return frame.snapshot.sessionId === agent.backendSession.sessionId;
+    if (agent.provider !== 'antigravity') return false;
+    if (agent.providerSession?.kind === 'antigravity') return frame.snapshot.sessionId === agent.providerSession.sessionId;
     // New session frames can precede attachment. A detached old session cannot.
     return frame.snapshot.sessionId !== lastAttachedSessions.get(agent.id);
   }
@@ -29,7 +29,7 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
   }
   return {
     select(agent: Agent): AntigravityConversationSnapshot | null {
-      if (agent.backend !== 'antigravity') return null;
+      if (agent.provider !== 'antigravity') return null;
       const frame = frames.value[agent.id];
       return frame && matchesAgent(agent, frame) ? frame.snapshot : null;
     },
@@ -51,10 +51,10 @@ export function createAntigravityConversationState(recover: (agentId: string) =>
     reconcile(agents: Agent[]) {
       const agentsById = new Map(agents.map(agent => [agent.id, agent]));
       for (const id of lastAttachedSessions.keys()) {
-        if (agentsById.get(id)?.backend !== 'antigravity') lastAttachedSessions.delete(id);
+        if (agentsById.get(id)?.provider !== 'antigravity') lastAttachedSessions.delete(id);
       }
       for (const agent of agents) {
-        if (agent.backend === 'antigravity' && agent.backendSession?.kind === 'antigravity') lastAttachedSessions.set(agent.id, agent.backendSession.sessionId);
+        if (agent.provider === 'antigravity' && agent.providerSession?.kind === 'antigravity') lastAttachedSessions.set(agent.id, agent.providerSession.sessionId);
       }
       frames.value = Object.fromEntries(Object.entries(frames.value).filter(([id, frame]) => {
         const agent = agentsById.get(id);

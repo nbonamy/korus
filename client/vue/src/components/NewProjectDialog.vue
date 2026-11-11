@@ -29,8 +29,8 @@
       />
     </form>
 
-    <template v-if="backendChoices.length !== 1" #footer-left>
-      <BackendSelector v-model="backend" :disabled="busy" />
+    <template v-if="providerChoices.length !== 1" #footer-left>
+      <ProviderSelector v-model="provider" :disabled="busy" />
     </template>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="close">
@@ -40,7 +40,7 @@
         class="app-button app-button--primary"
         type="button"
         :aria-busy="busy"
-        :disabled="busy || !name.trim() || !backend"
+        :disabled="busy || !name.trim() || !provider"
         @click="submit"
       >
         {{ t('newProjectDialog.create') }}
@@ -54,10 +54,10 @@ import { nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import BackendSelector from './BackendSelector.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendChoices = useBackendChoices();
-import type { AgentBackend } from '@workspace/core/contracts';
+import ProviderSelector from './ProviderSelector.vue';
+import { useProviderChoices, useNewAgentProvider } from './provider-selection';
+const providerChoices = useProviderChoices();
+import type { HarnessProvider } from '@workspace/core/contracts';
 
 const props = withDefaults(defineProps<{
   busy?: boolean;
@@ -70,13 +70,13 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  create: [name: string, backend: AgentBackend];
+  create: [name: string, provider: HarnessProvider];
 }>();
 
 const { t } = useI18n();
 const name = ref('');
-const backend = ref<AgentBackend>();
-useNewAgentBackend(backend, backendChoices);
+const provider = ref<HarnessProvider>();
+useNewAgentProvider(provider, providerChoices);
 const nameInput = ref<HTMLInputElement | null>(null);
 const validationError = ref<string | null>(null);
 
@@ -98,13 +98,13 @@ function onVisibilityChanged(visible: boolean): void {
 
 function submit(): void {
   const projectName = name.value.trim();
-  if (!projectName || !backend.value || !backendChoices.value.includes(backend.value)) return;
+  if (!projectName || !provider.value || !providerChoices.value.includes(provider.value)) return;
   if (projectName === '.' || projectName === '..' || /[/\\]/u.test(projectName)) {
     validationError.value = t('newProjectDialog.invalidName');
     return;
   }
   validationError.value = null;
-  emit('create', projectName, backend.value);
+  emit('create', projectName, provider.value);
 }
 </script>
 

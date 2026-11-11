@@ -105,9 +105,9 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
+import { useProviderChoices, useNewAgentProvider } from './provider-selection';
 
-const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
+const backend = defineModel<import('@workspace/core/contracts').HarnessProvider>('provider');
 
 
 const props = withDefaults(defineProps<{
@@ -127,8 +127,8 @@ const props = withDefaults(defineProps<{
   repo: null,
 });
 
-const backendChoices = useBackendChoices(() => props.remoteConnectionId);
-useNewAgentBackend(backend, backendChoices, () => props.visible);
+const providerChoices = useProviderChoices(() => props.remoteConnectionId);
+useNewAgentProvider(backend, providerChoices, () => props.visible);
 
 const emit = defineEmits<{
   close: [];
@@ -151,7 +151,7 @@ const orderedBranches = computed(() => [...props.branches].sort((left, right) =>
 )));
 const canCreate = computed(() => Boolean(
   props.repo
-  && backend.value && backendChoices.value.includes(backend.value)
+  && backend.value && providerChoices.value.includes(backend.value)
   && branchName.value.trim()
   && (!orderedBranches.value.length || baseBranch.value)
   && !props.branchesLoading
@@ -163,7 +163,7 @@ const creationProgress = computed<AgentCreationProgress | null>(() => {
   return {
     id: 'manual-worktree-creation',
     state: creationState.value,
-    backend: backend.value,
+    provider: backend.value,
     repositoryName: props.repo.name,
     createWorktree: true,
     branchName: pendingBranchName.value,

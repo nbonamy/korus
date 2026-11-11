@@ -19,6 +19,8 @@
   "dependencies": {
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
+    "@korus-dev/agent-ui-sdk": "0.25.0",
+    "@korus-dev/multi-agent-sdk": "0.26.0",
     "@libp2p/circuit-relay-v2": "4.2.14",
     "@libp2p/crypto": "5.1.24",
     "@libp2p/identify": "4.1.15",
@@ -35,9 +37,7 @@
     "multiformats": "14.0.5",
     "uint8arraylist": "2.4.9",
     "uint8arrays": "5.1.1",
-    "vue": "^3.5.35",
-    "@korus-dev/multi-agent-sdk": "0.0.0",
-    "@korus-dev/agent-ui-sdk": "0.0.0"
+    "vue": "^3.5.35"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",

@@ -1,21 +1,21 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import type { BackendModelOption, ModelFavorite } from '@workspace/core/contracts';
+import type { ProviderModelOption, ModelFavorite } from '@workspace/core/contracts';
 import ModelFavoritesDialog from '../ModelFavoritesDialog.vue';
 
 const favorites: ModelFavorite[] = [{
-  backend: 'codex',
+  provider: 'codex',
   modelId: 'terra',
   reasoningEffort: 'medium',
   serviceTier: 'priority',
 }, {
-  backend: 'codex',
+  provider: 'codex',
   modelId: 'sol',
   reasoningEffort: 'high',
   serviceTier: null,
 }];
 
-const models: BackendModelOption[] = [{
+const models: ProviderModelOption[] = [{
   id: 'terra',
   model: 'gpt-5.6-terra',
   displayName: 'GPT-5.6 Terra',

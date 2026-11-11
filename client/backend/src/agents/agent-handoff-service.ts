@@ -2,9 +2,9 @@ import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot, CreateAgentInput } from '@workspace/core/contracts';
 import { agentHandoffBlocker, handoffInProgress, handoffNoteLimit, type AgentHandoff, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
-import { resolveAgentBackend } from '@workspace/core/agent-backends';
+import { resolveAgentProvider } from '@workspace/core/agent-providers';
 import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 
 type Options = {
   snapshot: AppSnapshot;
@@ -56,7 +56,7 @@ export class AgentHandoffService {
     if (!source) throw new Error('Source agent is no longer available.');
     const blocker = agentHandoffBlocker(snapshot, source);
     if (blocker) throw new Error(blocker);
-    resolveAgentBackend(snapshot, input.selection.backend);
+    resolveAgentProvider(snapshot, input.selection.provider);
     const sourceRef = conversationRefFromAgent(source);
     if (!sourceRef) throw new Error('Source conversation is unavailable.');
     const handoff: AgentHandoff = { ...input, sourceAgentId: sourceId, sourceTitle: source.conversationTitle ?? source.name ?? 'Agent', sourceRef, phase: 'preparing' };
@@ -115,7 +115,7 @@ export class AgentHandoffService {
 
 function notePrompt(input: AgentHandoffInput): string {
   return [
-    `The user is handing this work to a new ${backendDisplayName(input.selection.backend)} agent in the same workspace.`,
+    `The user is handing this work to a new ${providerDisplayName(input.selection.provider)} agent in the same workspace.`,
     'Write a self-contained handoff note as your final response, under 32,000 characters.',
     'Include the objective, user constraints and decisions, completed changes, verification evidence, relevant files, unfinished work, and the next action.',
     'Distinguish observed results from assumptions. Do not include secrets.',

@@ -1,7 +1,8 @@
-import { normalizePromptContent, type CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import { type PromptPart } from '@korus-dev/multi-agent-sdk';
 
 /** A prompt draft as the composer holds it. */
-export type DraftState = { text: string; content?: readonly CodexPromptPart[]; selectionStart: number; selectionEnd: number };
+export type DraftState = { text: string; content?: readonly PromptPart[]; selectionStart: number; selectionEnd: number };
 
 export type DraftRecord = { drafts: Record<string, DraftState>; uncertain: Record<string, boolean>; commandIds?: Record<string, string>; submittedTexts?: Record<string, string> };
 export type DraftStore = { read(): Promise<unknown>; write(record: DraftRecord): Promise<void> };

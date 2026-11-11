@@ -3,8 +3,8 @@
     :title="$t('surface.settingsCodexPanel.codex')"
     title-id="settings-codex-title"
   >
-    <SettingsEngineConnectionRow backend="codex" :capabilities="setupCapabilities" :installed="installed" :title="$t('surface.settingsCodexPanel.codex')" :authentication="authentication" :connected="connected" :enabled="settings.providerEnabled?.codex !== false" :set-enabled="setEnabled" :busy="connectionBusy" :pending="loginPending" :error="connectionError" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
-      <ProviderUpdateRow v-if="installed" backend="codex" />
+    <SettingsEngineConnectionRow provider="codex" :capabilities="setupCapabilities" :installed="installed" :title="$t('surface.settingsCodexPanel.codex')" :authentication="authentication" :connected="connected" :enabled="settings.providerEnabled?.codex !== false" :set-enabled="setEnabled" :busy="connectionBusy" :pending="loginPending" :error="connectionError" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
+      <ProviderUpdateRow v-if="installed" provider="codex" />
       <SettingsEngineSetupRow :capabilities="setupCapabilities" :home="settings.providerHomes?.codex" @customize="emit('customize')" />
     </SettingsEngineConnectionRow>
     <SettingsBankedResets :eligible="Boolean(connected && account?.type === 'chatgpt')" :unavailable="!installed || settings.providerEnabled?.codex === false || Boolean(connected && account && account.type !== 'chatgpt')" :account-key="JSON.stringify([account, settings.providerHomes?.codex?.homePath])" :remote-connection-id="remoteConnectionId" />

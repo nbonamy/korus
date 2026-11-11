@@ -372,9 +372,9 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
     ...(target.queuedPrompts ?? []).filter(prompt => !projectedAgentIds.has(prompt.agentId)),
     ...(remoteSnapshot.queuedPrompts ?? []).filter(prompt => projectedAgentIds.has(prompt.agentId)),
   ];
-  target.backendApprovals = {
-    ...Object.fromEntries(Object.entries(target.backendApprovals).filter(([agentId]) => !projectedAgentIds.has(agentId))),
-    ...Object.fromEntries(Object.entries(remoteSnapshot.backendApprovals).filter(([agentId]) => projectedAgentIds.has(agentId))),
+  target.providerApprovals = {
+    ...Object.fromEntries(Object.entries(target.providerApprovals).filter(([agentId]) => !projectedAgentIds.has(agentId))),
+    ...Object.fromEntries(Object.entries(remoteSnapshot.providerApprovals).filter(([agentId]) => projectedAgentIds.has(agentId))),
   };
   target.turnGitDiffs = {
     ...Object.fromEntries(Object.entries(target.turnGitDiffs).filter(([, diff]) => !projectedAgentIds.has(diff.agentId))),

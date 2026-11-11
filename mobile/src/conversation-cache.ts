@@ -1,5 +1,6 @@
+import { codexEventFromWire } from '@workspace/core/codex-event-wire';
 import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '@workspace/core/companion-journal';
-import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/conversation-replica';
+import { createCodexConversationReplica } from '@korus-dev/multi-agent-sdk/renderer';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
@@ -70,9 +71,9 @@ export class ConversationCache {
     if (!isCompanionConversationFrame(frame)) return;
     const entry = this.entries.get(frame.agentId);
     if (!entry?.subscribed) return;
-    if (frame.backend === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;
+    if (frame.provider === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;
     const current = entry.frame;
-    if (current && current.backend !== frame.backend) return;
+    if (current && current.provider !== frame.provider) return;
     const reset = isConversationReset(frame);
     if (current && frame.payload.revision <= current.payload.revision && !(reset && entry.resetting)) return;
     if (reset) { entry.resetting = false; entry.checkpoint = undefined; }
@@ -81,7 +82,7 @@ export class ConversationCache {
     else {
       if (!current || !entry.replica || frame.payload.revision !== current.payload.revision + 1) { this.reloadInBackground(entry); return; }
       try {
-        entry.replica.apply(frame.payload.event as never);
+        entry.replica.apply((frame.provider === 'codex' ? codexEventFromWire(frame.payload.event) : frame.payload.event) as never);
         const snapshot = entry.replica.getSnapshot();
         // A peer can run a newer SDK. Some replicas return undefined for an unknown
         // event; recover from its authoritative reset before touching renderer state.

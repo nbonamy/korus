@@ -1,29 +1,29 @@
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
-import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { BackendDriverRpc, createBackendDriver } from '../driver-rpc';
+import { ProviderDriverRpc, createProviderDriver } from '../driver-rpc';
 
-const agent: Agent = { id: 'limited', name: 'Limited', folder: '/repo', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'limited', name: 'Limited', folder: '/repo', provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 
 function fixture() {
-  const driver: AgentBackendDriver = {
-    backend: 'claude', getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }),
-    getCapabilities: () => claudeBackendCapabilities,
+  const driver: AgentProviderDriver = {
+    provider: 'claude', getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
+    getCapabilities: () => claudeProviderCapabilities,
     sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
     onEvent: () => () => undefined, close: async () => undefined,
   };
-  return { driver, rpc: new BackendDriverRpc(new Map([['claude', driver]])) };
+  return { driver, rpc: new ProviderDriverRpc(new Map([['claude', driver]])) };
 }
 
 describe('unified driver capability boundary', () => {
   it('selects the Antigravity host explicitly and never creates Codex as a fallback', async () => {
-    const driver = createBackendDriver('antigravity');
+    const driver = createProviderDriver('antigravity');
     try {
-      expect(driver.backend).toBe('antigravity');
-      expect(driver.getCapabilities({ ...agent, backend: 'antigravity' })).toMatchObject({ goals: false, conversationFork: false });
+      expect(driver.provider).toBe('antigravity');
+      expect(driver.getCapabilities({ ...agent, provider: 'antigravity' })).toMatchObject({ goals: false, conversationFork: false });
     } finally { await driver.close(); }
   });
   it.each([
@@ -37,9 +37,9 @@ describe('unified driver capability boundary', () => {
     [backendMethods.driverConversationLoad, {}],
     [backendMethods.driverConversationHistoryLoadOlder, {}],
     [backendMethods.driverConversationsList, {}],
-    [backendMethods.driverConversationResume, { target: { ref: { backend: 'claude', sessionId: 'session' } } }],
+    [backendMethods.driverConversationResume, { target: { ref: { provider: 'claude', sessionId: 'session' } } }],
     [backendMethods.driverConversationFork, { targetAgent: { ...agent, id: 'fork' } }],
-    [backendMethods.driverConversationSummaryGet, { ref: { backend: 'claude', sessionId: 'session' } }],
+    [backendMethods.driverConversationSummaryGet, { ref: { provider: 'claude', sessionId: 'session' } }],
     [backendMethods.driverPromptSteer, { prompt: 'change course' }],
     [backendMethods.driverTurnDelete, { turnId: 'turn' }],
     [backendMethods.driverTurnEdit, { turnId: 'turn', content: 'replacement' }],

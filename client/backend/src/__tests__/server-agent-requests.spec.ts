@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { BackendConversationRef } from '@workspace/core/contracts';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { ProviderConversationRef } from '@workspace/core/contracts';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
   createTestSnapshot,
@@ -20,19 +20,19 @@ describe('AppBackendServer', () => {
   it('offers the imagegen bridge alongside native skills only to eligible non-Codex agents', async () => {
     const snapshot = createTestSnapshot();
     const native = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
-    const drivers = (['codex', 'claude', 'antigravity'] as const).map(backend => ({
-      backend, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(),
+    const drivers = (['codex', 'claude', 'antigravity'] as const).map(provider => ({
+      provider: provider, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(),
       sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-    } satisfies AgentBackendDriver));
-    snapshot.agents = drivers.map(({ backend }) => ({ id: backend, teamId: 'team-test', name: backend,
-      backend, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
+    } satisfies AgentProviderDriver));
+    snapshot.agents = drivers.map(({ provider: provider }) => ({ id: provider, teamId: 'team-test', name: provider,
+      provider: provider, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
     snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map(drivers.map(driver => [driver.backend, driver]))) });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map(drivers.map(driver => [driver.provider, driver]))) });
     const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'skills', method: backendMethods.agentSkillsList, params: { agentId } });
     try {
       await expect(list('codex')).resolves.toMatchObject({ result: [native] });
-      for (const backend of ['claude', 'antigravity']) {
-        await expect(list(backend)).resolves.toMatchObject({ result: [native, {
+      for (const provider of ['claude', 'antigravity']) {
+        await expect(list(provider)).resolves.toMatchObject({ result: [native, {
           name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true,
           displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
         }] });
@@ -51,7 +51,7 @@ describe('AppBackendServer', () => {
     { outcome: 'failure', discardChanges: true },
   ])('removes the agent before cleanup and handles $outcome without overwriting newer roster changes', async ({ outcome, discardChanges }) => {
     const snapshot = createTestSnapshot();
-    const base = { teamId: 'team-test', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
+    const base = { teamId: 'team-test', provider: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
     const closing = { ...base, id: 'closing', name: 'Closing', folder: '/repo-feature', workspace: { ...gitWorkspace('/repo-feature', 'repo', 'feature'), primaryWorktreeRoot: '/repo', isLinkedWorktree: true } };
     const unrelated = { ...base, id: 'unrelated', name: 'Other repository', folder: '/other', workspace: gitWorkspace('/other', 'other', 'main') };
     const peer = { ...base, id: 'peer', name: 'Same repository', folder: '/repo', workspace: gitWorkspace('/repo', 'repo', 'main') };
@@ -107,7 +107,7 @@ describe('AppBackendServer', () => {
 
   it('finishes deleting a worktree that an earlier attempt left half removed', async () => {
     const snapshot = createTestSnapshot();
-    const base = { teamId: 'team-test', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
+    const base = { teamId: 'team-test', provider: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
     const closing = { ...base, id: 'closing', name: 'Closing', folder: '/repo-feature', workspace: { ...gitWorkspace('/repo-feature', 'repo', 'feature'), primaryWorktreeRoot: '/repo', isLinkedWorktree: true } };
     snapshot.agents = [closing];
     snapshot.teams[0]!.agentIds = [closing.id];
@@ -136,10 +136,10 @@ describe('AppBackendServer', () => {
   it('browses directory levels without hiding later folders, pages large folders, and searches unloaded files', async () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'korus-explorer-'));
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ id: 'explorer', teamId: 'team-test', name: 'Explorer', folder, backend: 'codex',
+    snapshot.agents = [{ id: 'explorer', teamId: 'team-test', name: 'Explorer', folder, provider: 'codex',
       status: { type: 'idle' }, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }];
     snapshot.teams[0]!.agentIds = ['explorer'];
-    const server = new AppBackendServer({ version: 'test', pid: 123, snapshot, driverRpc: new BackendDriverRpc(new Map()) });
+    const server = new AppBackendServer({ version: 'test', pid: 123, snapshot, driverRpc: new ProviderDriverRpc(new Map()) });
     const list = (input: Record<string, unknown> = {}) => server.handleMessage({
       jsonrpc: '2.0', id: 'directory', method: 'agent/directory/list', params: { agentId: 'explorer', input },
     });
@@ -178,48 +178,48 @@ describe('AppBackendServer', () => {
 
   it.each(['working', 'awaitingInput', 'error'] as const)('rejects a restart before changing provider state when the agent is %s', async type => {
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ id: 'restart', teamId: 'team-test', name: 'Restart', folder: '/code/repo', backend: 'codex',
-      backendSession: { kind: 'codex', threadId: 'keep-thread' }, status: type === 'error' ? { type, message: 'Failed' } : { type }, createdAt: '', updatedAt: '' }];
+    snapshot.agents = [{ id: 'restart', teamId: 'team-test', name: 'Restart', folder: '/code/repo', provider: 'codex',
+      providerSession: { kind: 'codex', threadId: 'keep-thread' }, status: type === 'error' ? { type, message: 'Failed' } : { type }, createdAt: '', updatedAt: '' }];
     const handle = vi.fn(async () => undefined);
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never });
     try {
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 'restart', method: backendMethods.agentConversationReset, params: { agentId: 'restart' } })).rejects.toThrow('idle');
       expect(handle).not.toHaveBeenCalled();
-      expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'keep-thread' });
+      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', threadId: 'keep-thread' });
     } finally { await server.close(); }
   });
 
   it('duplicates into a chosen connected backend, preserving the checkout and isolating provider defaults', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'target-model', reasoningEffort: null, serviceTier: null } };
-    snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', backend: 'codex', backendDefaults: { kind: 'codex', model: 'source-model' },
-      backendSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.general.providerModelDefaults = { claude: {provider: 'claude',  model: 'target-model', reasoningEffort: null, serviceTier: null } };
+    snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', provider: 'codex', providerDefaults: { kind: 'codex', model: 'source-model' },
+      providerSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
     snapshot.agents.push({ ...snapshot.agents[0]!, id: 'leading', name: 'Leading' }, { ...snapshot.agents[0]!, id: 'following', name: 'Following' });
     snapshot.teams[0]!.agentIds = ['source', 'leading', 'following'];
     snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['leading', 'source', 'following'] } } };
     const handle = vi.fn(async () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }));
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, saveSnapshot: async () => {},
       driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
-      providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/claude' }] } as never,
+      providerSetup: { isChanging: () => false, list: () => [{ provider: 'claude', installed: true, homePath: '/claude' }] } as never,
     });
     try {
-      const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'claude' } } } });
+      const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { provider: 'claude' } } } });
       expect(reply).not.toHaveProperty('error');
-      expect(handle).toHaveBeenCalledExactlyOnceWith('driver/provider/authentication', { backend: 'claude', action: 'check' });
+      expect(handle).toHaveBeenCalledExactlyOnceWith('driver/provider/authentication', { provider: 'claude', action: 'check' });
       const duplicate = snapshot.agents[1]!;
       expect(reply).toMatchObject({ result: { teams: [{ agentIds: ['leading', 'source', duplicate.id, 'following'] }] } });
-      expect(duplicate).toMatchObject({ folder: '/code/repo-worktree', workspace: snapshot.agents[0]!.workspace, backend: 'claude', backendDefaults: { kind: 'claude', model: 'target-model' }, status: { type: 'idle' } });
-      expect(duplicate.backendSession).toBeUndefined();
-      expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
-      const backgroundReply = await server.handleMessage({ jsonrpc: '2.0', id: 'background-duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { select: false, selection: { backend: 'claude' } } } });
+      expect(duplicate).toMatchObject({ folder: '/code/repo-worktree', workspace: snapshot.agents[0]!.workspace, provider: 'claude', providerDefaults: { kind: 'claude', model: 'target-model' }, status: { type: 'idle' } });
+      expect(duplicate.providerSession).toBeUndefined();
+      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
+      const backgroundReply = await server.handleMessage({ jsonrpc: '2.0', id: 'background-duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { select: false, selection: { provider: 'claude' } } } });
       const background = snapshot.agents[1]!;
       expect(backgroundReply).toMatchObject({ result: {
         activeAgentId: duplicate.id,
         teams: [{ agentIds: ['leading', 'source', background.id, duplicate.id, 'following'] }],
       } });
       const count = snapshot.agents.length;
-      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { backend: 'antigravity' } } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { selection: { provider: 'antigravity' } } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
       expect(snapshot.agents).toHaveLength(count);
     } finally { await server.close(); }
   });
@@ -239,7 +239,7 @@ describe('AppBackendServer', () => {
       pid: 123,
       snapshot,
       saveSnapshot,
-      driverRpc: new BackendDriverRpc(new Map()),
+      driverRpc: new ProviderDriverRpc(new Map()),
     });
 
     try {
@@ -247,7 +247,7 @@ describe('AppBackendServer', () => {
         jsonrpc: '2.0',
         id: 'create-agent',
         method: 'agent/create',
-        params: { input: { name: 'Dina', folder: tempDir, sourceRepositoryName: 'agent-workspace', teamId: 'team-test', selection: { ...{ backend: 'codex' } } } },
+        params: { input: { name: 'Dina', folder: tempDir, sourceRepositoryName: 'agent-workspace', teamId: 'team-test', selection: { ...{ provider: 'codex' } } } },
       })).resolves.toMatchObject({
         result: {
           activeAgentId: expect.stringContaining('agent-'),
@@ -270,17 +270,17 @@ describe('AppBackendServer', () => {
           agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir }],
         },
       });
-      const selection = { backend: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null };
+      const selection = { provider: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null };
       await expect(server.handleMessage({
         jsonrpc: '2.0',
         id: 'update-model-selection',
         method: 'agent/update',
         params: { input: { id: agentId, selection } },
       })).resolves.toMatchObject({
-        result: { agents: [{ id: agentId, backendDefaults: { kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true } }] },
+        result: { agents: [{ id: agentId, providerDefaults: { kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true } }] },
       });
       expect(saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
-        agents: [expect.objectContaining({ backendDefaults: expect.objectContaining({ model: 'sol', userSelectedModel: true }) })],
+        agents: [expect.objectContaining({ providerDefaults: expect.objectContaining({ model: 'sol', userSelectedModel: true }) })],
       }));
       await expect(server.handleMessage({
         jsonrpc: '2.0',
@@ -309,7 +309,7 @@ describe('AppBackendServer', () => {
         params: { agentId },
       })).resolves.toMatchObject({
         result: {
-          agents: [{ id: agentId }, { name: 'Dina Backend (copy)', openInApplication: 'xcode', backendDefaults: { model: 'sol', userSelectedModel: true } }],
+          agents: [{ id: agentId }, { name: 'Dina Backend (copy)', openInApplication: 'xcode', providerDefaults: { model: 'sol', userSelectedModel: true } }],
         },
       });
       const duplicateId = snapshot.agents[1]?.id ?? '';
@@ -360,8 +360,8 @@ describe('AppBackendServer', () => {
         name: `${product.name} main`,
         folder: '/src/agent-workspace',
         workspace: gitWorkspace('/src/agent-workspace', 'agent-workspace', 'main'),
-        backend: 'codex',
-        backendDefaults: { kind: 'codex' },
+        provider: 'codex',
+        providerDefaults: { kind: 'codex' },
         status: { type: 'idle' },
         createdAt,
         updatedAt: createdAt,
@@ -372,8 +372,8 @@ describe('AppBackendServer', () => {
         name: 'id8',
         folder: '/src/id8',
         workspace: gitWorkspace('/src/id8', 'id8', 'main'),
-        backend: 'codex',
-        backendDefaults: { kind: 'codex' },
+        provider: 'codex',
+        providerDefaults: { kind: 'codex' },
         status: { type: 'idle' },
         createdAt,
         updatedAt: createdAt,
@@ -389,8 +389,8 @@ describe('AppBackendServer', () => {
           repositoryRoot: '/src/agent-workspace.worktrees/drag-drop',
           isLinkedWorktree: true,
         },
-        backend: 'codex',
-        backendDefaults: { kind: 'codex' },
+        provider: 'codex',
+        providerDefaults: { kind: 'codex' },
         status: { type: 'idle' },
         createdAt,
         updatedAt: createdAt,
@@ -403,7 +403,7 @@ describe('AppBackendServer', () => {
       pid: 123,
       snapshot,
       saveSnapshot,
-      driverRpc: new BackendDriverRpc(new Map()),
+      driverRpc: new ProviderDriverRpc(new Map()),
     });
 
     try {
@@ -438,8 +438,8 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend: 'codex' as const,
-      backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      provider: 'codex' as const,
+      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
       status: { type: 'idle' as const },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
@@ -450,12 +450,12 @@ describe('AppBackendServer', () => {
     const releaseConversation = vi.fn();
     const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       releaseConversation,
       archiveAgentConversation,
@@ -466,7 +466,7 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       snapshot,
       saveSnapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     });
 
     await expect(server.handleMessage({
@@ -477,7 +477,7 @@ describe('AppBackendServer', () => {
     })).resolves.toMatchObject({ result: { agents: [] } });
 
     expect(archiveAgentConversation).toHaveBeenCalledWith(expect.objectContaining({
-      backendSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', threadId: 'thread-dina' },
     }));
     expect(releaseConversation).toHaveBeenCalledWith(agent.id);
     expect(snapshot.agents).toStrictEqual([]);
@@ -493,7 +493,7 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const agent = {
       id: 'agent-chat', teamId: 'team-test', name: null, folder: sessionKind ? null : '/repo', ...(sessionKind ? { sessionKind } : {}),
-      backend: 'codex' as const, backendSession: { kind: 'codex' as const, threadId: 'thread-chat' },
+      provider: 'codex' as const, providerSession: { kind: 'codex' as const, threadId: 'thread-chat' },
       status: { type: 'idle' as const }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
     };
     snapshot.teams[0]!.agentIds = [agent.id];
@@ -501,12 +501,12 @@ describe('AppBackendServer', () => {
     snapshot.activeAgentId = agent.id;
     const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
     const deleteAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: agent.backendSession }),
-      interrupt: async () => ({ backendSession: agent.backendSession }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: agent.providerSession }),
+      interrupt: async () => ({ providerSession: agent.providerSession }),
       respondToAgentRequest: async () => undefined,
       releaseConversation: vi.fn(),
       archiveAgentConversation,
@@ -514,7 +514,7 @@ describe('AppBackendServer', () => {
       onEvent: () => () => undefined,
       close: async () => undefined,
     };
-    const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined), driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+    const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined), driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'close-chat', method: backendMethods.agentDelete, params: { agentId: agent.id } });
 
@@ -530,7 +530,7 @@ describe('AppBackendServer', () => {
     { confirmed: true, deleteWorktree: false, discardChanges: true },
   ])('rejects invalid discard authorization without deleting the agent: %j', async (input) => {
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo-feature', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' }];
+    snapshot.agents = [{ id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo-feature', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' }];
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     const agent = snapshot.agents[0]!;
     const deleteLinkedWorktree = vi.fn();
@@ -550,7 +550,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo-feature',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       pullRequest: {
         provider,
@@ -607,11 +607,11 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina', 'agent-jesse'];
     snapshot.agents = [
       {
-        id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo-feature', backend: 'codex',
+        id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo-feature', provider: 'codex',
         status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       },
       {
-        id: 'agent-jesse', teamId: 'team-test', name: 'Jesse', folder: '/repo-feature', backend: 'codex',
+        id: 'agent-jesse', teamId: 'team-test', name: 'Jesse', folder: '/repo-feature', provider: 'codex',
         status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       },
     ];
@@ -646,7 +646,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: tempDir,
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -655,7 +655,7 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       pid: 123,
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map()),
+      driverRpc: new ProviderDriverRpc(new Map()),
     });
 
     try {
@@ -733,7 +733,7 @@ describe('AppBackendServer', () => {
       sessionKind: 'quickChat',
       name: null,
       folder: null,
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -741,7 +741,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map()),
+      driverRpc: new ProviderDriverRpc(new Map()),
     });
 
     try {
@@ -774,8 +774,8 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
-      backendSession: { kind: 'codex', threadId: 'thread-root' },
+      provider: 'codex',
+      providerSession: { kind: 'codex', threadId: 'thread-root' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -832,7 +832,7 @@ describe('AppBackendServer', () => {
       enabled: true,
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{
@@ -841,7 +841,7 @@ describe('AppBackendServer', () => {
         startedAt: '2026-06-13T00:00:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { backend: 'codex', threadId: 'thread-dina' },
+        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', threadId: 'thread-dina' },
       }],
     }];
     const conversations = [{
@@ -850,7 +850,7 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-09T10:00:00.000Z',
       messageCount: 3,
       storageState: 'active' as const,
-      ref: { backend: 'codex' as const, threadId: 'thread-dina' },
+      ref: { provider: 'codex' as const, threadId: 'thread-dina' },
     }];
     const messages = [{
       ...createTextMessage('user-thread-dina-user-1', 'agent-dina', 'hello'),
@@ -872,19 +872,19 @@ describe('AppBackendServer', () => {
     const listPlugins = vi.fn().mockResolvedValue([{ id: 'dropbox', name: 'dropbox', displayName: 'Dropbox', enabled: true }]);
     const listSkills = vi.fn().mockResolvedValue([{ name: 'frontend-design', path: '/skills/frontend-design/SKILL.md' }]);
     const listConversations = vi.fn().mockResolvedValue(conversations);
-    const readConversationMessages = vi.fn(async (ref: BackendConversationRef) => {
-      if (ref.backend !== 'codex') return messages;
+    const readConversationMessages = vi.fn(async (ref: ProviderConversationRef) => {
+      if (ref.provider !== 'codex') return messages;
       if (ref.threadId === 'thread-grandchild') return grandchildMessages;
       if (ref.threadId === 'thread-child') return childMessages;
       if (ref.threadId === 'thread-legacy-child') return legacyChildMessages;
       return messages;
     });
-    const readConversationSummary = vi.fn(async (_agent: unknown, ref: BackendConversationRef) => ({
-      id: ref.backend === 'codex' ? ref.threadId : 'thread-unknown',
-      parentConversationId: ref.backend === 'codex' && ref.threadId === 'thread-grandchild'
+    const readConversationSummary = vi.fn(async (_agent: unknown, ref: ProviderConversationRef) => ({
+      id: ref.provider === 'codex' ? ref.threadId : 'thread-unknown',
+      parentConversationId: ref.provider === 'codex' && ref.threadId === 'thread-grandchild'
         ? 'thread-child'
         : 'thread-root',
-      agentNickname: ref.backend === 'codex' ? `Nickname ${ref.threadId}` : undefined,
+      agentNickname: ref.provider === 'codex' ? `Nickname ${ref.threadId}` : undefined,
       title: 'Subagent',
       status: 'idle' as const,
       createdAt: '2026-06-13T00:00:00.000Z',
@@ -893,12 +893,12 @@ describe('AppBackendServer', () => {
       storageState: 'active' as const,
       ref,
     }));
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       listConversations,
       listModels,
@@ -913,7 +913,7 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       pid: 123,
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     });
 
     await server.initialize();
@@ -955,52 +955,52 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex', threadId: 'thread-dina' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-dina' } },
     })).resolves.toMatchObject({ result: messages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex', threadId: 'thread-child' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-child' } },
     })).resolves.toMatchObject({ result: childMessages });
-    expect(readConversationMessages).not.toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-root' }, 'agent-dina');
+    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-root' }, 'agent-dina');
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'nested-subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex', threadId: 'thread-grandchild' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-grandchild' } },
     })).resolves.toMatchObject({ result: grandchildMessages });
     expect(readConversationMessages.mock.calls.filter(([candidate]) => (
-      candidate.backend === 'codex' && candidate.threadId === 'thread-child'
+      candidate.provider === 'codex' && candidate.threadId === 'thread-child'
     ))).toHaveLength(1);
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'legacy-subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex', threadId: 'thread-legacy-child' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-legacy-child' } },
     })).resolves.toMatchObject({ result: legacyChildMessages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'unknown-ref',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex', threadId: 'thread-unknown' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-unknown' } },
     })).resolves.toMatchObject({ error: { message: 'Conversation reference is not available.' } });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'invalid-ref',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { backend: 'codex' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex' } },
     })).resolves.toMatchObject({ error: { message: 'Invalid conversation reference.' } });
 
     expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
     expect(listPlugins).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
     expect(listSkills).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
     expect(listConversations).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), undefined);
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-dina' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-child' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-grandchild' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-legacy-child' }, 'agent-dina');
-    expect(readConversationMessages).not.toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-root' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-child' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-grandchild' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-legacy-child' }, 'agent-dina');
+    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-root' }, 'agent-dina');
     await server.close();
   });
 });

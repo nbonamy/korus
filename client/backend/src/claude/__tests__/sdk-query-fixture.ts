@@ -1,124 +1,48 @@
-import { vi } from 'vitest';
-import type { ClaudeQueryFactory, ClaudeQueryRuntime } from '../agent-sdk-transport';
-import type { ClaudeSdkMessage } from '../protocol';
+import { vi, type Mock } from 'vitest';
 
-type QueryInput = Parameters<ClaudeQueryFactory>[0];
-type ClaudeQueryOptions = QueryInput['options'];
-type SDKUserMessage = QueryInput['prompt'] extends AsyncIterable<infer Message> ? Message : never;
-type SDKMessage = ClaudeQueryRuntime extends AsyncIterable<infer Message> ? Message : never;
+type Fn = Mock<(...args: any[]) => any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+import { createScriptedClaudeHarness, type ScriptedClaude } from '@korus-dev/multi-agent-sdk/testing';
+import { createClaudeDriver } from '../../harness-drivers';
 
-export function createQueryHarness(initializationModels: Array<Record<string, unknown>> = []): {
-  createQuery: ReturnType<typeof vi.fn<ClaudeQueryFactory>>;
-  inputs: SDKUserMessage[];
-  options: ClaudeQueryOptions[];
-  runtimes: Array<ClaudeQueryRuntime & {
-    interrupt: ReturnType<typeof vi.fn>;
-    setModel: ReturnType<typeof vi.fn>;
-    setPermissionMode: ReturnType<typeof vi.fn>;
-    applyFlagSettings: ReturnType<typeof vi.fn>;
-    supportedModels: ReturnType<typeof vi.fn>;
-    initializationResult: ReturnType<typeof vi.fn>;
-    getContextUsage: ReturnType<typeof vi.fn>;
-  }>;
-  emit(message: ClaudeSdkMessage, queryIndex?: number): void;
-} {
-  const inputs: SDKUserMessage[] = [];
-  const options: ClaudeQueryOptions[] = [];
-  const runtimes: Array<ClaudeQueryRuntime & {
-    interrupt: ReturnType<typeof vi.fn>;
-    setModel: ReturnType<typeof vi.fn>;
-    setPermissionMode: ReturnType<typeof vi.fn>;
-    applyFlagSettings: ReturnType<typeof vi.fn>;
-    supportedModels: ReturnType<typeof vi.fn>;
-    initializationResult: ReturnType<typeof vi.fn>;
-    getContextUsage: ReturnType<typeof vi.fn>;
-  }> = [];
-  let output = new TestAsyncQueue<SDKMessage>();
-  const outputs: TestAsyncQueue<SDKMessage>[] = [];
-  const createQuery = vi.fn<ClaudeQueryFactory>((input) => {
-    options.push(input.options);
-    void collectInputs(input.prompt, inputs);
-    const queryOutput = new TestAsyncQueue<SDKMessage>();
-    output = queryOutput;
-    outputs.push(queryOutput);
-    const runtime: ClaudeQueryRuntime & {
-      interrupt: ReturnType<typeof vi.fn>;
-      setModel: ReturnType<typeof vi.fn>;
-      setPermissionMode: ReturnType<typeof vi.fn>;
-      applyFlagSettings: ReturnType<typeof vi.fn>;
-      supportedModels: ReturnType<typeof vi.fn>;
-      initializationResult: ReturnType<typeof vi.fn>;
-      getContextUsage: ReturnType<typeof vi.fn>;
-    } = {
-      [Symbol.asyncIterator]: () => queryOutput[Symbol.asyncIterator](),
-      interrupt: vi.fn().mockResolvedValue(undefined),
-      setModel: vi.fn().mockResolvedValue(undefined),
-      setPermissionMode: vi.fn().mockResolvedValue(undefined),
-      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
-      supportedModels: vi.fn().mockResolvedValue([]),
-      initializationResult: vi.fn().mockResolvedValue({ models: initializationModels }),
-      getContextUsage: vi.fn().mockResolvedValue({
-        categories: [],
-        totalTokens: 0,
-        maxTokens: 200_000,
-        rawMaxTokens: 200_000,
-        percentage: 0,
-        gridRows: [],
-        model: 'sonnet',
-        memoryFiles: [],
-        mcpTools: [],
-        agents: [],
-      }),
-      close: vi.fn(() => queryOutput.close()),
-    };
-    runtimes.push(runtime);
-    return runtime;
-  });
+type DriverOptions = Parameters<typeof createClaudeDriver>[0];
+const controls = ['interrupt', 'setModel', 'setPermissionMode', 'applyFlagSettings', 'supportedModels', 'initializationResult', 'getContextUsage'] as const;
 
-  return {
-    createQuery,
-    inputs,
-    options,
-    runtimes,
-    emit: (message, queryIndex) => (queryIndex === undefined ? output : outputs[queryIndex]!).push(message as SDKMessage),
+/**
+ * Claude, with the agent connection scripted. `driver()` returns Korus's real Claude driver over the SDK's real host;
+ * `emit` plays Claude Agent SDK messages into it.
+ */
+export function createQueryHarness(initializationModels: Array<Record<string, unknown>> = []) {
+  // Drivers made from one fixture share one query numbering, as they shared one query factory before.
+  const harnesses: ScriptedClaude[] = [];
+  const locate = (queryIndex?: number) => {
+    if (queryIndex === undefined) { const last = [...harnesses].reverse().find(h => h.queryOptions.length > 0) ?? harnesses.at(-1)!; return { harness: last, local: undefined as number | undefined }; }
+    let offset = 0;
+    for (const harness of harnesses) { if (queryIndex < offset + harness.queryOptions.length) return { harness, local: queryIndex - offset }; offset += harness.queryOptions.length; }
+    throw new Error(`No query ${queryIndex}.`);
   };
-}
-
-async function collectInputs(input: AsyncIterable<SDKUserMessage>, values: SDKUserMessage[]): Promise<void> {
-  for await (const message of input) {
-    values.push(message);
-  }
-}
-
-class TestAsyncQueue<T> implements AsyncIterable<T> {
-  private readonly values: T[] = [];
-  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
-  private closed = false;
-
-  push(value: T): void {
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter({ value, done: false });
-    } else {
-      this.values.push(value);
-    }
-  }
-
-  close(): void {
-    this.closed = true;
-    for (const waiter of this.waiters.splice(0)) {
-      waiter({ value: undefined, done: true });
-    }
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<T> {
-    return {
-      next: () => {
-        const value = this.values.shift();
-        if (value !== undefined) return Promise.resolve({ value, done: false });
-        if (this.closed) return Promise.resolve({ value: undefined, done: true });
-        return new Promise((resolve) => this.waiters.push(resolve));
-      },
-    };
-  }
+  const total = () => harnesses.reduce((sum, harness) => sum + harness.queryOptions.length, 0);
+  const spy = (queryIndex: number, method: string) => {
+    const fn: Fn = vi.fn();
+    const { harness, local } = locate(queryIndex);
+    for (const call of harness.controlCalls(local)) if (call.method === method) fn(...call.args);
+    return fn;
+  };
+  return {
+    /** The driver Korus runs for Claude; pass the same options Korus passes. */
+    driver(options: DriverOptions = {}) {
+      return createClaudeDriver(options, (_provider, harnessOptions) => {
+        const scripted = createScriptedClaudeHarness(harnessOptions, initializationModels);
+        harnesses.push(scripted);
+        return scripted.harness;
+      });
+    },
+    emit: (message: Record<string, unknown>, queryIndex?: number) => { const { harness, local } = locate(queryIndex); harness.emit(message, local); },
+    get inputs() { return harnesses.flatMap(harness => harness.inputs) as Array<Record<string, any>>; }, // eslint-disable-line @typescript-eslint/no-explicit-any
+    get options() { return harnesses.flatMap(harness => harness.queryOptions) as Array<Record<string, any>>; }, // eslint-disable-line @typescript-eslint/no-explicit-any
+    /** Spies over what the harness asked each running query to do, as of now. */
+    get runtimes() {
+      return Array.from({ length: total() }, (_, index) => ({ close: () => { const { harness, local } = locate(index); harness.closeQuery(local); }, ...Object.fromEntries(controls.map(method => [method, spy(index, method)])) })) as Array<Record<(typeof controls)[number], Fn> & { close(): void }>;
+    },
+    get createQuery() { const fn: Fn = vi.fn(); for (let i = 0; i < total(); i++) fn(); return fn; },
+  };
 }

@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { BackendDriverRpc } from '../driver-rpc';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { ProviderDriverRpc } from '../driver-rpc';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { conversationShareTarget, decodeConversationShareLink } from '@workspace/core/conversation-sharing';
@@ -16,7 +16,7 @@ import type { ConversationShareResult } from '@workspace/core/conversation-shari
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { product } from '@workspace/core/product';
-import { codexSdkFixture, sdkSnapshot } from '../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkSnapshot } from '../codex/__tests__/sdk-host-fixture';
 
 // Failure modes: duplicate/racing creates, failed writes, restart, stale session,
 // remote host, stale revoke, or diagnostics/events accidentally carrying a bearer.
@@ -24,14 +24,14 @@ const relay = product.companionRelay!;
 const ownerId = '12D3KooWJ7cStPD8Mq1nJKegq5nTXWmKkRZAfkQxBBDQvhfHE3Ej';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function fixture(session: import('@workspace/core/contracts').BackendSession = { kind: 'codex', threadId: 'original' }) {
+async function fixture(session: import('@workspace/core/contracts').ProviderSessionData = { kind: 'codex', threadId: 'original' }) {
   const root = await mkdtemp(path.join(tmpdir(), 'conversation-sharing-')); roots.push(root);
   const snapshot = createTestSnapshot();
-  snapshot.agents = [{ id: 'agent', teamId: 'team-test', name: 'Synthetic owner', backend: session.kind, folder: '/fixture', backendSession: session, status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' }];
+  snapshot.agents = [{ id: 'agent', teamId: 'team-test', name: 'Synthetic owner', provider: session.kind, folder: '/fixture', providerSession: session, status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' }];
   snapshot.teams[0]!.agentIds = ['agent'];
   const events: AppBackendEvent[] = [];
   const directory = path.join(root, 'shares');
-  const start = (driverRpc?: BackendDriverRpc) => new AppBackendServer({ driverRpc, version: 'test', snapshot, onEvent: event => events.push(event), conversationSharing: { directory, endpoint: async () => ({ ownerId, relay }) } });
+  const start = (driverRpc?: ProviderDriverRpc) => new AppBackendServer({ driverRpc, version: 'test', snapshot, onEvent: event => events.push(event), conversationSharing: { directory, endpoint: async () => ({ ownerId, relay }) } });
   const target = conversationShareTarget(snapshot.agents[0]!)!;
   const request = async (server: AppBackendServer, input: unknown) => {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: 'share', method: 'conversation/share/control', params: { input } });
@@ -65,14 +65,14 @@ describe('owner conversation sharing RPC and protected persistence', () => {
   });
 
   it('admits approved text through the normal owner boundary with a canonical identity and no app command', async () => {
-    const f = await fixture(); const sendPrompt = vi.fn(async (_agent: import('@workspace/core/contracts').Agent, _text: string) => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'native-turn', messageId: 'native-message' }));
+    const f = await fixture(); const sendPrompt = vi.fn(async (_agent: import('@workspace/core/contracts').Agent, _text: string) => ({ providerSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'native-turn', messageId: 'native-message' }));
     const commands = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
-      sendPrompt, tryHandlePromptCommand: commands, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
+      sendPrompt, tryHandlePromptCommand: commands, interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'original' } }),
       respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
     };
-    let server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    let server = f.start(new ProviderDriverRpc(new Map([['codex', driver]])));
     try {
       const share = await f.request(server, { action: 'create', target: f.target });
       const id = randomUUID(); const text = '  /mission exact guest text  ';
@@ -89,11 +89,11 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       expect(sendPrompt).toHaveBeenCalledTimes(1); expect(sendPrompt.mock.calls[0]?.[1]).toBe(text); expect(commands).not.toHaveBeenCalled();
       const stateFile = path.join(f.directory, 'collaboration.json');
       const saved = JSON.parse(await readFile(stateFile, 'utf8')).sharing;
-      expect(saved.proposals[0]).not.toHaveProperty('backendSession');
+      expect(saved.proposals[0]).not.toHaveProperty('providerSession');
       await server.close();
       // Recover the exact historical leak without changing invitations or delivery receipts.
-      await writeFile(stateFile, JSON.stringify({ v: 1, sharing: { ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, backendSession: { kind: 'codex', threadId: 'original' } })) } }));
-      server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+      await writeFile(stateFile, JSON.stringify({ v: 1, sharing: { ...saved, proposals: saved.proposals.map((proposal: object) => ({ ...proposal, providerSession: { kind: 'codex', threadId: 'original' } })) } }));
+      server = f.start(new ProviderDriverRpc(new Map([['codex', driver]])));
       const recovered = await f.request(server, { action: 'copy', target: f.target });
       expect(recovered.link).toBe(share.link);
       expect(recovered.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' }));
@@ -115,7 +115,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
     session.setSnapshot({ turnIds: ['turn'], activeTurnId: 'turn', messages: prior });
     sendPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [message] }));
     steerPrompt.mockResolvedValue(sdkSnapshot('original', { turnIds: ['turn'], activeTurnId: 'turn', messages: [...prior, { ...message, kind: 'steer' }] }));
-    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    const server = f.start(new ProviderDriverRpc(new Map([['codex', driver]])));
     try {
       const share = await f.request(server, { action: 'create', target: f.target });
       server.conversationGuestCount(share.state.handle!, 1, [{ identity: ownerId, name: 'Alex', discriminator: '1234abcd' }]);
@@ -240,7 +240,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       const result = f.request(server, { action, target: f.target });
       const outcome = result.then(() => ({ rejected: false, message: '' }), error => ({ rejected: true, message: error instanceof Error ? JSON.parse(error.message).error.message as string : '' }));
       await publishing;
-      f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'replacement-during-network' };
+      f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'replacement-during-network' };
       release();
       expect(await outcome).toStrictEqual({ rejected: true, message: 'Conversation changed. Reopen Share.' });
       const status = await f.request(server, { action: 'status', target: conversationShareTarget(f.snapshot.agents[0]!)! });
@@ -320,11 +320,11 @@ describe('owner conversation sharing RPC and protected persistence', () => {
     const f = await fixture(); const server = f.start();
     try {
       await f.request(server, { action: 'create', target: f.target });
-      f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'replacement' };
+      f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'replacement' };
       await expect(f.request(server, { action: 'copy', target: f.target })).rejects.toThrow();
       const nextTarget = conversationShareTarget(f.snapshot.agents[0]!)!;
       expect((await f.request(server, { action: 'status', target: nextTarget })).state.active).toBe(false);
-      f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'original' };
+      f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'original' };
       expect((await f.request(server, { action: 'status', target: f.target })).state.active).toBe(false);
       f.snapshot.agents[0]!.remoteConnectionId = 'remote-host';
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow();
@@ -339,7 +339,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       const first = await f.request(server, { action: 'create', target: f.target });
       const reset = await server.handleMessage({ jsonrpc: '2.0', id: 'reset', method: 'agent/conversation/reset', params: { agentId: 'agent' } });
       expect(reset).not.toHaveProperty('error');
-      f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'original' };
+      f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'original' };
       const status = await f.request(server, { action: 'status', target: f.target });
       expect(status.state.active).toBe(false);
       const next = await f.request(server, { action: 'create', target: f.target });
@@ -348,18 +348,18 @@ describe('owner conversation sharing RPC and protected persistence', () => {
   });
   it('does not rearm links after rapid provider session replacement events', async () => {
     const f = await fixture(); let publish!: (event: BackendEvent) => void;
-    const driver: AgentBackendDriver = {
-      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'original' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'original' } }),
       respondToAgentRequest: async () => undefined, close: async () => undefined,
       onEvent: listener => { publish = listener; return () => {}; },
     };
-    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    const server = f.start(new ProviderDriverRpc(new Map([['codex', driver]])));
     try {
       await f.request(server, { action: 'create', target: f.target });
-      publish({ type: 'agent.conversationAttached', agentId: 'agent', backend: 'codex', conversationId: 'replacement', payload: {} });
-      publish({ type: 'agent.conversationAttached', agentId: 'agent', backend: 'codex', conversationId: 'original', payload: {} });
+      publish({ type: 'agent.conversationAttached', agentId: 'agent', provider: 'codex', conversationId: 'replacement', payload: {} });
+      publish({ type: 'agent.conversationAttached', agentId: 'agent', provider: 'codex', conversationId: 'original', payload: {} });
       expect((await f.request(server, { action: 'status', target: f.target })).state.active).toBe(false);
     } finally { await server.close(); }
   });
@@ -381,7 +381,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
     try {
       const agent = f.snapshot.agents[0]!;
       for (let i = 0; i < 51; i++) {
-        const next = { ...agent, id: `agent-${i}`, backendSession: { kind: 'codex' as const, threadId: `thread-${i}` } };
+        const next = { ...agent, id: `agent-${i}`, providerSession: { kind: 'codex' as const, threadId: `thread-${i}` } };
         f.snapshot.agents.push(next);
         await f.request(server, { action: 'create', target: conversationShareTarget(next)! });
       }
@@ -416,7 +416,7 @@ it('rejects Cursor sharing at daemon admission without creating invitation state
   const endpoint = vi.fn(async () => ({ownerId,relay}));
   const changed = vi.fn();
   const shares = new ConversationShares({directory:f.directory,endpoint},()=>f.snapshot,changed);
-  const target = {agentId:'agent',backend:'cursor' as const,sessionId:'cursor-session',conversation:{backend:'cursor' as const,sessionId:'cursor-session',folder:'/fixture'}};
+  const target = {agentId:'agent',provider:'cursor' as const,sessionId:'cursor-session',conversation:{provider:'cursor' as const,sessionId:'cursor-session',folder:'/fixture'}};
   try {
     await expect(shares.control({action:'create',target})).rejects.toThrow('Conversation sharing is unavailable for this provider.');
     expect(endpoint).not.toHaveBeenCalled();

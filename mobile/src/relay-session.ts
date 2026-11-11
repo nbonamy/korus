@@ -3,7 +3,7 @@ import { companionPushAuthorizationMessage, type CompanionNotification } from '@
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
 import { companionAgents, companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
-import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionConversation, CompanionSession } from './companion-port';
@@ -179,9 +179,9 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       if (receipt.state === 'rejected') throw new PromptRejectedError('Prompt was rejected.');
       if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
     },
-    async listModels(agentId) { return (await call<{ models: BackendModelOption[] }>('models.list', target(agentId))).models; },
-    async listPlugins(agentId) { return (await call<{ plugins: BackendPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
-    async listSkills(agentId) { return (await call<{ skills: BackendSkillSummary[] }>('skills.list', target(agentId))).skills; },
+    async listModels(agentId) { return (await call<{ models: ProviderModelOption[] }>('models.list', target(agentId))).models; },
+    async listPlugins(agentId) { return (await call<{ plugins: ProviderPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
+    async listSkills(agentId) { return (await call<{ skills: ProviderSkillSummary[] }>('skills.list', target(agentId))).skills; },
     async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), selection }); },
     async changeGoal(target, objective) {
       if (closed) throw new Error('Disconnected.');
@@ -195,7 +195,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     listBranches: (teamId, repositoryId) => call('repository.branches', { teamId, repositoryId }),
     localRepositories: teamId => call('project.local.list', { teamId }),
     localBranches: (teamId, repositoryId) => call('project.local.branches', { teamId, repositoryId }),
-    async duplicateAgent(target, backend) { return (await call<{ agentId: string }>('agent.duplicate', { target, backend })).agentId; },
+    async duplicateAgent(target, provider) { return (await call<{ agentId: string }>('agent.duplicate', { target, provider: provider })).agentId; },
     async renameAgent(target, name) { await call('agent.rename', { target, name }); },
     repositoryCatalog: (teamId, provider) => call('project.repositories.list', { teamId, provider }),
     repositoryBranches: (teamId, provider, repositoryId) => call('project.repositories.branches', { teamId, provider, repositoryId }),
@@ -205,10 +205,10 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
     async createChat(chat, signal) { return created((await call<{ creationId: string }>('agent.create', chat)).creationId, signal); },
     async createQuickChat(chat, signal) { return created((await call<{ creationId: string }>('agent.quickChat.create', chat)).creationId, signal); },
-    async setBackend(agentId, backend) { await call('agent.backend.set', { target: target(agentId), backend }); },
+    async setProvider(agentId, provider) { await call('agent.provider.set', { target: target(agentId), provider: provider }); },
     readReview: agentId => call('agent.review.read', { target: target(agentId) }),
     reviewAction: (target, input) => call('agent.review.action', { target, input }),
-    reviewSetup: (agentId, backend) => call('agent.review.setup', { target: target(agentId), ...(backend ? { backend } : {}) }),
+    reviewSetup: (agentId, provider) => call('agent.review.setup', { target: target(agentId), ...(provider ? { provider: provider } : {}) }),
     async startReview(target, input) {
       const result = await call<{ reviewerAgentId?: string | null }>('agent.review.start', { target, input });
       return result.reviewerAgentId ?? undefined;

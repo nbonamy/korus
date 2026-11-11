@@ -5,17 +5,15 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import type { Agent } from '@workspace/core/contracts';
 import { companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { AppBackendServer } from '../../server';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
-import { ClaudeBackendDriver } from '../../claude/claude-driver';
-import { ClaudeAgentSdkTransport } from '../../claude/agent-sdk-transport';
 import { createQueryHarness } from '../../claude/__tests__/sdk-query-fixture';
-import { codexSdkFixture, sdkAgent } from '../../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkAgent } from '../../codex/__tests__/sdk-host-fixture';
 import { CompanionManager, type CompanionBackendPort } from '../manager';
 import type { CompanionGateway } from '../gateway';
 
@@ -46,7 +44,7 @@ afterEach(async () => {
   } finally { vi.useRealTimers(); }
 });
 
-async function fixture(driver: AgentBackendDriver, agent: Agent, desktopFocused?: () => Promise<boolean>) {
+async function fixture(driver: AgentProviderDriver, agent: Agent, desktopFocused?: () => Promise<boolean>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-requests-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
@@ -55,23 +53,23 @@ async function fixture(driver: AgentBackendDriver, agent: Agent, desktopFocused?
   const events: AppBackendEvent[] = [];
   let manager: CompanionManager | undefined;
   const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
-    driverRpc: new BackendDriverRpc(new Map([[driver.backend, driver]])),
+    driverRpc: new ProviderDriverRpc(new Map([[driver.provider, driver]])),
     onEvent: (event) => { events.push(event); manager?.event(event); },
   });
   cleanup.push(() => server.close());
-  const backend: CompanionBackendPort = { desktopFocused, async request<Result>(method: string, params?: unknown): Promise<Result> {
+  const provider: CompanionBackendPort = { desktopFocused, async request<Result>(method: string, params?: unknown): Promise<Result> {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
     if (!response || 'error' in response) throw new Error(JSON.stringify(response));
     return response.result as Result;
   } };
-  const initial = new CompanionManager(directory, backend, {});
+  const initial = new CompanionManager(directory, provider, {});
   const { status: host } = await initial.control({ action: 'status' }); await initial.stop();
   const file = path.join(directory, 'companions.json');
   const saved = JSON.parse(await readFile(file, 'utf8'));
   saved.enabled = true;
   saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
   await writeFile(file, JSON.stringify(saved));
-  manager = new CompanionManager(directory, backend, {});
+  manager = new CompanionManager(directory, provider, {});
   cleanup.push(() => manager!.stop());
   await manager.control({ action: 'status' });
   const gateway = transport.gateway!;
@@ -231,8 +229,8 @@ describe('mobile requests across the owning daemon', () => {
 
   it('releases a waiting Claude SDK tool and clears the desktop and phone request', async () => {
     const sdk = createQueryHarness();
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
-    const agent: Agent = { ...sdkAgent('claude-phone'), teamId: 'team-test', backend: 'claude', backendSession: undefined };
+    const driver = sdk.driver();
+    const agent: Agent = { ...sdkAgent('claude-phone'), teamId: 'team-test', provider: 'claude', providerSession: undefined };
     const f = await fixture(driver, agent);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const updates = vi.fn(); const failed = vi.fn();

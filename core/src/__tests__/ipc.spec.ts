@@ -2,7 +2,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import type {
   AccountRateLimits,
   Agent,
-  AgentBackend,
+  HarnessProvider,
   AgentContextUsage,
   AgentCreationProgress,
   AgentFileActivity,
@@ -10,10 +10,10 @@ import type {
   AgentGitOperationProgress,
   AgentStatus,
   AppCommand,
-  AppSnapshot, BackendConnectionState,
-  BackendModelOption,
-  BackendRuntimeStatus,
-  BackendSkillSummary,
+  AppSnapshot, ProviderConnectionState,
+  ProviderModelOption,
+  ProviderRuntimeStatus,
+  ProviderSkillSummary,
   BrowserAnnotation,
   CelebrationKind, DesktopUpdateStatus,
   DevicePairingStatus,
@@ -38,100 +38,100 @@ describe('ipc channels', () => {
   it('derives request and event payloads from the preload API contract', () => {
     type AgentScopedEventContext = {
       agentId: string;
-      backend?: AgentBackend;
+      provider?: HarnessProvider;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type OptionalEventContext = {
       agentId?: string;
-      backend?: AgentBackend;
-      backendSessionId?: string;
+      provider?: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type ClientRequestResolvedEventContext = {
       agentId: string;
-      backend: AgentBackend;
-      backendSessionId?: string;
+      provider: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type AgentOnlyEventContext = {
       agentId: string;
-      backend?: AgentBackend;
-      backendSessionId?: string;
+      provider?: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type CodexThreadEventContext = {
       agentId: string;
-      backend: 'codex';
-      backendSessionId?: string;
+      provider: 'codex';
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type AgentThreadEventContext = {
       agentId: string;
-      backend?: AgentBackend;
-      backendSessionId?: string;
+      provider?: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
-    type BackendThreadEventContext = {
+    type ProviderThreadEventContext = {
       agentId: string;
-      backend: AgentBackend;
-      backendSessionId?: string;
+      provider: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type ClaudeSessionEventContext = {
       agentId: string;
-      backend: 'claude';
-      backendSessionId: string;
+      provider: 'claude';
+      providerSessionId: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId?: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type ClaudeModeEventContext = {
       agentId: string;
-      backend: 'claude';
-      backendSessionId?: string;
+      provider: 'claude';
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type TurnEventContext = {
       agentId: string;
-      backend: AgentBackend;
-      backendSessionId?: string;
+      provider: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
     type ThreadTurnEventContext = {
       agentId: string;
-      backend: AgentBackend;
-      backendSessionId?: string;
+      provider: HarnessProvider;
+      providerSessionId?: string;
       snapshot?: AppSnapshot;
       threadId?: string;
       turnId: string;
-      source?: 'backend' | 'client';
+      source?: 'provider' | 'client';
     };
 
     expectTypeOf<AppIpcRequests[typeof ipcChannels.sendPrompt]['args']>()
@@ -145,37 +145,37 @@ describe('ipc channels', () => {
     expectTypeOf<AppIpcEvents[typeof ipcChannels.event]>()
       .toEqualTypeOf<MainToRendererEvent>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'client.connectionChanged' }>['payload']>()
-      .toEqualTypeOf<BackendConnectionState>();
+      .toEqualTypeOf<ProviderConnectionState>();
     type SnapshotUpdatedEvent = Extract<MainToRendererEvent, { type: 'snapshot.updated' }>;
     expectTypeOf<SnapshotUpdatedEvent['payload']>().toEqualTypeOf<AppSnapshot>();
     expectTypeOf<Pick<
       SnapshotUpdatedEvent,
       keyof OptionalEventContext
     >>().toEqualTypeOf<OptionalEventContext>();
-    expectTypeOf<Extract<MainToRendererEvent, { type: 'backend.statusChanged' }>['payload']>()
-      .toEqualTypeOf<BackendRuntimeStatus>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'backend.statusChanged' }>, 'backend'>>()
-      .toEqualTypeOf<{ backend: AgentBackend }>();
+    expectTypeOf<Extract<MainToRendererEvent, { type: 'provider.statusChanged' }>['payload']>()
+      .toEqualTypeOf<ProviderRuntimeStatus>();
+    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'provider.statusChanged' }>, 'provider'>>()
+      .toEqualTypeOf<{ provider: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'account.rateLimitsUpdated' }>['payload']>()
       .toEqualTypeOf<{ rateLimits: AccountRateLimits }>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'account.rateLimitsUpdated' }>, 'backend'>>()
-      .toEqualTypeOf<{ backend: AgentBackend }>();
+    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'account.rateLimitsUpdated' }>, 'provider'>>()
+      .toEqualTypeOf<{ provider: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'models.changed' }>['payload']>()
-      .toEqualTypeOf<{ models: BackendModelOption[] }>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'models.changed' }>, 'backend'>>()
-      .toEqualTypeOf<{ backend: AgentBackend }>();
+      .toEqualTypeOf<{ models: ProviderModelOption[] }>();
+    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'models.changed' }>, 'provider'>>()
+      .toEqualTypeOf<{ provider: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'skills.changed' }>['payload']>()
       .toEqualTypeOf<{
         cwd: string | null;
         status: 'loaded';
-        skills: BackendSkillSummary[];
+        skills: ProviderSkillSummary[];
       }>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'skills.changed' }>, 'backend'>>()
-      .toEqualTypeOf<{ backend: AgentBackend }>();
+    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'skills.changed' }>, 'provider'>>()
+      .toEqualTypeOf<{ provider: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'remoteControl.statusChanged' }>['payload']>()
       .toEqualTypeOf<DevicePairingStatus>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'remoteControl.statusChanged' }>, 'backend'>>()
-      .toEqualTypeOf<{ backend?: AgentBackend }>();
+    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'remoteControl.statusChanged' }>, 'provider'>>()
+      .toEqualTypeOf<{ provider?: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'client.markdownDisplayRequested' }>['payload']>()
       .toEqualTypeOf<SidePanelMarkdownRequest>();
     expectTypeOf<Pick<
@@ -238,13 +238,13 @@ describe('ipc channels', () => {
     type ThreadStartedEvent = Extract<MainToRendererEvent, { type: 'agent.conversationAttached' }>;
     expectTypeOf<ThreadStartedEvent['payload']>().toEqualTypeOf<{ cwd?: string }>();
     expectTypeOf<ThreadStartedEvent['conversationId']>().toEqualTypeOf<string>();
-    expectTypeOf<ThreadStartedEvent['backend']>().toEqualTypeOf<AgentBackend>();
+    expectTypeOf<ThreadStartedEvent['provider']>().toEqualTypeOf<HarnessProvider>();
     type ThreadSettingsUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.settingsUpdated' }>;
     expectTypeOf<ThreadSettingsUpdatedEvent['payload']>()
       .toEqualTypeOf<{ settings: import('../contracts/events').ConversationSettings }>();
     type ThreadModeUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.modeUpdated' }>;
     expectTypeOf<ThreadModeUpdatedEvent['payload']>().toEqualTypeOf<{ mode: 'default' | 'plan'; permissionMode?: string }>();
-    expectTypeOf<ThreadModeUpdatedEvent['backend']>().toEqualTypeOf<AgentBackend>();
+    expectTypeOf<ThreadModeUpdatedEvent['provider']>().toEqualTypeOf<HarnessProvider>();
     type ThreadGoalUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.goalUpdated' }>;
     expectTypeOf<ThreadGoalUpdatedEvent['payload']>()
       .toEqualTypeOf<{ goal: ThreadGoal }>();
@@ -257,24 +257,24 @@ describe('ipc channels', () => {
     type ThreadTokenUsageUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.contextUsageUpdated' }>;
     expectTypeOf<ThreadTokenUsageUpdatedEvent['payload']>()
       .toEqualTypeOf<{ contextUsage: AgentContextUsage }>();
-    expectTypeOf<Pick<ThreadTokenUsageUpdatedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<ThreadTokenUsageUpdatedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     type SubagentOperationChangedEvent = Extract<MainToRendererEvent, { type: 'subagent.operationChanged' }>;
     expectTypeOf<SubagentOperationChangedEvent['payload']>().toEqualTypeOf<SubagentOperationChange>();
-    expectTypeOf<Pick<SubagentOperationChangedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<SubagentOperationChangedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     type SubagentActivityChangedEvent = Extract<MainToRendererEvent, { type: 'subagent.activityChanged' }>;
     expectTypeOf<SubagentActivityChangedEvent['payload']>().toEqualTypeOf<SubagentActivityChange>();
-    expectTypeOf<Pick<SubagentActivityChangedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<SubagentActivityChangedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     type SubagentIdentityChangedEvent = Extract<MainToRendererEvent, { type: 'subagent.identityChanged' }>;
     expectTypeOf<SubagentIdentityChangedEvent['payload']>().toEqualTypeOf<SubagentIdentityChange>();
-    expectTypeOf<Pick<SubagentIdentityChangedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<SubagentIdentityChangedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     type SubagentStatusChangedEvent = Extract<MainToRendererEvent, { type: 'subagent.statusChanged' }>;
     expectTypeOf<SubagentStatusChangedEvent['payload']>().toEqualTypeOf<SubagentStatusChange>();
-    expectTypeOf<Pick<SubagentStatusChangedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<SubagentStatusChangedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     type AgentPromptQueuedEvent = Extract<MainToRendererEvent, { type: 'agent.promptQueued' }>;
     expectTypeOf<AgentPromptQueuedEvent['payload']>().toEqualTypeOf<{
       id: string;
@@ -311,17 +311,17 @@ describe('ipc channels', () => {
     expectTypeOf<GitStatusUpdatedEvent['payload']>().toEqualTypeOf<AgentGitStatus>();
     expectTypeOf<Pick<GitStatusUpdatedEvent, keyof AgentOnlyEventContext>>()
       .toEqualTypeOf<AgentOnlyEventContext>();
-    type BackendApprovalRequestedEvent = Extract<MainToRendererEvent, { type: 'agentRequest.created' }>;
-    expectTypeOf<BackendApprovalRequestedEvent['payload']>()
+    type ProviderApprovalRequestedEvent = Extract<MainToRendererEvent, { type: 'agentRequest.created' }>;
+    expectTypeOf<ProviderApprovalRequestedEvent['payload']>()
       .toEqualTypeOf<{ request: import('../agent-request').AgentRequest }>();
-    expectTypeOf<Pick<BackendApprovalRequestedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
-    type BackendApprovalResolvedEvent = Extract<MainToRendererEvent, { type: 'agentRequest.resolved' }>;
-    expectTypeOf<BackendApprovalResolvedEvent['payload']>().toEqualTypeOf<{
+    expectTypeOf<Pick<ProviderApprovalRequestedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
+    type ProviderApprovalResolvedEvent = Extract<MainToRendererEvent, { type: 'agentRequest.resolved' }>;
+    expectTypeOf<ProviderApprovalResolvedEvent['payload']>().toEqualTypeOf<{
       id: string; outcome: import('../agent-request').AgentRequestOutcome;
     }>();
-    expectTypeOf<Pick<BackendApprovalResolvedEvent, keyof BackendThreadEventContext>>()
-      .toEqualTypeOf<BackendThreadEventContext>();
+    expectTypeOf<Pick<ProviderApprovalResolvedEvent, keyof ProviderThreadEventContext>>()
+      .toEqualTypeOf<ProviderThreadEventContext>();
     expectTypeOf<AppIpcEvents[typeof ipcChannels.appCommand]>()
       .toEqualTypeOf<AppCommand>();
     expectTypeOf<AppIpcEvents[typeof ipcChannels.updateStatusChanged]>()

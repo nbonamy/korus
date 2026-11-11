@@ -20,11 +20,11 @@ const session = z.discriminatedUnion('kind', [
     reasoningEffort: text.optional(),
   }),
 ]);
-const acceptance = z.looseObject({ backendSession: session, turnId: text.optional() });
+const acceptance = z.looseObject({ providerSession: session, turnId: text.optional() });
 // Command inputs stay strict; stored records accept additive fields from newer builds.
 const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
-  parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity', 'cursor']),
+  parentAgentId: text, workerAgentId: text, provider: z.enum(['codex', 'claude', 'antigravity', 'cursor']),
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
   goal: z.boolean().optional(),
   planMode: z.boolean().optional(),
@@ -32,14 +32,14 @@ const taskSchema = z.looseObject({
   workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional(), remoteConnectionId: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),
   createdAt: text, updatedAt: text, folder: text.optional(), acceptance: acceptance.optional(), executionTurnId: text.optional(),
-  submission: taskResultSchema.loose().extend({ id: text, attemptId: text, turnId: text, backendSession: session }).optional(),
+  submission: taskResultSchema.loose().extend({ id: text, attemptId: text, turnId: text, providerSession: session }).optional(),
   delivery: z.looseObject({ id: text, state: z.enum(['pending', 'sending', 'accepted', 'uncertain']), acceptance: acceptance.optional() }).optional(),
   parentWakeBlocked: z.boolean(), parentStopRequested: z.boolean().optional(), detail: z.string().optional(),
 }).superRefine((task, ctx) => {
   if (task.state === 'completed' && (!task.submission || !task.delivery)) ctx.addIssue({ code: 'custom', message: 'completed task requires a result and delivery' });
   if (task.delivery && task.state !== 'completed') ctx.addIssue({ code: 'custom', message: 'only completed results can be delivered' });
   if (task.delivery?.state === 'accepted' && !task.delivery.acceptance) ctx.addIssue({ code: 'custom', message: 'accepted delivery requires a provider receipt' });
-  if ((task.acceptance && task.acceptance.backendSession.kind !== task.backend) || (task.submission && task.submission.backendSession.kind !== task.backend)) ctx.addIssue({ code: 'custom', message: 'worker provider mismatch' });
+  if ((task.acceptance && task.acceptance.providerSession.kind !== task.provider) || (task.submission && task.submission.providerSession.kind !== task.provider)) ctx.addIssue({ code: 'custom', message: 'worker provider mismatch' });
   if (task.submission && task.submission.attemptId !== task.attemptId) ctx.addIssue({ code: 'custom', message: 'result attempt mismatch' });
 });
 export const tasksSchema = z.looseObject({ tasks: z.array(taskSchema) }).superRefine(({ tasks }, ctx) => {

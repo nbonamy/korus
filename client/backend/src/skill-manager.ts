@@ -1,7 +1,7 @@
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { agentBackends } from '@workspace/core/contracts/shared';
+import { harnessProviders } from '@workspace/core/contracts/shared';
 import { curatedSkills, type InstalledSkill, type SkillManagerState, type SkillDocument, type SkillProviderLocation } from '@workspace/core/skill-manager';
 import { backendHomeDir } from './state';
 import { downloadSkills } from './skill-source';
@@ -13,7 +13,7 @@ const skillRef = z.string().trim().min(1).max(200);
 const request = z.discriminatedUnion('action', [
   z.object({ action: z.literal('list') }).strict(),
   z.object({ action: z.literal('sync'), name: skillRef.optional() }).strict(),
-  z.object({ action: z.literal('install'), source: z.string().trim().min(1).max(4096), backends: z.array(z.enum(agentBackends)).min(1).optional(), refresh: z.boolean().optional() }).strict(),
+  z.object({ action: z.literal('install'), source: z.string().trim().min(1).max(4096), providers: z.array(z.enum(harnessProviders)).min(1).optional(), refresh: z.boolean().optional() }).strict(),
   z.object({ action: z.literal('view'), name: skillRef }).strict(),
   z.object({ action: z.literal('remove'), name: skillRef.optional(), names: z.array(skillRef).min(1).max(200).optional(), confirmed: z.literal(true) }).strict(),
 ]);
@@ -89,7 +89,7 @@ export class SkillManager {
         if (action.action === 'view') {
           document = { name: action.name, files: [] };
           const sources = [
-            ...(managed ? [{ path: path.join(this.root, managed.name), backend: undefined }] : []),
+            ...(managed ? [{ path: path.join(this.root, managed.name), provider: undefined }] : []),
             ...found,
           ];
           for (const source of sources) {
@@ -98,7 +98,7 @@ export class SkillManager {
             const content = await readFile(file, 'utf8');
             let version = document.files.find(value => value.content === content);
             if (!version) { version = { providers: [], content }; document.files.push(version); }
-            if (source.backend && !version.providers.includes(source.backend)) version.providers.push(source.backend);
+            if (source.provider && !version.providers.includes(source.provider)) version.providers.push(source.provider);
           }
         } else {
           if (found.some(skill => skill.builtIn)) throw new Error('System skills cannot be deleted.');
@@ -121,17 +121,17 @@ export class SkillManager {
         }
       }
       // An install links only what it brought in, and only for the chosen agents; Sync is what links everything everywhere.
-      const linkLocations = action.action === 'install' && action.backends ? locations.filter(location => action.backends!.includes(location.backend)) : locations;
+      const linkLocations = action.action === 'install' && action.providers ? locations.filter(location => action.providers!.includes(location.provider)) : locations;
       if (action.action === 'install' || action.action === 'sync') for (const skill of installedNames ? records.filter(value => installedNames!.has(value.name)) : action.action === 'sync' && action.name ? records.filter(value => value.name === action.name) : records) {
         for (const location of linkLocations) {
           const target = path.join(location.directory, skill.name);
           const state = await this.linkState(target, skill.name);
-          if (state === 'conflict') issues.push(`${location.backend}: existing ${skill.name} was preserved. Remove or rename it, then sync again.`);
+          if (state === 'conflict') issues.push(`${location.provider}: existing ${skill.name} was preserved. Remove or rename it, then sync again.`);
           else if (state === 'missing') {
             try {
               await mkdir(location.directory, { recursive: true });
               await symlink(path.resolve(this.root, skill.name), target, process.platform === 'win32' ? 'junction' : 'dir');
-            } catch (error) { issues.push(`${location.backend}: ${error instanceof Error ? error.message : String(error)}`); }
+            } catch (error) { issues.push(`${location.provider}: ${error instanceof Error ? error.message : String(error)}`); }
           }
         }
         const links = [...new Set([...(skill.links ?? []), ...linkLocations.map(location => path.join(location.directory, skill.name))])];
@@ -143,7 +143,7 @@ export class SkillManager {
       }
       if (action.action === 'sync') await this.linkPersonalSkills(discoveryLocations, locations, action.name, records, issues);
       const skills: InstalledSkill[] = await Promise.all((await this.records()).map(async ({ links: _links, ...skill }) => ({ ...skill, managed: true,
-        providers: await Promise.all(locations.map(async location => ({ backend: location.backend, path: path.join(location.directory, skill.name), status: await this.linkState(path.join(location.directory, skill.name), skill.name) }))),
+        providers: await Promise.all(locations.map(async location => ({ provider: location.provider, path: path.join(location.directory, skill.name), status: await this.linkState(path.join(location.directory, skill.name), skill.name) }))),
       })));
       for (const found of await discoverSkills(discoveryLocations, issues)) {
         let skill = skills.find(value => value.name === found.name);
@@ -154,16 +154,16 @@ export class SkillManager {
           if (found.builtIn) skill.builtIn = true;
           if (found.origin && !skill.origin) skill.origin = found.origin;
         }
-        if (!skill.providers.some(provider => provider.backend === found.backend && provider.path === found.path)) {
-          skill.providers.push({ backend: found.backend, path: found.path, status: 'installed' });
+        if (!skill.providers.some(provider => provider.provider === found.provider && provider.path === found.path)) {
+          skill.providers.push({ provider: found.provider, path: found.path, status: 'installed' });
         }
       }
       for (const skill of skills) for (const location of locations) {
-        if (!skill.providers.some(provider => provider.backend === location.backend)) skill.providers.push({ backend: location.backend, path: path.join(location.directory, skill.name), status: 'missing' });
+        if (!skill.providers.some(provider => provider.provider === location.provider)) skill.providers.push({ provider: location.provider, path: path.join(location.directory, skill.name), status: 'missing' });
       }
-      for (const skill of skills) skill.providers.sort((a, b) => locations.findIndex(location => location.backend === a.backend) - locations.findIndex(location => location.backend === b.backend));
+      for (const skill of skills) skill.providers.sort((a, b) => locations.findIndex(location => location.provider === a.provider) - locations.findIndex(location => location.provider === b.provider));
       skills.sort((a, b) => a.name.localeCompare(b.name));
-      return { ...(document ? { document } : {}), skills, providers: [...new Set(locations.map(location => location.backend))], curated: curatedSkills, issues, installs: await this.packInstalls() };
+      return { ...(document ? { document } : {}), skills, providers: [...new Set(locations.map(location => location.provider))], curated: curatedSkills, issues, installs: await this.packInstalls() };
     } finally { this.busy = false; }
   }
 
@@ -181,15 +181,15 @@ export class SkillManager {
       const source = await realpath(copies[0]!.path);
       for (const location of locations) {
         const target = path.join(location.directory, path.basename(source));
-        if (copies.some(copy => copy.backend === location.backend && (
+        if (copies.some(copy => copy.provider === location.provider && (
           inside(location.directory, copy.path) ||
-          discovery.some(origin => origin.backend === copy.backend && origin.discoveryOnly && inside(origin.directory, copy.path))
+          discovery.some(origin => origin.provider === copy.provider && origin.discoveryOnly && inside(origin.directory, copy.path))
         ))) continue;
-        if (await lstat(target).then(() => true, () => false)) { issues.push(`${location.backend}: existing ${path.basename(source)} was preserved. Remove or rename it, then sync again.`); continue; }
+        if (await lstat(target).then(() => true, () => false)) { issues.push(`${location.provider}: existing ${path.basename(source)} was preserved. Remove or rename it, then sync again.`); continue; }
         try {
           await mkdir(location.directory, { recursive: true });
           await symlink(source, target, process.platform === 'win32' ? 'junction' : 'dir');
-        } catch (error) { issues.push(`${location.backend}: ${error instanceof Error ? error.message : String(error)}`); }
+        } catch (error) { issues.push(`${location.provider}: ${error instanceof Error ? error.message : String(error)}`); }
       }
     }
   }

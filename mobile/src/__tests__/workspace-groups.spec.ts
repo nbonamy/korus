@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
 import { activeSession, projectMobileGroups } from '../workspace-groups';
 
-const agent = (id: string, patch: Partial<Agent> = {}): Agent => ({ id, teamId: 't', name: id, folder: null, backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', ...patch });
+const agent = (id: string, patch: Partial<Agent> = {}): Agent => ({ id, teamId: 't', name: id, folder: null, provider: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', ...patch });
 const git = (id: string, root: string): Agent => agent(id, { workspace: { kind: 'git', folder: root, repositoryName: 'repo', repositoryRoot: root, primaryWorktreeRoot: '/repo', branch: id, isLinkedWorktree: false, updatedAt: '' } });
 
 describe('mobile workspace groups', () => {

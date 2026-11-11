@@ -1,4 +1,4 @@
-import type { AppTextDescriptor, ApprovalPreset, BackendDefaults, CodexApprovalsReviewer } from './contracts';
+import type { AppTextDescriptor, ApprovalPreset, ProviderDefaults, CodexApprovalsReviewer } from './contracts';
 
 export const defaultApprovalPreset: ApprovalPreset = 'full-access';
 
@@ -34,7 +34,7 @@ export function isApprovalsReviewer(value: unknown): value is CodexApprovalsRevi
   return value === 'user' || value === 'auto_review' || value === 'guardian_subagent';
 }
 
-export function approvalPresetFromDefaults(defaults: BackendDefaults | undefined): ApprovalPreset {
+export function approvalPresetFromDefaults(defaults: ProviderDefaults | undefined): ApprovalPreset {
   if (defaults?.kind !== 'codex') {
     return defaultApprovalPreset;
   }
@@ -58,10 +58,10 @@ export function approvalPresetFromDefaults(defaults: BackendDefaults | undefined
   return defaultApprovalPreset;
 }
 
-export function approvalBackendDefaultsWithPreset(
-  defaults: BackendDefaults | undefined,
+export function approvalProviderDefaultsWithPreset(
+  defaults: ProviderDefaults | undefined,
   preset: ApprovalPreset,
-): Extract<BackendDefaults, { kind: 'codex' }> {
+): Extract<ProviderDefaults, { kind: 'codex' }> {
   const base = defaults?.kind === 'codex' ? defaults : { kind: 'codex' as const };
   if (preset === 'full-access') {
     return {

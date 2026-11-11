@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { BackendDriverRpc } from '../driver-rpc';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 
@@ -123,19 +123,19 @@ function setup(): {
 } {
   const snapshot = createTestSnapshot();
   const agent = {
-    id: 'agent-visualize', teamId: 'team-test', name: 'Dina', folder: '/repo', backend: 'codex' as const,
+    id: 'agent-visualize', teamId: 'team-test', name: 'Dina', folder: '/repo', provider: 'codex' as const,
     status: { type: 'idle' as const }, createdAt: '2026-09-21T12:00:00.000Z', updatedAt: '2026-09-21T12:00:00.000Z',
   };
   snapshot.agents.push(agent);
   snapshot.teams[0].agentIds.push(agent.id);
   const sendPrompt = vi.fn().mockResolvedValue({
-    backendSession: { kind: 'codex' as const, threadId: 'thread-visualize' },
+    providerSession: { kind: 'codex' as const, threadId: 'thread-visualize' },
     turnId: 'turn-visualize',
   });
-  const driver: AgentBackendDriver = {
-    backend: 'codex',
-    getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-    getCapabilities: () => codexBackendCapabilities,
+  const driver: AgentProviderDriver = {
+    provider: 'codex',
+    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+    getCapabilities: () => codexProviderCapabilities,
     sendPrompt,
     interrupt: vi.fn(),
     respondToAgentRequest: vi.fn(),
@@ -145,7 +145,7 @@ function setup(): {
   const server = new AppBackendServer({
     version: 'test',
     snapshot,
-    driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+    driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     saveSnapshot: vi.fn().mockResolvedValue(undefined),
   });
   return { agentId: agent.id, sendPrompt, server, snapshot };

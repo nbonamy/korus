@@ -6,7 +6,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
-import type { Agent, AppSnapshot, BackendConversationRef } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderConversationRef } from '@workspace/core/contracts';
 import type {
   Visualization,
   VisualizationAsset,
@@ -557,14 +557,14 @@ function compactText(value: string): string {
   return value.replace(/\s+/gu, ' ').trim();
 }
 
-function cloneConversationRef(ref: BackendConversationRef | null): BackendConversationRef | null {
+function cloneConversationRef(ref: ProviderConversationRef | null): ProviderConversationRef | null {
   return ref ? { ...ref } : null;
 }
 
-function sameConversation(left: BackendConversationRef, right: BackendConversationRef): boolean {
-  return left.backend === 'codex' && right.backend === 'codex'
+function sameConversation(left: ProviderConversationRef, right: ProviderConversationRef): boolean {
+  return left.provider === 'codex' && right.provider === 'codex'
     ? left.threadId === right.threadId
-    : left.backend !== 'codex' && right.backend === left.backend
+    : left.provider !== 'codex' && right.provider === left.provider
       ? left.folder === right.folder && left.sessionId === right.sessionId
       : false;
 }

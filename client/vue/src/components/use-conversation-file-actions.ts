@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { conversationLinkFromHref as codexConversationLinkFromHref } from '@korus-dev/agent-ui-sdk';
+import { conversationLinkFromHref } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { translate } from '../i18n';
@@ -32,7 +32,7 @@ export function useConversationFileActions(options: {
     const href = anchor?.getAttribute('href');
     const agentId = anchor?.closest('[data-conversation-agent-id]')?.getAttribute('data-conversation-agent-id');
     if (!href || href.startsWith('#') || !agentId || !options.agent(agentId)) return;
-    const link = codexConversationLinkFromHref(href);
+    const link = conversationLinkFromHref(href);
     if (!link || link.kind !== 'file') return;
     event.preventDefault();
     event.stopPropagation();

@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -23,28 +24,28 @@ import {i18n} from '/src/i18n/index.ts';
 import {applyAppTheme} from '/src/theme/apply-theme.ts';
 import Shell from '/src/components/AppShell.vue';
 import ConversationPane from '/src/components/ConversationPane.vue';
-import {createCodexConversationPaneController} from '@korus-dev/agent-ui-sdk';
+import {createConversationPaneController} from '@korus-dev/agent-ui-sdk';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
-import {claudeBackendCapabilities} from '@workspace/core/backend-capabilities';
+import {claudeProviderCapabilities} from '@workspace/core/provider-capabilities';
 import {createAgentComposerState} from '/src/agent-composer-state.ts';
 const snapshot=createInitialSnapshot();
 snapshot.general.providerOnboardingComplete=true;
 snapshot.general.claudeCodeEnabled=true;
-snapshot.providerConnections=[{backend:'claude',installed:true,connected:true,checking:false}];
+snapshot.providerConnections=[{provider:'claude',installed:true,connected:true,checking:false}];
 const composer=createAgentComposerState({getSnapshot:()=>snapshot});
 const views=snapshot.agents.map(agent=>{
- agent.backend='claude';agent.backendDefaults={kind:'claude',permissionMode:'default'};
+ agent.provider='claude';agent.providerDefaults={kind:'claude',permissionMode:'default'};
  return shallowReactive({agent,codexSnapshot:null,claudeSnapshot:{agentId:agent.id,sessionId:'fixture-session',activeTurnId:null,turnIds:['fixture-turn'],turns:[],
  messages:[{id:'fixture-message',agentId:agent.id,role:'assistant',status:'complete',turnId:'fixture-turn',createdAt:'2026-11-08T00:00:00Z',parts:[{type:'text',text:'The **request** should be retried.\\n\\n'+Array.from({length:40},()=> 'More context before the selected passage.').join('\\n\\n')+'\\n\\nThe **request** should be retried.'}]}],
  answeredClientRequestIds:[],busy:false,historyLoading:false,historyState:{hasOlder:false,loadingOlder:false},contextUsage:null,plan:null,error:null},composer:composer.configurationForAgent(agent.id),
- composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeBackendCapabilities,
+ composerState:{text:'Draft for '+agent.id,selectionStart:0,selectionEnd:0},attachments:[],capabilities:claudeProviderCapabilities,
  approvals:[],sending:false,queuedPrompts:[],history:{failed:false,hydrating:false,hasOlder:false,loadingOlder:false},answeredClientRequestIds:new Set()});
 });
 const active=ref(snapshot.activeAgentId), calls=[];
 const actions=new Proxy({
  prepare:()=>{},
  updateComposerState:(id,state)=>views.find(v=>v.agent.id===id).composerState=state,
- setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,backendDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
+ setPermissionMode:(id,mode)=>{const view=views.find(v=>v.agent.id===id);view.agent={...view.agent,providerDefaults:{kind:'claude',permissionMode:mode}};calls.push([id,mode]);},
  send:(id,prompt)=>calls.push([id,prompt]),
 },{get:(target,key)=>target[key]??(()=>{})});
 window.fixture={
@@ -55,7 +56,7 @@ window.fixture={
   const messages=Array.from({length:80},(_,i)=>({id:'long-'+i,agentId:snapshot.agents[0].id,
    role:'assistant',status:'complete',turnId:'turn-'+i,createdAt:'2026-11-08T00:00:00Z',
    parts:[{type:'text',text:'Long history passage '+i}]}));
-  const controller=createCodexConversationPaneController({state:{identity:{conversationKey:'long-fixture',messages},composer:{}},actions:{}});
+  const controller=createConversationPaneController({state:{identity:{conversationKey:'long-fixture',messages},composer:{}},actions:{}});
   const textAnnotations=[{id:'long-annotation',messageId:'long-0',messageIndex:0,role:'assistant',
    text:'Long history passage 0',textStart:0,textBlockIndex:0,comment:'Check old passage.'}];
   createApp({render:()=>h(ConversationPane,{agent:snapshot.agents[0],controller,textAnnotations})}).use(i18n).use(ElementPlus).mount(host);
@@ -70,7 +71,7 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
     server: { host: '127.0.0.1', port: 0 },
     optimizeDeps: { noDiscovery: true, include: ['vue', 'vue-i18n', 'element-plus', '@tabler/icons-vue', '@korus-dev/agent-ui-sdk', '@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client', 'rrule-temporal', 'rrule-temporal/totext', 'beautiful-mermaid', 'qrcode', 'parse-git-diff'] },
-    plugins: [vue(), excalidrawAssets(), {
+    plugins: [sdkSourcePlugin, vue(), excalidrawAssets(), {
       name: 'conversation-layout-fixture',
       resolveId(id) { if (id === '/conversation-fixture.js') return '\0conversation-fixture'; },
       load(id) { if (id === '\0conversation-fixture') return entry; },
@@ -137,7 +138,7 @@ createApp({setup:()=>()=>h(Shell,{snapshot,activeAgent:views.find(v=>v.agent.id=
     // The SDK permits a selection elsewhere in the same message; it must not
     // offer an annotation that cannot be located in a text block.
     await passage.evaluate(element => {
-      const entry = element.closest('[data-codex-message-index]');
+      const entry = element.closest('[data-agent-ui-message-index]');
       const extra = document.createElement('span');
       extra.textContent = 'Reasoning outside the text block';
       entry.append(extra);

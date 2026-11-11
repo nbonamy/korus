@@ -323,7 +323,7 @@ describe('mission execution', () => {
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const run = h.current().execution!.runs[0]!;
     const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
-    worker.backendSession = { kind: 'codex', threadId: 'same-worker-conversation' };
+    worker.providerSession = { kind: 'codex', threadId: 'same-worker-conversation' };
     const agentCount = h.snapshot.agents.length;
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (attempt === 2) h.service = new MissionExecutionService(h.ports);
@@ -341,7 +341,7 @@ describe('mission execution', () => {
       expect(h.ports.continueStage).toHaveBeenCalledTimes(sends);
     }
     expect(h.snapshot.agents).toHaveLength(agentCount);
-    expect(worker.backendSession).toStrictEqual({ kind: 'codex', threadId: 'same-worker-conversation' });
+    expect(worker.providerSession).toStrictEqual({ kind: 'codex', threadId: 'same-worker-conversation' });
     expect(h.ports.continueStage).toHaveBeenCalledTimes(3);
     expect(h.ports.continueStage.mock.calls[1]![1]).toMatch(/preserve|Preserve/);
     const reports = h.ports.sendMessage.mock.calls.filter(([, id]) => id === lead.id).map(([, , content]) => content);
@@ -998,22 +998,22 @@ describe('mission execution', () => {
   });
 
   it.each([
-    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: 'ultrafast' },
-    { backend: 'codex', model: 'luna', reasoningEffort: null, serviceTier: null },
-    { backend: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null },
+    { provider: 'codex', model: 'luna', reasoningEffort: null, serviceTier: 'ultrafast' },
+    { provider: 'codex', model: 'luna', reasoningEffort: null, serviceTier: null },
+    { provider: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null },
   ] as const)('validates and persists the $backend implementation model before provisioning, without changing the lead', async (selection) => {
     const h = setup();
     h.snapshot.providerConnections = [
-      { backend: 'codex', installed: true, connected: true, checking: false },
-      { backend: 'claude', installed: true, connected: true, checking: false },
+      { provider: 'codex', installed: true, connected: true, checking: false },
+      { provider: 'claude', installed: true, connected: true, checking: false },
     ];
     h.snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
     await h.configure();
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const leadId = h.current().execution!.runs[0]!.workerId!;
     const lead = h.snapshot.agents.find(agent => agent.id === leadId)!;
-    lead.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
-    const listModels = vi.fn(async (agent: Agent) => agent.backend === 'claude' ? [
+    lead.providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
+    const listModels = vi.fn(async (agent: Agent) => agent.provider === 'claude' ? [
       { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ] : [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
@@ -1031,18 +1031,18 @@ describe('mission execution', () => {
       mission.execution!.runs.push({ id: 'tickets-ready', stage: 'tickets', memberId: h.originalAgents[0]!.id, workerId: leadId, status: 'awaitingReview', skills: [], feedback: '', startedAt: 'now', proposal });
     });
     for (const implementationModel of [
-      { backend: 'claude', model: 'luna' }, { backend: 'codex', model: 'missing' }, { backend: 'codex', model: 'luna', reasoningEffort: 'high' },
-      { backend: 'codex', model: 'luna', serviceTier: 'turbo' }, { backend: 'codex', model: 'planner', serviceTier: 'fast' },
+      { provider: 'claude', model: 'luna' }, { provider: 'codex', model: 'missing' }, { provider: 'codex', model: 'luna', reasoningEffort: 'high' },
+      { provider: 'codex', model: 'luna', serviceTier: 'turbo' }, { provider: 'codex', model: 'planner', serviceTier: 'fast' },
     ]) {
       await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel })).rejects.toThrow(/model|effort|provider|tier/i);
       expect(h.ports.createWorktree).not.toHaveBeenCalled();
       expect(h.current().stage).toBe('tickets');
     }
-    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = {reasoningEffort: null, serviceTier: null,  backend: 'codex', model: 'missing' }; });
+    await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = {reasoningEffort: null, serviceTier: null,  provider: 'codex', model: 'missing' }; });
     await expect(h.command({ action: 'accept', runId: 'tickets-ready' })).rejects.toThrow(/model/i);
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     h.snapshot.providerConnections![1]!.enabled = false;
-    await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel: { backend: 'claude', model: 'sonnet' } })).rejects.toThrow(/disabled|connected/i);
+    await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel: { provider: 'claude', model: 'sonnet' } })).rejects.toThrow(/disabled|connected/i);
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     h.snapshot.providerConnections![1]!.enabled = true;
     const implementationModel = { ...selection, reasoningEffort: 'low' };
@@ -1059,25 +1059,25 @@ describe('mission execution', () => {
     } finally { await rm(home, { recursive: true, force: true }); }
     const firstRun = h.current().execution!.runs.at(-1)!;
     const worker = h.snapshot.agents.find(agent => agent.id === firstRun.workerId)!;
-    expect(worker.backend).toBe(selection.backend);
-    expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
+    expect(worker.provider).toBe(selection.provider);
+    expect(worker.providerDefaults).toMatchObject({ kind: selection.provider, model: selection.model, reasoningEffort: 'low' });
     // The tier is exactly what was chosen with the model, never whatever the lead happened to be using.
-    if (selection.backend === 'codex' && 'serviceTier' in selection) expect(worker.backendDefaults).toMatchObject({ serviceTier: selection.serviceTier });
+    if (selection.provider === 'codex' && 'serviceTier' in selection) expect(worker.providerDefaults).toMatchObject({ serviceTier: selection.serviceTier });
     else {
-      expect(worker.backendDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
-      expect(worker.backendDefaults?.serviceTier).toBeNull();
-      expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ backend: 'claude', backendSession: undefined, backendDefaults: undefined }));
+      expect(worker.providerDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(worker.providerDefaults?.serviceTier).toBeNull();
+      expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude', providerSession: undefined, providerDefaults: undefined }));
     }
-    expect(lead.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
+    expect(lead.providerDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
     const artifacts = structuredClone(h.current().artifacts);
     artifacts.tickets[0]!.done = true;
     artifacts.implementation = { changes: 'Checkout committed', tests: 'Checkout passes' };
     await h.service.submit(worker.id, { summary: 'Checkout done', artifacts });
-    lead.backendDefaults.model = 'another-planner';
+    lead.providerDefaults.model = 'another-planner';
     await h.service.agentFinished(worker.id);
     await h.advance(h.service); await h.service.waitForLaunches();
     expect(h.current().execution!.runs.at(-1)).toMatchObject({ workerId: worker.id, ticketIndex: 1, status: 'running' });
-    expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
+    expect(worker.providerDefaults).toMatchObject({ kind: selection.provider, model: selection.model, reasoningEffort: 'low' });
   });
 
   it('keeps historical and cancelled workers able to read artifacts without reviving their assignments', async () => {
@@ -1564,8 +1564,8 @@ describe('mission execution', () => {
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
     expect(h.snapshot.agents.slice(0, 2)).toStrictEqual(h.originalAgents);
     const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
-    expect(worker).toMatchObject({ name: 'Mission lead · Team billing', folder: '/app/missions/mission', backend: h.originalAgents[0]!.backend, status: { type: 'idle' } });
-    expect(worker).not.toHaveProperty('backendSession');
+    expect(worker).toMatchObject({ name: 'Mission lead · Team billing', folder: '/app/missions/mission', provider: h.originalAgents[0]!.provider, status: { type: 'idle' } });
+    expect(worker).not.toHaveProperty('providerSession');
     expect(run.skills).toStrictEqual([{ name: 'mission-shape-requirements' }]);
     const instructions = h.service.developerInstructionsForAgent(run.workerId!);
     expect(instructions).toMatch(/^<context>\n/);
@@ -1601,7 +1601,7 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs[0]).toMatchObject({ status: 'awaitingReview', summary: 'Requirements revised after review' });
     expect(() => updateMission(h.snapshot, { id: mission.id, revision: h.current().revision, artifacts, stageAgentIds: {}, action: 'advance' })).toThrow('current mission run');
     const approvalRevision = h.current().revision;
-    worker.backendSession = { kind: 'codex', threadId: 'thread-mission' };
+    worker.providerSession = { kind: 'codex', threadId: 'thread-mission' };
     await h.command({ action: 'accept', runId: run.id });
     expect(h.current().revision).toBe(approvalRevision + 1);
     expect(h.current().artifacts.requirements).toStrictEqual(revisedArtifacts.requirements);
@@ -1865,12 +1865,12 @@ describe('mission execution', () => {
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const ticketsRun = h.current().execution!.runs[0]!;
     const missionLead = h.snapshot.agents.find(agent => agent.id === ticketsRun.workerId)!;
-    missionLead.backendSession = { kind: 'codex', threadId: 'thread-mission-lead' };
+    missionLead.providerSession = { kind: 'codex', threadId: 'thread-mission-lead' };
     // The live Mission choice can differ from both the original lead and assigned members.
-    missionLead.backendDefaults = { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' };
+    missionLead.providerDefaults = { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' };
     const otherMember = h.snapshot.agents.find(agent => agent.id === h.originalAgents[1]!.id)!;
-    otherMember.backend = 'claude';
-    otherMember.backendDefaults = { kind: 'claude', model: 'member-model', reasoningEffort: 'low' };
+    otherMember.provider = 'claude';
+    otherMember.providerDefaults = { kind: 'claude', model: 'member-model', reasoningEffort: 'low' };
     await h.service.upsertTicket(ticketsRun.workerId!, {
       title: 'Checkout', body: 'Implement checkout.', repositoryPath: repositoryPaths[0]!,
     });
@@ -1908,10 +1908,10 @@ describe('mission execution', () => {
     expect(implementationRuns.every(run => run.workerId !== ticketsRun.workerId)).toBe(true);
     for (const run of implementationRuns) {
       const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
-      expect({ backend: worker.backend, defaults: worker.backendDefaults }).toStrictEqual({
-        backend: 'codex', defaults: { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' },
+      expect({ provider: worker.provider, defaults: worker.providerDefaults }).toStrictEqual({
+        provider: 'codex', defaults: { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' },
       });
-      expect(worker.backendDefaults).not.toBe(missionLead.backendDefaults);
+      expect(worker.providerDefaults).not.toBe(missionLead.providerDefaults);
     }
 
     const leadPromptCount = h.ports.continueStage.mock.calls.filter(([id]) => id === missionLead.id).length;
@@ -1950,7 +1950,7 @@ describe('mission execution', () => {
       stage: 'review', status: 'running', workerId: ticketsRun.workerId,
     });
     expect(h.current().stageAgentIds.review).toBe(ticketsRun.workerId);
-    expect(missionLead.backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-mission-lead' });
+    expect(missionLead.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-mission-lead' });
     expect(h.ports.refreshConversationContext).toHaveBeenCalledWith(missionLead);
     expect(h.ports.continueStage).toHaveBeenCalledWith(ticketsRun.workerId, expect.stringContaining('Begin the Mission review'));
   });
@@ -1978,7 +1978,7 @@ describe('mission execution', () => {
     const firstRun = h.current().execution!.runs.find(run => run.stage === 'implementation')!;
     const implementationWorkerId = firstRun.workerId;
     expect(implementationWorkerId).not.toBe(ticketsRun.workerId);
-    h.snapshot.agents.find(agent => agent.id === implementationWorkerId)!.backendSession = {
+    h.snapshot.agents.find(agent => agent.id === implementationWorkerId)!.providerSession = {
       kind: 'codex',
       threadId: 'thread-implementation',
     };

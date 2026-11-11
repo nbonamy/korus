@@ -3,7 +3,7 @@ import { ElTooltip } from 'element-plus';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsMenu from '../SettingsMenu.vue';
-import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
+import type { AccountRateLimits, HarnessProvider, AppSnapshot, CodexAccount } from '@workspace/core/contracts';
 import { setElectronTestClient } from '../../../tests/support/client';
 
 afterEach(() => {
@@ -20,7 +20,7 @@ describe('SettingsMenu', () => {
       secondary: { label: 'On-demand', usedPercent: 2, resetsAt: null, windowDurationMins: null }, planType: 'Premium',
       billing: { includedBalanceUsd: '0.00', onDemand: { enabled: true, unlimited: true, usedUsd: 1, limitUsd: null, remainingUsd: null } } });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['cursor'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['cursor'] });
     try {
       await openMenu(wrapper); await flushPromises();
       expect(getProviderUsage).toHaveBeenCalledWith('cursor');
@@ -35,13 +35,13 @@ describe('SettingsMenu', () => {
   it('drops persisted and late billing from the previous provider account while the menu stays open', async () => {
     const limits: AccountRateLimits = { limitId: 'cursor', limitName: null, primary: { usedPercent: 99, windowDurationMins: 10_080, resetsAt: null }, secondary: null, credits: null, individualLimit: null,
       planType: 'Old plan', rateLimitReachedType: null, billing: { includedBalanceUsd: '99.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } } };
-    const connections = (email: string): AppSnapshot['providerConnections'] => [{ backend: 'cursor', installed: true, connected: true, checking: false,
+    const connections = (email: string): AppSnapshot['providerConnections'] => [{ provider: 'cursor', installed: true, connected: true, checking: false,
       authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', account: { type: 'subscription', email } } } }];
     let completeOld!: (value: AccountRateLimits) => void;
     const getProviderUsage = vi.fn().mockImplementationOnce(() => new Promise(done => { completeOld = done; }))
       .mockResolvedValueOnce({ ...limits, primary: { usedPercent: 25, windowDurationMins: 10_080, resetsAt: null }, planType: 'New plan', billing: { ...limits.billing!, includedBalanceUsd: '5.00' } });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['cursor'], providerConnections: connections('old@example.test'), backendRateLimits: { cursor: limits } });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['cursor'], providerConnections: connections('old@example.test'), providerRateLimits: { cursor: limits } });
     try {
       await openMenu(wrapper); await flushPromises();
       expect(wrapper.text()).not.toContain('1%');
@@ -59,14 +59,14 @@ describe('SettingsMenu', () => {
       secondary: { usedPercent: 0, windowDurationMins: 10_080, resetsAt: null },
     });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['claude'] });
     expect(getProviderUsage).not.toHaveBeenCalled();
     await openMenu(wrapper);
     await flushPromises();
     expect(getProviderUsage).toHaveBeenCalledWith('claude');
     expect(wrapper.get('[aria-label="Claude"]').text()).toContain('99%');
     expect(wrapper.get('[aria-label="Claude"]').text()).toContain('100%');
-    await wrapper.setProps({ enabledBackends: ['claude'] }); // snapshot refresh, same engines
+    await wrapper.setProps({ enabledProviders: ['claude'] }); // snapshot refresh, same engines
     await flushPromises();
     expect(getProviderUsage).toHaveBeenCalledTimes(1);
     await openMenu(wrapper); // close
@@ -84,7 +84,7 @@ describe('SettingsMenu', () => {
       secondary: { label: 'Claude and GPT', usedPercent: 0, windowDurationMins: 10_080, resetsAt: null },
     });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['antigravity'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['antigravity'] });
     await openMenu(wrapper);
     await flushPromises();
     expect(getProviderUsage).toHaveBeenCalledWith('antigravity');
@@ -104,7 +104,7 @@ describe('SettingsMenu', () => {
       limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null, primary, secondary });
     const getProviderUsage = vi.fn().mockResolvedValue(limits(window(70), window(95)));
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['claude'] });
     const levels = () => wrapper.findAll('.settings-menu__rate-limit-remaining').map(item => item.classes().filter(name => name.includes('--')));
     await openMenu(wrapper);
     await flushPromises();
@@ -138,7 +138,7 @@ describe('SettingsMenu', () => {
       secondary: { usedPercent: 70, windowDurationMins: 300, resetsAt: now + 150 * 60 },
     });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['antigravity'] }, true);
+    const wrapper = mountMenu(undefined, { enabledProviders: ['antigravity'] }, true);
     const tooltip = () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'))
       .filter(node => new DOMWrapper(node).isVisible()).map(node => node.textContent?.trim());
     try {
@@ -188,7 +188,7 @@ describe('SettingsMenu', () => {
   it('explains the usage colors from an info control in the title row', async () => {
     setElectronTestClient({ getProviderUsage: vi.fn().mockResolvedValue({ limitId: null, limitName: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
       primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: null }, secondary: null }) });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['claude'] });
     await openMenu(wrapper);
     await flushPromises();
     const header = wrapper.get('.settings-menu__rate-limits-header');
@@ -199,7 +199,7 @@ describe('SettingsMenu', () => {
   it('shows a safe failure state and ignores a response after the menu closes', async () => {
     const getProviderUsage = vi.fn().mockImplementation(() => { throw new Error('private transport details'); });
     setElectronTestClient({ getProviderUsage });
-    const wrapper = mountMenu(undefined, { enabledBackends: ['claude'] });
+    const wrapper = mountMenu(undefined, { enabledProviders: ['claude'] });
     await openMenu(wrapper);
     await flushPromises();
     expect(wrapper.get('[aria-label="Claude"]').text()).toContain('Couldn’t load usage');
@@ -268,20 +268,20 @@ describe('SettingsMenu', () => {
       limitId: null, limitName: null, primary: null, secondary: null, credits: null,
       individualLimit: null, planType: null, rateLimitReachedType: null,
     };
-    const wrapper = mountMenu(undefined, { enabledBackends: ['codex', 'claude'], backendRateLimits: {
+    const wrapper = mountMenu(undefined, { enabledProviders: ['codex', 'claude'], providerRateLimits: {
       codex: { ...limits, secondary: { usedPercent: 5, windowDurationMins: 10_080, resetsAt: null } },
       claude: { ...limits, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: null }, secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: null } },
     } });
     await openMenu(wrapper);
     expect(wrapper.get('[aria-label="Codex"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['Weekly95%']);
     expect(wrapper.get('[aria-label="Claude"]').findAll('.settings-menu__rate-limit').map(row => row.text())).toEqual(['5 hour80%', 'Weekly90%']);
-    await wrapper.setProps({ enabledBackends: ['claude'], backendRateLimits: { codex: limits } });
+    await wrapper.setProps({ enabledProviders: ['claude'], providerRateLimits: { codex: limits } });
     expect(wrapper.find('[aria-label="Codex"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Claude"]').exists()).toBe(false);
     expect(wrapper.find('.settings-menu__rate-limit').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Rate limits"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Usage actions divider"]').exists()).toBe(false);
-    await wrapper.setProps({ enabledBackends: [] });
+    await wrapper.setProps({ enabledProviders: [] });
     expect(wrapper.find('[aria-label="Rate limits"]').exists()).toBe(false);
   });
 
@@ -289,7 +289,7 @@ describe('SettingsMenu', () => {
     const wrapper = mountMenu({
       limitId: 'codex', limitName: null, primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: null },
       secondary: null, credits: null, individualLimit: null, planType: 'pro', rateLimitReachedType: null,
-    }, { account: { type: 'apiKey' }, enabledBackends: ['codex', 'claude'] });
+    }, { account: { type: 'apiKey' }, enabledProviders: ['codex', 'claude'] });
     await openMenu(wrapper);
     expect(wrapper.find('[aria-label="Rate limits"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Usage actions divider"]').exists()).toBe(false);
@@ -358,11 +358,11 @@ describe('SettingsMenu', () => {
   });
 });
 
-function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledBackends?: AgentBackend[]; backendRateLimits?: AppSnapshot['backendAccountRateLimits']; providerConnections?: AppSnapshot['providerConnections'] } = {}, realTooltips = false) {
+function mountMenu(rateLimits?: AccountRateLimits, props: { active?: boolean; account?: CodexAccount; enabledProviders?: HarnessProvider[]; providerRateLimits?: AppSnapshot['providerAccountRateLimits']; providerConnections?: AppSnapshot['providerConnections'] } = {}, realTooltips = false) {
   return mount(SettingsMenu, {
     attachTo: document.body,
     props: {
-      enabledBackends: ['codex'],
+      enabledProviders: ['codex'],
       ...props,
       rateLimits,
     },

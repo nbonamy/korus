@@ -2,11 +2,11 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ElPopover } from 'element-plus';
 import { computed, ref } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import { describe, expect, it, vi } from 'vitest';
 import AgentSidebar from '../AgentSidebar.vue';
 import { setElectronTestClient } from '../../../tests/support/client';
-import type { Agent, AgentBackend } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider } from '@workspace/core/contracts';
 
 import { agents } from './agent-sidebar-test-harness';
 
@@ -29,7 +29,7 @@ describe('AgentSidebar sessions', () => {
     const remote = { ...agents[0]!, id: 'remote', name: 'Remote', remoteConnectionId: connection.id };
     const wrapper = mount(AgentSidebar, {
       props: { agents: [local, remote], activeAgentId: remote.id, teamName: 'All teams', allTeams: true, remoteConnections: [connection] },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     try {
       const row = () => wrapper.get('[data-reorder-id="remote"]');
@@ -109,7 +109,7 @@ describe('AgentSidebar sessions', () => {
     const wrapper = mount(AgentSidebar, {
       attachTo: document.body,
       props: { agents, missions: [mission], activeMissionId: mission.id, activeAgentId: null, teamName: 'Team' },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     const missionRow = wrapper.get<HTMLButtonElement>('[data-group-kind="missions"] .agent-sidebar__agent');
     missionRow.element.focus();
@@ -125,11 +125,11 @@ describe('AgentSidebar sessions', () => {
   });
 
   it('identifies each engine before status without taking space while hidden, including quick chats and input requests', async () => {
-    const claude: Agent = { ...agents[1]!, backend: 'claude', backendDefaults: { kind: 'claude' }, sessionKind: 'quickChat', status: { type: 'awaitingInput' } };
-    const enabled = ref<AgentBackend[]>(['codex', 'claude']);
+    const claude: Agent = { ...agents[1]!, provider: 'claude', providerDefaults: { kind: 'claude' }, sessionKind: 'quickChat', status: { type: 'awaitingInput' } };
+    const enabled = ref<HarnessProvider[]>(['codex', 'claude']);
     const wrapper = mount(AgentSidebar, {
       props: { agents: [agents[0]!, claude], activeAgentId: null, teamName: 'Team' },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => enabled.value) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => enabled.value) } },
     });
     const rows = [agents[0]!, claude].map(agent => wrapper.get(`[data-reorder-id="${agent.id}"]`));
     const icons = rows.map(row => row.get('[role="img"]'));
@@ -138,7 +138,7 @@ describe('AgentSidebar sessions', () => {
       expect(icon.element.nextElementSibling?.getAttribute('aria-label')).toBe(index === 0 ? 'Idle' : 'Awaiting input');
       expect(getComputedStyle(icon.element).display).toBe('none');
     }
-    await wrapper.setProps({ agents: [agents[0]!, { ...claude, backend: 'codex', backendDefaults: { kind: 'codex' } }] });
+    await wrapper.setProps({ agents: [agents[0]!, { ...claude, provider: 'codex', providerDefaults: { kind: 'codex' } }] });
     expect(rows[1]!.get('[role="img"]').attributes('aria-label')).toBe('Codex');
     await rows[1]!.trigger('click');
     expect(wrapper.emitted('select-agent')).toEqual([[claude.id]]);
@@ -402,7 +402,7 @@ describe('AgentSidebar sessions', () => {
     const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread', 'recent', 'waiting'], teamId: 'one', teamName: 'One', repositoryIcons: { 'remote:github.com/nbonamy/id8': '🦞' } };
     const wrapper = mount(AgentSidebar, {
       props,
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     const choose = async (label: string) => {
       await wrapper.get('button[aria-label="Agent view"]').trigger('click');
@@ -558,7 +558,7 @@ describe('AgentSidebar sessions', () => {
       },
       global: {
         components: { ElPopover },
-        provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) },
+        provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) },
       },
     });
 
@@ -640,7 +640,7 @@ describe('AgentSidebar sessions', () => {
     const remoteConnections = [{ id: 'devbox', kind: 'ssh' as const, name: 'Devbox', host: 'devbox', status: 'ready' as const, createdAt: '', updatedAt: '' }];
     const wrapper = mount(AgentSidebar, {
       props: { agents: [local, remote], activeAgentId: 'local', teamName: 'Team', remoteConnections },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
     expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox');

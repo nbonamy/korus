@@ -1,9 +1,9 @@
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
-  NativeRendererApi as CodexNativeRendererApi,
+  NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
-import type { SurfaceMessage } from '@korus-dev/multi-agent-sdk/surface';
+import type { ConversationMessage } from '@korus-dev/multi-agent-sdk';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -48,7 +48,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 it('opens branch history from the first Git menu action in the real shell and closes its workspace tab', async () => {
@@ -74,7 +74,7 @@ describe('AppShell workspace and plans', () => {
     const snapshot = createInitialSnapshot();
     const shared = snapshot.agents[0]!;
     shared.sharedConversation = { joinId: 'saved-shared-chat' };
-    delete shared.backendSession;
+    delete shared.providerSession;
     const local = snapshot.agents[1]!;
     const saved = { tabs: [{ id: 'file:markdown:saved', title: 'Local notes', documentId: 'saved' }], activeTab: 'file:markdown:saved', open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
     const update = vi.fn().mockResolvedValue({ tabs: [] });
@@ -661,12 +661,12 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
   });
 
-  it.each(['codex', 'claude'] as const)('opens each selected %s header subagent in an independent right-workspace tab', async (backend) => {
+  it.each(['codex', 'claude'] as const)('opens each selected %s header subagent in an independent right-workspace tab', async (provider) => {
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.agents[0].backend = backend;
-    snapshot.agents[0].backendDefaults = { kind: backend };
-    snapshot.agents[0].backendSession = backend === 'codex'
+    snapshot.agents[0].provider = provider;
+    snapshot.agents[0].providerDefaults = { kind: provider };
+    snapshot.agents[0].providerSession = provider === 'codex'
       ? { kind: 'codex', threadId: 'thread-root' }
       : { kind: 'claude', sessionId: 'thread-root', transport: 'stdio' };
     snapshot.subagentTrees[snapshot.agents[0].id] = {
@@ -707,13 +707,13 @@ describe('AppShell workspace and plans', () => {
     ]);
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['scout', 'reviewer']);
     expect(readConversationMessages).toHaveBeenCalledWith(
-      backend === 'codex' ? { backend, threadId: 'thread-scout' }
-        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-scout' },
+      provider === 'codex' ? { provider: provider, threadId: 'thread-scout' }
+        : { provider: provider, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-scout' },
       snapshot.agents[0].id,
     );
     expect(readConversationMessages).toHaveBeenCalledWith(
-      backend === 'codex' ? { backend, threadId: 'thread-reviewer' }
-        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-reviewer' },
+      provider === 'codex' ? { provider: provider, threadId: 'thread-reviewer' }
+        : { provider: provider, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-reviewer' },
       snapshot.agents[0].id,
     );
   });
@@ -1544,8 +1544,8 @@ describe('AppShell workspace and plans', () => {
   it.each(['codex', 'cursor'] as const)('opens %s Markdown plans, reopens revised proposals, and keeps approval separate from feedback', async backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'planning' } : { kind: 'cursor', sessionId: 'planning' };
+    agent.provider = backend;
+    agent.providerSession = backend === 'codex' ? { kind: 'codex', threadId: 'planning' } : { kind: 'cursor', sessionId: 'planning' };
     agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
     const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'accept' });
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, updatePlanReview } });
@@ -1633,7 +1633,7 @@ describe('AppShell workspace and plans', () => {
   it('locks plan review actions while a plan progress tool is running', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Previous Plan', status: 'pending' };
-    const planProgressMessage: SurfaceMessage = {
+    const planProgressMessage: ConversationMessage = {
       id: 'assistant-turn-plan',
       role: 'assistant',
       status: 'streaming',

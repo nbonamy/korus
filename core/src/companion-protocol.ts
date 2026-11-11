@@ -1,13 +1,13 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { AccountRateLimits, Agent, AgentBackend, AgentGitStatus, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
+import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
 // Existing companion and guest transports have not negotiated Cursor replicas.
-export function supportsCompanionBackend(backend: string): backend is Exclude<AgentBackend, 'cursor'> {
-  return backend === 'codex' || backend === 'claude' || backend === 'antigravity';
+export function supportsCompanionProvider(provider: string): provider is Exclude<HarnessProvider, 'cursor'> {
+  return provider === 'codex' || provider === 'claude' || provider === 'antigravity';
 }
-export function isCompanionConversationFrame(frame: ProviderConversationFrame): frame is Extract<ProviderConversationFrame, { backend: Exclude<AgentBackend, 'cursor'> }> {
-  return supportsCompanionBackend(frame.backend);
+export function isCompanionConversationFrame(frame: ProviderConversationFrame): frame is Extract<ProviderConversationFrame, { provider: Exclude<HarnessProvider, 'cursor'> }> {
+  return supportsCompanionProvider(frame.provider);
 }
 
 export const companionProtocol = '/workspace/companion/1.0.0';
@@ -70,19 +70,19 @@ export type CompanionMission = { id: string; teamId: string; outcome: string; st
   next?: 'review' | 'ship';
   review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; providers?: Record<string, HarnessProvider[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
   /** Active-round finding counts, keyed by reviewer conversation; full findings stay on demand. */
   reviewFindings?: Record<string, number>;
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
   missionProgress?: CompanionMission[]; missionAgents?: Agent[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
-export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
+export type CompanionUsage = { provider: HarnessProvider; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
-export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; existingBranch?: string; worktree?: { branchName: string } };
+export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { provider: HarnessProvider }; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { provider: HarnessProvider }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
 export type CompanionRepositoryProvider = 'github' | 'gitlab';
 /** Opaque selection bound to the owning daemon, host location and provider catalog. */
@@ -114,7 +114,7 @@ export type CompanionResponse = { v: 1; id: string; result?: unknown; error?: st
 /** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
 export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
 export function companionSessionId(agent: Agent): string | null {
-  const session = agent.backendSession;
+  const session = agent.providerSession;
   if (!session) return null;
   return JSON.stringify(session.kind === 'codex' ? { kind: session.kind, threadId: session.threadId } : { kind: session.kind, sessionId: session.sessionId });
 }

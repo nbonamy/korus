@@ -12,7 +12,7 @@ async function skill(folder: string, name: string) {
   await mkdir(path.join(root, folder, name), { recursive: true });
   await writeFile(path.join(root, folder, name, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} skill.\n---\nBody.\n`);
 }
-const find = async () => discoverSkills([{ backend: 'claude', directory: root }], []);
+const find = async () => discoverSkills([{ provider: 'claude', directory: root }], []);
 
 it('skips the trash and other hidden folders but still finds system skills', async () => {
   await skill('mine', 'notes');

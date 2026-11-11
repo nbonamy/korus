@@ -4,9 +4,9 @@ import { ElPopover, ElTabs, ElTabPane } from 'element-plus';
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
 import AgentHandoffDialog from '../AgentHandoffDialog.vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 
-const agent: Agent = { id: 'source', name: 'Worker', folder: '/repo', backend: 'codex', backendSession: { kind: 'codex', threadId: 'one' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'source', name: 'Worker', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 'one' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 
 describe('AgentHandoffDialog', () => {
   it('hands off with the shared picker model, effort, tier and optional instructions', async () => {
@@ -17,7 +17,7 @@ describe('AgentHandoffDialog', () => {
         supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
         serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }],
       }]) },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     await flushPromises();
     const choose = async (label: string) => {
@@ -37,7 +37,7 @@ describe('AgentHandoffDialog', () => {
     await wrapper.get('textarea').setValue('Explain the flaky test.');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: 'persisted-operation', instructions: 'Explain the flaky test.', selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } }));
+    expect(submit).toHaveBeenCalledWith('source', expect.objectContaining({ operationId: 'persisted-operation', instructions: 'Explain the flaky test.', selection: { provider: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } }));
     expect(wrapper.emitted('close')).toHaveLength(1);
     wrapper.unmount();
   });

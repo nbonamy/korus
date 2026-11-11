@@ -4,7 +4,7 @@ import path from 'node:path';
 import { AppStateStore } from '../../persistence/store';
 import { describe, expect, it, vi } from 'vitest';
 import { product } from '@workspace/core/product';
-import type { Agent, AppSnapshot, BackendSession } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderSessionData } from '@workspace/core/contracts';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { activeCodeReviewRound, codeReviewLedger } from '@workspace/core/code-review';
 import { CodeReviewService, type CodeReviewToolPort } from '../code-review-service';
@@ -14,7 +14,7 @@ import { AppMcpAgentCoordinator } from '../../mcp/agent-coordinator';
 
 function agent(id: string): Agent {
   return {
-    id, name: id, folder: '/repo', backend: 'codex', status: { type: 'idle' },
+    id, name: id, folder: '/repo', provider: 'codex', status: { type: 'idle' },
     createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
   };
 }
@@ -22,12 +22,12 @@ function agent(id: string): Agent {
 type ReviewScript = (handlers: ReviewToolHandlers) => Promise<{ text: string; findingCount?: number }>;
 
 function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent): Promise<void> => undefined, snapshot: AppSnapshot = createEmptySnapshot(), now?: () => Date) {
-  snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+  snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
   const owner = snapshot.agents.find(candidate => candidate.id === 'owner') ?? agent('owner');
   if (!snapshot.agents.includes(owner)) snapshot.agents.push(owner);
   let context = 0;
   let activeHandlers: ReviewToolHandlers | null = null;
-  const turns: Array<{ prompt: string; reviewerSession?: BackendSession }> = [];
+  const turns: Array<{ prompt: string; reviewerSession?: ProviderSessionData }> = [];
   const reset: string[] = [];
   const deleted: string[] = [];
   const handoffs: Array<{ from: string; to: string; content: string }> = [];
@@ -42,7 +42,7 @@ function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent)
   const agentCreation = new AgentCreationService(snapshot);
   const resetReviewer = vi.fn(async (reviewer: Agent) => {
     reset.push(reviewer.id);
-    delete reviewer.backendSession;
+    delete reviewer.providerSession;
   });
   const tools: CodeReviewToolPort = {
     createReviewToolContext: (agentId, _sessionId, handlers) => {
@@ -104,7 +104,7 @@ describe('CodeReviewService', () => {
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns).toHaveLength(2);
     expect(test.turns[1]!.prompt).toMatch(/<context>[\s\S]*"originalAgentId": "owner"[\s\S]*<\/context>/);
-    expect(test.turns[1]!.reviewerSession).toStrictEqual(visible.backendSession);
+    expect(test.turns[1]!.reviewerSession).toStrictEqual(visible.providerSession);
     expect(messages.checkMessages(test.owner.id).messages).toHaveLength(1);
     messages.sendMessage(test.owner.id, visible.id, 'The caller authorizes access.');
     expect(messages.checkMessages(visible.id).messages).toMatchObject([{ fromId: test.owner.id, content: 'The caller authorizes access.' }]);
@@ -123,7 +123,7 @@ describe('CodeReviewService', () => {
       return { text: 'Reviewed', findingCount: findings };
     }]);
     test.snapshot.general.codeReviewDiscussWithOriginalThread = enabled;
-    test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
+    test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns).toHaveLength(1);
@@ -324,7 +324,7 @@ describe('CodeReviewService', () => {
 
   it.each(['current', 'independent'] as const)('keeps user instructions across %s review rounds and restoration without saving them as defaults', async threadMode => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
-    test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
+    test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
     test.snapshot.general.codeReviewInstructions = 'Always check authorization.';
     test.snapshot.general.codeReviewDiscussWithOriginalThread = true;
     const instructions = 'Focus on race conditions.\nCheck backward compatibility.';
@@ -369,7 +369,7 @@ describe('CodeReviewService', () => {
     expect(session.automation?.reason).toContain('finish_review_round');
     expect(test.deleted).toEqual([]);
     expect(test.git.commit).not.toHaveBeenCalled();
-    expect(reviewer(test, session).backendSession).toBeDefined();
+    expect(reviewer(test, session).providerSession).toBeDefined();
   });
 
   it('lets the reviewer correct a count mismatch but waits for the turn to end before closing', async () => {
@@ -444,8 +444,8 @@ describe('CodeReviewService', () => {
     test.snapshot.general.codeReviewInstructions = 'Include focused validation evidence.';
     test.owner.status = { type: 'working' };
     test.snapshot.agents.push({ ...agent('another-worker'), status: { type: 'awaitingInput' } });
-    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, ...(autoCommit !== undefined ? { autoCommit } : {}) }, selection: { backend: 'codex', model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } });
-    expect(reviewer(test, session).backendDefaults).toMatchObject({ model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' });
+    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, ...(autoCommit !== undefined ? { autoCommit } : {}) }, selection: { provider: 'codex', model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } });
+    expect(reviewer(test, session).providerDefaults).toMatchObject({ model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' });
     await vi.waitFor(() => expect(test.deleted).toHaveLength(1));
     expect(test.git.commit).toHaveBeenCalledTimes(autoCommit ? 1 : 0);
     expect(session.automation).toMatchObject({ fingerprint: autoCommit ? 'committed' : 'fixed', head: (autoCommit ? 'c' : 'b').repeat(40), commits: autoCommit ? ['c'.repeat(40)] : [] });
@@ -470,7 +470,7 @@ describe('CodeReviewService', () => {
     expect(test.saveReport).toHaveBeenCalledTimes(2);
     expect(test.resetReviewer).not.toHaveBeenCalled();
     expect(test.turns[2]!.reviewerSession).toStrictEqual(test.turns[1]!.reviewerSession);
-    expect(test.snapshot.general.codeReviewDefaults).toMatchObject({ backend: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } } });
+    expect(test.snapshot.general.codeReviewDefaults).toMatchObject({ provider: 'codex', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'review-model', reasoningEffort: 'high', serviceTier: 'fast' } } });
     expect(test.snapshot.general.codeReviewDefaults?.automation.autoCommit).toBe(autoCommit);
   });
 
@@ -480,7 +480,7 @@ describe('CodeReviewService', () => {
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 } });
     await vi.waitFor(() => expect(session.automation?.state).toBe('paused'));
     expect(test.deleted).toEqual([]);
-    expect(reviewer(test, session).backendSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(reviewer(test, session).providerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
     expect(session.automation?.reason).toContain('Report disk is full');
     expect(test.handoffs[0]?.content.split('</context>')[1]).not.toContain('No review findings to report');
   });
@@ -642,11 +642,11 @@ describe('CodeReviewService', () => {
     const test = harness([]);
     test.snapshot.general.claudeCodeEnabled = true;
     test.snapshot.general.providerApprovalDefaults = { claude: 'auto' };
-    test.snapshot.general.providerModelDefaults = { claude: {backend: 'claude',  model: 'sonnet', reasoningEffort: 'high', serviceTier: null } };
-    test.owner.backendDefaults = { kind: 'codex', model: 'codex-model', reasoningEffort: 'high' };
-    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'claude' } });
-    expect(reviewer(test, session)).toMatchObject({ backend: 'claude' });
-    expect(reviewer(test, session).backendDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permissionMode: 'auto' });
+    test.snapshot.general.providerModelDefaults = { claude: {provider: 'claude',  model: 'sonnet', reasoningEffort: 'high', serviceTier: null } };
+    test.owner.providerDefaults = { kind: 'codex', model: 'codex-model', reasoningEffort: 'high' };
+    const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { provider: 'claude' } });
+    expect(reviewer(test, session)).toMatchObject({ provider: 'claude' });
+    expect(reviewer(test, session).providerDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permissionMode: 'auto' });
     await vi.waitFor(() => expect(test.turns).toHaveLength(1));
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__report_finding`);
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__finish_review_round`);
@@ -655,19 +655,19 @@ describe('CodeReviewService', () => {
 
   it('uses Standard for a review without changing the source agent’s Fast tier', () => {
     const test = harness([]);
-    test.owner.backendDefaults = { kind: 'codex', model: 'owner-model', serviceTier: 'fast' };
+    test.owner.providerDefaults = { kind: 'codex', model: 'owner-model', serviceTier: 'fast' };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { model: 'review-model', serviceTier: null } });
-    expect(reviewer(test, session).backendDefaults).toMatchObject({ model: 'review-model', serviceTier: null });
-    expect(test.owner.backendDefaults.serviceTier).toBe('fast');
-    expect(test.snapshot.general.codeReviewDefaults?.providers.codex).toStrictEqual({backend: 'codex', reasoningEffort: null,  model: 'review-model', serviceTier: null });
+    expect(reviewer(test, session).providerDefaults).toMatchObject({ model: 'review-model', serviceTier: null });
+    expect(test.owner.providerDefaults.serviceTier).toBe('fast');
+    expect(test.snapshot.general.codeReviewDefaults?.providers.codex).toStrictEqual({provider: 'codex', reasoningEffort: null,  model: 'review-model', serviceTier: null });
   });
   it.each([undefined, 'default'] as const)('inherits saved Claude permissions unless the source has an explicit mode (%s)', async permissionMode => {
     const test = harness([async () => ({ text: '', findingCount: 0 })]);
     test.snapshot.general.providerApprovalDefaults = { claude: 'auto' };
-    test.owner.backend = 'claude';
-    test.owner.backendDefaults = { kind: 'claude', model: 'opus', ...(permissionMode ? { permissionMode } : {}) };
+    test.owner.provider = 'claude';
+    test.owner.providerDefaults = { kind: 'claude', model: 'opus', ...(permissionMode ? { permissionMode } : {}) };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
-    expect(reviewer(test, session).backendDefaults).toMatchObject({ kind: 'claude', model: 'opus', permissionMode: permissionMode ?? 'auto' });
+    expect(reviewer(test, session).providerDefaults).toMatchObject({ kind: 'claude', model: 'opus', permissionMode: permissionMode ?? 'auto' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
   });
   it('creates an independent reviewer as a normal adjacent agent for the same workspace', async () => {
@@ -676,7 +676,7 @@ describe('CodeReviewService', () => {
     const neighbor = agent('neighbor');
     test.owner.avatar = 'owl';
     test.owner.openInApplication = 'vscode';
-    test.owner.backendDefaults = {
+    test.owner.providerDefaults = {
       kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high',
     };
     test.owner.workspace = {
@@ -701,11 +701,11 @@ describe('CodeReviewService', () => {
     ]);
     expect(visibleReviewer).toMatchObject({
       name: '👀 feat/review', avatar: 'owl', folder: '/repo', workspace: test.owner.workspace,
-      backend: test.owner.backend,
-      backendDefaults: { kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' },
+      provider: test.owner.provider,
+      providerDefaults: { kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' },
       openInApplication: 'vscode', status: { type: 'idle' },
     });
-    expect(visibleReviewer.backendSession).toBeUndefined();
+    expect(visibleReviewer.providerSession).toBeUndefined();
     expect(test.snapshot.agentGitStatuses[visibleReviewer.id]).toStrictEqual(
       test.snapshot.agentGitStatuses[test.owner.id],
     );
@@ -792,7 +792,7 @@ describe('CodeReviewService', () => {
 
     it.each(['current', 'independent'] as const)('preserves committed changes across restored %s review rounds', async threadMode => {
       const test = harness([async () => ({ text: '', findingCount: 0 }), async () => ({ text: 'Committed.' })]);
-      test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
+      test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
       const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode });
       await vi.waitFor(() => expect(session.status).toBe('ready'));
       const visibleReviewer = reviewer(test, session);
@@ -955,20 +955,20 @@ describe('CodeReviewService', () => {
     const retried = test.service.start(visibleReviewer, { scope: { type: 'uncommitted' }, threadMode: 'independent', automation });
 
     expect(retried.automation).toMatchObject({ enabled: true, maxPriority: 'p1', maxRounds: 4, state: 'running' });
-    expect(visibleReviewer.backendDefaults).toMatchObject({ model: 'review-model' });
+    expect(visibleReviewer.providerDefaults).toMatchObject({ model: 'review-model' });
     expect(test.snapshot.general.codeReviewDefaults).toEqual(saved);
     await vi.waitFor(() => expect(retried.status).not.toBe('reviewing'));
   });
 
   it('rejects review model overrides on the current thread and leaves the agent and saved preferences alone', () => {
     const test = harness([]);
-    test.owner.backendSession = { kind: 'codex', threadId: 'current-thread' };
-    test.owner.backendDefaults = { kind: 'codex', model: 'owner-model', reasoningEffort: 'low' };
+    test.owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
+    test.owner.providerDefaults = { kind: 'codex', model: 'owner-model', reasoningEffort: 'low' };
     const saved = structuredClone(test.snapshot.general.codeReviewDefaults);
 
     expect(() => test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'current', selection: { model: 'review-model', reasoningEffort: 'high' } })).toThrow('Invalid code review settings');
 
-    expect(test.owner.backendDefaults).toEqual({ kind: 'codex', model: 'owner-model', reasoningEffort: 'low' });
+    expect(test.owner.providerDefaults).toEqual({ kind: 'codex', model: 'owner-model', reasoningEffort: 'low' });
     expect(test.owner.codeReview).toBeUndefined();
     expect(test.snapshot.general.codeReviewDefaults).toEqual(saved);
   });
@@ -978,7 +978,7 @@ describe('CodeReviewService', () => {
       async () => ({ text: '', findingCount: 0 }),
       async () => ({ text: '', findingCount: 0 }),
     ]);
-    test.owner.backendSession = { kind: 'codex', threadId: 'current-thread' };
+    test.owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
 
     const session = test.service.start(test.owner, {
       scope: { type: 'branch', baseRef: 'origin/main' },
@@ -1205,9 +1205,9 @@ describe('CodeReviewService', () => {
 
   it('keeps one review tool URL alive when the provider caches it for the reviewer thread', async () => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const owner = agent('owner');
-    owner.backendSession = { kind: 'codex', threadId: 'current-thread' };
+    owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
     snapshot.agents = [owner];
     const contexts = new Map<string, ReviewToolHandlers>();
     const reviewUrls: string[] = [];

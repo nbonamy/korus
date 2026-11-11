@@ -3,13 +3,13 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { CliError, fileExists, readJson, record, string, type CliOptions } from './context';
 import { request } from './rpc';
 
-export type AgentInfo = { id: string; name: string; backend: string; folder?: string; teamId?: string; status: string };
+export type AgentInfo = { id: string; name: string; provider: string; folder?: string; teamId?: string; status: string };
 export type MissionInfo = { id: string; outcome: string; stage: string; status: string; tickets: { id?: string; title: string; done: boolean; state?: string; workerId?: string; recoveryAttempts?: number }[] };
 function agents(value: unknown): AgentInfo[] {
   if (!Array.isArray(value)) throw new CliError('Agent roster is unavailable.');
   return value.filter(record).filter(agent => typeof agent.id === 'string').map(agent => ({ id: agent.id as string,
     name: string(agent.name) ?? string(agent.folder)?.split(/[\\/]/u).at(-1) ?? agent.id as string,
-    backend: string(agent.backend) ?? (record(agent.engine) ? string(agent.engine.kind) : undefined) ?? 'unknown',
+    provider: string(agent.provider) ?? (record(agent.engine) ? string(agent.engine.kind) : undefined) ?? 'unknown',
     ...(typeof agent.folder === 'string' ? { folder: agent.folder } : {}), ...(typeof agent.teamId === 'string' ? { teamId: agent.teamId } : {}),
     status: record(agent.status) ? string(agent.status.type) ?? 'unknown' : 'unknown' }));
 }

@@ -1,4 +1,4 @@
-import { ElectronAttachmentRegistry as CodexElectronAttachmentRegistry } from '@korus-dev/agent-ui-sdk/electron';
+import { ElectronAttachmentRegistry } from '@korus-dev/agent-ui-sdk/electron';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -61,7 +61,7 @@ export class LocalMediaRegistry {
 
 /** Resolve only media capabilities issued by this main process; prompt attachment
  * admission continues to use the SDK registry's separate resolve() method. */
-export class LocalMediaAttachmentRegistry extends CodexElectronAttachmentRegistry {
+export class LocalMediaAttachmentRegistry extends ElectronAttachmentRegistry {
   constructor(private readonly media: LocalMediaRegistry) { super(); }
   override path(reference: string): string {
     return this.media.resolve(reference) ?? super.path(reference);

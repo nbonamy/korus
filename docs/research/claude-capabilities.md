@@ -338,7 +338,7 @@ Local source references are pinned by the Korus commit above; line numbers are n
 [C2]: ../../core/src/backend-driver.ts
 [C3]: ../../client/backend/src/driver-rpc.ts
 [C4]: ../../client/backend/src/claude/agent-sdk-transport.ts
-[C5]: ../../client/backend/src/claude/claude-conversation-host.ts
+[C5]: ../../client/backend/src/claude/claude-host.ts
 [C6]: ../../client/backend/src/claude/transcript-history-adapter.ts
 [C7]: ../../client/backend/src/claude/claude-provider-catalog.ts
 [C8]: ../../core/src/contracts/conversation.ts

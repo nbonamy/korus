@@ -20,7 +20,7 @@ describe('conversation image bridge', () => {
         const session = await connect('demo-laptop');
         return { ...session, readImage: read, getWorkspace: async () => {
           const workspace = await session.getWorkspace();
-          return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+          return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: agent.id } })) };
         } };
       };
       const events: EngineEvent[] = [];

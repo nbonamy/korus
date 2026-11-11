@@ -2,15 +2,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, rename } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
 import { ProviderSetup } from '../../provider-setup';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
-import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
+import { ProviderDriverRpc, createProviderDriver } from '../../driver-rpc';
 import { ProviderUpdateRuntime } from '../../provider-update-runtime';
 import { createProviderLifecycles } from '../../provider-lifecycle';
 
 let root: string;
-let driver: AgentBackendDriver | undefined;
+let driver: AgentProviderDriver | undefined;
 const build = '2026.10.22-27dcf5f';
 const fixture = { isAuthenticated: true, userInfo: { email: 'fixture@example.test', teamName: 'Fixture team', userId: 321, teamId: 456 }, authInfo: { accessToken: 'synthetic-must-not-escape' } };
 beforeEach(async () => {
@@ -51,14 +51,14 @@ else process.exit(98);
 afterEach(async () => { await driver?.close(); driver = undefined; vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 async function state(value: unknown = fixture) { await writeFile(path.join(root, 'status'), JSON.stringify(value)); }
 async function calls() { return (await readFile(path.join(root, 'calls'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); }
-function connection() { return driver = createBackendDriver('cursor'); }
+function connection() { return driver = createProviderDriver('cursor'); }
 
 describe('Cursor CLI connection boundary', () => {
   it('counts an in-flight native login as busy so upgrades cannot stop it', async () => {
     await writeFile(path.join(root, 'hang'), '');
     const current = connection();
-    const rpc = new BackendDriverRpc(new Map([['cursor', current]]));
-    const login = rpc.handle('driver/provider/authentication', { backend: 'cursor', action: 'login' }).catch(error => error);
+    const rpc = new ProviderDriverRpc(new Map([['cursor', current]]));
+    const login = rpc.handle('driver/provider/authentication', { provider: 'cursor', action: 'login' }).catch(error => error);
     try {
       await vi.waitFor(async () => expect((await calls()).some(call => call.args[0] === 'login')).toBe(true));
       expect(rpc.isBusy('cursor')).toBe(true);
@@ -66,7 +66,7 @@ describe('Cursor CLI connection boundary', () => {
   });
 
   it('keeps native update inspection and execution free of ambient API credentials after PATH discovery', async () => {
-    const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/unused' });
+    const runtime = new ProviderUpdateRuntime({ command: provider => provider, claudeHome: () => '/unused' });
     const installation = await runtime.inspect('cursor');
     await runtime.upgrade(installation);
     expect((await calls()).map(call => ({ args: call.args, apiKey: call.apiKey, authToken: call.authToken, browser: call.browser }))).toStrictEqual([
@@ -78,7 +78,7 @@ describe('Cursor CLI connection boundary', () => {
   it('inspects the selected private home and refuses an updater that would install a second CLI there', async () => {
     const lifecycle = createProviderLifecycles().get('cursor')!;
     let selected = { homePath: path.join(root, 'saved-private', '.cursor'), isolated: true, shareSkills: false };
-    const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/unused', cursorHome: () => selected });
+    const runtime = new ProviderUpdateRuntime({ command: provider => provider, claudeHome: () => '/unused', cursorHome: () => selected });
     const installation = await runtime.inspect('cursor');
     expect(installation.command).toBeUndefined();
     await expect(runtime.upgrade(installation)).rejects.toThrow('Manual');
@@ -115,7 +115,7 @@ describe('Cursor CLI connection boundary', () => {
     await mkdir(home.homePath, { recursive: true });
     await lifecycle.prepareHome(home, false);
     snapshot.general.providerHomes = { cursor: home };
-    const current = driver = createBackendDriver('cursor', { generalSettings: snapshot.general });
+    const current = driver = createProviderDriver('cursor', { generalSettings: snapshot.general });
     expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: false, state: { homePath: home.homePath } });
     expect(await current.authenticate!({ action: 'login' })).toMatchObject({ connected: true });
     // Later settings edits cannot redirect an already constructed host.
@@ -156,7 +156,7 @@ describe('Cursor CLI connection boundary', () => {
       { args: ['--version'], browser: '1', home: path.join(root, '.cursor'), apiKey: false, authToken: false },
       { args: ['status', '--format', 'json'], browser: '1', home: path.join(root, '.cursor'), apiKey: false, authToken: false },
     ]);
-    expect(events).toStrictEqual([{ type: 'provider.authenticationChanged', backend: 'cursor', payload: result }]);
+    expect(events).toStrictEqual([{ type: 'provider.authenticationChanged', provider: 'cursor', payload: result }]);
   });
 
   it('refreshes team changes and clears expired account metadata before detecting an external login', async () => {

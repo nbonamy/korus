@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { useAppState } from '../../src/app-state';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { BackendApprovalRequest, BackendConversationRef, AppApi, ConversationSummary, MainToRendererEvent } from '@workspace/core/contracts';
+import type { ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, MainToRendererEvent } from '@workspace/core/contracts';
 import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
@@ -11,9 +11,34 @@ import { codexConversationSnapshot, codexTextMessage } from '../support/codex-co
 import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
 import { deferred } from '../support/app-state-test-harness';
 describe('useAppState', () => {
+  it('keeps history failures in the conversation pane without rejecting preparation or retry actions', async () => {
+    const remote = createInitialSnapshot();
+    const agent = remote.agents[0]!;
+    agent.providerSession = { kind: 'codex', threadId: 'locked-thread' };
+    const load = vi.fn().mockResolvedValue(remote);
+    stubElectronTestWindow({ app: {
+      getSnapshot: vi.fn().mockResolvedValue(remote),
+      loadConversationHistory: load,
+    } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    await vi.waitFor(() => expect(load).toHaveBeenCalled());
+    const error = new Error("Error occurred in handler for 'agent:history:hydrate': Error: Unable to load conversation history.");
+    load.mockRejectedValue(error);
+
+    await expect(state.prepareAgentConversation(agent.id)).resolves.toBeUndefined();
+    expect(state.agentConversationFor(agent.id)?.history).toMatchObject({ failed: true, hydrating: false });
+    await expect(state.retryActiveAgentHistory()).resolves.toBeUndefined();
+    expect(state.isActiveAgentHistoryFailed.value).toBe(true);
+
+    load.mockResolvedValue(remote);
+    await state.retryActiveAgentHistory();
+    expect(state.isActiveAgentHistoryFailed.value).toBe(false);
+  });
+
   it('refreshes an already cached agent workspace on selection without clearing its conversation', async () => {
     const base = createInitialSnapshot();
-    base.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    base.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
     let listener!: (event: MainToRendererEvent) => void;
     const loadConversationHistory = vi.fn(async () => structuredClone(base));
     stubElectronTestWindow({ app: {
@@ -25,7 +50,7 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalled());
-    listener({ seq: 1, occurredAt: 'now', type: 'codex.conversationSnapshotChanged', agentId: 'agent-dina', backend: 'codex', threadId: 'thread-1', payload: { revision: 1, snapshot: codexConversationSnapshot() } });
+    listener({ seq: 1, occurredAt: 'now', type: 'codex.conversationSnapshotChanged', agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1', payload: { revision: 1, snapshot: codexConversationSnapshot() } });
     await state.selectAgent('agent-jesse');
     const refresh = deferred<ReturnType<typeof createInitialSnapshot>>();
     loadConversationHistory.mockImplementationOnce(() => refresh.promise);
@@ -70,7 +95,7 @@ describe('useAppState', () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     const respondToClientRequest = vi.fn().mockImplementation(async () => {
-      return { ...remoteSnapshot, backendApprovals: {} };
+      return { ...remoteSnapshot, providerApprovals: {} };
     });
     stubElectronTestWindow({
       app: {
@@ -82,7 +107,7 @@ describe('useAppState', () => {
         }),
       } satisfies Partial<AppApi>,
     });
-    const approval: BackendApprovalRequest = {
+    const approval: ProviderApprovalRequest = {
       id: 'approval-native-1',
       kind: 'permissions',
       conversationId: 'thread-1',
@@ -104,7 +129,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       turnId: 'turn-1',
       type: 'agentRequest.created',
@@ -114,35 +139,35 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-other',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest({ ...approval, id: 'approval-other', conversationId: 'thread-other' }) },
       occurredAt: '2026-06-05T00:00:02.000Z',
     });
 
-    expect(state.activeBackendApprovals.value).toStrictEqual([approval]);
-    await state.resolveBackendApproval('approval-native-1', 'approve', 'session');
+    expect(state.activeProviderApprovals.value).toStrictEqual([approval]);
+    await state.resolveProviderApproval('approval-native-1', 'approve', 'session');
 
     expect(respondToClientRequest).toHaveBeenCalledWith({
       agentId: 'agent-dina',
       id: 'approval-native-1',
       payload: { decision: 'allow_conversation' },
     });
-    expect(state.activeBackendApprovals.value).toStrictEqual([]);
+    expect(state.activeProviderApprovals.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value.has('approval-native-1')).toBe(true);
 
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       turnId: 'turn-1',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest({ ...approval, id: 'approval-once' }) },
       occurredAt: '2026-06-05T00:00:03.000Z',
     });
-    await state.resolveBackendApproval('approval-once', 'approve', 'once');
+    await state.resolveProviderApproval('approval-once', 'approve', 'once');
 
     expect(respondToClientRequest).toHaveBeenNthCalledWith(2, {
       agentId: 'agent-dina',
@@ -153,21 +178,21 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 4,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       turnId: 'turn-1',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest({ ...approval, id: 'approval-deny' }) },
       occurredAt: '2026-06-05T00:00:04.000Z',
     });
-    await state.resolveBackendApproval('approval-deny', 'deny', 'once');
+    await state.resolveProviderApproval('approval-deny', 'deny', 'once');
 
     expect(respondToClientRequest).toHaveBeenNthCalledWith(3, {
       agentId: 'agent-dina',
       id: 'approval-deny',
       payload: { decision: 'deny' },
     });
-    expect(state.activeBackendApprovals.value).toStrictEqual([]);
+    expect(state.activeProviderApprovals.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value.has('approval-once')).toBe(true);
     expect(state.answeredClientRequestIds.value.has('approval-deny')).toBe(true);
   });
@@ -184,7 +209,7 @@ describe('useAppState', () => {
         }),
       } satisfies Partial<AppApi>,
     });
-    const approval: BackendApprovalRequest = {
+    const approval: ProviderApprovalRequest = {
       id: 'approval-server',
       kind: 'command',
       conversationId: 'thread-1',
@@ -197,7 +222,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest(approval) },
@@ -206,7 +231,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'agentRequest.resolved',
       payload: { id: (approval).id, outcome: approvalOutcome(null, null, 'server') },
@@ -215,7 +240,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       type: 'agentRequest.resolved',
       payload: { id: 'question-1', outcome: { kind: 'completed' } },
       occurredAt: '2026-06-05T00:00:03.000Z',
@@ -223,13 +248,13 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 4,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       type: 'clientRequest.resolved',
       payload: { id: 42 },
       occurredAt: '2026-06-05T00:00:04.000Z',
     } as unknown as MainToRendererEvent);
 
-    expect(state.activeBackendApprovals.value).toStrictEqual([]);
+    expect(state.activeProviderApprovals.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value.has('approval-server')).toBe(true);
     expect(state.answeredClientRequestIds.value.has('question-1')).toBe(true);
     expect(state.answeredClientRequestIds.value.has('42')).toBe(false);
@@ -238,7 +263,7 @@ describe('useAppState', () => {
   it('sets the active approval preset through the preload bridge', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const updatedSnapshot = createInitialSnapshot();
-    updatedSnapshot.agents[0].backendDefaults = {
+    updatedSnapshot.agents[0].providerDefaults = {
       kind: 'codex',
       approvalPreset: 'approve-for-me',
       approvalPolicy: 'on-request',
@@ -265,14 +290,14 @@ describe('useAppState', () => {
 
   it('uses the first allowed approval preset when stored defaults are forbidden', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.backendRuntimes = [{
-      backend: 'codex',
+    remoteSnapshot.providerRuntimes = [{
+      provider: 'codex',
       status: 'running',
       capabilities: {
         approvalPresets: ['ask-for-approval'],
       },
     }];
-    remoteSnapshot.agents[0].backendDefaults = {
+    remoteSnapshot.agents[0].providerDefaults = {
       kind: 'codex',
       approvalPreset: 'full-access',
       approvalPolicy: 'never',
@@ -296,22 +321,22 @@ describe('useAppState', () => {
   it('restores the selected Antigravity permission mode without borrowing Claude defaults', () => {
     const state = useAppState();
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0] = { ...snapshot.agents[0]!, backend: 'antigravity', backendSession: undefined, backendDefaults: { kind: 'antigravity', permissionMode: 'auto_edit' } };
+    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'antigravity', providerSession: undefined, providerDefaults: { kind: 'antigravity', permissionMode: 'auto_edit' } };
     state.snapshot.value = snapshot;
     expect(state.activePermissionMode.value).toBe('auto_edit');
-    expect(state.activeBackendCapabilities.value.permissionModes?.map(option => option.id)).toEqual(['default', 'auto_edit']);
+    expect(state.activeProviderCapabilities.value.permissionModes?.map(option => option.id)).toEqual(['default', 'auto_edit']);
   });
 
   it('sets Claude permission modes through their separate backend contract', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0] = {
       ...remoteSnapshot.agents[0],
-      backend: 'claude',
-      backendSession: undefined,
-      backendDefaults: { kind: 'claude', model: 'sonnet', permissionMode: 'acceptEdits' },
+      provider: 'claude',
+      providerSession: undefined,
+      providerDefaults: { kind: 'claude', model: 'sonnet', permissionMode: 'acceptEdits' },
     };
     const updatedSnapshot = structuredClone(remoteSnapshot);
-    updatedSnapshot.agents[0].backendDefaults = {
+    updatedSnapshot.agents[0].providerDefaults = {
       kind: 'claude',
       model: 'sonnet',
       permissionMode: 'bypassPermissions',
@@ -327,8 +352,8 @@ describe('useAppState', () => {
     state.snapshot.value = remoteSnapshot;
 
     expect(state.activePermissionMode.value).toBe('acceptEdits');
-    expect(state.activeBackendCapabilities.value.approvalPresets).toStrictEqual([]);
-    expect(state.activeBackendCapabilities.value.permissionModes?.map((option) => option.id)).toStrictEqual([
+    expect(state.activeProviderCapabilities.value.approvalPresets).toStrictEqual([]);
+    expect(state.activeProviderCapabilities.value.permissionModes?.map((option) => option.id)).toStrictEqual([
       'default',
       'acceptEdits',
       'dontAsk',
@@ -419,9 +444,9 @@ describe('useAppState', () => {
 
   it.each(['codex', 'claude', 'antigravity', 'cursor'] as const)('continues a %s interrupted turn through preload without sending a prompt', async backend => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backend = backend;
-    remoteSnapshot.agents[0]!.backendDefaults = { kind: backend };
-    remoteSnapshot.agents[0]!.backendSession = backend === 'codex' ? { kind: backend, threadId: 'thread-dina' }
+    remoteSnapshot.agents[0]!.provider = backend;
+    remoteSnapshot.agents[0]!.providerDefaults = { kind: backend };
+    remoteSnapshot.agents[0]!.providerSession = backend === 'codex' ? { kind: backend, threadId: 'thread-dina' }
       : backend === 'claude' ? { kind: backend, sessionId: 'session-dina', transport: 'stdio' }
         : { kind: backend, sessionId: 'session-dina' };
     const continuedSnapshot = structuredClone(remoteSnapshot);
@@ -446,8 +471,8 @@ describe('useAppState', () => {
 
   it('blocks message actions when the active backend does not support them', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backend = 'claude';
-    remoteSnapshot.agents[0].backendDefaults = { kind: 'claude' };
+    remoteSnapshot.agents[0].provider = 'claude';
+    remoteSnapshot.agents[0].providerDefaults = { kind: 'claude' };
     const deleteTurn = vi.fn().mockResolvedValue(remoteSnapshot);
     const editTurn = vi.fn().mockResolvedValue(remoteSnapshot);
     const retryTurn = vi.fn().mockResolvedValue(remoteSnapshot);
@@ -560,7 +585,7 @@ describe('useAppState', () => {
       ...remoteSnapshot,
       agents: remoteSnapshot.agents.map((agent) => (
         agent.id === 'agent-dina'
-          ? { ...agent, backendSession: { kind: 'codex' as const, threadId: 'thread-dina' } }
+          ? { ...agent, providerSession: { kind: 'codex' as const, threadId: 'thread-dina' } }
           : agent
       )),
       messages: [{
@@ -578,7 +603,7 @@ describe('useAppState', () => {
       updatedAt: '2026-06-09T10:00:00.000Z',
       messageCount: 1,
       storageState: 'archived',
-      ref: { backend: 'codex', threadId: 'thread-dina' },
+      ref: { provider: 'codex', threadId: 'thread-dina' },
     }];
     const listAgentConversations = vi.fn().mockResolvedValue(conversations);
     const resumeAgentConversation = vi.fn().mockResolvedValue(resumedSnapshot);
@@ -607,15 +632,15 @@ describe('useAppState', () => {
     expect(state.isActiveAgentHistoryFailed.value).toBe(true);
 
     const reactiveConversationRef = reactive({
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       threadId: 'thread-dina',
     });
-    const target = { ref: reactiveConversationRef as BackendConversationRef, storageState: 'archived' as const };
+    const target = { ref: reactiveConversationRef as ProviderConversationRef, storageState: 'archived' as const };
     await state.resumeAgentConversation('agent-dina', target);
 
     expect(listAgentConversations).toHaveBeenCalledWith('agent-dina', undefined);
     expect(resumeAgentConversation).toHaveBeenCalledWith('agent-dina', {
-      ref: { backend: 'codex', threadId: 'thread-dina' },
+      ref: { provider: 'codex', threadId: 'thread-dina' },
       storageState: 'archived',
     });
     expect(resumeAgentConversation.mock.calls.at(-1)?.[1].ref).not.toBe(reactiveConversationRef);
@@ -627,17 +652,17 @@ describe('useAppState', () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0] = {
       ...remoteSnapshot.agents[0],
-      backend: 'claude',
-      backendSession: {
+      provider: 'claude',
+      providerSession: {
         kind: 'claude',
         sessionId: 'claude-session-haiku',
         transport: 'stdio',
         model: 'claude-haiku-4-5-20251001',
       },
-      backendDefaults: { kind: 'claude', model: 'haiku' },
+      providerDefaults: { kind: 'claude', model: 'haiku' },
     };
     const resumedSnapshot = structuredClone(remoteSnapshot);
-    resumedSnapshot.agents[0].backendSession = {
+    resumedSnapshot.agents[0].providerSession = {
       kind: 'claude',
       sessionId: 'claude-session-sonnet',
       transport: 'stdio',
@@ -648,7 +673,7 @@ describe('useAppState', () => {
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
-        listBackendModels: vi.fn().mockResolvedValue([
+        listProviderModels: vi.fn().mockResolvedValue([
           {
             id: 'haiku',
             model: 'haiku',
@@ -678,7 +703,7 @@ describe('useAppState', () => {
 
     await state.resumeAgentConversation('agent-dina', {
       ref: {
-        backend: 'claude',
+        provider: 'claude',
         folder: remoteSnapshot.agents[0].folder!,
         sessionId: 'claude-session-sonnet',
       },
@@ -692,9 +717,9 @@ describe('useAppState', () => {
   it('adopts the replacement session and clears stale history errors after compression', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
     const compressedSnapshot = structuredClone(remoteSnapshot);
-    compressedSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-compressed' };
+    compressedSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-compressed' };
     const compressAgentSession = vi.fn().mockResolvedValue(compressedSnapshot);
     stubElectronTestWindow({
       app: {
@@ -721,7 +746,7 @@ describe('useAppState', () => {
     await state.compressAgentSession('agent-dina');
 
     expect(compressAgentSession).toHaveBeenCalledWith('agent-dina');
-    expect(state.snapshot.value.agents[0].backendSession).toStrictEqual({
+    expect(state.snapshot.value.agents[0].providerSession).toStrictEqual({
       kind: 'codex',
       threadId: 'thread-compressed',
     });
@@ -816,7 +841,7 @@ describe('useAppState', () => {
 
     const state = useAppState();
     await state.loadSnapshot();
-    state.backendModels.value = [];
+    state.providerModels.value = [];
     state.selectedModelId.value = null;
     state.selectedReasoningEffort.value = null;
     state.setPlanMode(false);
@@ -843,7 +868,7 @@ describe('useAppState', () => {
 
     const state = useAppState();
     await state.loadSnapshot();
-    state.backendModels.value = [];
+    state.providerModels.value = [];
     state.selectedModelId.value = null;
     state.selectedReasoningEffort.value = null;
     state.setPlanMode(false);
@@ -871,7 +896,7 @@ describe('useAppState', () => {
 
     const state = useAppState();
     await state.loadSnapshot();
-    state.backendModels.value = [];
+    state.providerModels.value = [];
     state.selectedModelId.value = null;
     state.selectedReasoningEffort.value = null;
     state.setPlanMode(false);
@@ -903,7 +928,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.settingsUpdated',
       payload: { settings: { model: 'gpt-5.4', reasoningEffort: 'high', serviceTier: 'fast' } },
@@ -912,7 +937,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.modeUpdated',
       payload: { mode: 'plan' },
@@ -960,7 +985,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 4,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.modeUpdated',
       payload: { mode: 'default' },
@@ -982,7 +1007,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 6,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'conversation.settingsUpdated',
       payload: { settings: { serviceTier: null } },
@@ -994,7 +1019,7 @@ describe('useAppState', () => {
   it('keeps the newest provider-owned Codex conversation frame per agent', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
@@ -1011,7 +1036,7 @@ describe('useAppState', () => {
       listeners[0]?.({
         seq,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-1',
         type: 'codex.conversationSnapshotChanged',
         payload: {
@@ -1033,7 +1058,7 @@ describe('useAppState', () => {
 
     state.setPlanMode(false);
     listeners[0]?.({
-      seq: 3, agentId: 'agent-dina', backend: 'codex', threadId: 'thread-1',
+      seq: 3, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: { revision: 3, event: {
         seq: 10, type: 'conversation.settingsChanged', conversationId: 'thread-1', origin: 'action',
@@ -1046,7 +1071,7 @@ describe('useAppState', () => {
 
     state.setPlanMode(false);
     listeners[0]?.({
-      seq: 4, agentId: 'agent-dina', backend: 'codex', threadId: 'thread-1',
+      seq: 4, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
       type: 'codex.conversationSnapshotChanged',
       payload: { revision: 4, snapshot: codexConversationSnapshot([], { planMode: true }) },
       occurredAt: '2026-09-06T00:00:04.000Z',
@@ -1058,10 +1083,10 @@ describe('useAppState', () => {
   it('projects only the provider snapshot matching the selected agent session', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-codex' };
-    remoteSnapshot.agents[1]!.backend = 'claude';
-    remoteSnapshot.agents[1]!.backendDefaults = { kind: 'claude' };
-    remoteSnapshot.agents[1]!.backendSession = {
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-codex' };
+    remoteSnapshot.agents[1]!.provider = 'claude';
+    remoteSnapshot.agents[1]!.providerDefaults = { kind: 'claude' };
+    remoteSnapshot.agents[1]!.providerSession = {
       kind: 'claude', sessionId: 'session-claude', transport: 'stdio',
     };
     stubElectronTestWindow({
@@ -1079,7 +1104,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-codex',
       type: 'codex.conversationSnapshotChanged',
       payload: {
@@ -1093,7 +1118,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-jesse',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: {
         revision: 1,
@@ -1116,12 +1141,12 @@ describe('useAppState', () => {
     expect(state.activeCodexConversationSnapshot.value).toBeNull();
     expect(state.activeClaudeConversationSnapshot.value?.sessionId).toBe('session-claude');
 
-    state.snapshot.value.agents[1]!.backendSession = undefined;
+    state.snapshot.value.agents[1]!.providerSession = undefined;
     await nextTick();
 
     expect(state.activeClaudeConversationSnapshot.value?.sessionId).toBe('session-claude');
 
-    state.snapshot.value.agents[1]!.backendSession = {
+    state.snapshot.value.agents[1]!.providerSession = {
       kind: 'claude', sessionId: 'session-replaced', transport: 'stdio',
     };
     await nextTick();
@@ -1132,7 +1157,7 @@ describe('useAppState', () => {
   it('advances the provider-owned Codex frame with SDK conversation events', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
@@ -1148,7 +1173,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationSnapshotChanged',
       payload: { revision: 1, snapshot: codexConversationSnapshot() },
@@ -1157,7 +1182,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -1182,7 +1207,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -1211,10 +1236,10 @@ describe('useAppState', () => {
   it('coalesces transport repair storms and serializes cached Codex and Claude recovery without blanking either pane', async () => {
     const remote = createInitialSnapshot();
     const codex = remote.agents[0]!;
-    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    codex.providerSession = { kind: 'codex', threadId: 'thread-1' };
     const claude = remote.agents[1]!;
-    claude.backend = 'claude';
-    claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    claude.provider = 'claude';
+    claude.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
     let receive!: (event: MainToRendererEvent) => void;
     const load = vi.fn().mockResolvedValue(remote);
     const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
@@ -1223,8 +1248,8 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     await vi.waitFor(() => expect(load).toHaveBeenCalled());
     await nextTick();
-    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
-    receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 2, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 2, connection: { status: 'connected' } });
     const first = deferred<ReturnType<typeof createInitialSnapshot>>();
     const second = deferred<ReturnType<typeof createInitialSnapshot>>();
@@ -1232,7 +1257,7 @@ describe('useAppState', () => {
     const repair = () => receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
     repair();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
-    receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
+    receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 2, snapshot: codexConversationSnapshot([], { busy: true }) } });
     for (let n = 0; n < 20; n++) repair();
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
@@ -1242,47 +1267,47 @@ describe('useAppState', () => {
     expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 6, connection: { status: 'connected' } });
     for (let n = 0; n < 20; n++) repair();
-    receive({ seq: 5, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    receive({ seq: 5, source: 'provider', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     // Repairs in the window re-read the app snapshot, but concurrent ones coalesce.
     await vi.waitFor(() => expect(getSnapshotState.mock.calls.length).toBeGreaterThanOrEqual(3));
     await nextTick();
     const snapshotFetches = getSnapshotState.mock.calls.length;
     expect(snapshotFetches).toBeLessThan(8);
-    receive({ seq: 6, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
+    receive({ seq: 6, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
     await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.conversation?.busy).toBe(true));
     second.resolve(remote);
     // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
     expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id, codex.id]);
     expect(getSnapshotState).toHaveBeenCalledTimes(snapshotFetches);
-    receive({ seq: 7, source: 'backend', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
+    receive({ seq: 7, source: 'provider', occurredAt: '', agentId: codex.id, type: 'agent.statusChanged', payload: { type: 'working' } });
     expect(state.activeAgent.value?.status.type).toBe('working');
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     // The owner restarted: its counter is below the retained frame's, yet the replay and its deltas apply.
-    receive({ seq: 8, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
+    receive({ seq: 8, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(false);
-    receive({ seq: 9, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+    receive({ seq: 9, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
     // Only the first replay bypasses the revision fence.
-    receive({ seq: 10, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
+    receive({ seq: 10, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([], { busy: false }) } });
     expect(state.activeCodexConversationSnapshot.value?.busy).toBe(true);
-    receive({ seq: 11, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
-    receive({ seq: 12, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, backend: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
+    receive({ seq: 11, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive({ seq: 12, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationEventReceived', payload: { revision: 2, event: { seq: 1, occurredAt: '', agentId: claude.id, provider: 'claude', type: 'error', payload: { message: 'post-restart' } } } });
     expect(state.agentConversationFor(claude.id)?.conversation?.error).toBe('post-restart');
   });
 
   it('restores the active agent after reconnect while cached recoveries are still loading', async () => {
     const remote = createInitialSnapshot();
     const codex = remote.agents[0]!;
-    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    codex.providerSession = { kind: 'codex', threadId: 'thread-1' };
     let receive!: (event: MainToRendererEvent) => void;
     const load = vi.fn().mockResolvedValue(remote);
     const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'reconnecting' } });
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
     const state = useAppState();
     await state.loadSnapshot();
-    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
     const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
     load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
@@ -1301,10 +1326,10 @@ describe('useAppState', () => {
     try {
       const remote = createInitialSnapshot();
       const codex = remote.agents[0]!;
-      codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+      codex.providerSession = { kind: 'codex', threadId: 'thread-1' };
       const claude = remote.agents[1]!;
-      claude.backend = 'claude';
-      claude.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+      claude.provider = 'claude';
+      claude.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
       let receive!: (event: MainToRendererEvent) => void;
       const load = vi.fn().mockResolvedValue(remote);
       const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
@@ -1312,8 +1337,8 @@ describe('useAppState', () => {
       const state = useAppState();
       await state.loadSnapshot();
       await vi.advanceTimersByTimeAsync(0);
-      receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
-      receive({ seq: 2, source: 'backend', occurredAt: '', agentId: claude.id, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+      receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+      receive({ seq: 2, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
       load.mockReset().mockReturnValueOnce(new Promise(() => {})).mockResolvedValue(remote);
       receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
       await vi.advanceTimersByTimeAsync(0);
@@ -1322,7 +1347,7 @@ describe('useAppState', () => {
       expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
       // The Codex hydrate produced no snapshot: its frame stays visible, and the next live event retries.
       expect(state.activeCodexConversationSnapshot.value).not.toBeNull();
-      receive({ seq: 3, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+      receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
       await vi.advanceTimersByTimeAsync(0);
       expect(load.mock.calls.length).toBeGreaterThanOrEqual(3);
       expect(load.mock.calls[2]![0]).toBe(codex.id);
@@ -1334,14 +1359,14 @@ describe('useAppState', () => {
   it('re-reads the app snapshot and hydrates a marked pane on selection while recovery is queued', async () => {
     const remote = createInitialSnapshot();
     const codex = remote.agents[0]!;
-    codex.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    codex.providerSession = { kind: 'codex', threadId: 'thread-1' };
     let receive!: (event: MainToRendererEvent) => void;
     const load = vi.fn().mockResolvedValue(remote);
     const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 0, connection: { status: 'connected' } });
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
     const state = useAppState();
     await state.loadSnapshot();
-    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: codex.id, backend: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
     const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
     load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
@@ -1364,7 +1389,7 @@ describe('useAppState', () => {
   it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
     const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
     stubElectronTestWindow({
       app: {
@@ -1384,7 +1409,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationSnapshotChanged',
       payload: { revision: 4, snapshot: codexConversationSnapshot() },
@@ -1393,7 +1418,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -1416,7 +1441,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -1440,7 +1465,7 @@ describe('useAppState', () => {
   it('invalidates and rehydrates a Codex frame when a delta targets another conversation', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
     const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
     stubElectronTestWindow({
       app: {
@@ -1460,7 +1485,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationSnapshotChanged',
       payload: { revision: 1, snapshot: codexConversationSnapshot() },
@@ -1469,7 +1494,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-1',
       type: 'codex.conversationEventReceived',
       payload: {
@@ -1493,9 +1518,9 @@ describe('useAppState', () => {
   it('advances the provider-owned Claude frame without writing the global transcript', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backend = 'claude';
-    remoteSnapshot.agents[0]!.backendDefaults = { kind: 'claude' };
-    remoteSnapshot.agents[0]!.backendSession = {
+    remoteSnapshot.agents[0]!.provider = 'claude';
+    remoteSnapshot.agents[0]!.providerDefaults = { kind: 'claude' };
+    remoteSnapshot.agents[0]!.providerSession = {
       kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio',
     };
     stubElectronTestWindow({
@@ -1514,7 +1539,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: { revision: 1, snapshot: claudeConversationSnapshot() },
       occurredAt: '2026-09-06T00:00:01.000Z',
@@ -1522,7 +1547,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 2,
@@ -1530,10 +1555,10 @@ describe('useAppState', () => {
           seq: 2,
           occurredAt: '2026-09-06T00:00:02.000Z',
           agentId: 'agent-dina',
-          backend: 'claude',
+          provider: 'claude',
           type: 'turn.started',
           turnId: 'turn-1',
-          payload: { turn: { id: 'turn-1', backend: 'claude' } },
+          payload: { turn: { id: 'turn-1', provider: 'claude' } },
         },
       },
       occurredAt: '2026-09-06T00:00:02.000Z',
@@ -1541,7 +1566,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 3,
@@ -1549,7 +1574,7 @@ describe('useAppState', () => {
           seq: 3,
           occurredAt: '2026-09-06T00:00:03.000Z',
           agentId: 'agent-dina',
-          backend: 'claude',
+          provider: 'claude',
           type: 'message.userSubmitted',
           turnId: 'turn-1',
           payload: { message: {
@@ -1563,7 +1588,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 4,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 4,
@@ -1571,7 +1596,7 @@ describe('useAppState', () => {
           seq: 4,
           occurredAt: '2026-09-06T00:00:04.000Z',
           agentId: 'agent-dina',
-          backend: 'claude',
+          provider: 'claude',
           type: 'message.delta',
           turnId: 'turn-1',
           payload: { messageId: 'assistant-1', delta: 'Hi' },
@@ -1582,7 +1607,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 5,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: {
         revision: 3,
@@ -1604,8 +1629,8 @@ describe('useAppState', () => {
   it('invalidates and rehydrates a Claude frame after a revision gap', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.backend = 'claude';
-    remoteSnapshot.agents[0]!.backendSession = {
+    remoteSnapshot.agents[0]!.provider = 'claude';
+    remoteSnapshot.agents[0]!.providerSession = {
       kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio',
     };
     const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
@@ -1627,7 +1652,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationSnapshotChanged',
       payload: { revision: 4, snapshot: claudeConversationSnapshot() },
       occurredAt: '2026-09-06T00:00:01.000Z',
@@ -1635,7 +1660,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 3,
@@ -1643,7 +1668,7 @@ describe('useAppState', () => {
           seq: 5,
           occurredAt: '2026-09-06T00:00:02.000Z',
           agentId: 'agent-dina',
-          backend: 'claude',
+          provider: 'claude',
           type: 'error',
           payload: { message: 'stale' },
         },
@@ -1657,7 +1682,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-dina',
-      backend: 'claude',
+      provider: 'claude',
       type: 'claude.conversationEventReceived',
       payload: {
         revision: 6,
@@ -1665,7 +1690,7 @@ describe('useAppState', () => {
           seq: 6,
           occurredAt: '2026-09-06T00:00:03.000Z',
           agentId: 'agent-dina',
-          backend: 'claude',
+          provider: 'claude',
           type: 'error',
           payload: { message: 'gap' },
         },

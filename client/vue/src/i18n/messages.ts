@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { surfaceMessages } from './surface-messages';
+import { conversationMessages } from './surface-messages';
 
 export const messages = {
   en: {
@@ -307,7 +307,7 @@ export const messages = {
       emptyPane: 'Empty pane', selectAgent: 'Focus this pane, then select an agent from the sidebar.',
       resizeColumns: 'Resize conversation columns', resizeRows: 'Resize conversation rows',
     },
-    surface: surfaceMessages,
+    surface: conversationMessages,
     missions: {
       documentPreview: 'Preview', documentRequest: 'Document request', documentOpenRequest: 'Agent wants to open {document}',
       openDocument: 'Open document', dismissDocumentRequest: 'Dismiss document request', closeDocument: 'Close document',
@@ -592,7 +592,7 @@ export const messages = {
     features: {
       rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
       newWorktree: 'New worktree', newAgent: 'New agent', repositories: 'Repositories', repository: 'Repository', branch: 'New branch', branchSelect: 'Branch', branchName: 'Branch name', retry: 'Retry',
-      noBackend: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
+      noProvider: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
       openInNewWindow: 'Open in New Window',
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
       deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
@@ -681,7 +681,7 @@ export const messages = {
       codexConnected: 'Codex backend connected.',
       codexConnecting: 'Connecting to Codex app-server.',
       codexNotConnected: 'Codex backend is not connected yet.',
-      connected: '{backend} backend connected.',
+      connected: '{provider} backend connected.',
       restarting: 'Restarting daemon…',
     },
     permissions: {
@@ -963,7 +963,7 @@ export const messages = {
       useRepository: 'Using repository',
       initializeWorktree: 'Initializing worktree',
       checkProjectSetup: 'Checking project setup',
-      newSession: 'New {backend} session',
+      newSession: 'New {provider} session',
       handOverInstructions: 'Handing over initial instructions',
       finishSetup: 'Finishing agent setup',
     },

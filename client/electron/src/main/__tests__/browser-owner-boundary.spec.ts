@@ -1,9 +1,9 @@
 import { expect, it, vi } from 'vitest';
-import type { BrowserPaneOptions } from '@korus-dev/agent-ui-sdk/browser/electron';
+import type { BrowserPaneOptions } from '@korus-dev/agent-ui-sdk/electron/browser';
 import { BrowserPane } from '../browser-pane';
 
 const sdk = vi.hoisted(() => ({ options: null as BrowserPaneOptions | null }));
-vi.mock('@korus-dev/agent-ui-sdk/browser/electron', () => ({
+vi.mock('@korus-dev/agent-ui-sdk/electron/browser', () => ({
   BrowserPane: class { constructor(options: BrowserPaneOptions) { sdk.options = options; } },
   browserPaneKey: (ownerId: string) => ownerId,
 }));

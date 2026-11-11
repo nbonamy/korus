@@ -49,7 +49,7 @@ describe('settings contracts', () => {
 
   it('normalizes Cursor settings without leaking execution defaults across providers', () => {
     const home = { homePath: '/cursor', isolated: false, shareSkills: false };
-    const selection = { backend: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } as const;
+    const selection = { provider: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null } as const;
     const settings = normalizeGeneralSettings({
       providerEnabled: { codex: true, cursor: false },
       providerHomes: { cursor: home },
@@ -59,12 +59,12 @@ describe('settings contracts', () => {
     expect(settings.providerHomes).toStrictEqual({ cursor: home });
     expect(settings.providerModelDefaults).toStrictEqual({ cursor: selection });
     expect(isExecutionSelection(selection)).toBe(true);
-    const agent = { backend: 'cursor', backendDefaults: { kind: 'codex', model: 'codex-only' } } as Pick<Agent, 'backend' | 'backendDefaults'>;
-    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'cursor', model: null, reasoningEffort: null, serviceTier: null });
+    const agent = { provider: 'cursor', providerDefaults: { kind: 'codex', model: 'codex-only' } } as Pick<Agent, 'provider' | 'providerDefaults'>;
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ provider: 'cursor', model: null, reasoningEffort: null, serviceTier: null });
     applyExecutionSelection(agent, selection);
-    expect(agent.backendDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null });
-    agent.backend = 'claude';
-    expect(executionSelectionForAgent(agent)).toStrictEqual({ backend: 'claude', model: null, reasoningEffort: null, serviceTier: null });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'cursor', model: 'composer-fixture', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null });
+    agent.provider = 'claude';
+    expect(executionSelectionForAgent(agent)).toStrictEqual({ provider: 'claude', model: null, reasoningEffort: null, serviceTier: null });
     expect(() => applyExecutionSelection(agent, selection)).toThrow('does not match');
   });
 
@@ -320,17 +320,17 @@ describe('settings contracts', () => {
   it('normalizes and deduplicates model favorites', () => {
     expect(normalizeGeneralSettings({
       modelFavorites: [
-        { backend: 'codex', modelId: ' terra ', reasoningEffort: ' medium ', serviceTier: ' priority ' },
-        { backend: 'codex', modelId: 'terra', reasoningEffort: 'medium', serviceTier: 'priority' },
-        { backend: 'codex', modelId: 'sol', reasoningEffort: 'high', serviceTier: 'default' },
-        { backend: 'claude', modelId: 'sonnet', reasoningEffort: null, serviceTier: null },
-        { backend: 'missing', modelId: 'ignored', reasoningEffort: null, serviceTier: null },
-        { backend: 'codex', modelId: '', reasoningEffort: null, serviceTier: null },
+        { provider: 'codex', modelId: ' terra ', reasoningEffort: ' medium ', serviceTier: ' priority ' },
+        { provider: 'codex', modelId: 'terra', reasoningEffort: 'medium', serviceTier: 'priority' },
+        { provider: 'codex', modelId: 'sol', reasoningEffort: 'high', serviceTier: 'default' },
+        { provider: 'claude', modelId: 'sonnet', reasoningEffort: null, serviceTier: null },
+        { provider: 'missing', modelId: 'ignored', reasoningEffort: null, serviceTier: null },
+        { provider: 'codex', modelId: '', reasoningEffort: null, serviceTier: null },
       ],
     }).modelFavorites).toStrictEqual([
-      { backend: 'codex', modelId: 'terra', reasoningEffort: 'medium', serviceTier: 'priority' },
-      { backend: 'codex', modelId: 'sol', reasoningEffort: 'high', serviceTier: null },
-      { backend: 'claude', modelId: 'sonnet', reasoningEffort: null, serviceTier: null },
+      { provider: 'codex', modelId: 'terra', reasoningEffort: 'medium', serviceTier: 'priority' },
+      { provider: 'codex', modelId: 'sol', reasoningEffort: 'high', serviceTier: null },
+      { provider: 'claude', modelId: 'sonnet', reasoningEffort: null, serviceTier: null },
     ]);
   });
 
@@ -469,8 +469,8 @@ describe('settings contracts', () => {
         other: { model: 'ignored' },
       },
     }).providerModelDefaults).toStrictEqual({
-      codex: {backend: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: null },
-      antigravity: {backend: 'antigravity',  model: 'gemini-low', reasoningEffort: null, serviceTier: null },
+      codex: {provider: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: null },
+      antigravity: {provider: 'antigravity',  model: 'gemini-low', reasoningEffort: null, serviceTier: null },
     });
   });
 
@@ -481,9 +481,9 @@ describe('settings contracts', () => {
   });
 
   it('retains review defaults across settings normalization without retaining invalid automatic authorization', () => {
-    const codeReviewDefaults = { backend: 'claude', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'codex-model', reasoningEffort: 'high' }, claude: { model: 'sonnet' } } };
+    const codeReviewDefaults = { provider: 'claude', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 }, providers: { codex: { model: 'codex-model', reasoningEffort: 'high' }, claude: { model: 'sonnet' } } };
     const normalized = normalizeGeneralSettings({ codeReviewDefaults });
-    expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(normalized))).codeReviewDefaults).toStrictEqual({ ...codeReviewDefaults, providers: { codex: { backend: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null }, claude: { backend: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null } } });
+    expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(normalized))).codeReviewDefaults).toStrictEqual({ ...codeReviewDefaults, providers: { codex: { provider: 'codex', model: 'codex-model', reasoningEffort: 'high', serviceTier: null }, claude: { provider: 'claude', model: 'sonnet', reasoningEffort: null, serviceTier: null } } });
     expect(normalizeGeneralSettings({ codeReviewDefaults: { ...codeReviewDefaults, automation: { enabled: 'yes', maxPriority: 'p2', maxRounds: 3 } } }).codeReviewDefaults).toBeUndefined();
   });
 });

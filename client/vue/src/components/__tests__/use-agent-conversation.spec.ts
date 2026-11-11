@@ -1,34 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { promptContentText } from '@korus-dev/multi-agent-sdk/surface';
+import { promptContentText } from '@korus-dev/multi-agent-sdk/prompt';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { ConversationPaneState as CodexConversationPaneState, NativeAttachment as CodexNativeAttachment, NativeRendererApi as CodexNativeRendererApi } from '@korus-dev/agent-ui-sdk';
+import type { ConversationPaneState, NativeAttachment, NativeRendererApi } from '@korus-dev/agent-ui-sdk';
 import { agentConversationState, useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import type { AgentConversationView } from '../../app-state';
 import { projectCodexConversation } from '../../provider-conversation-bindings';
 import { codexConversationSnapshot } from '../../../tests/support/codex-conversation-fixtures';
 import { resolveConversationControllerValue } from '../../../tests/support/app-shell-test-harness';
 
-const image: CodexNativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
+const image: NativeAttachment = { id: 'shot', type: 'image', reference: 'electron-attachment:shot', name: 'shot.png',
   mimeType: 'image/png', size: 10, previewUrl: 'data:image/png;base64,c2hvdA==' };
-const annotated: CodexNativeAttachment = { ...image, id: 'shot-annotated', reference: 'electron-attachment:shot-annotated', name: 'shot-annotated.png' };
+const annotated: NativeAttachment = { ...image, id: 'shot-annotated', reference: 'electron-attachment:shot-annotated', name: 'shot-annotated.png' };
 
-afterEach(() => { delete (window as Window & { codexAppSdkNative?: unknown }).codexAppSdkNative; });
+afterEach(() => { delete (window as Window & { agentUiHostCapabilities?: unknown }).agentUiHostCapabilities; });
 
 describe('useAgentConversation image annotations', () => {
   it('sends the annotated image even though the composer clears its attachments as soon as it submits', async () => {
     const ingestAttachments = vi.fn().mockResolvedValue([annotated]);
-    (window as Window & { codexAppSdkNative?: Partial<CodexNativeRendererApi> }).codexAppSdkNative = {
+    (window as Window & { agentUiHostCapabilities?: Partial<NativeRendererApi> }).agentUiHostCapabilities = {
       capabilities: { attachments: true, clipboard: true, externalLinks: true, transcription: false }, ingestAttachments };
-    const attachments = ref<readonly CodexNativeAttachment[]>([image]);
+    const attachments = ref<readonly NativeAttachment[]>([image]);
     const send = vi.fn();
-    const state = { composer: { get attachments() { return attachments.value; } } } as unknown as CodexConversationPaneState;
+    const state = { composer: { get attachments() { return attachments.value; } } } as unknown as ConversationPaneState;
     const conversation = useAgentConversation({
       agentId: () => 'agent', state, debugFallbackImageSource: '', notifyError: vi.fn(),
       openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
       beforeSubmit: async () => undefined,
       actions: { send, updateComposerState: vi.fn(),
-        updateAttachments: (_agentId: string, next: readonly CodexNativeAttachment[]) => { attachments.value = next; } } as unknown as AgentConversationActions,
+        updateAttachments: (_agentId: string, next: readonly NativeAttachment[]) => { attachments.value = next; } } as unknown as AgentConversationActions,
     });
     const actions = resolveConversationControllerValue(conversation.controller.actions);
     conversation.imageAnnotation.openAttachment(image);
@@ -81,7 +81,7 @@ describe('agentConversationState identity', () => {
   });
 
   it('uses native loaded model and permissions instead of stored defaults, with pending edits taking precedence', () => {
-    const agent = { ...createInitialSnapshot().agents[0]!, backendDefaults: { kind: 'codex' as const, model: 'saved', approvalPreset: 'full-access' as const } };
+    const agent = { ...createInitialSnapshot().agents[0]!, providerDefaults: { kind: 'codex' as const, model: 'saved', approvalPreset: 'full-access' as const } };
     const native = codexConversationSnapshot([], { approvalPreset: 'ask-for-approval', selectedModelId: 'native', selectedReasoningEffort: 'low', selectedServiceTier: 'fast' });
     const view = { agent, conversation: projectCodexConversation(native, agent),
       capabilities: { approvals: true, approvalPresets: ['ask-for-approval', 'full-access'] },
@@ -93,12 +93,12 @@ describe('agentConversationState identity', () => {
     expect(state.composer!.selectedReasoningEffort).toBe('low');
     expect(state.composer!.selectedServiceTier).toBe('fast');
     view.composer.selectedModelId = 'draft';
-    view.composer.pendingSelection = { backend: 'codex', model: 'draft', reasoningEffort: 'high', serviceTier: null };
+    view.composer.pendingSelection = { provider: 'codex', model: 'draft', reasoningEffort: 'high', serviceTier: null };
     expect(state.composer!.selectedModelId).toBe('draft');
   });
 
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
-    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', backendSession: { kind: 'codex' as const, threadId: 'restored' } };
+    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', providerSession: { kind: 'codex' as const, threadId: 'restored' } };
     const view = { agent,
       conversation: projectCodexConversation(codexConversationSnapshot([], { activeConversationId: 'restored', historyLoading: false }), agent),
       history: { hydrating: true } } as unknown as AgentConversationView;

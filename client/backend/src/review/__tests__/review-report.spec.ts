@@ -12,8 +12,8 @@ async function fixture() {
   const home = await mkdtemp(path.join(os.tmpdir(), 'review-report-'));
   homes.push(home);
   const agent: Agent = {
-    id: 'reviewer', name: 'Review', folder: '/repo', backend: 'claude',
-    backendDefaults: { kind: 'claude', model: 'sonnet', reasoningEffort: 'high' },
+    id: 'reviewer', name: 'Review', folder: '/repo', provider: 'claude',
+    providerDefaults: { kind: 'claude', model: 'sonnet', reasoningEffort: 'high' },
     status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
   };
   const session: CodeReviewSession = {

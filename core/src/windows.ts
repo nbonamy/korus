@@ -1,5 +1,5 @@
-import type { NativeAttachment as CodexNativeAttachment } from '@korus-dev/agent-ui-sdk/host';
-import type { CodexPromptPart } from '@korus-dev/multi-agent-sdk/surface';
+import type { NativeAttachment } from '@korus-dev/agent-ui-sdk/host';
+import type { PromptPart } from '@korus-dev/multi-agent-sdk';
 
 /**
  * View state a window starts with. Opening a window always takes one, so every
@@ -97,12 +97,12 @@ export type NativeOwnerEntry = {
 export type ComposerDraft = {
   state: {
     text: string;
-    content?: readonly CodexPromptPart[];
+    content?: readonly PromptPart[];
     selectionStart: number;
     selectionEnd: number;
     activeCommandId?: string | null;
   };
-  attachments: readonly CodexNativeAttachment[];
+  attachments: readonly NativeAttachment[];
 };
 
 export type ComposerDraftChange = { agentId: string; draft: ComposerDraft | null };

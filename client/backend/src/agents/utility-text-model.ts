@@ -1,8 +1,8 @@
-import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts';
-import type { UtilityTaskComplexity } from '@workspace/core/backend-driver';
+import type { HarnessProvider, ProviderModelOption } from '@workspace/core/contracts';
+import type { UtilityTaskComplexity } from '@workspace/core/provider-driver';
 
 /** Fixed families per task tier; native catalogs supply usable IDs, never another provider. */
-const preferences: Record<AgentBackend, Record<UtilityTaskComplexity, readonly RegExp[]>> = {
+const preferences: Record<HarnessProvider, Record<UtilityTaskComplexity, readonly RegExp[]>> = {
   codex: {
     simple: [/^gpt-6\.1-luna\b/i, /^gpt-6-luna\b/i, /\bluna\b/i],
     normal: [/^gpt-6\.1-sol\b/i, /^gpt-6-sol\b/i, /\bsol\b/i],
@@ -17,10 +17,10 @@ const preferences: Record<AgentBackend, Record<UtilityTaskComplexity, readonly R
   },
 };
 
-export function utilityTextModel(backend: AgentBackend, models: readonly BackendModelOption[], complexity: UtilityTaskComplexity = 'simple'): { model: string; reasoningEffort?: string } {
-  const model = preferences[backend][complexity].map(pattern => models.find(model => pattern.test(model.model) || pattern.test(model.displayName)))
+export function utilityTextModel(provider: HarnessProvider, models: readonly ProviderModelOption[], complexity: UtilityTaskComplexity = 'simple'): { model: string; reasoningEffort?: string } {
+  const model = preferences[provider][complexity].map(pattern => models.find(model => pattern.test(model.model) || pattern.test(model.displayName)))
     .find(model => model !== undefined);
-  if (!model) throw new Error(`No ${complexity === 'simple' ? 'lightweight' : complexity} text model is available for ${backend}. Refresh the provider's model catalog and retry.`);
+  if (!model) throw new Error(`No ${complexity === 'simple' ? 'lightweight' : complexity} text model is available for ${provider}. Refresh the provider's model catalog and retry.`);
   const efforts = model.supportedReasoningEfforts;
   const desired = { simple: 'low', normal: 'medium', complex: 'high' }[complexity];
   const reasoningEffort = efforts?.find(effort => effort.reasoningEffort === desired)?.reasoningEffort

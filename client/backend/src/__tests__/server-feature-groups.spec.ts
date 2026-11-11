@@ -22,7 +22,7 @@ async function fixture() {
     await git('git', ['init', '-b', 'main', primary]);
     await git('git', ['-C', primary, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'initial']);
     await git('git', ['-C', primary, 'worktree', 'add', '-b', 'feat1', folder]);
-    const agent = { ...source, id: repo, name: repo, folder, backendSession: undefined, workspace: { kind: 'git' as const, folder, repositoryName: repo, repositoryRoot: folder, primaryWorktreeRoot: primary, branch: 'feat1', defaultBranch: 'main', isLinkedWorktree: true, updatedAt: '' } };
+    const agent = { ...source, id: repo, name: repo, folder, providerSession: undefined, workspace: { kind: 'git' as const, folder, repositoryName: repo, repositoryRoot: folder, primaryWorktreeRoot: primary, branch: 'feat1', defaultBranch: 'main', isLinkedWorktree: true, updatedAt: '' } };
     snapshot.agents.push(agent); snapshot.teams[0]!.agentIds.push(agent.id);
   }
   const store = new AppStateStore(join(root, 'state'));

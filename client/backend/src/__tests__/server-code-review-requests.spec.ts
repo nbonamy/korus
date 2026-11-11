@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { claudeBackendCapabilities, codexBackendCapabilities, defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import type { AgentBackendDriver, BackendCodeReviewResult } from '@workspace/core/backend-driver';
+import { claudeProviderCapabilities, codexProviderCapabilities, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { AgentProviderDriver, ProviderCodeReviewResult } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-tool-registry';
@@ -14,22 +14,22 @@ describe('AppBackendServer code review workflow', () => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'debug-owner', teamId: snapshot.teams[0]!.id, name: 'Debug owner', folder: '/repo',
-      backend: 'codex', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
+      provider: 'codex', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
     };
     snapshot.agents = [owner];
     snapshot.teams[0]!.agentIds = [owner.id];
     const interrupt = vi.fn();
     const runCodeReview = vi.fn();
     const stopAgentMonitors = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities, runCodeReview, interrupt,
+    const driver: AgentProviderDriver = {
+      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities, runCodeReview, interrupt,
       sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn(),
     };
     const server = new AppBackendServer({
       stopAgentMonitors,
       version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined),
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       codeReviewTools: {
         createReviewToolContext: () => ({ id: 'debug-context', url: 'http://review.test/mcp' }),
         closeReviewToolContext: vi.fn(),
@@ -76,9 +76,9 @@ describe('AppBackendServer code review workflow', () => {
     const snapshot = createTestSnapshot();
     snapshot.sourceFolder = { path: '/repo', initialized: true, recentRepoNames: [] };
     const reviewer: Agent = {
-      id: 'reviewer', teamId: 'team-test', name: 'Review', folder: '/repo', backend: 'claude',
+      id: 'reviewer', teamId: 'team-test', name: 'Review', folder: '/repo', provider: 'claude',
       status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
-      backendSession: { kind: 'claude', sessionId: 'saved-review-thread', transport: 'stdio' },
+      providerSession: { kind: 'claude', sessionId: 'saved-review-thread', transport: 'stdio' },
       codeReview: {
         id: 'saved-review', targetAgentId: 'reviewer', reviewerAgentId: 'reviewer',
         scope: { type: 'uncommitted' }, threadMode: 'current', status,
@@ -110,9 +110,9 @@ describe('AppBackendServer code review workflow', () => {
       }
       return { text: '', reviewerSession: input.reviewerSession };
     });
-    const driver: AgentBackendDriver = {
-      backend: 'claude', getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }),
-      getCapabilities: () => claudeBackendCapabilities,
+    const driver: AgentProviderDriver = {
+      provider: 'claude', getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
+      getCapabilities: () => claudeProviderCapabilities,
       authenticate: async () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }),
       runCodeReview, sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
       onEvent: () => () => undefined, close: vi.fn(),
@@ -120,8 +120,8 @@ describe('AppBackendServer code review workflow', () => {
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test', snapshot, saveSnapshot,
-      driverRpc: new BackendDriverRpc(new Map([['claude', driver]])),
-      providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true }] } as never,
+      driverRpc: new ProviderDriverRpc(new Map([['claude', driver]])),
+      providerSetup: { isChanging: () => false, list: () => [{ provider: 'claude', installed: true }] } as never,
       codeReviewTools: {
         createReviewToolContext: (agentId, sessionId, handlers) => {
           const context = registry.create(agentId, sessionId, handlers);
@@ -188,7 +188,7 @@ describe('AppBackendServer code review workflow', () => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
-      backend: 'codex', status: { type: 'idle' },
+      provider: 'codex', status: { type: 'idle' },
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
       codeReview: {
         id: 'review-1', targetAgentId: 'agent-owner', reviewerAgentId: 'agent-owner', scope: { type: 'uncommitted' },
@@ -208,7 +208,7 @@ describe('AppBackendServer code review workflow', () => {
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test', snapshot,
-      driverRpc: new BackendDriverRpc(new Map()),
+      driverRpc: new ProviderDriverRpc(new Map()),
       saveSnapshot,
       codeReviewTools: {
         createReviewToolContext: () => ({ id: 'unused', url: 'http://review.test/mcp' }),
@@ -229,16 +229,16 @@ describe('AppBackendServer code review workflow', () => {
     await server.close();
   });
 
-  it.each(['codex', 'claude', 'antigravity'] as const)('retains %s review conversations through review again and finish', async (backend) => {
+  it.each(['codex', 'claude', 'antigravity'] as const)('retains %s review conversations through review again and finish', async (provider) => {
     const snapshot = createTestSnapshot();
-    snapshot.providerConnections?.push({ backend: 'antigravity', installed: true, connected: true, checking: false });
+    snapshot.providerConnections?.push({ provider: 'antigravity', installed: true, connected: true, checking: false });
     const owner: Agent = {
       id: 'agent-owner',
       teamId: snapshot.teams[0]!.id,
       name: 'Owner',
       folder: '/repo',
-      backend: 'codex' as const,
-      backendDefaults: { kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' },
+      provider: 'codex' as const,
+      providerDefaults: { kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' },
       status: { type: 'idle' as const },
       createdAt: '2026-09-19T10:00:00.000Z',
       updatedAt: '2026-09-19T10:00:00.000Z',
@@ -271,9 +271,9 @@ describe('AppBackendServer code review workflow', () => {
       }
       return {
         text: '',
-        reviewerSession: input.reviewerSession ?? (backend === 'codex'
+        reviewerSession: input.reviewerSession ?? (provider === 'codex'
           ? { kind: 'codex' as const, threadId: `review-thread-${reviewRun}` }
-          : backend === 'claude' ? { kind: 'claude' as const, sessionId: `review-thread-${reviewRun}`, transport: 'stdio' as const }
+          : provider === 'claude' ? { kind: 'claude' as const, sessionId: `review-thread-${reviewRun}`, transport: 'stdio' as const }
           : { kind: 'antigravity' as const, sessionId: `review-thread-${reviewRun}` }),
       };
     });
@@ -286,14 +286,14 @@ describe('AppBackendServer code review workflow', () => {
     const saveCodeReviewReport = vi.fn().mockResolvedValue('/reports/review.md');
     const releaseConversation = vi.fn();
     const sendAgentMessage = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend,
-      getRuntimeStatus: () => ({ backend, status: 'running' }),
-      getCapabilities: () => defaultBackendCapabilities(backend),
+    const driver: AgentProviderDriver = {
+      provider: provider,
+      getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
+      getCapabilities: () => defaultProviderCapabilities(provider),
       runCodeReview,
       forkWorktreeConversation,
       disposeCodeReview,
-      ...(backend === 'codex' ? { archiveAgentConversation } : {}),
+      ...(provider === 'codex' ? { archiveAgentConversation } : {}),
       releaseConversation,
       sendPrompt: vi.fn(),
       interrupt: vi.fn(),
@@ -307,7 +307,7 @@ describe('AppBackendServer code review workflow', () => {
       snapshot,
       sendAgentMessage,
       saveCodeReviewReport,
-      driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([[provider, driver]])),
       saveSnapshot: vi.fn().mockResolvedValue(undefined),
       codeReviewTools: {
         createReviewToolContext: (agentId, _sessionId, handlers) => {
@@ -320,7 +320,7 @@ describe('AppBackendServer code review workflow', () => {
 
     const started = await request(server, backendMethods.agentCodeReviewStart, {
       agentId: owner.id,
-      input: { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend, model: 'review-model', reasoningEffort: 'low' }, instructions: 'Focus on permission boundaries.' },
+      input: { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { provider: provider, model: 'review-model', reasoningEffort: 'low' }, instructions: 'Focus on permission boundaries.' },
     });
     const reviewer = snapshot.agents.find((candidate) => candidate.codeReview?.targetAgentId === owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
@@ -340,14 +340,14 @@ describe('AppBackendServer code review workflow', () => {
     expect(reviewer).toMatchObject({
       name: '👀 Owner',
       folder: owner.folder,
-      backend,
-      backendDefaults: { kind: backend, model: 'review-model', ...(backend === 'antigravity' ? {} : { reasoningEffort: 'low' }) },
+      provider: provider,
+      providerDefaults: { kind: provider, model: 'review-model', ...(provider === 'antigravity' ? {} : { reasoningEffort: 'low' }) },
       teamId: owner.teamId,
     });
     expect(snapshot.agentGitStatuses[reviewer.id]).toStrictEqual(snapshot.agentGitStatuses[owner.id]);
-    expect(owner.backendDefaults).toMatchObject({ model: 'gpt-5.6-sol', reasoningEffort: 'high' });
-    expect(snapshot.general.codeReviewDefaults?.providers[backend]).toStrictEqual({backend, reasoningEffort: null, serviceTier: null, model: 'review-model', ...(backend === 'antigravity' ? {} : { reasoningEffort: 'low' }) });
-    if (backend === 'antigravity') expect(reviewer.backendDefaults?.reasoningEffort).toBeUndefined();
+    expect(owner.providerDefaults).toMatchObject({ model: 'gpt-5.6-sol', reasoningEffort: 'high' });
+    expect(snapshot.general.codeReviewDefaults?.providers[provider]).toStrictEqual({provider: provider, reasoningEffort: null, serviceTier: null, model: 'review-model', ...(provider === 'antigravity' ? {} : { reasoningEffort: 'low' }) });
+    if (provider === 'antigravity') expect(reviewer.providerDefaults?.reasoningEffort).toBeUndefined();
     const round = session.rounds[0]!;
     expect(runCodeReview).toHaveBeenNthCalledWith(1, reviewer, expect.objectContaining({
       reviewMcpServerUrl: expect.stringContaining('reviewContextId=1'),
@@ -362,8 +362,8 @@ describe('AppBackendServer code review workflow', () => {
     await vi.waitFor(() => expect(session.status).toBe('readyToFinish'));
 
     expect(runCodeReview).toHaveBeenNthCalledWith(2, reviewer, expect.objectContaining({
-      reviewerSession: backend === 'codex' ? { kind: 'codex', threadId: 'review-thread-1' }
-        : backend === 'claude' ? { kind: 'claude', sessionId: 'review-thread-1', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'review-thread-1' },
+      reviewerSession: provider === 'codex' ? { kind: 'codex', threadId: 'review-thread-1' }
+        : provider === 'claude' ? { kind: 'claude', sessionId: 'review-thread-1', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'review-thread-1' },
     }));
     expect(round.findings[0]!.remediation.state).toBe('fixed');
 
@@ -380,7 +380,7 @@ describe('AppBackendServer code review workflow', () => {
     expect(snapshot.agents).toStrictEqual([owner, neighbor, leading]);
     expect(snapshot.agentGitStatuses[reviewer.id]).toBeUndefined();
     expect(disposeCodeReview).not.toHaveBeenCalled();
-    expect(archiveAgentConversation).toHaveBeenCalledTimes(backend === 'codex' ? 1 : 0);
+    expect(archiveAgentConversation).toHaveBeenCalledTimes(provider === 'codex' ? 1 : 0);
     expect(saveCodeReviewReport).toHaveBeenCalledTimes(2);
     expect(releaseConversation).toHaveBeenCalledExactlyOnceWith(reviewer.id);
     expect(finished.activeAgentId).toBe(owner.id);
@@ -405,7 +405,7 @@ describe('AppBackendServer code review workflow', () => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
-      backend: 'codex', status: { type: 'idle' },
+      provider: 'codex', status: { type: 'idle' },
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
     };
     snapshot.agents.push(owner);
@@ -413,14 +413,14 @@ describe('AppBackendServer code review workflow', () => {
     let activeHandlers: ReviewToolHandlers | null = null;
     let findingId = '';
     let settleTurn!: () => Promise<void>;
-    const interruptedTurn = new Promise<BackendCodeReviewResult>((resolve, reject) => {
+    const interruptedTurn = new Promise<ProviderCodeReviewResult>((resolve, reject) => {
       settleTurn = async () => {
         if (completion === 'confirmed') await activeHandlers!.finishReviewRound({ findingCount: 1 });
         if (completion === 'reject') reject(new Error('Provider turn cancelled.'));
         else resolve({ text: 'Inspection response.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } });
       };
     });
-    const runCodeReview = vi.fn(async (_agent: Agent, input: Parameters<NonNullable<AgentBackendDriver['runCodeReview']>>[1]) => {
+    const runCodeReview = vi.fn(async (_agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['runCodeReview']>>[1]) => {
       if (!activeHandlers) throw new Error('Missing review tool context.');
       if (!findingId) {
         findingId = (await activeHandlers.reportFinding({
@@ -442,13 +442,13 @@ describe('AppBackendServer code review workflow', () => {
         await new Promise<void>(resolve => setImmediate(resolve));
       }
       return {
-        backendSession: agent.backendSession ?? { kind: 'codex' as const, threadId: 'review-thread' },
+        providerSession: agent.providerSession ?? { kind: 'codex' as const, threadId: 'review-thread' },
       };
     });
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
       runCodeReview,
       sendPrompt: vi.fn(),
       interrupt,
@@ -458,7 +458,7 @@ describe('AppBackendServer code review workflow', () => {
     };
     const server = new AppBackendServer({
       version: 'test', snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       saveSnapshot: vi.fn().mockResolvedValue(undefined),
       codeReviewTools: {
         createReviewToolContext: (_agentId, _sessionId, handlers) => {
@@ -514,16 +514,16 @@ describe('AppBackendServer code review workflow', () => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: null, folder: '/repo',
-      backend: 'codex', status: { type: 'idle' },
+      provider: 'codex', status: { type: 'idle' },
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
     };
     snapshot.agents.push(owner);
     snapshot.teams[0]!.agentIds.push(owner.id);
     const releaseConversation = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
       runCodeReview: vi.fn(async (_agent, input) => {
         await reviewTools.finishReviewRound({ findingCount: 0 });
         return { text: '', reviewerSession: input.reviewerSession ?? { kind: 'codex', threadId: 'review-thread' } };
@@ -539,7 +539,7 @@ describe('AppBackendServer code review workflow', () => {
     const closeReviewToolContext = vi.fn();
     const server = new AppBackendServer({
       version: 'test', snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       saveSnapshot: vi.fn().mockResolvedValue(undefined),
       codeReviewTools: {
         createReviewToolContext: (_agentId, _sessionId, handlers) => {
