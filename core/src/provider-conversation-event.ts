@@ -1,4 +1,5 @@
 import type { MainToRendererEvent } from './contracts';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type ProviderConversationEventView = {
   type: string;
@@ -43,7 +44,8 @@ export function providerConversationEventView(
   };
 }
 
-/** A provider's own conversation frame: daemon-internal input, never published to clients. */
+const nativeFrameTypes = new Set(harnessProviders.flatMap(provider => [`${provider}.conversationSnapshotChanged`, `${provider}.conversationEventReceived`]));
+/** A provider's own conversation frame, for every harness: daemon-internal input, never published to clients. */
 export function isNativeConversationFrame(event: { type: string }): boolean {
-  return /^(codex|claude|cursor|antigravity)\.conversation(SnapshotChanged|EventReceived)$/.test(event.type);
+  return nativeFrameTypes.has(event.type);
 }

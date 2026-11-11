@@ -4560,7 +4560,8 @@ export class AppBackendServer {
     return {
       ...event,
       ...(conversationId ? { conversationId } : {}),
-      seq: sequenced ? this.nextEventSeq() : this.lastEventSeq,
+      // Internal events take no place in the client sequence; 0 is never a published number.
+      seq: sequenced ? this.nextEventSeq() : 0,
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     };
   }

@@ -2108,8 +2108,8 @@ function subscribeToMainEvents(): void {
 
   unsubscribeMainEvents?.();
   unsubscribeMainEvents = appApi.onEvent((event: MainToRendererEvent) => {
-    if (traceConversationLoad && event.type === 'codex.conversationSnapshotChanged') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer',
-      stage: 'frame.received', agentId: event.agentId, threadId: event.threadId, revision: event.payload.revision, seq: event.seq,
+    if (traceConversationLoad && event.type === 'conversation.sessionSnapshot') console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer',
+      stage: 'frame.received', agentId: event.agentId, conversation: event.payload.conversation, revision: event.payload.snapshot.revision, seq: event.seq,
       rendererId: performance.timeOrigin, buffered: Boolean(bufferedMainEvents), at: performance.timeOrigin + performance.now() }));
     if (bufferedMainEvents) {
       bufferedMainEvents.push(event);

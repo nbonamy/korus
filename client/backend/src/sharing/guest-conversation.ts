@@ -9,7 +9,8 @@ export const isSessionConversationEvent = (event: AppBackendEvent): event is Ses
 
 /**
  * The transcript fields a guest sees. Execution settings, permissions, plan mode, the title and the owner's pending
- * requests and answers stay with the owner; the required ones reach guests empty.
+ * requests stay with the owner; the required ones reach guests empty. Messages reach guests whole, as they always
+ * have: the shared transcript is what the owner chose to share, including answers recorded in it.
  */
 const guestFields = new Set<string>(['busy', 'activeTurnId', 'turns', 'historyLoading', 'historyState', 'error', 'goal', 'contextUsage', 'plan'] satisfies (keyof SessionState)[]);
 
