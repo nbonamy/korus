@@ -5,10 +5,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../support/backend-fixture';
 import { windowState } from '../../src/window-state';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
-import {
-  codexConversationSnapshot,
-  codexTextMessage,
-} from '../support/codex-conversation-fixtures';
+import { sessionSnapshotEvent, sessionState, textMessage } from '../support/conversation-fixtures';
 
 vi.mock('../../src/shared/confetti/canvas-celebration', () => ({ launchCanvasCelebration: vi.fn() }));
 
@@ -145,11 +142,9 @@ describe('split-screen conversations', () => {
     let finishPreview!: (result: { kind: 'text'; path: string; content: string; size: number }) => void;
     api.previewAgentFile.mockImplementation(() => new Promise(resolve => { finishPreview = resolve; }));
     api.loadConversationHistory.mockImplementation(async id => {
-      emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: id, threadId: `thread-${id}`,
-        payload: { revision: 1, snapshot: codexConversationSnapshot([
-          codexTextMessage(`links-${id}`, 'assistant', `[Readme](</workspace/${id}/README.md>) [Example](https://example.com)`),
-        ], { activeConversationId: `thread-${id}` }) },
-      });
+      emit(sessionSnapshotEvent(id, sessionState({
+        messages: [textMessage(`links-${id}`, 'assistant', `[Readme](</workspace/${id}/README.md>) [Example](https://example.com)`, { agentId: id })],
+      }), { conversation: `thread-${id}` }));
       return snapshot;
     });
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -355,8 +350,7 @@ describe('split-screen conversations', () => {
     api.loadConversationHistory.mockImplementation(async (id) => {
       if (id === second!.id) {
         await coldHistory;
-        emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: second!.id,
-          threadId: 'cold-thread', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'cold-thread' }) } });
+        emit(sessionSnapshotEvent(second!.id, sessionState(), { conversation: 'cold-thread' }));
       }
       return snapshot;
     });
@@ -544,36 +538,19 @@ describe('split-screen conversations', () => {
       teams: snapshot.teams.map((team) => ({ ...team, activeAgentId: id })),
     }));
     api.loadConversationHistory.mockImplementation(async (id) => {
-      emit({
-        type: 'codex.conversationSnapshotChanged',
-        provider: 'codex',
-        agentId: id,
-        threadId: `thread-${id}`,
-        payload: {
-          revision: 1,
-          snapshot: codexConversationSnapshot(
-            [
-              codexTextMessage(
-                `message-${id}`,
-                'assistant',
-                `Conversation ${id}`,
-                `turn-${id}`,
-              ),
-            ],
-            {
-              activeConversationId: `thread-${id}`,
-              turnIds: [`turn-${id}`],
-              executionPlan: {
-                turnId: `turn-${id}`,
-                explanation: `Plan for ${id}`,
-                steps: [{ step: `Work for ${id}`, status: 'inProgress' }],
-                markdown: '',
-                updatedAt: '2026-09-28T00:00:00Z',
-              },
-            },
-          ),
+      emit(sessionSnapshotEvent(id, sessionState({
+        messages: [textMessage(`message-${id}`, 'assistant', `Conversation ${id}`, { agentId: id, turnId: `turn-${id}` })],
+        plan: {
+          threadId: `thread-${id}`,
+          turnId: `turn-${id}`,
+          kind: 'execution',
+          status: 'inProgress',
+          explanation: `Plan for ${id}`,
+          steps: [{ step: `Work for ${id}`, status: 'inProgress' }],
+          markdown: '',
+          updatedAt: '2026-09-28T00:00:00Z',
         },
-      });
+      }), { conversation: `thread-${id}` }));
       return snapshot;
     });
     const wrapper = mount(App, {
@@ -716,31 +693,18 @@ describe('split-screen conversations', () => {
       attachTo: document.body,
     });
     await flushPromises();
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: first!.id, threadId: 'background-thread',
-      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    emit(sessionSnapshotEvent(first!.id, sessionState(), { conversation: 'background-thread', revision: 1 }));
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
     const editor = wrapper.findAll('[contenteditable="true"]')[1]!;
     (editor.element as HTMLElement).focus();
     await flushPromises();
     const historyLoads = api.loadConversationHistory.mock.calls.length;
-    emit({
-      type: 'codex.conversationSnapshotChanged',
-      provider: 'codex',
-      agentId: first!.id,
-      threadId: 'background-thread',
-      payload: {
-        revision: 1,
-        snapshot: codexConversationSnapshot(
-          [codexTextMessage('working', 'assistant', 'Working')],
-          {
-            busy: true,
-            activeTurnId: 'turn',
-            activeConversationId: 'background-thread',
-          },
-        ),
-      },
-    });
+    emit(sessionSnapshotEvent(first!.id, sessionState({
+      messages: [textMessage('working', 'assistant', 'Working', { agentId: first!.id, turnId: 'turn', status: 'streaming' })],
+      busy: true,
+      activeTurnId: 'turn',
+    }), { conversation: 'background-thread', revision: 2 }));
     await flushPromises();
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),

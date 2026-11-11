@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
+import type { Agent, BackendPublishedEvent } from "@workspace/core/contracts";
 import { TurnClock } from "../turn-clock";
 import { UsageLedger } from "../usage-ledger";
 import { UsageService } from "../usage-service";
@@ -28,7 +28,7 @@ it("records a turn's real working time from backend events, not from the provide
     model: "m",
   };
   const event = (type: string, payload: unknown = {}) =>
-    ({ agentId: "a", type, payload }) as unknown as MainToRendererEvent;
+    ({ agentId: "a", provider: "codex", type, payload, seq: 0, occurredAt: "" }) as unknown as BackendPublishedEvent;
   try {
     service.observe({ ...base, phase: "started", at: Date.now() });
     now = 1000;
@@ -41,49 +41,27 @@ it("records a turn's real working time from backend events, not from the provide
     service.observeEvent(event("agent.statusChanged", { type: "working" }));
     now = 32000;
     service.observeEvent(
-      event("codex.conversationEventReceived", {
-        event: { type: "message.delta", payload: {} },
-      }),
+      event("turn.output"),
     );
     // Two tools in parallel, including a status update on an existing tool.
     now = 33000;
     service.observeEvent(
-      event("codex.conversationEventReceived", {
-        event: {
-          type: "tool.started",
-          payload: { toolPart: { id: "a", status: "running" } },
-        },
-      }),
+      event("tool.updated", { tool: { id: "a", status: "running" } }),
     );
     service.observeEvent(
-      event("codex.conversationEventReceived", {
-        event: {
-          type: "tool.started",
-          payload: { toolPart: { id: "b", status: "running" } },
-        },
-      }),
+      event("tool.updated", { tool: { id: "b", status: "running" } }),
     );
     now = 34000;
     service.observeEvent(event("agent.statusChanged", { type: "awaitingInput" }));
     now = 35000;
     service.observeEvent(
-      event("codex.conversationEventReceived", {
-        event: {
-          type: "tool.completed",
-          payload: { toolPart: { id: "a", status: "completed" } },
-        },
-      }),
+      event("tool.updated", { tool: { id: "a", status: "completed" } }),
     );
     now = 36000;
     service.observeEvent(event("agent.statusChanged", { type: "working" }));
     now = 38000;
     service.observeEvent(
-      event("codex.conversationEventReceived", {
-        event: {
-          type: "tool.updated",
-          payload: { update: { itemId: "b", status: "completed" } },
-        },
-      }),
+      event("tool.updated", { tool: { id: "b", status: "completed" } }),
     );
     now = 42000;
     service.observe({

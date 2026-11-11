@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Message, MessagePart } from '@korus-dev/multi-agent-sdk';
 import { product } from '../product';
 import { isBookkeepingTool } from '../bookkeeping-tools';
-import { createClaudeConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
-import { createCursorConversationReplica, emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
-import { createAntigravityConversationReplica, emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 
 // Korus's own status tools report on a turn; the text before them is still the turn's answer.
 const tool = (id: string, metadata?: Record<string, unknown>): MessagePart => ({ type: 'tool', id, kind: 'generic', title: id, status: 'completed', ...(metadata ? { metadata } : {}) });
@@ -16,12 +14,15 @@ const phases = (messages: readonly Message[]) => messages.flatMap(m => m.parts.f
 const claude = { agentId: 'agent', sessionId: 's', activeTurnId: null, turnIds: [], turns: [], messages: turn, answeredClientRequestIds: [], busy: false,
   historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
 
+const transcript = (provider: 'claude' | 'cursor' | 'antigravity') => provider === 'claude' ? claude
+  : { agentId: 'agent', sessionId: 's', activeTurnId: null, turns: [], messages: turn, clientRequests: [], answeredClientRequestIds: [], busy: false, historyLoading: false,
+    historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, error: null, ...(provider === 'cursor' ? { plan: null } : {}) };
+
 describe('Korus bookkeeping tools in work phases', () => {
-  it.each([
-    ['claude', () => createClaudeConversationReplica(structuredClone(claude), { isBookkeepingTool })],
-    ['cursor', () => createCursorConversationReplica({ ...emptyCursorSnapshot('agent', 's'), messages: structuredClone(turn) }, { isBookkeepingTool })],
-    ['antigravity', () => createAntigravityConversationReplica({ ...emptyAntigravitySnapshot('agent', 's'), messages: structuredClone(turn) }, { isBookkeepingTool })],
-  ])('keeps the text before finish-turn and set-status as the %s final answer', (_provider, create) => {
-    expect(phases(create().getSnapshot().messages)).toStrictEqual([['Reading.', 'commentary'], ['All done.', 'final_answer']]);
+  it.each(['claude', 'cursor', 'antigravity'] as const)('keeps the text before finish-turn and set-status as the %s final answer', provider => {
+    const { harness, script } = createScriptedHarness(provider, { isBookkeepingTool });
+    const session = harness.open({ id: 'agent', folder: '/work' });
+    script.emit({ type: `${provider}.conversationSnapshotChanged`, agentId: 'agent', provider, payload: { revision: 1, snapshot: structuredClone(transcript(provider)) } } as never);
+    expect(phases(harness.readSession(session).messages)).toStrictEqual([['Reading.', 'commentary'], ['All done.', 'final_answer']]);
   });
 });

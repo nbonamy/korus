@@ -1,10 +1,10 @@
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
-import { nativePresentation } from '../support/session-conversation-fixtures';
+import { conversationFrom, sessionState, textMessage } from '../support/conversation-fixtures';
 import type {
   NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
-import type { CodexConversationMessage } from '@korus-dev/multi-agent-sdk/codex';
+import type { Message } from '@korus-dev/multi-agent-sdk';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -13,7 +13,6 @@ import type { AppCommand, AppApi } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemComposerPrompt } from '@workspace/core/work-item-prompts';
 import { setElectronTestClient } from '../support/client';
 import { useAppState } from '../../src/app-state';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 
 import {
@@ -330,7 +329,7 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mountShell({
       realConversationPane: true,
       previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('video', 'assistant', '[Film](film.mp4)')]),
+      conversation: sessionState({ messages: [textMessage('video', 'assistant', '[Film](film.mp4)')] }),
     });
     const link = wrapper.get('a[href="film.mp4"]');
     await link.trigger('click');
@@ -364,9 +363,9 @@ describe('AppShell workspace and plans', () => {
         snapshot,
         realConversationPane: true,
         previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('video', 'assistant', '[Film](film.mp4)'),
-        ]),
+        conversation: sessionState({ messages: [
+          textMessage('video', 'assistant', '[Film](film.mp4)'),
+        ] }),
       });
       await wrapper.get('a[href="film.mp4"]').trigger('click');
       await flushPromises();
@@ -394,9 +393,9 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mountShell({
       realConversationPane: true,
       previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[First](docs/first.md) [Second](docs/second.md:12)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[First](docs/first.md) [Second](docs/second.md:12)'),
+      ] }),
     });
     const transfer = { effectAllowed: 'all', dropEffect: 'none' };
     await wrapper.get('a[href="docs/first.md"]').trigger('dragstart', { dataTransfer: transfer });
@@ -427,9 +426,9 @@ describe('AppShell workspace and plans', () => {
     const externalOpen = vi.spyOn(window, 'open');
     const wrapper = mountShell({
       realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[Example](https://example.com/docs) [Other](https://example.org/)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[Example](https://example.com/docs) [Other](https://example.org/)'),
+      ] }),
     });
     await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text().includes('Browser'))!.trigger('click');
@@ -457,9 +456,9 @@ describe('AppShell workspace and plans', () => {
     const previewAgentFile = vi.fn();
     const wrapper = mountShell({
       realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[File](docs/first.md) [Email](mailto:hello@example.com)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[File](docs/first.md) [Email](mailto:hello@example.com)'),
+      ] }),
     });
     await wrapper.get('a[href="docs/first.md"]').trigger('dragstart', { dataTransfer: {} });
     expect(wrapper.find('[aria-label="Drop link to open in sidebar"]').exists()).toBe(true);
@@ -478,9 +477,9 @@ describe('AppShell workspace and plans', () => {
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path: 'README.md', content: '# Dina project', size: 14 });
     const wrapper = mountShell({
       snapshot, realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('link', 'assistant', '[Readme](README.md)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('link', 'assistant', '[Readme](README.md)'),
+      ] }),
     });
     await wrapper.get('a[href="README.md"]').trigger('dragstart', { dataTransfer: {} });
     await wrapper.setProps({ activeAgent: snapshot.agents[1] });
@@ -1109,9 +1108,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
-        ]) }),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1167,9 +1166,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('message-source-link', 'assistant', 'Open [main](src/main.ts).'),
-        ]) }),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-source-link', 'assistant', 'Open [main](src/main.ts).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1337,14 +1336,14 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('message-preview-links', 'assistant', [
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-preview-links', 'assistant', [
             'Open [relative](README.md:40),',
             '[line URL](file:///Users/nbonamy/src/id8/README.md:40:2),',
             '[encoded URL](file:///Users/nbonamy/src/id8/src/file%20name.ts),',
             'and [external](file:///Users/nbonamy/dotfiles/.agents/skills/writing-for-agents/SKILL.md).',
           ].join(' ')),
-        ]) }),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1391,9 +1390,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]) }),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1425,9 +1424,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]) }),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1634,8 +1633,9 @@ describe('AppShell workspace and plans', () => {
   it('locks plan review actions while a plan progress tool is running', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Previous Plan', status: 'pending' };
-    const planProgressMessage: CodexConversationMessage = {
+    const planProgressMessage: Message = {
       id: 'assistant-turn-plan',
+      agentId: snapshot.agents[0]!.id,
       role: 'assistant',
       status: 'streaming',
       turnId: 'turn-plan',
@@ -1655,11 +1655,11 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([planProgressMessage], {
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({
+          messages: [planProgressMessage],
           activeTurnId: 'turn-plan',
-          turnIds: ['turn-plan'],
           busy: true,
-        }) }),
+        })),
         isLoading: false,
         isSending: true,
         planMode: true,

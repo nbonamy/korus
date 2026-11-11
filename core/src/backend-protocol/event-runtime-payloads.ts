@@ -1,8 +1,6 @@
 import { operationCapabilityFlags } from '../capability-flags';
-import { isCursorEvent, isCursorSnapshot } from '../cursor-conversation-guards';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
-import { isAntigravityEvent, isAntigravitySnapshot } from '../antigravity-conversation-guards';
 import { isProviderAuthentication } from '../contracts/provider-setup';
 import { isAppTextDescriptor } from '../app-text';
 import { isAccountRateLimits } from '../snapshot-guard-collections';
@@ -306,117 +304,11 @@ function expectId(value: unknown, path: string): void {
   expectString(value.id, `${path}.id`);
 }
 
-function expectCodexConversationSnapshot(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectString(value.activeConversationId, `${path}.activeConversationId`);
-  expectArray(value.turnIds, `${path}.turnIds`, expectString);
-  expectArray(value.turns, `${path}.turns`, (turn, turnPath) => {
-    expectRecord(turn, turnPath);
-    expectString(turn.id, `${turnPath}.id`);
-    expectLiteral(turn.status, ['completed', 'interrupted', 'failed', 'inProgress'], `${turnPath}.status`);
-  });
-  expectArray(value.messages, `${path}.messages`, (message, messagePath) => {
-    expectRecord(message, messagePath);
-    expectString(message.id, `${messagePath}.id`);
-    expectLiteral(message.role, ['user', 'assistant'], `${messagePath}.role`);
-    expectArray(message.parts, `${messagePath}.parts`, expectRecord);
-  });
-  expectNullable(value.activeTurnId, `${path}.activeTurnId`, expectString);
-  expectArray(value.turnIds, `${path}.turnIds`, expectString);
-  expectBoolean(value.busy, `${path}.busy`);
-  expectBoolean(value.historyLoading, `${path}.historyLoading`);
-  expectRecord(value.historyState, `${path}.historyState`);
-  expectBoolean(value.historyState.hasOlder, `${path}.historyState.hasOlder`);
-  expectBoolean(value.historyState.loadingOlder, `${path}.historyState.loadingOlder`);
-}
 
-function expectCodexConversationEvent(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectNumber(value.seq, `${path}.seq`);
-  expectString(value.occurredAt, `${path}.occurredAt`);
-  expectLiteral(value.origin, ['action', 'notification', 'lifecycle'], `${path}.origin`);
-  expectString(value.type, `${path}.type`);
-  expectString(value.conversationId, `${path}.conversationId`);
-  expectOptional(value, 'turnId', path, expectString);
-  expectRecord(value.payload, `${path}.payload`);
-}
 
-function expectClaudeConversationSnapshot(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectString(value.agentId, `${path}.agentId`);
-  expectNullable(value.sessionId, `${path}.sessionId`, expectString);
-  expectNullable(value.activeTurnId, `${path}.activeTurnId`, expectString);
-  expectArray(value.turns, `${path}.turns`, (turn, turnPath) => {
-    expectRecord(turn, turnPath);
-    expectString(turn.id, `${turnPath}.id`);
-    expectLiteral(turn.status, ['inProgress', 'completed', 'interrupted', 'failed'], `${turnPath}.status`);
-  });
-  expectArray(value.messages, `${path}.messages`, (message, messagePath) => {
-    expectRecord(message, messagePath);
-    expectString(message.id, `${messagePath}.id`);
-    expectString(message.agentId, `${messagePath}.agentId`);
-    expectLiteral(message.role, ['user', 'assistant', 'system'], `${messagePath}.role`);
-    expectArray(message.parts, `${messagePath}.parts`, expectRecord);
-  });
-  expectArray(value.answeredClientRequestIds, `${path}.answeredClientRequestIds`, expectString);
-  expectBoolean(value.busy, `${path}.busy`);
-  expectNullable(value.contextUsage, `${path}.contextUsage`, expectRecord);
-  expectNullable(value.plan, `${path}.plan`, expectRecord);
-  expectNullable(value.error, `${path}.error`, expectString);
-}
 
-function expectClaudeConversationEvent(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectNumber(value.seq, `${path}.seq`);
-  expectString(value.occurredAt, `${path}.occurredAt`);
-  expectString(value.agentId, `${path}.agentId`);
-  expectLiteral(value.provider, ['claude'], `${path}.provider`);
-  expectLiteral(value.type, [
-    'history.prepended',
-    'turn.historyUpdated',
-    'message.replaced',
-    'context.usageUpdated',
-    'turn.started',
-    'turn.proposedPlanDelta',
-    'turn.proposedPlanCompleted',
-    'turn.executionPlanUpdated',
-    'turn.completed',
-    'context.compactionStarted',
-    'context.compactionCompleted',
-    'message.delta',
-    'message.userSubmitted',
-    'item.started',
-    'item.updated',
-    'approval.requested',
-    'toolInput.requested',
-    'clientRequest.resolved',
-    'error',
-  ], `${path}.type`);
-  expectOptional(value, 'providerSessionId', path, expectString);
-  expectOptional(value, 'threadId', path, expectString);
-  expectOptional(value, 'turnId', path, expectString);
-  expectRecord(value.payload, `${path}.payload`);
-}
 
 export const runtimePayloadValidators = {
-  'cursor.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorSnapshot(value.snapshot)) throw new Error('Invalid Cursor conversation snapshot.');
-  },
-  'cursor.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorEvent(value.event)) throw new Error('Invalid Cursor conversation event.');
-  },
-  'antigravity.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    if (!isAntigravitySnapshot(value.snapshot)) throw new Error('Invalid Antigravity conversation snapshot.');
-  },
-  'antigravity.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    if (!isAntigravityEvent(value.event)) throw new Error('Invalid Antigravity conversation event.');
-  },
   'conversation.sessionSnapshot': (value, path) => {
     expectRecord(value, path);
     expectNullable(value.conversation, `${path}.conversation`, expectString);
@@ -433,6 +325,31 @@ export const runtimePayloadValidators = {
     expectRecord(value.patch, `${path}.patch`);
     if (!Number.isSafeInteger(value.patch.revision) || Number(value.patch.revision) < 1) throw new Error('Invalid conversation session revision.');
     expectArray(value.patch.ops, `${path}.patch.ops`, expectRecord);
+  },
+  // Conversation activity relayed between daemons.
+  'turn.started': expectRecord,
+  'turn.output': expectRecord,
+  'diff.updated': expectRecord,
+  'turn.completed': (value, path) => {
+    expectRecord(value, path);
+    expectString(value.status, `${path}.status`);
+    if (typeof value.willRetry !== 'boolean') throw new Error('Invalid turn completion.');
+  },
+  'session.error': (value, path) => {
+    expectRecord(value, path);
+    expectRecord(value.error, `${path}.error`);
+    expectString(value.error.message, `${path}.error.message`);
+  },
+  'tool.updated': (value, path) => {
+    expectRecord(value, path);
+    expectRecord(value.tool, `${path}.tool`);
+    expectString(value.tool.id, `${path}.tool.id`);
+    expectLiteral(value.tool.status, ['running', 'completed', 'failed'], `${path}.tool.status`);
+  },
+  'file.activity': (value, path) => {
+    expectRecord(value, path);
+    expectString(value.action, `${path}.action`);
+    expectString(value.status, `${path}.status`);
   },
   'provider.authenticationChanged': (value, path) => {
     if (!isProviderAuthentication(value)) {
@@ -452,26 +369,6 @@ export const runtimePayloadValidators = {
     expectNullable(value.cwd, `${path}.cwd`, expectString);
     expectLiteral(value.status, ['loaded'], `${path}.status`);
     expectArray(value.skills, `${path}.skills`, expectSkill);
-  },
-  'codex.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectCodexConversationSnapshot(value.snapshot, `${path}.snapshot`);
-  },
-  'codex.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectCodexConversationEvent(value.event, `${path}.event`);
-  },
-  'claude.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectClaudeConversationSnapshot(value.snapshot, `${path}.snapshot`);
-  },
-  'claude.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectClaudeConversationEvent(value.event, `${path}.event`);
   },
   'client.markdownDisplayRequested': expectSidePanelMarkdown,
   'plan.reviewResolved': (value, path) => {

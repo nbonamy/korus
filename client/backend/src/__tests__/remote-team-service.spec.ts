@@ -264,7 +264,7 @@ describe('RemoteTeamService', () => {
     expect(requests).toStrictEqual(['agent/quickChat/create', 'snapshot/get']);
   });
 
-  it('adopts and forwards provider frames without restoring a global transcript', async () => {
+  it('adopts and forwards conversation frames without restoring a global transcript', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
@@ -280,19 +280,11 @@ describe('RemoteTeamService', () => {
       occurredAt: '2026-06-13T00:00:01.000Z',
       agentId: remoteAgent.id,
       provider: 'codex',
-      threadId: 'thread-remote',
-      type: 'codex.conversationEventReceived',
+      type: 'conversation.sessionPatch',
       payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-06-13T00:00:01.000Z',
-          origin: 'notification',
-          conversationId: 'thread-remote',
-          turnId: 'turn-1',
-          type: 'turn.completed',
-          payload: { status: 'completed' },
-        },
+        conversation: 'thread-remote',
+        epoch: 'remote-epoch',
+        patch: { revision: 2, ops: [{ op: 'set', key: 'busy', value: false }] },
       },
       snapshot: remoteSnapshot,
     } as const;

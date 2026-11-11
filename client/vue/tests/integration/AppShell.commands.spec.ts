@@ -1,6 +1,6 @@
 import { appApi } from '../../src/platform-api';
 import { setElectronTestClient } from '../support/client';
-import { nativePresentation } from '../support/session-conversation-fixtures';
+import { conversationFrom, sessionState, textMessage } from '../support/conversation-fixtures';
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
@@ -16,8 +16,6 @@ import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AppCommand, AppApi, Team } from '@workspace/core/contracts';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 import { windowState } from '../../src/window-state';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
 
 import {
   clickPortaledMenuItem,
@@ -90,11 +88,11 @@ describe('AppShell dialogs and commands', () => {
       { id: 'prompt', agentId: agent.id, role: 'user' as const, status: 'complete' as const, createdAt: '', turnId: turn.id, parts: [{ type: 'text' as const, text: 'Check this change.' }] },
       { id: 'answer', agentId: agent.id, role: 'assistant' as const, status: 'complete' as const, createdAt: '', turnId: turn.id, parts: [{ type: 'text' as const, text: 'The change is ready.' }] },
     ];
-    const conversation = codexConversationSnapshot(rows, { turns: [turn], turnIds: [turn.id] });
+    const conversation = sessionState({ messages: rows, turns: [turn] });
     const loadAgentTurnHistory = vi.fn().mockResolvedValue(undefined);
     if (backend === 'claude') { agent.provider = 'claude'; agent.providerSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' }; }
     const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true,
-      ...(backend === 'codex' ? { codexConversationSnapshot: conversation } : { claudeConversationSnapshot: claudeConversationSnapshot(rows, { turns: [turn], turnIds: [turn.id] }) }) });
+      conversation });
     try {
       await wrapper.setProps({ loadAgentTurnHistory }); await flushPromises();
       expect(wrapper.text()).toContain('The change is ready.');
@@ -112,11 +110,9 @@ describe('AppShell dialogs and commands', () => {
     const row = (id: string, text: string, role: 'user' | 'assistant' = 'assistant') => ({ id, agentId: agent.id, role, status: 'complete' as const,
       turnId: id, createdAt: '', parts: [{ type: 'text' as const, text }] });
     const recent = row('recent', 'Recent work'), older = row('older', 'Earlier work'), first = row('first', 'Original request', 'user');
-    const history = (messages: ReturnType<typeof row>[], hasOlder: boolean) => claudeConversationSnapshot(messages, {
-      agentId: agent.id, sessionId: 'session', historyState: { hasOlder, loadingOlder: false },
-    });
+    const history = (messages: ReturnType<typeof row>[], hasOlder: boolean) => sessionState({ messages, historyState: { hasOlder, loadingOlder: false } });
     const loadOlderAgentHistory = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true, claudeConversationSnapshot: history([recent], true) });
+    const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true, conversation: history([recent], true) });
     try {
       await wrapper.setProps({ loadOlderAgentHistory }); await flushPromises();
       const viewport = wrapper.get<HTMLElement>('.agent-ui-message-list__viewport');
@@ -125,11 +121,11 @@ describe('AppShell dialogs and commands', () => {
       viewport.element.scrollTop = 0; await viewport.trigger('scroll');
       expect(loadOlderAgentHistory).toHaveBeenCalledTimes(1);
       await wrapper.setProps({ historyLoadingOlder: true });
-      await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: history([older, recent], true) }), historyLoadingOlder: false });
+      await wrapper.setProps({ conversationPresentation: conversationFrom(agent, history([older, recent], true)), historyLoadingOlder: false });
       await flushPromises(); viewport.element.scrollTop = 0; await viewport.trigger('scroll');
       expect(loadOlderAgentHistory).toHaveBeenCalledTimes(2);
       await wrapper.setProps({ historyLoadingOlder: true });
-      await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: history([first, older, recent], false) }), historyLoadingOlder: false });
+      await wrapper.setProps({ conversationPresentation: conversationFrom(agent, history([first, older, recent], false)), historyLoadingOlder: false });
       await flushPromises();
       expect(wrapper.text()).toContain('Original request');
     } finally { wrapper.unmount(); }
@@ -282,11 +278,8 @@ describe('AppShell dialogs and commands', () => {
       stubAgentWorkspace: false,
       continueInterruptedTurnAction,
       sendPromptAction,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('partial-answer', 'assistant', 'Partial work', 'turn-interrupted'),
-      ], {
-        activeConversationId: 'thread-dina',
-        turnIds: ['turn-interrupted'],
+      conversation: sessionState({
+        messages: [textMessage('partial-answer', 'assistant', 'Partial work', { turnId: 'turn-interrupted' })],
         turns: [{ id: 'turn-interrupted', status: 'interrupted', error: null, willRetry: false,
           startedAt: null, completedAt: null, durationMs: null }],
       }),

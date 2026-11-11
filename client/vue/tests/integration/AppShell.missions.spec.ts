@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMission } from '@workspace/core/missions';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
+import { sessionState, textMessage } from '../support/conversation-fixtures';
 import { conversationControllerActions, conversationControllerState, mountShell, workItem } from '../support/app-shell-test-harness';
 
 const missionStorageKey = 'app.activeMissionId';
@@ -119,7 +119,7 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path, content, size: content.length });
     const wrapper = mountShell({ snapshot, realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', `[Readme](<${target}>)`)]),
+      conversation: sessionState({ messages: [textMessage('links', 'assistant', `[Readme](<${target}>)`)] }),
     });
     try {
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
@@ -214,7 +214,7 @@ describe('AppShell missions', () => {
       .mockRejectedValueOnce(new Error('Document unavailable'))
       .mockResolvedValue({kind:'text',path:'notes.md',content:'# Recovered',size:11});
     const wrapper = mountShell({snapshot,realConversationPane:true,previewAgentFile,
-      codexConversationSnapshot:codexConversationSnapshot([codexTextMessage('document-link','assistant','[Notes](notes.md)')]),
+      conversation: sessionState({ messages: [textMessage('document-link','assistant','[Notes](notes.md)')] }),
     });
     try {
       wrapper.getComponent({name:'AppShellNavigation'}).vm.$emit('select-mission',mission.id);
@@ -265,7 +265,7 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const wrapper = mountShell({ snapshot, realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', '[Example](https://example.com)')]),
+      conversation: sessionState({ messages: [textMessage('links', 'assistant', '[Example](https://example.com)')] }),
     });
     try {
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);

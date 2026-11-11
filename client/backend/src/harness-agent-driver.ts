@@ -76,18 +76,48 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   get coordinationPolicy() { return this.policy.coordinationPolicy; }
 
   private forward(event: HarnessEvent): void {
-    if (event.type === 'provider.event') {
-      if (event.session && this.quiet.has(event.session)) return;
-      // A scoped (review) session reports as the agent it works for, as the daemon tracks one conversation per agent.
-      const agentId = (event.event as { agentId?: string }).agentId;
-      const parent = agentId?.includes(':scope:') ? agentId.split(':scope:')[0] : undefined;
-      const frame = withStatusWording(this.provider, (parent ? { ...event.event, agentId: parent } : event.event) as unknown as BackendEvent);
-      for (const listener of this.listeners) listener(frame);
-    }
-    else if (event.type === 'session.patch') this.publishConversation(event.session, event.patch);
+    if (event.type === 'session.patch') this.publishConversation(event.session, event.patch);
     else if (event.type === 'recovery.required') void this.recover(event.session);
     else if (event.type === 'usage.observed') for (const listener of this.usageListeners) listener(this.attributed(event.observation));
     else if (event.type === 'requestUsage.observed') for (const listener of this.requestUsageListeners) listener(this.attributed(event.observation));
+    else if (event.type !== 'session.changed') {
+      const session = 'session' in event ? event.session : undefined;
+      if (session && this.quiet.has(session)) return;
+      const backend = this.backendEvent(event, session);
+      if (backend) for (const listener of this.listeners) listener(backend);
+    }
+  }
+
+  /**
+   * The daemon event for a harness event. A scoped (review) session reports as the agent it works for, as the daemon
+   * tracks one conversation per agent.
+   */
+  private backendEvent(event: Exclude<HarnessEvent, { type: 'session.changed' | 'session.patch' | 'recovery.required' | 'usage.observed' | 'requestUsage.observed' }>, session: Session | undefined): BackendEvent | undefined {
+    const ownAgentId = 'agentId' in event && typeof event.agentId === 'string' ? event.agentId : undefined;
+    const agentId = (session && this.owners.get(session)) ?? ownAgentId?.split(':scope:')[0];
+    const provider = this.provider;
+    switch (event.type) {
+      case 'status.changed':
+        if (!agentId) return undefined;
+        return withStatusWording(provider, { type: 'agent.statusChanged', agentId, provider, payload: event.status.native ?? event.status } as BackendEvent);
+      case 'request.created':
+        return agentId ? { type: 'agentRequest.created', agentId, provider, ...(event.request.turnId ? { turnId: event.request.turnId } : {}), payload: { request: event.request } } : undefined;
+      case 'request.resolved':
+        return agentId ? { type: 'agentRequest.resolved', agentId, provider, payload: { id: event.id, outcome: event.outcome } } : undefined;
+      case 'plan.readyForReview':
+        return agentId ? { type: 'plan.readyForReview', agentId, provider, turnId: event.turnId,
+          payload: { markdown: event.markdown, ...(event.itemId ? { itemId: event.itemId } : {}), ...(event.requestId ? { requestId: event.requestId } : {}) } } : undefined;
+      case 'turn.started': case 'turn.completed': case 'session.error': case 'tool.updated': case 'turn.output': case 'diff.updated': case 'file.activity': {
+        if (!agentId) return undefined;
+        const { session: _session, type, turnId, conversationId, ...payload } = event;
+        const scope = { agentId, provider, ...(turnId ? { turnId } : {}), ...(conversationId ? { conversationId } : {}) };
+        return { type, ...scope, payload } as BackendEvent;
+      }
+      default: {
+        const { session: _session, ...notice } = event;
+        return withStatusWording(provider, (agentId ? { ...notice, agentId } : notice) as BackendEvent);
+      }
+    }
   }
 
   /** Publishes an agent's conversation as neutral session state: a snapshot when the reader has no base for a patch, otherwise the patch. */

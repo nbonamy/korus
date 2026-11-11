@@ -7,8 +7,7 @@ import type { ProviderApprovalRequest, ProviderConversationRef, AppApi, Conversa
 import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
+import { appendMessages, replaceMessage, runningTurn, sessionPatchEvent, sessionSnapshotEvent, sessionState, setOps, textMessage } from '../support/conversation-fixtures';
 import { deferred } from '../support/app-state-test-harness';
 describe('useAppState', () => {
   it('keeps history failures in the conversation pane without rejecting preparation or retry actions', async () => {
@@ -50,7 +49,7 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalled());
-    listener({ seq: 1, occurredAt: 'now', type: 'codex.conversationSnapshotChanged', agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1', payload: { revision: 1, snapshot: codexConversationSnapshot() } });
+    listener(sessionSnapshotEvent('agent-dina', sessionState(), { seq: 1, conversation: 'thread-1' }));
     await state.selectAgent('agent-jesse');
     const refresh = deferred<ReturnType<typeof createInitialSnapshot>>();
     loadConversationHistory.mockImplementationOnce(() => refresh.promise);
@@ -1016,7 +1015,7 @@ describe('useAppState', () => {
     expect(state.selectedServiceTier.value).toBeNull();
   });
 
-  it('keeps the newest provider-owned Codex conversation frame per agent', async () => {
+  it('keeps the newest snapshot of a conversation per agent and follows its plan mode', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
@@ -1031,55 +1030,31 @@ describe('useAppState', () => {
     });
     const state = useAppState();
     await state.loadSnapshot();
+    const stream = { conversation: 'thread-1' };
 
     for (const [seq, revision, text] of [[1, 2, 'Newest'], [2, 1, 'Stale']] as const) {
-      listeners[0]?.({
-        seq,
-        agentId: 'agent-dina',
-        provider: 'codex',
-        threadId: 'thread-1',
-        type: 'codex.conversationSnapshotChanged',
-        payload: {
-          revision,
-          snapshot: codexConversationSnapshot([
-            codexTextMessage(`message-${text}`, 'assistant', text),
-          ], { planMode: text === 'Newest' }),
-        },
-        occurredAt: `2026-09-06T00:00:0${seq}.000Z`,
-      });
+      listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState({
+        messages: [textMessage(`message-${text}`, 'assistant', text)], planMode: text === 'Newest',
+      }), { ...stream, seq, revision, occurredAt: `2026-09-06T00:00:0${seq}.000Z` }));
     }
 
     expect(state.activeConversationPresentation.value?.messages).toStrictEqual([
       expect.objectContaining({ parts: [{ type: 'text', text: 'Newest' }] }),
     ]);
-    // A recovered/native snapshot must restore the composer even if its
+    // A recovered snapshot must restore the composer even if its
     // transient modeUpdated notification never reached this renderer.
     expect(state.planMode.value).toBe(true);
 
-    listeners[0]?.({
-      seq: 3, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: { revision: 3, event: {
-        seq: 10, type: 'conversation.settingsChanged', conversationId: 'thread-1', origin: 'action',
-        occurredAt: '2026-09-06T00:00:03.000Z',
-        payload: { approvalPreset: null, selectedModelId: null, selectedReasoningEffort: null, selectedServiceTier: null, planMode: false },
-      } },
-      occurredAt: '2026-09-06T00:00:03.000Z',
-    });
+    listeners[0]?.(sessionPatchEvent('agent-dina', 3, setOps({ planMode: false }), { ...stream, seq: 3 }));
     expect(state.planMode.value).toBe(false);
 
     state.setPlanMode(true);
-    listeners[0]?.({
-      seq: 4, agentId: 'agent-dina', provider: 'codex', threadId: 'thread-1',
-      type: 'codex.conversationSnapshotChanged',
-      payload: { revision: 4, snapshot: codexConversationSnapshot([], { planMode: false }) },
-      occurredAt: '2026-09-06T00:00:04.000Z',
-    });
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState({ planMode: false }), { ...stream, seq: 4, revision: 4 }));
     // Unchanged provider settings do not erase an unsent manual toggle.
     expect(state.planMode.value).toBe(true);
   });
 
-  it('projects only the provider snapshot matching the selected agent session', async () => {
+  it('projects only the conversation matching the selected agent session', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-codex' };
@@ -1100,34 +1075,10 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
 
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-codex',
-      type: 'codex.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: codexConversationSnapshot([
-          codexTextMessage('message-codex', 'assistant', 'Codex snapshot'),
-        ], { activeConversationId: 'thread-codex' }),
-      },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-jesse',
-      provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: claudeConversationSnapshot([], {
-          agentId: 'agent-jesse',
-          sessionId: 'session-claude',
-        }),
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState({
+      messages: [textMessage('message-codex', 'assistant', 'Codex snapshot')],
+    }), { seq: 1, conversation: 'thread-codex' }));
+    listeners[0]?.(sessionSnapshotEvent('agent-jesse', sessionState(), { seq: 2, provider: 'claude', conversation: 'session-claude' }));
 
     expect(state.activeConversationPresentation.value?.messages).toStrictEqual([
       expect.objectContaining({ id: 'message-codex' }),
@@ -1152,7 +1103,7 @@ describe('useAppState', () => {
     expect(state.activeConversationPresentation.value).toBeNull();
   });
 
-  it('advances the provider-owned Codex frame with SDK conversation events', async () => {
+  it('advances the conversation with session patches', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
@@ -1167,61 +1118,12 @@ describe('useAppState', () => {
     });
     const state = useAppState();
     await state.loadSnapshot();
+    const stream = { conversation: 'thread-1' };
+    const streaming = { ...textMessage('assistant-1', 'assistant', '', { status: 'streaming', createdAt: '2026-09-06T00:00:02.000Z' }), parts: [] };
 
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationSnapshotChanged',
-      payload: { revision: 1, snapshot: codexConversationSnapshot() },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 10,
-          occurredAt: '2026-09-06T00:00:02.000Z',
-          origin: 'notification',
-          type: 'message.appended',
-          conversationId: 'thread-1',
-          turnId: 'turn-1',
-          payload: {
-            message: {
-              id: 'assistant-1', role: 'assistant', status: 'streaming', turnId: 'turn-1', parts: [],
-              createdAt: '2026-09-06T00:00:02.000Z',
-            },
-          },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
-    listeners[0]?.({
-      seq: 3,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 3,
-        event: {
-          seq: 11,
-          occurredAt: '2026-09-06T00:00:03.000Z',
-          origin: 'notification',
-          type: 'message.delta',
-          conversationId: 'thread-1',
-          turnId: 'turn-1',
-          payload: { messageId: 'assistant-1', itemId: 'item-1', delta: 'Hello' },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:03.000Z',
-    });
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState(), { ...stream, seq: 1, revision: 1 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 2, [appendMessages(0, streaming)], { ...stream, seq: 2 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 3, [replaceMessage(0, { ...streaming, parts: [{ type: 'text', text: 'Hello', itemId: 'item-1' }] })], { ...stream, seq: 3 }));
 
     expect(state.activeConversationPresentation.value?.messages).toEqual([
       expect.objectContaining({
@@ -1246,8 +1148,8 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     await vi.waitFor(() => expect(load).toHaveBeenCalled());
     await nextTick();
-    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
-    receive({ seq: 2, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+    receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
+    receive(sessionSnapshotEvent(claude.id, sessionState(), { seq: 2, provider: 'claude', conversation: 'claude-session-1', revision: 40 }));
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 2, connection: { status: 'connected' } });
     const first = deferred<ReturnType<typeof createInitialSnapshot>>();
     const second = deferred<ReturnType<typeof createInitialSnapshot>>();
@@ -1255,7 +1157,7 @@ describe('useAppState', () => {
     const repair = () => receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
     repair();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
-    receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 41, snapshot: codexConversationSnapshot([], { busy: true }) } });
+    receive(sessionSnapshotEvent(codex.id, sessionState({ busy: true }), { seq: 3, conversation: 'thread-1', revision: 41 }));
     for (let n = 0; n < 20; n++) repair();
     expect(state.activeConversationPresentation.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
@@ -1271,7 +1173,7 @@ describe('useAppState', () => {
     await nextTick();
     const snapshotFetches = getSnapshotState.mock.calls.length;
     expect(snapshotFetches).toBeLessThan(8);
-    receive({ seq: 6, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 41, snapshot: claudeConversationSnapshot([], { agentId: claude.id, busy: true }) } });
+    receive(sessionSnapshotEvent(claude.id, sessionState({ busy: true }), { seq: 6, provider: 'claude', conversation: 'claude-session-1', revision: 41 }));
     await vi.waitFor(() => expect(state.agentConversationFor(claude.id)?.conversation?.busy).toBe(true));
     second.resolve(remote);
     // The repair burst reached the Codex pane after its first recovery completed, so it gets one catch-up load.
@@ -1283,10 +1185,10 @@ describe('useAppState', () => {
     expect(state.activeConversationPresentation.value?.busy).toBe(true);
     expect(state.agentConversationFor(claude.id)?.conversation).not.toBeNull();
     // The owner restarted: its revisions start over, yet its snapshot replaces the frame and its patches follow it.
-    const restarted = { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null };
-    receive({ seq: 8, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionSnapshot', payload: { conversation: 'thread-1', epoch: 'restarted', snapshot: { revision: 0, state: restarted } } });
+    const restarted = { conversation: 'thread-1', epoch: 'restarted' };
+    receive(sessionSnapshotEvent(codex.id, sessionState(), { ...restarted, seq: 8, revision: 0 }));
     expect(state.activeConversationPresentation.value?.busy).toBe(false);
-    receive({ seq: 9, occurredAt: '', agentId: codex.id, provider: 'codex', type: 'conversation.sessionPatch', payload: { conversation: 'thread-1', epoch: 'restarted', patch: { revision: 1, ops: [{ op: 'set', key: 'busy', value: true }] } } });
+    receive(sessionPatchEvent(codex.id, 1, setOps({ busy: true }), { ...restarted, seq: 9 }));
     expect(state.activeConversationPresentation.value?.busy).toBe(true);
   });
 
@@ -1300,7 +1202,7 @@ describe('useAppState', () => {
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
     const state = useAppState();
     await state.loadSnapshot();
-    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
     const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
     load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
@@ -1330,8 +1232,8 @@ describe('useAppState', () => {
       const state = useAppState();
       await state.loadSnapshot();
       await vi.advanceTimersByTimeAsync(0);
-      receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
-      receive({ seq: 2, source: 'provider', occurredAt: '', agentId: claude.id, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 40, snapshot: claudeConversationSnapshot([], { agentId: claude.id }) } });
+      receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
+      receive(sessionSnapshotEvent(claude.id, sessionState(), { seq: 2, provider: 'claude', conversation: 'claude-session-1', revision: 40 }));
       load.mockReset().mockReturnValueOnce(new Promise(() => {})).mockResolvedValue(remote);
       receive({ seq: 0, source: 'client', occurredAt: '', type: 'snapshot.updated', payload: structuredClone(remote) });
       await vi.advanceTimersByTimeAsync(0);
@@ -1340,7 +1242,7 @@ describe('useAppState', () => {
       expect(load.mock.calls.map(call => call[0])).toEqual([codex.id, claude.id]);
       // The Codex hydrate produced no snapshot: its frame stays visible, and the next live event retries.
       expect(state.activeConversationPresentation.value).not.toBeNull();
-      receive({ seq: 3, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationEventReceived', payload: { revision: 41, event: { seq: 1, occurredAt: '', origin: 'notification', type: 'conversation.activityChanged', conversationId: 'thread-1', payload: { threadStatus: null, busy: true, error: null } } } });
+      receive(sessionPatchEvent(codex.id, 41, setOps({ busy: true }), { seq: 3, conversation: 'thread-1' }));
       await vi.advanceTimersByTimeAsync(0);
       expect(load.mock.calls.length).toBeGreaterThanOrEqual(3);
       expect(load.mock.calls[2]![0]).toBe(codex.id);
@@ -1359,7 +1261,7 @@ describe('useAppState', () => {
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
     const state = useAppState();
     await state.loadSnapshot();
-    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: codex.id, provider: 'codex', threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 40, snapshot: codexConversationSnapshot() } });
+    receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
     getSnapshotState.mockResolvedValue({ snapshot: remote, lastBackendEventSeq: 1, connection: { status: 'connected' } });
     const stuck = deferred<ReturnType<typeof createInitialSnapshot>>();
     load.mockReset().mockReturnValueOnce(stuck.promise).mockResolvedValue(remote);
@@ -1379,10 +1281,14 @@ describe('useAppState', () => {
     await nextTick();
   });
 
-  it('invalidates and rehydrates a Codex frame after a revision gap', async () => {
+  it.each([
+    ['codex', { kind: 'codex', threadId: 'thread-1' }],
+    ['claude', { kind: 'claude', sessionId: 'thread-1', transport: 'stdio' }],
+  ] as const)('ignores a late %s patch and reloads the conversation after a revision gap', async (provider, session) => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-1' };
+    remoteSnapshot.agents[0]!.provider = provider;
+    remoteSnapshot.agents[0]!.providerSession = session;
     const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
     stubElectronTestWindow({
       app: {
@@ -1398,64 +1304,22 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalled());
     loadConversationHistory.mockClear();
+    const stream = { provider, conversation: 'thread-1' };
 
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationSnapshotChanged',
-      payload: { revision: 4, snapshot: codexConversationSnapshot() },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 3,
-        event: {
-          seq: 11,
-          occurredAt: '2026-09-06T00:00:02.000Z',
-          origin: 'notification',
-          type: 'conversation.activityChanged',
-          conversationId: 'thread-1',
-          payload: { threadStatus: null, busy: false, error: null },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState(), { ...stream, seq: 1, revision: 4 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 3, setOps({ error: 'stale' }), { ...stream, seq: 2 }));
 
     expect(state.activeConversationPresentation.value).not.toBeNull();
     expect(loadConversationHistory).not.toHaveBeenCalled();
 
-    listeners[0]?.({
-      seq: 3,
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-1',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 6,
-        event: {
-          seq: 12,
-          occurredAt: '2026-09-06T00:00:03.000Z',
-          origin: 'notification',
-          type: 'conversation.activityChanged',
-          conversationId: 'thread-1',
-          payload: { threadStatus: null, busy: true, error: null },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:03.000Z',
-    });
+    listeners[0]?.(sessionPatchEvent('agent-dina', 6, setOps({ busy: true }), { ...stream, seq: 3 }));
 
     expect(state.activeConversationPresentation.value).not.toBeNull();
+    expect(state.activeConversationPresentation.value?.busy).toBe(false);
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
   });
 
-  it('advances the provider-owned Claude frame without writing the global transcript', async () => {
+  it('advances a Claude conversation without writing the global transcript and ignores a late snapshot', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0]!.provider = 'claude';
@@ -1475,86 +1339,16 @@ describe('useAppState', () => {
     });
     const state = useAppState();
     await state.loadSnapshot();
+    const before = state.snapshot.value;
+    const stream = { provider: 'claude' as const, conversation: 'claude-session-1' };
+    const user = textMessage('user-1', 'user', 'Hello Claude', { agentId: 'agent-dina', createdAt: '2026-09-06T00:00:03.000Z' });
+    const reply = textMessage('assistant-turn-1', 'assistant', 'Hi', { agentId: 'agent-dina', status: 'streaming', createdAt: '2026-09-06T00:00:04.000Z' });
 
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: { revision: 1, snapshot: claudeConversationSnapshot() },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt: '2026-09-06T00:00:02.000Z',
-          agentId: 'agent-dina',
-          provider: 'claude',
-          type: 'turn.started',
-          turnId: 'turn-1',
-          payload: { turn: { id: 'turn-1', provider: 'claude' } },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
-    listeners[0]?.({
-      seq: 3,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 3,
-        event: {
-          seq: 3,
-          occurredAt: '2026-09-06T00:00:03.000Z',
-          agentId: 'agent-dina',
-          provider: 'claude',
-          type: 'message.userSubmitted',
-          turnId: 'turn-1',
-          payload: { message: {
-            id: 'user-1', agentId: 'agent-dina', role: 'user', status: 'complete', turnId: 'turn-1',
-            createdAt: '2026-09-06T00:00:03.000Z', parts: [{ type: 'text', text: 'Hello Claude' }],
-          } },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:03.000Z',
-    });
-    listeners[0]?.({
-      seq: 4,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 4,
-        event: {
-          seq: 4,
-          occurredAt: '2026-09-06T00:00:04.000Z',
-          agentId: 'agent-dina',
-          provider: 'claude',
-          type: 'message.delta',
-          turnId: 'turn-1',
-          payload: { messageId: 'assistant-1', delta: 'Hi' },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:04.000Z',
-    });
-    listeners[0]?.({
-      seq: 5,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: {
-        revision: 3,
-        snapshot: claudeConversationSnapshot([], { sessionId: 'stale-session' }),
-      },
-      occurredAt: '2026-09-06T00:00:05.000Z',
-    });
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState(), { ...stream, seq: 1, revision: 1 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 2, setOps({ busy: true, activeTurnId: 'turn-1', turns: [runningTurn('turn-1')] }), { ...stream, seq: 2 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 3, [appendMessages(0, user)], { ...stream, seq: 3 }));
+    listeners[0]?.(sessionPatchEvent('agent-dina', 4, [appendMessages(1, reply)], { ...stream, seq: 4 }));
+    listeners[0]?.(sessionSnapshotEvent('agent-dina', sessionState(), { ...stream, seq: 5, revision: 3 }));
 
     expect(state.activeConversationPresentation.value).toMatchObject({
       activeTurnId: 'turn-1',
@@ -1564,81 +1358,6 @@ describe('useAppState', () => {
         { id: 'assistant-turn-1', parts: [{ type: 'text', text: 'Hi' }] },
       ],
     });
-  });
-
-  it('invalidates and rehydrates a Claude frame after a revision gap', async () => {
-    const listeners: Array<(event: MainToRendererEvent) => void> = [];
-    const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.provider = 'claude';
-    remoteSnapshot.agents[0]!.providerSession = {
-      kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio',
-    };
-    const loadConversationHistory = vi.fn().mockResolvedValue(remoteSnapshot);
-    stubElectronTestWindow({
-      app: {
-        getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
-        loadConversationHistory,
-        onEvent: vi.fn((listener) => {
-          listeners.push(listener);
-          return () => undefined;
-        }),
-      } satisfies Partial<AppApi>,
-    });
-    const state = useAppState();
-    await state.loadSnapshot();
-    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalled());
-    loadConversationHistory.mockClear();
-
-    listeners[0]?.({
-      seq: 1,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: { revision: 4, snapshot: claudeConversationSnapshot() },
-      occurredAt: '2026-09-06T00:00:01.000Z',
-    });
-    listeners[0]?.({
-      seq: 2,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 3,
-        event: {
-          seq: 5,
-          occurredAt: '2026-09-06T00:00:02.000Z',
-          agentId: 'agent-dina',
-          provider: 'claude',
-          type: 'error',
-          payload: { message: 'stale' },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:02.000Z',
-    });
-
-    expect(state.activeConversationPresentation.value).not.toBeNull();
-    expect(loadConversationHistory).not.toHaveBeenCalled();
-
-    listeners[0]?.({
-      seq: 3,
-      agentId: 'agent-dina',
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 6,
-        event: {
-          seq: 6,
-          occurredAt: '2026-09-06T00:00:03.000Z',
-          agentId: 'agent-dina',
-          provider: 'claude',
-          type: 'error',
-          payload: { message: 'gap' },
-        },
-      },
-      occurredAt: '2026-09-06T00:00:03.000Z',
-    });
-
-    expect(state.activeConversationPresentation.value).not.toBeNull();
-    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledOnce());
+    expect(state.snapshot.value).toBe(before);
   });
 });

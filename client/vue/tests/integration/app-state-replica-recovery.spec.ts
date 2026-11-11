@@ -8,7 +8,7 @@ import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { deferred } from '../support/app-state-test-harness';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
+import { sessionSnapshotEvent, sessionState } from '../support/conversation-fixtures';
 
 describe('useAppState', () => {
   it('restores the original composer and next prompt options when a completed reviewer disappears', async () => {
@@ -419,8 +419,7 @@ describe('useAppState', () => {
 
     expect(state.isLoading.value).toBe(false);
     expect(state.isHydratingActiveAgentHistory.value).toBe(true);
-    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent-dina', threadId: 'thread-persisted',
-      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    receive(sessionSnapshotEvent('agent-dina', sessionState(), { seq: 1, conversation: 'thread-persisted' }));
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);
   });
 
@@ -540,8 +539,7 @@ describe('useAppState', () => {
     const getSnapshotState = vi.fn().mockResolvedValueOnce({ snapshot, lastBackendEventSeq: 0, connection: { status: 'connected' } })
       .mockResolvedValue({ snapshot, lastBackendEventSeq: 3, connection: { status: 'connected' } });
     const loadConversationHistory = vi.fn(async (_agentId: string, options?: { recovery?: boolean }) => {
-      if (options?.recovery) receive({ seq: 4, occurredAt: '', provider: 'codex', type: 'codex.conversationSnapshotChanged', agentId: agent.id,
-        threadId: 'dropped-initial-frame', payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+      if (options?.recovery) receive(sessionSnapshotEvent(agent.id, sessionState(), { seq: 4, conversation: 'dropped-initial-frame' }));
       return snapshot;
     });
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory,

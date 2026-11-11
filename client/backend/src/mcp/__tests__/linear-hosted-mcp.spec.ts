@@ -147,8 +147,8 @@ describe('Linear hosted MCP through daemon', () => {
       });
       const approvalIds: string[] = [];
       driver.onEvent((event) => {
-        if (event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'approval.requested') {
-          approvalIds.push(event.payload.event.payload.id);
+        if (event.type === 'agentRequest.created' && event.payload.request.kind !== 'question') {
+          approvalIds.push(event.payload.request.id);
         }
       });
       try {

@@ -105,13 +105,11 @@ import type { PlanReviewResponse } from '@workspace/core/plan-review';
 import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent, planReviewFeedback, planReviewDelivery } from '@workspace/core/plan-review';
 import { isAgentRequestResponse, requestOutcomeToWire, type AgentRequestResponse } from '@workspace/core/agent-request';
-import { codexEventToWire } from '@workspace/core/codex-event-wire';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
 import { AgentConversationService } from './agents/agent-conversation-service';
 import { DelegatedWorkReportService, type DelegatedWorkReportPort } from './agents/delegated-work-report-service';
 import { SubagentIdentityService } from './agents/subagent-identity-service';
 import { AgentRequestRegistry } from './agent-requests/agent-request-registry';
-import { isNativeConversationFrame, providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { isCodeReviewDecisionInput, isCodeReviewDiscussionInput, isCodeReviewStartInput, type CodeReviewFinding, type CodeReviewSession } from '@workspace/core/code-review';
 import { CodeReviewService, type CodeReviewToolPort, type AutomaticReviewStartInput } from './review/code-review-service';
@@ -1319,16 +1317,15 @@ export class AppBackendServer {
   }
 
   private observeRecoveryTurn(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
-    const agent = view.agentId && this.snapshot.agents.find(candidate => candidate.id === view.agentId);
+    const agent = event.agentId && this.snapshot.agents.find(candidate => candidate.id === event.agentId);
     if (!agent || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) return;
     const currentConversationId = agentConversationId(agent);
-    if (view.conversationId && currentConversationId && view.conversationId !== currentConversationId) return;
-    if (view.type === 'turn.started' && view.turnId && !this.stoppingAgents.has(agent.id)) {
-      this.recoveryTurns.set(agent.id, view.turnId);
+    if (event.conversationId && currentConversationId && event.conversationId !== currentConversationId) return;
+    if (event.type === 'turn.started' && !this.stoppingAgents.has(agent.id)) {
+      this.recoveryTurns.set(agent.id, event.turnId);
       agent.autoResumePending = true;
       void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save active work', { message: String(error) }));
-    } else if (view.type === 'turn.completed' && view.turnId && this.recoveryTurns.get(agent.id) === view.turnId) {
+    } else if (event.type === 'turn.completed' && this.recoveryTurns.get(agent.id) === event.turnId) {
       this.recoveryTurns.delete(agent.id);
       delete agent.autoResumePending;
       void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save completed work', { message: String(error) }));
@@ -4366,10 +4363,7 @@ export class AppBackendServer {
   }
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
-    // Native provider frames feed the daemon's own observers only. Clients follow neutral session state, so a native
-    // frame takes no place in the client event sequence and never leaves the daemon.
-    const internal = isNativeConversationFrame(event);
-    const fullEvent = this.nextMainEvent(event, !internal);
+    const fullEvent = this.nextMainEvent(event);
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
@@ -4378,7 +4372,7 @@ export class AppBackendServer {
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
-    if (!internal) this.emitBackendEvent(fullEvent);
+    this.emitBackendEvent(fullEvent);
     if (safetyBlock && fullEvent.agentId) {
       this.handleBackendEvent({ agentId: fullEvent.agentId, type: 'agent.statusChanged', payload: { type: 'error', message: safetyBlock } });
     }
@@ -4420,13 +4414,12 @@ export class AppBackendServer {
   }
 
   private clearTurnSuggestionsOnStart(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
-    if (view.type !== 'turn.started' || !event.agentId || !view.turnId) return;
+    if (event.type !== 'turn.started') return;
     const agent = this.snapshot.agents.find(candidate => candidate.id === event.agentId);
     if (!agent) return;
     const sessionId = agentConversationId(agent);
-    if (sessionId && view.conversationId && sessionId !== view.conversationId) return;
-    const key = JSON.stringify([view.conversationId ?? sessionId, view.turnId]);
+    if (sessionId && event.conversationId && sessionId !== event.conversationId) return;
+    const key = JSON.stringify([event.conversationId ?? sessionId, event.turnId]);
     const seen = this.flagResetTurns.get(agent) ?? new Set<string>();
     if (seen.has(key)) return;
     seen.add(key);
@@ -4436,17 +4429,20 @@ export class AppBackendServer {
   }
 
   private conversationSafetyBlock(event: BackendPublishedEvent): string | null {
-    const view = providerConversationEventView(event);
-    if (!event.agentId || !['error', 'turn.error', 'turn.completed'].includes(view.type)) return null;
-    const payload = view.payload as { error?: unknown; message?: unknown; turn?: { error?: unknown } } | undefined;
-    const blocked = providerSafetyBlockMessage(payload?.error ?? payload?.turn?.error ?? payload?.message);
+    if (event.type !== 'session.error' && event.type !== 'turn.completed') return null;
+    const blocked = providerSafetyBlockMessage(event.payload.error);
     const agent = this.snapshot.agents.find(agent => agent.id === event.agentId);
-    if (!blocked || !agent || view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
+    if (!blocked || !agent || event.conversationId && event.conversationId !== agentConversationId(agent)) return null;
     delete agent.autoResumePending;
     return blocked;
   }
 
   private handleBackendEvent(event: BackendEvent, options: { persist?: boolean } = {}): void {
+    if (event.type === 'plan.readyForReview') {
+      // A provider can report the same proposed plan more than once; the review it opened stays as it is.
+      const agent = this.snapshot.agents.find(candidate => candidate.id === event.agentId);
+      if (agent?.planReview && agent.planReview.id === planReviewFromEvent(agent, { ...event, seq: 0, occurredAt: '' }).id) return;
+    }
     if (event.type === 'provider.authenticationChanged') {
       const authentication = event.payload;
       this.providerConnections?.observe(authentication.kind, authentication.connected, authentication);
@@ -4466,18 +4462,13 @@ export class AppBackendServer {
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
-    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.started') {
-      const turnId = providerConversationEventView(fullEvent).turnId;
-      if (turnId) this.missionExecution.agentStarted(fullEvent.agentId, turnId);
-    }
-    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
-      const view = providerConversationEventView(fullEvent);
-      const payload = view.payload as { status?: string; willRetry?: boolean; turn?: { status?: string } } | undefined;
-      const status = payload?.status ?? payload?.turn?.status;
+    if (fullEvent.type === 'turn.started') this.missionExecution.agentStarted(fullEvent.agentId, fullEvent.turnId);
+    if (fullEvent.type === 'turn.completed') {
+      const { status, willRetry } = fullEvent.payload;
       const agent = this.snapshot.agents.find(agent => agent.id === fullEvent.agentId);
       const blocked = agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message);
-      const recover = (status === 'completed' || status === 'failed') && !payload?.willRetry && !blocked && !safetyBlock;
-      if (!payload?.willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, view.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
+      const recover = (status === 'completed' || status === 'failed') && !willRetry && !blocked && !safetyBlock;
+      if (!willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, fullEvent.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
@@ -4490,7 +4481,7 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(fullEvent);
     if (
       event.agentId && (
-        providerConversationEventView(fullEvent).type === 'turn.completed' ||
+        fullEvent.type === 'turn.completed' ||
         (event.type === 'agent.statusChanged' && event.payload.type === 'idle')
       )
     ) {
@@ -4512,7 +4503,7 @@ export class AppBackendServer {
     }
     const commandFinished = this.trackCommandItems(fullEvent);
     if (event.agentId && (commandFinished || shouldRefreshGitStatusForEvent(fullEvent))) {
-      if (providerConversationEventView(fullEvent).type === 'turn.completed') {
+      if (fullEvent.type === 'turn.completed') {
         void this.agentWorkspaces.refreshGitStatus(event.agentId);
       } else {
         this.agentWorkspaces.scheduleGitStatusRefresh(event.agentId);
@@ -4528,40 +4519,32 @@ export class AppBackendServer {
    * finish only means "a command ended" if the start was seen. True when this event is such a finish.
    */
   private trackCommandItems(event: BackendPublishedEvent): boolean {
-    const agentId = event.agentId;
-    const view = providerConversationEventView(event);
-    if (!agentId) return false;
-    if (view.type === 'turn.completed') {
-      this.runningCommandItems.delete(agentId);
+    if (event.type === 'turn.completed') {
+      this.runningCommandItems.delete(event.agentId);
       return false;
     }
-    if (!isRecord(view.payload)) return false;
-    if (view.type === 'item.started' && isRecord(view.payload.toolPart)) {
-      const { id, kind } = view.payload.toolPart;
-      if (typeof id !== 'string' || (kind !== 'command' && kind !== 'fileChange')) return false;
-      const ids = this.runningCommandItems.get(agentId) ?? new Set<string>();
+    if (event.type !== 'tool.updated') return false;
+    const { id, kind, status } = event.payload.tool;
+    if (status === 'running') {
+      if (kind !== 'command' && kind !== 'fileChange') return false;
+      const ids = this.runningCommandItems.get(event.agentId) ?? new Set<string>();
       ids.add(id);
       // A tool that never reports back must not accumulate forever.
       while (ids.size > 256) ids.delete(ids.values().next().value!);
-      this.runningCommandItems.set(agentId, ids);
+      this.runningCommandItems.set(event.agentId, ids);
       return false;
     }
-    if (view.type === 'item.updated' && typeof view.payload.itemId === 'string' && (view.payload.status === 'completed' || view.payload.status === 'failed')) {
-      return this.runningCommandItems.get(agentId)?.delete(view.payload.itemId) ?? false;
-    }
-    return false;
+    return this.runningCommandItems.get(event.agentId)?.delete(id) ?? false;
   }
 
-  private nextMainEvent(event: BackendEvent, sequenced = true): BackendPublishedEvent {
+  private nextMainEvent(event: BackendEvent): BackendPublishedEvent {
     if (event.type === 'agentRequest.resolved') event = { ...event, payload: { ...event.payload, outcome: requestOutcomeToWire(event.payload.outcome) } };
-    if (event.type === 'codex.conversationEventReceived') event = { ...event, payload: { ...event.payload, event: codexEventToWire(event.payload.event) } };
     const agent = event.agentId ? this.snapshot.agents.find((candidate) => candidate.id === event.agentId) : undefined;
     const conversationId = event.conversationId ?? event.threadId ?? event.providerSessionId ?? (agent ? agentConversationId(agent) : null);
     return {
       ...event,
       ...(conversationId ? { conversationId } : {}),
-      // Internal events take no place in the client sequence; 0 is never a published number.
-      seq: sequenced ? this.nextEventSeq() : 0,
+      seq: this.nextEventSeq(),
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     };
   }
@@ -4640,55 +4623,13 @@ export class AppBackendServer {
   }
 
   private emitDerivedDomainEvents(event: BackendPublishedEvent): void {
-    this.emitPlanReadyForReview(event);
-    const type = providerConversationEventView(event).type;
-    if (!event.agentId || !['turn.completed', 'approval.requested', 'agentRequest.created', 'toolInput.requested', 'error'].includes(type)) return;
+    if (!event.agentId || !['turn.completed', 'agentRequest.created', 'session.error'].includes(event.type)) return;
     const agent = this.snapshot.agents.find((agent) => agent.id === event.agentId);
     if (!agent) return;
     const previous = agent.readState ?? { revision: 0, readRevision: 0 };
     this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId: agent.id,
       payload: { id: agent.id, readState: { revision: previous.revision + 1, readRevision: previous.readRevision } } });
     void this.persistSnapshotOnly().catch(error => warnMain('state', 'failed to persist read state', { message: String(error) }));
-  }
-
-  private emitPlanReadyForReview(event: BackendPublishedEvent): void {
-    const conversationEvent = providerConversationEventView(event);
-    const payload = conversationEvent.payload;
-    if (
-      conversationEvent.type !== 'turn.proposedPlanCompleted'
-      && conversationEvent.type !== 'plan.completed'
-      || !conversationEvent.agentId
-      || !conversationEvent.turnId
-      || typeof payload !== 'object'
-      || payload === null
-      || !('markdown' in payload)
-      || typeof payload.markdown !== 'string'
-      || !payload.markdown.trim()
-    ) {
-      return;
-    }
-
-    const agent = this.snapshot.agents.find((candidate) => candidate.id === conversationEvent.agentId);
-    if (!agent) return;
-    const currentConversationId = agentConversationId(agent);
-    if (currentConversationId && event.conversationId && currentConversationId !== event.conversationId) return;
-    const ready: Extract<BackendPublishedEvent, { type: 'plan.readyForReview' }> = {
-      seq: event.seq,
-      occurredAt: event.occurredAt,
-      agentId: conversationEvent.agentId,
-      provider: event.provider,
-      ...(event.conversationId ? { conversationId: event.conversationId } : {}),
-      ...(event.threadId ? { threadId: event.threadId } : {}),
-      turnId: conversationEvent.turnId,
-      type: 'plan.readyForReview',
-      payload: {
-        markdown: payload.markdown,
-        ...('itemId' in payload && typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
-      },
-    };
-    const review = planReviewFromEvent(agent, ready);
-    if (agent.planReview?.id === review.id) return;
-    this.applyAndEmitBackendEvent(ready);
   }
 
 }
@@ -5348,7 +5289,6 @@ function conversationListInput(value: unknown): ConversationListInput | undefine
 }
 
 function shouldPersistSnapshotForEvent(event: BackendPublishedEvent): boolean {
-  const conversationEventType = providerConversationEventView(event).type;
   return event.type === 'agent.updated' ||
     event.type === 'plan.readyForReview' ||
     event.type === 'plan.reviewResolved' ||
@@ -5362,21 +5302,18 @@ function shouldPersistSnapshotForEvent(event: BackendPublishedEvent): boolean {
     event.type === 'subagent.statusChanged' ||
     // Token usage and plan updates are high-frequency during a turn. The
     // completed event persists their latest state in one durable write.
-    conversationEventType === 'turn.completed' ||
-    conversationEventType === 'turn.proposedPlanCompleted';
+    event.type === 'turn.completed';
 }
 
 function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
-  const view = providerConversationEventView(event);
-  if (view.type === 'turn.completed' || view.type === 'conversation.turnDiffUpdated' || view.type === 'conversation.diffUpdated') return true;
-  if (!isRecord(view.payload)) return false;
-  if ((view.type === 'workspace.fileActivityDetected' || view.type === 'file.activity')) {
-    return view.payload.status === 'completed' &&
-      (view.payload.action === 'edit' || view.payload.action === 'create' || view.payload.action === 'delete');
+  if (event.type === 'turn.completed' || event.type === 'conversation.turnDiffUpdated' || event.type === 'diff.updated') return true;
+  if (event.type === 'workspace.fileActivityDetected' || event.type === 'file.activity') {
+    return event.payload.status === 'completed' &&
+      (event.payload.action === 'edit' || event.payload.action === 'create' || event.payload.action === 'delete');
   }
   // Shell commands can mutate files without publishing structured file activity.
-  return view.type === 'tool.completed' && isRecord(view.payload.toolPart) &&
-    (view.payload.toolPart.kind === 'command' || view.payload.toolPart.kind === 'fileChange');
+  return event.type === 'tool.updated' && event.payload.tool.status === 'completed' &&
+    (event.payload.tool.kind === 'command' || event.payload.tool.kind === 'fileChange');
 }
 
 function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {

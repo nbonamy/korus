@@ -3,13 +3,9 @@ import type { MainToRendererEvent } from './contracts';
 export type SnapshotEventOwner = 'runtime' | 'coordination' | 'subagent' | 'renderer';
 
 export const snapshotEventOwnership = {
-  'cursor.conversationSnapshotChanged': 'renderer',
-  'cursor.conversationEventReceived': 'renderer',
   'conversation.shareChanged': 'renderer',
   'conversation.sessionSnapshot': 'renderer',
   'conversation.sessionPatch': 'renderer',
-  'antigravity.conversationSnapshotChanged': 'renderer',
-  'antigravity.conversationEventReceived': 'renderer',
   'provider.authenticationChanged': 'renderer',
   'provider.statusChanged': 'runtime',
   'client.connectionChanged': 'renderer',
@@ -18,10 +14,6 @@ export const snapshotEventOwnership = {
   'remoteControl.statusChanged': 'renderer',
   'models.changed': 'renderer',
   'skills.changed': 'renderer',
-  'codex.conversationSnapshotChanged': 'renderer',
-  'codex.conversationEventReceived': 'renderer',
-  'claude.conversationSnapshotChanged': 'renderer',
-  'claude.conversationEventReceived': 'renderer',
   'client.markdownDisplayRequested': 'renderer',
   'plan.readyForReview': 'coordination',
   'plan.reviewResolved': 'coordination',
@@ -54,6 +46,14 @@ export const snapshotEventOwnership = {
   'git.statusUpdated': 'runtime',
   'agentRequest.created': 'coordination',
   'agentRequest.resolved': 'coordination',
+  // Conversation activity drives the daemon's own work; a window follows session state instead.
+  'turn.started': 'renderer',
+  'turn.completed': 'renderer',
+  'session.error': 'renderer',
+  'tool.updated': 'renderer',
+  'turn.output': 'renderer',
+  'diff.updated': 'renderer',
+  'file.activity': 'renderer',
 } as const satisfies Record<MainToRendererEvent['type'], SnapshotEventOwner>;
 
 export type SnapshotEventTypeOwnedBy<Owner extends SnapshotEventOwner> = {

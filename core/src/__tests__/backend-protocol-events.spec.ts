@@ -1,6 +1,4 @@
-import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '../product';
-import { emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { approvalAgentRequest, approvalOutcome } from '@workspace/core/agent-request';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AppBackendEvent as RpcAppBackendEvent } from '../backend-protocol/rpc';
@@ -107,6 +105,13 @@ function createFixtures(): EventFixtures {
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
+    'turn.started': { ...base, type: 'turn.started', agentId: 'agent-1', provider: 'claude', turnId: 'turn-1', conversationId: 'session-1', payload: {} },
+    'turn.completed': { ...base, type: 'turn.completed', agentId: 'agent-1', provider: 'claude', turnId: 'turn-1', payload: { status: 'failed', error: { message: 'Limit', rateLimit: { resumeAt: 1 } }, willRetry: false } },
+    'session.error': { ...base, type: 'session.error', agentId: 'agent-1', provider: 'claude', payload: { error: { message: 'Broken' }, willRetry: true } },
+    'tool.updated': { ...base, type: 'tool.updated', agentId: 'agent-1', provider: 'claude', payload: { tool: { id: 'tool-1', kind: 'command', status: 'running' } } },
+    'turn.output': { ...base, type: 'turn.output', agentId: 'agent-1', provider: 'claude', payload: {} },
+    'diff.updated': { ...base, type: 'diff.updated', agentId: 'agent-1', provider: 'claude', payload: {} },
+    'file.activity': { ...base, type: 'file.activity', agentId: 'agent-1', provider: 'claude', payload: { path: '/repo/a', action: 'edit', status: 'completed' } },
     'conversation.sessionSnapshot': { ...base, type: 'conversation.sessionSnapshot', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1', epoch: 'e1',
       snapshot: { revision: 2, state: { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null } } } },
     'conversation.sessionPatch': { ...base, type: 'conversation.sessionPatch', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1', epoch: 'e1',
@@ -116,22 +121,6 @@ function createFixtures(): EventFixtures {
       proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],
       authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
     } },
-    'cursor.conversationSnapshotChanged': {
-      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', provider: 'cursor', providerSessionId: 'session-1',
-      payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-1', 'session-1') },
-    },
-    'cursor.conversationEventReceived': {
-      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', provider: 'cursor', providerSessionId: 'session-1',
-      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
-    },
-    'antigravity.conversationSnapshotChanged': {
-      ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', provider: 'antigravity', providerSessionId: 'session-1',
-      payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
-    },
-    'antigravity.conversationEventReceived': {
-      ...base, type: 'antigravity.conversationEventReceived', agentId: 'agent-1', provider: 'antigravity', providerSessionId: 'session-1',
-      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
-    },
     'provider.authenticationChanged': {
       ...base, type: 'provider.authenticationChanged',
       payload: { kind: 'claude', connected: false, state: { loggedIn: false } },
@@ -185,113 +174,6 @@ function createFixtures(): EventFixtures {
         cwd: null,
         status: 'loaded',
         skills: [{ name: 'test', path: '/skill', enabled: true }],
-      },
-    },
-    'codex.conversationSnapshotChanged': {
-      ...codexThread,
-      type: 'codex.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: {
-          status: 'ready',
-          authentication: {
-            status: 'loaded', account: null, requiresOpenaiAuth: false,
-            error: null, login: { status: 'idle', loginId: null, authUrl: null, error: null },
-          },
-          conversations: [],
-          activeConversationId: 'thread-1',
-          activeTurnId: null,
-          turnIds: [],
-          turns: [],
-          messages: [],
-          historyLoading: false,
-          historyState: { loadingStrategy: 'eager', hasOlder: false, loadingOlder: false, fullyLoaded: true },
-          clientRequests: [],
-          answeredClientRequestIds: [],
-          approvals: [],
-          models: [],
-          modelCatalogStatus: 'loaded',
-          skills: [],
-          skillCatalogStatus: 'loaded',
-          plugins: [],
-          pluginCatalogStatus: 'loaded',
-          permissionProfiles: [],
-          approvalPresets: [],
-          approvalPreset: null,
-          selectedModelId: null,
-          selectedReasoningEffort: null,
-          selectedServiceTier: null,
-          planMode: false,
-          contextUsage: null,
-          goal: null,
-          turnGitDiff: null,
-          threadStatus: null,
-          rateLimits: null,
-          queuedPrompts: [],
-          busy: false,
-          error: null,
-        },
-      },
-    },
-    'codex.conversationEventReceived': {
-      ...codexThread,
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 7,
-          occurredAt,
-          origin: 'notification',
-          type: 'message.delta',
-          conversationId: 'thread-1',
-          turnId: 'turn-1',
-          payload: {
-            messageId: 'message-1',
-            itemId: 'item-1',
-            delta: 'Hello',
-          },
-        },
-      },
-    },
-    'claude.conversationSnapshotChanged': {
-      ...agent,
-      provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: {
-          agentId: 'agent-1',
-          sessionId: 'claude-session-1',
-          activeTurnId: null,
-          turnIds: [],
-          turns: [],
-          messages: [],
-          answeredClientRequestIds: [],
-          busy: false,
-          historyLoading: false,
-          historyState: { hasOlder: false, loadingOlder: false },
-          contextUsage: null,
-          plan: null,
-          error: null,
-        },
-      },
-    },
-    'claude.conversationEventReceived': {
-      ...agent,
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt,
-          agentId: 'agent-1',
-          provider: 'claude',
-          providerSessionId: 'claude-session-1',
-          turnId: 'turn-1',
-          type: 'message.delta',
-          payload: { delta: 'Hello' },
-        },
       },
     },
     'client.markdownDisplayRequested': {
@@ -652,104 +534,6 @@ describe(`${product.name} backend event decoder`, () => {
     expect(decodeAppBackendEvent(resolved)).toBe(resolved);
   });
 
-  it('accepts populated provider conversation snapshot frames', () => {
-    const fixtures = createFixtures();
-    const codexFrame = structuredClone(
-      fixtures['codex.conversationSnapshotChanged'],
-    );
-    codexFrame.payload.snapshot.activeTurnId = 'turn-1';
-    codexFrame.payload.snapshot.turnIds = ['turn-1'];
-    codexFrame.payload.snapshot.turns = [{
-      id: 'turn-1',
-      status: 'inProgress',
-      error: null,
-      willRetry: false,
-      startedAt: occurredAt,
-      completedAt: null,
-      durationMs: null,
-    }];
-    codexFrame.payload.snapshot.messages = [message];
-    codexFrame.payload.snapshot.busy = true;
-    codexFrame.payload.snapshot.historyLoading = true;
-    codexFrame.payload.snapshot.historyState = {
-      loadingStrategy: 'lazy',
-      hasOlder: true,
-      loadingOlder: true,
-      fullyLoaded: false,
-    };
-
-    const claudeFrame = structuredClone(
-      fixtures['claude.conversationSnapshotChanged'],
-    );
-    claudeFrame.payload.snapshot.sessionId = 'claude-session-1';
-    claudeFrame.payload.snapshot.activeTurnId = 'turn-1';
-    claudeFrame.payload.snapshot.turnIds = ['turn-1'];
-    claudeFrame.payload.snapshot.turns = [{
-      id: 'turn-1',
-      status: 'interrupted',
-      error: null,
-      willRetry: false,
-      startedAt: occurredAt,
-      completedAt: occurredAt,
-      durationMs: 10,
-    }];
-    claudeFrame.payload.snapshot.messages = [
-      { ...message, role: 'user' },
-      message,
-      { ...message, id: 'message-system', role: 'system' },
-    ];
-    claudeFrame.payload.snapshot.contextUsage = usage;
-    claudeFrame.payload.snapshot.plan = {
-      threadId: 'claude-session-1',
-      turnId: 'turn-1',
-      kind: 'execution',
-      status: 'inProgress',
-      explanation: 'Verify the change',
-      steps: [{ step: 'Run tests', status: 'inProgress' }],
-      markdown: '- [ ] Run tests',
-      updatedAt: occurredAt,
-    };
-    claudeFrame.payload.snapshot.error = 'Interrupted by user';
-
-    expect(decodeAppBackendEvent(codexFrame)).toBe(codexFrame);
-    expect(decodeAppBackendEvent(claudeFrame)).toBe(claudeFrame);
-  });
-
-  it('accepts provider event frames with all optional routing context', () => {
-    const fixtures = createFixtures();
-    const codexFixture = fixtures['codex.conversationEventReceived'];
-    const codexFrame = {
-      ...codexFixture,
-      payload: {
-        ...codexFixture.payload,
-        event: {
-          ...codexFixture.payload.event,
-          origin: 'action',
-          turnId: 'turn-1',
-        },
-      },
-    };
-
-    const claudeFrame = structuredClone(
-      fixtures['claude.conversationEventReceived'],
-    );
-    claudeFrame.payload.event.providerSessionId = 'claude-session-1';
-    claudeFrame.payload.event.threadId = 'claude-session-1';
-    claudeFrame.payload.event.turnId = 'turn-1';
-
-    expect(decodeAppBackendEvent(codexFrame)).toBe(codexFrame);
-    expect(decodeAppBackendEvent(claudeFrame)).toBe(claudeFrame);
-  });
-
-  it('rejects a Claude event routed under a different agent', () => {
-    const event = createFixtures()['claude.conversationEventReceived'];
-
-    expect(() => decodeAppBackendEvent({
-      ...event,
-      agentId: 'agent-other',
-    })).toThrow('$.payload.event.agentId: expected the outer agent id');
-  });
-
   it('accepts valid full snapshot and client-state side channels', () => {
     const event = createFixtures()['snapshot.updated'];
     const withSideChannels = {
@@ -763,14 +547,6 @@ describe(`${product.name} backend event decoder`, () => {
     };
 
     expect(decodeAppBackendEvent(withSideChannels)).toBe(withSideChannels);
-  });
-
-  it('rejects a Codex event routed under a different conversation', () => {
-    const event = createFixtures()['codex.conversationEventReceived'];
-    expect(() => decodeAppBackendEvent({
-      ...event,
-      threadId: 'thread-other',
-    })).toThrow('$.payload.event.conversationId: expected the outer thread id');
   });
 
   it.each([

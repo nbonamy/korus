@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import type { HarnessProvider, RendererMessage } from '@workspace/core/contracts';
 import { codexProviderCapabilities, claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
@@ -98,13 +99,7 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
     await vi.waitFor(() => expect(sourceSend).toHaveBeenCalledOnce());
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: 'agent/prompt/send', params: { agentId: 'source', prompt: 'Competing work' } })).rejects.toThrow('handoff');
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'move', method: 'agent/team/move', params: { input: { agentId: 'source', teamId: 'team-test' } } })).rejects.toThrow('handoff');
-    sourceListener(provider === 'codex' ? {
-      agentId: 'source', provider: provider, threadId: 'original', type: 'codex.conversationEventReceived',
-      payload: { revision: 1, event: { conversationId: 'original', origin: 'notification', turnId: 'note-turn', type: 'turn.completed', seq: 1, occurredAt: '', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } },
-    } : {
-      agentId: 'source', provider: provider, type: 'claude.conversationEventReceived',
-      payload: { revision: 1, event: { provider: provider, agentId: 'source', turnId: 'note-turn', type: 'turn.completed', seq: 1, occurredAt: '', payload: { turn: { id: 'note-turn', status: 'completed' } } } },
-    });
+    sourceListener(turnCompleted('source', 'note-turn', { provider, ...(provider === 'codex' ? { conversationId: 'original' } : {}) }));
     sourceListener({ agentId: 'source', type: 'agent.statusChanged', payload: { type: 'idle' } });
     await vi.waitFor(() => expect(archive).toHaveBeenCalledOnce());
     expect(targetSend).not.toHaveBeenCalled();

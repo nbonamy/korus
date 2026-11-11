@@ -1,6 +1,7 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
-import { conversationFromSources, type NativeFixtureSources } from '../../../tests/support/session-conversation-fixtures';
+import type { SessionState } from '@korus-dev/multi-agent-sdk';
+import { conversationFrom, sessionState } from '../../../tests/support/conversation-fixtures';
 import {
   createConversationPaneController,
   type ComposerState,
@@ -23,7 +24,6 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
-import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import { translate } from '../../i18n';
 import { configureAppClient } from '../../platform-api';
 
@@ -99,10 +99,10 @@ describe('ConversationPane', () => {
     const owner = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
     const recent = { ...messages[1]!, id: 'recent' };
     const older = { ...messages[1]!, id: 'older', turnId: 'older-turn' };
-    const view = shallowReactive<AgentConversationView & NativeFixtureSources>({
-      get conversation() { return conversationFromSources(this.agent, this); }, agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
-      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, codexSnapshot: null,
-      claudeSnapshot: claudeConversationSnapshot([recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } }),
+    const view = shallowReactive<AgentConversationView & { session: SessionState | null }>({
+      get conversation() { return conversationFrom(this.agent, this.session); }, agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      session: sessionState({ messages: [recent], historyState: { hasOlder: true, loadingOlder: false } }),
       attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false, queuedPrompts: [],
       history: { failed: false, hydrating: false, hasOlder: true, loadingOlder: false }, answeredClientRequestIds: new Set() });
     const loadOlderHistory = vi.fn();
@@ -118,7 +118,7 @@ describe('ConversationPane', () => {
       expect(loadOlderHistory).toHaveBeenCalledTimes(1);
       view.history = { ...view.history, loadingOlder: true };
       await nextTick();
-      view.claudeSnapshot = claudeConversationSnapshot([older, recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } });
+      view.session = sessionState({ messages: [older, recent], historyState: { hasOlder: true, loadingOlder: false } });
       view.history = { ...view.history, loadingOlder: false };
       await flushPromises();
       viewport.element.scrollTop = 0;
@@ -133,9 +133,9 @@ describe('ConversationPane', () => {
     const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
     composer.skills = [{ name: 'imagegen', displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
       path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
-    const view = shallowReactive<AgentConversationView & NativeFixtureSources>({
-      get conversation() { return conversationFromSources(this.agent, this); }, agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
-      codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityProviderCapabilities, approvals: [], sending: false,
+    const view = shallowReactive<AgentConversationView & { session: SessionState | null }>({
+      get conversation() { return conversationFrom(this.agent, this.session); }, agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      session: null, attachments: [], capabilities: antigravityProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
     const submit = vi.fn();
     const controller = createConversationPaneController({ state: agentConversationState(() => view), actions: {

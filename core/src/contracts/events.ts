@@ -2,17 +2,13 @@ import type {
   AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentCreationProgress,
   AgentFileActivity, AgentGitOperationProgress, AgentGitStatus, AgentStatus, AppSnapshot, ProviderConnectionState,
   ProviderModelOption, ProviderRuntimeStatus, ProviderSkillSummary, BrowserAnnotation,
-  CelebrationKind, ClaudeConversationEvent, ClaudeConversationSnapshot, DevicePairingStatus,
+  CelebrationKind, DevicePairingStatus,
   SendPromptOptions, SidePanelMarkdownRequest, SubagentActivityChange, SubagentIdentityChange,
   SubagentOperationChange, SubagentStatusChange, ThreadGoal, TurnGitDiff,
   WorkBacklogAssignment, WorkBacklogAssignmentPolicy, WorkBacklogAssignmentStatus
 } from '../contracts';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
-import type { SessionPatch, SessionSnapshot } from '@korus-dev/multi-agent-sdk';
-import type { CodexWireConversationEvent as CodexConversationEvent } from '../codex-event-wire';
+import type { HarnessError, SessionPatch, SessionSnapshot, TurnStatus } from '@korus-dev/multi-agent-sdk';
 import type { MissionImplementationStartProgress } from '../mission-execution';
-import type { CursorConversationEvent, CursorConversationSnapshot } from './cursor-conversation';
-import type { AntigravityConversationEvent, AntigravityConversationSnapshot } from './antigravity-conversation';
 
 type EventEnvelope = {
   seq: number;
@@ -66,9 +62,17 @@ type AgentPromptRetryScheduledPayload = {
   lastError: string;
   retryAt?: string;
 };
+type Activity<Variant> = EventWith<{ agentId: string; provider: HarnessProvider; turnId?: string; conversationId?: string } & Variant>;
+export const conversationActivityEventTypes = ['turn.started', 'turn.completed', 'session.error', 'tool.updated', 'turn.output', 'diff.updated', 'file.activity'] as const;
+export type ConversationActivityEventType = (typeof conversationActivityEventTypes)[number];
 type AppEvent =
-  | EventWith<{ type: 'cursor.conversationSnapshotChanged'; agentId: string; provider: 'cursor'; payload: { revision: number; snapshot: CursorConversationSnapshot } }>
-  | EventWith<{ type: 'cursor.conversationEventReceived'; agentId: string; provider: 'cursor'; payload: { revision: number; event: CursorConversationEvent } }>
+  | Activity<{ type: 'turn.started'; turnId: string; payload: Record<string, never> }>
+  | Activity<{ type: 'turn.completed'; turnId: string; payload: { status: TurnStatus; error: HarnessError | null; willRetry: boolean } }>
+  | Activity<{ type: 'session.error'; payload: { error: HarnessError; willRetry: boolean } }>
+  | Activity<{ type: 'tool.updated'; payload: { tool: { id: string; kind?: string; status: 'running' | 'completed' | 'failed' } } }>
+  | Activity<{ type: 'turn.output'; payload: Record<string, never> }>
+  | Activity<{ type: 'diff.updated'; payload: Record<string, never> }>
+  | Activity<{ type: 'file.activity'; payload: { path?: string; action: string; status: string } }>
   /**
    * An agent's conversation as neutral session state: a snapshot to start from, then revisioned patches. `conversation` names the
    * provider conversation it belongs to; `epoch` names the stream, so a late snapshot is told apart from a restarted one.
@@ -76,8 +80,6 @@ type AppEvent =
   | EventWith<{ type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; epoch: string; snapshot: SessionSnapshot } }>
   | EventWith<{ type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: { conversation: string | null; epoch: string; patch: SessionPatch } }>
   | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
-  | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; provider: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
-  | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; provider: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
   | EventWith<{
       type: 'provider.authenticationChanged';
       payload: import('./provider-setup').ProviderAuthentication;
@@ -116,44 +118,6 @@ type AppEvent =
         cwd: string | null;
         status: 'loaded';
         skills: ProviderSkillSummary[];
-      };
-    }>
-  | EventWith<{
-      type: 'codex.conversationSnapshotChanged';
-      agentId: string;
-      provider: 'codex';
-      threadId: string;
-      payload: {
-        revision: number;
-        snapshot: CodexConversationSnapshot;
-      };
-    }>
-  | EventWith<{
-      type: 'codex.conversationEventReceived';
-      agentId: string;
-      provider: 'codex';
-      threadId: string;
-      payload: {
-        revision: number;
-        event: CodexConversationEvent;
-      };
-    }>
-  | EventWith<{
-      type: 'claude.conversationSnapshotChanged';
-      agentId: string;
-      provider: 'claude';
-      payload: {
-        revision: number;
-        snapshot: ClaudeConversationSnapshot;
-      };
-    }>
-  | EventWith<{
-      type: 'claude.conversationEventReceived';
-      agentId: string;
-      provider: 'claude';
-      payload: {
-        revision: number;
-        event: ClaudeConversationEvent;
       };
     }>
   | EventWith<{
@@ -330,7 +294,8 @@ type AppEvent =
 
 export type ClientTransportEvent = Extract<AppEvent, { type: "client.connectionChanged" }>;
 export type ClientEffectEvent = Extract<AppEvent, { type: "client.markdownDisplayRequested" | "client.celebrationRequested" | "browser.annotationCreated" }>;
-export type ProviderConversationFrame = Extract<AppEvent, { type: "cursor.conversationSnapshotChanged" | "cursor.conversationEventReceived" | "codex.conversationSnapshotChanged" | "codex.conversationEventReceived" | "claude.conversationSnapshotChanged" | "claude.conversationEventReceived" | "antigravity.conversationSnapshotChanged" | "antigravity.conversationEventReceived" }>;
-export type BackendDomainEvent = Exclude<AppEvent, ClientTransportEvent | ClientEffectEvent | ProviderConversationFrame>;
-export type BackendPublishedEvent = BackendDomainEvent | ClientEffectEvent | ProviderConversationFrame;
+/** What happens in a conversation, as the harness reports it. Daemons act on it; windows follow session state instead. */
+export type ConversationActivityEvent = Extract<AppEvent, { type: ConversationActivityEventType }>;
+export type BackendDomainEvent = Exclude<AppEvent, ClientTransportEvent | ClientEffectEvent>;
+export type BackendPublishedEvent = BackendDomainEvent | ClientEffectEvent;
 export type MainToRendererEvent = BackendPublishedEvent | ClientTransportEvent;

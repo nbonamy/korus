@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentGitService } from '../../git/agent-git-service';
@@ -319,26 +320,7 @@ describe('AppMcpService', () => {
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-1' }) }), 'agent-dina', 'Delegate this task', { delegation: { startingContext: 'conversation', instructions: 'Do not run tests.' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
 
-    service.handleBackendEvent({
-      seq: 1,
-      occurredAt: '2026-08-02T00:00:00.000Z',
-      agentId: 'agent-dina',
-      provider: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-08-02T00:00:00.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          turnId: 'turn-1',
-          type: 'turn.completed',
-          payload: { status: 'completed' },
-        },
-      },
-    } as BackendPublishedEvent);
+    service.handleBackendEvent({ ...turnCompleted('agent-dina', 'turn-1', { conversationId: 'thread-dina' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
 
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
     expect(snapshot.agents[0]!.userDelegationOverrides).toBeUndefined();
@@ -357,12 +339,7 @@ describe('AppMcpService', () => {
     const receipt = new Promise<import('@workspace/core/provider-driver').ProviderSendResult>(resolve => { accept = resolve; });
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn(() => receipt) }), parent.id, 'Delegate B', { delegation: { startingContext: 'handoff', instructions: 'Keep B local.' } }, vi.fn());
-    const terminal = (turnId: string, conversationId = 'thread-dina') => service!.handleBackendEvent({
-      seq: 1, occurredAt: '', agentId: parent.id, provider: 'codex', threadId: conversationId,
-      type: 'codex.conversationEventReceived', payload: { revision: 1, event: {
-        seq: 1, occurredAt: '', origin: 'notification', conversationId, turnId, type: 'turn.completed', payload: { status: 'completed' },
-      } },
-    } as BackendPublishedEvent);
+    const terminal = (turnId: string, conversationId = 'thread-dina') => service!.handleBackendEvent({ ...turnCompleted(parent.id, turnId, { conversationId }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     terminal('turn-A');
     expect(parent.userDelegationOverrides?.instructions).toBe('Keep B local.');
     accept({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
@@ -381,9 +358,7 @@ describe('AppMcpService', () => {
     const receipt = new Promise<import('@workspace/core/provider-driver').ProviderSendResult>(resolve => { accept = resolve; });
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn(() => receipt) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff' } }, vi.fn());
-    service.handleBackendEvent({ seq: 1, occurredAt: '', agentId: parent.id, provider: 'codex', threadId: 'thread-dina', type: 'codex.conversationEventReceived', payload: { revision: 1, event: {
-      seq: 1, occurredAt: '', origin: 'notification', conversationId: 'thread-dina', turnId: 'turn-B', type: 'turn.completed', payload: { status: 'interrupted' },
-    } } } as BackendPublishedEvent);
+    service.handleBackendEvent({ ...turnCompleted(parent.id, 'turn-B', { conversationId: 'thread-dina', status: 'interrupted' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     accept({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
     await new Promise(resolve => setImmediate(resolve));
     expect(parent.userDelegationOverrides).toBeUndefined();
@@ -399,14 +374,7 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ provider: provider, sendPrompt: vi.fn().mockResolvedValue({ providerSession: providerSession, turnId: 'native-turn' }) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff', instructions: 'Native provider directions' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
-    const terminal = (sessionId: string) => service!.handleBackendEvent({
-      seq: 1, occurredAt: '', agentId: parent.id, provider: provider, conversationId: 'newer-envelope-session',
-      type: `${provider}.conversationEventReceived`, payload: { revision: 1, event: {
-        seq: 1, occurredAt: '', agentId: parent.id, provider: provider, turnId: 'native-turn', type: 'turn.completed',
-        ...(provider === 'claude' ? { providerSessionId: sessionId, payload: { status: 'completed' } }
-          : { sessionId, payload: { turn: { id: 'native-turn', status: 'completed' } } }),
-      } },
-    } as BackendPublishedEvent);
+    const terminal = (sessionId: string) => service!.handleBackendEvent({ ...turnCompleted(parent.id, 'native-turn', { provider, conversationId: sessionId }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     terminal('different-native-session');
     expect(parent.userDelegationOverrides?.instructions).toBe('Native provider directions');
     terminal('native-session');

@@ -39,7 +39,7 @@ afterEach(async () => { await rpc.close(); vi.unstubAllEnvs(); await rm(root, { 
 async function wire(): Promise<Record<string, any>[]> {
   return (await readFile(path.join(root, 'wire.jsonl'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
-const completed = () => events.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed');
+const completed = () => events.filter(event => event.type === 'turn.completed');
 async function start() {
   const result = await rpc.handle('driver/prompt/send', { agent, prompt: 'wait' }) as ProviderSendResult;
   agent.providerSession = result.providerSession;
@@ -108,11 +108,11 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     expect(JSON.stringify(prompts[1].params.prompt)).toContain('ATTACHMENT_MARKER');
     expect(calls.filter(call => call.method === 'session/set_config_option').map(call => call.params)).toEqual(expect.arrayContaining([{ sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.sessionId : '', configId: 'model', value: 'composer-2.5' }, { sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.sessionId : '', configId: 'mode', value: 'plan' }]));
     await host.loadConversation!(agent);
-    const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged').at(-1);
-    if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing snapshot');
-    expect(frame.payload.snapshot.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'completed']);
-    expect(JSON.stringify(frame.payload.snapshot.messages)).toContain('context.txt');
-    expect(JSON.stringify(frame.payload.snapshot.messages)).not.toContain('LATE');
+    const frame = events.filter(event => event.type === 'conversation.sessionSnapshot').at(-1);
+    if (frame?.type !== 'conversation.sessionSnapshot') throw new Error('Missing snapshot');
+    expect(frame.payload.snapshot.state.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'completed']);
+    expect(JSON.stringify(frame.payload.snapshot.state.messages)).toContain('context.txt');
+    expect(JSON.stringify(frame.payload.snapshot.state.messages)).not.toContain('LATE');
     enabled = false;
     expect(rpc.getCapabilities(agent).steerPrompt).toBe(false);
     expect(host.getRuntimeStatus().capabilities?.steerPrompt).toBe(false);

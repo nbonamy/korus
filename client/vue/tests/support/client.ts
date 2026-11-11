@@ -1,7 +1,6 @@
 import type { AppApi } from '@workspace/core/contracts';
 import { configureAppClient } from '../../src/platform-api';
 import { createClientApiMock } from './client-api-mock';
-import { withNativeFrameBridge } from './native-frame-bridge';
 
 let disposeClient = () => {};
 let assignClient: ((api?: Partial<AppApi>) => void) | undefined;
@@ -15,9 +14,6 @@ export function configureElectronTestClient(overrides?: Partial<AppApi>): AppApi
   }
   const mock = createClientApiMock();
   const api = Object.assign(mock.api, overrides);
-  // Native frames that tests emit reach the browser as the neutral session state the daemon would send.
-  const subscribe = api.onEvent;
-  Object.assign(api, { onEvent: (listener: Parameters<AppApi['onEvent']>[0]) => subscribe(withNativeFrameBridge(listener)) });
   disposeClient = mock.dispose;
   configureAppClient({ api, platform: 'desktop' });
   return api;

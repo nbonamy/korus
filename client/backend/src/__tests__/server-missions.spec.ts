@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import { AppBackendServer } from '../server';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
@@ -23,11 +24,7 @@ describe('mission backend boundary', () => {
       ticketIndex: 0, repositoryPath: worker.folder!, status: 'running', skills: [], feedback: '', startedAt: '' }];
     const sendPrompt = vi.fn().mockResolvedValue({ providerSession: worker.providerSession, turnId: 'recovery' });
     let server!: AppBackendServer; let disk: unknown;
-    const completed = (turnId: string, status = 'completed') => server.emitEvent({
-      agentId: worker.id, provider: 'codex', threadId: 'mission-worker', type: 'codex.conversationEventReceived',
-      payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', turnId,
-        type: 'turn.completed', payload: { status, error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } },
-    } as Parameters<AppBackendServer['emitEvent']>[0]);
+    const completed = (turnId: string, status: 'completed' | 'failed' | 'interrupted' = 'completed') => server.emitEvent(turnCompleted(worker.id, turnId, { status }));
     const interrupt = vi.fn(async () => {
       expect(snapshotFromPersistedState(disk).missions![0]!.execution!.runs[0]!.status).toBe('cancelled');
       completed('unfinished', 'interrupted');
@@ -244,13 +241,7 @@ describe('mission backend boundary', () => {
       version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       saveSnapshot: async value => { disk = persistedStateFromSnapshot(value); },
     });
-    const completed = (turnId: string) => server.emitEvent({
-      agentId: worker.id, provider: 'codex', threadId: 'mission-thread', type: 'codex.conversationEventReceived',
-      payload: { revision: 1, event: {
-        seq: 1, occurredAt: new Date().toISOString(), origin: 'notification', conversationId: 'mission-thread', turnId,
-        type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
-      } },
-    });
+    const completed = (turnId: string) => server.emitEvent(turnCompleted(worker.id, turnId, { conversationId: 'mission-thread' }));
     const currentRun = () => snapshot.missions![0]!.execution!.runs[0]!;
     try {
       // Enqueue through the real prompt manager, as launch does while /compact is active.
@@ -590,13 +581,7 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(worker.providerSession).toEqual({ kind: 'codex', threadId: 'mission-thread' });
     expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'preparing' });
     expect(releaseConversation).not.toHaveBeenCalled();
-    server.emitEvent({
-      agentId: worker.id, provider: 'codex', threadId: 'mission-thread', type: 'codex.conversationEventReceived',
-      payload: { revision: 1, event: {
-        seq: 1, occurredAt: new Date().toISOString(), origin: 'notification', conversationId: 'mission-thread', turnId: 'requirements-turn',
-        type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
-      } },
-    });
+    server.emitEvent(turnCompleted(worker.id, 'requirements-turn', { conversationId: 'mission-thread' }));
     server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
     await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'running' }));
     expect(current().execution!.runs.at(-1)!.workerId).toBe(run.workerId);

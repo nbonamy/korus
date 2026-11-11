@@ -341,49 +341,19 @@ describe('AppController', () => {
       seq: 1,
       agentId: 'agent-dina',
       provider: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-08-30T18:33:55.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          turnId: 'turn-image',
-          type: 'message.updated',
-          payload: {
-            message: {
-              id: 'assistant-turn-image',
-              agentId: 'agent-dina',
-              role: 'assistant',
-              status: 'complete',
-              turnId: 'turn-image',
-              createdAt: '2026-08-30T18:33:55.000Z',
-              parts: [{
-                type: 'media',
-                itemId: 'image-live',
-                media: {
-                  url: generatedImageUrl,
-                  alt: 'Generated image',
-                  mimeType: 'image/png',
-                  title: 'Generated image',
-                },
-              }],
-            },
-          },
-        } as unknown as Extract<AppBackendEvent, { type: 'codex.conversationEventReceived' }>['payload']['event'],
-      },
+      type: 'conversation.sessionPatch',
+      payload: { conversation: 'thread-dina', epoch: 'stream-1', patch: { revision: 1, ops: [{ op: 'spliceMessages', start: 0, deleteCount: 0, messages: [{
+        id: 'assistant-turn-image', agentId: 'agent-dina', role: 'assistant', status: 'complete', turnId: 'turn-image', createdAt: '2026-08-30T18:33:55.000Z',
+        parts: [{ type: 'media', itemId: 'image-live', media: { url: generatedImageUrl, alt: 'Generated image', mimeType: 'image/png', title: 'Generated image' } }],
+      }] }] } },
       occurredAt: '2026-08-30T18:33:55.000Z',
     });
 
     const rendererEvent = send.mock.calls.find(([channel, event]) => (
-      channel === ipcChannels.event && event.type === 'codex.conversationEventReceived'
+      channel === ipcChannels.event && event.type === 'conversation.sessionPatch'
     ))?.[1] as MainToRendererEvent | undefined;
-    const message = rendererEvent?.type === 'codex.conversationEventReceived'
-      && rendererEvent.payload.event.type === 'message.updated'
-      ? rendererEvent.payload.event.payload.message
-      : undefined;
+    const op = rendererEvent?.type === 'conversation.sessionPatch' ? rendererEvent.payload.patch.ops[0] : undefined;
+    const message = op?.op === 'spliceMessages' ? op.messages[0] : undefined;
     const media = message?.parts.find((part) => part.type === 'media');
 
     expect(media?.type === 'media' ? media.media.url : null).toMatch(/^agent-workspace-media:\/\/generated\//);

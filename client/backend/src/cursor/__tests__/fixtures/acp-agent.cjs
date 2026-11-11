@@ -27,6 +27,8 @@ const rich = fs.existsSync(path.join(__dirname,'rich-models'));
 if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha'),...contextsFor('fixture-alpha')); }
 if(rich && fs.existsSync(path.join(__dirname,'missing-live-model-id'))) delete configOptions[0].id;
 let sessionId = 'session-' + process.pid, pending, mode, mcpServers = [];
+// Tests that need to end this process find it here.
+fs.writeFileSync(path.join(__dirname, 'pid'), String(process.pid));
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
 // Diff/location shape from installed Cursor source; resource/image blocks are synthetic ACP content fixtures.

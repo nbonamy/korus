@@ -1,13 +1,12 @@
-import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
+import type { AgentRequest, SessionState } from '@korus-dev/multi-agent-sdk';
 import { product } from '@workspace/core/product';
-import { conversationFromSources, nativePresentation, type NativeFixtureSources } from '../support/session-conversation-fixtures';
+import { completedTurn, conversationFrom, runningTurn, sessionState, textMessage } from '../support/conversation-fixtures';
 import { config, DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
   ComposerMenuSelectableItem,
   NativeAttachment,
   NativeRendererApi,
 } from '@korus-dev/agent-ui-sdk';
-import type { CodexClientRequest } from '@korus-dev/multi-agent-sdk/codex';
 import { nextTick, reactive, shallowReactive } from 'vue';
 import type { AgentConversationView } from '../../src/app-state';
 import type { AgentConversationActions } from '../../src/components/use-agent-conversation';
@@ -18,16 +17,12 @@ import AppShell from '../../src/components/AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
-import type { AppApi, RendererMessage } from '@workspace/core/contracts';
+import type { AppApi } from '@workspace/core/contracts';
 import { i18n } from '../../src/i18n';
 import { setElectronTestClient } from '../support/client';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../src/onboarding-session';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
-import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
-import { createClaudeConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 
 import {
   conversationControllerActions,
@@ -73,10 +68,9 @@ describe('AppShell authentication and conversation', () => {
     const views = snapshot.agents.map(agent => {
       agent.provider = provider;
       agent.providerDefaults = { kind: provider, permissionMode: provider === 'cursor' ? 'default' : 'acceptEdits' };
-      return shallowReactive<AgentConversationView & NativeFixtureSources>({
-        get conversation() { return conversationFromSources(this.agent, this); },
-        agent, codexSnapshot: null, claudeSnapshot: provider === 'claude' ? claudeConversationSnapshot([], { agentId: agent.id }) : null,
-        cursorSnapshot: provider === 'cursor' ? emptyCursorSnapshot(agent.id, `session-${agent.id}`) : null,
+      return shallowReactive<AgentConversationView & { session: SessionState }>({
+        get conversation() { return conversationFrom(this.agent, this.session); },
+        agent, session: sessionState(),
         composer: composer.configurationForAgent(agent.id),
         composerState: { text: `Draft for ${agent.id}`, selectionStart: 0, selectionEnd: 0 },
         attachments: [], capabilities: provider === 'cursor' ? cursorProviderCapabilities : claudeProviderCapabilities, approvals: [], sending: false,
@@ -456,9 +450,7 @@ describe('AppShell authentication and conversation', () => {
     agent.status = { type: 'working' };
     const wrapper = mountShell({
       snapshot, stubAgentWorkspace: false, realConversationPane: true,
-      ...(provider === 'claude'
-        ? { claudeConversationSnapshot: claudeConversationSnapshot([], { busy: true, activeTurnId: 'turn-1' }) }
-        : { codexConversationSnapshot: codexConversationSnapshot([], { busy: true, activeTurnId: 'turn-1' }) }),
+      conversation: sessionState({ busy: true, activeTurnId: 'turn-1' }),
       composerState: { text: 'Do this next', selectionStart: 12, selectionEnd: 12 },
       queuedPrompts: [{ id: 'queued-1', agentId: agent.id, text: 'Already queued', createdAt: '2026-10-03T00:00:00Z' }],
     });
@@ -484,13 +476,19 @@ describe('AppShell authentication and conversation', () => {
     agent.provider = 'claude';
     agent.providerDefaults = { kind: 'claude' };
     agent.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
-    const replica = createClaudeConversationReplica(claudeConversationSnapshot([], { agentId: agent.id }));
     const confirmation = { integrationId: 'claude', integrationName: 'Claude', toolName: 'Bash', summary: 'Run the tests?', argumentsPreview: '{"command":"npm test"}', allowConversation: true, allowAlways: false };
-    replica.apply({ type: 'approval.requested', agentId: agent.id, provider: 'claude', seq: 1, occurredAt: '2026-10-03T00:00:00Z', turnId: 'turn-approval', payload: { id: 'permission', kind: 'confirm_tool', payload: { confirmation } } });
+    // Claude records the tool call it asks about in the transcript.
+    const pending = sessionState({ messages: [{
+      id: 'assistant-turn-approval', agentId: agent.id, role: 'assistant', status: 'streaming', turnId: 'turn-approval', createdAt: '2026-10-03T00:00:00Z',
+      parts: [{ type: 'tool', id: 'approval-permission', kind: 'mcp', title: 'claude.Bash', status: 'running',
+        statusText: JSON.stringify({ source: 'mcp', action: 'run', phase: 'running', params: { requestId: 'permission', tool: 'claude.Bash',
+          confirmationSummary: confirmation.summary, argumentsPreview: confirmation.argumentsPreview, allowConversation: true, allowAlways: false } }),
+        input: { command: 'npm test' }, metadata: { confirmationRequestId: 'permission', server: 'claude', tool: 'Bash' } }],
+    }], answeredClientRequestIds: [] });
     const draft = { text: 'Keep my draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: NativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
     const request = { id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation } as const;
-    const wrapper = mountShell({ snapshot, claudeConversationSnapshot: replica.getSnapshot(), conversationRequests: [request], stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
+    const wrapper = mountShell({ snapshot, conversation: pending, conversationRequests: [request], stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
     expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([{
       id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation,
     }]);
@@ -502,8 +500,7 @@ describe('AppShell authentication and conversation', () => {
     await footer.findAll('button')[1]!.trigger('click');
     await flushPromises();
     expect(wrapper.emitted('client-response')).toEqual([[{ id: 'permission', payload: { decision: 'allow_conversation' } }]]);
-    replica.apply({ type: 'clientRequest.resolved', agentId: agent.id, provider: 'claude', seq: 2, occurredAt: '2026-10-03T00:00:01Z', payload: { id: 'permission' } });
-    await wrapper.setProps({ conversationPresentation: nativePresentation({ provider: 'claude', snapshot: replica.getSnapshot() }) });
+    await wrapper.setProps({ conversationPresentation: conversationFrom(agent, { ...pending, answeredClientRequestIds: ['permission'] }) });
     expect(conversationControllerState(wrapper).thread?.requests).toEqual([]);
     expect(conversationControllerState(wrapper).identity.messages).toHaveLength(1);
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe(draft.text);
@@ -515,34 +512,26 @@ describe('AppShell authentication and conversation', () => {
     const agent = snapshot.agents[0]!;
     agent.providerSession = { kind: 'codex', threadId: 'thread-provider' };
     const providerMessages = [
-      codexTextMessage('provider-user', 'user', 'Provider prompt', 'turn-provider'),
-      codexTextMessage('provider-assistant', 'assistant', 'Provider response', 'turn-provider'),
+      textMessage('provider-user', 'user', 'Provider prompt', { agentId: agent.id, turnId: 'turn-provider' }),
+      textMessage('provider-assistant', 'assistant', 'Provider response', { agentId: agent.id, turnId: 'turn-provider' }),
     ];
-    const providerSnapshot = codexConversationSnapshot(providerMessages, {
-      activeConversationId: 'thread-provider',
+    const approval: AgentRequest = {
+      id: 'approval-provider', conversationId: 'thread-provider', turnId: 'turn-provider', itemId: 'item-provider', kind: 'approval',
+      approval: { id: 'approval-provider', kind: 'command', conversationId: 'thread-provider', turnId: 'turn-provider', itemId: 'item-provider',
+        command: 'npm test', cwd: '/tmp/project', title: 'Run tests' },
+    };
+    const providerSnapshot = sessionState({
+      messages: providerMessages,
       activeTurnId: 'turn-provider',
-      turnIds: ['turn-provider'],
-      turns: [{
-        id: 'turn-provider', status: 'inProgress', error: null, willRetry: false,
-        startedAt: '2026-09-06T00:00:00.000Z', completedAt: null, durationMs: null,
-      }],
+      turns: [runningTurn('turn-provider', { startedAt: '2026-09-06T00:00:00.000Z' })],
       busy: true,
-      approvals: [{
-        id: 'approval-provider',
-        kind: 'command',
-        conversationId: 'thread-provider',
-        turnId: 'turn-provider',
-        itemId: 'item-provider',
-        command: 'npm test',
-        cwd: '/tmp/project',
-        title: 'Run tests',
-      }],
+      requests: [approval],
     });
 
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
-      codexConversationSnapshot: providerSnapshot,
+      conversation: providerSnapshot,
     });
     const state = conversationControllerState(wrapper);
 
@@ -550,7 +539,7 @@ describe('AppShell authentication and conversation', () => {
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.activeTurnId).toBe('turn-provider');
     expect(state.identity.busy).toBe(true);
-    expect(state.thread?.requests).toStrictEqual(providerSnapshot.approvals.map(approval => approvalAgentRequest(approval)));
+    expect(state.thread?.requests).toStrictEqual([approval]);
     expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
@@ -562,38 +551,32 @@ describe('AppShell authentication and conversation', () => {
     agent.providerSession = backend === 'codex'
       ? { kind: 'codex', threadId: 'thread-question' }
       : { kind: 'cursor', sessionId: 'thread-question' };
-    const question: CodexClientRequest = {
-      id: 'request-framework', kind: 'ask_user', conversationId: 'thread-question',
+    const question = {
+      id: 'request-framework', kind: 'question', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
-      payload: { request: { itemId: 'item-framework', delivery: 'tool', blocking: true,
+      question: { itemId: 'item-framework', delivery: 'tool', blocking: true,
         questions: [{ id: 'framework', header: 'Framework', question: 'Which framework should I use?',
           isOther: false, isSecret: false,
           options: [{ label: 'Vue', description: 'Use the SDK component package.' }],
         }],
-      } },
-    };
+      },
+    } satisfies AgentRequest;
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
-      cursorConversationSnapshot: backend === 'cursor' ? {
-        ...emptyCursorSnapshot(agent.id, 'thread-question'), activeTurnId: 'turn-question', busy: true,
-        clientRequests: [{ id: question.id, kind: 'ask_user', payload: question.payload }],
-      } : null,
-      codexConversationSnapshot: codexConversationSnapshot([{
-        id: 'assistant-question', role: 'assistant', status: 'streaming', turnId: 'turn-question',
-        parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
-          status: 'running', metadata: { requestId: question.id },
-          statusText: JSON.stringify({ source: 'codex', action: 'ask_user_question', phase: 'running',
-            params: { requestId: question.id, questions: question.payload.request.questions } }),
+      conversation: sessionState({
+        messages: backend === 'cursor' ? [] : [{
+          id: 'assistant-question', agentId: agent.id, role: 'assistant', status: 'streaming', turnId: 'turn-question', createdAt: '2026-09-06T00:00:00.000Z',
+          parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
+            status: 'running', metadata: { requestId: question.id },
+            statusText: JSON.stringify({ source: 'codex', action: 'ask_user_question', phase: 'running',
+              params: { requestId: question.id, questions: question.question.questions } }),
+          }],
         }],
-      }], {
-        activeConversationId: 'thread-question',
         activeTurnId: 'turn-question',
-        turnIds: ['turn-question'],
-        turns: [{ id: 'turn-question', status: 'inProgress', error: null, willRetry: false,
-          startedAt: null, completedAt: null, durationMs: null }],
-        clientRequests: [question],
+        turns: backend === 'cursor' ? [] : [runningTurn('turn-question')],
+        requests: [question],
         busy: true,
       }),
     });
@@ -616,29 +599,15 @@ describe('AppShell authentication and conversation', () => {
     agent.providerSession = backend === 'claude'
       ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
       : { kind: 'cursor', sessionId: 'cursor-session-1' };
-    const messages: RendererMessage[] = [{
-      id: 'claude-owned', agentId: agent.id, role: 'assistant', status: 'complete', turnId: 'turn-1',
-      createdAt: '2026-09-06T00:00:01.000Z', parts: [{ type: 'text', text: 'Provider owned' }],
-    }];
-    const providerSnapshot = claudeConversationSnapshot(messages, {
+    const messages = [textMessage('claude-owned', 'assistant', 'Provider owned', { agentId: agent.id, createdAt: '2026-09-06T00:00:01.000Z' })];
+    const providerSnapshot = sessionState({
+      messages,
       activeTurnId: 'turn-1',
-      turnIds: ['turn-1'],
-      turns: [{
-        id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
-        startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null,
-      }],
+      turns: [runningTurn('turn-1', { startedAt: '2026-09-06T00:00:01.000Z' })],
       busy: true,
     });
 
-    const state = conversationControllerState(mountShell({
-      snapshot,
-      ...(backend === 'claude' ? { claudeConversationSnapshot: providerSnapshot } : {
-        cursorConversationSnapshot: { ...emptyCursorSnapshot(agent.id, 'cursor-session-1'),
-          messages, turns: [{ id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
-            startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null }],
-          activeTurnId: 'turn-1', busy: true },
-      }),
-    }));
+    const state = conversationControllerState(mountShell({ snapshot, conversation: providerSnapshot }));
 
     expect(state.identity.messages).toMatchObject(messages);
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
@@ -650,16 +619,15 @@ describe('AppShell authentication and conversation', () => {
     const agent = snapshot.agents[0]!;
     agent.providerSession = { kind: 'codex', threadId: 'thread-edit' };
     const providerMessages = [
-      codexTextMessage('user-turn-edit', 'user', 'Original prompt', 'turn-edit'),
-      codexTextMessage('assistant-turn-edit', 'assistant', 'Original response', 'turn-edit'),
+      textMessage('user-turn-edit', 'user', 'Original prompt', { agentId: agent.id, turnId: 'turn-edit' }),
+      textMessage('assistant-turn-edit', 'assistant', 'Original response', { agentId: agent.id, turnId: 'turn-edit' }),
     ];
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot(providerMessages, {
-        activeConversationId: 'thread-edit',
-        turnIds: ['turn-edit'],
+      conversation: sessionState({
+        messages: providerMessages,
         turns: [{
           id: 'turn-edit', status: 'completed', error: null, willRetry: false,
           startedAt: '2026-09-06T00:00:00.000Z', completedAt: '2026-09-06T00:00:01.000Z', durationMs: 1_000,
@@ -686,12 +654,11 @@ describe('AppShell authentication and conversation', () => {
       stubAgentWorkspace: false,
       realConversationPane: true,
       editTurnAction,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('user-turn-edit', 'user', 'Original prompt', 'turn-edit'),
-        codexTextMessage('assistant-turn-edit', 'assistant', 'Original response', 'turn-edit'),
-      ], {
-        activeConversationId: 'thread-edit',
-        turnIds: ['turn-edit'],
+      conversation: sessionState({
+        messages: [
+          textMessage('user-turn-edit', 'user', 'Original prompt', { agentId: agent.id, turnId: 'turn-edit' }),
+          textMessage('assistant-turn-edit', 'assistant', 'Original response', { agentId: agent.id, turnId: 'turn-edit' }),
+        ],
         turns: [{
           id: 'turn-edit', status: 'completed', error: null, willRetry: false,
           startedAt: '2026-09-06T00:00:00.000Z', completedAt: '2026-09-06T00:00:01.000Z', durationMs: 1_000,
@@ -1293,18 +1260,12 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('assistant-plan', 'assistant', '', 'turn-plan'),
-        ], {
-          activeConversationId: 'thread-plan',
+        conversationPresentation: conversationFrom(activeAgent, sessionState({
+          messages: [textMessage('assistant-plan', 'assistant', '', { agentId: activeAgent.id, turnId: 'turn-plan' })],
           activeTurnId: 'turn-plan',
-          turnIds: ['turn-plan'],
-          turns: [{
-            id: 'turn-plan', status: 'inProgress', error: null, willRetry: false,
-            startedAt: '2026-08-01T00:00:00.000Z', completedAt: null, durationMs: null,
-          }],
+          turns: [runningTurn('turn-plan', { startedAt: '2026-08-01T00:00:00.000Z' })],
           busy: true,
-        }) }),
+        })),
         isLoading: false,
         isSending: true,
       },
@@ -1318,18 +1279,18 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toStrictEqual(plan);
   });
 
-  it('shows the provider-owned Codex execution plan', () => {
+  it('shows the conversation\'s own execution plan', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0]!;
     activeAgent.providerSession = { kind: 'codex', threadId: 'thread-plan' };
-    const providerSnapshot = codexConversationSnapshot([
-      codexTextMessage('assistant-plan', 'assistant', 'Working on it.', 'turn-plan'),
-    ], {
-      activeConversationId: 'thread-plan',
+    const providerSnapshot = sessionState({
+      messages: [textMessage('assistant-plan', 'assistant', 'Working on it.', { agentId: activeAgent.id, turnId: 'turn-plan' })],
       activeTurnId: 'turn-plan',
-      turnIds: ['turn-plan'],
-      executionPlan: {
+      plan: {
+        threadId: 'thread-plan',
         turnId: 'turn-plan',
+        kind: 'execution',
+        status: 'inProgress',
         explanation: 'Current execution plan',
         steps: [{ step: 'Render the mini panel', status: 'inProgress' }],
         markdown: 'Current execution plan\n- [ ] Render the mini panel',
@@ -1341,7 +1302,7 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: providerSnapshot }, activeAgent),
+        conversationPresentation: conversationFrom(activeAgent, providerSnapshot),
         isLoading: false,
         isSending: true,
       },
@@ -1378,12 +1339,9 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-          codexTextMessage('assistant-real-turn', 'assistant', 'Existing history.', 'turn-real'),
-        ], {
-          activeConversationId: 'thread-debug-plan',
-          turnIds: ['turn-real'],
-        }) }),
+        conversationPresentation: conversationFrom(activeAgent, sessionState({
+          messages: [textMessage('assistant-real-turn', 'assistant', 'Existing history.', { agentId: activeAgent.id, turnId: 'turn-real' })],
+        })),
         isLoading: false,
         isSending: false,
       },
@@ -1422,16 +1380,10 @@ describe('AppShell authentication and conversation', () => {
 
     await wrapper.setProps({
       isConversationLoading: false,
-      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-        codexTextMessage('assistant-newer-turn', 'assistant', 'Newer work completed.', 'turn-newer'),
-      ], {
-        activeConversationId: 'thread-persisted',
-        turnIds: ['turn-newer'],
-        turns: [{
-          id: 'turn-newer', status: 'completed', error: null, willRetry: false,
-          startedAt: '2026-08-02T00:00:00.000Z', completedAt: '2026-08-02T00:00:01.000Z', durationMs: 1_000,
-        }],
-      }) }),
+      conversationPresentation: conversationFrom(activeAgent, sessionState({
+        messages: [textMessage('assistant-newer-turn', 'assistant', 'Newer work completed.', { agentId: activeAgent.id, turnId: 'turn-newer' })],
+        turns: [completedTurn('turn-newer', { startedAt: '2026-08-02T00:00:00.000Z', completedAt: '2026-08-02T00:00:01.000Z', durationMs: 1_000 })],
+      })),
     } as Record<string, unknown>);
 
     expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toBeNull();
@@ -1458,9 +1410,7 @@ describe('AppShell authentication and conversation', () => {
       snapshot,
       isConversationLoadFailed: true,
       stubAgentWorkspace: false,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('message-existing', 'assistant', 'Keep me visible.'),
-      ]),
+      conversation: sessionState({ messages: [textMessage('message-existing', 'assistant', 'Keep me visible.')] }),
     });
     expect(conversationControllerState(withMessages).identity.disabled).toBe(false);
     expect(withMessages.getComponent({ name: 'AppConversationPane' }).props('hasVisibleMessages')).toBe(true);
@@ -1764,21 +1714,16 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.setProps({
       snapshot: { ...snapshot },
       activeAgent: agent,
-      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([], {
-        activeConversationId: 'thread-created',
-      }) }),
+      conversationPresentation: conversationFrom(agent, sessionState()),
     });
 
     expect(wrapper.find('.agent-ui-conversation-pane__hero').exists()).toBe(false);
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
 
     await wrapper.setProps({
-      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot([
-        codexTextMessage('authoritative-user', 'user', 'Create the first turn', 'turn-created'),
-      ], {
-        activeConversationId: 'thread-created',
-        turnIds: ['turn-created'],
-      }) }),
+      conversationPresentation: conversationFrom(agent, sessionState({
+        messages: [textMessage('authoritative-user', 'user', 'Create the first turn', { agentId: agent.id, turnId: 'turn-created' })],
+      })),
     });
 
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
@@ -1804,23 +1749,14 @@ describe('AppShell authentication and conversation', () => {
     if (!activeAgent) throw new Error('Expected seeded agent.');
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     activeAgent.providerSession = { kind: 'codex', threadId: 'thread-dina' };
-    const providerSnapshot = codexConversationSnapshot([], {
-      activeConversationId: 'thread-dina',
-      selectedModelId: 'native-model', selectedReasoningEffort: 'low', selectedServiceTier: null,
-      plugins: [{
-        id: 'app-69b31dc2110c8191b8b47dc98fe5a052',
-        name: 'dropbox',
-        displayName: 'Dropbox',
-        enabled: true,
-      }],
-    });
+    const providerSnapshot = sessionState({ selection: { model: 'native-model', reasoningEffort: 'low', serviceTier: null } });
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
         activeAgent,
         isLoading: false,
         isSending: false,
-        conversationPresentation: nativePresentation({ provider: 'codex', snapshot: providerSnapshot }),
+        conversationPresentation: conversationFrom(activeAgent, providerSnapshot),
         selectedModelId: 'gpt-5',
         selectedReasoningEffort: 'high',
         selectedServiceTier: 'fast',
@@ -1872,21 +1808,17 @@ describe('AppShell authentication and conversation', () => {
     }]);
     expect(state.policy?.canForkTurn).toBe(true);
 
-    const updatedMessages = [codexTextMessage(
-      'controller-reactive-message', 'assistant', 'Updated through the stable controller.', 'turn-controller',
+    const updatedMessages = [textMessage(
+      'controller-reactive-message', 'assistant', 'Updated through the stable controller.', { agentId: activeAgent.id, turnId: 'turn-controller' },
     )];
     await wrapper.setProps({
       isSending: true,
-      conversationPresentation: nativePresentation({ provider: 'codex', snapshot: codexConversationSnapshot(updatedMessages, {
-        activeConversationId: 'thread-dina',
+      conversationPresentation: conversationFrom(activeAgent, sessionState({
+        messages: updatedMessages,
         activeTurnId: 'turn-controller',
-        turnIds: ['turn-controller'],
-        turns: [{
-          id: 'turn-controller', status: 'inProgress', error: null, willRetry: false,
-          startedAt: '2026-08-04T00:00:00.000Z', completedAt: null, durationMs: null,
-        }],
+        turns: [runningTurn('turn-controller', { startedAt: '2026-08-04T00:00:00.000Z' })],
         busy: true,
-      }) }),
+      })),
     } as Record<string, unknown>);
     expect(conversationControllerState(wrapper).identity.messages).toMatchObject(updatedMessages);
     expect(conversationControllerState(wrapper).identity.activeTurnId).toBe('turn-controller');
@@ -2147,7 +2079,7 @@ describe('AppShell authentication and conversation', () => {
     agent.providerDefaults = { kind: 'cursor' };
     agent.providerSession = { kind: 'cursor', sessionId: 'cursor-permissions' };
     const wrapper = mountShell({ snapshot,
-      cursorConversationSnapshot: emptyCursorSnapshot(agent.id, 'cursor-permissions'),
+      conversation: sessionState(),
       realConversationPane: true, stubAgentWorkspace: false });
     try {
       await wrapper.setProps({ providerCapabilities: cursorProviderCapabilities });

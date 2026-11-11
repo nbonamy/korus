@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import type { BackendPublishedEvent } from '@workspace/core/contracts';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent } from '@workspace/core/contracts';
 import type { DelegatedWorkReportPort } from '../../agents/delegated-work-report-service';
@@ -57,13 +59,7 @@ describe('AgentGitWorkflowService', () => {
       await vi.waitFor(() => expect(test.sendPrompt).toHaveBeenCalledOnce());
       expect(test.sendPrompt.mock.calls[0]?.[1]).toContain(provider === 'gitlab' ? 'without a merge request' : 'without a pull request');
       expect(test.merge).not.toHaveBeenCalled();
-      test.reports.handleEvent({
-        type: 'codex.conversationEventReceived', agentId: test.source.id, provider: 'codex',
-        threadId: 'handoff', seq: 1, occurredAt: '', payload: { revision: 1, event: {
-          type: 'turn.completed', seq: 1, occurredAt: '', origin: 'notification', conversationId: 'handoff', turnId: 'report',
-          payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
-        } },
-      });
+      test.reports.handleEvent({ ...turnCompleted(test.source.id, 'report', { conversationId: 'handoff' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
       await merging;
       expect(test.sendMessage).toHaveBeenCalledExactlyOnceWith(test.source.id, 'recipient', expect.stringContaining('Implemented and tested.'));
       expect(test.snapshot.agents.some(agent => agent.id === test.source.id)).toBe(false);

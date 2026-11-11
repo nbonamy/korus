@@ -104,59 +104,12 @@ function expectTurnContext(
 
 function expectEventContext(event: EventRecord): void {
   switch (event.type) {
-    case 'cursor.conversationSnapshotChanged':
-    case 'cursor.conversationEventReceived': {
-      expectHarnessProvider(event, 'cursor');
-      expectRequiredString(event, 'providerSessionId');
-      const payload = event.payload as Record<string, unknown>;
-      const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
-      if (frame.agentId !== event.agentId || frame.sessionId !== event.providerSessionId) failEventValidation('$.payload', 'expected the outer Cursor identity');
-      return;
-    }
-    case 'antigravity.conversationSnapshotChanged':
-    case 'antigravity.conversationEventReceived': {
-      expectHarnessProvider(event, 'antigravity');
-      expectRequiredString(event, 'providerSessionId');
-      const payload = event.payload as Record<string, unknown>;
-      const frame = (payload.event ?? payload.snapshot) as Record<string, unknown>;
-      if (frame.agentId !== event.agentId || frame.sessionId !== event.providerSessionId) failEventValidation('$.payload', 'expected the outer Antigravity identity');
-      return;
-    }
     case 'provider.statusChanged':
     case 'account.rateLimitsUpdated':
     case 'models.changed':
     case 'skills.changed':
       expectRequiredProvider(event);
       return;
-    case 'codex.conversationSnapshotChanged':
-      expectHarnessProvider(event, 'codex');
-      expectRequiredString(event, 'threadId');
-      return;
-    case 'claude.conversationSnapshotChanged':
-      expectHarnessProvider(event, 'claude');
-      return;
-    case 'codex.conversationEventReceived': {
-      expectHarnessProvider(event, 'codex');
-      expectRequiredString(event, 'threadId');
-      const payload = event.payload as Record<string, unknown>;
-      const providerEvent = payload.event as Record<string, unknown>;
-      if (providerEvent.conversationId !== event.threadId) {
-        failEventValidation(
-          '$.payload.event.conversationId',
-          'expected the outer thread id',
-        );
-      }
-      return;
-    }
-    case 'claude.conversationEventReceived': {
-      expectHarnessProvider(event, 'claude');
-      const payload = event.payload as Record<string, unknown>;
-      const providerEvent = payload.event as Record<string, unknown>;
-      if (providerEvent.agentId !== event.agentId) {
-        failEventValidation('$.payload.event.agentId', 'expected the outer agent id');
-      }
-      return;
-    }
     case 'client.markdownDisplayRequested':
     case 'plan.reviewResolved':
     case 'client.celebrationRequested':

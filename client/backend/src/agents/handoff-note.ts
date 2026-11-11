@@ -1,6 +1,5 @@
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
 import type { ProviderSendResult } from '@workspace/core/provider-driver';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 
 /** Observe a single accepted turn, then read its final text through the provider's history boundary. */
 export async function requestHandoffNote(agent: Agent, prompt: string, port: {
@@ -23,11 +22,9 @@ export async function requestHandoffNote(agent: Agent, prompt: string, port: {
   };
   const unsubscribe = port.subscribe(event => {
     if (event.agentId !== agent.id) return;
-    const view = providerConversationEventView(event);
-    if (view.type === 'error') reject(new Error('The source could not prepare a handoff note.'));
-    if (view.type === 'turn.completed' && view.turnId) {
-      const payload = view.payload as { status?: string; turn?: { status?: string } };
-      completions.set(view.turnId, payload.status ?? payload.turn?.status ?? '');
+    if (event.type === 'session.error') reject(new Error('The source could not prepare a handoff note.'));
+    if (event.type === 'turn.completed') {
+      completions.set(event.turnId, event.payload.status);
       check();
     }
   });

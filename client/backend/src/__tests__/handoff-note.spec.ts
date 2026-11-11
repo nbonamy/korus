@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
+import { turnCompleted } from './support/conversation-activity';
 import { requestHandoffNote } from '../agents/handoff-note';
 
 const agent: Agent = { id: 'one', name: 'Worker', provider: 'codex', folder: '/repo', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 const message = (turnId: string, text: string): RendererMessage => ({ id: turnId, agentId: agent.id, turnId, role: 'assistant', status: 'complete', parts: [{ type: 'text', text }], createdAt: '' });
 function completion(turnId: string, status: 'completed' | 'interrupted' = 'completed'): BackendPublishedEvent {
-  return { agentId: 'one', provider: 'codex', threadId: 'thread', type: 'codex.conversationEventReceived', seq: 1, occurredAt: '', payload: { revision: 1, event: { type: 'turn.completed', conversationId: 'thread', origin: 'notification', turnId, seq: 1, occurredAt: '', payload: { status, error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } } };
+  return { ...turnCompleted('one', turnId, { conversationId: 'thread', status }), seq: 1, occurredAt: '' } as BackendPublishedEvent;
 }
 
 describe('handoff note capture', () => {

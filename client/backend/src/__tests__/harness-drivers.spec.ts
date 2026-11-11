@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { createDefaultProviderDrivers } from '../driver-rpc';
 import { createClaudeDriver } from '../harness-drivers';
 import { antigravityGenerationPrompt, sessionHandoff } from '../agents/prompts';
@@ -88,7 +87,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
     const { driver, script } = scriptedDriver('cursor');
     const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     await driver.loadConversation!(agent);
-    script.emit({ type: 'cursor.conversationSnapshotChanged', agentId: 'agent-a', provider: 'cursor', providerSessionId: 's', payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-a', 's') } } as never);
+    script.emit({ type: 'cursor.conversationSnapshotChanged', agentId: 'agent-a', provider: 'cursor', providerSessionId: 's', payload: { revision: 1, snapshot: { agentId: 'agent-a', sessionId: 's', activeTurnId: null, turns: [], messages: [], clientRequests: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } as never);
     const loads = script.calls('loadConversation').length;
     const seen: string[] = [];
     driver.onEvent(event => seen.push(event.type));

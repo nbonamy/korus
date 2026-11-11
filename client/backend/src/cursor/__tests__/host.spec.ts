@@ -14,8 +14,7 @@ import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentInSnapshot, createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { companionSessionId } from '@workspace/core/companion-protocol';
-import { isCursorSnapshot, isCursorEvent } from '@workspace/core/cursor-conversation-guards';
-import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
+import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
 import { TurnClock } from '../../usage/turn-clock';
@@ -35,13 +34,12 @@ beforeEach(async () => {
   agent.folder = root; events = []; host = createProviderDriver('cursor'); host.onEvent(event => events.push(event));
 });
 afterEach(async () => { vi.useRealTimers(); await host.close(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
-const completions = () => events.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed');
-async function snapshot(): Promise<CursorConversationSnapshot> {
+const completions = () => events.filter(event => event.type === 'turn.completed');
+async function snapshot(): Promise<SessionState> {
   await host.loadConversation!(agent);
-  const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged').at(-1);
-  if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('No Cursor snapshot');
-  expect(isCursorSnapshot(frame.payload.snapshot)).toBe(true);
-  return frame.payload.snapshot;
+  const frame = events.filter(event => event.type === 'conversation.sessionSnapshot').at(-1);
+  if (frame?.type !== 'conversation.sessionSnapshot') throw new Error('No Cursor snapshot');
+  return frame.payload.snapshot.state;
 }
 async function wire() { return (await readFile(path.join(root, 'wire.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
 describe('Cursor ACP host transport boundary', () => {
@@ -107,7 +105,7 @@ describe('Cursor ACP host transport boundary', () => {
     const server = new AppBackendServer({ version: 'fixture', snapshot: state,
       saveSnapshot: async value => { persisted = JSON.parse(JSON.stringify(persistedStateFromSnapshot(value))); },
       driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])), onEvent: event => {
-        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
+        if (event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
       } });
     try {
       await host.listModels!(current);
@@ -134,15 +132,13 @@ describe('Cursor ACP host transport boundary', () => {
     const boundAtStart: unknown[] = [];
     const server = new AppBackendServer({ version: 'fixture', snapshot: state,
       driverRpc: new ProviderDriverRpc(new Map([['cursor', host]])), onEvent: event => {
-        if (event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
+        if (event.type === 'turn.started') boundAtStart.push(structuredClone(current.providerSession));
       } });
     try {
       await host.listModels!(current);
       expect(current.providerSession).toBeUndefined();
       expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
-      const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged');
-      if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing catalog snapshot');
-      const pid = Number(String(frame.payload.snapshot.sessionId).replace(/^session-/, ''));
+      const pid = Number(await readFile(path.join(root, 'pid'), 'utf8'));
       process.kill(pid);
       await vi.waitFor(() => expect(host.getRuntimeStatus().status).toBe('error'));
       expect(current.providerSession).toBeUndefined();
@@ -193,10 +189,10 @@ describe('Cursor ACP host transport boundary', () => {
         expect(reviewer.providerSession).toStrictEqual(saved);
         expect(reviewer.codeReview?.rounds[0]).toMatchObject({ summary: 'Review turn complete.', inspectionCompletion: { findingCount: 1 }, reviewerSession: saved });
         await host.loadConversation!(reviewer);
-        const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged' && event.agentId === reviewer.id).at(-1);
-        if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing review snapshot');
-        expect(frame.payload.snapshot.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'interrupted', 'completed']);
-        expect(JSON.stringify(frame.payload.snapshot.messages)).not.toContain('LATE');
+        const frame = events.filter(event => event.type === 'conversation.sessionSnapshot' && event.agentId === reviewer.id).at(-1);
+        if (frame?.type !== 'conversation.sessionSnapshot') throw new Error('Missing review snapshot');
+        expect(frame.payload.snapshot.state.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'interrupted', 'completed']);
+        expect(JSON.stringify(frame.payload.snapshot.state.messages)).not.toContain('LATE');
         expect(usage.filter(event => event.agentId === reviewer.id).map(event => event.phase)).toStrictEqual(['started', 'interrupted', 'started', 'interrupted', 'started', 'completed']);
         expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
         expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(0);
@@ -321,7 +317,7 @@ describe('Cursor ACP host transport boundary', () => {
           const next = restored.agents.find(candidate => candidate.id === id)!;
           expect(next.providerDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permissionMode: 'full-access' });
           await inheritedHost.sendPrompt(next, 'permission');
-          await vi.waitFor(() => expect(inheritedEvents.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toHaveLength(index + 1));
+          await vi.waitFor(() => expect(inheritedEvents.filter(event => event.type === 'turn.completed')).toHaveLength(index + 1));
           expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'composer-2.5' });
         }
         expect(inheritedEvents.some(event => event.type === 'agentRequest.created')).toBe(false);
@@ -349,7 +345,7 @@ describe('Cursor ACP host transport boundary', () => {
     await host.sendPrompt({ ...agent, providerDefaults: { kind: 'cursor', permissionMode: 'full-access' } }, 'mcp-permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 8 && call.result)?.result).toStrictEqual({ outcome: missingOnce ? { outcome: 'cancelled' } : { outcome: 'selected', optionId: 'native-mcp-once' } });
-    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    expect((await snapshot()).requests).toStrictEqual([]);
   });
   it('applies a permission choice made while model discovery is opening the session', async () => {
     const loading = host.listModels!(agent);
@@ -357,7 +353,7 @@ describe('Cursor ACP host transport boundary', () => {
     await Promise.all([loading, selected]);
     await host.sendPrompt(agent, 'permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    expect((await snapshot()).requests).toStrictEqual([]);
   });
   it('does not apply one conversation full-access policy to another agent', async () => {
     const full = { ...agent, providerDefaults: { kind: 'cursor' as const, permissionMode: 'full-access' } };
@@ -379,9 +375,9 @@ describe('Cursor ACP host transport boundary', () => {
     await ledger.load();
     const offUsage = host.onUsage!(event => usage.observe(event));
     const offEvents = host.onEvent(event => {
-      if (event.type === 'cursor.conversationEventReceived') {
-        if (event.payload.event.type === 'message.upsert' && event.payload.event.payload.message.role === 'assistant') now = 1200;
-        if (event.payload.event.type === 'turn.completed') now = 4000;
+      {
+        if (event.type === 'turn.output') now = 1200;
+        if (event.type === 'turn.completed') now = 4000;
       }
       usage.observeEvent(event as never);
     });
@@ -508,8 +504,9 @@ describe('Cursor ACP host transport boundary', () => {
     const saved = { ...agent, providerSession: { kind: 'cursor' as const, sessionId: 'saved-session' } };
     await host.loadConversation!(saved);
     await host.loadConversation!(saved);
-    const frames = events.filter(event => event.type === 'cursor.conversationSnapshotChanged');
-    const state = frames.at(-1)!.payload as { snapshot: CursorConversationSnapshot };
+    const frames = events.filter(event => event.type === 'conversation.sessionSnapshot');
+    const last = frames.at(-1)!;
+    const state = { snapshot: { ...(last.payload as { snapshot: { state: SessionState } }).snapshot.state, sessionId: (last.payload as { conversation: string | null }).conversation } };
     expect(state.snapshot).toMatchObject({ sessionId: 'saved-session', busy: false, turns: [{ status: 'completed', startedAt: null, completedAt: null, durationMs: null }] });
     expect(state.snapshot.messages.filter(message => message.role === 'user')).toHaveLength(1);
     expect(state.snapshot.messages.every(message => message.createdAt === '')).toBe(true);
@@ -568,9 +565,9 @@ describe('Cursor ACP host transport boundary', () => {
     await host.close(); host = createProviderDriver('cursor'); events = []; host.onEvent(event => events.push(event));
     const saved = { ...agent, providerSession: first.providerSession };
     await host.loadConversation!(saved);
-    const frame = events.find(event => event.type === 'cursor.conversationSnapshotChanged')!;
-    if (frame.type !== 'cursor.conversationSnapshotChanged') throw new Error('No snapshot');
-    const user = frame.payload.snapshot.messages.find(message => message.role === 'user')!;
+    const frame = events.find(event => event.type === 'conversation.sessionSnapshot')!;
+    if (frame.type !== 'conversation.sessionSnapshot') throw new Error('No snapshot');
+    const user = frame.payload.snapshot.state.messages.find(message => message.role === 'user')!;
     expect(user.parts).toStrictEqual(liveUser.parts);
     expect(user.parts.filter(part => part.type === 'attachment')).toHaveLength(2);
     expect(JSON.stringify(frame)).not.toContain('<context');
@@ -593,7 +590,7 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/load')).toBe(true));
     await host.releaseConversation!(agent.id);
     expect(await pending).toBeInstanceOf(Error);
-    expect(events.filter(event => event.type === 'cursor.conversationSnapshotChanged')).toStrictEqual([]);
+    expect(events.filter(event => event.type === 'conversation.sessionSnapshot')).toStrictEqual([]);
   });
   it('reads validated stored messages without replacing the live session or emitting execution frames', async () => {
     const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
@@ -613,12 +610,12 @@ describe('Cursor ACP host transport boundary', () => {
   ])('invalidates cached sessions and pending callbacks on observed authentication identity changes (%j)', async status => {
     await writeFile(path.join(root,'status.json'),JSON.stringify({isAuthenticated:true,userInfo:{email:'first@example.invalid',teamName:'First'}}));
     await host.sendPrompt(agent,'extension');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
-    const request = (await snapshot()).clientRequests[0]!;
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
+    const request = (await snapshot()).requests[0]!;
     await writeFile(path.join(root,'status.json'),JSON.stringify(status));
     await host.authenticate!({action:'check'});
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    expect((await snapshot()).requests).toStrictEqual([]);
     await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'decision',decision:'allow'}})).rejects.toThrow(/pending/i);
     await expect(host.sendPrompt(agent,'must-not-run')).rejects.toThrow(/closed|reconnect/i);
     expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
@@ -670,7 +667,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('preserves edit changes, locations, resource text and images through live output and cold replay', async () => {
     const first = await host.sendPrompt(agent,'rich-output'); await vi.waitFor(()=>expect(completions()).toHaveLength(1));
-    const verify = (state: CursorConversationSnapshot) => {
+    const verify = (state: SessionState) => {
       expect(state.turns.at(-1)?.status).toBe('completed');
       const parts = state.messages.flatMap(message=>message.parts);
       const tool = parts.find(part=>part.type==='tool' && part.title==='Edit note.txt');
@@ -729,7 +726,7 @@ describe('Cursor ACP host transport boundary', () => {
       else { const target=path.join(outside,'outside.png'); await writeFile(target,Buffer.from(observedPng,'base64')); await rm(image); await symlink(target,image); }
       resumeRead(); await closing;
       if(action!=='release') await vi.waitFor(()=>expect(completions()).toHaveLength(1));
-      expect(events.flatMap(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='message.upsert' ? event.payload.event.payload.message.parts : []).filter(part=>part.type==='media')).toStrictEqual([]);
+      expect((await snapshot()).messages.flatMap(message => message.parts).filter(part => part.type === 'media')).toStrictEqual([]);
     } finally {resumeRead();vi.mocked(open).mockImplementation(actual.open);await rm(outside,{recursive:true,force:true});}
   });
   it('discovers model-specific enum effort and admits only exact native config IDs/values without changing thinking', async () => {
@@ -795,7 +792,7 @@ describe('Cursor ACP host transport boundary', () => {
     const pending=host.listModels!(agent).catch(error=>error);
     await vi.waitFor(async()=>expect((await wire()).some(call=>call.method==='cursor/list_available_models')).toBe(true));
     await host.releaseConversation!(agent.id); expect(await pending).toBeInstanceOf(Error);
-    expect(events.filter(event=>event.type==='cursor.conversationSnapshotChanged')).toStrictEqual([]);
+    expect(events.filter(event=>event.type==='conversation.sessionSnapshot')).toStrictEqual([]);
   });
   it('keeps a failed effort acknowledgment untrusted until model selection is confirmed again', async () => {
     await writeFile(path.join(root,'rich-models'),''); await writeFile(path.join(root,'effort-ack.json'),JSON.stringify({configOptions:[]}));
@@ -843,8 +840,8 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
     expect(results[0]!.providerSession).not.toEqual(results[1]!.providerSession);
     await host.loadConversation!(second);
-    const frames = events.filter(event => event.type === 'cursor.conversationSnapshotChanged');
-    expect(frames.at(-1)).toMatchObject({ agentId: second.id, payload: { snapshot: { agentId: second.id } } });
+    const frames = events.filter(event => event.type === 'conversation.sessionSnapshot');
+    expect(frames.at(-1)).toMatchObject({ agentId: second.id });
   });
   it('handshakes, streams split text/thought/tool frames and serializes two prompts with developer context', async () => {
     const first = await host.sendPrompt(agent, 'hello');
@@ -866,8 +863,8 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('denies permissions using the native reject option and keeps a completed-but-rejected tool visibly failed', async () => {
     await host.sendPrompt(agent, 'permission');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
-    await host.respondToAgentRequest({ id: (await snapshot()).clientRequests[0]!.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'deny' } });
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
+    await host.respondToAgentRequest({ id: (await snapshot()).requests[0]!.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'deny' } });
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 1 && call.result)?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
     await expect(access(path.join(root, 'should-not-exist'))).rejects.toThrow();
@@ -884,12 +881,12 @@ describe('Cursor ACP host transport boundary', () => {
     const server = new AppBackendServer({version:'fixture',snapshot:state,driverRpc:new ProviderDriverRpc(new Map([['cursor',host]]))});
     try {
       await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt,expectedSessionId:null,options:{planMode:prompt==='extension'}}});
-      await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
-      const request=(await snapshot()).clientRequests[0]!;
+      await vi.waitFor(async()=>expect((await snapshot()).requests).toHaveLength(1));
+      const request=(await snapshot()).requests[0]!;
       const response={id:request.id,agentId:agent.id,outcome};
       await expect(server.handleMessage({jsonrpc:'2.0',id:'answer',method:'agent/request/respond',params:{response}})).resolves.toMatchObject({result:expect.any(Object)});
       await vi.waitFor(()=>expect(completions()).toHaveLength(1));
-      expect((await snapshot()).clientRequests).toStrictEqual([]);
+      expect((await snapshot()).requests).toStrictEqual([]);
       expect(state.agentRequests?.[agent.id]??[]).toStrictEqual([]);
       expect((await wire()).find(call=>call.id===nativeId&&call.result)?.result).toStrictEqual(native);
       await expect(server.handleMessage({jsonrpc:'2.0',id:'duplicate',method:'agent/request/respond',params:{response}})).rejects.toThrow(/no longer pending/i);
@@ -904,7 +901,7 @@ describe('Cursor ACP host transport boundary', () => {
       await server.handleMessage({jsonrpc:'2.0',id:'prompt',method:'agent/prompt/send',params:{agentId:agent.id,prompt:'extension',expectedSessionId:null,options:{planMode:true}}});
       await vi.waitFor(()=>expect(state.agents[0]!.planReview?.status).toBe('pending'));
       const review=state.agents[0]!.planReview!;
-      expect(review).toMatchObject({markdown:'# Synthetic plan',requestId:(await snapshot()).clientRequests[0]!.id});
+      expect(review).toMatchObject({markdown:'# Synthetic plan',requestId:(await snapshot()).requests[0]!.id});
       expect((await wire()).some(call=>call.method==='session/set_config_option' && call.params.value==='plan')).toBe(true);
       if(resolution==='revise') {
         const draft={comments:[{id:'comment',sectionId:'section',quote:'Synthetic plan',body:'Keep English.'}],choices:[{id:'choice',quote:'Language',selected:['French file'],confirmed:true}]};
@@ -921,7 +918,7 @@ describe('Cursor ACP host transport boundary', () => {
       await vi.waitFor(()=>expect(completions()).toHaveLength(1));
       expect(state.agents[0]!.planReview?.status).toBe(resolution==='cancel'||resolution==='interrupt'?'cancel':'accept');
       expect((await wire()).filter(call=>call.method==='session/prompt')).toHaveLength(1);
-      expect((await snapshot()).clientRequests).toStrictEqual([]);
+      expect((await snapshot()).requests).toStrictEqual([]);
     } finally {await server.close();}
   });
   it('publishes ordinary native Plan-mode Markdown to the shared interactive sidebar', async () => {
@@ -937,25 +934,24 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('exposes a once-only plan decision and cancels pending callbacks on interruption', async () => {
     const first = await host.sendPrompt(agent, 'extension');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
-    const request = (await snapshot()).clientRequests[0]!;
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
+    const request = (await snapshot()).requests[0]!;
     await expect(host.respondToAgentRequest({ id: request.id, agentId: 'wrong', outcome: { kind: 'decision', decision: 'allow' } })).rejects.toThrow(/pending/i);
     await host.respondToAgentRequest({ id: request.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'allow' } });
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 2 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'accepted' } });
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',status:'completed',metadata:expect.objectContaining({plan:'# Synthetic plan',todos:[]})}));
-    for (const event of events) if (event.type === 'cursor.conversationEventReceived') expect(isCursorEvent(event.payload.event)).toBe(true);
     await expect(host.respondToAgentRequest({ id: request.id, agentId: agent.id, outcome: { kind: 'decision', decision: 'allow' } })).rejects.toThrow(/pending/i);
     const next = await host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'extension');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
     await host.interrupt(agent, next.turnId);
-    expect((await snapshot()).clientRequests).toStrictEqual([]);
+    expect((await snapshot()).requests).toStrictEqual([]);
   });
   it('maps documented question choices back to exact native IDs and cancels unanswered questions on release', async () => {
     await host.sendPrompt(agent,'question');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
-    const request = (await snapshot()).clientRequests[0]!;
-    expect(request).toMatchObject({kind:'ask_user',payload:{request:{questions:[{id:'mode',options:[{label:'Fast'},{label:'Safe'}]},{id:'extras',multiSelect:true}]}}});
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
+    const request = (await snapshot()).requests[0]!;
+    expect(request).toMatchObject({kind:'question',question:{questions:[{id:'mode',options:[{label:'Fast'},{label:'Safe'}]},{id:'extras',multiSelect:true}]}});
     expect((await wire()).find(call => call.id === 6 && call.result)?.result).toStrictEqual({outcome:{outcome:'accepted',todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}]}});
     expect((await wire()).find(call => call.id === 7 && call.result)?.result).toStrictEqual({outcome:{outcome:'cancelled'}});
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',metadata:expect.objectContaining({todos:[{id:'todo-1',content:'Choose mode',status:'in_progress'}]})}));
@@ -967,8 +963,8 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await snapshot()).messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({type:'tool',metadata:expect.objectContaining({planEntries:[{content:'Choose mode',priority:'medium',status:'in_progress'}]})}));
     await expect(host.respondToAgentRequest({id:request.id,agentId:agent.id,outcome:{kind:'cancelled'}})).rejects.toThrow(/pending/i);
     await host.sendPrompt(agent,'question');
-    await vi.waitFor(async () => expect((await snapshot()).clientRequests).toHaveLength(1));
-    const next = (await snapshot()).clientRequests[0]!;
+    await vi.waitFor(async () => expect((await snapshot()).requests).toHaveLength(1));
+    const next = (await snapshot()).requests[0]!;
     await host.releaseConversation!(agent.id);
     await expect(host.respondToAgentRequest({id:next.id,agentId:agent.id,outcome:{kind:'answered',answers:{}}})).rejects.toThrow(/pending/i);
   });
@@ -977,13 +973,13 @@ describe('Cursor ACP host transport boundary', () => {
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({}));
     const first = await host.sendPrompt(agent,'mcp-permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    expect((await snapshot()).clientRequests).toStrictEqual([]);
-    expect(events.some(event=>event.type==='cursor.conversationEventReceived' && event.payload.event.type==='request.created')).toBe(false);
+    expect((await snapshot()).requests).toStrictEqual([]);
+    expect(events.some(event=>event.type==='agentRequest.created')).toBe(false);
     expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-once'}});
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify({omitObservation:true}));
     await host.sendPrompt({...agent,providerSession:first.providerSession},'mcp-permission');
-    await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
-    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).clientRequests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
+    await vi.waitFor(async()=>expect((await snapshot()).requests).toHaveLength(1));
+    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).requests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
     await vi.waitFor(()=>expect(completions()).toHaveLength(2));
   });
   it.each([
@@ -998,8 +994,8 @@ describe('Cursor ACP host transport boundary', () => {
     await host.close(); host = createProviderDriver('cursor', { ...(!noGateway?{appMcpServerUrl:'http://127.0.0.1:1234/mcp'}:{}), ...(duplicate?{hostedMcpServerUrls:()=>({korus:'http://127.0.0.1:1235/mcp'})}:{}) }); host.onEvent(event=>events.push(event));
     await writeFile(path.join(root,'mcp-permission.json'),JSON.stringify(config));
     await host.sendPrompt(agent,'mcp-permission');
-    await vi.waitFor(async()=>expect((await snapshot()).clientRequests).toHaveLength(1));
-    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).clientRequests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
+    await vi.waitFor(async()=>expect((await snapshot()).requests).toHaveLength(1));
+    await host.respondToAgentRequest({agentId:agent.id,id:(await snapshot()).requests[0]!.id,outcome:{kind:'decision',decision:'deny'}});
     await vi.waitFor(()=>expect(completions()).toHaveLength(1));
     expect((await wire()).find(call=>call.id===8&&call.result)?.result).toStrictEqual({outcome:{outcome:'selected',optionId:'native-mcp-reject'}});
   });
@@ -1085,7 +1081,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('interrupts once, ignores stale completion/chunks, and admits the next prompt', async () => {
     const first = await host.sendPrompt(agent, 'wait');
-    await vi.waitFor(() => expect(events.some(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'message.upsert' && JSON.stringify(event.payload.event).includes('Hello'))).toBe(true));
+    await vi.waitFor(() => expect(events.some(event => (event.type === 'conversation.sessionPatch' || event.type === 'conversation.sessionSnapshot') && JSON.stringify(event.payload).includes('Hello'))).toBe(true));
     await host.interrupt(agent, first.turnId);
     await host.interrupt(agent, first.turnId);
     const continued = await host.continueInterruptedTurn!({ ...agent, providerSession: first.providerSession });
@@ -1166,6 +1162,6 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/new')).toBe(true));
     await host.releaseConversation!(agent.id);
     expect(await opening).toBeInstanceOf(Error);
-    expect(events.some(event => event.type === 'cursor.conversationSnapshotChanged')).toBe(false);
+    expect(events.some(event => event.type === 'conversation.sessionSnapshot')).toBe(false);
   });
 });

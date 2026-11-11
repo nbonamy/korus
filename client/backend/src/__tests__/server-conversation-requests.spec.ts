@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { turnCompleted, turnStarted } from './support/conversation-activity';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
@@ -13,13 +14,7 @@ import {
 } from './server-test-fixtures';
 
 function emitTurnStarted(server: AppBackendServer, agentId: string, turnId: string, provider: 'codex' | 'claude' = 'codex', conversationId = 'thread-dina') {
-  server.emitEvent(provider === 'codex' ? {
-    agentId, provider: provider, threadId: conversationId, type: 'codex.conversationEventReceived',
-    payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', conversationId, turnId, type: 'turn.started', payload: { startedAt: '' } } },
-  } : {
-    agentId, provider: provider, providerSessionId: conversationId, type: 'claude.conversationEventReceived',
-    payload: { revision: 1, event: { seq: 1, occurredAt: '', provider: provider, agentId, providerSessionId: conversationId, turnId, type: 'turn.started', payload: { turn: { id: turnId, provider: provider } } } },
-  });
+  server.emitEvent(turnStarted(agentId, turnId, { provider, conversationId }));
 }
 
 describe('AppBackendServer', () => {
@@ -456,25 +451,7 @@ describe('AppBackendServer', () => {
 
     // The provider conversation may already be idle before its completion event reaches App.
     snapshot.agents[0]!.status = { type: 'idle' };
-    server.emitEvent({
-      agentId: 'agent-dina', provider: 'codex', threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt: '2026-06-13T00:00:01.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          turnId: 'turn-old',
-          type: 'turn.completed',
-          payload: {
-            status: 'completed', error: null, willRetry: false,
-            startedAt: null, completedAt: '2026-06-13T00:00:01.000Z', durationMs: null,
-          },
-        },
-      },
-    });
+    server.emitEvent(turnCompleted('agent-dina', 'turn-old', { conversationId: 'thread-dina' }));
     server.emitEvent({
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
@@ -636,7 +613,7 @@ describe('AppBackendServer', () => {
     expect(sendPrompt).toHaveBeenCalledTimes(blocked ? 1 : 2);
     if (blocked) {
       expect(snapshot.queuedPrompts?.map(prompt => prompt.text)).toEqual(['retry safely']);
-      server.emitEvent({ agentId: 'agent-dina', provider: 'codex', threadId: 'thread-dina', type: 'codex.conversationEventReceived', payload: { revision: 1, event: { seq: 2, origin: 'notification', occurredAt: '', conversationId: 'thread-dina', turnId: 'blocked', type: 'turn.completed', payload: { status: 'failed', error: { message: failure, codexErrorInfo: 'misalignment_policy_violation', additionalDetails: null }, willRetry: false, startedAt: null, completedAt: null, durationMs: null } } } });
+      server.emitEvent(turnCompleted('agent-dina', 'blocked', { conversationId: 'thread-dina', status: 'failed', error: { message: failure, code: 'misalignment_policy_violation' } }));
       await flushMicrotasks();
       expect(sendPrompt).toHaveBeenCalledTimes(1);
     } else expect(snapshot.queuedPrompts).toStrictEqual([]);

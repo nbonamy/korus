@@ -2171,6 +2171,15 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
     case 'conversation.modeUpdated':
       syncComposerStateFromMainEvent(event);
       return;
+    // Conversation activity drives the daemon's own work; this window follows session state instead.
+    case 'turn.started':
+    case 'turn.completed':
+    case 'session.error':
+    case 'tool.updated':
+    case 'turn.output':
+    case 'diff.updated':
+    case 'file.activity':
+      return;
     case 'conversation.sessionSnapshot':
     case 'conversation.sessionPatch': {
       const before = sessionConversations.planModeOf(event.agentId);
@@ -2180,16 +2189,6 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       if (planMode !== undefined && planMode !== before) syncComposerPlanMode(event.agentId, planMode);
       return;
     }
-    // Native provider frames stay inside the daemon; they are never published to this window.
-    case 'codex.conversationSnapshotChanged':
-    case 'codex.conversationEventReceived':
-    case 'cursor.conversationSnapshotChanged':
-    case 'cursor.conversationEventReceived':
-    case 'antigravity.conversationSnapshotChanged':
-    case 'antigravity.conversationEventReceived':
-    case 'claude.conversationSnapshotChanged':
-    case 'claude.conversationEventReceived':
-      return;
     case 'provider.authenticationChanged':
       // The owning host publishes connection state through snapshot.updated.
       return;

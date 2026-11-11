@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
 import { DelegatedWorkReportService } from '../delegated-work-report-service';
@@ -149,25 +150,7 @@ describe('DelegatedWorkReportService', () => {
     });
 
     const report = service.prepare(worker, { kind: 'merge', branch: 'fix/provider', repository: 'main' });
-    service.handleEvent({
-      seq: 1,
-      occurredAt: '2026-09-03T00:01:00.000Z',
-      agentId: worker.id,
-      provider: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 4,
-        event: {
-          seq: 4,
-          occurredAt: '2026-09-03T00:01:00.000Z',
-          agentId: worker.id,
-          provider: 'claude',
-          turnId: 'turn-report',
-          type: 'turn.completed',
-          payload: { turn: { id: 'turn-report', status: 'completed' } },
-        },
-      },
-    });
+    service.handleEvent({ ...turnCompleted(worker.id, 'turn-report', { provider: 'claude' }), seq: 1, occurredAt: '2026-09-03T00:01:00.000Z' } as BackendPublishedEvent);
 
     await expect(report).resolves.toBe('Provider-owned handoff.');
     expect(readConversationMessages).toHaveBeenCalledWith(worker);
@@ -202,32 +185,6 @@ function assistantMessage(agentId: string, turnId: string, text: string): Render
   };
 }
 
-function event(agentId: string, turnId: string, type: 'turn.completed'): BackendPublishedEvent {
-  return {
-    seq: 1,
-    occurredAt: '2026-09-03T00:01:00.000Z',
-    agentId,
-    provider: 'codex',
-    threadId: 'thread-report',
-    type: 'codex.conversationEventReceived',
-    payload: {
-      revision: 1,
-      event: {
-        seq: 1,
-        occurredAt: '2026-09-03T00:01:00.000Z',
-        origin: 'notification',
-        conversationId: 'thread-report',
-        turnId,
-        type,
-        payload: {
-          status: 'completed',
-          error: null,
-          willRetry: false,
-          startedAt: null,
-          completedAt: '2026-09-03T00:01:00.000Z',
-          durationMs: null,
-        },
-      },
-    },
-  };
+function event(agentId: string, turnId: string, _type: 'turn.completed'): BackendPublishedEvent {
+  return { ...turnCompleted(agentId, turnId, { conversationId: 'thread-report' }), seq: 1, occurredAt: '2026-09-03T00:01:00.000Z' } as BackendPublishedEvent;
 }

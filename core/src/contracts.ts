@@ -211,11 +211,6 @@ export {
   subagentStatuses,
 } from './contracts/conversation';
 export type {
-  ClaudeConversationEvent,
-  ClaudeConversationSnapshot,
-  ClaudeConversationTurn,
-} from './contracts/claude-conversation';
-export type {
   AgentFileActivity,
   AgentHistoryLoadResult,
   AgentContextUsage,
@@ -675,7 +670,7 @@ export type RendererSnapshotState = {
   connection: ProviderConnectionState;
 };
 
-export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ProviderConversationFrame, ClientEffectEvent, ClientTransportEvent } from './contracts/events';
+export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ConversationActivityEvent, ClientEffectEvent, ClientTransportEvent } from './contracts/events';
 
 export type CelebrationKind = 'confetti' | 'stars' | 'shapes' | 'schoolPride';
 

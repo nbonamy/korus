@@ -1,10 +1,9 @@
 import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
-import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, ProviderConversationRef, MainToRendererEvent } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, ProviderConversationRef, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { automationExecutionIsActive, canTargetAutomationAgent, failAutomationExecution, failOrphanedAutomationExecutionsInSnapshot, recordAutomationExecutionInSnapshot } from '@workspace/core/automation-manager';
 import { createEntityId } from '@workspace/core/ids';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { warnMain } from '../log';
 import { nextAutomationRunAt } from '@workspace/core/automation-schedule';
 
@@ -90,17 +89,15 @@ export class AutomationRunner {
     }
   }
 
-  handleEvent(event: MainToRendererEvent): void {
+  handleEvent(event: BackendPublishedEvent): void {
     if (!event.agentId) return;
-    const view = providerConversationEventView(event);
     for (const automation of this.options.getSnapshot().automations) {
       const run = automation.executionLog.find(item => item.agentId === event.agentId && automationExecutionIsActive(item));
       if (!run) continue;
-      if (view.type === 'turn.completed') {
-        const payload = view.payload as { status?: string; turn?: { status?: string; error?: { message?: string } }; error?: { message?: string } } | null;
-        const status = payload?.turn?.status ?? payload?.status;
-        if (status === 'failed' || status === 'interrupted' || payload?.error || payload?.turn?.error) {
-          this.fail(automation, run, payload?.turn?.error?.message ?? payload?.error?.message ?? `Turn ${status ?? 'failed'}.`);
+      if (event.type === 'turn.completed') {
+        const { status, error } = event.payload;
+        if (status === 'failed' || status === 'interrupted' || error) {
+          this.fail(automation, run, error?.message ?? `Turn ${status}.`);
         } else {
           run.status = 'completed';
           run.completedAt = this.now().toISOString();

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../support/backend-fixture';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
+import { completedTurn, sessionPatchEvent, sessionSnapshotEvent, sessionState, setOps, textMessage } from '../support/conversation-fixtures';
 import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { approvalAgentRequest } from '@workspace/core/agent-request';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
@@ -43,8 +43,8 @@ describe('Unified backend → mounted application', () => {
       expect(api.loadConversationHistory).toHaveBeenCalledTimes(2);
       expect(wrapper.text()).toContain('Conversation couldn’t be loaded.');
       api.loadConversationHistory.mockImplementationOnce(async () => {
-        emitSequenced({ seq: 56, occurredAt: '', provider: 'codex', agentId: agent.id, threadId: 'restored-history', type: 'codex.conversationSnapshotChanged',
-          payload: { revision: 1, snapshot: codexConversationSnapshot([{ id: 'restored-answer', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Recovered saved conversation.' }] }]) } });
+        emitSequenced(sessionSnapshotEvent(agent.id, sessionState({ messages: [textMessage('restored-answer', 'assistant', 'Recovered saved conversation.', { agentId: agent.id })] }),
+          { seq: 56, conversation: 'restored-history' }));
         return snapshot;
       });
       await wrapper.getComponent({ name: 'ConversationLoadError' }).get('button').trigger('click');
@@ -380,11 +380,9 @@ describe('Unified backend → mounted application', () => {
     const { api, emitSequenced } = installBackendFixture(snapshot);
     let finishHistory!: (value: typeof snapshot) => void;
     api.loadConversationHistory.mockImplementationOnce(() => new Promise(resolve => { finishHistory = resolve; }));
-    const emitHistory = () => emitSequenced({ seq: 54, occurredAt: '2026-11-02T12:00:00Z', type: 'codex.conversationSnapshotChanged',
-        provider: 'codex', agentId: agent.id, threadId: 'first-history', payload: { revision: 1,
-          snapshot: codexConversationSnapshot([{ id: 'first-answer', role: 'assistant', status: 'complete',
-            parts: [{ type: 'text', text: 'First history is ready without switching chats.' }] }]),
-        } });
+    const emitHistory = () => emitSequenced(sessionSnapshotEvent(agent.id, sessionState({
+      messages: [textMessage('first-answer', 'assistant', 'First history is ready without switching chats.', { agentId: agent.id })],
+    }), { seq: 54, occurredAt: '2026-11-02T12:00:00Z', conversation: 'first-history' }));
     api.getSnapshotState.mockImplementationOnce(async () => {
       if (timing === 'during') emitHistory();
       return { snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } };
@@ -407,11 +405,9 @@ describe('Unified backend → mounted application', () => {
     const { api, emit, emitSequenced } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
-    const report = { id: 'report', role: 'user' as const, status: 'complete' as const, turnId: 'report-turn', parts: [{ type: 'text' as const, text: 'Automatic review completed. No review findings to report.' }] };
-    const messages = [report, { id: 'silent-report', role: 'assistant' as const, status: 'streaming' as const, turnId: 'report-turn', parts: [] }];
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: {
-      revision: 1, snapshot: codexConversationSnapshot(messages, { busy: true, activeTurnId: 'report-turn' }),
-    } });
+    const report = textMessage('report', 'user', 'Automatic review completed. No review findings to report.', { agentId: agent.id, turnId: 'report-turn' });
+    const messages = [report, { ...textMessage('silent-report', 'assistant', '', { agentId: agent.id, turnId: 'report-turn', status: 'streaming' }), parts: [] }];
+    emit(sessionSnapshotEvent(agent.id, sessionState({ messages, busy: true, activeTurnId: 'report-turn' }), { conversation: 'thread-1', revision: 1 }));
     await flushPromises();
     expect(wrapper.find('.chat-message__thinking').exists()).toBe(true);
 
@@ -419,12 +415,9 @@ describe('Unified backend → mounted application', () => {
     // intentionally carries no provider transcript. Recover it from its owner.
     api.getSnapshotState.mockResolvedValue({ snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } });
     api.loadConversationHistory.mockImplementation(async () => {
-      emitSequenced({ seq: 56, occurredAt: '2026-10-05T19:05:26Z', type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: {
-        revision: 4, snapshot: codexConversationSnapshot([report], { turns: [{
-          id: 'report-turn', status: 'completed', error: null, willRetry: false,
-          startedAt: '2026-10-05T19:05:19Z', completedAt: '2026-10-05T19:05:26Z', durationMs: 6930,
-        }] }),
-      } });
+      emitSequenced(sessionSnapshotEvent(agent.id, sessionState({ messages: [report], turns: [completedTurn('report-turn', {
+        startedAt: '2026-10-05T19:05:19Z', completedAt: '2026-10-05T19:05:26Z', durationMs: 6930,
+      })] }), { seq: 56, occurredAt: '2026-10-05T19:05:26Z', conversation: 'thread-1', revision: 4 }));
       return snapshot;
     });
     if (recovery === 'backend gap') {
@@ -435,7 +428,7 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
     expect(wrapper.find('.chat-message__thinking').exists()).toBe(false);
     expect(wrapper.get('.chat-message__empty-response').text()).toBe('Empty response');
-    expect(wrapper.text()).toContain(report.parts[0]!.text);
+    expect(wrapper.text()).toContain('Automatic review completed. No review findings to report.');
     expect(wrapper.find('button[aria-label="Send prompt"]').exists()).toBe(true);
     expect(api.sendPrompt).not.toHaveBeenCalled();
   });
@@ -538,20 +531,22 @@ describe('Unified backend → mounted application', () => {
     const { emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
-    const executionPlan = { turnId: 'turn', explanation: 'Implementing', steps: [{ step: 'Verify boundary behavior', status: 'inProgress' as const }], markdown: '- [ ] Verify boundary behavior', updatedAt: '2026-09-16T00:00:00Z' };
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeTurnId: 'turn', executionPlan, busy: true }) } });
+    const plan = { threadId: 'thread-1', turnId: 'turn', kind: 'execution' as const, status: 'inProgress' as const, explanation: 'Implementing',
+      steps: [{ step: 'Verify boundary behavior', status: 'inProgress' as const }], markdown: '- [ ] Verify boundary behavior', updatedAt: '2026-09-16T00:00:00Z' };
+    const stream = { conversation: 'thread-1' };
+    emit(sessionSnapshotEvent(agent.id, sessionState({ activeTurnId: 'turn', plan, busy: true }), { ...stream, revision: 1 }));
     await flushPromises();
     expect(wrapper.get('.conversation-plan').text()).toContain('Verify boundary behavior');
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 2, snapshot: codexConversationSnapshot([], { activeTurnId: 'turn', executionPlan: { ...executionPlan, steps: [{ step: 'Verify boundary behavior', status: 'completed' }] } }) } });
+    emit(sessionPatchEvent(agent.id, 2, setOps({ busy: false, plan: { ...plan, steps: [{ step: 'Verify boundary behavior', status: 'completed' }] } }), stream));
     await flushPromises();
     expect(wrapper.find('.conversation-plan__step--completed').exists()).toBe(true);
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 3, snapshot: codexConversationSnapshot([], { executionPlan: null }) } });
+    emit(sessionPatchEvent(agent.id, 3, setOps({ activeTurnId: null, plan: null }), stream));
     await flushPromises();
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
 
-    emit({ type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 4, snapshot: codexConversationSnapshot() } });
+    emit(sessionSnapshotEvent(agent.id, sessionState(), { ...stream, revision: 4 }));
     emit({ type: 'agent.promptQueued', agentId: agent.id, payload: { id: 'queued', text: 'Review the other agent change.' } });
     await flushPromises();
     expect(wrapper.text()).toContain('Review the other agent change.');

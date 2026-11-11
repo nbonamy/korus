@@ -35,7 +35,6 @@ import type {
   WorkBacklogAssignmentStatus
 } from '@workspace/core/contracts';
 import { updateAgentWorkspace, updateWorkItemAssignmentInSnapshot } from '@workspace/core/agent-manager';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { listSourceWorktrees } from '../git-worktrees';
 import { scanSourceRepositories } from '../source-repositories';
 import { WorktreeManager } from '../worktrees/worktree-manager';
@@ -219,14 +218,13 @@ export class AppMcpService {
   }
 
   handleBackendEvent(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
     if (event.agentId) void this.monitors.flush(event.agentId);
-    if (event.agentId && view.type === 'turn.completed') {
+    if (event.type === 'turn.completed') {
       this.coordinator.clearStatus(event.agentId);
       // User-entered delegation controls belong to the turn they were submitted for.
       const owner = this.snapshot.agents.find(agent => agent.id === event.agentId);
-      if (owner && event.provider && view.conversationId && view.turnId) {
-        completeUserDelegationTurn(owner, { provider: event.provider, conversationId: view.conversationId, turnId: view.turnId });
+      if (owner && event.conversationId) {
+        completeUserDelegationTurn(owner, { provider: event.provider, conversationId: event.conversationId, turnId: event.turnId });
       }
     }
     if (event.type === 'agent.promptDequeued') {

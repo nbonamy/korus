@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CompanionNotifications } from '../companion/notifications';
+import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { sdkAgent } from '../codex/__tests__/sdk-host-fixture';
@@ -15,11 +16,9 @@ describe('shared conversation read state', () => {
       const turn = (id: string) => ({ id, status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null });
       const state = { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null };
       server.emitEvent({ type: 'conversation.sessionSnapshot', provider: 'codex', agentId: agent.id, payload: { conversation: 'conversation-a', epoch: 'e1', snapshot: { revision: 0, state } } } as never);
-      // A finished turn bumps the read state from the provider's own event, then the session state reports the turn.
+      // A finished turn bumps the read state from the harness's turn event, then the session state reports the turn.
       for (const revision of [1, 2]) {
-        server.emitEvent({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
-          type: 'turn.completed', conversationId: 'conversation-a', turnId: `turn-${revision}`, payload: { status: 'completed' },
-        } } } as never);
+        server.emitEvent(turnCompleted(agent.id, `turn-${revision}`, { conversationId: 'conversation-a' }));
         server.emitEvent({ type: 'conversation.sessionPatch', provider: 'codex', agentId: agent.id, payload: { conversation: 'conversation-a', epoch: 'e1',
           patch: { revision, ops: [{ op: 'set', key: 'turns', value: Array.from({ length: revision }, (_, index) => turn(`turn-${index + 1}`)) }] } } } as never);
       }
@@ -38,10 +37,7 @@ describe('shared conversation read state', () => {
     snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
     const events = vi.fn(); const save = vi.fn(async () => {});
     const server = new AppBackendServer({ version: 'test', snapshot, onEvent: events, saveSnapshot: save });
-    const attention = (revision: number) => server.emitEvent({ type: 'codex.conversationEventReceived', provider: 'codex', agentId: agent.id, threadId: 'conversation-a', payload: { revision, event: {
-      type: 'turn.completed', seq: revision, occurredAt: '', origin: 'notification', conversationId: 'conversation-a', turnId: `turn-${revision}`,
-      payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
-    } } });
+    const attention = (revision: number) => server.emitEvent(turnCompleted(agent.id, `turn-${revision}`, { conversationId: 'conversation-a' }));
     const read = (revision: number) => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/read', params: { agentId: agent.id, revision } });
     try {
       attention(1);

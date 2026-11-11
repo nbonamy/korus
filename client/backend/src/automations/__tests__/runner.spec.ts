@@ -4,6 +4,7 @@ import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { createMission } from '@workspace/core/missions';
 import type { Automation } from '@workspace/core/contracts';
 import { AutomationRunner, automationIsDue } from '../runner';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 
 function setup(target: Automation['target'] = { kind: 'newQuickChat', teamId: 'team', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } }) {
   const snapshot = createEmptySnapshot();
@@ -32,7 +33,7 @@ describe('scheduled prompts', () => {
     now = new Date('2026-10-09T15:00:00Z');
     await runner.runAll();
     expect(sendPrompt).toHaveBeenCalledOnce();
-    runner.handleEvent({ type: 'turn.completed', agentId: 'existing', payload: {} } as never);
+    runner.handleEvent(turnCompleted('existing', 'turn-1'));
     const restarted = new AutomationRunner({ getSnapshot: () => snapshot, sendPrompt, saveSnapshot, notifySnapshotUpdated: vi.fn(), now: () => now });
     await restarted.runAll();
     expect(sendPrompt).toHaveBeenCalledOnce();
@@ -120,7 +121,7 @@ describe('scheduled prompts', () => {
   it('reports provider errors and interrupted turns as failures', async () => {
     const { runner, automation } = setup({ kind: 'agent', agentId: 'existing' });
     await runner.runAutomation('auto');
-    runner.handleEvent({ type: 'turn.completed', agentId: 'existing', payload: { turn: { status: 'interrupted' } } } as never);
+    runner.handleEvent(turnCompleted('existing', 'turn-1', { status: 'interrupted' }));
     expect(automation.executionLog[0]).toMatchObject({ status: 'failed', error: 'Turn interrupted.' });
     await runner.runAutomation('auto');
     runner.handleEvent({ type: 'agent.statusChanged', agentId: 'existing', payload: { type: 'error', message: 'Session expired' } } as never);
@@ -138,7 +139,7 @@ describe('scheduled prompts', () => {
     expect(snapshot.activeAgentId).toBe('existing');
     expect(sendPrompt).toHaveBeenCalledWith(chat.id, 'Check my tasks');
     expect(run).toMatchObject({ status: 'working', conversationRef });
-    runner.handleEvent({ type: 'turn.completed', agentId: chat.id, payload: {} } as never);
+    runner.handleEvent(turnCompleted(chat.id, 'turn-1'));
     expect(run.status).toBe('completed');
     await runner.runAutomation('auto');
     expect(automation.executionLog).toHaveLength(2);
@@ -159,7 +160,7 @@ describe('scheduled prompts', () => {
     expect(automation.executionLog[0]!.status).toBe('awaitingInput');
     runner.handleEvent({ type: 'agent.statusChanged', agentId: 'existing', payload: { type: 'idle' } } as never);
     expect(automation.executionLog[0]!.status).toBe('awaitingInput');
-    runner.handleEvent({ type: 'turn.completed', agentId: 'existing', payload: {} } as never);
+    runner.handleEvent(turnCompleted('existing', 'turn-1'));
     expect(automation.executionLog[0]!.status).toBe('completed');
   });
 

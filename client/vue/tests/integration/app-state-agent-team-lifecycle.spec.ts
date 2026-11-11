@@ -12,9 +12,7 @@ import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { workItem, deferred } from '../support/app-state-test-harness';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
-import { emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import { sessionSnapshotEvent, sessionState, textMessage } from '../support/conversation-fixtures';
 
 describe('useAppState', () => {
   it('migrates durable legacy preferences on load, deletes only migrated keys, and stays migrated after reload', async () => {
@@ -423,8 +421,7 @@ describe('useAppState', () => {
       activeTeamId: 'team-other',
     });
     await teamPromise;
-    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', provider: 'codex', agentId: 'agent-joel', threadId: 'thread-joel',
-      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    receive(sessionSnapshotEvent('agent-joel', sessionState(), { seq: 1, conversation: 'thread-joel' }));
     expect(state.isLoading.value).toBe(false);
     expect(state.activeAgent.value?.id).toBe('agent-joel');
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);
@@ -920,11 +917,9 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     for (const [index, agent] of [first, second].entries()) {
-      if (agent.providerSession?.kind !== 'antigravity') throw new Error('Missing fixture native session');
-      const native = emptyAntigravitySnapshot(agent.id, agent.providerSession.sessionId);
-      native.messages = [{ id: agent.id + '-answer', agentId: agent.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: agent.id + ' previous answer' }] }];
-      listeners[0]?.({ seq: index + 1, occurredAt: '', agentId: agent.id, provider: 'antigravity', providerSessionId: native.sessionId,
-        type: 'antigravity.conversationSnapshotChanged', payload: { revision: 1, snapshot: native } });
+      if (agent.providerSession?.kind !== 'antigravity') throw new Error('Missing fixture session');
+      const conversation = sessionState({ messages: [textMessage(agent.id + '-answer', 'assistant', agent.id + ' previous answer', { agentId: agent.id, createdAt: '' })] });
+      listeners[0]?.(sessionSnapshotEvent(agent.id, conversation, { seq: index + 1, provider: 'antigravity', conversation: agent.providerSession.sessionId }));
     }
     expect(state.activeConversationPresentation.value?.messages).toHaveLength(1);
     await state.restartAgent(first.id);
@@ -948,9 +943,7 @@ describe('useAppState', () => {
     } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
-    listeners[0]?.({ seq: 1, occurredAt: '', agentId: agent.id, provider: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'claude-session-1' }) } });
+    listeners[0]?.(sessionSnapshotEvent(agent.id, sessionState(), { seq: 1, provider: 'claude', conversation: 'claude-session-1' }));
     expect(state.activeConversationPresentation.value).not.toBeNull();
 
     await state.restartAgent(agent.id);

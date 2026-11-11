@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
+import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { codexProviderCapabilities, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
@@ -60,12 +61,7 @@ it('persists active work, clears a user stop, and resumes only marked agents aft
   try {
     for (const agent of agents) {
       await server.handleMessage({ jsonrpc: '2.0', id: agent.id, method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'work' } });
-      if (agent.provider === 'codex') server.emitEvent({ agentId: agent.id, provider: 'codex', threadId: agent.id, type: 'codex.conversationEventReceived',
-        payload: { revision: 1, event: { seq: 1, occurredAt: '', origin: 'notification', conversationId: agent.id, turnId: 'turn', type: 'turn.started', payload: { startedAt: '' } } } });
-      else if (agent.provider === 'cursor') server.emitEvent({ agentId: agent.id, provider: 'cursor', type: 'cursor.conversationEventReceived',
-        payload: { revision: 1, event: { agentId: agent.id, sessionId: agent.id, turnId: 'turn', type: 'turn.started', occurredAt: '', payload: { turn: { id: 'turn' } } } } });
-      else server.emitEvent({ agentId: agent.id, provider: 'claude', type: 'claude.conversationEventReceived',
-        payload: { revision: 1, event: { provider: 'claude', agentId: agent.id, turnId: 'turn', type: 'turn.started', seq: 1, occurredAt: '', payload: { turn: { id: 'turn', provider: 'claude' } } } } });
+      server.emitEvent(turnStarted(agent.id, 'turn', { provider: agent.provider, conversationId: agent.id }));
     }
     await vi.waitFor(() => expect(stored?.agents.every(agent => (agent as Agent & { autoResumePending?: boolean }).autoResumePending)).toBe(true));
     await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: 'agent/interrupt', params: { agentId: 'stopped' } });
@@ -86,10 +82,7 @@ it('keeps newer work marked when an older turn completes and does not recover co
     providerSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
   snapshot.agents = [agent];
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {} });
-  const emit = (turnId: string, started: boolean) => server.emitEvent({ agentId: agent.id, provider: 'claude', type: 'claude.conversationEventReceived',
-    payload: { revision: 1, event: started
-      ? { provider: 'claude', agentId: agent.id, turnId, type: 'turn.started', seq: 1, occurredAt: '', payload: { turn: { id: turnId, provider: 'claude' } } }
-      : { provider: 'claude', agentId: agent.id, turnId, type: 'turn.completed', seq: 2, occurredAt: '', payload: { turn: { id: turnId, status: 'completed' } } } } });
+  const emit = (turnId: string, started: boolean) => server.emitEvent(started ? turnStarted(agent.id, turnId, { provider: 'claude' }) : turnCompleted(agent.id, turnId, { provider: 'claude' }));
   try {
     emit('old', true); emit('new', true); emit('old', false);
     expect(agent.autoResumePending).toBe(true);

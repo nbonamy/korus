@@ -58,7 +58,6 @@ export type ProviderConversationForkResult = ProviderConversationResumeResult & 
 
 export type ProviderHistoryLoadResult = {
   hasOlder: boolean;
-  frame?: Extract<BackendPublishedEvent, { type: 'claude.conversationEventReceived' }>;
 };
 
 export type ProviderGoalResult = {
@@ -201,7 +200,7 @@ export function resolveProviderCoordinationPolicy(policy?: ProviderCoordinationP
   } };
 }
 
-export type AgentProviderDriver = Omit<HarnessDriver<Agent, BackendEvent, Extract<BackendPublishedEvent, { type: 'claude.conversationEventReceived' }>>, 'getCapabilities' | 'getRuntimeStatus' | 'generateText'> & {
+export type AgentProviderDriver = Omit<HarnessDriver<Agent, BackendEvent>, 'getCapabilities' | 'getRuntimeStatus' | 'generateText'> & {
   readonly provider: HarnessProvider;
   readonly coordinationPolicy?: ProviderCoordinationPolicy;
   onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;

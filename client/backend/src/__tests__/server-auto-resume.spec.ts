@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Agent, AccountRateLimits } from '@workspace/core/contracts';
+import { sessionError } from './support/conversation-activity';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
@@ -20,9 +21,8 @@ function host(snapshot = createTestSnapshot()) {
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async value => { saved.push(persistedStateFromSnapshot(value)); },
     driverRpc: new ProviderDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')], ['cursor', driver('cursor')]])), onEvent: event => events.push(event) });
   servers.push(server);
-  const limit = (agent: Agent, message: string) => agent.provider === 'codex' ? server.emitEvent({ type: 'codex.conversationEventReceived', agentId: agent.id, provider: 'codex', threadId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : '',
-    payload: { revision: 1, event: { seq: 1, origin: 'notification', occurredAt: new Date().toISOString(), type: 'turn.error', conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : '', turnId: 'blocked',
-      payload: { error: { message, additionalDetails: null, codexErrorInfo: 'usageLimitExceeded' }, willRetry: false } } } }) : server.emitEvent({ type: 'agent.statusChanged', agentId: agent.id, provider: agent.provider,
+  const limit = (agent: Agent, message: string) => agent.provider === 'codex' ? server.emitEvent(sessionError(agent.id, { message, code: 'usageLimitExceeded' },
+    { conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : '', turnId: 'blocked' })) : server.emitEvent({ type: 'agent.statusChanged', agentId: agent.id, provider: agent.provider,
     conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession?.sessionId, payload: { type: 'error', message } });
   const toggle = (agent: Agent, enabled: boolean) => server.handleMessage({ jsonrpc: '2.0', id: 'toggle', method: 'agent/autoResume/set', params: { agentId: agent.id, enabled } });
   return { server, snapshot, send, limit, toggle, events, saved };
@@ -93,10 +93,7 @@ it('cancels quota continuation when the provider stops the conversation for safe
   server.emitEvent({ type: 'account.rateLimitsUpdated', provider: 'codex', payload: { rateLimits: quota(Date.now() + 60_000) } });
   limit(agent, 'Usage limit reached');
   expect(agent.rateLimitPause).toBeDefined();
-  server.emitEvent({ agentId: agent.id, provider: 'codex', threadId: 'codex', type: 'codex.conversationEventReceived', payload: { revision: 2, event: {
-    seq: 2, origin: 'notification', occurredAt: '', conversationId: 'codex', turnId: 'blocked', type: 'turn.error',
-    payload: { error: { message: 'Usage limit reached', codexErrorInfo: 'misalignment_policy_violation', additionalDetails: null }, willRetry: false },
-  } } });
+  server.emitEvent(sessionError(agent.id, { message: 'Usage limit reached', code: 'misalignment_policy_violation' }, { conversationId: 'codex', turnId: 'blocked' }));
   expect(agent.rateLimitPause).toBeUndefined();
   await vi.advanceTimersByTimeAsync(360_000);
   expect(send).not.toHaveBeenCalled();

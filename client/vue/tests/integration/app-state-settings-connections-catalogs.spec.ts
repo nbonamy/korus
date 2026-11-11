@@ -14,8 +14,7 @@ import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../support/client';
 import { configureAppClient } from '../../src/platform-api';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
+import { sessionSnapshotEvent, sessionState } from '../support/conversation-fixtures';
 import { clearFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../src/onboarding-session';
 describe('useAppState', () => {
   it('loads workspace files only for the opened agent and leaves skills unloaded on selection', async () => {
@@ -300,9 +299,7 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     state.selectServiceTier('fast');
     const agent = persisted.agents[0]!;
-    listeners[0]?.(provider === 'codex'
-      ? { seq: 1, occurredAt: '', provider: provider, agentId: agent.id, threadId: 'thread-1', type: 'codex.conversationSnapshotChanged', payload: { revision: 1, snapshot: codexConversationSnapshot([]) } }
-      : { seq: 1, occurredAt: '', provider: provider, agentId: agent.id, type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'thread-1' }) } });
+    listeners[0]?.(sessionSnapshotEvent(agent.id, sessionState(), { seq: 1, provider, conversation: 'thread-1' }));
     const controller = createConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
       actions: { updateSettings: settings => {
@@ -412,8 +409,7 @@ describe('useAppState', () => {
     } satisfies Partial<AppApi> });
     const state = useAppState();
     await state.loadSnapshot();
-    receive({ seq: 1, occurredAt: '', provider: 'claude', agentId: agent.id, type: 'claude.conversationSnapshotChanged',
-      payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'delegated-session' }) } });
+    receive(sessionSnapshotEvent(agent.id, sessionState(), { seq: 1, provider: 'claude', conversation: 'delegated-session' }));
     const controller = createConversationPaneController({
       state: agentConversationState(() => state.agentConversationFor(agent.id)!),
       actions: { updateComposerState: value => state.updateComposerState(agent.id, value) },

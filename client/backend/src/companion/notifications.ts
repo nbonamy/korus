@@ -1,35 +1,19 @@
 import { agentConversationId } from '@workspace/core/plan-review';
 import { createHash } from 'node:crypto';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { companionAgents, companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 
-/** A turn that finished on its own, as the agent's session stream reports it. */
-export type TurnCompletion = { type: 'turn.completed'; agentId: string; conversationId?: string; turnId: string; payload: { status: 'completed' } };
-type AttentionEvent = AppBackendEvent | TurnCompletion;
-type Followed = { conversation: string | null; epoch: string; statuses: Map<string, string> };
 
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
 export class CompanionNotifications {
-  private readonly pending = new Map<string, { event: AttentionEvent }>();
-  /** Each agent's turn statuses as its session stream last reported them, so a finished turn is seen once. */
-  private readonly followed = new Map<string, Followed>();
-  private readonly revisions = new Map<string, number>();
+  private readonly pending = new Map<string, { event: AppBackendEvent }>();
   private readonly read = new Map<string, number>();
   private readonly seen = new Set<string>();
   constructor(private readonly hostId: string) {}
   /** Pair attention with its authoritative read-state update before asynchronous workspace reads. */
-  capture(event: AppBackendEvent): { event: AttentionEvent; revision?: number }[] {
-    // The read-state update a finished turn causes is published before the session state reports the turn, so
-    // the completion pairs with the latest read revision instead of waiting for one.
-    if (event.type === 'conversation.sessionSnapshot' || event.type === 'conversation.sessionPatch') {
-      return this.completions(event).map(completion => {
-        const revision = this.revisions.get(completion.agentId);
-        return revision === undefined ? { event: completion } : { event: completion, revision };
-      });
-    }
+  capture(event: AppBackendEvent): { event: AppBackendEvent; revision: number }[] {
     if (event.agentId && this.accepts(event)) {
       this.pending.set(event.agentId, { event });
       if (this.pending.size > 1024) this.pending.delete(this.pending.keys().next().value!);
@@ -40,39 +24,22 @@ export class CompanionNotifications {
     const pending = this.pending.get(event.agentId); this.pending.delete(event.agentId);
     const previous = this.read.get(event.agentId) ?? 0;
     this.read.set(event.agentId, state.readRevision);
-    this.revisions.set(event.agentId, state.revision);
-    if (this.revisions.size > 1024) this.revisions.delete(this.revisions.keys().next().value!);
     if (this.read.size > 1024) this.read.delete(this.read.keys().next().value!);
     return [
       ...(pending ? [{ ...pending, revision: state.revision }] : []),
       ...(state.readRevision > previous ? [{ event, revision: state.readRevision }] : []),
     ];
   }
-  accepts(event: AttentionEvent) {
+  accepts(event: AppBackendEvent) {
     if (event.type === 'agentRequest.created') {
       const request = event.payload.request;
       return request.kind !== 'question' || request.question.blocking;
     }
     return event.type === 'turn.completed';
   }
-  /** Turns a patch moves to completed. A snapshot, or a stream the agent did not report before, only sets the baseline. */
-  private completions(event: Extract<AppBackendEvent, { type: 'conversation.sessionSnapshot' | 'conversation.sessionPatch' }>): TurnCompletion[] {
-    const { conversation, epoch } = event.payload;
-    const previous = this.followed.get(event.agentId);
-    const turns = event.type === 'conversation.sessionSnapshot' ? event.payload.snapshot.state.turns
-      : event.payload.patch.ops.flatMap(op => op.op === 'set' && op.key === 'turns' && Array.isArray(op.value) ? [op.value as { id: string; status: string }[]] : []).at(-1);
-    const sameStream = previous && previous.conversation === conversation && previous.epoch === epoch;
-    if (!turns) { if (!sameStream) this.followed.delete(event.agentId); return []; }
-    const statuses = new Map(turns.map(turn => [turn.id, turn.status]));
-    this.followed.set(event.agentId, { conversation, epoch, statuses });
-    if (this.followed.size > 1024) this.followed.delete(this.followed.keys().next().value!);
-    if (event.type === 'conversation.sessionSnapshot' || !sameStream) return [];
-    return turns.filter(turn => turn.status === 'completed' && previous.statuses.get(turn.id) !== 'completed').map(turn => ({
-      type: 'turn.completed', agentId: event.agentId, ...(conversation ? { conversationId: conversation } : {}), turnId: turn.id, payload: { status: 'completed' },
-    }));
-  }
-  create(event: AttentionEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
-    const view = event.type === 'turn.completed' ? event : providerConversationEventView(event);
+  create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
+    const view = { type: event.type, agentId: event.agentId, turnId: event.turnId,
+      conversationId: event.conversationId ?? event.threadId ?? event.providerSessionId, payload: event.payload };
     // Mission workers are not in the team's agent list, but a person still has to answer them.
     const agent = companionAgents(workspace).find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);

@@ -1,5 +1,4 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CodexConversationSnapshot } from '@korus-dev/multi-agent-sdk/codex';
 import type { MainToRendererEvent } from '../contracts';
 import { applyMainEventToSnapshot, createInitialSnapshot } from '../snapshot';
 import { applyCoordinationEventToSnapshot } from '../snapshot-coordination-reducer';
@@ -47,22 +46,14 @@ const subagentEventTypes = [
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'subagent'>[];
 
 const rendererEventTypes = [
-  'cursor.conversationSnapshotChanged',
-  'cursor.conversationEventReceived',
   'conversation.shareChanged',
   'conversation.sessionSnapshot',
   'conversation.sessionPatch',
-  'antigravity.conversationSnapshotChanged',
-  'antigravity.conversationEventReceived',
   'provider.authenticationChanged',
   'client.connectionChanged',
   'remoteControl.statusChanged',
   'models.changed',
   'skills.changed',
-  'codex.conversationSnapshotChanged',
-  'codex.conversationEventReceived',
-  'claude.conversationSnapshotChanged',
-  'claude.conversationEventReceived',
   'client.markdownDisplayRequested',
   'client.celebrationRequested',
   'agentCreation.progress',
@@ -74,49 +65,14 @@ const rendererEventTypes = [
   'conversation.modeUpdated',
   'conversation.historyLoadFailed',
   'workspace.fileActivityDetected',
+  'turn.started',
+  'turn.completed',
+  'session.error',
+  'tool.updated',
+  'turn.output',
+  'diff.updated',
+  'file.activity',
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'renderer'>[];
-
-const codexConversationSnapshot = {
-  status: 'ready',
-  authentication: {
-    status: 'loaded',
-    account: null,
-    requiresOpenaiAuth: false,
-    error: null,
-    login: { status: 'idle', loginId: null, authUrl: null, error: null },
-  },
-  conversations: [],
-  activeConversationId: 'thread-1',
-  activeTurnId: null,
-  turnIds: [],
-  turns: [],
-  messages: [],
-  clientRequests: [],
-  answeredClientRequestIds: [],
-  approvals: [],
-  models: [],
-  modelCatalogStatus: 'loaded',
-  skills: [],
-  skillCatalogStatus: 'loaded',
-  plugins: [],
-  pluginCatalogStatus: 'loaded',
-  permissionProfiles: [],
-  approvalPresets: [],
-  approvalPreset: null,
-  selectedModelId: null,
-  selectedReasoningEffort: null,
-  selectedServiceTier: null,
-  planMode: false,
-  contextUsage: null,
-  goal: null,
-  turnGitDiff: null,
-  threadStatus: null,
-  rateLimits: null,
-  queuedPrompts: [],
-  busy: false,
-  historyLoading: false,
-  error: null,
-} satisfies CodexConversationSnapshot;
 
 const occurredAt = '2026-09-04T00:00:00.000Z';
 const base = { seq: 1, occurredAt } as const;
@@ -147,69 +103,6 @@ const rendererOnlyEvents = [
       cwd: null,
       status: 'loaded',
       skills: [{ name: 'test', path: '/skill', enabled: true }],
-    },
-  },
-  {
-    ...agent,
-    provider: 'codex',
-    threadId: 'thread-1',
-    type: 'codex.conversationSnapshotChanged',
-    payload: { revision: 1, snapshot: codexConversationSnapshot },
-  },
-  {
-    ...agent,
-    provider: 'codex',
-    threadId: 'thread-1',
-    type: 'codex.conversationEventReceived',
-    payload: {
-      revision: 2,
-      event: {
-        seq: 2,
-        occurredAt,
-        origin: 'notification',
-        type: 'message.delta',
-        conversationId: 'thread-1',
-        turnId: 'turn-1',
-        payload: { messageId: 'message-1', itemId: 'item-1', delta: 'Hello' },
-      },
-    },
-  },
-  {
-    ...agent,
-    provider: 'claude',
-    type: 'claude.conversationSnapshotChanged',
-    payload: {
-      revision: 1,
-      snapshot: {
-        agentId: 'agent-1',
-        sessionId: 'claude-session-1',
-        activeTurnId: null,
-        turnIds: [],
-        turns: [],
-        messages: [],
-        answeredClientRequestIds: [],
-        busy: false,
-        historyLoading: false,
-        historyState: { hasOlder: false, loadingOlder: false },
-        contextUsage: null,
-        plan: null,
-        error: null,
-      },
-    },
-  },
-  {
-    ...agent,
-    provider: 'claude',
-    type: 'claude.conversationEventReceived',
-    payload: {
-      revision: 2,
-      event: {
-        ...agent,
-        provider: 'claude',
-        turnId: 'turn-1',
-        type: 'message.delta',
-        payload: { delta: 'Hello' },
-      },
     },
   },
   {
