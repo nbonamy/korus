@@ -1,6 +1,6 @@
 import { product } from './product';
 import type { HarnessProvider, ProviderCommandSummary } from './contracts';
-import { defaultProviderCapabilities, providerPolicy } from './provider-capabilities';
+import { defaultProviderCapabilities } from './provider-capabilities';
 
 type AppCommand = Omit<ProviderCommandSummary, 'id' | 'provider' | 'slashName' | 'submitOnSelect'>;
 /** Korus's own commands, the same in every agent's composer. */
@@ -16,8 +16,6 @@ const appCommands: AppCommand[] = [
 /** The slash commands an agent's composer offers: its harness's own, then Korus's. */
 export function defaultProviderCommands(provider: HarnessProvider): ProviderCommandSummary[] {
   const harness = (defaultProviderCapabilities(provider).commands ?? []).map(command => ({ ...command }));
-  const app = appCommands
-    .filter(command => !(command.name === 'review' && providerPolicy.withoutReviewCommand.has(provider)))
-    .map(command => ({ ...command, id: `app.${command.name}`, provider, slashName: command.name, submitOnSelect: true }));
+  const app = appCommands.map(command => ({ ...command, id: `app.${command.name}`, provider, slashName: command.name, submitOnSelect: true }));
   return [...harness, ...app];
 }

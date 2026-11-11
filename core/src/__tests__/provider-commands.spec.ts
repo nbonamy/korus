@@ -22,7 +22,7 @@ it('offers native Cursor plan mode, then supported app commands, without Codex c
   expect(defaultProviderCommands('cursor').map(({id,provider: provider,slashName,submitOnSelect}) => ({id,provider: provider,slashName,submitOnSelect})))
     .toStrictEqual([
       {id:'cursor.plan',provider:'cursor',slashName:'plan',submitOnSelect:true},
-      ...['design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,provider:'cursor',slashName:name,submitOnSelect:true})),
+      ...['review','design','visualize','mission','delegate','worktree'].map(name => ({id:`app.${name}`,provider:'cursor',slashName:name,submitOnSelect:true})),
     ]);
 });
 
