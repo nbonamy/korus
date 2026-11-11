@@ -244,7 +244,6 @@ import {
   presentRendererCollaborationMessage,
   type CollaborationMessagePresentation,
 } from '../shared/collaboration-message';
-import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useProviderSwitch();
@@ -648,7 +647,8 @@ function transformConversationMessage(
   if (message.id && result.presentation) {
     collaborationMessagePresentations.set(message.id, result.presentation);
   }
-  const transformed = withInferredWorkPhases(result.message as ChatMessage | ConversationMessage);
+  // Work phases come tagged from the harness, so the pane renders them as they arrive.
+  const transformed = result.message as ChatMessage | ConversationMessage;
   transformedMessageCache.set(message, transformed);
   return transformed;
 }
