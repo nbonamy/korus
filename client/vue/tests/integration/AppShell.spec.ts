@@ -26,8 +26,8 @@ import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../sr
 import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
-import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
+import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
+import { createClaudeConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 
 import {
   conversationControllerActions,

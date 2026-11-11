@@ -14,7 +14,7 @@ import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { workItem, deferred } from '../support/app-state-test-harness';
 import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
 import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
-import { emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
+import { emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
 describe('useAppState', () => {
   it('migrates durable legacy preferences on load, deletes only migrated keys, and stays migrated after reload', async () => {
@@ -439,6 +439,7 @@ describe('useAppState', () => {
       name: 'Jesse',
       providerSession: { kind: 'codex', threadId: 'thread-jesse' },
     });
+    const pristine = structuredClone(remoteSnapshot);
     const setDockBadgeCount = vi.fn().mockResolvedValue(undefined);
     stubElectronTestWindow({
       app: {
@@ -463,25 +464,10 @@ describe('useAppState', () => {
       seq: 1,
       agentId: 'agent-jesse',
       provider: 'codex',
-      threadId: 'thread-jesse',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-08-07T10:00:00.000Z',
-          origin: 'notification',
-          conversationId: 'thread-jesse',
-          turnId: 'turn-jesse',
-          type: 'turn.completed',
-          payload: {
-            status: 'completed', error: null, willRetry: false,
-            startedAt: null, completedAt: '2026-08-07T10:00:00.000Z', durationMs: null,
-          },
-        },
-      },
+      type: 'agentRequest.created',
+      payload: { request: { id: 'question-1', kind: 'question', conversationId: 'thread-jesse', question: { delivery: 'tool', blocking: true, questions: [] } } },
       occurredAt: '2026-08-07T10:00:00.000Z',
-    });
+    } as unknown as MainToRendererEvent);
 
     expect(state.unreadAgentIds.value).toStrictEqual(['agent-jesse']);
     expect(setDockBadgeCount).toHaveBeenLastCalledWith(1);
@@ -531,7 +517,7 @@ describe('useAppState', () => {
     });
     expect(state.unreadAgentIds.value).toStrictEqual(['agent-jesse']);
 
-    const snapshotWithoutJesse = structuredClone(remoteSnapshot);
+    const snapshotWithoutJesse = pristine;
     snapshotWithoutJesse.agents = snapshotWithoutJesse.agents.filter((agent) => agent.id !== 'agent-jesse');
     for (const team of snapshotWithoutJesse.teams) {
       team.agentIds = team.agentIds.filter((agentId) => agentId !== 'agent-jesse');

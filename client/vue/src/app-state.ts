@@ -2180,7 +2180,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       if (planMode !== undefined && planMode !== before) syncComposerPlanMode(event.agentId, planMode);
       return;
     }
-    // Native frames still travel for the companion and guest sharing; the browser reads session state.
+    // Native provider frames stay inside the daemon; they are never published to this window.
     case 'codex.conversationSnapshotChanged':
     case 'codex.conversationEventReceived':
     case 'cursor.conversationSnapshotChanged':

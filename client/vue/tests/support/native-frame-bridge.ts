@@ -34,8 +34,6 @@ export function withNativeFrameBridge(listener: (event: MainToRendererEvent) => 
   return event => {
     const match = nativeFrame.exec(event.type);
     if (!match) { listener(event); return; }
-    // The daemon still delivers the native frame next to the session state derived from it.
-    listener(event);
     const frame = event as unknown as Native;
     const envelope = { agentId: frame.agentId, provider: frame.provider, seq: frame.seq ?? 0, occurredAt: frame.occurredAt ?? '' };
     const send = (type: string, payload: unknown) => listener({ ...envelope, type, payload } as MainToRendererEvent);

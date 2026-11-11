@@ -525,16 +525,16 @@ describe('AppBackendServer', () => {
     expect(workerIds).toHaveLength(3);
     for (const agentId of workerIds) {
       await reopened.handleMessage({ jsonrpc: '2.0', id: agentId, method: backendMethods.agentConversationLoad, params: { agentId } });
-      const event = events.find(event => event.agentId === agentId && event.type === 'claude.conversationSnapshotChanged');
-      expect(event).toMatchObject({ payload: { snapshot: { agentId, messages: expect.arrayContaining([
+      const event = events.find(event => event.agentId === agentId && event.type === 'conversation.sessionSnapshot');
+      expect(event).toMatchObject({ payload: { snapshot: { state: { messages: expect.arrayContaining([
         expect.objectContaining({ role: 'user' }), expect.objectContaining({ role: 'assistant' }),
-      ]) } } });
+      ]) } } } });
     }
     const runningWorker = mission.execution!.runs.find(run => run.status === 'running')!.workerId!;
     await expect(reopened.handleMessage({ jsonrpc: '2.0', id: 'fixture-models', method: backendMethods.agentModelsList, params: { agentId: runningWorker } }))
       .resolves.toMatchObject({ result: [{ model: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' }] });
-    expect(events.find(event => event.agentId === runningWorker && event.type === 'claude.conversationSnapshotChanged'))
-      .toMatchObject({ payload: { snapshot: { busy: true, activeTurnId: expect.any(String) } } });
+    expect(events.find(event => event.agentId === runningWorker && event.type === 'conversation.sessionSnapshot'))
+      .toMatchObject({ payload: { snapshot: { state: { busy: true, activeTurnId: expect.any(String) } } } });
     await expect(reopened.handleMessage({ jsonrpc: '2.0', id: 'no-provider', method: backendMethods.agentSkillsList, params: { agentId: runningWorker } }))
       .rejects.toThrow('screenshot agents are read-only');
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'wrong-stage', method: backendMethods.debugMissionStageSet,

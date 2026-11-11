@@ -1,4 +1,5 @@
-import type { Agent, AppSnapshot, ProviderModelOption, ClaudeConversationSnapshot, RendererMessage } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderModelOption, RendererMessage } from '@workspace/core/contracts';
+import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import type { Mission } from '@workspace/core/missions';
 import type { MissionRun } from '@workspace/core/mission-execution';
 
@@ -80,7 +81,7 @@ export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: 
 }
 
 /** Regenerated from the persisted fixture identity, without provider transcript files. */
-export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: string): ClaudeConversationSnapshot | null {
+export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: string): SessionState | null {
   const agent = snapshot.agents.find(candidate => candidate.id === agentId);
   if (!agent || !isMissionScreenshotAgent(agent)) return null;
   const mission = snapshot.missions?.find(candidate => candidate.execution?.debugFixture
@@ -110,11 +111,10 @@ export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: st
     text('done', 'assistant', 'Ready for review. **18 tests pass**, and the dialog works entirely from the keyboard. I used the shared form and dialog components so the new screens match the rest of the app.'),
   ];
   return {
-    agentId, sessionId: agent.providerSession!.kind === 'claude' ? agent.providerSession!.sessionId : null,
-    activeTurnId: busy ? turnId : null, turnIds: [turnId],
+    activeTurnId: busy ? turnId : null,
     turns: [{ id: turnId, status: busy ? 'inProgress' : 'completed', error: null, willRetry: false, startedAt: createdAt,
       completedAt: busy ? null : createdAt, durationMs: busy ? null : 180_000 }],
-    messages, answeredClientRequestIds: [], busy, historyLoading: false,
+    messages, answeredClientRequestIds: [], busy, historyLoading: false, requests: [], title: null, goal: null,
     historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null,
   };
 }

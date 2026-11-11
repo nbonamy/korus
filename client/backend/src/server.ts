@@ -111,7 +111,7 @@ import { AgentConversationService } from './agents/agent-conversation-service';
 import { DelegatedWorkReportService, type DelegatedWorkReportPort } from './agents/delegated-work-report-service';
 import { SubagentIdentityService } from './agents/subagent-identity-service';
 import { AgentRequestRegistry } from './agent-requests/agent-request-registry';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
+import { isNativeConversationFrame, providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { isCodeReviewDecisionInput, isCodeReviewDiscussionInput, isCodeReviewStartInput, type CodeReviewFinding, type CodeReviewSession } from '@workspace/core/code-review';
 import { CodeReviewService, type CodeReviewToolPort, type AutomaticReviewStartInput } from './review/code-review-service';
@@ -2808,7 +2808,9 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, loadParams, async () => {
           const fixture = missionScreenshotConversation(this.snapshot, agentId);
           if (fixture) {
-            this.applyAndEmitBackendEvent({ agentId, provider: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: fixture } });
+            const session = this.localAgentForId(agentId)?.providerSession;
+            this.applyAndEmitBackendEvent({ agentId, provider: 'claude', type: 'conversation.sessionSnapshot',
+              payload: { conversation: session && session.kind !== 'codex' ? session.sessionId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state: fixture } } });
             return this.snapshot;
           }
           await this.agentConversations.hydrateAndRefresh(agentId, reportFailure);
@@ -4364,7 +4366,10 @@ export class AppBackendServer {
   }
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
-    const fullEvent = this.nextMainEvent(event);
+    // Native provider frames feed the daemon's own observers only. Clients follow neutral session state, so a native
+    // frame takes no place in the client event sequence and never leaves the daemon.
+    const internal = isNativeConversationFrame(event);
+    const fullEvent = this.nextMainEvent(event, !internal);
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
@@ -4373,7 +4378,7 @@ export class AppBackendServer {
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
-    this.emitBackendEvent(fullEvent);
+    if (!internal) this.emitBackendEvent(fullEvent);
     if (safetyBlock && fullEvent.agentId) {
       this.handleBackendEvent({ agentId: fullEvent.agentId, type: 'agent.statusChanged', payload: { type: 'error', message: safetyBlock } });
     }
@@ -4547,7 +4552,7 @@ export class AppBackendServer {
     return false;
   }
 
-  private nextMainEvent(event: BackendEvent): BackendPublishedEvent {
+  private nextMainEvent(event: BackendEvent, sequenced = true): BackendPublishedEvent {
     if (event.type === 'agentRequest.resolved') event = { ...event, payload: { ...event.payload, outcome: requestOutcomeToWire(event.payload.outcome) } };
     if (event.type === 'codex.conversationEventReceived') event = { ...event, payload: { ...event.payload, event: codexEventToWire(event.payload.event) } };
     const agent = event.agentId ? this.snapshot.agents.find((candidate) => candidate.id === event.agentId) : undefined;
@@ -4555,7 +4560,7 @@ export class AppBackendServer {
     return {
       ...event,
       ...(conversationId ? { conversationId } : {}),
-      seq: this.nextEventSeq(),
+      seq: sequenced ? this.nextEventSeq() : this.lastEventSeq,
       occurredAt: event.occurredAt ?? new Date().toISOString(),
     };
   }

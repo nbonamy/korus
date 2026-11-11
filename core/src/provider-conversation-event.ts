@@ -42,3 +42,8 @@ export function providerConversationEventView(
     payload: event.payload,
   };
 }
+
+/** A provider's own conversation frame: daemon-internal input, never published to clients. */
+export function isNativeConversationFrame(event: { type: string }): boolean {
+  return /^(codex|claude|cursor|antigravity)\.conversation(SnapshotChanged|EventReceived)$/.test(event.type);
+}

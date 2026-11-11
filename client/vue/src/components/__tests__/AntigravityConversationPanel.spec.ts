@@ -4,7 +4,7 @@ import { conversationFromSources, type NativeFixtureSources } from '../../../tes
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
-import { createAntigravityConversationReplica, emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
+import { createAntigravityConversationReplica, emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import type { AgentConversationActions } from '../use-agent-conversation';

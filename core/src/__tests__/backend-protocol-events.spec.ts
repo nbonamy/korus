@@ -1,6 +1,6 @@
-import { emptyCursorSnapshot } from '../cursor-conversation-replica';
+import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '../product';
-import { emptyAntigravitySnapshot } from '../antigravity-conversation-replica';
+import { emptyAntigravitySnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import { approvalAgentRequest, approvalOutcome } from '@workspace/core/agent-request';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AppBackendEvent as RpcAppBackendEvent } from '../backend-protocol/rpc';

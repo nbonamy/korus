@@ -4,7 +4,7 @@ import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
+import { createClaudeConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 import { requestFromClientRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import { createAgentComposerState } from '../../agent-composer-state';
 import { conversationFromSources, type NativeFixtureSources } from '../../../tests/support/session-conversation-fixtures';
@@ -14,7 +14,7 @@ import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
 import { providerChoicesKey } from '../provider-selection';
 import { cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
-import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
+import { emptyCursorSnapshot, createCursorConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 
 describe('AgentConversationPanel', () => {
   it('renders Cursor model/effort selection, file links and media with interrupt, confirm and continue', async () => {

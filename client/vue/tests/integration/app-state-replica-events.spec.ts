@@ -7,7 +7,7 @@ import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confet
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { snapshotEventOwnership } from '@workspace/core/snapshot-event-ownership';
-import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
+import { emptyCursorSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 describe('useAppState', () => {
   afterEach(() => {
     clearConfetti();

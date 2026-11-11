@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
-import { createClaudeConversationReplica, type ClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
+import { createClaudeConversationReplica, type ClaudeConversationReplica } from '@korus-dev/multi-agent-sdk/contracts';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { MissionExecutionService } from '../../mission-execution-service';
 import { MissionService } from '../../mission-service';
