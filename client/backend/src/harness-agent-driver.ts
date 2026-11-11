@@ -157,10 +157,12 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       if (state.busy || state.activeTurnId || state.requests.length) throw new Error(`Resolve the ${providerDisplayName(this.provider)} turn and requests before handing off.`);
     });
   }
+  /** Worktree delegation is a Korus workflow: a native fork into the worker's folder, or null so Korus hands off instead. */
   async forkWorktreeConversation(agent: Agent, target: Agent) {
+    if (!this.getCapabilities(agent).conversationFork) return null;
     return this.unless(agent, 'worktree conversation fork', async () => {
       const targetSession = await this.session(target);
-      const result = await this.harness.forkWorktreeConversation(await this.session(agent), targetSession);
+      const result = await this.harness.forkConversation(await this.session(agent), targetSession);
       return result ? { providerSession: this.dataOf(targetSession) } : null;
     });
   }
@@ -223,7 +225,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   forkConversation(agent: Agent, target: Agent, turnId?: string) {
     return this.unless(agent, 'conversation fork', async () => {
       const targetSession = await this.session(target);
-      await this.harness.forkConversation(await this.session(agent), targetSession, turnId);
+      const result = await this.harness.forkConversation(await this.session(agent), targetSession, turnId);
+      if (!result) throw new Error(`${providerDisplayName(this.provider)} cannot fork this conversation right now. Try again once the current turn finishes.`);
       return { providerSession: this.dataOf(targetSession) };
     });
   }

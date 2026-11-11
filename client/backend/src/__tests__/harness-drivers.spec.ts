@@ -44,6 +44,22 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(antigravityGenerationPrompt({ ...base, outputSchema: { type: 'object' } })).toContain('Return JSON matching this schema: {"type":"object"}');
   });
 
+  it('delegates to a worktree through a native fork, or returns null so Korus hands off instead', async () => {
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const worker = { ...(agent as object), id: 'worker', folder: '/repo-worktree', providerSession: undefined } as never;
+    const { driver, script } = scriptedDriver('codex');
+    script.on('forkConversation', () => ({ providerSession: { kind: 'codex', threadId: 'forked' }, forkedFromTurnId: 'turn-1' }));
+    await expect(driver.forkWorktreeConversation!(agent, worker)).resolves.toStrictEqual({ providerSession: { kind: 'codex', threadId: 'forked' } });
+    expect(script.calls('forkConversation')[0]?.args[1]).toMatchObject({ id: 'worker', folder: '/repo-worktree' });
+    script.on('forkConversation', () => null);
+    await expect(driver.forkWorktreeConversation!(agent, worker)).resolves.toBeNull();
+    await expect(driver.forkConversation!(agent, worker)).rejects.toThrow('cannot fork this conversation right now');
+    const cursor = scriptedDriver('cursor');
+    const cursorAgent = { ...(agent as object), provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' } } as never;
+    await expect(cursor.driver.forkWorktreeConversation!(cursorAgent, { ...(cursorAgent as object), id: 'worker', folder: '/repo-worktree' } as never)).resolves.toBeNull();
+    expect(cursor.script.calls('forkConversation')).toStrictEqual([]);
+  });
+
   it('publishes a scoped run as its agent, unless the run is silent', async () => {
     const { driver, script } = scriptedDriver('codex');
     const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
