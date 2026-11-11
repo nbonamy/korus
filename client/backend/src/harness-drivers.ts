@@ -12,7 +12,7 @@ import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
 import { utilityTextModel } from './agents/utility-text-model';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
-import { antigravityGenerationPrompt } from './agents/provider-prompts';
+import { antigravityGenerationPrompt } from './agents/prompts';
 import { backendCodexHomeDir, backendHomeDir } from './state';
 import { debugMain, logMain, warnMain } from './log';
 import { resolveCodexLaunch } from './codex/codex-command';
@@ -89,7 +89,7 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
     prepareGeneration: (_agent, input) => {
       const { outputSchema, ...rest } = input;
       const mcpServers = utilityMcpServers(input.mcpServers);
-      return { ...rest, mcpServers, prompt: antigravityGenerationPrompt({ developerInstructions: input.developerInstructions, prompt: input.prompt, tools: input.tools, outputSchema, hasMcpServers: mcpServers.length > 0 }), developerInstructions: undefined, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('antigravity', models, input.complexity) };
+      return { ...rest, mcpServers, prompt: antigravityGenerationPrompt({ developerInstructions: input.developerInstructions, prompt: input.prompt, outputSchema, hasMcpServers: mcpServers.length > 0 }), developerInstructions: undefined, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('antigravity', models, input.complexity) };
     },
   });
 }

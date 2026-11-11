@@ -4,7 +4,7 @@ import type { PendingConversationPrompt } from '@workspace/core/pending-conversa
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
 import { handOffConversation } from './agents/conversation-handoff';
-import { sessionHandoff } from './agents/provider-prompts';
+import { sessionHandoff } from './agents/prompts';
 import { createAntigravityDriver, createClaudeDriver, createCodexDriver, createCursorDriver } from './harness-drivers';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
@@ -279,14 +279,12 @@ export class ProviderDriverRpc {
           if (!driver.generateText) throw unsupportedProviderFeature(agent, 'ephemeral text generation');
           if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
           if (record.timeoutMs !== undefined && record.timeoutMs !== null) throw new Error('Invalid utility timeout.');
-          if (record.tools !== undefined && typeof record.tools !== 'boolean') throw new Error('Invalid utility tool flag.');
           controller.signal.throwIfAborted();
           const input = {
             ...(record.timeoutMs === null ? { timeoutMs: null } : {}),
             prompt: requireString(record.prompt, 'prompt'),
             cwd: requireString(record.cwd, 'cwd'),
             ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),
-            ...(typeof record.tools === 'boolean' ? { tools: record.tools } : {}),
             ...(record.mcpServers !== undefined ? {mcpServers: utilityMcpServers(record.mcpServers)} : {}),
             ...(record.attachments !== undefined ? {attachments:await utilityImageAttachments(record.attachments)} : {}),
             ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDefaultProviderDrivers } from '../driver-rpc';
 import { createClaudeDriver } from '../harness-drivers';
-import { antigravityGenerationPrompt, sessionHandoff } from '../agents/provider-prompts';
+import { antigravityGenerationPrompt, sessionHandoff } from '../agents/prompts';
 import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 import { scriptedDriver } from './support/scripted-driver';
 
@@ -40,7 +40,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
   it('words an Antigravity generation itself, since the provider has no structured output or tool switches', () => {
     const base = { prompt: 'Write it', hasMcpServers: false };
     expect(antigravityGenerationPrompt({ ...base })).toBe('Return only the requested text. Do not call tools.\n\nWrite it');
-    expect(antigravityGenerationPrompt({ ...base, tools: true, developerInstructions: 'Be brief.' })).toMatch(/^Be brief\.\n\nInspect the working folder with read-only Git/);
+    expect(antigravityGenerationPrompt({ ...base, developerInstructions: 'Be brief.' })).toMatch(/^Be brief\.\n\nReturn only the requested text/);
     expect(antigravityGenerationPrompt({ ...base, outputSchema: { type: 'object' } })).toContain('Return JSON matching this schema: {"type":"object"}');
   });
 

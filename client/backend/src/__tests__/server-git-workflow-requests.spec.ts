@@ -287,8 +287,13 @@ describe('AppBackendServer', () => {
       { label: 'Request intake', status: 'unchanged', paths: [] }, { label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
     ] } } });
     expect(generateText).toHaveBeenCalledTimes(3);
-    expect(generateText.mock.calls[2]?.[1].prompt).not.toMatch(/LARGE_PATCH_SENTINEL|diff --git/);
-    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, prompt: expect.stringContaining('origin/main'),
+    // The patch travels in the prompt, bounded, so the chat's harness needs no tools to read it.
+    const vizPrompt = generateText.mock.calls[2]?.[1].prompt as string;
+    expect(vizPrompt).toContain('diff --git a/src/input.ts');
+    expect(vizPrompt).toMatch(/patch shortened: 300000 of \d+ characters/);
+    expect(vizPrompt.length).toBeLessThan(310_000);
+    expect(generateText.mock.calls[2]?.[1]).not.toHaveProperty('tools');
+    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', prompt: expect.stringContaining('origin/main'),
       developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
     generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,
