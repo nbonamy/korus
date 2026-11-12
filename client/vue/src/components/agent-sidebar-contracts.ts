@@ -74,6 +74,7 @@ export type AgentSidebarEvents = {
   'reorder-feature': [feature: { branch: string; beforeBranch: string | null }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
+  'open-project-overview': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];
 };

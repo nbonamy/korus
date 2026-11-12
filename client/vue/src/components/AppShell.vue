@@ -89,6 +89,7 @@
       @reorder-feature="reorderFeature"
       @delete-feature="showFeatureDialog('delete', $event)"
       @delete-repository="repositoryDeletionAgentId = $event"
+      @open-project-overview="openProjectOverview"
       @select-mission="selectMission"
       :active-team="activeTeam"
       :active-team-agents="activeTeamAgents"
@@ -280,6 +281,13 @@
         :work-providers="cockpitBacklogState.providers.value"
         @select-work-provider="cockpitBacklogState.selectProvider"
         @select-agent="selectAgentFromBacklog"
+      />
+      <ProjectOverviewView
+        v-else-if="overviewVisible && overviewAgentId"
+        :agent-id="overviewAgentId"
+        :activity-key="overviewActivityKey"
+        :sidebar-collapsed="agentSidebarCollapsed || compactViewport"
+        @expand-sidebar="expandSidebar"
       />
       <AgentWorkspace
         v-else
@@ -706,6 +714,7 @@ import NewProjectDialog from './NewProjectDialog.vue';
 import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } from './backend-selection';
 import { createGeneralPreferences, generalPreferencesKey } from '../general-preferences';
 import BacklogView from './BacklogView.vue';
+import ProjectOverviewView from './ProjectOverviewView.vue';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
@@ -1163,7 +1172,7 @@ type PendingMissionReviewDiscussion = {
   finding: import('@workspace/core/missions').MissionReviewFinding;
 };
 
-type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
+type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings' | 'overview';
 provide(computerUseLockKey, {
   state: computed(() => {
     const plugins = props.snapshot.general.plugins;
@@ -2639,6 +2648,17 @@ const pendingNewAgentWorktreeBranchName = computed(() => (
 const isAgentEmpty = computed(() => activeTeamAgents.value.length === 0);
 const cockpitVisible = computed(() => cockpitScope.value && (activeSurface.value === 'agent' || activeSurface.value === 'mission'));
 const backlogVisible = computed(() => activeSurface.value === 'backlog');
+// The project overview is opened from one agent of a repository and leaves with that agent.
+const overviewAgentId = ref<string | null>(null);
+const overviewVisible = computed(() => activeSurface.value === 'overview');
+const overviewActivityKey = computed(() => props.snapshot.agents.map(agent => `${agent.id}:${agent.status.type}`).join('|'));
+function openProjectOverview(agentId: string): void {
+  overviewAgentId.value = agentId;
+  activeSurface.value = 'overview';
+}
+watch(() => overviewVisible.value && !props.snapshot.agents.some(agent => agent.id === overviewAgentId.value), (gone) => {
+  if (gone) activeSurface.value = 'agent';
+});
 const automationsVisible = computed(() => activeSurface.value === 'automations');
 const settingsVisible = computed(() => activeSurface.value === 'settings');
 async function setEngineEnabled(backend: AgentBackend, enabled: boolean) {
@@ -2960,7 +2980,7 @@ function clearDebugAgentCreationTimers(): void {
 }
 
 onBeforeUnmount(clearDebugAgentCreationTimers);
-const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeSurface.value === 'mission') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
+const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeSurface.value === 'mission' || activeSurface.value === 'overview') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
 const editingAgent = computed(() => (
   editingAgentId.value ? props.snapshot.agents.find((agent) => agent.id === editingAgentId.value) ?? null : null
 ));

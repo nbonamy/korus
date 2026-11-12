@@ -1,9 +1,8 @@
 # Project overview
 
-Status: redesigned after mockup review. The page is now a written narrative plus a
-live flow diagram. The data layer on `feat/project-overview` predates this design
-and is partly reused, partly reshaped (see Progress). Local commits only; no push,
-merge, release or changelog entry.
+Status: phase 1 built on `feat/project-overview` and passing lint and tests; not
+yet checked in the running app or against a real engine (see Progress). Local
+commits only; no push, merge, release or changelog entry.
 
 ## Goal
 
@@ -104,6 +103,18 @@ Opening
 - B4. The header shows the repository name and one live line: when the page was last
   updated, and "repository only" when no issue or code-host source is connected.
 
+Lookback
+
+- B5a. The narrative covers the shortest window with enough activity: the last 30
+  days for an active project, otherwise 90, 180, 365 or 730 days, otherwise the
+  whole history from the first commit. Activity is base commits, plus merges into
+  the base and branch tips weighted more heavily (4 and 3 points), against a
+  threshold of 40 points.
+- B5b. Issues and agent sessions are read over the same window. The flow keeps its
+  own present-tense windows (in flight 30 days, shipped and arrived 7 days).
+- B5c. The narrative names its window ("Covers the last 180 days" or "Covers the
+  whole history, since May 25, 2024").
+
 Narrative
 
 - B5. The narrative is one lead of at most two sentences and one to four
@@ -168,7 +179,7 @@ Robustness
 - B24. A folder that is not a git repository shows one line saying so.
 - B25. Reads are bounded: git calls have time and output limits; history is capped
   at 20,000 commits; provider reads at 300 issues, 100 pull requests, 100 runs;
-  evidence sent to an engine at 200 commit subjects and 60 issue titles.
+  evidence sent to an engine at 150 commit subjects and 60 issue titles.
 - B26. Flow results are cached for 30 seconds per repository on the daemon.
 - B27. Commit subjects, branch names and issue titles are untrusted text. They are
   fenced as data in the prompt, and nothing generated is treated as markup, a link
@@ -345,22 +356,35 @@ gate unchanged at 85% statements. No mobile compatibility fixture is needed.
 
 ## Progress and learnings
 
-Committed on `feat/project-overview` before the redesign, with focused suites and
-typechecks green for core, backend and electron:
+Built on `feat/project-overview` to the redesigned plan:
 
-| Piece | Fate |
+| Checkpoint | State |
 | --- | --- |
-| `ProjectOverviewGitReader` and its tests | Keep. Add merge sizes, first and last commit per branch, lines changed |
-| GitHub `listBacklogActivity`, `listPipelineRuns`, manager reads and tests | Keep as is |
-| `project/overview/get`, routing, IPC channel, preload, main handler and tests | Keep. Drop the input parameter; add the rewrite method beside it |
-| `UsageLedger.sessions` and its test | Keep as narrative evidence; add the agent identity |
-| `ProjectOverviewService` composition, failure isolation, cache | Reshape to produce the flow |
-| Integration risk policy | Keep as an evidence fact for waiting branches; no longer a page zone |
-| Window buckets, chapters, per-bucket story, backlog buckets, pipeline pass rate | Remove |
+| Contract, flow policy and narrative grounding (`core/src/project-overview.ts`) | Done |
+| Git reader: base history, branches in flight with timing and change size | Done |
+| GitHub issues, open pull requests (draft and review decision) and pipeline runs | Done |
+| Flow built in the daemon from branches, agents, pull requests and pipelines | Done |
+| Narrative: evidence builder, writer with one retry, 15 minute interval, fallback engine, store | Done |
+| `project/overview/get` and `project/overview/narrative/refresh`, routed to the owning host | Done |
+| Desktop bridge: both channels, preload, main handler | Done |
+| Renderer: page, narrative and flow zones, live refresh, shell surface, repository menu entry | Done |
 
-Not started: every remaining checkpoint above. Not yet run: `npm run lint`
-(architecture, Knip, CSS, i18n), the Vue and mobile typechecks, the full suites and
-the coverage gate.
+Verified: `npm run lint` (architecture, every workspace typecheck, CSS, i18n, dead
+code) and the focused suites for every boundary in Test strategy.
+
+Not done or not verified:
+
+- No check in the running app. The page has only been exercised through rendered
+  tests; layout, the token animation and both themes need a live preview.
+- No narrative has been written by a real engine. Prompt and grounding rules are
+  tested against scripted replies only; check the writing by hand on real
+  repositories and capture one evidence document with its accepted narrative.
+- The 85% coverage gate and the renderer's browser project have not been run.
+- GitLab and Linear reads, the command palette entry and the sidebar row (phase 2).
+- Live refresh follows agent status changes and the one minute timer; it does not
+  yet react to git state events.
+- Station order and narrative spend follow the plan's defaults; the open questions
+  above are still open.
 
 Learnings:
 
@@ -373,3 +397,12 @@ Learnings:
 - Squash merges leave no merge commit, so "merged branches" evidence undercounts
   them; pull request data covers the gap when a code host is connected.
 - The Cursor engine has no utility text model, so it cannot write the narrative.
+- A narrative that cites figures is only safe when the facts already state them the
+  way a person would say them ("about 26,000"), so the engine can repeat a figure
+  exactly and the check can be a plain match.
+- The evidence key must leave out anything that moves with the clock (ages, the
+  current flow), or an idle project looks stale every minute.
+- Dead-code lint flags exported types nothing imports; keep helper types local.
+- A fixed 30-day window left quiet repositories with nothing to write about. The
+  lookback is now chosen from the repository's own history, so the git reader
+  returns the whole bounded base history and the service picks the window.

@@ -5,22 +5,25 @@ import {
   projectOverviewMergedBranch,
   type ProjectFlow,
   type ProjectFlowUnit,
+  type ProjectLookback,
   type ProjectNarrativeEvidence,
   type ProjectNarrativeFact,
 } from '@workspace/core/project-overview';
 import type { WorkProviderBacklogActivity } from '../work-integrations/types';
 import type { ProjectOverviewGitFacts } from './git-reader';
 
-const day = 86_400_000;
 const maxMerged = 8;
 const maxBranches = 8;
 const maxSubjects = 150;
 const maxIssues = 60;
 const stopwords = new Set(['with', 'from', 'that', 'this', 'when', 'into', 'after', 'before', 'their', 'while', 'without', 'keep', 'keeps', 'show', 'shows', 'make', 'makes', 'only', 'does', 'more', 'than', 'each', 'also', 'adds', 'uses', 'used', 'over', 'have', 'been', 'instead', 'through', 'between', 'where', 'which', 'them', 'they', 'what', 'during', 'still', 'again']);
 const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const yearFormat = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 export type ProjectEvidenceInput = {
   now: number;
+  /** The period the narrative covers; git, issues and sessions are already limited to it. */
+  lookback: ProjectLookback;
   git: ProjectOverviewGitFacts;
   units: readonly (ProjectFlowUnit & { behind: number; ahead: number; files: readonly string[]; insertions: number; deletions: number })[];
   backlog: WorkProviderBacklogActivity | null;
@@ -34,6 +37,8 @@ export type ProjectEvidence = ProjectNarrativeEvidence & {
   quiet: boolean;
   subjects: string[];
   issueTitles: string[];
+  /** How the period reads in a sentence, such as "the last 90 days". */
+  period: string;
 };
 
 /** Large figures read as people say them; the same text is what the engine may repeat. */
@@ -58,13 +63,17 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
   const facts: ProjectNarrativeFact[] = [];
   const fact = (text: string, label: string) => { facts.push({ id: `F${facts.length + 1}`, text, label }); };
   const on = (at: number) => dateFormat.format(at);
+  const days = input.lookback.days;
+  const period = days === null ? `the whole history, since ${yearFormat.format(input.lookback.since)}` : `the last ${days} days`;
+  const during = days === null ? `since ${yearFormat.format(input.lookback.since)}` : `in the last ${days} days`;
+  const span = days === null ? 'overall' : `in ${days} days`;
 
   const release = git.tags.at(-1);
   if (release) {
     const version = release.name.replace(/^v/u, '');
     const parts = version.split('.');
     fact(`Release ${version}${parts.length > 2 ? ` (${parts.slice(0, 2).join('.')})` : ''} was tagged on ${on(release.at)}.`, `the ${version} release`);
-    if (git.tags.length > 1) fact(`${git.tags.length} releases were tagged in the last 30 days.`, `${git.tags.length} releases in 30 days`);
+    if (git.tags.length > 1) fact(`${git.tags.length} releases were tagged ${during}.`, `${git.tags.length} releases ${span}`);
   }
 
   const merged = git.commits.flatMap(commit => {
@@ -77,7 +86,7 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
   for (const [kind, noun, limit] of [['fix', 'fixes', 6], ['feat', 'features', 4]] as const) {
     const subjects = work.filter(commit => projectOverviewCommitKind(commit.subject) === kind).map(commit => commit.subject.replace(/^[^:]*:/u, ''));
     for (const theme of themes(subjects, 3, limit)) {
-      fact(`${theme.count} of ${subjects.length} ${kind} commits in the last 30 days mention "${theme.term}".`, `${theme.count} ${theme.term} ${noun} in 30 days`);
+      fact(`${theme.count} of ${subjects.length} ${kind} commits ${during} mention "${theme.term}".`, `${theme.count} ${theme.term} ${noun} ${span}`);
     }
   }
 
@@ -106,18 +115,18 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
 
   const issues = input.backlog?.items.slice(0, maxIssues) ?? [];
   if (input.backlog) {
-    const since = input.now - 30 * day;
+    const since = input.lookback.since;
     const opened = issues.filter(issue => Date.parse(issue.createdAt) >= since).length;
     const closed = issues.filter(issue => issue.state === 'closed' && issue.closedAt !== undefined && Date.parse(issue.closedAt) >= since).length;
-    fact(`${opened} issues were opened and ${closed} closed in the last 30 days${input.backlog.open === null ? '' : `; ${input.backlog.open} are open`}.`, 'issue flow in 30 days');
-    for (const theme of themes(issues.map(issue => issue.title), 2, 4)) fact(`${theme.count} issues that moved in the last 30 days mention "${theme.term}".`, `${theme.count} ${theme.term} issues`);
+    fact(`${opened} issues were opened and ${closed} closed ${during}${input.backlog.open === null ? '' : `; ${input.backlog.open} are open`}.`, `issue flow ${span}`);
+    for (const theme of themes(issues.map(issue => issue.title), 2, 4)) fact(`${theme.count} issues that moved ${during} mention "${theme.term}".`, `${theme.count} ${theme.term} issues`);
   }
 
   if (input.sessions?.length) {
     const engines = new Map<string, number>();
     for (const session of input.sessions) engines.set(session.provider, (engines.get(session.provider) ?? 0) + 1);
     const failed = input.sessions.reduce((sum, session) => sum + session.failedTurns, 0);
-    fact(`${input.sessions.length} agent sessions ran here in the last 30 days (${[...engines].sort((a, b) => a[0].localeCompare(b[0])).map(([engine, count]) => `${engine} ${count}`).join(', ')}); ${failed} turns failed.`, `${input.sessions.length} agent sessions in 30 days`);
+    fact(`${input.sessions.length} agent sessions ran here ${during} (${[...engines].sort((a, b) => a[0].localeCompare(b[0])).map(([engine, count]) => `${engine} ${count}`).join(', ')}); ${failed} turns failed.`, `${input.sessions.length} agent sessions ${span}`);
   }
 
   const counts = Object.fromEntries(input.flow.stations.map(station => [station.kind, station.count]));
@@ -129,7 +138,7 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
 
   const branches = [...new Set([...units.map(unit => unit.branch), ...merged.map(merge => merge.branch)])];
   const key = createHash('sha256').update(JSON.stringify([
-    git.baseBranch, work.length, git.commits[0]?.at ?? null, git.tags.map(tag => tag.name),
+    days, git.baseBranch, work.length, git.commits[0]?.at ?? null, git.tags.map(tag => tag.name),
     units.map(unit => [unit.branch, unit.behind, unit.ahead, unit.lastCommitAt, unit.pullRequest ? [unit.pullRequest.draft, unit.pullRequest.approved] : null, unit.latestPipeline?.status ?? null]),
     issues.map(issue => [issue.id, issue.state]),
   ])).digest('hex');
@@ -141,6 +150,7 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
     quiet: !git.commits.length && !units.length,
     subjects: work.slice(0, maxSubjects).map(commit => commit.subject),
     issueTitles: issues.map(issue => `${issue.id} ${issue.title}`),
+    period,
   };
 }
 
@@ -188,6 +198,7 @@ export function projectNarrativePrompt(repository: string, evidence: ProjectEvid
   const list = (title: string, lines: readonly string[]) => lines.length ? [`${title}:`, ...lines.map(line => `- ${line.replace(/\s+/gu, ' ').slice(0, 200)}`)] : [];
   return [
     `Write the project status for the repository "${repository}" from this evidence.`,
+    `The evidence covers ${evidence.period}.`,
     '<<<EVIDENCE',
     'Facts:',
     ...evidence.facts.map(fact => `${fact.id}: ${fact.text}`),

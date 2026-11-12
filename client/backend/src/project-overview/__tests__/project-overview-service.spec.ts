@@ -45,6 +45,8 @@ const facts = (): ProjectOverviewGitFacts => ({
     { name: 'feat/cursor-steering', firstCommitAt: start - 3 * hour, lastCommitAt: start - hour, behind: 3, ahead: 2, files: ['a.ts', 'b.ts'], insertions: 40, deletions: 10 },
     { name: 'refactor/sdk-extraction', firstCommitAt: start - 2 * day, lastCommitAt: start - 2 * day, behind: 0, ahead: 1, files: Array.from({ length: 273 }, (_, index) => `f${index}.ts`), insertions: 921, deletions: 26_411 },
   ],
+  // Eight branch tips this month, enough with the commits and merges above for a 30 day lookback.
+  branchActivity: Array.from({ length: 8 }, (_, index) => start - (index + 1) * day),
   baseCommitsPerDay: 45,
 });
 
@@ -94,12 +96,13 @@ describe('project overview flow', () => {
 
     const overview = await service.get(requester);
 
-    expect(read).toHaveBeenCalledExactlyOnceWith('/work/korus-a1', { since: start - 30 * day, now: start, defaultBranch: null, keepBranches: ['feat/cursor-steering', 'refactor/sdk-extraction'] });
+    expect(read).toHaveBeenCalledExactlyOnceWith('/work/korus-a1', { now: start, defaultBranch: null, keepBranches: ['feat/cursor-steering', 'refactor/sdk-extraction'] });
     expect(outerLoop.backlog).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', start - 30 * day);
     expect(outerLoop.pullRequests).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus');
     expect(outerLoop.pipelines).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', start - 30 * day);
     expect(overview).toStrictEqual({
       generatedAt: '2026-11-11T12:00:00.000Z',
+      lookback: { days: 30, since: ago(30 * day) },
       repository: { name: 'korus', branch: 'feat/cursor-steering', baseBranch: 'main' },
       sources: { git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' },
       narrative: { status: 'missing' },
@@ -188,7 +191,7 @@ describe('project overview narrative', () => {
           { id: 'w1', name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but 4 fixes have followed.', basis: ['4 cursor fixes in 30 days'] },
           { id: 'w2', name: 'SDK extraction', state: 'waiting', analysis: 'One branch changes 273 files and is waiting for review.', basis: ['refactor/sdk-extraction'] },
         ],
-        writtenBy: 'claude',
+        writtenBy: 'Claude Code',
         writtenAt: '2026-11-11T12:00:00.000Z',
       },
     });
@@ -200,7 +203,7 @@ describe('project overview narrative', () => {
     clock.now += hour;
     expect((await service.refreshNarrative(requester, generate)).narrative.status).toBe('fresh');
     const restarted = setup({ outerLoop: connected(), store: new ProjectNarrativeStore(file) });
-    expect((await restarted.service.get(restarted.requester)).narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'claude' } });
+    expect((await restarted.service.get(restarted.requester)).narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'Claude Code' } });
     expect(generate).toHaveBeenCalledTimes(1);
   });
 
@@ -243,13 +246,56 @@ describe('project overview narrative', () => {
 
     const [first, second] = await Promise.all([service.refreshNarrative(requester, picky), service.refreshNarrative(requester, picky)]);
 
-    expect(first.narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'codex' } });
+    expect(first.narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'Codex' } });
     expect(second.narrative.status).toBe('fresh');
     expect(picky.mock.calls.map(call => call[0].backend)).toStrictEqual(['claude', 'codex']);
 
     const none = setup({ outerLoop: connected() });
     const broken = vi.fn<ProjectOverviewGenerate>(async () => { throw new Error('nope'); });
     expect((await none.service.refreshNarrative(none.requester, broken)).narrative).toStrictEqual({ status: 'unavailable', reason: 'noEngine' });
+  });
+
+  it('looks further back for a repository that was quiet this month, and reads issues and sessions over the same period', async () => {
+    const older = facts();
+    older.commits = [
+      { at: start - 2 * day, subject: 'fix: small cursor tweak', merge: false },
+      ...Array.from({ length: 30 }, (_, index) => ({ at: start - (100 + index) * day, subject: 'feat: build the importer', merge: false })),
+      { at: start - 120 * day, subject: "Merge branch 'feat/importer'", merge: true },
+      { at: start - 400 * day, subject: 'chore: ancient setup outside the lookback', merge: false },
+    ];
+    older.tags = [{ name: 'v0.9.0', at: start - 110 * day }, { name: 'v0.1.0', at: start - 400 * day }];
+    older.branchActivity = [start - 3 * day, start - 115 * day];
+    const outerLoop = connected();
+    const { service, requester, sessions } = setup({ git: older, outerLoop });
+    const { generate, prompts } = engine();
+
+    const overview = await service.refreshNarrative(requester, generate);
+
+    // 1 + 1 branch in 30 or 90 days is not enough; by 180 days there are 31 commits, a merge and 2 branches.
+    expect(overview.lookback).toStrictEqual({ days: 180, since: ago(180 * day) });
+    expect(outerLoop.backlog).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', start - 180 * day);
+    expect(sessions).toHaveBeenCalledExactlyOnceWith('/work/korus', start - 180 * day);
+    const prompt = prompts[0]!;
+    expect(prompt).toContain('The evidence covers the last 180 days.');
+    expect(prompt).toContain('30 of 30 feat commits in the last 180 days mention "build".');
+    expect(prompt).toContain('Release 0.9.0 (0.9) was tagged on Jul 24.');
+    expect(prompt).toContain('Branch feat/importer was merged into main on Jul 14.');
+    expect(prompt).not.toContain('ancient setup');
+    expect(prompt).not.toContain('0.1.0');
+    // The flow still describes the present: merges this week, not over the lookback.
+    expect(overview.flow.stations.at(-1)).toMatchObject({ kind: 'shipped', count: 0 });
+  });
+
+  it('covers the whole history when no window holds enough activity', async () => {
+    const sparse = facts();
+    sparse.commits = [{ at: start - 2 * day, subject: 'fix: one', merge: false }, { at: start - 900 * day, subject: 'feat: first', merge: false }];
+    sparse.branchActivity = [];
+    sparse.tags = [];
+    const { service, requester } = setup({ git: sparse });
+    const { generate, prompts } = engine();
+    const overview = await service.refreshNarrative(requester, generate);
+    expect(overview.lookback).toStrictEqual({ days: null, since: ago(900 * day) });
+    expect(prompts[0]).toContain('The evidence covers the whole history, since May 25, 2024.');
   });
 
   it('writes nothing for a repository where nothing has happened', async () => {

@@ -1,9 +1,10 @@
 import { basename } from 'node:path';
-import type { BackendTextGenerationInput } from '@workspace/core/backend-driver';
+import { backendDisplayName, type BackendTextGenerationInput } from '@workspace/core/backend-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import {
   buildProjectFlow,
+  chooseProjectLookback,
   projectNarrativeFromDraft,
   projectOverviewMergedBranch,
   type ProjectFlowUnit,
@@ -19,13 +20,12 @@ import type { ProjectOverviewGitFacts, ProjectOverviewGitReader } from './git-re
 import type { ProjectNarrativeStore } from './narrative-store';
 
 const day = 86_400_000;
-const evidenceWindow = 30 * day;
 const cacheLifetime = 30_000;
 const maxCacheEntries = 32;
 const rewriteInterval = 15 * 60_000;
 const maxEngines = 2;
 
-export type ProjectOverviewSession = { provider: string; sessionId: string; startedAt: number; turns: number; failedTurns: number };
+type ProjectOverviewSession = { provider: string; sessionId: string; startedAt: number; turns: number; failedTurns: number };
 
 /** What happens around the code. Each read answers null when no connected provider serves the repository. */
 export type ProjectOverviewOuterLoop = {
@@ -138,7 +138,7 @@ export class ProjectOverviewService {
             narrative: {
               lead: draft.lead,
               workstreams: draft.workstreams.map(({ id, name, state, analysis, basis }) => ({ id, name, state, analysis, basis })),
-              writtenBy: candidate.backend,
+              writtenBy: backendDisplayName(candidate.backend),
               writtenAt: new Date(reading.now).toISOString(),
             },
             workstreams: draft.workstreams.map(workstream => ({ id: workstream.id, branches: workstream.branches })),
@@ -178,7 +178,6 @@ export class ProjectOverviewService {
   }
 
   private async collect(agent: Agent, folder: string, now: number): Promise<Reading> {
-    const since = now - evidenceWindow;
     const repository = repositoryIdentityOf(agent) ?? folder;
     const teammates = this.options.agents().filter(candidate => repositoryIdentityOf(candidate) === repository);
     const workspace = agent.workspace?.kind === 'git' ? agent.workspace : undefined;
@@ -187,13 +186,21 @@ export class ProjectOverviewService {
     const branchOf = (mate: Agent) => mate.workspace?.kind === 'git' ? mate.workspace.branch : null;
     const keepBranches = [...new Set(teammates.flatMap(mate => branchOf(mate) ?? []))];
 
-    const [git, backlog, requests, pipelines] = await Promise.all([
-      settle(() => this.options.git.read(folder, { since, now, defaultBranch: workspace?.defaultBranch ?? null, keepBranches }), 'unavailable'),
+    // The repository decides how far back to look, so it is read before the sources that take a period.
+    const git = await settle(() => this.options.git.read(folder, { now, defaultBranch: workspace?.defaultBranch ?? null, keepBranches }), 'unavailable');
+    const facts: ProjectOverviewGitFacts | null = git.value;
+    const lookback = chooseProjectLookback({
+      now,
+      commits: (facts?.commits ?? []).filter(commit => !commit.merge).map(commit => commit.at),
+      merges: (facts?.commits ?? []).filter(commit => commit.merge).map(commit => commit.at),
+      branches: facts?.branchActivity ?? [],
+    });
+    const since = lookback.since;
+    const [backlog, requests, pipelines] = await Promise.all([
       settle(() => outerLoop ? outerLoop.backlog(repositoryId!, since) : null, 'notConnected'),
       settle(() => outerLoop ? outerLoop.pullRequests(repositoryId!) : null, 'notConnected'),
       settle(() => outerLoop ? outerLoop.pipelines(repositoryId!, since) : null, 'notConnected'),
     ]);
-    const facts: ProjectOverviewGitFacts | null = git.value;
     const runs = [...(pipelines.value?.runs ?? [])].sort((a, b) => a.at.localeCompare(b.at));
     const units = (facts?.branches ?? []).filter(branch => branch.name !== facts!.baseBranch && branch.ahead > 0).map(branch => {
       const request = requests.value?.find(candidate => candidate.branch === branch.name);
@@ -226,6 +233,7 @@ export class ProjectOverviewService {
       teammates,
       overview: {
         generatedAt: new Date(now).toISOString(),
+        lookback: { days: lookback.days, since: new Date(lookback.since).toISOString() },
         repository: {
           name: facts?.name ?? workspace?.repositoryName ?? (agent.workspace?.kind === 'folder' ? agent.workspace.label : basename(folder)),
           branch: facts ? facts.branch : workspace?.branch ?? null,
@@ -234,7 +242,11 @@ export class ProjectOverviewService {
         sources: flow.sources,
       },
       flow,
-      evidence: facts ? buildProjectEvidence({ now, git: facts, units, backlog: backlog.value, sessions: this.options.sessions(repository, since), flow: buildProjectFlow({ ...flow, workstreams: [] }) }) : null,
+      evidence: facts ? buildProjectEvidence({
+        now,
+        lookback,
+        git: { ...facts, commits: facts.commits.filter(commit => commit.at >= since), tags: facts.tags.filter(tag => tag.at >= since) },
+        units, backlog: backlog.value, sessions: this.options.sessions(repository, since), flow: buildProjectFlow({ ...flow, workstreams: [] }) }) : null,
     };
   }
 }

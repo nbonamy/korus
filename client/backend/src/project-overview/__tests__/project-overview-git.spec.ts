@@ -48,7 +48,7 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     await git(['checkout', 'feat/y']);
     const now = Date.now();
 
-    const facts = await reader.read(folder, { since: now - day, now });
+    const facts = await reader.read(folder, { now });
 
     expect(facts).not.toBeNull();
     expect(facts!.name).toBe(basename(folder));
@@ -69,9 +69,12 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
       { name: 'feat/y', behind: 3, ahead: 1, files: ['a.txt', 'y.txt'], insertions: 2, deletions: 1, timed: true },
     ]);
     expect(facts!.baseCommitsPerDay).toBeCloseTo(5 / 7, 5);
+    // Every local branch tip counts as branch activity, merged or not.
+    expect(facts!.branchActivity).toHaveLength(3);
+    expect(facts!.branchActivity.every(at => Math.abs(at - now) < day)).toBe(true);
   });
 
-  it('leaves history before the window out and keeps an idle branch only when asked', async () => {
+  it('reads the whole base history so the lookback can be chosen, and keeps an idle branch only when asked', async () => {
     const { folder, git, commit, reader } = await fixture();
     await commit('feat: ancient', { 'a.txt': 'old' }, '2020-01-01T00:00:00Z');
     await git(['tag', 'v0.1.0'], '2020-01-01T00:00:00Z');
@@ -81,13 +84,15 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     await commit('fix: recent', { 'b.txt': 'new' });
     const now = Date.now();
 
-    const facts = await reader.read(folder, { since: now - 7 * day, now });
-    expect(facts!.commits.map(commit => commit.subject)).toStrictEqual(['fix: recent']);
-    expect(facts!.tags).toStrictEqual([]);
+    const facts = await reader.read(folder, { now });
+    expect(facts!.commits.map(commit => [commit.subject, commit.at])).toStrictEqual([['fix: recent', facts!.commits[0]!.at], ['feat: ancient', Date.parse('2020-01-01T00:00:00Z')]]);
+    expect(facts!.tags).toStrictEqual([{ name: 'v0.1.0', at: Date.parse('2020-01-01T00:00:00Z') }]);
+    expect(facts!.branchActivity.sort()).toStrictEqual([Date.parse('2020-01-02T00:00:00Z'), facts!.commits[0]!.at]);
+    // In flight means active in the last 30 days; an idle branch is left out of the flow.
     expect(facts!.branches.map(branch => branch.name)).toStrictEqual(['main']);
     expect(facts!.baseCommitsPerDay).toBeCloseTo(1 / 7, 5);
 
-    const kept = await reader.read(folder, { since: now - 7 * day, now, keepBranches: ['feat/stale'] });
+    const kept = await reader.read(folder, { now, keepBranches: ['feat/stale'] });
     expect(kept!.branches.map(branch => [branch.name, branch.behind, branch.ahead, branch.files, branch.insertions, branch.deletions])).toStrictEqual([
       ['main', 0, 0, [], 0, 0],
       ['feat/stale', 1, 1, ['s.txt'], 1, 0],
@@ -103,19 +108,19 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     await git(['checkout', '--detach']);
     const now = Date.now();
 
-    const withDefault = await reader.read(folder, { since: now - day, now, defaultBranch: 'trunk' });
+    const withDefault = await reader.read(folder, { now, defaultBranch: 'trunk' });
     expect(withDefault!.branch).toBeNull();
     expect(withDefault!.baseBranch).toBe('trunk');
     expect(withDefault!.commits.map(commit => commit.subject)).toStrictEqual(['feat: only']);
 
     // With no remote head, no hint and neither conventional name there is nothing to measure against.
-    const unknown = await reader.read(folder, { since: now - day, now });
-    expect(unknown).toMatchObject({ baseBranch: null, commits: [], tags: [], branches: [], baseCommitsPerDay: null });
+    const unknown = await reader.read(folder, { now });
+    expect(unknown).toMatchObject({ baseBranch: null, commits: [], tags: [], branches: [], branchActivity: [], baseCommitsPerDay: null });
   });
 
   it('answers null for a folder that is not a repository', async () => {
     const folder = await realpath(await mkdtemp(join(tmpdir(), 'korus-overview-plain-')));
     folders.push(folder);
-    await expect(new ProjectOverviewGitReader().read(folder, { since: 0, now: Date.now() })).resolves.toBeNull();
+    await expect(new ProjectOverviewGitReader().read(folder, { now: Date.now() })).resolves.toBeNull();
   });
 });

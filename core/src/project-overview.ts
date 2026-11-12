@@ -42,13 +42,39 @@ export type ProjectFlowLink = { to: Exclude<ProjectFlowStationKind, 'backlog'>; 
 export type ProjectFlowConstraint = { station: ProjectFlowWorkStation; units: number; oldestWaitMs: number; workstreamIds: string[] };
 export type ProjectFlow = { stations: ProjectFlowStation[]; links: ProjectFlowLink[]; constraint: ProjectFlowConstraint | null };
 
+/** How far back the narrative looks. `days` is null when it covers the whole history, from `since`. */
+export type ProjectOverviewLookback = { days: number | null; since: string };
+
 export type ProjectOverview = {
   generatedAt: string;
+  lookback: ProjectOverviewLookback;
   repository: { name: string; branch: string | null; baseBranch: string | null };
   sources: ProjectOverviewSources;
   narrative: ProjectNarrativeState;
   flow: ProjectFlow;
 };
+
+export const projectLookbackDays = [30, 90, 180, 365, 730] as const;
+export type ProjectLookback = { days: number | null; since: number };
+const lookbackDay = 86_400_000;
+/** Activity worth a narrative. Merged pull requests and branches say more about a project's direction than single commits. */
+const enoughActivity = 40;
+const mergeWeight = 4;
+const branchWeight = 3;
+
+/**
+ * The shortest window that holds enough activity to write about: the last 30 days for an active
+ * project, further back for a quieter one, and the whole history when no window is enough.
+ */
+export function chooseProjectLookback(input: { now: number; commits: readonly number[]; merges: readonly number[]; branches: readonly number[] }): ProjectLookback {
+  const within = (times: readonly number[], since: number) => times.reduce((count, at) => count + (at >= since ? 1 : 0), 0);
+  for (const days of projectLookbackDays) {
+    const since = input.now - days * lookbackDay;
+    if (within(input.commits, since) + mergeWeight * within(input.merges, since) + branchWeight * within(input.branches, since) >= enoughActivity) return { days, since };
+  }
+  const earliest = [...input.commits, ...input.merges].reduce((first, at) => Math.min(first, at), input.now);
+  return { days: null, since: earliest };
+}
 
 export const projectOverviewCommitKinds = ['feat', 'fix', 'test', 'chore', 'other'] as const;
 export type ProjectOverviewCommitKind = typeof projectOverviewCommitKinds[number];

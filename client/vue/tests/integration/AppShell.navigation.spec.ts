@@ -13,6 +13,7 @@ import { selectAgent } from '@workspace/core/agent-manager';
 import type { AppApi, AppCommand, Agent, UpdateSettingsInput, WorkSource } from '@workspace/core/contracts';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 
+import { setElectronTestClient } from '../support/client';
 import {
   mountShell as mountRealShell,
   pointerEvent,
@@ -85,6 +86,45 @@ describe('AppShell navigation and teams', () => {
     await wrapper.get('.chat-composer__send').trigger('click');
 
     expect(wrapper.emitted('interrupt-agent')).toStrictEqual([[]]);
+  });
+
+  it('opens the project overview from a repository group menu beside the sidebar and leaves it when an agent is selected', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/work/korus';
+    agent.workspace = { kind: 'git', folder: '/work/korus', repositoryName: 'korus', repositoryRoot: '/work/korus', primaryWorktreeRoot: '/work/korus', branch: 'main', isLinkedWorktree: false, updatedAt: '2026-11-11T00:00:00Z' };
+    const absent = { status: 'notConnected' as const, count: null, note: null, marks: [] };
+    const getProjectOverview = vi.fn(async () => ({
+      generatedAt: new Date().toISOString(),
+      lookback: { days: null, since: new Date().toISOString() },
+      repository: { name: 'korus', branch: 'main', baseBranch: 'main' },
+      sources: { git: 'available' as const, backlog: 'notConnected' as const, pullRequests: 'notConnected' as const, pipelines: 'notConnected' as const },
+      narrative: { status: 'unavailable' as const, reason: 'quiet' as const },
+      flow: {
+        stations: [
+          { kind: 'backlog' as const, ...absent }, { kind: 'building' as const, status: 'available' as const, count: 0, note: 0, marks: [] },
+          { kind: 'review' as const, ...absent }, { kind: 'ci' as const, ...absent }, { kind: 'shipped' as const, status: 'available' as const, count: 0, note: null, marks: [] },
+        ],
+        links: [{ to: 'building' as const, tokens: [] }, { to: 'review' as const, tokens: [] }, { to: 'ci' as const, tokens: [] }, { to: 'shipped' as const, tokens: [] }],
+        constraint: null,
+      },
+    }));
+    setElectronTestClient({ getProjectOverview, refreshProjectNarrative: vi.fn() });
+    const wrapper = mount(AppShell, { attachTo: document.body, props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
+
+    await wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.trim() === 'Project overview');
+    expect(action).toBeDefined();
+    action!.click();
+    await flushPromises();
+
+    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith(agent.id);
+    expect(wrapper.get('.project-overview h1').text()).toBe('korus');
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+
+    await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('click');
+    expect(wrapper.find('.project-overview').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('forwards agent selection from the sidebar', async () => {

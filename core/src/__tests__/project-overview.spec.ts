@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildProjectFlow,
+  chooseProjectLookback,
   projectFlowStation,
   projectNarrativeFromDraft,
   projectOverviewCommitKind,
@@ -200,5 +201,34 @@ describe('project narrative drafts', () => {
   it('allows numbers written as words and reads grouped digits as one number', () => {
     const draft = { lead: 'Two workstreams matter.', workstreams: [{ ...sdk, analysis: 'One branch removes about 26,000 lines in a single commit.' }] };
     expect(projectNarrativeFromDraft(draft, evidence)).toMatchObject({ ok: true });
+  });
+});
+
+describe('project lookback', () => {
+  const at = (...daysAgo: number[]) => daysAgo.map(days => now - days * day);
+  const spread = (count: number, fromDays: number, toDays: number) => Array.from({ length: count }, (_, index) => now - (fromDays + (toDays - fromDays) * index / Math.max(1, count - 1)) * day);
+
+  it('uses the last 30 days when they hold enough activity', () => {
+    expect(chooseProjectLookback({ now, commits: spread(40, 1, 29), merges: [], branches: [] })).toStrictEqual({ days: 30, since: now - 30 * day });
+  });
+
+  it('counts merged pull requests and new branches for more than plain commits', () => {
+    // 10 commits alone are not enough; with 5 merges and 4 branches (10 + 20 + 12) they are.
+    expect(chooseProjectLookback({ now, commits: spread(10, 1, 20), merges: at(2, 5, 9, 14, 20), branches: at(3, 8, 12, 16) }).days).toBe(30);
+    expect(chooseProjectLookback({ now, commits: spread(10, 1, 20), merges: at(2, 5, 9, 14, 20), branches: at(3, 8, 12) }).days).not.toBe(30);
+    expect(chooseProjectLookback({ now, commits: spread(10, 1, 20), merges: [], branches: [] }).days).not.toBe(30);
+  });
+
+  it('looks further back until it finds enough activity to write about', () => {
+    const quietRecently = { now, commits: [...spread(3, 1, 20), ...spread(45, 100, 170)], merges: [], branches: [] };
+    expect(chooseProjectLookback(quietRecently)).toStrictEqual({ days: 180, since: now - 180 * day });
+    const mergesLongAgo = { now, commits: spread(5, 1, 20), merges: spread(9, 200, 360), branches: [] };
+    expect(chooseProjectLookback(mergesLongAgo).days).toBe(365);
+  });
+
+  it('falls back to the whole history from its first commit, and to now for an empty repository', () => {
+    const first = now - 1000 * day;
+    expect(chooseProjectLookback({ now, commits: [now - day, first, now - 400 * day], merges: [], branches: [now - 900 * day] })).toStrictEqual({ days: null, since: first });
+    expect(chooseProjectLookback({ now, commits: [], merges: [], branches: [] })).toStrictEqual({ days: null, since: now });
   });
 });

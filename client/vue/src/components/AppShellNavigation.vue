@@ -57,6 +57,7 @@
       @reorder-feature="$emit('reorder-feature', $event)"
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
+      @open-project-overview="$emit('open-project-overview', $event)"
       @delete-mission="$emit('delete-mission', $event)"
       @open-mission-window="$emit('open-mission-window', $event)"
       @create-agent-in-mission-worktree="$emit('create-agent-in-mission-worktree', $event)"
@@ -198,6 +199,7 @@ const emit = defineEmits<{
   'reorder-feature': [feature: { branch: string; beforeBranch: string | null }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
+  'open-project-overview': [agentId: string];
   'select-mission': [id: string];
   'duplicate-agent': [agentId: string];
   'open-agent-window': [agentId: string];

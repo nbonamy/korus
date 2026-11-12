@@ -8,9 +8,10 @@ const maxCommits = 20_000;
 const maxBranches = 12;
 const maxFiles = 2_000;
 const activeBranchAge = 30 * day;
+const maxRefs = 2_000;
 
-export type ProjectOverviewGitCommit = { at: number; subject: string; merge: boolean };
-export type ProjectOverviewGitBranch = {
+type ProjectOverviewGitCommit = { at: number; subject: string; merge: boolean };
+type ProjectOverviewGitBranch = {
   name: string;
   /** The first commit this branch has that the base does not. */
   firstCommitAt: number;
@@ -25,15 +26,16 @@ export type ProjectOverviewGitFacts = {
   name: string;
   branch: string | null;
   baseBranch: string | null;
-  /** History of the base branch inside the window, newest first. */
+  /** History of the base branch, newest first, bounded but not windowed: the reader of these facts chooses how far back to look. */
   commits: ProjectOverviewGitCommit[];
   tags: { name: string; at: number }[];
+  /** Tip times of local and remote branches, a sign of how much parallel work the repository sees. */
+  branchActivity: number[];
   /** The base branch first, then branches that still have something to integrate, most recent first. */
   branches: ProjectOverviewGitBranch[];
   baseCommitsPerDay: number | null;
 };
 export type ProjectOverviewGitOptions = {
-  since: number;
   now: number;
   defaultBranch?: string | null;
   /** Branches to report even when they have been idle, such as those a live agent works on. */
@@ -79,12 +81,13 @@ export class ProjectOverviewGitReader {
     const name = basename(dirname(resolve(root, commonDirectory.trim())));
     const branch = branchName || null;
     const base = await this.baseBranch(folder, branch, options.defaultBranch);
-    if (!base) return { name, branch, baseBranch: null, commits: [], tags: [], branches: [], baseCommitsPerDay: null };
+    if (!base) return { name, branch, baseBranch: null, commits: [], tags: [], branches: [], branchActivity: [], baseCommitsPerDay: null };
 
-    const [history, tagList, branchList, recent] = await Promise.all([
-      this.git(folder, ['log', '--no-show-signature', `--max-count=${maxCommits}`, `--since=${new Date(options.since).toISOString()}`, '--format=%ct%x00%P%x00%s', '-z', base.ref, '--']),
+    const [history, tagList, branchList, refList, recent] = await Promise.all([
+      this.git(folder, ['log', '--no-show-signature', `--max-count=${maxCommits}`, '--format=%ct%x00%P%x00%s', '-z', base.ref, '--']),
       this.git(folder, ['for-each-ref', '--merged', base.ref, '--format=%(refname:short)%00%(creatordate:unix)', 'refs/tags']),
       this.git(folder, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%00%(committerdate:unix)', 'refs/heads']),
+      this.git(folder, ['for-each-ref', '--sort=-committerdate', `--count=${maxRefs}`, '--format=%(refname)%00%(committerdate:unix)', 'refs/heads', 'refs/remotes']),
       this.git(folder, ['rev-list', '--count', `--since=${new Date(options.now - 7 * day).toISOString()}`, base.ref, '--']),
     ]);
 
@@ -98,7 +101,9 @@ export class ProjectOverviewGitReader {
       const [name, seconds] = line.split('\0') as [string, string];
       return { name, at: Number(seconds) * 1000 };
     });
-    const tags = pairs(tagList).filter(tag => tag.at >= options.since).sort((a, b) => a.at - b.at);
+    const tags = pairs(tagList).sort((a, b) => a.at - b.at);
+    // A remote HEAD only points at another branch.
+    const branchActivity = pairs(refList).filter(ref => !ref.name.endsWith('/HEAD')).map(ref => ref.at);
 
     const keep = new Set([...(options.keepBranches ?? []), ...(branch ? [branch] : [])]);
     const heads = pairs(branchList);
@@ -132,6 +137,7 @@ export class ProjectOverviewGitReader {
       baseBranch: base.name,
       commits,
       tags,
+      branchActivity,
       branches: [
         (at => ({ name: base.name, firstCommitAt: at, lastCommitAt: at, behind: 0, ahead: 0, files: [], insertions: 0, deletions: 0 }))(baseHead?.at ?? commits[0]?.at ?? options.now),
         ...inFlight.slice(0, maxBranches - 1),
