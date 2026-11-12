@@ -185,7 +185,6 @@ type HarnessDriver<Context, Event, HistoryFrame = unknown> = {
 export type ProviderCoordinationPolicy = {
   authentication?: {
     actions?: readonly import('./contracts/provider-setup').ProviderAuthenticationAction['action'][];
-    refreshOnAdmission?: boolean;
     enableOnSuccess?: boolean;
   };
 };
@@ -193,7 +192,6 @@ export type ProviderCoordinationPolicy = {
 export function resolveProviderCoordinationPolicy(policy?: ProviderCoordinationPolicy) {
   return { authentication: {
     actions: policy?.authentication?.actions ?? ['check', 'cancel', 'logout'] as const,
-    refreshOnAdmission: policy?.authentication?.refreshOnAdmission ?? false,
     enableOnSuccess: policy?.authentication?.enableOnSuccess ?? true,
   } };
 }

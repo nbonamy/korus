@@ -1342,12 +1342,9 @@ export class AppBackendServer {
   async requireConnectedEngine(backend?: Agent['provider']): Promise<Agent['provider']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
-    const rechecks = !backend ? this.snapshot.providerConnections?.filter(provider => provider.connected && this.coordinationPolicy(provider.provider).authentication.refreshOnAdmission) ?? [] : [];
-    if (backend && this.coordinationPolicy(backend).authentication.refreshOnAdmission) await this.providerConnections?.recheck(backend);
-    else {
-      await this.providerConnections?.refreshDisconnected(backend);
-      await Promise.all(rechecks.map(provider => this.providerConnections?.recheck(provider.provider)));
-    }
+    // A harness last seen signed out is checked again, so a sign-in done outside the app is noticed. One seen signed in
+    // is not: if that changed, its prompt says so.
+    await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     const selected = resolveAgentProvider(this.snapshot, backend);
     return selected;

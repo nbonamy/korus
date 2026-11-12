@@ -49,7 +49,7 @@ describe('connected engine admission', () => {
     const authenticate = vi.fn(async () => ({ kind: 'claude' as const, connected, state: { loggedIn: connected } }));
     const driver: AgentProviderDriver = {
       provider: 'claude',
-      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, refreshOnAdmission: true, enableOnSuccess: false } } } : {}),
+      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, enableOnSuccess: false } } } : {}),
       authenticate, getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }), getCapabilities: () => defaultProviderCapabilities('claude'),
       sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {},
     };
@@ -62,10 +62,11 @@ describe('connected engine admission', () => {
       if (declared) await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { provider: 'claude', enabled: true } });
       const checks = authenticate.mock.calls.length;
       await expect(Promise.all([server.requireConnectedEngine('claude'), server.requireConnectedEngine('claude')])).resolves.toStrictEqual(['claude', 'claude']);
-      expect(authenticate).toHaveBeenCalledTimes(checks + (declared ? 1 : 0));
+      // Starting work never checks a harness seen signed in: if that changed, its prompt says so.
+      expect(authenticate).toHaveBeenCalledTimes(checks);
       connected = false;
-      if (declared) await expect(server.requireConnectedEngine()).rejects.toThrow('Connect a coding engine');
-      else await expect(server.requireConnectedEngine()).resolves.toBe('claude');
+      await expect(server.requireConnectedEngine()).resolves.toBe('claude');
+      expect(authenticate).toHaveBeenCalledTimes(checks);
       connected = true;
       const beforeLogin = authenticate.mock.calls.length;
       const login = server.handleMessage({ jsonrpc: '2.0', id: 'login', method: 'provider/authenticate', params: { provider: 'claude', action: 'login' } });
@@ -102,7 +103,7 @@ describe('connected engine admission', () => {
       expect(onEvent.mock.calls.some(([event]) => event.type === 'account.rateLimitsUpdated')).toBe(false);
     } finally { await server.close(); }
   });
-  it('observes and enables Cursor independently and rechecks a previously connected account', async () => {
+  it('observes and enables Cursor independently, and starts its work without checking the account again', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerEnabled = { cursor: false };
     let connected = true;
@@ -111,7 +112,7 @@ describe('connected engine admission', () => {
     let recordConnections = false;
     const server = new AppBackendServer({ version: 'test', snapshot,
       onEvent: event => { if (recordConnections && event.type === 'snapshot.updated') observedConnections.push(event.payload.providerConnections?.find(provider => provider.provider === 'cursor')?.connected ?? false); },
-      driverRpc: { handle, getCoordinationPolicy: () => resolveProviderCoordinationPolicy({ authentication: { refreshOnAdmission: true, enableOnSuccess: false } }), onEvent: () => () => {}, close: async () => {} } as never,
+      driverRpc: { handle, getCoordinationPolicy: () => resolveProviderCoordinationPolicy({ authentication: { enableOnSuccess: false } }), onEvent: () => () => {}, close: async () => {} } as never,
       providerSetup: { isChanging: () => false, list: () => [{ provider: 'cursor', installed: true, homePath: '/cursor' }] } as never,
     });
     try {
@@ -122,9 +123,8 @@ describe('connected engine admission', () => {
       recordConnections = true;
       const checks = handle.mock.calls.length;
       await expect(Promise.all([server.requireConnectedEngine('cursor'), server.requireConnectedEngine('cursor')])).resolves.toStrictEqual(['cursor', 'cursor']);
-      expect(observedConnections.length).toBeGreaterThan(0);
       expect(observedConnections.every(Boolean)).toBe(true);
-      expect(handle).toHaveBeenCalledTimes(checks + 1);
+      expect(handle).toHaveBeenCalledTimes(checks);
       recordConnections = false;
       await server.handleMessage({ jsonrpc: '2.0', id: 'new-chat', method: 'agent/quickChat/create', params: { input: { teamId: 'team-test', selection: { provider: 'cursor' } } } });
       const agent = snapshot.agents[0]!;
@@ -136,18 +136,11 @@ describe('connected engine admission', () => {
       expect(saved).toMatchObject({ result: { agents: [expect.objectContaining({ provider: 'cursor', providerDefaults: expect.objectContaining({ model: 'native-model' }) })] } });
       expect(handle).toHaveBeenCalledTimes(probes);
       expect(snapshot.providerConnections?.[0]?.connected).toBe(true);
-      // Saving a preference needs no provider work; actual work still checks fresh authentication.
-      expect(await server.handleMessage({ jsonrpc: '2.0', id: 'send', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: 'Hello' } }))
-        .toMatchObject({ error: { message: expect.stringContaining('not connected') } });
+      // Neither saving a preference nor starting work asks the harness whether it is still signed in.
+      await expect(server.requireConnectedEngine('cursor')).resolves.toBe('cursor');
+      expect(handle).toHaveBeenCalledTimes(probes);
       expect(agent.provider).toBe('cursor');
-      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('not connected');
-      expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: false, enabled: true });
-      connected = true;
-      await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/connections/get' });
-      expect(snapshot.providerConnections?.[0]?.connected).toBe(true);
-      handle.mockRejectedValueOnce(new Error('probe transport failed'));
-      await expect(server.requireConnectedEngine('cursor')).rejects.toThrow('Could not check');
-      expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: true, checking: false });
+      expect(snapshot.providerConnections?.[0]).toMatchObject({ connected: true, enabled: true });
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'provider/enabled/set', params: { provider: 'cursor', enabled: false } })).rejects.toThrow('last engine');
     } finally { await server.close(); }
   });

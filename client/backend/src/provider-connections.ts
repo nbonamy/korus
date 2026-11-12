@@ -36,15 +36,6 @@ export class ProviderConnections {
     return await this.refresh();
   }
 
-  /** Refresh auth for admission while retaining the last observation until a result arrives. */
-  async recheck(provider: HarnessProvider): Promise<void> {
-    this.probes ??= this.options.detect();
-    const probe = this.probes.find(candidate => candidate.provider === provider);
-    if (probe) await this.check(probe, true);
-    const error = this.states.get(provider)?.error;
-    if (error) throw new Error(error);
-  }
-
   observe(provider: HarnessProvider, connected: boolean, authentication?: ProviderAuthentication): void {
     this.revisions.set(provider, (this.revisions.get(provider) ?? 0) + 1);
     this.pending.delete(provider);
@@ -67,11 +58,11 @@ export class ProviderConnections {
 
   updateEnabled(): void { this.publish(); }
 
-  private check(probe: ConnectionProbe, force = false): Promise<void> {
+  private check(probe: ConnectionProbe): Promise<void> {
     const { provider: backend, installed } = probe;
     const pending = this.pending.get(backend);
     if (pending) return pending;
-    if (!force && this.states.has(backend)) return Promise.resolve();
+    if (this.states.has(backend)) return Promise.resolve();
     const revision = this.revisions.get(backend) ?? 0;
     const current = () => !this.disposed && revision === (this.revisions.get(backend) ?? 0);
     const previous = this.states.get(backend);
