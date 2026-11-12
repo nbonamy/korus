@@ -2,7 +2,7 @@ import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '@workspace/core/delegation-c
 import * as z from 'zod/v4';
 import type { DelegatedTask, TaskContract, TaskResultInput } from '@workspace/core/delegated-task';
 import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId } from '@workspace/core/legacy-fields';
 
 const text = z.string().trim().min(1);
 export const taskContractSchema = z.strictObject({ title: text.max(200), doneWhen: text.max(4000) }) satisfies z.ZodType<TaskContract>;

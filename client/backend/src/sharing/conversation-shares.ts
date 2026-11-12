@@ -9,7 +9,7 @@ import { defaultProviderCapabilities } from '@workspace/core/provider-capabiliti
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
 import { conversationRefId } from '@korus-dev/multi-agent-sdk/contracts';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId } from '@workspace/core/legacy-fields';
 
 const bounded = z.string().min(1).max(4096);
 // Shares saved before conversations were named `conversationId` still load.

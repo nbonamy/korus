@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AccountRateLimits, AppGeneralSettings, AppThemeSettings, Automation, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogAssignment, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
 import { isVisualization } from '@workspace/core/visualize';
 import { StoreFormatError } from './store-format';

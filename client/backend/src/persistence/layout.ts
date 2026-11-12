@@ -1,6 +1,6 @@
 import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';

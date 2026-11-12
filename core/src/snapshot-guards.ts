@@ -1,7 +1,7 @@
 import type { AppSnapshot, ClientState } from './contracts';
 import { isSnapshotMetadata } from './snapshot-guard-metadata';
 import { isBoolean, isRecord, optional } from './snapshot-guard-primitives';
-import { withConversationId } from './legacy-conversation-id';
+import { withLegacyAgentFields } from './legacy-fields';
 
 export type DecodedAppSnapshot = { value: AppSnapshot };
 
@@ -11,11 +11,10 @@ export function decodeAppSnapshot(received: unknown): DecodedAppSnapshot | null 
   return { value: value as AppSnapshot };
 }
 
-/** Snapshots from earlier builds, including cached ones, name each agent's conversation `threadId` or `sessionId`. */
+/** Snapshots from earlier builds, including cached ones, carry each agent's conversation and permission under former names. */
 function withAgentConversationIds(value: unknown): unknown {
   if (!isRecord(value) || !Array.isArray(value.agents)) return value;
-  const agents = value.agents.map(agent => isRecord(agent) && isRecord(agent.providerSession) && !('conversationId' in agent.providerSession)
-    ? { ...agent, providerSession: withConversationId(agent.providerSession) } : agent);
+  const agents = value.agents.map(agent => isRecord(agent) ? withLegacyAgentFields(agent) : agent);
   return agents.every((agent, index) => agent === (value.agents as unknown[])[index]) ? value : { ...value, agents };
 }
 

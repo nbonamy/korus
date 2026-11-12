@@ -620,6 +620,25 @@ describe('migrating the legacy state.json', () => {
 });
 
 describe('conversations saved under their former names', () => {
+  it('restores the permission each harness saved as approvalPreset or permissionMode', async () => {
+    const snapshot = createInitialSnapshot();
+    const template = snapshot.agents[0]!;
+    const providers = ['codex', 'claude', 'cursor', 'antigravity'] as const;
+    snapshot.agents = providers.map(provider => ({ ...structuredClone(template), id: `agent-${provider}`, provider, providerDefaults: { kind: provider } }));
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    snapshot.activeAgentId = snapshot.agents[0]!.id;
+    await new AppStateStore(home).save(snapshot);
+    const roster = await readJson('roster.json');
+    const saved = { codex: { approvalPreset: 'approve-for-me' }, claude: { permissionMode: 'auto' }, cursor: { permissionMode: 'full-access' }, antigravity: { permissionMode: 'auto', permission: 'plan' } };
+    for (const agent of roster.data.agents as { engine: { kind: keyof typeof saved; settings?: Record<string, unknown> } }[]) agent.engine.settings = saved[agent.engine.kind];
+    await writeFile(file('roster.json'), JSON.stringify(roster));
+    const restored = await new AppStateStore(home).load();
+    expect(Object.fromEntries(restored.agents.map(agent => [agent.provider, agent.providerDefaults]))).toStrictEqual({
+      codex: { kind: 'codex', permission: 'approve-for-me' }, claude: { kind: 'claude', permission: 'auto' },
+      cursor: { kind: 'cursor', permission: 'full-access' }, antigravity: { kind: 'antigravity', permission: 'plan' },
+    });
+  });
+
   it('loads agents and tasks whose conversation is still named threadId or sessionId', async () => {
     const snapshot = createInitialSnapshot();
     const [codex, claude] = [snapshot.agents[0]!, { ...structuredClone(snapshot.agents[0]!), id: 'agent-claude', provider: 'claude' as const }];

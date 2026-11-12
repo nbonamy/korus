@@ -1,6 +1,6 @@
 import { isProviderSafetyReview, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId, withPermission } from '@workspace/core/legacy-fields';
 import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
@@ -1246,7 +1246,8 @@ function sanitizeProviderSession(stored: unknown, expectedProvider: HarnessProvi
   return undefined;
 }
 
-function sanitizeProviderDefaults(value: unknown, expectedProvider: HarnessProvider): ProviderDefaults | undefined {
+function sanitizeProviderDefaults(stored: unknown, expectedProvider: HarnessProvider): ProviderDefaults | undefined {
+  const value = withPermission(stored);
   if (!isRecord(value) || value.kind !== expectedProvider) return undefined;
   // The same fields for every harness; only Claude adds its thinking budget.
   const thinking = value.kind === 'claude' ? sanitizeClaudeThinking(value.thinking) : undefined;

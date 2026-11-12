@@ -5,7 +5,7 @@ import {
   type CompanionConversation, type CompanionConversationFrame, type CompanionTarget,
 } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withConversationId } from '@workspace/core/legacy-fields';
 
 type Entry = { target: CompanionTarget; frame: CompanionConversation | null; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionConversation | null>; subscribed?: boolean; resetting?: boolean; checkpoint?: CompanionCheckpoint; bytes?: number };
 type Request = (method: string, target: CompanionTarget, checkpoint?: CompanionCheckpoint | null) => Promise<unknown>;

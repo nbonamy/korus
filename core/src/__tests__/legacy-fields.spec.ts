@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withConversationId } from '../legacy-conversation-id';
+import { withConversationId } from '../legacy-fields';
 
 describe('saved conversation ids', () => {
   it('reads sessions and references saved under their former names', () => {

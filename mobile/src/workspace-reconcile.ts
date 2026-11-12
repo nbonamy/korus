@@ -1,11 +1,9 @@
 import type { CompanionWorkspace } from './companion-port';
-import type { ProviderSessionData } from '@workspace/core/contracts';
-import { withConversationId } from '@workspace/core/legacy-conversation-id';
+import { withLegacyAgentFields } from '@workspace/core/legacy-fields';
 
 type Agents = CompanionWorkspace['agents'];
-/** Laptops on earlier builds name the conversation `threadId` or `sessionId`. */
-const fromLaptop = (agents: Agents): Agents => agents.map(agent => agent.providerSession && !('conversationId' in agent.providerSession)
-  ? { ...agent, providerSession: withConversationId(agent.providerSession) as ProviderSessionData } : agent);
+/** Laptops on earlier builds carry an agent's conversation and permission under former names. */
+const fromLaptop = (agents: Agents): Agents => agents.map(agent => withLegacyAgentFields(agent as never) as typeof agent);
 
 
 /**
