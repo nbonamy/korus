@@ -376,6 +376,23 @@ describe('ProviderDriverRpc', () => {
       .toBeLessThan(extension!.developerInstructions!.indexOf('<context>'));
   });
 
+  it('gives Codex the instructions and MCP servers every harness receives, keeping only its own keys as native configuration', async () => {
+    const options = codexOptions({ appMcpServerUrl: 'http://127.0.0.1:4321/mcp', hostedMcpServerUrls: () => ({ github: 'http://127.0.0.1:4321/mcp/providers/github' }) });
+    const agent = createAgent();
+    expect(options.mcpServers!(options.context(agent))).toStrictEqual([
+      { name: product.mcpServerName, url: `http://127.0.0.1:4321/mcp?agentId=${agent.id}` },
+      { name: 'github', url: `http://127.0.0.1:4321/mcp/providers/github?agentId=${agent.id}` },
+    ]);
+    expect(options.trustedMcpServerName).toBe(product.mcpServerName);
+    expect(options.instructions!(options.context(agent), { planMode: false })).toContain(`Your ${product.name} agent ID`);
+    // Korus hosts GitHub itself, so ChatGPT's own GitHub connector is turned off: a key only Codex has.
+    expect(await options.native(agent)).toStrictEqual({ config: { 'apps.connector_76869538009648d5b282a4bb21c3d157.enabled': false } });
+    // A review runs in its own scope, configured from the review server alone.
+    const review = await options.native(agent, { mcpServerUrl: 'http://127.0.0.1:4321/review' });
+    expect(review.config?.[`mcp_servers.${product.mcpServerName}.url`]).toBe(`http://127.0.0.1:4321/review?agentId=${agent.id}`);
+    expect(review.developerInstructions).toContain(`Your ${product.name} agent ID`);
+  });
+
   it(`configures the ${product.name} MCP tools for a new Quick Chat without a folder`, async () => {
     const agent: Agent = { ...createAgent(), folder: null, sessionKind: 'quickChat' };
     const options = codexOptions({ appMcpServerUrl: 'http://127.0.0.1:4321/mcp' });

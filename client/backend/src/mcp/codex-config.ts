@@ -23,6 +23,7 @@ export function buildAppMcpConfigOverrides(pluginSettings: AppPluginSettings = d
   ];
 }
 
+/** The whole configuration of a scoped conversation, such as a code review, whose only server is the scope's own. */
 export function buildAppThreadConfig(
   agent: Agent,
   mcpServerUrl: string | null,
@@ -53,6 +54,22 @@ export function buildAppThreadConfig(
     },
     developerInstructions: appDeveloperInstructions(agent, pluginSettings, effects),
   };
+}
+
+/**
+ * The configuration keys only Codex has, for a conversation that receives Korus's instructions and MCP servers through
+ * the options every harness shares.
+ */
+export function buildAppThreadExtras(
+  pluginSettings: AppPluginSettings = defaultPluginSettings,
+  hostedMcpServerUrls: Readonly<Record<string, string>> = {},
+): CodexThreadStartExtension {
+  const config = {
+    // Korus hosts GitHub itself; ChatGPT's own connector would offer the same tools twice.
+    ...(hostedMcpServerUrls.github ? { [`apps.${chatGptGitHubConnectorId}.enabled`]: false } : {}),
+    ...(pluginSettings.chromeEnabled ? { 'mcp_servers.node_repl.enabled': true } : {}),
+  };
+  return Object.keys(config).length ? { config } : {};
 }
 
 export function agentScopedMcpUrl(serverUrl: string, agentId: string): string {

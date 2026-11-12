@@ -8,7 +8,7 @@ import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversati
 import { product } from '@workspace/core/product';
 import type { ProviderDriverRegistryOptions } from './driver-rpc';
 import { AgentRegistry, HarnessAgentDriver, type DriverPolicy } from './harness-agent-driver';
-import { agentScopedMcpUrl, appMcpUrlForAgent, buildAppMcpConfigOverrides, buildAppThreadConfig } from './mcp/codex-config';
+import { agentScopedMcpUrl, appMcpUrlForAgent, buildAppMcpConfigOverrides, buildAppThreadConfig, buildAppThreadExtras } from './mcp/codex-config';
 import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
 import { utilityTextModel } from './agents/utility-text-model';
@@ -32,7 +32,6 @@ const planOnly = '\nWrite the plan and stop. Do not implement it or request impl
 /** App identity, instructions and MCP wiring shared by every provider. */
 function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'trustedMcpServerName' | 'isBookkeepingTool' | 'instructions' | 'mcpServers' | 'log'> {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
-  void settings;
   return {
     client: { name: product.mcpServerName, title: product.name, metadataDirectory: 'korus-sessions', temporaryDirectory: 'korus-tmp' },
     stateDirectory: backendHomeDir,
@@ -41,7 +40,8 @@ function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, '
     isBookkeepingTool,
     instructions: (context, { planMode }) => {
       const agent = agents.get(context.id);
-      return appDeveloperInstructions(agent, options.pluginSettings?.(), { celebrationsEnabled: options.celebrationsEnabled?.(), developerInstructions: options.additionalDeveloperInstructions?.(agent) }) + (planMode ? planOnly : '');
+      return appDeveloperInstructions(agent, options.pluginSettings?.() ?? settings()?.plugins,
+        { celebrationsEnabled: options.celebrationsEnabled?.() ?? settings()?.celebrationsEnabled, developerInstructions: options.additionalDeveloperInstructions?.(agent) }) + (planMode ? planOnly : '');
     },
     mcpServers: context => {
       const agent = agents.get(context.id);
@@ -121,6 +121,7 @@ export function codexHarnessOptions(options: Options, agents: AgentRegistry): Ha
   return {
     client: { name: 'workspace', title: product.name, version: '0.3.0', metadataDirectory: base.client.metadataDirectory },
     formatPrompt: base.formatPrompt, trustedMcpServerName: product.mcpServerName, log: base.log,
+    instructions: base.instructions, mcpServers: base.mcpServers,
     home: settings()?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
     onDiagnostic: traceCodexDiagnostic,
     codex: {
@@ -129,9 +130,11 @@ export function codexHarnessOptions(options: Options, agents: AgentRegistry): Ha
       defaultModel: codexConversationDefaults,
       conversationConfig: (context, scope) => {
         const agent = agents.get(context.id);
-        return buildAppThreadConfig(agent, scope?.mcpServerUrl ?? options.appMcpServerUrl ?? null, options.pluginSettings?.() ?? settings()?.plugins,
-          { celebrationsEnabled: options.celebrationsEnabled?.() ?? settings()?.celebrationsEnabled, developerInstructions: options.additionalDeveloperInstructions?.(agent) },
-          scope?.mcpServerUrl ? {} : options.hostedMcpServerUrls?.() ?? {}) as never;
+        const plugins = options.pluginSettings?.() ?? settings()?.plugins;
+        // Instructions and MCP servers reach Codex through the options every harness shares; a scope brings its own.
+        if (!scope?.mcpServerUrl) return (options.appMcpServerUrl ? buildAppThreadExtras(plugins, options.hostedMcpServerUrls?.() ?? {}) : {}) as never;
+        return buildAppThreadConfig(agent, scope.mcpServerUrl, plugins,
+          { celebrationsEnabled: options.celebrationsEnabled?.() ?? settings()?.celebrationsEnabled, developerInstructions: options.additionalDeveloperInstructions?.(agent) }) as never;
       },
       syncTitle: context => shouldSyncConversationTitleFromAgent(agents.get(context.id)),
       retainedSessions: context => {
