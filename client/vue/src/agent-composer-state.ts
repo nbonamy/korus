@@ -454,14 +454,15 @@ export function createAgentComposerState(options: {
       const current = configuration(agentId);
       if (current.pendingSelection) {
         const pending = current.pendingSelection;
-        const model = current.models.find(model => modelMatchesSelection(model, settings.model ?? null));
+        // The conversation reports the model it runs, which the pending choice may name by an alias.
+        const model = settings.model ? current.models.find(model => model.id === catalogModelId(current.models, settings.model!, current.selectedModelId)) : undefined;
         if ((model?.model ?? settings.model) !== pending.model
           || (settings.reasoningEffort ?? null) !== pending.reasoningEffort
           || (settings.serviceTier ?? null) !== pending.serviceTier) return;
         current.pendingSelection = null;
       }
       if (settings.model !== undefined) {
-        current.selectedModelId = current.models.find(model => modelMatchesSelection(model, settings.model ?? null))?.id ?? settings.model;
+        current.selectedModelId = settings.model === null ? null : catalogModelId(current.models, settings.model, current.selectedModelId);
       }
       if (settings.reasoningEffort !== undefined) current.selectedReasoningEffort = settings.reasoningEffort;
       if (settings.serviceTier !== undefined) current.selectedServiceTier = settings.serviceTier;
@@ -551,7 +552,7 @@ export function createAgentComposerState(options: {
 }
 
 function selectDefaultModel(configuration: AgentComposerConfiguration): void {
-  const selected = configuration.models.find((model) => modelMatchesSelection(model, configuration.selectedModelId));
+  const selected = namedModel(configuration.models, configuration.selectedModelId);
   if (selected) {
     configuration.selectedModelId = selected.id;
     if (
@@ -603,6 +604,25 @@ function synchronizeSelectionWithAgent(configuration: AgentComposerConfiguration
   configuration.selectedReasoningEffort = selection.reasoningEffort;
   configuration.selectedServiceTier = selection.serviceTier;
   if (configuration.modelStatus === 'loaded') selectDefaultModel(configuration);
+}
+
+/**
+ * The catalog entry to show for the model a conversation reports. Several entries can resolve to the same model
+ * (Claude's "default" and "sonnet"), so the entry already chosen is kept when it names that model.
+ */
+export function catalogModelId(models: readonly ProviderModelOption[], reported: string, chosenId: string | null): string {
+  const chosen = models.find(model => model.id === chosenId);
+  if (chosen && modelMatchesSelection(chosen, reported)) return chosen.id;
+  return namedModel(models, reported)?.id ?? reported;
+}
+
+/**
+ * The catalog entry a model name means: the entry with that id, else one that resolves to it. A name is a specific
+ * model, so the provider's "default" entry is taken only when nothing else resolves to it.
+ */
+function namedModel(models: readonly ProviderModelOption[], name: string | null): ProviderModelOption | undefined {
+  const matches = models.filter(model => modelMatchesSelection(model, name));
+  return matches.find(model => model.id === name) ?? matches.find(model => !model.isDefault) ?? matches[0];
 }
 
 function modelMatchesSelection(model: ProviderModelOption, selection: string | null): boolean {

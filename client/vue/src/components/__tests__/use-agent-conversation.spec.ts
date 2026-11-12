@@ -94,6 +94,30 @@ describe('agentConversationState identity', () => {
     expect(state.composer!.selectedModelId).toBe('draft');
   });
 
+  it('shows the saved model, effort and speed when the loaded conversation reports no model, as after a restart', () => {
+    const agent = { ...createInitialSnapshot().agents[0]!, provider: 'claude' as const, providerDefaults: { kind: 'claude' as const, model: 'claude-sonnet-5-5', userSelectedModel: true } };
+    // A restored conversation that has not run yet: the harness knows the conversation, not what it will run with.
+    const view = { agent, conversation: conversationFrom(agent, sessionState({ selection: { serviceTier: null } })), capabilities: {},
+      composer: { selectedModelId: 'claude-sonnet-5-5', selectedReasoningEffort: 'high', selectedServiceTier: 'fast', pendingSelection: null },
+    } as unknown as AgentConversationView;
+    const state = agentConversationState(() => view);
+    expect(state.composer!.selectedModelId).toBe('claude-sonnet-5-5');
+    expect(state.composer!.selectedReasoningEffort).toBe('high');
+    expect(state.composer!.selectedServiceTier).toBe('fast');
+  });
+
+  it('shows the chosen model while the conversation runs the model it resolves to', () => {
+    const agent = { ...createInitialSnapshot().agents[0]!, provider: 'claude' as const, providerDefaults: { kind: 'claude' as const, model: 'sonnet', userSelectedModel: true } };
+    const entry = (id: string, resolvedModel: string) => ({ id, model: id, displayName: id, providerMetadata: { resolvedModel } });
+    const view = { agent, conversation: conversationFrom(agent, sessionState({ selection: { model: 'claude-sonnet-5-5' } })), capabilities: {},
+      composer: { models: [entry('default', 'claude-sonnet-5-5'), entry('opus', 'claude-opus-5-5'), entry('sonnet', 'claude-sonnet-5-5')], selectedModelId: 'sonnet', selectedReasoningEffort: null, selectedServiceTier: null, pendingSelection: null },
+    } as unknown as AgentConversationView;
+    const state = agentConversationState(() => view);
+    expect(state.composer!.selectedModelId).toBe('sonnet');
+    view.conversation = conversationFrom(agent, sessionState({ selection: { model: 'claude-opus-5-5' } }));
+    expect(state.composer!.selectedModelId).toBe('opus');
+  });
+
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
     const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', providerSession: { kind: 'codex' as const, threadId: 'restored' } };
     const view = { agent,

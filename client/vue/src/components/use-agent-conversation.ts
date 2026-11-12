@@ -9,6 +9,7 @@ import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults, approvalPresetOptions } from '@workspace/core/approval-presets';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentConversationView } from '../app-state';
+import { catalogModelId } from '../agent-composer-state';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
@@ -77,6 +78,14 @@ export function agentConversationState(view: () => AgentConversationView, extens
         parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
+  /**
+   * What the conversation is running with, once the harness names a model. A conversation restored after a restart has
+   * not run yet and names none; the composer then shows the agent's saved choice, as it does while an edit is pending.
+   */
+  const reportedSelection = () => {
+    const selection = view().composer.pendingSelection ? undefined : provider()?.selection;
+    return selection?.model ? selection : undefined;
+  };
   /** The permission in effect: what the session reports, else what the agent's stored defaults select. */
   const permission = (): string | null => {
     const defaults = view().agent.providerDefaults;
@@ -129,16 +138,16 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get modelMenuItems() { return extensions.modelMenuItems?.(); },
       get planMode() { return view().composer.planMode; },
       get selectedModelId() {
-        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        const selection = reportedSelection();
         if (!selection) return view().composer.selectedModelId;
-        return view().composer.models?.find(model => model.id === selection.model || model.model === selection.model)?.id ?? selection.model ?? null;
+        return catalogModelId(view().composer.models ?? [], selection.model!, view().composer.selectedModelId);
       },
       get selectedReasoningEffort() {
-        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        const selection = reportedSelection();
         return selection ? selection.reasoningEffort ?? null : view().composer.selectedReasoningEffort;
       },
       get selectedServiceTier() {
-        const selection = !view().composer.pendingSelection ? provider()?.selection : undefined;
+        const selection = reportedSelection();
         return selection ? selection.serviceTier ?? null : view().composer.selectedServiceTier;
       },
     },
