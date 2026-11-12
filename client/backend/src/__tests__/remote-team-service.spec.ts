@@ -54,6 +54,14 @@ describe('RemoteTeamService', () => {
       await vi.waitFor(() => expect(onConnectionFailed).toHaveBeenCalledWith('connection-devbox', expect.objectContaining({ message: 'Cannot find module daemon.mjs' })));
     });
 
+    it('refreshes a team without failing on a host that is not ready', async () => {
+      const { service, snapshot, request } = offlineSetup();
+      snapshot.remoteConnections.connections[0]!.status = 'error';
+
+      await expect(service.refreshTeam('pointer')).resolves.toBeUndefined();
+      expect(request).not.toHaveBeenCalled();
+    });
+
     it('does not report a connection that was already marked unavailable', async () => {
       const { service, snapshot, onConnectionFailed } = offlineSetup();
       snapshot.remoteConnections.connections[0]!.status = 'error';

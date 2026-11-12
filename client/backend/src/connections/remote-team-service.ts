@@ -133,7 +133,11 @@ export class RemoteTeamService {
   }
 
   async refreshTeam(teamId: string): Promise<void> {
-    for (const pointer of this.pointers().filter(pointer => pointer.localTeamId === teamId)) await this.snapshot(pointer.connectionId);
+    for (const pointer of this.pointers().filter(pointer => pointer.localTeamId === teamId)) {
+      // A host that is down keeps its last known agents; it must not block work on local ones.
+      try { await this.snapshot(pointer.connectionId); }
+      catch (error) { this.reportConnectionFailure(pointer.connectionId, error); }
+    }
   }
 
   async activateLinkedTeams(connectionId: string, force = false): Promise<void> {
