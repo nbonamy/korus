@@ -1,20 +1,27 @@
 # Project overview
 
-Status: phase 1 in progress on `feat/project-overview`. Local commits only; no push,
+Status: redesigned after mockup review. The page is now a written narrative plus a
+live flow diagram. The data layer on `feat/project-overview` predates this design
+and is partly reused, partly reshaped (see Progress). Local commits only; no push,
 merge, release or changelog entry.
 
 ## Goal
 
-Give every repository group a read-only **Project overview**: one screen that lets a
-developer check in on the wider project without leaving the app. It joins two views:
+Give every repository group a read-only **Project overview** that lets a developer
+check in on the wider project without leaving the app. It answers two questions and
+nothing else:
 
-- **Inner loop**: what the coding harness did here. Git history as a narrative, and
-  the agent sessions that ran against the repository.
-- **Outer loop**: what is happening around the code. Backlog flow from connected work
-  providers, CI activity per branch, and the integration risk of the current branch.
+- **What is this project working on, and how is each workstream going?** A few
+  sentences of analysis, written from the code and its issues.
+- **Where is the work right now, and where is it stuck?** A live factory-style flow
+  from backlog to shipped.
 
-Non-goals: it is not an action centre. It never starts, assigns, merges or closes
-work, and it has no notifications of its own. Existing surfaces keep those jobs.
+Non-goals:
+
+- It is not an action centre. It never starts, assigns, merges or closes work.
+- It is not a mirror of upstream tools. It never lists tickets, commits, pull
+  requests or pipeline runs; those stay in the tools that own them.
+- It has no controls, filters, tables or time-window pickers of its own.
 
 ## Feasibility
 
@@ -22,210 +29,260 @@ Feasible in this repository without new dependencies or a new process.
 
 | Need | What already exists | Gap |
 | --- | --- | --- |
-| Git narrative | Bounded read-only git in `client/backend/src/git/agent-git-history-service.ts` | Aggregated history, tags, branch drift and overlap reads |
-| Agent sessions | `executions` table in `usage/usage-ledger.ts` keyed by repository, provider, session and turn | A per-session read; nothing new is recorded |
+| Repository evidence | Bounded read-only git; `ProjectOverviewGitReader` on this branch | Merge sizes, first and last commit per branch, lines changed |
 | Live agents | `AppSnapshot.agents` with workspace branch and status | None |
-| Backlog flow | `WorkProviderDriver` for GitHub, GitLab and Linear, API or CLI credentials | Drivers list open items only; a windowed activity read is new |
-| CI state | Nothing reads pipelines today | New optional driver read (GitHub Actions first) |
-| Transport | Agent-scoped requests route to the owning host through `routeAgentResultRequest` | One new desktop-only method |
+| Issues | `WorkProviderDriver` for GitHub, GitLab, Linear; `listBacklogActivity` on this branch (GitHub) | GitLab and Linear |
+| Pull requests | `listItems` returns open pull requests without draft or approval state | One optional driver read for open pull requests |
+| Pipelines | `listPipelineRuns` on this branch (GitHub) | GitLab |
+| Written narrative | `driver/text/generate` with `outputSchema`, used for commit and pull request messages; `agents/utility-text-model.ts` picks a lightweight model per engine | Evidence builder, prompt, validation, persistence |
+| Transport | Agent-scoped requests route to the owning host; `project/overview/get` on this branch | One more method to rewrite the narrative |
 | Surface | `AppShell` full-pane surfaces (`backlog`, `automations`) | One new surface and a repository menu entry |
 
 Constraints that shape the design:
 
-- The daemon owns git, the ledger and provider credentials. The renderer only draws
-  an app-owned DTO.
-- The request is agent-scoped (any agent of the repository group), so remote
-  repositories are read on their owning host and no path crosses the boundary.
-- The method is desktop-only. No mobile-consumed contract changes; `WorkItem`,
+- The daemon owns git, provider credentials and generation. The renderer draws an
+  app-owned DTO and never computes from raw git, provider or model output.
+- Requests are agent-scoped (any agent of the repository group), so a remote
+  repository is read, and its narrative written, on the host that owns it.
+- Everything is desktop-only. No mobile-consumed contract changes; `WorkItem`,
   usage and telemetry contracts are untouched.
-- The usage ledger holds statistics only. The overview reads session identity,
-  engine, model, timing and outcome, never prompts or transcript content.
+- Generation spends the user's own engine allowance, so it is bounded, cached and
+  only runs while the page is open.
 
 ## Information architecture
 
-Reading order is top to bottom, coarse to fine. Each zone answers one question and
-names its source.
-
 ```text
-+--------------------------------------------------------------------------+
-| Header: repository, branch, sources feeding the page, time window        |
-+--------------+--------------+--------------+--------------+--------------+
-| Commits      | Sessions     | Open backlog | CI on base   | Integration  |
-| (git)        | (ledger)     | (providers)  | (code host)  | risk (both)  |
-+--------------+--------------+--------------+--------------+--------------+
-| Story: chapters | releases | commits by type | merges | sessions by      |
-| engine, all on one time axis                                             |
-+----------------------------------------------+---------------------------+
-| Work in flight: one row per active branch    | Backlog flow: opened vs   |
-| (agent, drift, pull request, CI runs, risk)  | closed, state mix, latest |
-+----------------------------------------------+---------------------------+
++------------------------------------------------------------------------+
+| korus · Project overview                     Live · updated 2 min ago  |
+|                                                                        |
+| Lead: one or two sentences on the state of the project.                |
+|                                                                        |
+| o Workstream  State     # Workstream  State     @ Workstream  State    |
+|   Two sentences of        Two sentences of        Two sentences of     |
+|   analysis.               analysis.               analysis.            |
+|   From <basis>            From <basis>            From <basis>         |
+|                                                                        |
+| Written by <engine> from the code and its issues.                      |
++------------------------------------------------------------------------+
+| Where the work is right now              o # @ . legend of workstreams |
+|                                              Constraint                |
+| [Backlog] -..-> [Building] -..-> [Review] -.-> [CI] -..-> [Shipped]    |
+|    47              5 oo#..         6 oo@...     3 o..        31        |
+| 9 arrived       4 agents        oldest 3 days  1 failing   this week   |
+|                                                                        |
+| One sentence naming the constraint and why.                            |
++------------------------------------------------------------------------+
 ```
 
-| Zone | Question | Source | Loop |
+| Zone | Question | Produced by | Source |
 | --- | --- | --- | --- |
-| Pulse | Does anything need a closer look? | all | both |
-| Story | What happened, and what agent work was behind it? | git, ledger | inner |
-| Work in flight | Who is working where, and is it safe to integrate? | git, agents, code host | both |
-| Backlog flow | Is the backlog growing or shrinking? | work providers | outer |
+| Narrative | What is being worked on, and how is it going? | An engine, from daemon-built evidence | git, issues, agent sessions |
+| Flow | Where is the work, and where is it stuck? | Deterministic policy, no model | git, agents, pull requests, pipelines, issues |
 
-Rules: every zone stands alone (a missing source empties its own zone only); every
-number carries its source and window; a risk level is always shown with its reasons.
+Rules:
+
+- Analysis, not a copy. Text only: no lists of upstream records, no links, no tables.
+- Workstreams link the zones. The mark beside a workstream name is the mark on its
+  work in the flow. Marks differ in shape as well as colour.
+- A missing source removes its stations and its sentences and says so in one line.
+- Reading time: ten seconds for the lead and the constraint, a minute for the page.
+
+Mockups (three boards on a private design canvas): all sources connected, repository
+only, and this structure. Narrative text in the mockups uses real facts from this
+repository; station counts are sample data.
 
 ## Behaviour specification
 
 Each item is observable and has a test at the boundary named in Test strategy.
 
-Opening and scope
+Opening
 
 - B1. A repository group's context menu offers **Project overview**. Choosing it
   shows the overview in the main pane for that repository and keeps the sidebar.
 - B2. Selecting an agent, a Mission or another surface leaves the overview.
-- B3. The overview loads when opened and when the window changes. A manual refresh
-  control reloads it. It never polls while hidden.
-- B4. The header shows the repository name, the current branch of the agent it was
-  opened from, the base branch, and one status per source: available, not connected,
-  unavailable or failed.
-- B5. The time window is one of 7 days, 30 days, 12 weeks or 1 year. Seven and
-  thirty days bucket by day; twelve weeks and one year bucket by Monday-started
-  week. The choice is remembered for the session.
+- B3. The page has two zones, narrative then flow, and no controls of its own.
+- B4. The header shows the repository name and one live line: when the page was last
+  updated, and "repository only" when no issue or code-host source is connected.
 
-Story (git and sessions)
+Narrative
 
-- B6. Each bucket shows commits split by kind: `feat`, `fix`, `test`, `chore` (which
-  includes `docs`, `refactor`, `perf`, `build`, `ci`, `style`) and other. Merge
-  commits are counted separately and are not in the kind split.
-- B7. Releases are tags reachable from the base branch, placed in their bucket.
-- B8. Chapters name consecutive buckets after the branches merged in them. A chapter
-  title comes from merged branch names only, never from generated text.
-- B9. Sessions are grouped per bucket and engine from recorded turns for this
-  repository: session count, turn count, failed turns. A session belongs to the
-  bucket of its first turn in the window.
-- B10. A repository with no commits in the window shows an empty Story with the
-  window stated, not an error.
+- B5. The narrative is one lead of at most two sentences and one to four
+  workstreams. A workstream has a name, a state word, at most two sentences of
+  analysis and a basis line.
+- B6. The state word is one of: starting, moving, settling, recurring, waiting,
+  stalled.
+- B7. Generated text is rendered as plain text. Length limits (lead 280 characters,
+  analysis 360, name 40) keep it from becoming a list.
+- B8. The narrative is grounded. Every workstream cites evidence facts; every
+  branch or issue it claims exists in the evidence; every number written in digits
+  in the lead or an analysis appears in a cited fact. A narrative that fails is
+  rejected, retried once with the failures stated, then reported as unavailable.
+- B9. The basis line is composed by the daemon from the cited facts' labels, never
+  by the model.
+- B10. A provenance line names the engine that wrote the narrative and its age.
+- B11. Freshness. The last narrative shows at once from cache. It is rewritten when
+  the evidence has changed, at most once every 15 minutes per repository, and only
+  while the overview is open. While rewriting, the previous text stays with a quiet
+  "updating" hint.
+- B12. The narrative survives a restart: reopening with unchanged evidence spends
+  nothing.
+- B13. Without an issue source the narrative is written from the repository alone
+  and says so.
+- B14. When no engine can write it (no utility model, two failed attempts, or
+  nothing happened in 30 days) the zone states which in one line. The flow is
+  unaffected.
 
-Work in flight
+Flow
 
-- B11. One row per local branch with commits in the last 30 days or with a live
-  agent, capped at 12, most recently active first. The base branch is always the
-  first row.
-- B12. A row shows commits behind and ahead of the base branch, files changed since
-  the merge base, and the agents working on that branch with engine and status.
-- B13. The row for the branch the overview was opened from is marked as the current
-  branch.
-- B14. When a code host is connected, a row also shows its pull request state and
-  its most recent pipeline runs, oldest to newest.
-
-Integration risk
-
-- B15. The current branch gets a level of low, medium or high with reasons in
-  words. Inputs: commits behind base, files it changed that other active branches
-  also changed, base commits per day over the last seven days, and failing latest
-  pipeline run when known.
-- B16. Risk is computed from git alone when no code host is connected, and says so.
-- B17. On the base branch itself there is no risk level.
-
-Outer loop
-
-- B18. Backlog flow shows items opened and closed per bucket, the open count, open
-  items by state, and the latest changes, for the provider that hosts the
-  repository.
-- B19. With no connected provider for the repository the zone says so and names
-  where to connect. Nothing else on the page changes.
-- B20. A provider error empties only the zones fed by that provider and marks the
-  source as failed. Git and sessions still render.
+- B15. Five stations in fixed order: Backlog, Building, Review, CI, Shipped. Each
+  shows its name, a count and one note.
+- B16. A unit of work is a branch with commits ahead of the base branch, with its
+  pull request when it has one. Its station is the first that applies:
+  Building when it has no pull request or a draft one; Review when its pull request
+  is open and not approved; CI when its pull request is approved and not merged.
+  When the provider cannot report approvals, a pull request whose latest pipeline
+  run is running or failed is in CI and any other is in Review.
+- B17. Backlog counts open issues and notes how many arrived in seven days. Shipped
+  counts merges into the base branch in seven days. Building notes how many agents
+  are working, Review how long the oldest has waited, CI how many are failing.
+- B18. Marks inside Building, Review and CI show each unit's workstream. A unit the
+  narrative does not claim is "Other work". The legend lists only marks in use.
+- B19. A link between two stations carries one moving token per unit that reached
+  the next station in the last 24 hours, at most three. With reduced motion the
+  tokens are still. A link nothing crossed is empty.
+- B20. The constraint is the station among Building, Review and CI with the most
+  total waiting time, named only when it holds at least two units and its oldest
+  has waited over 24 hours. Waiting time is time since arrival for Review and CI,
+  and time since the last commit for a Building unit no agent is working on. The
+  page labels that station and adds one sentence with the count, the oldest wait
+  and the workstreams involved. With no constraint it says nothing is stuck.
+- B21. A station whose source is not connected is drawn dashed with no count and
+  "not connected". One sentence names where to connect.
+- B22. The flow is live: while the overview is visible it refreshes when an agent
+  of the repository changes status or git state, debounced, and every 60 seconds.
+  It never refreshes while hidden, and a refresh never rewrites the narrative.
+- B23. A provider error marks only the stations it feeds as unavailable.
 
 Robustness
 
-- B21. A folder that is not a git repository shows sessions only and marks git as
-  unavailable.
-- B22. Reads are bounded: git calls have a time and output limit, history is capped
-  (20,000 commits), provider reads are capped (300 items, 100 runs).
-- B23. Results are cached per repository and window for 30 seconds on the daemon,
-  so reopening is instant and repeated opens cannot hammer a provider.
+- B24. A folder that is not a git repository shows one line saying so.
+- B25. Reads are bounded: git calls have time and output limits; history is capped
+  at 20,000 commits; provider reads at 300 issues, 100 pull requests, 100 runs;
+  evidence sent to an engine at 200 commit subjects and 60 issue titles.
+- B26. Flow results are cached for 30 seconds per repository on the daemon.
+- B27. Commit subjects, branch names and issue titles are untrusted text. They are
+  fenced as data in the prompt, and nothing generated is treated as markup, a link
+  or an instruction.
 
 ## Architecture
 
 ```text
 ProjectOverviewView (renderer)
-  -> AppApi.getProjectOverview(agentId, input)           core/src/contracts.ts
-  -> ipc 'project:overview:get'                          preload, Electron main
-  -> backend 'project/overview/get' { agentId, input }   routed to the owning host
+  -> AppApi.getProjectOverview(agentId)                 flow + cached narrative
+  -> AppApi.refreshProjectNarrative(agentId)            rewrites when stale
+  -> ipc 'project:overview:get' / 'project:overview:narrative:refresh'
+  -> backend 'project/overview/get' / 'project/overview/narrative/refresh'
+       routed to the owning host
   -> ProjectOverviewService (daemon)
-       |- ProjectOverviewGitReader   git history, tags, branches, drift, overlap
-       |- UsageLedger.sessions()     recorded sessions for the repository
-       |- snapshot agents            live agents on each branch
-       `- outer-loop port            backlog activity and pipeline runs
-             `- WorkIntegrationManager -> WorkProviderDriver (GitHub first)
+       |- ProjectOverviewGitReader    base history, merges, branches in flight
+       |- snapshot agents             who is working on which branch
+       |- outer-loop port             issues, open pull requests, pipeline runs
+       |     `- WorkIntegrationManager -> WorkProviderDriver
+       |- flow policy (core)          stations, marks, tokens, constraint
+       `- ProjectNarrativeWriter
+             |- evidence builder      numbered facts computed by code
+             |- driver/text/generate  utility model, outputSchema
+             |- narrative policy (core)  validation and grounding
+             `- narrative store       last narrative per repository, with its
+                                      evidence hash, in a daemon-private file
 ```
 
-Contracts (`core/src/project-overview.ts`, platform-neutral so a later server and
-other clients can produce or read the same shape):
+Contract (`core/src/project-overview.ts`, platform-neutral so a later server can
+produce the same shape):
 
-- `ProjectOverviewInput { window?, timeZone? }`
-- `ProjectOverview { generatedAt, repository, window, sources, story, sessions,
-  branches, risk, backlog, pipelines }`. Zones are `null` when their source is not
-  available, so the renderer never infers a state from an empty array.
-- Pure policy shared by every producer: `projectOverviewCommitKind`,
-  `projectOverviewBucketStart`, `projectOverviewChapters`,
-  `projectOverviewIntegrationRisk`.
+- `ProjectOverview { generatedAt, repository, sources, narrative, narrativeStatus,
+  flow }`.
+- `ProjectNarrative { lead, workstreams[{ id, name, state, analysis, basis }],
+  writtenBy, writtenAt }`; `narrativeStatus` is fresh, stale, missing or
+  unavailable with a reason.
+- `ProjectFlow { stations[{ kind, status, count, note, marks }], links[{ from, to,
+  tokens }], constraint }`.
+- Pure policy shared by every producer: station assignment, waiting time,
+  constraint choice, token selection, mark assignment, narrative validation.
 
-Daemon (`client/backend/src/project-overview/`):
+Evidence. The daemon computes numbered facts, each one plain sentence with its
+numbers already worked out, plus a short label for the basis line. Kinds: latest
+release; branches merged in 30 days with the commits each brought; themes (how many
+`fix` or `feat` subjects mention a term); each branch in flight with drift, size and
+agents; base velocity; issues opened, closed and open; issue themes; agent sessions
+per engine with failed turns; the current flow and constraint. Raw lists (commit
+subjects, issue titles) go along for interpretation only. The evidence hash excludes
+timestamps so an unchanged project never looks stale.
 
-- `ProjectOverviewGitReader`: read-only, `GIT_OPTIONAL_LOCKS=0`, bounded time and
-  output, no fetch and no network. Base branch is `origin/HEAD` when set, otherwise
-  the workspace default branch, otherwise `main` or `master`.
-- `ProjectOverviewService.get(agent, input)`: validates input, resolves the
-  repository from the agent workspace, runs sources in parallel, isolates each
-  failure into its source status, caches the result.
-- `UsageLedger.sessions(repository, since)`: one row per provider session.
-- Outer-loop port: `backlog(repositoryId, since)` and `pipelines(repositoryId,
-  since)`, each returning `null` when no provider is connected. Implemented by
-  `WorkIntegrationManager` over two optional driver methods,
-  `listBacklogActivity` and `listPipelineRuns`. GitHub implements both through the
-  existing API and CLI request path. GitLab and Linear follow in phase 2.
+Generation. `ProjectNarrativeWriter` calls the existing `driver/text/generate`
+through an agent's driver with `cwd`, `developerInstructions`, the fenced evidence
+and an `outputSchema` of `{ lead, workstreams[{ name, state, analysis, facts,
+branches, issues }] }`. It uses the requesting agent's engine; when that engine has
+no utility model (Cursor today) it uses another agent of the same repository whose
+engine has one. One generation per repository at a time; concurrent requests share
+it. The validated result is stored with the evidence hash, engine and model.
+
+Flow. Built on every `get` from git facts, snapshot agents, open pull requests and
+pipeline runs, with no model involved, so it stays cheap enough to refresh live.
+
+Outer-loop port: `backlog`, `pullRequests` and `pipelines`, each `null` when no
+connected provider serves the repository. Driver methods are optional:
+`listBacklogActivity` and `listPipelineRuns` exist for GitHub; `listOpenPullRequests`
+(branch, draft, approved or unknown, opened at) is new.
 
 Renderer (`client/vue/src/components/`):
 
 - `AppShell` gains an `overview` surface next to `backlog` and `automations`.
-- `use-project-overview.ts` owns loading, stale-response rejection and the window.
-- `ProjectOverviewView` composes four zone components. Charts are plain DOM and
-  CSS grid driven by the DTO, so they are assertable in jsdom and need no canvas.
-- Copy lives in `i18n/messages.ts`. Colours are semantic variables.
+- `use-project-overview.ts` owns loading, stale-response rejection, the narrative
+  rewrite call, and live refresh tied to visibility.
+- `ProjectOverviewView` composes `ProjectOverviewNarrative` and
+  `ProjectOverviewFlow`. The flow is plain DOM with absolutely placed stations,
+  links and tokens driven by the DTO; token motion is a CSS animation disabled
+  under reduced motion. No chart library, no canvas.
+- Copy lives in `i18n/messages.ts`; state words, station names and the constraint
+  sentence are app copy composed from DTO values. Colours are semantic variables.
 
-Integration risk model (`projectOverviewIntegrationRisk`), deterministic and
-explainable. Points: behind base (1 for 1 to 9 commits, 2 for 10 to 29, 3 for 30 or
-more); size (1 for 30 to 99 changed files, 2 for 100 to 199, 3 for 200 or more);
-overlapping files with other active branches (1 for 1 to 2 files, 2 for 3 or more);
-base velocity (1 at 10 or more commits a day); failing latest pipeline run (2). Low
-is 0 to 2 points, medium 3 to 5, high 6 or more. Each scored input yields a reason
-the UI renders.
+Privacy. Evidence holds commit subjects, branch names and issue titles. It goes only
+to the engine already working in that repository, on the host that owns it, exactly
+as commit-message generation sends diffs today. Nothing from the overview enters
+telemetry.
 
 ## Phases and commit checkpoints
 
-Phase 1, this branch:
+Done on this branch (see Progress): plan, first contract and policy, git reader,
+GitHub issue and pipeline reads, routing, desktop bridge.
 
-1. `feat: add project overview contracts and risk policy`: core types, pure policy
-   and their tests.
-2. `feat: read project history and sessions for the project overview`: git reader,
-   ledger session read, service, protocol method, server routing, runtime wiring.
-3. `feat: expose the project overview to the desktop renderer`: IPC channel,
+Phase 1, remaining:
+
+1. `refactor: reshape the project overview contract around narrative and flow`:
+   contract, flow policy, narrative validation; remove the window input, buckets,
+   chapters and the per-zone backlog and pipeline shapes.
+2. `feat: read open pull requests and branch timing for the project overview`:
+   optional driver read with GitHub mapping, manager port, git reader additions.
+3. `feat: build the project flow from branches, agents, pull requests and
+   pipelines`: flow builder in the service, source statuses, cache.
+4. `feat: write the project narrative from repository and issue evidence`:
+   evidence builder, writer, validation and retry, store, rewrite method.
+5. `feat: expose the project narrative rewrite to the desktop renderer`: channel,
    preload, main handler.
-4. `feat: show the project overview surface`: view, zones, composable, shell
+6. `feat: show the project overview surface`: view, two zones, composable, shell
    surface, repository menu entry, copy.
-5. `feat: read github backlog activity and pipeline runs for the project overview`:
-   driver methods, manager port, GitHub mapping.
+7. Gates, then remove anything the dead-code lint reports as unused.
 
-Phase 2: GitLab issues and pipelines; Linear state changes mapped through the
-configured Linear team or project; pull request state per branch; command palette
-and Quick Open entries; a sidebar row per repository group as in the mockups.
+Phase 2: GitLab issues, merge requests and pipelines; Linear issues through the
+configured team or project; command palette entry; a sidebar row per repository.
 
-Phase 3: generated chapter summaries through the existing utility text generation,
-labelled as generated and cached per chapter; session drill-in to a conversation.
+Phase 3: show what a workstream rests on (its facts) on demand; session traces from
+an external store (OpenTelemetry, LangSmith, Braintrust) behind the same evidence
+port the local ledger feeds.
 
-Phase 4: shared state. The same `ProjectOverview` DTO produced by a server for a
-Team, pushed to clients; session lane fed by an external trace store (OpenTelemetry,
-LangSmith, Braintrust) through a `ProjectOverviewSessionSource` port that the local
-ledger also implements.
+Phase 4: shared state. A server produces the same `ProjectOverview` for a Team and
+pushes it to clients, so everyone reads one narrative and one flow.
 
 ## Test strategy
 
@@ -233,63 +290,86 @@ Written before the production change in each checkpoint.
 
 | Boundary | Suite | Proves |
 | --- | --- | --- |
-| Core policy | `core/src/__tests__/project-overview.spec.ts` | B6 kinds, B5 bucket starts across time zones, B8 chapter grouping, B15 to B17 risk levels and reasons |
-| Git | `client/backend/src/project-overview/__tests__/project-overview-git.spec.ts` against real temporary repositories | B6, B7, B10, B11, B12, B21, B22: merges, tags, drift, overlap, non-repository folder, detached HEAD |
-| Ledger | extend `usage/__tests__/usage-ledger.spec.ts` | B9: sessions grouped by provider and session, scoped to repository and window |
-| Service | `project-overview/__tests__/project-overview-service.spec.ts` | B4, B16, B18 to B20, B23: source statuses, failure isolation, not connected, cache |
-| Daemon routing | `client/backend/src/__tests__/server-project-overview.spec.ts` | request validation, local handling, routing to the owning host without a local read |
-| GitHub driver | extend `work-integrations/__tests__/github-driver.spec.ts` | B18, B14: activity and run mapping, pagination cap, malformed rows dropped |
-| Electron | extend `client/electron/src/main/__tests__/agent-git-ipc.spec.ts` | channel forwards agent and input to the backend method |
-| Renderer | `client/vue/tests/integration/ProjectOverviewView.spec.ts` with the typed client mock | B3 to B5, B10, B13 to B20 as rendered text, roles and states; stale responses ignored |
+| Core flow policy | `core/src/__tests__/project-overview.spec.ts` | B16 to B20: station rules including unknown approvals, waiting time, constraint threshold and ties, token cap, mark assignment |
+| Core narrative policy | same suite | B5 to B8: shape and length limits, closed state set, unknown fact or reference rejected, a digit not present in cited facts rejected, words for numbers allowed |
+| Git | `project-overview/__tests__/project-overview-git.spec.ts`, real temporary repositories | merges with sizes, branches in flight with first and last commit, non-repository folder, detached HEAD, bounds |
+| GitHub driver | extend `work-integrations/__tests__/github-driver.spec.ts` | open pull request mapping (draft, approval, unknown), caps, malformed rows dropped |
+| Manager | extend `work-integrations/__tests__/manager.spec.ts` | each read answers null when no connected provider serves the repository |
+| Flow service | `project-overview/__tests__/project-overview-service.spec.ts`, ports faked | B15 to B23, B26: full flow from facts, not connected and failed sources isolated, cache |
+| Narrative writer | `project-overview/__tests__/project-narrative-writer.spec.ts`, scripted generation port | B8 to B14, B27: evidence document and hash, one retry then unavailable, rate limit, shared in-flight generation, persistence across a new instance, fallback engine, fenced untrusted text |
+| Daemon routing | extend `__tests__/server-project-overview.spec.ts` | both methods handled locally and routed to the owning host without a local read |
+| Electron | extend `main/__tests__/agent-git-ipc.spec.ts` | both channels forward to their backend methods |
+| Renderer | `client/vue/tests/integration/ProjectOverviewView.spec.ts`, typed client mock, deferred promises and a fake clock | B3 to B5, B10, B11, B13 to B15, B18 to B22 as rendered text, roles and states; rewrite requested once when stale; no refresh while hidden; stale responses ignored |
 | Shell | extend `client/vue/tests/integration/AppShell.navigation.spec.ts` | B1, B2 |
+
+Not covered by automated tests: the quality of the writing. Check it by hand in a
+live preview against two or three real repositories before handoff, and keep one
+captured evidence document and its accepted narrative as a fixture.
 
 Gates before handoff: `npm run lint`, `npm test -w @workspace/core`,
 `-w @workspace/backend`, `-w @workspace/vue`, `-w @workspace/electron`, coverage
-gate unchanged at 85% statements. No mobile compatibility fixture is needed: no
-mobile-consumed contract changes.
+gate unchanged at 85% statements. No mobile compatibility fixture is needed.
 
 ## Guidance for a coding agent
 
 - Read `client/AGENTS.md`, `core/AGENTS.md`, `docs/testing.md` and
   `docs/frontend.md` first. Use the `korus-frontend-dev`,
   `korus-testing-coverage` and `korus-dod` skills.
-- Contract first: `core`, then daemon, then Electron, then renderer. The renderer
-  never imports backend protocol types and never computes from raw git or provider
-  payloads.
-- Keep every read side-effect free. No `git fetch`, no writes, no provider
-  mutations. A new driver method is optional so other providers stay valid.
+- Contract first: `core`, then daemon, then Electron, then renderer.
+- The model writes sentences and nothing else. Counts, dates, station placement,
+  the constraint and the basis line are computed by code. Never ask the model for a
+  number and never show one it produced that the evidence does not contain.
+- Keep every read side-effect free: no `git fetch`, no writes to the repository,
+  no provider mutations. New driver methods are optional.
 - Never widen `WorkItem`, usage or telemetry contracts for this feature.
-- Fail closed per source. A thrown provider error becomes a `failed` source status
-  with no provider text passed through.
-- No fixed sleeps in Vue tests. Use deferred promises for load and stale-response
-  cases.
-- Do not add a chart library; reuse semantic variables and existing shared
-  primitives (`WorkspaceHeader`, `AppMenu`, `CountedFilterRow` where they fit).
-- Do not edit `CHANGELOG.md` or `docs/`.
+- Fail closed per source and per zone. No provider, git or model error text
+  reaches the renderer; only an app-owned status and reason.
+- Follow how `agent-git-workflow-service.ts` calls `driver/text/generate` and how
+  `utility-text-model.ts` chooses a model; do not add a second generation path.
+- Generation must never run from a background timer, at startup, or for a
+  repository whose overview is not open.
+- No fixed sleeps in Vue tests. Use deferred promises and controlled clocks for the
+  rewrite, debounce and 60 second refresh.
+- Do not add a chart library. Do not edit `CHANGELOG.md` or `docs/`.
+
+## Open questions
+
+1. Station order. The mockups draw Review before CI, which fits approval followed
+   by checks before merge. A project that gates review on green checks would read
+   better as CI before Review. Pick one order, or derive it from branch protection.
+2. Spend. The plan writes the narrative automatically while the page is open, at
+   most every 15 minutes. The alternative is an opt-in setting under Workflows.
+3. Sessions. Agent sessions feed the narrative as evidence only and are not drawn
+   on the page. Confirm that is enough for the "sessions run against this project"
+   part of the original brief.
 
 ## Progress and learnings
 
-Done and green on `feat/project-overview` (focused suites and typechecks for core,
-backend and electron):
+Committed on `feat/project-overview` before the redesign, with focused suites and
+typechecks green for core, backend and electron:
 
-- Core contract and policy (`core/src/project-overview.ts`), 29 tests.
-- Daemon: git reader on real temporary repositories, ledger session read, service
-  with per-source failure isolation and a 30 second cache, `project/overview/get`
-  routed to the owning host, runtime wiring.
-- GitHub backlog activity and pipeline runs through the existing API and CLI
-  request path, exposed by `WorkIntegrationManager`.
-- Electron: `AppApi.getProjectOverview`, IPC channel, preload and main handler.
+| Piece | Fate |
+| --- | --- |
+| `ProjectOverviewGitReader` and its tests | Keep. Add merge sizes, first and last commit per branch, lines changed |
+| GitHub `listBacklogActivity`, `listPipelineRuns`, manager reads and tests | Keep as is |
+| `project/overview/get`, routing, IPC channel, preload, main handler and tests | Keep. Drop the input parameter; add the rewrite method beside it |
+| `UsageLedger.sessions` and its test | Keep as narrative evidence; add the agent identity |
+| `ProjectOverviewService` composition, failure isolation, cache | Reshape to produce the flow |
+| Integration risk policy | Keep as an evidence fact for waiting branches; no longer a page zone |
+| Window buckets, chapters, per-bucket story, backlog buckets, pipeline pass rate | Remove |
 
-Not started: checkpoint 4, the renderer surface (view, zones, composable, shell
-surface, repository menu entry, copy) and its integration tests. Not yet run:
-`npm run lint` (architecture, Knip, CSS, i18n), the Vue and mobile typechecks, the
-full suites and the coverage gate. Knip may flag exports that only the renderer
-will consume.
+Not started: every remaining checkpoint above. Not yet run: `npm run lint`
+(architecture, Knip, CSS, i18n), the Vue and mobile typechecks, the full suites and
+the coverage gate.
 
 Learnings:
 
+- The first design reported the upstream data back (tiles, lanes, tables). Review
+  feedback: too busy, no narrative. The page must interpret, in a few sentences, and
+  show movement, not inventory.
 - GitHub drivers address repositories as `owner/name`, while the workspace origin
   resolves to `github.com/owner/name`; the manager converts at its boundary.
 - `handleMessage` rejects when a local handler throws; assert with `rejects`.
-- Chapters are fixed equal spans named from merged branch subjects, so squash
-  merges produce no chapter. Generated summaries stay in phase 3.
+- Squash merges leave no merge commit, so "merged branches" evidence undercounts
+  them; pull request data covers the gap when a code host is connected.
+- The Cursor engine has no utility text model, so it cannot write the narrative.
