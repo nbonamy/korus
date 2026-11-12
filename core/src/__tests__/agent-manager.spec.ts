@@ -16,6 +16,7 @@ import {
   updateWorkItemAssignmentInSnapshot,
   updateAgentFromInput,
 } from '../agent-manager';
+import { repositoryMetadataKeyForAgent } from '../workspace-sidebar';
 import { createAutomationInSnapshot, recordAutomationExecutionInSnapshot } from '../automation-manager';
 import { createInitialSnapshot } from '../snapshot';
 import { createTeamInSnapshot } from '../team-manager';
@@ -440,6 +441,26 @@ describe('agent-manager', () => {
       .toStrictEqual(['agent-jesse']);
     expect(snapshot.teams[0]!.agentIds).toStrictEqual(['agent-dina', 'agent-abby', 'quick-chat', 'agent-jesse']);
     expect(reorderRepositoryInTeam(snapshot, 'team-app', '/src/missing', null)).toBeNull();
+  });
+
+  it('reorders a plain folder among git repositories', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
+    snapshot.agents[0]!.workspace = gitWorkspace('app');
+    snapshot.agents[1]!.workspace = gitWorkspace('sdk');
+    const folder = duplicateAgentInSnapshot(snapshot, 'agent-jesse', '2026-06-05T10:11:12.000Z', () => 'agent-notes')!;
+    folder.folder = '/src/notes';
+    delete folder.workspace;
+    snapshot.teams[0]!.agentIds = ['agent-dina', 'agent-jesse', 'agent-notes'];
+    const folderKey = repositoryMetadataKeyForAgent(folder)!;
+
+    expect(reorderRepositoryInTeam(snapshot, 'team-app', folderKey, '/src/app')?.map((agent) => agent.id))
+      .toStrictEqual(['agent-notes']);
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual(['agent-notes', 'agent-dina', 'agent-jesse']);
+
+    expect(reorderRepositoryInTeam(snapshot, 'team-app', '/src/app', folderKey)?.map((agent) => agent.id))
+      .toStrictEqual(['agent-dina']);
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual(['agent-dina', 'agent-notes', 'agent-jesse']);
   });
 
   it('moves an origin-keyed repository with its local and remote agents together', () => {

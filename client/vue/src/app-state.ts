@@ -36,7 +36,7 @@ import { createGeneralPreferences } from './general-preferences';
 import { createAgentThreadFlagState } from './agent-thread-flag-state';
 import { createAgentHistoryState } from './agent-history-state';
 import { createSourceRepositoryState } from './source-repository-state';
-import { workspaceSidebarRepositoryKeyForAgent } from '@workspace/core/workspace-sidebar';
+import { workspaceSidebarOrderKeyForAgent } from '@workspace/core/workspace-sidebar';
 import { windowState } from './window-state';
 import { isEmptyComposerDraft, type ComposerDraft } from '@workspace/core/windows';
 import { isSnapshotEventOwnedBy, type RendererOnlySnapshotEvent } from '@workspace/core/snapshot-event-ownership';
@@ -1573,7 +1573,7 @@ export function useAppState() {
     const team = snapshot.value.teams.find((candidate) => candidate.id === input.teamId);
     const repositoryKeys = new Set((team?.agentIds ?? []).flatMap((agentId) => {
       const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-      const repositoryKey = agent ? workspaceSidebarRepositoryKeyForAgent(agent) : null;
+      const repositoryKey = agent ? workspaceSidebarOrderKeyForAgent(agent) : null;
       return repositoryKey ? [repositoryKey] : [];
     }));
     if (

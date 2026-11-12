@@ -20,7 +20,7 @@ import { agentDisplayName } from './agent-display';
 import { canSelectAgentProvider, resolveAgentProvider } from './agent-providers';
 import { seedTeamId } from './seed-ids';
 import { providerDefaultsWithPermission } from './approval-presets';
-import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
+import { workspaceSidebarGroupIdForAgent, workspaceSidebarOrderKeyForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
 import { defaultHarnessProvider } from './provider-capabilities';
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
@@ -506,7 +506,7 @@ export function reorderRepositoryInTeam(
     const groupId = agent ? workspaceSidebarGroupIdForAgent(agent) : `missing:${agentId}`;
     const group = groups.get(groupId) ?? {
       agentIds: [],
-      repositoryKey: agent ? workspaceSidebarRepositoryKeyForAgent(agent) : null,
+      repositoryKey: agent ? workspaceSidebarOrderKeyForAgent(agent) : null,
     };
     group.agentIds.push(agentId);
     groups.set(groupId, group);

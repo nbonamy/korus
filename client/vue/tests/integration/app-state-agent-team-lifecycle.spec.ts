@@ -7,6 +7,7 @@ import { useAppState } from '../../src/app-state';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { createMission } from '@workspace/core/missions';
+import { repositoryMetadataKeyForAgent } from '@workspace/core/workspace-sidebar';
 import type { AppSnapshot, AppApi, DevicePairingSession, MainToRendererEvent, SourceRepository } from '@workspace/core/contracts';
 import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../support/client';
@@ -1282,6 +1283,39 @@ describe('useAppState', () => {
     await state.reorderRepositories({ ...input, beforeRepositoryKey: '/missing' });
 
     expect(reorderRepositories).toHaveBeenCalledOnce();
+    expect(reorderRepositories).toHaveBeenCalledWith(input);
+  });
+
+  it('forwards reorders of a plain folder, which has no git repository key', async () => {
+    const remoteSnapshot = createInitialSnapshot();
+    remoteSnapshot.agents[0]!.workspace = {
+      kind: 'git',
+      folder: '/Users/nbonamy/src/id8',
+      repositoryName: 'id8',
+      repositoryRoot: '/Users/nbonamy/src/id8',
+      primaryWorktreeRoot: '/Users/nbonamy/src/id8',
+      branch: 'main',
+      isLinkedWorktree: false,
+      updatedAt: '2026-06-05T00:00:00.000Z',
+    };
+    delete remoteSnapshot.agents[1]!.workspace;
+    remoteSnapshot.agents[1]!.folder = '/Users/nbonamy/notes';
+    const folderKey = repositoryMetadataKeyForAgent(remoteSnapshot.agents[1]!)!;
+    const reorderRepositories = vi.fn().mockResolvedValue(remoteSnapshot);
+    stubElectronTestWindow({
+      app: {
+        getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
+        onEvent: vi.fn(),
+        reorderRepositories,
+      } satisfies Partial<AppApi>,
+    });
+
+    const state = useAppState();
+    await state.loadSnapshot();
+
+    const input = { teamId: 'team-app', repositoryKey: folderKey, beforeRepositoryKey: '/Users/nbonamy/src/id8' };
+    await state.reorderRepositories(input);
+
     expect(reorderRepositories).toHaveBeenCalledWith(input);
   });
 });

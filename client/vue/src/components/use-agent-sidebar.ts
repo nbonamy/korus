@@ -201,7 +201,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   ));
   const clientRepositoryOrderUpdate = useListReorderDrag<string>({
     itemIds: () => workspaceGroups.value
-      .filter((group) => group.kind === 'repository')
+      .filter(isRepositoryOrderGroup)
       .map((group) => group.id),
     onDrop: ({ draggedId, beforeId }) => {
       if (!props.teamId) return;
@@ -209,11 +209,11 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       const beforeRepository = beforeId === null
         ? null
         : workspaceGroups.value.find((group) => group.id === beforeId) ?? null;
-      if (repository?.kind !== 'repository' || !repository.repositoryKey) return;
+      if (!repository || !isRepositoryOrderGroup(repository)) return;
 
       emit('reorder-repositories', {
         teamId: props.teamId,
-        repositoryKey: repository.repositoryKey,
+        repositoryKey: repository.repositoryKey!,
         beforeRepositoryKey: beforeRepository?.repositoryKey ?? null,
       });
     },
@@ -226,9 +226,13 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       emit('reorder-feature', { branch, beforeBranch: workspaceGroups.value.find((group) => group.id === beforeId)?.branch ?? null });
     },
   });
-  /** Repositories and, in the worktree view, features are dragged to reorder; the default branch group stays first. */
+  /** Git repositories and plain folders share one reorderable list; activity groups and quick chats don't take part. */
+  function isRepositoryOrderGroup(group: WorkspaceSidebarGroup): boolean {
+    return (group.kind === 'repository' || group.kind === 'folder') && Boolean(group.repositoryKey);
+  }
+  /** Repositories, folders and, in the worktree view, features are dragged to reorder; the default branch group stays first. */
   function groupReorder(group: WorkspaceSidebarGroup) {
-    return group.kind === 'repository' ? clientRepositoryOrderUpdate : isFeatureGroup(group) ? clientFeatureOrderUpdate : null;
+    return isRepositoryOrderGroup(group) ? clientRepositoryOrderUpdate : isFeatureGroup(group) ? clientFeatureOrderUpdate : null;
   }
   function isFeatureGroup(group: WorkspaceSidebarGroup): boolean {
     return group.kind === 'worktree' && !group.protected && Boolean(group.branch);

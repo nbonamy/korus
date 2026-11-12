@@ -190,6 +190,29 @@ describe('AgentSidebar actions', () => {
     ]]);
   });
 
+  it('lets a plain folder be dragged to reorder like a repository', async () => {
+    const folderAgent = { ...agents[0]!, id: 'agent-notes', name: 'Notes', folder: '/src/notes', workspace: undefined };
+    const wrapper = mount(AgentSidebar, {
+      props: { agents: [agents[0]!, folderAgent], activeAgentId: 'agent-dina', teamId: 'team-app', teamName: `${product.name}` },
+      global: { components: { ElPopover } },
+    });
+    const folderGroup = wrapper.get('[data-group-kind="folder"]');
+    const repositoryGroup = wrapper.get('[data-group-kind="repository"]');
+    const header = folderGroup.get('.agent-sidebar__workspace-header');
+    expect(header.attributes('draggable')).toBe('true');
+    mockRect(repositoryGroup.element, { top: 100, height: 96 });
+
+    header.element.dispatchEvent(dragEvent('dragstart', 0));
+    repositoryGroup.element.dispatchEvent(dragEvent('dragover', 108));
+    await wrapper.vm.$nextTick();
+    repositoryGroup.element.dispatchEvent(dragEvent('drop', 108));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('reorder-repositories')).toStrictEqual([[
+      { teamId: 'team-app', repositoryKey: expect.stringMatching(/^file:/), beforeRepositoryKey: 'remote:github.com/nbonamy/id8' },
+    ]]);
+  });
+
   it('lets a feature move before another one in the worktree view, but never the default branch group', async () => {
     localStorage.setItem('app:agentOrganization:team-app', 'worktree');
     const feature = (id: string, branch: string) => ({ ...agents[0]!, id, name: id, workspace: { ...agents[0]!.workspace!, branch, isLinkedWorktree: true } });
