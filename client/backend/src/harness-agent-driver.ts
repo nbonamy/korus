@@ -10,7 +10,7 @@ import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 type ProviderRuntimeStatus = ReturnType<AgentProviderDriver['getRuntimeStatus']>;
 
-const defaultsOf = (value: ProviderDefaults | undefined): HarnessDefaults | undefined => value === undefined ? undefined : {
+const storedDefaults = (value: ProviderDefaults | undefined): HarnessDefaults | undefined => value === undefined ? undefined : {
   ...(value.model ? { model: value.model } : {}),
   ...(value.reasoningEffort !== undefined ? { reasoningEffort: value.reasoningEffort } : {}),
   ...(value.serviceTier !== undefined ? { serviceTier: value.serviceTier } : {}),
@@ -173,12 +173,12 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   agentChanged(agent: Agent): void { this.peek(agent); }
   /** Tells the harness what the agent's record says now: the record is the authority on its conversation, folder, name and defaults. */
   private restate(session: Session, agent: Agent): void {
-    this.harness.syncSession(session, { data: agent.providerSession ?? null, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: defaultsOf(agent.providerDefaults) ?? {} });
+    this.harness.syncSession(session, { data: agent.providerSession ?? null, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: this.defaultsOf(agent) ?? {} });
   }
   private openFor(agent: Agent): Session {
     const stored = agent.providerSession;
     if (stored && stored.kind !== this.provider) throw new Error(`${providerDisplayName(this.provider)} conversation identity mismatch: it cannot use another provider conversation.`);
-    const context = { id: agent.id, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: defaultsOf(agent.providerDefaults) };
+    const context = { id: agent.id, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: this.defaultsOf(agent) };
     const session = stored
       ? this.harness.restoreSession(context, { provider: this.provider, data: stored, ...(context.defaults ? { defaults: context.defaults } : {}), role: 'main' } satisfies SessionData)
       : this.harness.open(context);
@@ -189,6 +189,15 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   /** Session data once the harness has admitted the session; undefined for a session that has not started yet. */
   /** A scoped session reports as the agent it works for. */
   private attributed<T extends { agentId?: string }>(observation: T): T { const id = observation.agentId; return id?.includes(':scope:') ? { ...observation, agentId: id.split(':scope:')[0] } : observation; }
+  /** The defaults an agent's record asks for. A permission the harness no longer offers is left out, so the agent runs with the harness's own default. */
+  private defaultsOf(agent: Agent): HarnessDefaults | undefined {
+    const defaults = storedDefaults(agent.providerDefaults);
+    if (!defaults?.permission) return defaults;
+    const offered = this.harness.getProviderCapabilities().permissions;
+    if (!offered.length || offered.some(option => option.id === defaults.permission)) return defaults;
+    const { permission: _permission, ...rest } = defaults;
+    return rest;
+  }
   private nameOf(agent: Agent) { return this.policy.displayName?.(agent) ?? agent.name; }
   private admittedData(session: Session): ProviderSessionData | undefined { try { return this.harness.getSessionData(session).data; } catch { return undefined; } }
   private dataOf(session: Session): ProviderSessionData { return this.harness.getSessionData(session).data; }
@@ -381,7 +390,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const parent = await this.session(agent);
     const existing = input.session ? this.scopes.get(identityOf(input.session)) : undefined;
     const scope = existing ?? (input.session
-      ? this.harness.restoreSession({ id: `${agent.id}:scope:${randomUUID()}`, folder: input.cwd, defaults: defaultsOf(agent.providerDefaults) }, { provider: this.provider, data: input.session, role: 'scope', parentId: agent.id })
+      ? this.harness.restoreSession({ id: `${agent.id}:scope:${randomUUID()}`, folder: input.cwd, defaults: this.defaultsOf(agent) }, { provider: this.provider, data: input.session, role: 'scope', parentId: agent.id })
       : this.harness.openScope(parent, { cwd: input.cwd }));
     this.owners.set(scope, agent.id);
     this.running.set(agent.id, scope);
@@ -415,7 +424,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       // A review saved by an earlier run: it can be released only while it is still the agent's own conversation.
       const own = this.sessions.get(agent.id) && this.admittedData(this.sessions.get(agent.id)!);
       if (own && identityOf(own) !== key) throw new Error(`${providerDisplayName(this.provider)} execution session changed.`);
-      scope = this.harness.restoreSession({ id: `${agent.id}:scope:${randomUUID()}`, folder: agent.folder ?? null, defaults: defaultsOf(agent.providerDefaults) }, { provider: this.provider, data: session, role: 'scope', parentId: agent.id });
+      scope = this.harness.restoreSession({ id: `${agent.id}:scope:${randomUUID()}`, folder: agent.folder ?? null, defaults: this.defaultsOf(agent) }, { provider: this.provider, data: session, role: 'scope', parentId: agent.id });
     }
     this.scopes.delete(key);
     await this.harness.disposeScopedSession(scope);
