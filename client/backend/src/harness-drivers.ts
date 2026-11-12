@@ -2,7 +2,6 @@ import { createHarness, type HarnessOptions } from '@korus-dev/multi-agent-sdk';
 import { isBookkeepingTool } from '@workspace/core/bookkeeping-tools';
 import type { Agent, HarnessProvider, ProviderModelOption } from '@workspace/core/contracts';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { claudeProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities, antigravityProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import { product } from '@workspace/core/product';
@@ -73,7 +72,6 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
   });
   return driver('cursor', harness, agents, {
     coordinationPolicy: { permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } },
-    capabilities: () => ({ codeReview: true, planReview: true, conversationShare: false, permissionModes: cursorProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ tools: ['read-skill', ...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
   });
 }
@@ -85,7 +83,6 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
   });
   return driver('antigravity', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    capabilities: () => ({ codeReview: true, planReview: true, conversationShare: true, permissionModes: antigravityProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ developerInstructions: '', tools: [...reviewBaseTools, 'set-status', 'finish_turn'] }),
     prepareGeneration: (_agent, input) => {
       const { outputSchema, ...rest } = input;
@@ -106,7 +103,6 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
   });
   void settings;
   return driver('claude', harness, agents, {
-    capabilities: () => ({ codeReview: true, planReview: true, conversationShare: true, permissionModes: claudeProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ approval: 'auto', tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
     prepareGeneration: (_agent, input) => ({ ...input, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('claude', models, input.complexity) }),
   });
@@ -155,7 +151,6 @@ export function createCodexDriver(options: Options = {}, make: HarnessFactory = 
   const harness = make('codex', codexHarnessOptions(options, agents));
   return driver('codex', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    capabilities: () => ({ codeReview: true, planReview: true, conversationShare: true, permissionModes: codexProviderCapabilities.permissionModes }),
     reviewScope: reviewScope({ approval: 'auto', required: true, tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
     prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('codex', models, input.complexity) }),
   });

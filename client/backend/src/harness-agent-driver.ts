@@ -25,8 +25,6 @@ const identityOf = (data: ProviderSessionData): string => sessionConversationId(
 /** Korus agents seen by a driver, so provider-neutral hooks (instructions, MCP) can resolve the agent behind a session id. */
 export type DriverPolicy = {
   coordinationPolicy?: ProviderCoordinationPolicy;
-  /** Product capabilities layered over what the provider reports. */
-  capabilities?: (agent: Agent) => Partial<ReturnType<AgentProviderDriver['getCapabilities']>>;
   agents?: AgentRegistry;
   /** Name a session carries into the provider; defaults to the agent name. */
   displayName?: (agent: Agent) => string;
@@ -198,8 +196,9 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private liveCapabilities({ permissions: _permissions, login: _login, realtime: _realtime, remoteControl: _remoteControl, accountUsage: _accountUsage, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
   authenticate(request: Parameters<NonNullable<AgentProviderDriver['authenticate']>>[0]) { return this.harness.authenticate(request).then(result => result.native as never); }
   getAccountRateLimits() { return this.harness.getAccountRateLimits(); }
+  /** What Korus offers on this harness (`provider-capabilities`), narrowed by what the session reports right now. */
   getCapabilities(agent: Agent) {
-    return { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getCapabilities(this.peek(agent))), ...this.policy.capabilities?.(agent) } as ReturnType<AgentProviderDriver['getCapabilities']>;
+    return { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getCapabilities(this.peek(agent))) } as ReturnType<AgentProviderDriver['getCapabilities']>;
   }
   /** Product wording for operations the provider does not offer. */
   private async unless<T>(agent: Agent, feature: string, run: () => Promise<T>): Promise<T> {
