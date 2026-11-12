@@ -64,6 +64,7 @@ async function open(
     now,
     random,
     foreground,
+    rest,
     ...(real ? {} : { fetch: fetcher }),
   });
   scheduler?.stop();
@@ -72,6 +73,9 @@ async function open(
   scheduler.start();
   return upload;
 }
+/** Rests end at once in tests, after letting other work have its turn; each one asked for is recorded. */
+const rests: number[] = [];
+const rest = (ms: number) => { rests.push(ms); return new Promise<void>(resolve => { setImmediate(resolve); }); };
 async function activeHour() {
   await consent.change("enable");
   await upload!.activity();
@@ -137,7 +141,7 @@ it.each([
     upload = await TelemetryUploadService.open({
       file:path.join(directory,'delivery.json'), consent:()=>consent.current(), usage,
       version:'1.2.3', platform:'darwin', endpoint:'https://collector.invalid/v1/telemetry/daily',
-      now, foreground, fetch:fetcher,
+      now, foreground, fetch:fetcher, rest,
     });
     scheduler = new RuntimeScheduler();
     scheduler.register({id:'telemetry-upload',intervalMs:60000,runOnStart:true,run:()=>upload!.tick()});
@@ -528,6 +532,44 @@ it("records a reproducible off/on loopback trace and sends exactly the sealed UT
       JSON.stringify(artifact, null, 2),
     );
   }
+});
+
+it("lets other work run between the hours of a backlog, instead of holding the daemon until all are projected", async () => {
+  // Sharing has been on for a while, with usage in six past hours.
+  const present = clock;
+  clock -= 10 * 3600000;
+  vi.setSystemTime(clock);
+  await consent.change("enable");
+  clock = present;
+  vi.setSystemTime(clock);
+  for (let hour = 0; hour < 6; hour++) {
+    await usage.local.observe({ provider: "codex", agentId: "a", sessionId: "s", turnId: `turn-${hour}`, model: "gpt-6-sol",
+      at: clock - (8 - hour) * 3600000, phase: "started", tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: null } }, { teamId: null, repository: null });
+  }
+  await open();
+  // Every hour is delivered; from now on a flush only checks each one again.
+  for (let delivered = 1; delivered <= 6; delivered++) {
+    await eventually(() => expect(fetcher).toHaveBeenCalledTimes(delivered));
+    await eventually(() => expect(vi.getTimerCount()).toBeGreaterThan(0));
+    await advance(2100);
+  }
+  expect((await stored()).days.filter((row: { status: string }) => row.status === "done").length).toBeGreaterThanOrEqual(5);
+  // What runs, in order: each projection, and each turn another task gets.
+  const order: string[] = [];
+  const original = usage.previewTelemetry.bind(usage);
+  vi.spyOn(usage, "previewTelemetry").mockImplementation(async (...args) => { order.push("projection"); return original(...args); });
+  let watching = true;
+  const other = () => { if (!watching) return; order.push("other"); setImmediate(other); };
+  rests.length = 0;
+  setImmediate(other);
+  try { await upload!.flush(); } finally { watching = false; }
+  const projections = order.flatMap((entry, index) => entry === "projection" ? [index] : []);
+  expect(projections.length).toBeGreaterThanOrEqual(5);
+  // No two projections ran back to back: something else always got a turn in between.
+  expect(projections.slice(1).every((index, position) => index - projections[position]! > 1)).toBe(true);
+  // And the service rested between them, so a backlog never takes the daemon's full attention.
+  expect(rests.length).toBeGreaterThanOrEqual(projections.length - 1);
+  expect(rests.every(ms => ms >= 150)).toBe(true);
 });
 
 it("keeps old activity eligible while a ledger projection is in progress", async () => {
