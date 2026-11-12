@@ -4,9 +4,12 @@ import { supportsSubscriptionQuota } from '../provider-capabilities';
 import type { HarnessProvider } from '../contracts';
 
 describe('connected engines', () => {
-  it('offers subscription quota for subscription providers, excluding Codex API keys and unsupported providers', () => {
-    expect((['codex', 'claude', 'antigravity', 'cursor'] as const).filter(provider => supportsSubscriptionQuota(provider, { type: 'chatgpt' }))).toStrictEqual(['codex', 'claude', 'antigravity', 'cursor']);
-    expect((['codex', 'claude', 'antigravity', 'cursor'] as const).filter(provider => supportsSubscriptionQuota(provider, { type: 'apiKey' }))).toStrictEqual(['claude', 'antigravity', 'cursor']);
+  it('offers subscription quota unless the account is billed per use, whichever harness it signs in to', () => {
+    expect(supportsSubscriptionQuota({ kind: 'subscription' })).toBe(true);
+    expect(supportsSubscriptionQuota({ kind: 'cloud' })).toBe(true);
+    // A harness that names no account may still report quota.
+    expect(supportsSubscriptionQuota(null)).toBe(true);
+    expect(supportsSubscriptionQuota({ kind: 'apiKey' })).toBe(false);
   });
   it.each([
     { connected: [] }, { connected: ['codex'] }, { connected: ['claude'] }, { connected: ['codex', 'claude'] },

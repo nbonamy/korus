@@ -285,11 +285,14 @@ describe('SettingsMenu', () => {
     expect(wrapper.find('[aria-label="Rate limits"]').exists()).toBe(false);
   });
 
-  it('hides cached subscription quotas when Codex uses an API key', async () => {
+  it('hides cached subscription quotas when the account is billed per use', async () => {
     const wrapper = mountMenu({
       limitId: 'codex', limitName: null, primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: null },
       secondary: null, credits: null, individualLimit: null, planType: 'pro', rateLimitReachedType: null,
-    }, { account: { type: 'apiKey' }, enabledProviders: ['codex', 'claude'] });
+    }, { account: { type: 'apiKey' }, enabledProviders: ['codex', 'claude'], providerConnections: [
+      { provider: 'codex', installed: true, connected: true, checking: false, authentication: { kind: 'codex', connected: true, state: { account: { type: 'apiKey' }, requiresOpenaiAuth: false, login: { status: 'idle', error: null } }, account: { kind: 'apiKey' } } },
+      { provider: 'claude', installed: true, connected: true, checking: false, authentication: { kind: 'claude', connected: true, state: { loggedIn: true, account: { type: 'apiKey' } }, account: { kind: 'apiKey' } } },
+    ] });
     await openMenu(wrapper);
     expect(wrapper.find('[aria-label="Rate limits"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Usage actions divider"]').exists()).toBe(false);

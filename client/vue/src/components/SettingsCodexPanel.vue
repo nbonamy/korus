@@ -7,7 +7,7 @@
       <ProviderUpdateRow v-if="installed" provider="codex" />
       <SettingsEngineSetupRow :capabilities="setupCapabilities" :home="settings.providerHomes?.codex" @customize="emit('customize')" />
     </SettingsEngineConnectionRow>
-    <SettingsBankedResets :eligible="Boolean(connected && account?.type === 'chatgpt')" :unavailable="!installed || settings.providerEnabled?.codex === false || Boolean(connected && account && account.type !== 'chatgpt')" :account-key="JSON.stringify([account, settings.providerHomes?.codex?.homePath])" :remote-connection-id="remoteConnectionId" />
+    <SettingsBankedResets :eligible="Boolean(connected && authentication?.account?.kind === 'subscription')" :unavailable="!installed || settings.providerEnabled?.codex === false || Boolean(connected && authentication?.account && authentication.account.kind !== 'subscription')" :account-key="JSON.stringify([authentication?.account ?? null, settings.providerHomes?.codex?.homePath])" :remote-connection-id="remoteConnectionId" />
     <FormSection
       :title="$t('surface.settingsCodexPanel.chatGPT')"
       title-id="settings-codex-chatgpt-title"
@@ -58,7 +58,6 @@ const props = withDefaults(defineProps<{
   settings: AppGeneralSettings;
 }>(), { installed: true });
 
-const account = computed(() => props.authentication?.kind === 'codex' ? props.authentication.state.account : null);
 
 const launching = ref(false);
 const launchError = ref<string | null>(null);

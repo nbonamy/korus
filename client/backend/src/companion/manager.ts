@@ -308,7 +308,7 @@ export class CompanionManager {
         // Shipped clients understand only these quota providers. Other engines
         // require negotiated labels and monetary balances before inclusion.
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && companionQuotaProviders.includes(provider.provider) && supportsSubscriptionQuota(provider.provider, connectionAccount(provider.authentication)));
+          && companionQuotaProviders.includes(provider.provider) && supportsSubscriptionQuota(connectionAccount(provider.authentication)));
         return Promise.all(providers.map(async ({ provider: provider }) => {
           try {
             const limits = await this.provider.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { provider: provider });

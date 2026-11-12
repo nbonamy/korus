@@ -71,7 +71,7 @@ describe('host-targeted Claude authentication', () => {
     const driverRpc = new ProviderDriverRpc(new Map([['claude', claudeAuthenticationDriver(claudeAuth)]]));
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot: createTestSnapshot(), sshConnections: sshConnections as never, driverRpc });
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/authenticate', params: { provider: 'claude', action: 'check' } }))
-      .resolves.toStrictEqual({ jsonrpc: '2.0', id: 1, result: { kind: 'claude', connected: true, state: { loggedIn: true, configDirectory: '/tmp/claude-home' } } });
+      .resolves.toStrictEqual({ jsonrpc: '2.0', id: 1, result: { kind: 'claude', connected: true, account: null, state: { loggedIn: true, configDirectory: '/tmp/claude-home' } } });
     expect(sshConnections.getRemoteClaudeAuthentication).not.toHaveBeenCalled();
     claudeAuth.check.mockClear();
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/authenticate', params: { provider: 'claude', action: 'check', remoteConnectionId: '' } }))

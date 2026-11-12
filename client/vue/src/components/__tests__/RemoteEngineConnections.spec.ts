@@ -98,7 +98,7 @@ describe('RemoteEngineConnections', () => {
   it('keeps the connected account on one row and routes refresh and upgrade actions to its host', async () => {
     const { api } = createClientApiMock();
     const engine = { provider: 'claude' as const, installed: true, connected: true, checking: false,
-      authentication: { kind: 'claude' as const, connected: true, state: { loggedIn: true, account: { type: 'subscription' as const, email: 'user@example.com', subscription: 'pro' } } },
+      authentication: { kind: 'claude' as const, connected: true, state: { loggedIn: true, account: { type: 'subscription' as const, email: 'user@example.com', subscription: 'pro' } }, account: { kind: 'subscription' as const, email: 'user@example.com', plan: 'pro' } },
     };
     api.getProviderConnections.mockResolvedValue([engine]);
     const update = { provider: 'claude' as const, status: 'available' as const, installedVersion: '1.0', latestVersion: '2.0', method: 'native' as const, canUpgrade: true, busy: false, token: 'verified-installation' };

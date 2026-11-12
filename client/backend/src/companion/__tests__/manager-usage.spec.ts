@@ -59,7 +59,7 @@ describe('companion usage from the paired laptop', () => {
       { provider: 'codex', limits: null, failed: false }, { provider: 'claude', limits: null, failed: true },
     ]);
     f.snapshot.providerConnections!.find(item => item.provider === 'codex')!.authentication = {
-      kind: 'codex', connected: true, state: { account: { type: 'apiKey' }, requiresOpenaiAuth: false, login: { status: 'idle', error: null } },
+      kind: 'codex', connected: true, state: { account: { type: 'apiKey' }, requiresOpenaiAuth: false, login: { status: 'idle', error: null } }, account: { kind: 'apiKey' },
     };
     f.snapshot.providerConnections!.find(item => item.provider === 'claude')!.enabled = false;
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([]);

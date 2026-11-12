@@ -24,7 +24,7 @@ describe('SettingsEngineConnectionRow', () => {
     expect(wrapper.text()).not.toContain('/private/home');
     expect(wrapper.find('.engine-hero__account').exists()).toBe(false);
     if (backend === 'cursor') {
-      await wrapper.setProps({ authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home', account: { type: 'subscription' as const, email: 'user@example.com' } } } });
+      await wrapper.setProps({ authentication: { kind: backend, connected: true, state: { loggedIn: true, homePath: '/private/home', account: { type: 'subscription' as const, email: 'user@example.com' } }, account: { kind: 'subscription' as const, email: 'user@example.com' } } });
       expect(wrapper.get('.engine-hero__account').text()).toBe('user@example.com');
     }
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true');

@@ -76,7 +76,7 @@ import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { BrandSpeedTest, ChartBarIcon, InfoCircleIcon, ProductMarkIcon, QuitIcon, SettingsIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appHostCapabilities, appApi } from '../platform-api';
-import { supportsSubscriptionQuota } from '@workspace/core/provider-capabilities';
+import { connectionAccount, supportsSubscriptionQuota } from '@workspace/core/provider-capabilities';
 import ProviderIcon from './ProviderIcon.vue';
 import { isAccountBilling } from '@workspace/core/snapshot-guard-collections';
 
@@ -102,7 +102,8 @@ const menuTrigger = ref<HTMLElement | null>(null);
 const nowMs = ref(Date.now());
 const fetchedUsage = ref<Partial<Record<HarnessProvider, AccountRateLimits | null>>>({});
 const usageErrors = ref<Partial<Record<HarnessProvider, boolean>>>({});
-const quotaBackends = computed(() => props.enabledProviders.filter(backend => supportsSubscriptionQuota(backend, props.account)));
+// An account billed per use has no subscription quota, whichever harness it signs in to.
+const quotaBackends = computed(() => props.enabledProviders.filter(backend => supportsSubscriptionQuota(connectionAccount(props.providerConnections?.find(connection => connection.provider === backend)?.authentication))));
 watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify(props.account),
   () => JSON.stringify(props.providerConnections?.map(provider => [provider.provider, provider.authentication]))], ([visible], _previous, onCleanup) => {
   fetchedUsage.value = {};

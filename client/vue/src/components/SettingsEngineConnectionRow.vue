@@ -96,17 +96,11 @@ function selectOverflowItem(id: string): void {
 }
 const accountLabel = computed(() => {
   const auth = props.authentication;
-  if (!auth || !('account' in auth.state)) return '';
-  const account = auth.state.account;
+  const account = auth?.account;
   if (!account) return '';
-  if (account.type === 'apiKey') return t('engineConnection.apiKey');
-  if (account.type === 'chatgpt') return [account.email, account.planType].filter(Boolean).join(' · ');
-  if (account.type === 'subscription') {
-    const plan = ('subscription' in account ? account.subscription : undefined)
-      ?? (auth.kind === 'claude' ? t('engineConnection.subscription') : undefined);
-    return [account.email, plan].filter(Boolean).join(' · ');
-  }
-  return t('engineConnection.amazonBedrock');
+  if (account.kind === 'apiKey') return t('engineConnection.apiKey');
+  if (account.kind === 'cloud') return t('engineConnection.cloud');
+  return [account.email, account.plan ?? account.team].filter(Boolean).join(' · ') || t('engineConnection.subscription');
 });
 const state = computed(() => {
   if (props.pending) return 'pending';

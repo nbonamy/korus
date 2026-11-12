@@ -148,7 +148,7 @@ describe('Cursor CLI connection boundary', () => {
     const current = connection();
     current.onEvent(event => events.push(event));
     const result = await current.authenticate!({ action: 'check' });
-    expect(result).toStrictEqual({ kind: 'cursor', connected: true, state: {
+    expect(result).toStrictEqual({ kind: 'cursor', connected: true, account: expect.objectContaining({ kind: 'subscription' }), state: {
       loggedIn: true, homePath: path.join(root, '.cursor'), version: build, supported: true,
       account: { type: 'subscription', email: 'fixture@example.test' }, team: 'Fixture team',
     } });
@@ -165,7 +165,7 @@ describe('Cursor CLI connection boundary', () => {
     await state({ ...fixture, userInfo: { email: 'switched@example.test', teamName: 'Other team' } });
     expect(await current.authenticate!({ action: 'check' })).toMatchObject({ state: { account: { email: 'switched@example.test' }, team: 'Other team' } });
     await state({ ...fixture, isAuthenticated: false });
-    expect(await current.authenticate!({ action: 'check' })).toStrictEqual({ kind: 'cursor', connected: false, state: { loggedIn: false, homePath: path.join(root, '.cursor'), version: build, supported: true } });
+    expect(await current.authenticate!({ action: 'check' })).toStrictEqual({ kind: 'cursor', connected: false, account: null, state: { loggedIn: false, homePath: path.join(root, '.cursor'), version: build, supported: true } });
     await state();
     expect(await current.authenticate!({ action: 'check' })).toMatchObject({ connected: true });
     expect(await current.authenticate!({ action: 'logout' })).toMatchObject({ connected: false, state: { loggedIn: false } });

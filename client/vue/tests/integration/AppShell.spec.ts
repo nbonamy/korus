@@ -738,7 +738,7 @@ describe('AppShell authentication and conversation', () => {
       authentication: { kind: 'codex', connected: true, state: {
         account: { type: 'chatgpt', email: 'cached@example.com', planType: 'plus' }, requiresOpenaiAuth: true,
         login: { status: 'idle', error: null },
-      } },
+      }, account: { kind: 'subscription', email: 'cached@example.com', plan: 'plus' } },
     }];
     const checkCodex = vi.fn();
     window.app = { authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex } }) } as Partial<AppApi> as AppApi;
