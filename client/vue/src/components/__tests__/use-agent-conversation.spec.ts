@@ -38,13 +38,15 @@ describe('useAgentConversation image annotations', () => {
     const content = [{ type: 'mention' as const, kind: 'file' as const, id: 'src/fix.ts', value: 'src/fix.ts', label: 'Fix this.' }];
     const submitted = actions.submit?.('Fix this.', { content, attachments: [{ type: 'image', reference: image.reference }] });
     actions.updateAttachments?.([]);
-    await submitted;
+    // The pane waits for the message actually sent, annotations and all, not for what was typed.
+    const result = await submitted;
 
     expect(ingestAttachments).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith('agent', expect.stringContaining('1. Look here.'),
       { content: expect.arrayContaining(content), attachments: [{ type: 'image', reference: annotated.reference }] });
     expect(promptContentText(send.mock.calls[0]![2].content)).toBe(send.mock.calls[0]![1]);
-    await actions.submit?.('Fix this.', { content });
+    expect(result).toStrictEqual({ sentPrompt: send.mock.calls[0]![1] });
+    expect(await actions.submit?.('Fix this.', { content })).toBeUndefined();
     expect(send).toHaveBeenLastCalledWith('agent', 'Fix this.', { content });
   });
 });

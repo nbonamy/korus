@@ -3,7 +3,7 @@ import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption } from '@korus-dev/agent-ui-sdk';
+import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption, type ConversationSubmissionResult } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { approvalPresetFromDefaults, approvalPresetOptions } from '@workspace/core/approval-presets';
@@ -224,15 +224,19 @@ export function useAgentConversation(options: {
       threadFlagBusy.value = false;
     }
   }
-  async function forward(prompt: string, sendOptions: ReferenceSendPromptOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
+  /** Sends the prompt with whatever annotations decorate it, and reports the text actually sent when it differs from what was typed. */
+  async function forward(prompt: string, sendOptions: ReferenceSendPromptOptions | undefined, send: AgentConversationActions['send']): Promise<ConversationSubmissionResult> {
     const id = agentId();
     if (!id) return;
     const capturedImages = imageAnnotation.capture();
     await options.beforeSubmit?.();
+    let sent: string | undefined;
     await visualizationAnnotation.forward(prompt, sendOptions, (text, visualOptions) =>
       codeAnnotation.forward(text, visualOptions, (codeText, codeOptions) =>
         chatTextAnnotation.forward(codeText, codeOptions, (annotatedText, textOptions) =>
-          imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => send(id, finalText, finalOptions), capturedImages))));
+          imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => { sent = finalText; return send(id, finalText, finalOptions); }, capturedImages))));
+    // The pane recognizes the message it is waiting for by the text actually sent.
+    return sent !== undefined && sent !== prompt ? { sentPrompt: sent } : undefined;
   }
   const actions: ConversationPaneActions = {
     clearGoal: () => options.actions.clearGoal(agentId()),
@@ -248,9 +252,9 @@ export function useAgentConversation(options: {
     editTurn: (payload) => options.actions.editTurn(agentId(), payload),
     forkTurn: (turnId) => options.actions.forkTurn(agentId(), turnId),
     retryTurn: (turnId) => options.actions.retryTurn(agentId(), turnId),
-    sendFollowUp: (prompt) => forward(prompt, undefined, options.actions.send),
+    sendFollowUp: async (prompt) => { await forward(prompt, undefined, options.actions.send); },
     submit: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.send),
-    steer: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.steer),
+    steer: async (prompt, sendOptions) => { await forward(prompt, sendOptions, options.actions.steer); },
     loadOlderHistory: () => options.actions.loadOlder(agentId()),
     loadTurnHistory: (turnId) => options.actions.loadTurn?.(agentId(), turnId),
     requestSkills: () => options.actions.requestSkills?.(agentId()),
