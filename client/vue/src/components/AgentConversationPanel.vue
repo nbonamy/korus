@@ -58,7 +58,9 @@ import { conversationForView } from '../provider-conversation-bindings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { translate } from '../i18n';
-import { useProviderChoices } from './provider-selection';
+import { canSelectAgentProvider } from '@workspace/core/agent-providers';
+import { harnessChoices } from './provider-harness-choices';
+import { useProviderChoices, useProviderSwitch, useRememberProvider } from './provider-selection';
 import { conversationMenuCommand, type ConversationMenuCommand } from './conversation-command-menu';
 import type {
   Agent,
@@ -96,8 +98,6 @@ const props = defineProps<{
   previewApproval?: import('@workspace/core/contracts').ProviderApprovalRequest;
   followUpBehavior?: AppGeneralSettings['followUpBehavior'];
   mentionGroups: readonly ComposerMentionGroup[];
-  modelMenuItems: ComposerMenuItem[];
-  selectModelMenuItem: NonNullable<ConversationPaneActions['menuSelect']>;
   plan?: ThreadPlan | null;
   planVisible?: boolean;
   savedPromptDrafts: readonly SavedPromptDraft[];
@@ -121,15 +121,28 @@ const pane = ref<InstanceType<typeof AppConversationPane> | null>(null);
 const provider = computed(
   () => conversationForView(props.view),
 );
+const backendSwitch = useProviderSwitch();
+const rememberProvider = useRememberProvider(() => props.view.agent.remoteConnectionId);
+const engineChoices = useProviderChoices(() => props.view.agent.remoteConnectionId);
+// Only a conversation that has not started can change harness; afterwards the picker shows the one it runs.
+const harnesses = computed(() => harnessChoices(
+  backendSwitch && engineChoices.value.length > 1 && canSelectAgentProvider(props.view.agent) && !props.view.history.hydrating && !provider.value?.messages.length
+    ? engineChoices.value : [props.view.agent.provider],
+));
+async function selectHarness(harness: string): Promise<void> {
+  const { agent } = props.view;
+  if (!backendSwitch || backendSwitch.busy.value || harness === agent.provider) return;
+  try { await backendSwitch.select(agent.id, harness as typeof agent.provider); rememberProvider(harness as typeof agent.provider); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
+}
 const state = agentConversationState(() => props.view, {
+  harnesses: () => harnesses.value,
   followUpBehavior: () => props.followUpBehavior ?? 'queue',
   mentionGroups: () => props.mentionGroups,
-  modelMenuItems: () => props.modelMenuItems,
   placeholder: () => props.placeholder,
   previewMessage: () => props.previewMessage,
   previewApproval: () => props.previewApproval,
 });
-const engineChoices = useProviderChoices(() => props.view.agent.remoteConnectionId);
 const conversation = useAgentConversation({
   beforeSubmit: async () => {
     if (!engineChoices.value.includes(props.view.agent.provider)) throw new Error(translate('engineConnection.required'));
@@ -137,10 +150,10 @@ const conversation = useAgentConversation({
   agentId: () => props.view.agent.id,
   state,
   get actions() { return props.actions; },
+  onSelectHarness: selectHarness,
   onMenuSelect: (item) => {
     const command = conversationMenuCommand(item.payload);
     if (command) return emit('composer-command', props.view.agent.id, command);
-    return props.selectModelMenuItem(item);
   },
   openLink: (...args) => props.openLink(...args),
   openImage: (...args) => props.openImage(...args),

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { UserText, createConversationPaneController } from '@korus-dev/agent-ui-sdk';
 import ConversationPane from '../../src/components/ConversationPane.vue';
 import { agentConversationState } from '../../src/components/use-agent-conversation';
@@ -307,12 +307,14 @@ describe('useAppState', () => {
         if (settings.reasoningEffort != null) state.selectReasoningEffort(settings.reasoningEffort);
       } },
     });
-    const wrapper = mount(ConversationPane, { props: { agent, controller } });
+    const wrapper = mount(ConversationPane, { props: { agent, controller }, attachTo: document.body });
     try {
-      await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
-      await wrapper.findAll('[role="menuitem"]').find(item => item.text().startsWith('sol'))!.trigger('click');
-      expect(wrapper.get('.chat-model-selector').classes()).toContain('chat-model-selector--accelerated');
-      expect(wrapper.get('.chat-model-selector__label').text()).toContain('sol');
+      await wrapper.get('button[aria-label="Coding agent and model"]').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text().startsWith('sol'))!.trigger('mouseenter');
+      await wrapper.findAll('[role="menuitemradio"]').filter(item => item.text().trim() === 'medium').at(-1)!.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('.provider-model-selector__label').text()).toContain('sol');
+      expect(wrapper.get('.provider-model-selector').text()).toContain('fast');
     } finally { wrapper.unmount(); }
     state.selectReasoningEffort('high');
     await vi.waitFor(() => expect(updateAgent).toHaveBeenCalledTimes(1));

@@ -133,7 +133,6 @@ export const messages = {
       description: 'Repositories, issues and merge requests',
       setup: `Register a ${product.name} public OAuth application on GitLab.com with the api and mcp scopes, then set APP_GITLAB_CLIENT_ID on the owning host and restart it.`,
     },
-    modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       tokenReportingWarning: '{providers} turns are reported, but token usage and cost are unavailable.',
@@ -1100,6 +1099,7 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
+      modelSelector: { label: 'Coding agent and model', agent: 'Coding agent', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
       composerActions: { design: 'Design', visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
       quickChatContext: 'Ask about this team’s projects. Other conversations aren’t included.',

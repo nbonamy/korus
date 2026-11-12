@@ -347,7 +347,7 @@ describe('CockpitWorkInbox', () => {
     await clientNavigationSelectTeam.vm.$emit('update:modelValue', 'team-two');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes('Claude Code'))!.click();
+    document.querySelector<HTMLButtonElement>('[role=\"tab\"][aria-label=\"Claude Code\"]')!.click();
     await flushPromises();
 
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
@@ -417,7 +417,7 @@ function mountInbox(
   models: ProviderModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
   remoteConnections: RemoteConnection[] = [],
 ) {
-  return mount(CockpitWorkInbox, {
+  return mount(CockpitWorkInbox, { attachTo: document.body,
     global: { provide: {
       [backendSnapshotKey as symbol]: () => ({
         ...createEmptySnapshot(),

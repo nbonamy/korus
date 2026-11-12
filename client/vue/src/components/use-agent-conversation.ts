@@ -3,7 +3,7 @@ import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption, type ConversationSubmissionResult } from '@korus-dev/agent-ui-sdk';
+import { createConversationPaneController, type HarnessChoice, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption, type ConversationSubmissionResult } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
@@ -64,7 +64,8 @@ function stableSet() {
 export function agentConversationState(view: () => AgentConversationView, extensions: {
   followUpBehavior?: () => AppGeneralSettings['followUpBehavior'];
   mentionGroups?: () => NonNullable<ConversationPaneState['catalogs']>['mentionGroups'];
-  modelMenuItems?: () => ComposerMenuItem[];
+  /** The harnesses the picker offers as tabs; with fewer than two it shows none. */
+  harnesses?: () => HarnessChoice[];
   placeholder?: () => string | undefined;
   previewMessage?: () => import('../conversation-presentation/presentation').PaneMessage | undefined;
   previewApproval?: () => import('@workspace/core/contracts').ProviderApprovalRequest | undefined;
@@ -129,8 +130,9 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get suggestedPrompt() { return view().agent.suggestedPrompt ?? undefined; },
       get permission() { return permission(); },
       get leadingMenuItems() { return conversationCommandMenuItems(); },
-      get modelMenuItems() { return extensions.modelMenuItems?.(); },
       get planMode() { return view().composer.planMode; },
+      get harnesses() { return extensions.harnesses?.(); },
+      get harness() { return view().agent.provider; },
       get selectedModelId() {
         const selection = reportedSelection();
         if (!selection) return view().composer.selectedModelId;
@@ -187,6 +189,7 @@ export function useAgentConversation(options: {
   overrides?: ConversationPaneActions;
   beforeSubmit?: () => Promise<void>;
   onMenuSelect?: NonNullable<ConversationPaneActions['menuSelect']>;
+  onSelectHarness?: (harness: string) => void | Promise<void>;
   onThreadFlag?: (agentId: string, response: ThreadFlagResponse) => void;
   debugFallbackImageSource: string;
   notifyError: (message: string) => void;
@@ -238,6 +241,7 @@ export function useAgentConversation(options: {
     openImage: options.openImage,
     openVisualization: options.openVisualization,
     menuSelect: (item) => options.onMenuSelect?.(item),
+    selectHarness: (harness) => options.onSelectHarness?.(harness),
     cancel: () => options.actions.interrupt(agentId()),
     interrupt: () => options.actions.interrupt(agentId()),
     continueInterruptedTurn: () => options.actions.continueInterruptedTurn(agentId()),

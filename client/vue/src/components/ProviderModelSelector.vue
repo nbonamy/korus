@@ -1,50 +1,17 @@
 <template>
-  <el-popover v-model:visible="open" trigger="click" placement="bottom-start" :width="320" :teleported="true" :disabled="disabled" popper-class="app-popover provider-model-selector__popover">
-    <template #reference>
-      <button class="provider-model-selector" type="button" :disabled="disabled" :aria-label="t('modelPicker.label')">
-        <ProviderIcon v-if="provider" :provider="provider" />
-        <span class="provider-model-selector__label">{{ selectedModel?.displayName ?? (provider ? providerDisplayName(provider) : '') }}</span>
-        <span v-if="reasoningEffort" class="provider-model-selector__effort">{{ reasoningEffort }}</span>
-        <span v-if="serviceTierName" class="provider-model-selector__effort">{{ serviceTierName }}</span>
-        <ChevronDown class="provider-model-selector__chevron" aria-hidden="true" />
-      </button>
-    </template>
-    <ModelPicker :models="models" :selection="{ model, reasoningEffort, serviceTier }" :disabled="disabled" :loading="loading"
-      :model-label="t('modelPicker.model')" :service-tier-label="t('modelPicker.serviceTier')"
-      :standard-tier-label="t('modelPicker.standardTier')" :loading-label="t('modelPicker.loading')"
-      @update:selection="updateModelSelection" @select="open = false">
-      <template #header>
-      <el-tabs v-model="provider" :aria-label="t('surface.agentDialog.codingAgent')">
-        <el-tab-pane v-for="choice in tabs" :key="choice" :name="choice" :label="providerDisplayName(choice)" :disabled="disabled">
-          <template #label><span class="provider-model-selector__tab" role="img" :title="providerDisplayName(choice)" :aria-label="providerDisplayName(choice)"><ProviderIcon :provider="choice" /></span></template>
-        </el-tab-pane>
-      </el-tabs>
-      </template>
-      <template #service-tier="{ items, select }">
-      <el-tooltip v-if="serviceTiers.length" :content="tierTooltip" :trigger-keys="[]" placement="top" :show-after="300">
-        <span class="provider-model-selector__tier">
-          <AppMenuButton v-if="serviceTiers.length > 1" v-model:open="tierOpen" :ariaLabel="t('modelPicker.serviceTier')" :items="items" :width="188" :teleported="false" @select="select">
-            <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button provider-model-selector__tier-button" :class="{ 'provider-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName"><UltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button></template>
-          </AppMenuButton>
-          <button v-else class="app-icon-button provider-model-selector__tier-button" :class="{ 'provider-model-selector__tier-button--active': serviceTier }" type="button" :disabled="disabled" :aria-label="tierAccessibleName" :aria-pressed="Boolean(serviceTier)" @click="select(serviceTier ? '' : serviceTiers[0]!.id)"><UltrafastIcon v-if="serviceTier === 'ultrafast'" :size="16" /><BoltIcon v-else aria-hidden="true" /></button>
-        </span>
-      </el-tooltip>
-      </template>
-    </ModelPicker>
-  </el-popover>
+  <HarnessModelSelector :models="models" :selection="{ model: model || null, reasoningEffort: reasoningEffort || null, serviceTier: serviceTier || null }"
+    :harnesses="harnesses" :harness="provider" :disabled="disabled" :loading="loading"
+    @update:selection="updateModelSelection" @update:harness="provider = $event as HarnessProvider" />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { executionSelectionControls } from '../execution-selection';
 import { useI18n } from 'vue-i18n';
-import { ModelPicker, type ModelSelection, UltrafastIcon } from '@korus-dev/agent-ui-sdk';
+import { defaultChatTranslate, HarnessModelSelector, provideChatTranslate, type ModelSelection } from '@korus-dev/agent-ui-sdk';
 import type { HarnessProvider, ProviderModelOption, ExecutionSelection } from '@workspace/core/contracts';
-import { providerDisplayName } from '@workspace/core/provider-driver';
 import { harnessProviders } from '@workspace/core/contracts/shared';
-import AppMenuButton from '../shared/menu/AppMenuButton.vue';
-import { BoltIcon, ChevronDown } from '../shared/icons/app-icons';
-import ProviderIcon from './ProviderIcon.vue';
+import { harnessChoices } from './provider-harness-choices';
 import { useAgentHost, useProviderChoices, useCatalogAgentId, useNewAgentProvider, useRememberProvider, useSavedModelSelection } from './provider-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useProviderModelCatalog } from './provider-model-catalog';
 
@@ -61,7 +28,7 @@ const { provider, model, reasoningEffort, serviceTier } = executionSelectionCont
 const hostChoices = useProviderChoices(() => props.remoteConnectionId);
 const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
-const tabs = computed(() => harnessProviders.filter(choice => choices.value.includes(choice)));
+const harnesses = computed(() => harnessChoices(harnessProviders.filter(choice => choices.value.includes(choice))));
 useNewAgentProvider(provider, choices);
 const remember = useRememberProvider(() => props.remoteConnectionId);
 watch(() => props.remoteConnectionId, () => { if (!props.disabled) provider.value = choices.value[0]; });
@@ -70,10 +37,8 @@ const catalogAgentId = useCatalogAgentId(() => props.remoteConnectionId, () => p
 const agentHost = useAgentHost(() => catalogAgentId.value);
 // A host without agents is still read through its own catalog.
 const catalogHost = computed(() => catalogAgentId.value ? agentHost.value : props.remoteConnectionId || 'local');
-const { t } = useI18n();
-const open = ref(false);
-const tierOpen = ref(false);
-watch([open, provider, model], () => { tierOpen.value = false; });
+const { t, te } = useI18n();
+provideChatTranslate((key, params) => te(key) ? t(key, params ?? {}) : defaultChatTranslate(key, params));
 const loading = ref(false);
 watch(loading, value => emit('loading', value), { immediate: true });
 const models = ref<ProviderModelOption[]>([]);
@@ -88,13 +53,6 @@ function showCatalog(catalog: ProviderModelOption[]) {
 }
 const selectedModel = computed(() => models.value.find(option => option.model === model.value));
 const efforts = computed(() => selectedModel.value?.supportedReasoningEfforts ?? []);
-const serviceTiers = computed(() => selectedModel.value?.serviceTiers ?? []);
-const currentTierName = computed(() => serviceTiers.value.find(tier => tier.id === serviceTier.value)?.name ?? t('modelPicker.standardTier'));
-const tierAccessibleName = computed(() => t('modelPicker.currentServiceTier', { tier: currentTierName.value }));
-const tierTooltip = computed(() => !serviceTier.value ? t('modelPicker.normalSpeed') : currentTierName.value.toLowerCase() === 'fast' ? t('modelPicker.fastMode') : currentTierName.value);
-// Lowercase like the effort next to it, so the two read as one setting.
-const tierLabel = (name: string) => name.toLowerCase();
-const serviceTierName = computed(() => tierLabel(selectedModel.value?.serviceTiers?.find(tier => tier.id === serviceTier.value)?.name ?? ''));
 watch([provider, catalogAgentId, () => props.remoteConnectionId], async ([nextBackend, agentId], previous, cleanup) => {
   let current = true;
   cleanup(() => { current = false; });
@@ -146,132 +104,3 @@ function updateModelSelection(value: ModelSelection) {
   serviceTier.value = value.serviceTier ?? '';
 }
 </script>
-
-<style scoped>
-/* Reads as a form field so it sits naturally next to the el-select controls. */
-.provider-model-selector {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  width: 100%;
-  max-width: 100%;
-  min-height: 32px;
-  padding: 0 var(--space-6);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: var(--color-surface-lowest);
-  font: inherit;
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-regular);
-  text-align: left;
-  cursor: pointer;
-}
-
-.provider-model-selector:hover:not(:disabled),
-.provider-model-selector:focus-visible {
-  border-color: var(--color-border-strong);
-}
-
-.provider-model-selector:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.provider-model-selector__label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.provider-model-selector__effort {
-  flex: none;
-  margin-left: calc(var(--space-2) * -1);
-  color: var(--color-text-muted);
-}
-
-.provider-model-selector svg,
-.provider-model-selector :deep(.provider-icon) {
-  flex: none;
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-
-.provider-model-selector__chevron {
-  margin-left: auto;
-  color: var(--color-text-muted);
-}
-</style>
-
-<style>
-.provider-model-selector__popover.el-popper {
-  padding: var(--space-4);
-}
-
-.provider-model-selector__popover .el-tabs__header {
-  margin-bottom: 0;
-}
-
-.provider-model-selector__popover .model-picker__header {
-  display: flex;
-  align-items: center;
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.provider-model-selector__popover .model-picker__header .el-tabs {
-  flex: 1;
-  min-width: 0;
-}
-
-/* One divider carries the separation between provider and model lists. */
-.provider-model-selector__popover .el-tabs__nav-wrap::after {
-  display: none;
-}
-
-.provider-model-selector__tier {
-  display: inline-flex;
-  flex: none;
-  padding-left: var(--space-4);
-  margin-left: var(--space-4);
-  border-left: 1px solid var(--color-border);
-}
-
-.provider-model-selector__tier-button.app-icon-button {
-  width: 32px;
-  height: 32px;
-}
-
-.provider-model-selector__tier-button--active.app-icon-button,
-.provider-model-selector__tier-button--active.app-icon-button:hover:not(:disabled) {
-  color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-
-.provider-model-selector__tier-button--active > svg {
-  fill: currentcolor;
-}
-
-.provider-model-selector__popover .el-tabs__nav {
-  display: flex;
-  width: 100%;
-}
-
-.provider-model-selector__popover .el-tabs__item {
-  flex: 1;
-  justify-content: center;
-  padding: 0 var(--space-4);
-}
-
-.provider-model-selector__tab {
-  display: inline-grid;
-}
-
-.provider-model-selector__tab .provider-icon {
-  width: var(--icon-lg);
-  height: var(--icon-lg);
-}
-
-
-</style>

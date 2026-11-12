@@ -2,10 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ElPopover, ElTabs, ElTabPane, ElTooltip } from 'element-plus';
 import type { ProviderModelOption, ExecutionSelection } from '@workspace/core/contracts';
 import ProviderModelSelector from '../ProviderModelSelector.vue';
-import AppMenuButton from '../../shared/menu/AppMenuButton.vue';
 import { providerChoicesKey, provideProviderChoices } from '../provider-selection';
 import { providerModelCatalogKey } from '../provider-model-catalog';
 
@@ -15,7 +13,7 @@ afterEach(() => { localStorage.removeItem('app:modelCatalog'); document.body.inn
 // replace the current catalog, and provider/model changes must not retain invalid effort.
 describe('ProviderModelSelector', () => {
   it('keeps the chosen model and effort when a failed launch remounts the picker', async () => {
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: null } },
       global: { provide: { [providerModelCatalogKey as symbol]: {
         listModels: async () => [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
@@ -30,18 +28,18 @@ describe('ProviderModelSelector', () => {
     let oldCatalog!: (models: ProviderModelOption[]) => void;
     const listModels = vi.fn().mockImplementationOnce(() => new Promise(resolve => { oldCatalog = resolve; }))
       .mockResolvedValue([{ id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }]);
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'local-agent', selection: { provider: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['cursor', 'antigravity', 'claude', 'codex']),
         [providerModelCatalogKey as symbol]: { listModels },
       } },
     });
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await flushPromises();
-    ([...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.querySelector('[aria-label="Claude Code"]'))!).click();
+    document.querySelector<HTMLElement>('[role="tab"][aria-label="Claude Code"]')!.click();
     await flushPromises();
-    expect([...document.querySelectorAll('[role="tab"] [aria-label]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code', 'Cursor', 'Antigravity']);
+    expect([...document.querySelectorAll('[role="tab"]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code', 'Cursor', 'Antigravity']);
     oldCatalog([{ id: 'stale', model: 'stale', displayName: 'Stale model' }]);
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('local-agent', 'claude');
@@ -69,7 +67,7 @@ describe('ProviderModelSelector', () => {
         provideProviderChoices(() => snapshot);
         return () => h(ProviderModelSelector, { remoteConnectionId, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
       },
-    }), { global: { provide: { [providerModelCatalogKey as symbol]: { listModels } } } });
+    }), { attachTo: document.body, global: { provide: { [providerModelCatalogKey as symbol]: { listModels } } } });
     mountFor();
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith('local-agent', 'codex');
@@ -88,15 +86,15 @@ describe('ProviderModelSelector', () => {
         provideProviderChoices(() => snapshot);
         return () => h(ProviderModelSelector, { remoteConnectionId: 'box', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
       },
-    }), { global: { provide: { [providerModelCatalogKey as symbol]: { listModels } } } });
+    }), { attachTo: document.body, global: { provide: { [providerModelCatalogKey as symbol]: { listModels } } } });
     await flushPromises();
     expect(listModels).toHaveBeenLastCalledWith(null, 'codex', 'box');
   });
 
   it('picks model and reasoning effort together from a cascading menu', async () => {
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['codex']),
         [providerModelCatalogKey as symbol]: { listModels: async () => [
           { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast',
@@ -132,9 +130,9 @@ describe('ProviderModelSelector', () => {
       { id: 'plain', model: 'gpt-plain', displayName: 'GPT Plain', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] },
     ] as ProviderModelOption[];
     function mountSelector(initial: { model?: string; reasoningEffort?: string; serviceTier?: string } = {}) {
-      const wrapper = mount(ProviderModelSelector, {
+      const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
         props: { agentId: 'agent', selection: { provider: 'codex' as const, model: initial.model ?? '', reasoningEffort: initial.reasoningEffort ?? null, serviceTier: initial.serviceTier ?? null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-        global: { components: { ElPopover, ElTabs, ElTabPane, ElTooltip }, stubs: { transition: false }, provide: {
+        global: { stubs: { transition: false }, provide: {
           [providerChoicesKey as symbol]: computed(() => ['codex']),
           [providerModelCatalogKey as symbol]: { listModels: async () => catalog },
         } },
@@ -184,7 +182,6 @@ describe('ProviderModelSelector', () => {
       expect([...submenu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim())).toStrictEqual(['low', 'high']);
       button().click();
       await flushPromises();
-      await vi.waitFor(() => expect(wrapper.findComponent(AppMenuButton).findComponent(ElPopover).emitted('after-enter')).toHaveLength(1));
       expect(wrapper.props('selection')?.serviceTier).toBeNull();
       expect(row('Standard').getAttribute('aria-checked')).toBe('true');
       row('Ultrafast').click();
@@ -204,7 +201,7 @@ describe('ProviderModelSelector', () => {
       expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
     });
 
-    it('selects a model with only tiers directly and hides the control for unsupported models', async () => {
+    it('selects a model with only tiers directly and disables the control for unsupported models', async () => {
       const wrapper = mountSelector();
       await flushPromises();
       await open(wrapper);
@@ -215,7 +212,7 @@ describe('ProviderModelSelector', () => {
       expect(document.querySelector('button[aria-label^="Service tier:"]')).not.toBeNull();
       await wrapper.setProps({ selection: { ...wrapper.props('selection')!, model: 'gpt-plain' } });
       await flushPromises();
-      expect(document.querySelector('button[aria-label^="Service tier:"]')).toBeNull();
+      expect(document.querySelector<HTMLButtonElement>('button[aria-label^="Service tier:"]')!.disabled).toBe(true);
     });
 
     it('drops a tier the newly chosen model does not offer', async () => {
@@ -229,9 +226,9 @@ describe('ProviderModelSelector', () => {
 
   it('shows the last known models instantly and keeps the list stable while refreshing', async () => {
     const catalog = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }];
-    const mountSelector = (listModels: () => Promise<ProviderModelOption[]>) => mount(ProviderModelSelector, {
+    const mountSelector = (listModels: () => Promise<ProviderModelOption[]>) => mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null } },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['codex']),
         [providerModelCatalogKey as symbol]: { listModels },
       } },
@@ -250,9 +247,9 @@ describe('ProviderModelSelector', () => {
   });
 
   it('keeps the default row and shows placeholders on a cold first load', async () => {
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null } },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['codex']),
         [providerModelCatalogKey as symbol]: { listModels: () => new Promise(() => undefined) },
       } },
@@ -265,9 +262,9 @@ describe('ProviderModelSelector', () => {
   });
 
   it("selects the provider default model and its default effort explicitly, with no blank 'Default' entries", async () => {
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'codex' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['codex']),
         [providerModelCatalogKey as symbol]: { listModels: async () => [
           { id: 'a', model: 'gpt-a', displayName: 'GPT A' },
@@ -286,9 +283,9 @@ describe('ProviderModelSelector', () => {
   });
 
   it("shows the real model behind a provider's default alias instead of the alias row", async () => {
-    const wrapper = mount(ProviderModelSelector, {
+    const wrapper = mount(ProviderModelSelector, { attachTo: document.body,
       props: { agentId: 'agent', selection: { provider: 'claude' as const, model: '', reasoningEffort: '', serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => wrapper.setProps({ selection }) },
-      global: { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      global: { provide: {
         [providerChoicesKey as symbol]: computed(() => ['claude']),
         [providerModelCatalogKey as symbol]: { listModels: async () => [
           { id: 'default', model: 'default', displayName: 'Default (recommended)', isDefault: true, providerMetadata: { resolvedModel: 'claude-opus-5-5' } },
@@ -326,7 +323,7 @@ describe('ProviderModelSelector', () => {
           const state = { model: '', effort: '' };
           return () => h(ProviderModelSelector, { teamId: 't', selection: { provider: 'claude', model: state.model, reasoningEffort: state.effort, serviceTier: null }, 'onUpdate:selection': (selection: ExecutionSelection | undefined) => { state.model = selection?.model ?? ''; state.effort = selection?.reasoningEffort ?? ''; } });
         },
-      }), { global: { components: { ElPopover, ElTabs, ElTabPane }, provide: { [providerModelCatalogKey as symbol]: { listModels: async () => catalog } } } });
+      }), { attachTo: document.body, global: { provide: { [providerModelCatalogKey as symbol]: { listModels: async () => catalog } } } });
       await flushPromises();
       return wrapper.findComponent(ProviderModelSelector);
     }

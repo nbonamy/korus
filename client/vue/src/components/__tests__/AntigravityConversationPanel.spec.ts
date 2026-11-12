@@ -35,7 +35,7 @@ it('renders an Antigravity conversation, denies a tool confirmation, and keeps u
     updateComposerState: vi.fn(), updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
   };
   const wrapper = mount(AgentConversationPanel, { props: {
-    view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+    view, actions, agents: [agent], focused: true, mentionGroups: [],
     savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
   }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['antigravity']) } } });
   expect(wrapper.text()).toContain('Native Antigravity response');

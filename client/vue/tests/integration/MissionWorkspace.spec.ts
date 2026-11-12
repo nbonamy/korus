@@ -325,7 +325,7 @@ describe('MissionWorkspace', () => {
     const agents = createInitialSnapshot().agents;
     agents[0]!.providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [], executeMission, models: { codex: [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
       { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ], claude: [{ id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] }] } });
@@ -344,7 +344,7 @@ describe('MissionWorkspace', () => {
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
-    const tabs = [...document.querySelectorAll('[role="tab"] [aria-label]')];
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
     expect(tabs.map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code']);
     const low = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low');
     expect(low).toBeDefined();
@@ -361,7 +361,7 @@ describe('MissionWorkspace', () => {
     const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(reopenedPicker.text()).toContain('Planner');
     await reopenedPicker.trigger('click'); await flushPromises();
-    document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
+    document.querySelector<HTMLElement>('[role="tab"][aria-label="Claude Code"]')!.click();
     await flushPromises();
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
     await flushPromises();
@@ -411,7 +411,7 @@ describe('MissionWorkspace', () => {
     agents[0]!.providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
     const tiers = [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }];
-    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [], executeMission, models: { codex: [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: tiers },
       { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ] } });

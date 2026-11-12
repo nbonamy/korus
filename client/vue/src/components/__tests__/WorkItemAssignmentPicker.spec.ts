@@ -29,7 +29,7 @@ describe('WorkItemAssignmentPicker', () => {
       { id: 'm1', model: 'gpt-fast', displayName: 'GPT Fast', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
       { id: 'm2', model: 'hidden', displayName: 'Hidden', hidden: true },
     ]);
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: { item: issue, branchName: 'fix/gh-24', modelAgentId: 'agent-main' },
       slots: { default: '<p class="issue-body">Issue body</p>' },
       global: { components: { ElPopover }, provide: {
@@ -58,7 +58,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('defaults to an isolated session and emits the tuned primary action', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',
@@ -81,7 +81,7 @@ describe('WorkItemAssignmentPicker', () => {
     expect(wrapper.text()).not.toContain('New worktree');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await wrapper.vm.$nextTick();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes('Claude Code'))!.click();
+    document.querySelector<HTMLButtonElement>('[role=\"tab\"][aria-label=\"Claude Code\"]')!.click();
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
 
@@ -93,7 +93,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('assigns an existing repository session without offering a worktree', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',
@@ -116,7 +116,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('disables existing-session assignment when the repository has no session', () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: { item: issue, branchName: 'fix/gh-24' },
     });
 
@@ -146,7 +146,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('asks before reusing an existing worktree', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',

@@ -78,7 +78,7 @@ function mountPanel(
   };
   return {
     actions,
-    wrapper: mount(CodeReviewPanel, {
+    wrapper: mount(CodeReviewPanel, { attachTo: document.body,
       props: { agent: owner, gitStatus, ...actions, ...extraProps },
       global: { components: { ElInputNumber, ElSwitch, ElPopover, ElTabs, ElTabPane }, provide: {
         ...extraProvide,
@@ -187,7 +187,7 @@ describe('CodeReviewPanel', () => {
     await wrapper.get('.provider-model-selector').trigger('click');
     await flushPromises();
     const body = new DOMWrapper(document.body);
-    await body.findAll('[role="tab"]').find(tab => tab.find('[aria-label="Claude Code"]').exists())!.trigger('click');
+    await body.get('[role=\"tab\"][aria-label=\"Claude Code\"]').trigger('click');
     await flushPromises();
     await body.findAll('[role="menuitemradio"]').find(item => item.text() === 'Claude model')!.trigger('click');
     await flushPromises();
@@ -198,7 +198,7 @@ describe('CodeReviewPanel', () => {
     await flushPromises();
     await wrapper.get('.provider-model-selector').trigger('click');
     await flushPromises();
-    await body.findAll('[role="tab"]').find(tab => tab.find('[aria-label="Codex"]').exists())!.trigger('click');
+    await body.get('[role=\"tab\"][aria-label=\"Codex\"]').trigger('click');
     await flushPromises();
     await body.get('button[aria-label="Service tier: Fast"]').trigger('click');
     await flushPromises();

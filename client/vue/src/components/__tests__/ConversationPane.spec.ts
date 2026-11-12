@@ -467,61 +467,6 @@ describe('ConversationPane', () => {
     await nextTick();
     expect(wrapper.find('.saved-prompt-draft-picker').exists()).toBe(false);
   });
-  it('switches a fresh chat without losing its draft and locks the choice after submission', async () => {
-    const selectedAgent = ref<Agent>({ ...agent });
-    const choices = ref<Agent['provider'][]>(['codex']);
-    const update = vi.fn(async (_id: string, provider: Agent['provider']) => {
-      selectedAgent.value = { ...selectedAgent.value, provider: provider, providerDefaults: { kind: provider } };
-    });
-    const updateSettings = vi.fn(() => { choices.value = ['codex', 'claude']; });
-    const controller = createConversationPaneController({
-      state: { identity: { conversationKey: agent.id, messages: [] }, capabilities: {
-        models: true, skills: false, reasoningEffort: false, serviceTier: false,
-        planMode: false, goals: false, steerPrompt: false, interrupt: false,
-        history: false, deleteTurn: false, editTurn: false, retryTurn: false,
-        approvals: false, permissions: [],
-      },
-        catalogs: { models: [{ id: 'cursor-model', model: 'cursor-model', displayName: 'Cursor model', isDefault: true }] } },
-      actions: { updateSettings },
-    });
-    const wrapper = mount(defineComponent({
-      setup() {
-        provide(providerChoicesKey, computed(() => choices.value));
-        provideProviderSwitch(update);
-        return () => h(ConversationPane, { agent: selectedAgent.value, controller });
-      },
-    }));
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-    choices.value = ['codex', 'claude', 'cursor'];
-    await nextTick();
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(true);
-    const editor = wrapper.get('[role="textbox"][contenteditable]');
-    editor.element.textContent = 'Keep this idea';
-    await editor.trigger('input');
-    await wrapper.get('.provider-selector select').setValue('cursor');
-    await flushPromises();
-    expect(update).toHaveBeenCalledExactlyOnceWith(agent.id, 'cursor');
-    expect(editor.element.textContent).toBe('Keep this idea');
-    expect(wrapper.get<HTMLSelectElement>('.provider-selector select').element.value).toBe('cursor');
-    await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
-    await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().startsWith('Cursor model'))!.trigger('click');
-    await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ model: 'cursor-model' });
-    // A connection refresh after model selection must not switch this chat.
-    expect(selectedAgent.value.provider).toBe('cursor');
-    expect(update).toHaveBeenCalledTimes(1);
-    choices.value = ['codex', 'claude', 'cursor'];
-    await nextTick();
-    expect(wrapper.get<HTMLSelectElement>('.provider-selector select').element.value).toBe('cursor');
-    await wrapper.get('.provider-selector select').setValue('claude');
-    await flushPromises();
-    expect(update).toHaveBeenLastCalledWith(agent.id, 'claude');
-    selectedAgent.value = { ...selectedAgent.value, hasSubmittedPrompt: true };
-    await nextTick();
-    expect(wrapper.find('.provider-selector').exists()).toBe(false);
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-  });
-
   it('stays a thin presentation wrapper around an AppShell-owned controller', () => {
     const controller = controllerFor(messages);
     const wrapper = mountPane({ controller, agent });

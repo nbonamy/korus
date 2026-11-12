@@ -10,7 +10,7 @@ import { conversationFrom, runningTurn, sessionState } from '../../../tests/supp
 import type { AgentConversationView } from '../../app-state';
 import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
-import { providerChoicesKey } from '../provider-selection';
+import { providerChoicesKey, provideProviderSwitch } from '../provider-selection';
 import { cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
 
 type SessionView = AgentConversationView & { session: SessionState | null };
@@ -18,6 +18,41 @@ const toolConfirmation = (id: string, confirmation: Extract<AgentRequest, { kind
   ({ id, conversationId: 'session', turnId: 'turn', kind: 'toolConfirmation', confirmation });
 
 describe('AgentConversationPanel', () => {
+  it('lets a fresh conversation switch harness from the model picker, then keeps the one it runs', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = { ...snapshot.agents[0]!, provider: 'codex' as const, providerDefaults: { kind: 'codex' as const }, providerSession: undefined };
+    snapshot.agents[0] = agent;
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot });
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: null, composer: composer.configurationForAgent(agent.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: cursorProviderCapabilities,
+      approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
+    });
+    const actions = { prepare: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn() } as unknown as AgentConversationActions;
+    const update = vi.fn(async (_id: string, provider: typeof agent.provider) => { view.agent = { ...view.agent, provider }; });
+    const wrapper = mount({ setup() {
+      provideProviderSwitch(update);
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [],
+        savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn() });
+    } }, { attachTo: document.body, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude', 'cursor']) } } });
+    try {
+      const picker = () => wrapper.get('[aria-label="Coding agent and model"]');
+      const tab = (label: string) => wrapper.get(`[role="tab"][aria-label="${label}"]`);
+      await picker().trigger('click');
+      expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
+      await tab('Cursor').trigger('click');
+      await flushPromises();
+      expect(update).toHaveBeenCalledExactlyOnceWith(agent.id, 'cursor');
+      expect(tab('Cursor').attributes('aria-selected')).toBe('true');
+
+      view.session = sessionState({ messages: [{ id: 'hello', agentId: agent.id, turnId: 'turn', role: 'user', status: 'complete', createdAt: '2026-11-11T00:00:00.000Z', parts: [{ type: 'text', text: 'Hi' }] }] });
+      await flushPromises();
+      await picker().trigger('click');
+      expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
   it('renders Cursor model/effort selection, file links and media with interrupt, confirm and continue', async () => {
     const snapshot = createInitialSnapshot();
     const agent = { ...snapshot.agents[0]!, provider: 'cursor' as const, providerDefaults: { kind: 'cursor' as const }, providerSession: undefined };
@@ -48,7 +83,7 @@ describe('AgentConversationPanel', () => {
     const openLink = vi.fn();
     const wrapper = mount({ setup() {
       provideToolCallDetails(rawDetails);
-      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink, openImage: vi.fn(), openVisualization: vi.fn(),
     });
     } }, { global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
@@ -74,24 +109,24 @@ describe('AgentConversationPanel', () => {
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
       expect(wrapper.findAll('[role="menuitemradio"]').map(choice => choice.attributes('aria-checked'))).toEqual(['true', 'false']);
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
-      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Cursor Enum'))!.trigger('mouseenter');
       await flushPromises();
-      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Extra High')!.trigger('click');
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'extra-high')!.trigger('click');
       await flushPromises();
       expect(actions.selectModel).toHaveBeenCalledExactlyOnceWith(agent.id, 'native-enum');
       expect(actions.selectReasoningEffort).toHaveBeenCalledExactlyOnceWith(agent.id, 'extra-high');
-      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).toContain('Extra High');
+      expect(wrapper.get('[aria-label="Coding agent and model"]').text()).toContain('extra-high');
       await wrapper.get('form').trigger('submit'); await flushPromises();
       expect(sent).toHaveBeenLastCalledWith(agent.id, 'Hello Cursor', { selection: { model: 'native-enum', reasoningEffort: 'extra-high' }, planMode: false });
-      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Cursor Plain')!.trigger('click');
       await flushPromises();
       expect(actions.selectModel).toHaveBeenLastCalledWith(agent.id, 'native-plain');
       expect(actions.selectReasoningEffort).toHaveBeenCalledTimes(1);
-      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).not.toContain('Extra High');
+      expect(wrapper.get('[aria-label="Coding agent and model"]').text()).not.toContain('extra-high');
       view.composerState = { text: 'Plain Cursor', selectionStart: 12, selectionEnd: 12 };
       await flushPromises();
       await wrapper.get('form').trigger('submit'); await flushPromises();
@@ -182,7 +217,7 @@ describe('AgentConversationPanel', () => {
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     try {
@@ -220,7 +255,7 @@ describe('AgentConversationPanel', () => {
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     const editor = () => wrapper.get('.chat-rich-text-editor');
@@ -282,7 +317,7 @@ describe('AgentConversationPanel', () => {
     };
     const selectModelMenuItem = vi.fn();
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem,
+      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     for (const label of ['Design', 'Visualize', 'Delegate', 'Review', 'Mission']) {
@@ -334,7 +369,7 @@ describe('AgentConversationPanel', () => {
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
       followUpBehavior: 'steer',
     }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
@@ -378,7 +413,7 @@ describe('AgentConversationPanel', () => {
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe('Keep the split draft');

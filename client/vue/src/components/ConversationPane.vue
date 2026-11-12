@@ -103,16 +103,6 @@
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
       <template #composer-shelf-actions="{ disabled }">
-        <ProviderSelector
-          v-if="showBackendSelector && agent && backendSwitch"
-          class="conversation-pane__backend-selector"
-          :model-value="agent.provider"
-          preserve-selection
-          :remote-connection-id="agent.remoteConnectionId"
-          size="small"
-          :disabled="disabled || backendSwitch.busy.value"
-          @update:model-value="$event && selectProvider($event)"
-        />
         <div v-if="activeThreadFlags.length > 0 || agent?.rateLimitPause" class="conversation-pane__thread-flags">
           <RateLimitResumeNotice v-if="agent?.rateLimitPause" :agent-id="agent.id" :pause="agent.rateLimitPause" />
           <ThreadFlagAffordance
@@ -230,10 +220,8 @@ import type { ChatTextSelection } from './use-chat-text-annotations';
 import ChatAnnotationReview from './ChatAnnotationReview.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
 import ThreadFlagAffordance from './ThreadFlagAffordance.vue';
-import ProviderSelector from './ProviderSelector.vue';
 import SavedPromptDraftPicker from './SavedPromptDraftPicker.vue';
-import { useProviderChoices, useProviderSwitch, useConnectEngine } from './provider-selection';
-import { canSelectAgentProvider } from '@workspace/core/agent-providers';
+import { useProviderChoices, useConnectEngine } from './provider-selection';
 import { ElMessage } from 'element-plus';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation } from './use-visualization-annotations';
@@ -248,14 +236,8 @@ import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentati
 import { provideConversationImagePreviews } from './conversation-image-previews';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
-const backendSwitch = useProviderSwitch();
 const providerChoices = useProviderChoices(() => props.agent?.remoteConnectionId);
 const connectEngine = useConnectEngine();
-async function selectProvider(provider: Agent['provider']): Promise<void> {
-  if (!props.agent || !backendSwitch) return;
-  try { await backendSwitch.select(props.agent.id, provider); }
-  catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
-}
 
 const { t, te } = useI18n();
 const surface = ref<{ focusComposer(): void; $el: HTMLElement } | null>(null);
@@ -559,10 +541,6 @@ const composerContextCards = computed<ComposerContextCard[]>(() => [
     removeLabel: t('chat.composerContext.removeReviewFinding'),
   }] : []),
 ]);
-const showBackendSelector = computed(() => Boolean(
-  providerChoices.value.length > 1 && props.agent && backendSwitch
-  && canSelectAgentProvider(props.agent) && !props.historyLoading && !props.hasVisibleMessages,
-));
 const activeThreadFlags = computed<ThreadFlagId[]>(() => (
   (['ready_for_review', 'work_proposed'] as const)
     .filter((id) => normalizeThreadFlags(props.agent?.threadFlags ?? {})[id] === true)
@@ -718,23 +696,6 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   width: 100%;
   display: grid;
   gap: var(--space-4);
-}
-
-.conversation-pane__backend-selector {
-  width: calc(100% + var(--space-12)) !important;
-  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-6));
-}
-
-.conversation-pane__backend-selector :deep(.el-select__wrapper) {
-  min-height: var(--space-16);
-  padding-inline: var(--space-6);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  background: transparent;
-  box-shadow: none !important;
-}
-
-.conversation-pane__backend-selector :deep(.el-select__wrapper:hover) {
-  background: var(--color-surface-low);
 }
 
 .conversation-pane__empty {

@@ -389,8 +389,7 @@
                 :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="true"
                 :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
                 :preview-approval="debugApproval?.agentId === agentId ? debugApproval.request : undefined"
-                :mention-groups="agentMentionGroups" :model-menu-items="conversationModelFavoriteMenuItems(agentId)"
-                :select-model-menu-item="item => selectConversationModelMenuItem(agentId, item)"
+                :mention-groups="agentMentionGroups"
                 :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
                 :follow-up-behavior="snapshot.general.followUpBehavior"
                 :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined"
@@ -426,8 +425,7 @@
                 :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="focused"
                 :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
                 :preview-approval="debugApproval?.agentId === agentId ? debugApproval.request : undefined"
-                :mention-groups="agentMentionGroups" :model-menu-items="conversationModelFavoriteMenuItems(agentId)"
-                :select-model-menu-item="item => selectConversationModelMenuItem(agentId, item)"
+                :mention-groups="agentMentionGroups"
                 :plan="focused ? plan : null" :plan-visible="planVisible" @close-plan="closePlan"
                 :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
                 :follow-up-behavior="snapshot.general.followUpBehavior"
@@ -546,13 +544,6 @@
       :list-models="listHandoffModels"
       :read-messages="readConversationMessages"
       @close="handoffAgentId = null"
-    />
-    <ModelFavoritesDialog
-      :favorites="managedModelFavorites"
-      :models="providerModels"
-      :visible="modelFavoritesDialogVisible"
-      @change="updateManagedModelFavorites"
-      @close="modelFavoritesDialogVisible = false"
     />
     <AgentDialog
       :visible="agentDialogVisible"
@@ -753,7 +744,6 @@ import SettingsView from './SettingsView.vue';
 import { telemetryNoticeReadyKey } from './use-telemetry-consent';
 import FirstRunOnboardingGate from './FirstRunOnboardingGate.vue';
 import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigrationDialog.vue';
-import ModelFavoritesDialog from './ModelFavoritesDialog.vue';
 import type { SettingsTab } from './settings-tabs';
 import {
   type ConversationLink,
@@ -770,14 +760,6 @@ import {
 import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon } from '../shared/icons/app-icons';
-import {
-  copyModelFavorite,
-  modelFavoriteEffortLabel,
-  modelFavoriteFastTierLabel,
-  modelFavoriteKey,
-  modelFavoriteModelLabel,
-  sameModelFavorite,
-} from './model-favorites';
 import { useFirstRunOnboarding } from './use-first-run-onboarding';
 import { useRepositoryAcquisition } from './use-repository-acquisition';
 import { useRepositorySession } from './use-repository-session';
@@ -1495,11 +1477,9 @@ const agentWorkspace = ref<{
 } | null>(null);
 const settingsActiveTab = ref<SettingsTab>('general');
 const agentDialogVisible = ref(false);
-const modelFavoritesDialogVisible = ref(false);
 const newProjectDialogVisible = ref(false);
 const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
-const modelFavoritesDialogBackend = ref<ModelFavorite['provider'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
 // IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
 const shareTarget = shallowRef<ConversationShareTarget | null>(null);
@@ -2439,76 +2419,6 @@ const conversationHasRunningPlanTool = computed(() => conversationMessages.value
   ),
 ));
 const conversationPlan = computed(() => currentAgent.value ? conversationPlanForAgent(currentAgent.value, providerConversation.value) : null);
-const managedModelFavorites = computed(() => modelFavoritesDialogBackend.value ? props.snapshot.general.modelFavorites.filter(favorite => favorite.provider === modelFavoritesDialogBackend.value) : []);
-function buildModelFavoriteMenuItems(current: ModelFavorite | null, models: ProviderModelOption[]): ComposerMenuItem[] {
-  if (!current) return [];
-  const availableModelIds = new Set(models.map(model => model.id));
-  const favorites = props.snapshot.general.modelFavorites.filter(favorite => favorite.provider === current.provider && availableModelIds.has(favorite.modelId));
-  const currentIsFavorite = favorites.some((favorite) => sameModelFavorite(favorite, current));
-  const items: ComposerMenuItem[] = [];
-  if (favorites.length > 0) {
-    items.push({
-      id: 'model-favorites-heading',
-      type: 'heading',
-      label: translate('surface.appShell.favorites'),
-      actions: [{
-        id: 'model-favorite-add',
-        type: 'action',
-        label: translate('surface.appShell.addCurrentToFavorites'),
-        icon: PlusIcon,
-        disabled: currentIsFavorite,
-        payload: { kind: 'model-favorite-add', favorite: current },
-      }, {
-        id: 'model-favorite-manage',
-        type: 'action',
-        label: translate('surface.appShell.manageFavorites'),
-        icon: PencilIcon,
-        payload: { kind: 'model-favorite-manage' },
-      }],
-    });
-    items.push(...favorites.map((favorite) => {
-      const fastTierLabel = modelFavoriteFastTierLabel(favorite, models);
-      return {
-        closeOnSelect: true,
-        id: `model-favorite:${modelFavoriteKey(favorite)}`,
-        label: modelFavoriteModelLabel(favorite, models),
-        payload: { kind: 'model-favorite-select', favorite },
-        type: 'action' as const,
-        value: modelFavoriteEffortLabel(favorite),
-        valueAppearance: 'badge' as const,
-        valueIcon: fastTierLabel ? BoltIcon : undefined,
-        valueIconLabel: fastTierLabel || undefined,
-      };
-    }));
-  } else {
-    items.push({
-      id: 'model-favorite-add',
-      type: 'action',
-      label: translate('surface.appShell.addCurrentToFavorites'),
-      icon: PlusIcon,
-      payload: { kind: 'model-favorite-add', favorite: current },
-    });
-  }
-  return items;
-}
-function conversationModelFavoriteMenuItems(agentId: string): ComposerMenuItem[] {
-  const view = conversationViewFor(agentId);
-  if (!view) return [];
-  const composer = view.composer;
-  const model = composer.models.find(model => model.id === composer.selectedModelId)
-    ?? composer.models.find(model => model.isDefault) ?? composer.models[0];
-  if (!model) return [];
-  return buildModelFavoriteMenuItems({
-    provider: view.agent.provider,
-    modelId: model.id,
-    reasoningEffort: composer.selectedReasoningEffort ?? model.defaultReasoningEffort ?? model.supportedReasoningEfforts?.[0]?.reasoningEffort ?? null,
-    serviceTier: composer.selectedServiceTier === 'default' ? null : composer.selectedServiceTier,
-  }, composer.models);
-}
-function selectConversationModelMenuItem(agentId: string, item: Parameters<NonNullable<ConversationPaneActions['menuSelect']>>[0]): void | Promise<void> {
-  const command = modelFavoriteCommand(item.payload);
-  if (command) return handleModelFavoriteCommand(command, props.agentConversationActions ? agentId : undefined);
-}
 const delegatingAgentIds = new Set<string>();
 /** `/delegate` and `/mission` hand the conversation to the model, which carries out the request with a tool. */
 async function sendModelCommand(agentId: string, command: '/delegate' | '/mission'): Promise<void> {
@@ -2537,62 +2447,6 @@ async function runConversationMenuCommand(agentId: string, command: Conversation
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
-}
-
-type ModelFavoriteCommand =
-  | { kind: 'model-favorite-add' | 'model-favorite-select'; favorite: ModelFavorite }
-  | { kind: 'model-favorite-manage' };
-
-function modelFavoriteCommand(payload: unknown): ModelFavoriteCommand | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const record = payload as Record<string, unknown>;
-  const kind = record.kind;
-  if (kind === 'model-favorite-manage') return { kind };
-  if (kind !== 'model-favorite-add' && kind !== 'model-favorite-select') return null;
-  const favorite = record.favorite;
-  if (!favorite || typeof favorite !== 'object' || Array.isArray(favorite)) return null;
-  return { kind, favorite: copyModelFavorite(favorite as ModelFavorite) };
-}
-
-async function handleModelFavoriteCommand(command: ModelFavoriteCommand, agentId?: string): Promise<void> {
-  if (command.kind === 'model-favorite-manage') {
-    modelFavoritesDialogBackend.value = (agentId ? props.snapshot.agents.find(agent => agent.id === agentId) : currentAgent.value)?.provider ?? null;
-    modelFavoritesDialogVisible.value = modelFavoritesDialogBackend.value !== null;
-    return;
-  }
-  if (command.kind === 'model-favorite-select') {
-    if (agentId && props.agentConversationActions) {
-      props.agentConversationActions.selectModel(agentId, command.favorite.modelId);
-      if (command.favorite.reasoningEffort !== null) props.agentConversationActions.selectReasoningEffort(agentId, command.favorite.reasoningEffort);
-      props.agentConversationActions.selectServiceTier(agentId, command.favorite.serviceTier);
-      return;
-    }
-    emit('select-model', command.favorite.modelId);
-    if (command.favorite.reasoningEffort !== null) {
-      emit('select-reasoning-effort', command.favorite.reasoningEffort);
-    }
-    emit('select-service-tier', command.favorite.serviceTier);
-    return;
-  }
-  const existing = props.snapshot.general.modelFavorites.map(copyModelFavorite);
-  const modelFavorites = [
-    ...existing.filter((favorite) => !sameModelFavorite(favorite, command.favorite)),
-    copyModelFavorite(command.favorite),
-  ];
-  await props.updateSettings({ general: { modelFavorites } });
-}
-
-async function updateManagedModelFavorites(favorites: ModelFavorite[]): Promise<void> {
-  const backend = modelFavoritesDialogBackend.value;
-  if (!backend) return;
-  const existing = props.snapshot.general.modelFavorites.map(copyModelFavorite);
-  const firstBackendIndex = existing.findIndex((favorite) => favorite.provider === backend);
-  const withoutBackend = existing.filter((favorite) => favorite.provider !== backend);
-  const insertionIndex = firstBackendIndex < 0
-    ? withoutBackend.length
-    : existing.slice(0, firstBackendIndex).filter((favorite) => favorite.provider !== backend).length;
-  withoutBackend.splice(insertionIndex, 0, ...favorites.map(copyModelFavorite));
-  await props.updateSettings({ general: { modelFavorites: withoutBackend } });
 }
 
 function saveActivePromptDraft(): void {
@@ -2630,7 +2484,6 @@ const isModalDialogVisible = computed(() => (
   agentDialogVisible.value
   || shareTarget.value !== null
   || handoffAgentId.value !== null
-  || modelFavoritesDialogVisible.value
   || newProjectDialogVisible.value
   || teamDialogVisible.value
   || whatsNewVisible.value
