@@ -1589,6 +1589,16 @@ export function useAppState() {
     await loadActiveAgentCatalogs();
   }
 
+  /** Brings back an agent closed moments ago, in its former place and with its conversation. */
+  async function restoreClosedAgent(record: import('@workspace/core/contracts').ClosedAgentRecord): Promise<void> {
+    if (!appApi?.restoreClosedAgent) {
+      return;
+    }
+
+    adoptBackgroundSnapshot(await appApi.restoreClosedAgent(record));
+    await loadActiveAgentCatalogs();
+  }
+
   /** Answers a pending request in the harness's shape, after the same checks an approval prompt applies. */
   async function respondToAgentRequest(agentId: string, response: AgentRequestResponse): Promise<void> {
     const approval = snapshot.value.providerApprovals[agentId]?.find((candidate) => candidate.id === response.id);
@@ -1840,6 +1850,7 @@ export function useAppState() {
     reorderRepositories,
     restartAgent,
     closeAgent,
+    restoreClosedAgent,
     resolveProviderApproval,
     resolveProviderApprovalForAgent,
     respondToActiveAgentRequest,

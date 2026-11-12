@@ -254,10 +254,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { computed, h, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue';
+import { ElMessage, type MessageHandler } from 'element-plus';
 import { useI18n } from 'vue-i18n';
-import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
+import type { Agent, ClosedAgentRecord, DesktopUpdateStatus } from '@workspace/core/contracts';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import AppShell from './components/AppShell.vue';
 import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
@@ -391,6 +391,7 @@ const {
   reorderRepositories,
   restartAgent,
   closeAgent: closeAgentAction,
+  restoreClosedAgent,
   updateSettings,
   setCodexResourceSharing,
   listSshHosts,
@@ -537,6 +538,7 @@ const pendingAgentClose = ref<{
 const agentCloseBusy = computed(() => pendingAgentClose.value?.running ?? false);
 const agentCloseError = computed(() => pendingAgentClose.value?.error ?? null);
 const closingAgentIds = new Set<string>();
+let closeUndoToast: MessageHandler | null = null;
 const pendingPullRequestCleanup = ref<Agent | null>(null);
 const pullRequestCleanupBusy = ref(false);
 const pullRequestCleanupError = ref<string | null>(null);
@@ -563,7 +565,63 @@ async function requestCloseAgent(agentId: string): Promise<void> {
   } catch {
     // Non-Git folders and unavailable Git hosts use the normal close behavior.
   }
+  const record = closedAgentRecord(agent);
   await closeAgentAction(agentId);
+  offerCloseUndo(record);
+}
+
+/** Notes where an agent sits, so a close can be taken back. */
+function closedAgentRecord(agent: Agent): ClosedAgentRecord | null {
+  if (!appApi?.restoreClosedAgent || agent.sessionKind === 'quickChat' || agent.remoteConnectionId) return null;
+  const teamAgentIds = snapshot.value.teams.find((team) => team.id === agent.teamId)?.agentIds ?? [];
+  const teamPosition = teamAgentIds.indexOf(agent.id);
+  return {
+    agent: structuredClone(toRaw(agent)),
+    index: snapshot.value.agents.findIndex((candidate) => candidate.id === agent.id),
+    teamPosition: Math.max(teamPosition, 0),
+    ...(teamAgentIds[teamPosition + 1] ? { nextAgentId: teamAgentIds[teamPosition + 1] } : {}),
+  };
+}
+
+/**
+ * Right after a plain close, the toast offers to bring the agent back where it was.
+ * It is the only thing holding what is needed to do so: once it goes away, so does the way back.
+ */
+function offerCloseUndo(record: ClosedAgentRecord | null): boolean {
+  if (!record) return false;
+  closeUndoToast?.close();
+  const toast = ElMessage({
+    type: 'info',
+    customClass: 'agent-close-toast',
+    duration: 5000,
+    showClose: true,
+    message: h('span', [
+      `${t('surface.agentCloseDialog.agentClosed')} `,
+      h('a', {
+        class: 'agent-close-undo',
+        role: 'button',
+        tabindex: 0,
+        onClick: () => { toast.close(); void undoAgentClose(record); },
+        onKeydown: (event: KeyboardEvent) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          toast.close();
+          void undoAgentClose(record);
+        },
+      }, t('surface.agentCloseDialog.undo')),
+    ]),
+    onClose: () => { if (closeUndoToast === toast) closeUndoToast = null; },
+  });
+  closeUndoToast = toast;
+  return true;
+}
+
+async function undoAgentClose(record: ClosedAgentRecord): Promise<void> {
+  try {
+    await restoreClosedAgent(record);
+  } catch (error) {
+    ElMessage.error(`${t('surface.agentCloseDialog.undoFailed')}: ${localizedErrorMessage(error, t)}`);
+  }
 }
 
 function cancelAgentClose(): void {
@@ -585,6 +643,7 @@ async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = f
   pending.error = null;
   pending.deleteWorktree = deleteWorktree;
   closingAgentIds.add(pending.agent.id);
+  const record = deleteWorktree ? null : closedAgentRecord(pending.agent);
   try {
     await closeAgentAction(pending.agent.id, deleteWorktree ? {
       deleteWorktree: true,
@@ -592,7 +651,9 @@ async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = f
       discardChanges,
       confirmed: true,
     } : undefined);
-    if (pending.backgrounded) {
+    if (offerCloseUndo(record)) {
+      // The toast already says the agent is closed, and offers to bring it back.
+    } else if (pending.backgrounded) {
       const title = t(deleteWorktree ? 'surface.agentCloseDialog.worktreeDeleted' : 'surface.agentCloseDialog.agentClosed');
       ElMessage.success(`${title}: ${pending.preview.branch ?? agentDisplayName(pending.agent)}`);
     }

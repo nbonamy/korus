@@ -144,6 +144,10 @@ export type AppBackendRequestMap = {
     params: { agent: import('../contracts').Agent };
     result: { supported: boolean };
   };
+  [backendMethods.driverConversationUnarchive]: {
+    params: { agent: import('../contracts').Agent };
+    result: { supported: boolean };
+  };
   [backendMethods.driverConversationDelete]: {
     params: { agent: import('../contracts').Agent };
     result: { supported: boolean };

@@ -570,6 +570,10 @@ export class AppController {
       return this.closeAgent(agentId, input);
     });
 
+    ipc.handle(ipcChannels.restoreClosedAgent, async (_event, record) => {
+      return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRestore, { record }));
+    });
+
     ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
 
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {

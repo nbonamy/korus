@@ -163,6 +163,7 @@ export const ipcChannels = {
   loadAgentTurnHistory: 'agent:history:load-turn',
   readConversationContent: 'agent:conversation:content:read',
   closeAgent: 'agent:close',
+  restoreClosedAgent: 'agent:restore-closed',
   selectAgent: 'agent:select',
   markAgentRead: 'agent:read',
   updateSettings: 'settings:update',

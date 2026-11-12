@@ -1,6 +1,7 @@
 import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { randomUUID } from 'node:crypto';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
@@ -411,6 +412,14 @@ export class ProviderDriverRpc {
         const driver = this.requireDriver(agent.provider);
         if (!driver.archiveAgentConversation || !offers(driver, agent, 'conversationArchive')) return { supported: false };
         await driver.archiveAgentConversation(agent);
+        return { supported: true };
+      }
+      case backendMethods.driverConversationUnarchive: {
+        const { agent } = requireAgentParams(params);
+        const driver = this.requireDriver(agent.provider);
+        const ref = conversationRefFromAgent(agent);
+        if (!ref || !driver.setConversationStorage || !offers(driver, agent, 'conversationArchive')) return { supported: false };
+        await driver.setConversationStorage(ref, 'active');
         return { supported: true };
       }
       case backendMethods.driverConversationDelete: {

@@ -342,6 +342,17 @@ export type OpenInApplicationCatalog = {
   applications: OpenInApplicationOption[];
 };
 
+/** What it takes to bring a closed agent back under its own id and in the place it held. */
+export type ClosedAgentRecord = {
+  agent: Agent;
+  /** Position in the roster. */
+  index: number;
+  /** Position within its team, used when the agent that followed it is gone. */
+  teamPosition: number;
+  /** The agent that followed it in its team. */
+  nextAgentId?: string;
+};
+
 export type Agent = {
   /** Transient desktop presentation; cleared when dispatch settles or the daemon restarts. */
   pendingPrompts?: import('./pending-conversation-prompt').PendingConversationPrompt[];
@@ -982,6 +993,8 @@ export type AppApi = {
   loadAgentTurnHistory(agentId: string, turnId: string): Promise<void>;
   readConversationContent(agentId: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   closeAgent(agentId: string, input?: AgentCloseInput): Promise<AppSnapshot>;
+  /** Brings back a closed agent in its former place, with its conversation. */
+  restoreClosedAgent?(record: ClosedAgentRecord): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
   markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;

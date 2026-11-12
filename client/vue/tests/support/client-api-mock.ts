@@ -194,6 +194,7 @@ export function createClientApiMock(
     loadAgentTurnHistory: unscripted<'loadAgentTurnHistory'>('loadAgentTurnHistory'),
     readConversationContent: unscripted<'readConversationContent'>('readConversationContent'),
     closeAgent: unscripted<'closeAgent'>('closeAgent'),
+    restoreClosedAgent: unscripted<'restoreClosedAgent'>('restoreClosedAgent'),
     markAgentRead: vi.fn().mockResolvedValue(undefined),
     selectAgent: unscripted<'selectAgent'>('selectAgent'),
   getUsage: vi.fn().mockResolvedValue({recordedSince:0,retainedSince:0,rows:[]}),

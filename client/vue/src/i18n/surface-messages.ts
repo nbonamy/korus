@@ -147,6 +147,8 @@ export const conversationMessages = {
     "closingAgent": "Closing agent",
     "worktreeDeleted": "Worktree deleted",
     "agentClosed": "Agent closed",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the agent",
     "worktreeDeletionFailed": "Worktree deletion failed",
     "agentCloseFailed": "Agent close failed"
   },

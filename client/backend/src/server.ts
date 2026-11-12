@@ -63,7 +63,7 @@ import { createAppRpcError, createAppRpcResult, appRpcErrorCodes, isAppRpcNotifi
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
-import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
 import { providerDisplayName, resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
@@ -1248,6 +1248,27 @@ export class AppBackendServer {
   }
 
   /** A quick chat has no project to come back to, so closing it deletes the provider session; everything else is archived. */
+  /** Puts a closed agent back where it was, under its own id, and takes its conversation out of the archive. */
+  private async restoreClosedAgent(record: ClosedAgentRecord): Promise<AppSnapshot> {
+    const { agent } = record;
+    if (this.snapshot.agents.some(candidate => candidate.id === agent.id)) return this.persistAndEmitSnapshot();
+    if (agent.providerSession) {
+      await this.driverRpc?.handle(backendMethods.driverConversationUnarchive, { agent }).catch(error => warnMain('agent-restore', 'Could not unarchive the conversation', { message: String(error) }));
+    }
+    const restored = structuredClone(agent);
+    this.snapshot.agents.splice(Math.min(record.index, this.snapshot.agents.length), 0, restored);
+    const team = this.snapshot.teams.find(candidate => candidate.id === restored.teamId) ?? this.snapshot.teams[0];
+    if (team) {
+      restored.teamId = team.id;
+      const next = record.nextAgentId ? team.agentIds.indexOf(record.nextAgentId) : -1;
+      team.agentIds.splice(next < 0 ? Math.min(record.teamPosition, team.agentIds.length) : next, 0, restored.id);
+      team.activeAgentId = restored.id;
+      this.snapshot.activeTeamId = team.id;
+    }
+    this.snapshot.activeAgentId = restored.id;
+    return this.persistAndEmitSnapshot();
+  }
+
   private async retireConversation(agent: Agent): Promise<void> {
     // A conversation is put away only once its turn has stopped; archiving under a running turn, such as a review in
     // progress, leaves the harness working on a conversation that is no longer there. A turn that already ended is fine.
@@ -2353,6 +2374,9 @@ export class AppBackendServer {
             return this.persistAndEmitSnapshot();
           } finally { this.repositoryDeletionsInFlight.delete(preview.repositoryPath); }
         });
+      }
+      case backendMethods.agentRestore: {
+        return createAppRpcResult(message.id, await this.restoreClosedAgent(requireClosedAgentRecord(message.params)));
       }
       case backendMethods.agentDelete: {
         const { agentId, input } = requireAgentCloseRequest(message.params);
@@ -4832,6 +4856,16 @@ function requireTeamId(params: unknown): string {
 function requireAgentId(params: unknown): string {
   const record = requireRecord(params);
   return requireString(record.agentId, 'agentId');
+}
+
+function requireClosedAgentRecord(params: unknown): ClosedAgentRecord {
+  const record = requireRecord(requireRecord(params).record);
+  const agent = requireRecord(record.agent) as unknown as Agent;
+  requireString(agent.id, 'agent.id');
+  if (!Number.isInteger(record.index) || (record.index as number) < 0) throw new Error('index must be a position.');
+  if (!Number.isInteger(record.teamPosition) || (record.teamPosition as number) < 0) throw new Error('teamPosition must be a position.');
+  if (record.nextAgentId !== undefined && typeof record.nextAgentId !== 'string') throw new Error('nextAgentId must be a string.');
+  return record as unknown as ClosedAgentRecord;
 }
 
 function requireAgentCloseRequest(params: unknown): {
