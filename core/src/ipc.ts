@@ -205,7 +205,6 @@ export const ipcChannels = {
   syncComposerDraft: 'window:composer-draft:sync',
   setAgentGoal: 'agent:goal:set',
   clearAgentGoal: 'agent:goal:clear',
-  setAgentApprovalPreset: 'agent:approval-preset:set',
   setAgentPermissionMode: 'agent:permission-mode:set',
   sendPrompt: 'agent:send-prompt',
   steerPrompt: 'agent:steer-prompt',

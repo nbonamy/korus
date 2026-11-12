@@ -254,68 +254,37 @@ describe('useAppState', () => {
     expect(state.answeredClientRequestIds.value.has('42')).toBe(false);
   });
 
-  it('sets the active approval preset through the preload bridge', async () => {
+  it('sets a Codex permission through the same path as every harness', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const updatedSnapshot = createInitialSnapshot();
-    updatedSnapshot.agents[0].providerDefaults = {
-      kind: 'codex',
-      approvalPreset: 'approve-for-me',
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'auto_review',
-      sandboxMode: 'workspace-write',
-    };
-    const setAgentApprovalPreset = vi.fn().mockResolvedValue(updatedSnapshot);
-    stubElectronTestWindow({
-      app: {
-        setAgentApprovalPreset,
-      } satisfies Partial<AppApi>,
-    });
-
+    updatedSnapshot.agents[0].providerDefaults = { kind: 'codex', permission: 'approve-for-me' };
+    const setAgentPermissionMode = vi.fn().mockResolvedValue(updatedSnapshot);
+    stubElectronTestWindow({ app: { setAgentPermissionMode } satisfies Partial<AppApi> });
     const state = useAppState();
     state.snapshot.value = remoteSnapshot;
-
-    expect(state.activeApprovalPreset.value).toBe('full-access');
-    await state.setApprovalPreset('approve-for-me');
-
-    expect(setAgentApprovalPreset).toHaveBeenCalledWith('agent-dina', 'approve-for-me');
-    expect(state.snapshot.value).toStrictEqual(updatedSnapshot);
-    expect(state.activeApprovalPreset.value).toBe('approve-for-me');
+    expect(state.activePermissionMode.value).toBe('ask-for-approval');
+    await state.setPermissionMode('approve-for-me');
+    expect(setAgentPermissionMode).toHaveBeenCalledWith('agent-dina', 'approve-for-me');
+    expect(state.activePermissionMode.value).toBe('approve-for-me');
   });
 
-  it('uses the first allowed approval preset when stored defaults are forbidden', async () => {
+  it('uses the first offered permission when the stored one is not offered', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.providerRuntimes = [{
-      provider: 'codex',
-      status: 'running',
-      capabilities: {
-        approvalPresets: ['ask-for-approval'],
-      },
-    }];
-    remoteSnapshot.agents[0].providerDefaults = {
-      kind: 'codex',
-      approvalPreset: 'full-access',
-      approvalPolicy: 'never',
-      sandboxMode: 'danger-full-access',
-    };
-    const setAgentApprovalPreset = vi.fn();
-    stubElectronTestWindow({
-      app: {
-        setAgentApprovalPreset,
-      } satisfies Partial<AppApi>,
-    });
-
+    remoteSnapshot.providerRuntimes = [{ provider: 'codex', status: 'running', capabilities: { permissionModes: [{ id: 'ask-for-approval', label: 'Ask' }] } }];
+    remoteSnapshot.agents[0].providerDefaults = { kind: 'codex', permission: 'full-access' };
+    const setAgentPermissionMode = vi.fn();
+    stubElectronTestWindow({ app: { setAgentPermissionMode } satisfies Partial<AppApi> });
     const state = useAppState();
     state.snapshot.value = remoteSnapshot;
-
-    expect(state.activeApprovalPreset.value).toBe('ask-for-approval');
-    await state.setApprovalPreset('full-access');
-    expect(setAgentApprovalPreset).not.toHaveBeenCalled();
+    expect(state.activePermissionMode.value).toBe('ask-for-approval');
+    await state.setPermissionMode('full-access');
+    expect(setAgentPermissionMode).not.toHaveBeenCalled();
   });
 
   it('restores the selected Antigravity permission mode without borrowing Claude defaults', () => {
     const state = useAppState();
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'antigravity', providerSession: undefined, providerDefaults: { kind: 'antigravity', permissionMode: 'accept-edits' } };
+    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'antigravity', providerSession: undefined, providerDefaults: { kind: 'antigravity', permission: 'accept-edits' } };
     state.snapshot.value = snapshot;
     expect(state.activePermissionMode.value).toBe('accept-edits');
     expect(state.activeProviderCapabilities.value.permissionModes?.map(option => option.id)).toEqual(['default', 'accept-edits', 'auto']);
@@ -327,13 +296,13 @@ describe('useAppState', () => {
       ...remoteSnapshot.agents[0],
       provider: 'claude',
       providerSession: undefined,
-      providerDefaults: { kind: 'claude', model: 'sonnet', permissionMode: 'acceptEdits' },
+      providerDefaults: { kind: 'claude', model: 'sonnet', permission: 'acceptEdits' },
     };
     const updatedSnapshot = structuredClone(remoteSnapshot);
     updatedSnapshot.agents[0].providerDefaults = {
       kind: 'claude',
       model: 'sonnet',
-      permissionMode: 'bypassPermissions',
+      permission: 'bypassPermissions',
     };
     const setAgentPermissionMode = vi.fn().mockResolvedValue(updatedSnapshot);
     stubElectronTestWindow({

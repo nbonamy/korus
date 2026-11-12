@@ -655,10 +655,6 @@ export class AppController {
       return this.clearAgentGoal(agentId);
     });
 
-    ipc.handle(ipcChannels.setAgentApprovalPreset, (_event, agentId: string, preset: ApprovalPreset) => {
-      return this.setAgentApprovalPreset(agentId, preset);
-    });
-
     ipc.handle(ipcChannels.setAgentPermissionMode, (_event, agentId: string, mode: string) => {
       return this.setAgentPermissionMode(agentId, mode);
     });
@@ -1679,10 +1675,6 @@ export class AppController {
 
   private async clearAgentGoal(agentId: string): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentGoalClear, { agentId }));
-  }
-
-  private async setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentApprovalPresetUpdate, { agentId, preset }));
   }
 
   private async setAgentPermissionMode(agentId: string, mode: string): Promise<AppSnapshot> {

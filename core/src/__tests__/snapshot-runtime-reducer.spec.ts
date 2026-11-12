@@ -128,7 +128,7 @@ describe('snapshot runtime reducer', () => {
           model: 'gpt-5.5',
           reasoningEffort: 'high',
           serviceTier: 'fast',
-          approvalPreset: 'approve-for-me',
+          permission: 'approve-for-me',
         },
       },
       occurredAt: '2026-06-05T00:00:01.000Z',
@@ -138,10 +138,7 @@ describe('snapshot runtime reducer', () => {
     expect(snapshot.agents[0].providerDefaults).toStrictEqual({
       kind: 'codex',
       model: 'gpt-5.5',
-      approvalPreset: 'approve-for-me',
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'auto_review',
-      sandboxMode: 'workspace-write',
+      permission: 'approve-for-me',
       reasoningEffort: 'high',
       serviceTier: 'fast',
     });
@@ -155,7 +152,7 @@ describe('snapshot runtime reducer', () => {
       payload: {
         settings: {
           serviceTier: null,
-          approvalPreset: 'full-access',
+          permission: 'full-access',
         },
       },
       occurredAt: '2026-06-05T00:00:02.000Z',
@@ -163,7 +160,7 @@ describe('snapshot runtime reducer', () => {
 
     expect(snapshot.agents[0].providerDefaults).toMatchObject({
       kind: 'codex',
-      approvalPreset: 'full-access',
+      permission: 'full-access',
       serviceTier: null,
     });
   });
@@ -181,12 +178,12 @@ describe('snapshot runtime reducer', () => {
       provider: 'codex',
       conversationId: 'thread-old',
       type: 'conversation.settingsUpdated',
-      payload: { settings: { model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', approvalPreset: 'full-access' } },
+      payload: { settings: { model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', permission: 'full-access' } },
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
     expect(snapshot.agents[0].providerDefaults).toMatchObject({
-      model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', userSelectedModel: true, approvalPreset: 'full-access',
+      model: 'astra', reasoningEffort: 'medium', serviceTier: 'fast', userSelectedModel: true, permission: 'full-access',
     });
   });
 

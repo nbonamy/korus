@@ -892,7 +892,7 @@ describe('useAppState', () => {
     state.selectModel('missing');
     state.selectReasoningEffort('high');
     state.selectServiceTier('fast');
-    await state.setApprovalPreset('full-access');
+    await state.setPermissionMode('full-access');
     state.updateComposerState('missing', { text: 'ignored', selectionStart: 0, selectionEnd: 0 });
     state.updateComposerAttachments('missing', []);
     await state.loadOlderAgentHistory('agent-dina');

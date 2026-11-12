@@ -646,7 +646,7 @@ describe('CodeReviewService', () => {
     test.owner.providerDefaults = { kind: 'codex', model: 'codex-model', reasoningEffort: 'high' };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { provider: 'claude' } });
     expect(reviewer(test, session)).toMatchObject({ provider: 'claude' });
-    expect(reviewer(test, session).providerDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permissionMode: 'auto' });
+    expect(reviewer(test, session).providerDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permission: 'auto' });
     await vi.waitFor(() => expect(test.turns).toHaveLength(1));
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__report_finding`);
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__finish_review_round`);
@@ -665,9 +665,9 @@ describe('CodeReviewService', () => {
     const test = harness([async () => ({ text: '', findingCount: 0 })]);
     test.snapshot.general.providerApprovalDefaults = { claude: 'auto' };
     test.owner.provider = 'claude';
-    test.owner.providerDefaults = { kind: 'claude', model: 'opus', ...(permissionMode ? { permissionMode } : {}) };
+    test.owner.providerDefaults = { kind: 'claude', model: 'opus', ...(permissionMode ? { permission: permissionMode } : {}) };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
-    expect(reviewer(test, session).providerDefaults).toMatchObject({ kind: 'claude', model: 'opus', permissionMode: permissionMode ?? 'auto' });
+    expect(reviewer(test, session).providerDefaults).toMatchObject({ kind: 'claude', model: 'opus', permission: permissionMode ?? 'auto' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
   });
   it('creates an independent reviewer as a normal adjacent agent for the same workspace', async () => {

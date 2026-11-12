@@ -1682,7 +1682,7 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = [{ provider: 'antigravity', installed: true, connected: true, checking: false }];
     const parent = snapshot.agents[0]!;
     parent.provider = 'antigravity';
-    parent.providerDefaults = { kind: 'antigravity', model: 'gemini-low', permissionMode: 'default' };
+    parent.providerDefaults = { kind: 'antigravity', model: 'gemini-low', permission: 'default' };
     parent.providerSession = { kind: 'antigravity', sessionId: 'parent-session' };
     const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'antigravity', sessionId: 'child-session' }, turnId: 'child-turn' });
     service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
@@ -1735,7 +1735,7 @@ describe('AppMcpService', () => {
       reasoningEffort: 'medium',
       serviceTier: null,
       userSelectedModel: true,
-      permissionMode: 'auto',
+      permission: 'auto',
     });
   });
 

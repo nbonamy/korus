@@ -34,7 +34,7 @@ describe('state persistence', () => {
     const agent = snapshot.agents[0]!;
     agent.provider = 'cursor';
     agent.providerSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
-    agent.providerDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permissionMode: 'allowlist', userSelectedModel: true };
+    agent.providerDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permission: 'allowlist', userSelectedModel: true };
     agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { provider: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
     agent.handoff = { operationId: 'cursor-handoff', sourceAgentId: agent.id, sourceTitle: 'Cursor source',
       sourceRef: { provider: 'cursor', folder: agent.folder, sessionId: 'cursor-source' }, phase: 'complete',
@@ -159,7 +159,7 @@ describe('state persistence', () => {
     const agent = snapshot.agents[0]!;
     agent.provider = 'antigravity';
     agent.providerSession = { kind: 'antigravity', sessionId: 'native-acp-session' };
-    agent.providerDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permissionMode: 'default' };
+    agent.providerDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permission: 'default' };
     snapshot.general.providerHomes = { antigravity: { homePath: '/private/acp', isolated: true, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, antigravity: false };
     snapshot.general.providerModelDefaults = { antigravity: {provider: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
@@ -761,10 +761,7 @@ describe('state persistence', () => {
       providerSession: { kind: 'codex', threadId: 'thread-dina' },
       providerDefaults: {
         kind: 'codex',
-        approvalPreset: 'approve-for-me',
-        approvalPolicy: 'on-request',
-        approvalsReviewer: 'auto_review',
-        sandboxMode: 'workspace-write',
+        permission: 'approve-for-me',
         serviceTier: 'fast',
       },
       openInApplication: 'xcode',
@@ -836,7 +833,7 @@ describe('state persistence', () => {
     expect(writtenAgent.engine).toStrictEqual({
       kind: 'codex',
       session: { threadId: 'thread-dina' },
-      settings: { approvalPreset: 'approve-for-me', serviceTier: 'fast' },
+      settings: { permission: 'approve-for-me', serviceTier: 'fast' },
     });
     expect(writtenAgent).not.toHaveProperty('provider');
     expect(writtenAgent).not.toHaveProperty('teamId');
@@ -921,10 +918,7 @@ describe('state persistence', () => {
       providerSession: { kind: 'codex', threadId: 'thread-dina' },
       providerDefaults: {
         kind: 'codex',
-        approvalPreset: 'approve-for-me',
-        approvalPolicy: 'on-request',
-        approvalsReviewer: 'auto_review',
-        sandboxMode: 'workspace-write',
+        permission: 'approve-for-me',
         serviceTier: 'fast',
       },
       contextUsage: {
@@ -1011,10 +1005,7 @@ describe('state persistence', () => {
       provider: 'codex',
       providerDefaults: {
         kind: 'codex',
-        approvalPreset: 'approve-for-me',
-        approvalPolicy: 'on-request',
-        approvalsReviewer: 'auto_review',
-        sandboxMode: 'workspace-write',
+        permission: 'approve-for-me',
         serviceTier: 'fast',
       },
       providerSession: { kind: 'codex', threadId: 'thread-dina' },
@@ -1444,7 +1435,7 @@ describe('state persistence', () => {
         kind: 'claude',
         model: 'sonnet',
         reasoningEffort: 'high',
-        permissionMode: 'acceptEdits',
+        permission: 'acceptEdits',
       },
     };
 

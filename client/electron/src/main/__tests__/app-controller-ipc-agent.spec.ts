@@ -118,7 +118,7 @@ describe('AppController', () => {
     snapshot.agents[0] = {
       ...snapshot.agents[0]!,
       provider: 'claude',
-      providerDefaults: { kind: 'claude', permissionMode: 'acceptEdits' },
+      providerDefaults: { kind: 'claude', permission: 'acceptEdits' },
     };
     const request = vi.fn().mockResolvedValue(snapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));

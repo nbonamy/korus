@@ -193,7 +193,7 @@ export type {
   ProviderSkillSummary,
   ApprovalPreset,
 } from './contracts/provider';
-export type { CodexAccount, CodexApprovalsReviewer, CodexAuthentication } from './contracts/provider-setup';
+export type { CodexAccount, CodexAuthentication } from './contracts/provider-setup';
 export {
   subagentActivityKinds,
   subagentOperationKinds,
@@ -515,7 +515,8 @@ export type AppGeneralSettings = {
   missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
-  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string; cursor?: string };
+  /** The permission each harness starts new agents with, as one of the ids it offers. */
+  providerApprovalDefaults?: Partial<Record<HarnessProvider, string>>;
   agentListCompact: boolean;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
@@ -1035,7 +1036,6 @@ export type AppApi = {
   syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;
   setAgentGoal(agentId: string, objective: string): Promise<AppSnapshot>;
   clearAgentGoal(agentId: string): Promise<AppSnapshot>;
-  setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot>;
   setAgentPermissionMode(agentId: string, mode: string): Promise<AppSnapshot>;
   sendPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   steerPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;

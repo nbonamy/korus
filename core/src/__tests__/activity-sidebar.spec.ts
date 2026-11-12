@@ -16,11 +16,11 @@ describe('shared activity sidebar across the companion boundary', () => {
       agent('working-new', { status: { type: 'working' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' }),
       agent('working', { status: { type: 'working' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z' }),
       agent('idle', { provider: 'claude', hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z',
-        providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast', permissionMode: 'default' } }),
+        providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast', permission: 'default' } }),
     ] };
     const wire = projectCompanionWorkspace(source);
     expect(wire.agents.find(a => a.id === 'recent')!.lastActivityAt).toBe('2026-10-15T11:59:00Z');
-    expect(wire.agents.find(a => a.id === 'idle')!.providerDefaults).toStrictEqual({ kind: 'claude', model: 'opus', serviceTier: 'fast', permissionMode: 'default' });
+    expect(wire.agents.find(a => a.id === 'idle')!.providerDefaults).toStrictEqual({ kind: 'claude', model: 'opus', serviceTier: 'fast', permission: 'default' });
     const groups = (agents: Agent[], time: number) => projectActivitySidebar({ agents, now: time,
       repositoryGroups: projectWorkspaceSidebar({ agents, activeAgentId: 'working', quickChatsLabel: 'Chats' }), label: activity => activity });
     const ids = (agents: Agent[], time: number) => groups(agents, time).map(group => [group.activity, group.sessions.map(s => s.agentId)]);

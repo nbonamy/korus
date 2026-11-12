@@ -92,40 +92,11 @@ function expectProviderDefaults(value: unknown, path: string): void {
     expectOptional(value, key, path, expectString),
   );
   expectOptional(value, 'userSelectedModel', path, expectBoolean);
-  if (value.kind === 'codex') {
-    expectOptional(
-      value,
-      'approvalPreset',
-      path,
-      (candidate, candidatePath) => {
-        expectLiteral(
-          candidate,
-          ['ask-for-approval', 'approve-for-me', 'full-access'],
-          candidatePath,
-        );
-      },
-    );
-    ['approvalPolicy', 'sandboxMode'].forEach((key) =>
-      expectOptional(value, key, path, expectString),
-    );
-    expectOptional(
-      value,
-      'approvalsReviewer',
-      path,
-      (candidate, candidatePath) => {
-        expectLiteral(
-          candidate,
-          ['user', 'auto_review', 'guardian_subagent'],
-          candidatePath,
-        );
-      },
-    );
-    expectOptional(value, 'serviceTier', path, (candidate, candidatePath) =>
-      expectNullable(candidate, candidatePath, expectString),
-    );
-    return;
-  }
-  expectOptional(value, 'permissionMode', path, expectString);
+  expectOptional(value, 'serviceTier', path, (candidate, candidatePath) =>
+    expectNullable(candidate, candidatePath, expectString),
+  );
+  expectOptional(value, 'permission', path, expectString);
+  if (value.kind !== 'claude') return;
   expectOptional(value, 'thinking', path, (candidate, candidatePath) => {
     expectRecord(candidate, candidatePath);
     expectLiteral(
@@ -396,14 +367,13 @@ export const agentPayloadValidators = {
   'conversation.settingsUpdated': (value, path) => {
     expectRecord(value, path);
     expectRecord(value.settings, `${path}.settings`);
-    ['model', 'reasoningEffort', 'permissionMode'].forEach((key) => expectOptional(value.settings as Record<string, unknown>, key, `${path}.settings`, expectString));
+    ['model', 'reasoningEffort', 'permission'].forEach((key) => expectOptional(value.settings as Record<string, unknown>, key, `${path}.settings`, expectString));
     expectOptional(value.settings, 'serviceTier', `${path}.settings`, (candidate, candidatePath) => expectNullable(candidate, candidatePath, expectString));
-    expectOptional(value.settings, 'approvalPreset', `${path}.settings`, (candidate, candidatePath) => expectLiteral(candidate, ['ask-for-approval', 'approve-for-me', 'full-access'], candidatePath));
   },
   'conversation.modeUpdated': (value, path) => {
     expectRecord(value, path);
     expectLiteral(value.mode, ['default', 'plan'], `${path}.mode`);
-    expectOptional(value, 'permissionMode', path, expectString);
+    expectOptional(value, 'permission', path, expectString);
   },
   'conversation.goalUpdated': (value, path) => {
     expectRecord(value, path);

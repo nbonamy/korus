@@ -365,7 +365,7 @@ export class CompanionManager {
       setProvider: async (agentId, provider) => { await this.provider.request(backendMethods.agentUpdate, { input: { id: agentId, selection: { provider: provider } }, _clientId: 'companion-write' }); },
       closePreview: agentId => this.provider.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
       close: async (agentId, input) => { await this.provider.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
-      setApprovalPreset: async (agentId, preset) => { await this.provider.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
+      setApprovalPreset: async (agentId, preset) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode: preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => (await this.provider.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
       readReview: agentId => readReviewSession(this.provider, peerIdFromPrivateKey(this.key).toString(), agentId),

@@ -62,7 +62,6 @@
     :skill-catalog-status="skillCatalogStatus"
     :goal="activeGoal"
     :approvals="activeProviderApprovals"
-    :approval-preset="activeApprovalPreset"
     :permission-mode="activePermissionMode"
     :plan-mode="planMode"
     :selected-model-id="selectedModelId"
@@ -188,7 +187,6 @@
     @select-model="selectModel"
     @select-reasoning-effort="selectReasoningEffort"
     @select-service-tier="selectServiceTier"
-    @select-approval-preset="setApprovalPreset"
     @select-permission-mode="setPermissionMode"
     @resolve-approval="resolveProviderApproval"
     @update:plan-mode="setPlanMode"
@@ -284,7 +282,6 @@ const {
   activeAgent,
   activeGoal,
   activeProviderApprovals,
-  activeApprovalPreset,
   activePermissionMode,
   activeQueuedPrompts,
   activeComposerState,
@@ -442,8 +439,6 @@ const {
   selectReasoningEffortForAgent,
   selectServiceTier,
   selectServiceTierForAgent,
-  setApprovalPreset,
-  setApprovalPresetForAgent,
   setPermissionMode,
   setPermissionModeForAgent,
   updateComposerState,
@@ -526,7 +521,6 @@ const agentConversationActions: AgentConversationActions = {
   selectReasoningEffort: selectReasoningEffortForAgent,
   selectServiceTier: selectServiceTierForAgent,
   setPlanMode: setPlanModeForAgent,
-  setApprovalPreset: setApprovalPresetForAgent,
   setPermissionMode: setPermissionModeForAgent,
   updateComposerState,
   updateAttachments: updateComposerAttachments,

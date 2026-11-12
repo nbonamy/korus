@@ -380,15 +380,6 @@ export class ProviderDriverRpc {
         }
         return driver.clearGoal(agent);
       }
-      case backendMethods.driverApprovalPresetUpdate: {
-        const { agent } = requireAgentParams(params);
-        const record = requireRecord(params);
-        const driver = this.requireDriver(agent.provider);
-        if (!driver.setApprovalPreset || !offers(driver, agent, 'approvalPresets')) {
-          throw unsupportedProviderFeature(agent, 'approval presets');
-        }
-        return driver.setApprovalPreset(agent, record.preset as never);
-      }
       case backendMethods.driverPermissionModeUpdate: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);

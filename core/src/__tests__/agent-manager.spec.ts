@@ -35,13 +35,13 @@ describe('agent-manager', () => {
     createAgentInSnapshot(snapshot, { name: 'ACP', folder: '/repo', selection: { provider: 'antigravity' } }, undefined, 'acp');
     const agent = snapshot.agents.find(value => value.id === 'acp')!;
     expect(agent.provider).toBe('antigravity');
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permissionMode: 'accept-edits' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permission: 'accept-edits' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'claude' } });
     expect(agent.providerDefaults).toStrictEqual({ kind: 'claude' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'antigravity' } });
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permissionMode: 'accept-edits' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permission: 'accept-edits' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: {provider: 'antigravity',  model: 'gemini-high', reasoningEffort: 'low', serviceTier: 'fast' } });
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-high', reasoningEffort: 'low', userSelectedModel: true, permissionMode: 'accept-edits' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-high', reasoningEffort: 'low', userSelectedModel: true, permission: 'accept-edits' });
     expect(snapshot.general.providerModelDefaults.antigravity).toEqual({ provider: 'antigravity', model: 'gemini-high', reasoningEffort: 'low', serviceTier: null });
   });
   it('applies a chosen model to a new agent on top of the provider approval defaults without changing them', () => {
@@ -53,12 +53,12 @@ describe('agent-manager', () => {
     createAgentInSnapshot(snapshot, { name: null, folder: '/repo', selection: { provider: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } }, undefined, 'picked');
 
     expect(snapshot.agents.find(agent => agent.id === 'picked')!.providerDefaults)
-      .toStrictEqual({ kind: 'claude', model: 'opus', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast', permissionMode: 'acceptEdits' });
+      .toStrictEqual({ kind: 'claude', model: 'opus', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast', permission: 'acceptEdits' });
     expect(snapshot.general.providerModelDefaults?.claude).toStrictEqual({provider: 'claude',  model: 'sonnet', reasoningEffort: 'low', serviceTier: null });
 
     createAgentInSnapshot(snapshot, { name: null, folder: '/repo', selection: { provider: 'claude', reasoningEffort: null, serviceTier: null, model: 'haiku' } }, undefined, 'model-only');
     expect(snapshot.agents.find(agent => agent.id === 'model-only')!.providerDefaults)
-      .toStrictEqual({ kind: 'claude', model: 'haiku', userSelectedModel: true, serviceTier: null, permissionMode: 'acceptEdits' });
+      .toStrictEqual({ kind: 'claude', model: 'haiku', userSelectedModel: true, serviceTier: null, permission: 'acceptEdits' });
   });
   it('seeds new agents and quick chats with per-provider approvals without overriding explicit settings or existing chats', () => {
     const snapshot = createInitialSnapshot();
@@ -71,14 +71,14 @@ describe('agent-manager', () => {
       createQuickChatInSnapshot(snapshot, { selection: { provider: provider } }, undefined, `quick-${provider}`);
       for (const id of [`agent-${provider}`, `quick-${provider}`]) {
         expect(snapshot.agents.find(agent => agent.id === id)?.providerDefaults).toMatchObject(provider === 'codex'
-          ? { kind: 'codex', approvalPreset: 'ask-for-approval', approvalPolicy: 'on-request', sandboxMode: 'workspace-write' }
-          : provider === 'claude' ? { kind: 'claude', permissionMode: 'acceptEdits' } : { kind: 'cursor', permissionMode: 'full-access' });
+          ? { kind: 'codex', permission: 'ask-for-approval' }
+          : provider === 'claude' ? { kind: 'claude', permission: 'acceptEdits' } : { kind: 'cursor', permission: 'full-access' });
       }
     }
-    createAgentInSnapshot(snapshot, { name: 'Explicit', folder: '/repo', providerDefaults: { kind: 'codex', approvalPreset: 'full-access' }, selection: { provider: 'codex' } }, undefined, 'explicit');
-    expect(snapshot.agents.find(agent => agent.id === 'explicit')?.providerDefaults).toEqual({ kind: 'codex', approvalPreset: 'full-access' });
-    createAgentInSnapshot(snapshot, { name: 'Explicit Cursor', folder: '/repo', providerDefaults: { kind: 'cursor', permissionMode: 'default' }, selection: { provider: 'cursor' } }, undefined, 'explicit-cursor');
-    expect(snapshot.agents.find(agent => agent.id === 'explicit-cursor')?.providerDefaults).toStrictEqual({ kind: 'cursor', permissionMode: 'default' });
+    createAgentInSnapshot(snapshot, { name: 'Explicit', folder: '/repo', providerDefaults: { kind: 'codex', permission: 'full-access' }, selection: { provider: 'codex' } }, undefined, 'explicit');
+    expect(snapshot.agents.find(agent => agent.id === 'explicit')?.providerDefaults).toEqual({ kind: 'codex', permission: 'full-access' });
+    createAgentInSnapshot(snapshot, { name: 'Explicit Cursor', folder: '/repo', providerDefaults: { kind: 'cursor', permission: 'default' }, selection: { provider: 'cursor' } }, undefined, 'explicit-cursor');
+    expect(snapshot.agents.find(agent => agent.id === 'explicit-cursor')?.providerDefaults).toStrictEqual({ kind: 'cursor', permission: 'default' });
     expect(snapshot.agents.slice(0, existing.length)).toEqual(existing);
   });
 
@@ -89,11 +89,11 @@ describe('agent-manager', () => {
     const agent = snapshot.agents[0]!;
     delete agent.providerSession;
     agent.status = { type: 'idle' };
-    agent.providerDefaults = { kind: 'codex', model: 'codex-model', approvalPreset: 'full-access', userSelectedModel: true };
+    agent.providerDefaults = { kind: 'codex', model: 'codex-model', permission: 'full-access', userSelectedModel: true };
     snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'claude' } });
     expect(agent.provider).toBe('claude');
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'claude', permissionMode: 'acceptEdits' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'claude', permission: 'acceptEdits' });
     agent.status = { type: 'working' };
     expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'codex' } })).toThrow('before the first prompt');
     agent.status = { type: 'idle' };

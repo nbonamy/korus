@@ -18,7 +18,6 @@ import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
 import type { AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, ProviderDefaults, ProviderSessionData, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
 import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
-import { isCodexApprovalPreset, isCodexApprovalsReviewer } from '@workspace/core/codex-approval-presets';
 import { normalizeGeneralSettings, normalizeSourceFolderState, normalizeThemeSettings } from '@workspace/core/settings';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { sanitizeWorkItemAssignmentSource, workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -1238,54 +1237,18 @@ function sanitizeProviderSession(value: unknown, expectedProvider: HarnessProvid
 }
 
 function sanitizeProviderDefaults(value: unknown, expectedProvider: HarnessProvider): ProviderDefaults | undefined {
-  if (!isRecord(value) || typeof value.kind !== 'string') {
-    return undefined;
-  }
-  if (value.kind === 'cursor' && expectedProvider === 'cursor') return {
-    kind: 'cursor',
+  if (!isRecord(value) || value.kind !== expectedProvider) return undefined;
+  // The same fields for every harness; only Claude adds its thinking budget.
+  const thinking = value.kind === 'claude' ? sanitizeClaudeThinking(value.thinking) : undefined;
+  return {
+    kind: expectedProvider,
     ...(typeof value.model === 'string' ? { model: value.model } : {}),
     ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-    ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
     ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
     ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-  };
-  if (value.kind === 'antigravity' && expectedProvider === 'antigravity') return {
-    kind: 'antigravity',
-    ...(typeof value.model === 'string' ? { model: value.model } : {}),
-    ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-    ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
-  };
-
-  if (value.kind === 'codex') {
-    const defaults = {
-      kind: 'codex',
-      ...(typeof value.model === 'string' ? { model: value.model } : {}),
-      ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-      ...(isCodexApprovalPreset(value.approvalPreset) ? { approvalPreset: value.approvalPreset } : {}),
-      ...(typeof value.approvalPolicy === 'string' ? { approvalPolicy: value.approvalPolicy } : {}),
-      ...(isCodexApprovalsReviewer(value.approvalsReviewer) ? { approvalsReviewer: value.approvalsReviewer } : {}),
-      ...(typeof value.sandboxMode === 'string' ? { sandboxMode: value.sandboxMode } : {}),
-      ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
-      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-    } satisfies ProviderDefaults;
-    return defaults.kind === expectedProvider ? defaults : undefined;
-  }
-
-  if (value.kind === 'claude') {
-    const thinking = sanitizeClaudeThinking(value.thinking);
-    const defaults = {
-      kind: 'claude',
-      ...(typeof value.model === 'string' ? { model: value.model } : {}),
-      ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-      ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
-      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-      ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
-      ...(thinking ? { thinking } : {}),
-    } satisfies ProviderDefaults;
-    return defaults.kind === expectedProvider ? defaults : undefined;
-  }
-
-  return undefined;
+    ...(typeof value.permission === 'string' ? { permission: value.permission } : {}),
+    ...(thinking ? { thinking } : {}),
+  } as ProviderDefaults;
 }
 
 function sanitizeClaudeThinking(value: unknown): Extract<ProviderDefaults, { kind: 'claude' }>['thinking'] | undefined {

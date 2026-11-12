@@ -41,7 +41,7 @@ describe('AgentConversationPanel', () => {
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(async (id, text, options) => { sent(id, text, composer.resolvePromptOptions(id, text, options)); }), steer: vi.fn(), interrupt: vi.fn(),
       deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), respond: vi.fn(),
-      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, providerDefaults: { kind: 'cursor', permissionMode: mode } }; }),
+      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, providerDefaults: { kind: 'cursor', permission: mode } }; }),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const rawDetails = ref(false);
@@ -62,7 +62,6 @@ describe('AgentConversationPanel', () => {
       expect(choices[0]!.attributes('aria-checked')).toBe('true');
       await choices[1]!.trigger('click');
       expect(actions.setPermissionMode).toHaveBeenCalledExactlyOnceWith(agent.id, 'full-access');
-      expect(actions.setApprovalPreset).not.toHaveBeenCalled();
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
@@ -178,7 +177,7 @@ describe('AgentConversationPanel', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
@@ -217,7 +216,7 @@ describe('AgentConversationPanel', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
@@ -278,7 +277,7 @@ describe('AgentConversationPanel', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const selectModelMenuItem = vi.fn();
@@ -329,7 +328,7 @@ describe('AgentConversationPanel', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; },
       updateAttachments: (_id, attachments) => { view.attachments = attachments; },
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
@@ -373,7 +372,7 @@ describe('AgentConversationPanel', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; },
       updateAttachments: (_id, attachments) => { view.attachments = attachments; },
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),

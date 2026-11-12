@@ -21,7 +21,6 @@ import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
-import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
 import { type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-sdk';
 import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
@@ -458,22 +457,6 @@ export function useAppState() {
   });
 
   const activeGoal = computed(() => activeAgent.value?.goal ?? null);
-  const activeApprovalPreset = computed<ApprovalPreset | null>(() => {
-    const agent = activeAgent.value;
-    const capabilities = providerCapabilitiesForAgent(agent);
-    if (!agent || !capabilities.approvals) {
-      return null;
-    }
-
-    const allowedPresets = capabilities.approvalPresets ?? [];
-    const storedPreset = approvalPresetFromDefaults(agent.providerDefaults);
-    if (allowedPresets.includes(storedPreset)) {
-      return storedPreset;
-    }
-
-    return allowedPresets[0] ?? null;
-  });
-
   const activePermissionMode = computed<string | null>(() => {
     const agent = activeAgent.value;
     if (!agent) {
@@ -481,9 +464,7 @@ export function useAppState() {
     }
 
     const modes = providerCapabilitiesForAgent(agent).permissionModes ?? [];
-    const storedMode = agent.providerDefaults && 'permissionMode' in agent.providerDefaults
-      ? agent.providerDefaults.permissionMode
-      : undefined;
+    const storedMode = agent.providerDefaults?.permission;
     if (storedMode && modes.some((option) => option.id === storedMode)) {
       return storedMode;
     }
@@ -1658,26 +1639,6 @@ export function useAppState() {
     await respondToAgentRequest(agentId, { id: approvalId, outcome: { kind: 'decision', decision: decision === 'deny' ? 'deny' : scope === 'session' ? 'allow_conversation' : 'allow' } });
   }
 
-  async function setApprovalPreset(preset: ApprovalPreset): Promise<void> {
-    const agentId = activeAgent.value?.id;
-    if (agentId) await setApprovalPresetForAgent(agentId, preset);
-  }
-
-  async function setApprovalPresetForAgent(agentId: string, preset: ApprovalPreset): Promise<void> {
-    const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
-    const capabilities = agent ? messageActionCapabilities(agent.id) : null;
-    if (
-      !agent ||
-      !capabilities?.approvals ||
-      !(capabilities.approvalPresets ?? []).includes(preset) ||
-      !appApi?.setAgentApprovalPreset
-    ) {
-      return;
-    }
-
-    adoptBackgroundSnapshot(await appApi.setAgentApprovalPreset(agent.id, preset));
-  }
-
   async function setPermissionMode(mode: string): Promise<void> {
     const agentId = activeAgent.value?.id;
     if (agentId) await setPermissionModeForAgent(agentId, mode);
@@ -1702,7 +1663,6 @@ export function useAppState() {
     activeAgent,
     activeGoal,
     activeProviderApprovals,
-    activeApprovalPreset,
     activePermissionMode,
     activeQueuedPrompts,
     activeComposerState,
@@ -1892,8 +1852,6 @@ export function useAppState() {
     selectServiceTierForAgent,
     setPlanMode,
     setPlanModeForAgent,
-    setApprovalPreset,
-    setApprovalPresetForAgent,
     setPermissionMode,
     setPermissionModeForAgent,
     updateComposerState,

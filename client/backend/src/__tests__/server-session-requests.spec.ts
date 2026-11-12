@@ -381,9 +381,9 @@ describe('AppBackendServer', () => {
       providerSession: { kind: 'codex', threadId: 'thread-goal' },
       cleared: true,
     });
-    const setApprovalPreset = vi.fn().mockResolvedValue({
+    const setPermissionMode = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-approval' },
-      approvalPreset: 'approve-for-me',
+      providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     const driver: AgentProviderDriver = {
       provider: 'codex',
@@ -393,7 +393,7 @@ describe('AppBackendServer', () => {
       interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       clearGoal,
-      setApprovalPreset,
+      setPermissionMode,
       setConversationTitle,
       setGoal,
       onEvent: () => () => undefined,
@@ -434,27 +434,21 @@ describe('AppBackendServer', () => {
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'set-preset',
-      method: 'agent/approvalPreset/update',
-      params: { agentId: 'agent-dina', preset: 'approve-for-me' },
+      method: 'agent/permissionMode/update',
+      params: { agentId: 'agent-dina', mode: 'approve-for-me' },
     })).resolves.toMatchObject({
       result: {
         agents: [{
           id: 'agent-dina',
           providerSession: { kind: 'codex', threadId: 'thread-approval' },
-          providerDefaults: {
-            kind: 'codex',
-            approvalPreset: 'approve-for-me',
-            approvalPolicy: 'on-request',
-            approvalsReviewer: 'auto_review',
-            sandboxMode: 'workspace-write',
-          },
+          providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
         }],
       },
     });
 
     expect(setGoal).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'Ship the goal shelf');
     expect(clearGoal).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
-    expect(setApprovalPreset).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'approve-for-me');
+    expect(setPermissionMode).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'approve-for-me');
     expect(snapshot.general.providerApprovalDefaults).toEqual({ codex: 'approve-for-me' });
     expect(setConversationTitle).toHaveBeenCalledOnce();
     expect(setConversationTitle).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), expect.stringContaining('Dina'));
@@ -483,7 +477,7 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const setPermissionMode = vi.fn().mockResolvedValue({
-      providerDefaults: { kind: 'claude', model: 'sonnet', permissionMode: 'bypassPermissions' },
+      providerDefaults: { kind: 'claude', model: 'sonnet', permission: 'bypassPermissions' },
     });
     const driver: AgentProviderDriver = {
       provider: 'claude',
@@ -514,7 +508,7 @@ describe('AppBackendServer', () => {
       result: {
         agents: [{
           id: 'agent-claude',
-          providerDefaults: { kind: 'claude', model: 'sonnet', permissionMode: 'bypassPermissions' },
+          providerDefaults: { kind: 'claude', model: 'sonnet', permission: 'bypassPermissions' },
         }],
       },
     });

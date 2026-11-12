@@ -33,7 +33,6 @@ describe('unified driver capability boundary', () => {
     [backendMethods.driverConversationTitleUpdate, { title: 'title' }],
     [backendMethods.driverGoalUpdate, { objective: 'ship' }],
     [backendMethods.driverGoalClear, {}],
-    [backendMethods.driverApprovalPresetUpdate, { preset: 'full-access' }],
     [backendMethods.driverPermissionModeUpdate, { mode: 'default' }],
     [backendMethods.driverConversationLoad, {}],
     [backendMethods.driverConversationHistoryLoadOlder, {}],

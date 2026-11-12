@@ -814,7 +814,6 @@ const props = withDefaults(defineProps<{
   connectionState?: ProviderConnectionState;
   goal?: ThreadGoal | null;
   approvals?: ProviderApprovalRequest[];
-  approvalPreset?: ApprovalPreset | null;
   permissionMode?: string | null;
   answeredClientRequestIds?: Set<string>;
   providerModels?: ProviderModelOption[];
@@ -978,7 +977,6 @@ const props = withDefaults(defineProps<{
   selectedModelId: null,
   selectedReasoningEffort: null,
   selectedServiceTier: null,
-  approvalPreset: null,
   permissionMode: null,
   queuedPrompts: () => [],
   composerState: () => ({ text: '', selectionStart: 0, selectionEnd: 0 }),
@@ -1127,7 +1125,6 @@ const emit = defineEmits<{
   'select-model': [modelId: string];
   'select-reasoning-effort': [reasoningEffort: ReasoningEffort];
   'select-service-tier': [serviceTier: string | null];
-  'select-approval-preset': [preset: ApprovalPreset];
   'select-permission-mode': [mode: string];
   'select-team': [teamId: string];
   'steer-queued-prompt': [promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>];
@@ -2052,7 +2049,7 @@ const legacyConversationActions: AgentConversationActions = {
   respond: (_id, response) => emit('agent-response', response),
   selectModel: (_id, model) => emit('select-model', model), selectReasoningEffort: (_id, effort) => emit('select-reasoning-effort', effort),
   selectServiceTier: (_id, tier) => emit('select-service-tier', tier), setPlanMode: (_id, enabled) => emit('update:planMode', enabled),
-  setApprovalPreset: (_id, preset) => emit('select-approval-preset', preset), setPermissionMode: (_id, mode) => emit('select-permission-mode', mode),
+  setPermissionMode: (_id, mode) => emit('select-permission-mode', mode),
   updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
   updateAttachments: (agentId, attachments) => emit('update:composerAttachments', { agentId, attachments }),
   deleteQueuedPrompt: (_id, prompt) => emit('delete-queued-prompt', prompt),

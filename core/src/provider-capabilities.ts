@@ -5,7 +5,12 @@ export const codexProviderCapabilities: ProviderCapabilities = {
   ...nativecodex,
   codeReview: true,
   planReview: true,
-  conversationShare: true
+  conversationShare: true,
+  permissionModes: [
+    { id: 'ask-for-approval', label: { key: 'permissions.approval.ask.label' }, description: { key: 'permissions.approval.ask.description' } },
+    { id: 'approve-for-me', label: { key: 'permissions.approval.automatic.label' }, description: { key: 'permissions.approval.automatic.description' } },
+    { id: 'full-access', label: { key: 'permissions.approval.fullAccess.label' }, description: { key: 'permissions.approval.fullAccess.description' }, dangerous: true },
+  ],
 };
 export const claudeProviderCapabilities: ProviderCapabilities = {
   ...nativeclaude,

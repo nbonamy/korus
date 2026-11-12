@@ -12,7 +12,6 @@ import {
   setAgentStatusInSnapshot as setAgentStatus,
 } from './agent-manager';
 import { appText } from './app-text';
-import { codexProviderDefaultsWithApprovalPreset } from './codex-approval-presets';
 import { replaceAppSnapshot } from './snapshot-construction';
 import { decodeAppSnapshot } from './snapshot-guards';
 import type { SnapshotEventOwnedBy } from './snapshot-event-ownership';
@@ -102,10 +101,6 @@ export function applyRuntimeEventToSnapshot(
       const agent = findAgent(snapshot, event.agentId);
       if (agent) {
         const payload = event.payload;
-        const approvalPreset = payload.settings.approvalPreset;
-        if (approvalPreset && defaultProviderCapabilities(event.provider).approvalPresets?.length) {
-          agent.providerDefaults = codexProviderDefaultsWithApprovalPreset(agent.providerDefaults, approvalPreset);
-        }
         const defaults = agent.providerDefaults?.kind === event.provider
           ? agent.providerDefaults
           : { kind: event.provider };
@@ -120,7 +115,7 @@ export function applyRuntimeEventToSnapshot(
           ...(payload.settings.serviceTier !== undefined
             ? { serviceTier: payload.settings.serviceTier }
             : {}),
-          ...(payload.settings.permissionMode !== undefined ? { permissionMode: payload.settings.permissionMode } : {}),
+          ...(payload.settings.permission !== undefined ? { permission: payload.settings.permission } : {}),
         };
       }
     }

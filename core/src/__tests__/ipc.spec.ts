@@ -223,7 +223,7 @@ describe('ipc channels', () => {
     expectTypeOf<ThreadSettingsUpdatedEvent['payload']>()
       .toEqualTypeOf<{ settings: import('../contracts/events').ConversationSettings }>();
     type ThreadModeUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.modeUpdated' }>;
-    expectTypeOf<ThreadModeUpdatedEvent['payload']>().toEqualTypeOf<{ mode: 'default' | 'plan'; permissionMode?: string }>();
+    expectTypeOf<ThreadModeUpdatedEvent['payload']>().toEqualTypeOf<{ mode: 'default' | 'plan'; permission?: string }>();
     expectTypeOf<ThreadModeUpdatedEvent['provider']>().toEqualTypeOf<HarnessProvider>();
     type ThreadGoalUpdatedEvent = Extract<MainToRendererEvent, { type: 'conversation.goalUpdated' }>;
     expectTypeOf<ThreadGoalUpdatedEvent['payload']>()

@@ -27,8 +27,8 @@ export type ConversationSettings = {
   model?: string;
   reasoningEffort?: string;
   serviceTier?: string | null;
-  approvalPreset?: import('../contracts').ApprovalPreset;
-  permissionMode?: string;
+  /** The permission in effect, as one of the ids the harness offers. */
+  permission?: string;
 };
 type WorkBacklogAssignmentUpdatedPayload = Omit<WorkBacklogAssignment, 'policy' | 'status'> & {
   policy?: WorkBacklogAssignmentPolicy;
@@ -197,7 +197,7 @@ type AppEvent =
       type: 'conversation.modeUpdated';
       agentId: string;
       provider: HarnessProvider;
-      payload: { mode: ThreadMode; permissionMode?: string };
+      payload: { mode: ThreadMode; permission?: string };
     }>
   | EventWith<{
       type: 'conversation.goalUpdated';

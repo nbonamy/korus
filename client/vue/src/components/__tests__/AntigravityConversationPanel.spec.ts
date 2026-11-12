@@ -14,7 +14,7 @@ import AgentConversationPanel from '../AgentConversationPanel.vue';
 it('renders an Antigravity conversation, denies a tool confirmation, and keeps unsupported turn controls absent', async () => {
   const snapshot = createInitialSnapshot();
   const agent = snapshot.agents[0]!;
-  agent.provider = 'antigravity'; agent.providerDefaults = { kind: 'antigravity', permissionMode: 'default' };
+  agent.provider = 'antigravity'; agent.providerDefaults = { kind: 'antigravity', permission: 'default' };
   agent.providerSession = { kind: 'antigravity', sessionId: 'native-session' };
   const streaming = textMessage('message', 'assistant', 'Native Antigravity response', { agentId: agent.id, turnId: 'turn', status: 'streaming' });
   const running = sessionState({ busy: true, activeTurnId: 'turn', turns: [runningTurn('turn')], messages: [streaming], requests: [{
@@ -31,7 +31,7 @@ it('renders an Antigravity conversation, denies a tool confirmation, and keeps u
   const actions: AgentConversationActions = {
     planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(),
     deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), respond: vi.fn(),
-    selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+    selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setPermissionMode: vi.fn(),
     updateComposerState: vi.fn(), updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
   };
   const wrapper = mount(AgentConversationPanel, { props: {

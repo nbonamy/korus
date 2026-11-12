@@ -68,7 +68,7 @@ describe('AppShell authentication and conversation', () => {
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     const views = snapshot.agents.map(agent => {
       agent.provider = provider;
-      agent.providerDefaults = { kind: provider, permissionMode: provider === 'cursor' ? 'default' : 'acceptEdits' };
+      agent.providerDefaults = { kind: provider, permission: provider === 'cursor' ? 'default' : 'acceptEdits' };
       return shallowReactive<AgentConversationView & { session: SessionState }>({
         get conversation() { return conversationFrom(this.agent, this.session); },
         agent, session: sessionState(),
@@ -84,9 +84,9 @@ describe('AppShell authentication and conversation', () => {
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
       continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (id, mode) => {
+      setPermissionMode: vi.fn(async (id, mode) => {
         const view = views.find(view => view.agent.id === id)!;
-        view.agent = { ...view.agent, providerDefaults: { kind: provider, permissionMode: mode } };
+        view.agent = { ...view.agent, providerDefaults: { kind: provider, permission: mode } };
       }), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
@@ -1490,7 +1490,7 @@ describe('AppShell authentication and conversation', () => {
     snapshot.general.worktreeDelegationStartingContext = 'conversation';
     snapshot.general.worktreeDelegationInstructions = 'Keep the API stable';
     const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
-    await wrapper.setProps({ providerCapabilities: codexProviderCapabilities, providerCommands: defaultProviderCommands('codex'), approvalPreset: 'ask-for-approval' });
+    await wrapper.setProps({ providerCapabilities: codexProviderCapabilities, providerCommands: defaultProviderCommands('codex') });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
@@ -2096,7 +2096,7 @@ describe('AppShell authentication and conversation', () => {
       expect(choices[0]!.attributes('aria-checked')).toBe('true');
       await choices[1]!.trigger('click');
       expect(wrapper.emitted('select-permission-mode')).toStrictEqual([['full-access']]);
-      agent.providerDefaults = { kind: 'cursor', permissionMode: 'full-access' };
+      agent.providerDefaults = { kind: 'cursor', permission: 'full-access' };
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
@@ -2111,7 +2111,7 @@ describe('AppShell authentication and conversation', () => {
     if (!activeAgent) throw new Error('Expected seeded agent.');
     activeAgent.provider = 'claude';
     activeAgent.providerSession = undefined;
-    activeAgent.providerDefaults = { kind: 'claude', permissionMode: 'acceptEdits' };
+    activeAgent.providerDefaults = { kind: 'claude', permission: 'acceptEdits' };
     const wrapper = mount(AppShell, {
       props: {
         snapshot,

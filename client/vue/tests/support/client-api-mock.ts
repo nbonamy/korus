@@ -247,7 +247,6 @@ export function createClientApiMock(
     syncComposerDraft: unscripted<'syncComposerDraft'>('syncComposerDraft'),
     setAgentGoal: unscripted<'setAgentGoal'>('setAgentGoal'),
     clearAgentGoal: unscripted<'clearAgentGoal'>('clearAgentGoal'),
-    setAgentApprovalPreset: unscripted<'setAgentApprovalPreset'>('setAgentApprovalPreset'),
     setAgentPermissionMode: unscripted<'setAgentPermissionMode'>('setAgentPermissionMode'),
     sendPrompt: unscripted<'sendPrompt'>('sendPrompt'),
     steerPrompt: unscripted<'steerPrompt'>('steerPrompt'),

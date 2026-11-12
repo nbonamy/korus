@@ -80,10 +80,10 @@ describe('agentConversationState identity', () => {
   });
 
   it('uses native loaded model and permissions instead of stored defaults, with pending edits taking precedence', () => {
-    const agent = { ...createInitialSnapshot().agents[0]!, providerDefaults: { kind: 'codex' as const, model: 'saved', approvalPreset: 'full-access' as const } };
+    const agent = { ...createInitialSnapshot().agents[0]!, providerDefaults: { kind: 'codex' as const, model: 'saved', permission: 'full-access' } };
     const native = sessionState({ permission: 'ask-for-approval', selection: { model: 'native', reasoningEffort: 'low', serviceTier: 'fast' } });
     const view = { agent, conversation: conversationFrom(agent, native),
-      capabilities: { approvals: true, approvalPresets: ['ask-for-approval', 'full-access'] },
+      capabilities: { permissionModes: [{ id: 'ask-for-approval', label: 'Ask' }, { id: 'full-access', label: 'Full access' }] },
       composer: { selectedModelId: 'saved', selectedReasoningEffort: 'high', selectedServiceTier: null, pendingSelection: null },
     } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);

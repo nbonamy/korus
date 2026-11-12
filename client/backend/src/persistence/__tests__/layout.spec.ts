@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { approvalProviderDefaultsWithPreset } from '@workspace/core/approval-presets';
 import type { AppSnapshot, ThreadGoal, ThreadPlan } from '@workspace/core/contracts';
 import type { Visualization } from '@workspace/core/visualize';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
@@ -27,7 +26,7 @@ describe('store layout', () => {
     const snapshot = withAgents(3);
     const [codex, claude, bare] = snapshot.agents;
     codex!.providerSession = { kind: 'codex', threadId: 'thread-1' };
-    codex!.providerDefaults = { ...approvalProviderDefaultsWithPreset({ kind: 'codex', model: 'gpt-x', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null }, 'approve-for-me') };
+    codex!.providerDefaults = { kind: 'codex', model: 'gpt-x', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permission: 'approve-for-me' };
     claude!.provider = 'claude';
     claude!.providerSession = { kind: 'claude', sessionId: 'session-1', transport: 'stdio', model: 'opus' };
     claude!.providerDefaults = { kind: 'claude', model: 'opus', thinking: { type: 'enabled', budgetTokens: 1024 } };
@@ -39,7 +38,7 @@ describe('store layout', () => {
     expect(roster.agents[0]!.engine).toStrictEqual({
       kind: 'codex',
       session: { threadId: 'thread-1' },
-      settings: { model: 'gpt-x', userSelectedModel: true, approvalPreset: 'approve-for-me', reasoningEffort: 'high', serviceTier: null },
+      settings: { model: 'gpt-x', userSelectedModel: true, permission: 'approve-for-me', reasoningEffort: 'high', serviceTier: null },
     });
     expect(roster.agents[1]!.engine).toStrictEqual({
       kind: 'claude',
@@ -55,9 +54,9 @@ describe('store layout', () => {
 
   it('keeps Codex approval fields that no preset explains', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.providerDefaults = { kind: 'codex', approvalPolicy: 'on-request', sandboxMode: 'read-only' };
+    snapshot.agents[0]!.providerDefaults = { kind: 'codex' };
     const { roster } = splitPersistedState(persistedStateFromSnapshot(snapshot));
-    expect(roster.agents[0]!.engine).toStrictEqual({ kind: 'codex', settings: { approvalPolicy: 'on-request', sandboxMode: 'read-only' } });
+    expect(roster.agents[0]!.engine).toStrictEqual({ kind: 'codex', settings: { } });
   });
 
   it('drops finished execution state but retains the latest plan decision', () => {

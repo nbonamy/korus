@@ -9,7 +9,6 @@ export type ProviderAuthenticationOptions = { method?: AuthenticationLoginMethod
 /** Codex's own sign-in state, as its sign-in screens read it. */
 export type CodexAuthentication = Extract<ProviderAuthentication, { kind: 'codex' }>['state'];
 export type CodexAccount = NonNullable<CodexAuthentication['account']>;
-export type CodexApprovalsReviewer = NonNullable<Extract<ProviderDefaults, { kind: 'codex' }>['approvalsReviewer']>;
 
 /** A provider's own sign-in state, for the setup screen that asked that provider. */
 export function providerAuthenticationState<Kind extends keyof ProviderAuthenticationStates>(authentication: ProviderAuthentication, kind: Kind): ProviderAuthenticationStates[Kind] {

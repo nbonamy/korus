@@ -67,7 +67,7 @@ import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoad
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
 import { providerDisplayName, resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
-import type { AgentProviderDriver, ProviderApprovalPresetResult, ProviderConversationForkResult, ProviderConversationResumeResult, BackendEvent, ProviderGoalResult, ProviderPermissionModeResult, ProviderSendResult, ProviderConversationReplacementResult } from '@workspace/core/provider-driver';
+import type { AgentProviderDriver, ProviderConversationForkResult, ProviderConversationResumeResult, BackendEvent, ProviderGoalResult, ProviderPermissionModeResult, ProviderSendResult, ProviderConversationReplacementResult } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
@@ -78,7 +78,6 @@ import { defaultHarnessProvider, defaultProviderCapabilities, previousConversati
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
 import { teamColors } from '@workspace/core/team-colors';
 import { sanitizeWorkItemAssignmentSource } from '@workspace/core/work-assignments';
-import { approvalProviderDefaultsWithPreset, isApprovalPreset } from '@workspace/core/approval-presets';
 import { formatConversationTitle } from '@workspace/core/conversation-title';
 import { agentFolder, requireAgentFolder } from '@workspace/core/agent-folder';
 import { ProviderDriverRpc } from './driver-rpc';
@@ -2980,32 +2979,15 @@ export class AppBackendServer {
           return this.persistAndEmitSnapshot();
         });
       }
-      case backendMethods.agentApprovalPresetUpdate: {
-        const params = requireRecord(message.params);
-        const agentId = requireString(params.agentId, 'agentId');
-        const preset = params.preset;
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentApprovalPresetUpdate, { agentId, preset }, async (agent) => {
-          if (!isApprovalPreset(preset)) {
-            return this.snapshot;
-          }
-          const wasNewSession = !agent.providerSession;
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverApprovalPresetUpdate, { agent, preset }) as ProviderApprovalPresetResult;
-          agent.providerSession = result.providerSession;
-          this.agentConversations.setNewTitle(agentId, wasNewSession);
-          agent.providerDefaults = approvalProviderDefaultsWithPreset(agent.providerDefaults, result.approvalPreset);
-          this.snapshot.general.providerApprovalDefaults = {
-            ...this.snapshot.general.providerApprovalDefaults, codex: result.approvalPreset,
-          };
-          return this.persistAndEmitSnapshot();
-        });
-      }
       case backendMethods.agentPermissionModeUpdate: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const mode = requireString(params.mode, 'mode');
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
+          const wasNewSession = !agent.providerSession;
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as ProviderPermissionModeResult;
           agent.providerDefaults = result.providerDefaults;
+          if (result.providerSession) { agent.providerSession = result.providerSession; this.agentConversations.setNewTitle(agentId, wasNewSession); }
           this.snapshot.general.providerApprovalDefaults = {
             ...this.snapshot.general.providerApprovalDefaults, [agent.provider]: mode,
           };

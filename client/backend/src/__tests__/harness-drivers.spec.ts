@@ -142,12 +142,12 @@ describe('Korus provider drivers over the SDK Harness', () => {
 
   it('runs an agent with the harness\'s own default when its saved permission is no longer offered', async () => {
     const { driver, script } = scriptedDriver('antigravity');
-    const agent = (permissionMode: string) => ({ id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'antigravity', providerDefaults: { kind: 'antigravity', model: 'gemini', permissionMode }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }) as never;
+    const agent = (permission: string) => ({ id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'antigravity', providerDefaults: { kind: 'antigravity', model: 'gemini', permission }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }) as never;
     const sent: unknown[] = [];
     script.on('sendPrompt', (async (context: { providerDefaults?: unknown }) => { sent.push(structuredClone(context.providerDefaults)); return { providerSession: { kind: 'antigravity', sessionId: 's' } }; }) as never);
     await driver.sendPrompt(agent('auto_edit'), 'hello');
     await driver.sendPrompt(agent('accept-edits'), 'again');
-    expect(sent).toStrictEqual([{ kind: 'antigravity', model: 'gemini' }, { kind: 'antigravity', model: 'gemini', permissionMode: 'accept-edits' }]);
+    expect(sent).toStrictEqual([{ kind: 'antigravity', model: 'gemini' }, { kind: 'antigravity', model: 'gemini', permission: 'accept-edits' }]);
   });
 
   it('publishes the conversation as neutral session state: a snapshot to start from, then patches', async () => {

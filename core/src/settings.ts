@@ -5,8 +5,7 @@ import { workProviderKinds } from './work-providers';
 import { isHarnessProvider } from './contracts/shared';
 import { spokenAnnouncementVoices, type HarnessProvider, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
 import { repositoryIconKeyForRemote } from './git-remote';
-import { isApprovalPreset } from './approval-presets';
-import { antigravityProviderCapabilities, claudeProviderCapabilities, cursorProviderCapabilities, defaultProviderCapabilities } from './provider-capabilities';
+import { defaultProviderCapabilities } from './provider-capabilities';
 import { readPersistedReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
 import { normalizeBrowserBookmarks } from './browser-bookmarks';
@@ -223,13 +222,11 @@ function normalizeProviderModelDefaults(value: Record<string, unknown>): NonNull
 }
 
 function normalizeProviderApprovalDefaults(value: Record<string, unknown>): NonNullable<AppGeneralSettings['providerApprovalDefaults']> {
-  const { codex, claude, antigravity, cursor } = value;
-  return {
-    ...(isApprovalPreset(codex) ? { codex } : {}),
-    ...(typeof claude === 'string' && claudeProviderCapabilities.permissionModes?.some(option => option.id === claude) ? { claude } : {}),
-    ...(typeof antigravity === 'string' && antigravityProviderCapabilities.permissionModes?.some(option => option.id === antigravity) ? { antigravity } : {}),
-    ...(typeof cursor === 'string' && cursorProviderCapabilities.permissionModes?.some(option => option.id === cursor) ? { cursor } : {}),
-  };
+  // A saved choice is kept only while the harness still offers it.
+  return Object.fromEntries(harnessProviders.flatMap(provider => {
+    const permission = value[provider];
+    return typeof permission === 'string' && defaultProviderCapabilities(provider).permissionModes?.some(option => option.id === permission) ? [[provider, permission]] : [];
+  }));
 }
 
 function normalizeSpokenAnnouncementVoice(value: unknown): SpokenAnnouncementVoice {

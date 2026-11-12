@@ -268,7 +268,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     f.snapshot.general.providerModelDefaults = { claude: {provider: 'claude',  model: 'opus', reasoningEffort: 'low', serviceTier: null } };
     f.parent.providerDefaults = parent === 'codex'
       ? { kind: 'codex', model: 'codex-parent-model', reasoningEffort: 'max' }
-      : { kind: 'claude', model: 'opus', reasoningEffort: 'max', serviceTier: 'fast', permissionMode: 'bypassPermissions' };
+      : { kind: 'claude', model: 'opus', reasoningEffort: 'max', serviceTier: 'fast', permission: 'bypassPermissions' };
     const creating = f.call(f.parent.id, 'create-agent', { repoPath: '/repo', prompt: 'Perform the assignment', ...(durable ? { requestId: 'configured-worker', task: { title: 'Configured worker', doneWhen: 'Verified' } } : {}), selection: { provider: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high' } });
     await vi.waitFor(() => expect(f.claudeSdk.inputs).toHaveLength(1));
     f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker', model: 'claude-sonnet-5-5' });
@@ -277,7 +277,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     expect(f.claudeSdk.options[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', permissionMode, settings: { fastMode: parent === 'claude' } });
     const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
     expect(worker.providerDefaults).toStrictEqual({
-      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: parent === 'claude' ? 'fast' : null, userSelectedModel: true, permissionMode,
+      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: parent === 'claude' ? 'fast' : null, userSelectedModel: true, permission: permissionMode,
     });
     if (durable) expect((await f.store.load()).agents.find(agent => agent.id === worker.id)?.providerDefaults).toStrictEqual(worker.providerDefaults);
   });

@@ -125,7 +125,7 @@ describe('companion state', () => {
       return { ...session, getWorkspace: async () => workspace, setApprovalPreset, onUpdate: listener => { update = listener; return () => {}; } };
     };
     const state = createCompanionState(connector);
-    const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerDefaults: { kind: 'codex' as const, approvalPreset: preset as 'ask-for-approval' | 'full-access' } })) });
+    const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerDefaults: { kind: 'codex' as const, permission: preset } })) });
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       const changing = state.setApprovalPreset('ask-for-approval');
@@ -609,7 +609,7 @@ describe('companion state', () => {
     const connector = createDemoConnector(); const original = connector.connect;
     let workspace!: CompanionWorkspace;
     const setApprovalPreset = vi.fn(async () => {
-      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerDefaults: { kind: 'codex', approvalPreset: 'full-access' } } : agent) };
+      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerDefaults: { kind: 'codex', permission: 'full-access' } } : agent) };
     });
     const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
     connector.connect = async (id) => {
@@ -625,7 +625,8 @@ describe('companion state', () => {
       expect(setApprovalPreset).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
       state.setPermissionMode('acceptEdits');
       expect(state.permissions.value!.permissionMode).toBe('acceptEdits');
-      await vi.waitFor(() => expect(state.permissions.value!.permissionMode).toBeNull());
+      // Refused: the phone shows the one permission the laptop keeps.
+      await vi.waitFor(() => expect(state.permissions.value!.permissionMode).toBe('full-access'));
       expect(state.permissions.value!.approvalPreset).toBe('full-access');
       state.interrupt();
       expect(interrupt).toHaveBeenCalledExactlyOnceWith('demo-agent');

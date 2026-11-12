@@ -514,7 +514,7 @@ describe('ProviderDriverRpc', () => {
       providerDefaults: { kind: 'claude' },
     };
     const setPermissionMode = vi.fn().mockResolvedValue({
-      providerDefaults: { kind: 'claude', permissionMode: 'acceptEdits' },
+      providerDefaults: { kind: 'claude', permission: 'acceptEdits' },
     });
     const driver = createDriver({
       provider: 'claude',
@@ -526,7 +526,7 @@ describe('ProviderDriverRpc', () => {
     const rpc = new ProviderDriverRpc(new Map([['claude', driver]]));
 
     await expect(rpc.handle('driver/permissionMode/update', { agent, mode: 'acceptEdits' })).resolves.toStrictEqual({
-      providerDefaults: { kind: 'claude', permissionMode: 'acceptEdits' },
+      providerDefaults: { kind: 'claude', permission: 'acceptEdits' },
     });
     await expect(rpc.handle('driver/permissionMode/update', { agent, mode: 'bypassPermissions' }))
       .rejects.toThrow('Unsupported permission mode for claude: bypassPermissions');
@@ -570,9 +570,9 @@ describe('ProviderDriverRpc', () => {
       providerSession: { kind: 'codex', threadId: 'thread-goal' },
       cleared: true,
     });
-    const setApprovalPreset = vi.fn().mockResolvedValue({
+    const setPermissionMode = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-approval' },
-      approvalPreset: 'approve-for-me',
+      providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     const steerPrompt = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', threadId: 'thread-steer' },
@@ -623,7 +623,7 @@ describe('ProviderDriverRpc', () => {
       retryTurn,
       reconcileConversations,
       resumeConversation,
-      setApprovalPreset,
+      setPermissionMode,
       setGoal,
       steerPrompt,
     })]]));
@@ -637,9 +637,9 @@ describe('ProviderDriverRpc', () => {
       providerSession: { kind: 'codex', threadId: 'thread-goal' },
       cleared: true,
     });
-    await expect(rpc.handle('driver/approvalPreset/update', { agent, preset: 'approve-for-me' })).resolves.toStrictEqual({
+    await expect(rpc.handle('driver/permissionMode/update', { agent, mode: 'approve-for-me' })).resolves.toStrictEqual({
       providerSession: { kind: 'codex', threadId: 'thread-approval' },
-      approvalPreset: 'approve-for-me',
+      providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     await expect(rpc.handle('driver/prompt/steer', { agent, prompt: 'try smaller' })).resolves.toStrictEqual({
       providerSession: { kind: 'codex', threadId: 'thread-steer' },
@@ -684,7 +684,7 @@ describe('ProviderDriverRpc', () => {
 
     expect(setGoal).toHaveBeenCalledWith(agent, 'Ship the goal shelf');
     expect(clearGoal).toHaveBeenCalledWith(agent);
-    expect(setApprovalPreset).toHaveBeenCalledWith(agent, 'approve-for-me');
+    expect(setPermissionMode).toHaveBeenCalledWith(agent, 'approve-for-me');
     expect(steerPrompt).toHaveBeenCalledWith(agent, 'try smaller');
     expect(interrupt).toHaveBeenCalledWith(agent);
     expect(deleteTurn).toHaveBeenCalledWith(agent, 'turn-1');

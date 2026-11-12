@@ -1,6 +1,5 @@
 import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
-import { approvalProviderDefaultsWithPreset } from '@workspace/core/approval-presets';
 import type { Mission } from '@workspace/core/missions';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';
@@ -241,18 +240,13 @@ function engineFrom(agent: PersistedAgent): Engine {
   return { kind: 'codex', ...(session ? { session } : {}), ...(settings ? { settings } : {}) };
 }
 
-/** Policy, reviewer and sandbox follow from the preset, so only the preset is stored. */
 function codexSettingsFrom(defaults: CodexDefaults): Omit<CodexDefaults, 'kind'> {
   const { kind: _kind, ...settings } = defaults;
-  if (!settings.approvalPreset) return settings;
-  const { approvalPolicy: _policy, approvalsReviewer: _reviewer, sandboxMode: _sandbox, ...rest } = settings;
-  return rest;
+  return settings;
 }
 
 function codexDefaultsFrom(settings: Omit<CodexDefaults, 'kind'>): CodexDefaults {
-  return settings.approvalPreset
-    ? approvalProviderDefaultsWithPreset({ kind: 'codex', ...settings }, settings.approvalPreset)
-    : { kind: 'codex', ...settings };
+  return { kind: 'codex', ...settings };
 }
 
 function withoutKind<T extends { kind: string }>(value: T): Omit<T, 'kind'> {

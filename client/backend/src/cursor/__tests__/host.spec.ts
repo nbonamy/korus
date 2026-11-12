@@ -264,7 +264,6 @@ describe('Cursor ACP host transport boundary', () => {
       ['driver/prompt/steer', { prompt: 'Adjust the task', expectedSessionId: null }, 'prompt steering'],
       ['driver/goal/update', { objective: 'Finish the task' }, 'goals'],
       ['driver/conversation/fork', { targetAgent: { ...agent, id: 'fork-target' } }, 'conversation fork'],
-      ['driver/approvalPreset/update', { preset: 'full-access' }, 'approval presets'],
     ] as const;
     try {
       for (const [method, params, feature] of controls) {
@@ -303,7 +302,7 @@ describe('Cursor ACP host transport boundary', () => {
       expect((await wire()).find(call => call.id === 1 && call.result)?.result).toStrictEqual({ outcome: { outcome: 'selected', optionId: 'allow-once' } });
       await server.handleMessage({ jsonrpc: '2.0', id: 'model', method: 'agent/update', params: { input: { id: agent.id, selection: { provider: 'cursor', model: 'composer-2.5' } } } });
       const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(persistedStateFromSnapshot(state))));
-      expect(restored.agents[0]!.providerDefaults).toMatchObject({ kind: 'cursor', permissionMode: 'full-access' });
+      expect(restored.agents[0]!.providerDefaults).toMatchObject({ kind: 'cursor', permission: 'full-access' });
       expect(restored.general.providerApprovalDefaults?.cursor).toBe('full-access');
       // Runtime connections are re-established rather than restored from disk.
       restored.providerConnections = structuredClone(state.providerConnections);
@@ -314,7 +313,7 @@ describe('Cursor ACP host transport boundary', () => {
       try {
         for (const [index, id] of ['next-workspace', 'next-quick-chat'].entries()) {
           const next = restored.agents.find(candidate => candidate.id === id)!;
-          expect(next.providerDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permissionMode: 'full-access' });
+          expect(next.providerDefaults).toMatchObject({ kind: 'cursor', model: 'composer-2.5', permission: 'full-access' });
           await inheritedHost.sendPrompt(next, 'permission');
           await vi.waitFor(() => expect(inheritedEvents.filter(event => event.type === 'turn.completed')).toHaveLength(index + 1));
           expect((await wire()).filter(call => call.fixture === 'prompt-admission').at(-1)).toMatchObject({ model: 'composer-2.5' });
@@ -322,7 +321,7 @@ describe('Cursor ACP host transport boundary', () => {
         expect(inheritedEvents.some(event => event.type === 'agentRequest.created')).toBe(false);
       } finally { await inheritedHost.close(); }
       await expect(select('auto_edit')).rejects.toThrow(/Unsupported permission mode/);
-      expect(state.agents[0]!.providerDefaults).toMatchObject({ permissionMode: 'full-access' });
+      expect(state.agents[0]!.providerDefaults).toMatchObject({ permission: 'full-access' });
       await select('default');
       expect(snapshotFromPersistedState(persistedStateFromSnapshot(state)).general.providerApprovalDefaults?.cursor).toBe('default');
       await send('permission');
@@ -341,7 +340,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it.each([false, true])('restores full-access policy on session startup and uses only once-only permission options (missingOnce=%s)', async missingOnce => {
     await writeFile(path.join(root, 'mcp-permission.json'), JSON.stringify({ noOnce: missingOnce }));
-    await host.sendPrompt({ ...agent, providerDefaults: { kind: 'cursor', permissionMode: 'full-access' } }, 'mcp-permission');
+    await host.sendPrompt({ ...agent, providerDefaults: { kind: 'cursor', permission: 'full-access' } }, 'mcp-permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));
     expect((await wire()).find(call => call.id === 8 && call.result)?.result).toStrictEqual({ outcome: missingOnce ? { outcome: 'cancelled' } : { outcome: 'selected', optionId: 'native-mcp-once' } });
     expect((await snapshot()).requests).toStrictEqual([]);
@@ -355,7 +354,7 @@ describe('Cursor ACP host transport boundary', () => {
     expect((await snapshot()).requests).toStrictEqual([]);
   });
   it('does not apply one conversation full-access policy to another agent', async () => {
-    const full = { ...agent, providerDefaults: { kind: 'cursor' as const, permissionMode: 'full-access' } };
+    const full = { ...agent, providerDefaults: { kind: 'cursor' as const, permission: 'full-access' } };
     const manual = { ...agent, id: 'manual-agent' };
     await host.sendPrompt(full, 'permission');
     await vi.waitFor(() => expect(completions()).toHaveLength(1));

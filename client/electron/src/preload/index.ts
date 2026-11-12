@@ -209,7 +209,6 @@ const api: AppApi = {
   syncComposerDraft: (agentId, draft) => ipc.invoke(ipcChannels.syncComposerDraft, agentId, draft),
   setAgentGoal: (agentId: string, objective: string) => ipc.invoke(ipcChannels.setAgentGoal, agentId, objective),
   clearAgentGoal: (agentId: string) => ipc.invoke(ipcChannels.clearAgentGoal, agentId),
-  setAgentApprovalPreset: (agentId: string, preset: ApprovalPreset) => ipc.invoke(ipcChannels.setAgentApprovalPreset, agentId, preset),
   setAgentPermissionMode: (agentId: string, mode: string) => ipc.invoke(ipcChannels.setAgentPermissionMode, agentId, mode),
   sendPrompt: (agentId: string, prompt: string, options?: RendererSendPromptOptions) => ipc.invoke(ipcChannels.sendPrompt, agentId, prompt, options),
   steerPrompt: (agentId: string, prompt: string, options?: RendererSendPromptOptions) => ipc.invoke(ipcChannels.steerPrompt, agentId, prompt, options),

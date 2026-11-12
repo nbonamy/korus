@@ -17,7 +17,6 @@ import { isWorktreeInitializationState } from './worktree-initialization';
 import { isProviderConnection } from './contracts/provider-setup';
 import { isThreadFlags } from './thread-flags';
 import { isAppTextDescriptor } from './app-text';
-import { isApprovalPreset, isApprovalsReviewer } from './approval-presets';
 import { spokenAnnouncementVoices } from './contracts';
 import { isPlanReview } from './plan-review';
 import { isVisualization, isVisualizeSession } from './visualize';
@@ -229,29 +228,12 @@ function isProviderSession(value: unknown): boolean {
 }
 
 function isProviderDefaults(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.kind === 'cursor') return optional(value, 'model', isString)
-    && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString)
-    && optional(value, 'reasoningEffort', isString) && optional(value, 'serviceTier', isNullableString);
-  if (value.kind === 'antigravity') return optional(value, 'model', isString)
-    && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString);
-  if (value.kind === 'codex') {
-    return optional(value, 'model', isString) &&
-      optional(value, 'userSelectedModel', isBoolean) &&
-      optional(value, 'approvalPreset', isApprovalPreset) &&
-      optional(value, 'approvalPolicy', isString) &&
-      optional(value, 'approvalsReviewer', isApprovalsReviewer) &&
-      optional(value, 'sandboxMode', isString) &&
-      optional(value, 'reasoningEffort', isString) &&
-      optional(value, 'serviceTier', isNullableString);
-  }
-  return value.kind === 'claude' &&
-    optional(value, 'model', isString) &&
-    optional(value, 'userSelectedModel', isBoolean) &&
-    optional(value, 'reasoningEffort', isString) &&
-    optional(value, 'serviceTier', isNullableString) &&
-    optional(value, 'permissionMode', isString) &&
-    optional(value, 'thinking', isThinkingDefaults);
+  if (!isRecord(value) || !isHarnessProvider(value.kind)) return false;
+  // The same fields for every harness; only Claude adds its thinking budget.
+  return optional(value, 'model', isString) && optional(value, 'userSelectedModel', isBoolean)
+    && optional(value, 'reasoningEffort', isString) && optional(value, 'serviceTier', isNullableString)
+    && optional(value, 'permission', isString)
+    && (value.kind === 'claude' ? optional(value, 'thinking', isThinkingDefaults) : !('thinking' in value));
 }
 
 function isThinkingDefaults(value: unknown): boolean {
@@ -367,7 +349,7 @@ function isProviderCapabilities(value: unknown): boolean {
     optional(value, 'editTurn', isBoolean) &&
     optional(value, 'retryTurn', isBoolean) &&
     optional(value, 'approvals', isBoolean) &&
-    optional(value, 'approvalPresets', (candidate) => isArrayOf(candidate, isApprovalPreset)) &&
+    optional(value, 'approvalPresets', (candidate) => isArrayOf(candidate, isString)) &&
     optional(value, 'commands', (candidate) => isArrayOf(candidate, isProviderCommandSummary)) &&
     optional(value, 'permissionModes', (candidate) => isArrayOf(candidate, isPermissionModeOption));
 }
@@ -570,7 +552,7 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'missionInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
-      && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString) && optional(candidate, 'cursor', isString)) &&
+      && Object.entries(candidate).every(([provider, permission]) => isHarnessProvider(provider) && isString(permission))) &&
     optional(value, 'excludeLockfilesFromDiffs', isBoolean) &&
     optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
     optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, provider]) => host.trim().length > 0 && isHarnessProvider(provider))) &&

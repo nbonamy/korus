@@ -67,13 +67,9 @@ export type ProviderGoalResult = {
   cleared?: boolean;
 };
 
-export type ProviderApprovalPresetResult = {
-  providerSession: ProviderSessionData;
-  approvalPreset: ApprovalPreset;
-};
-
 export type ProviderPermissionModeResult = {
   providerDefaults: ProviderDefaults;
+  providerSession?: ProviderSessionData;
 };
 
 export type ProviderJsonValue = null | boolean | number | string | ProviderJsonValue[] | { [key: string]: ProviderJsonValue };
@@ -151,8 +147,8 @@ type HarnessDriver<Context, Event, HistoryFrame = unknown> = {
   setConversationTitle?(agent: Context, title: string): Promise<void>;
   setGoal?(agent: Context, objective: string): Promise<{ providerSession: ProviderSessionData; turnId?: string; goal?: Sdk.ThreadGoal; cleared?: boolean }>;
   clearGoal?(agent: Context): Promise<{ providerSession: ProviderSessionData; turnId?: string; goal?: Sdk.ThreadGoal; cleared?: boolean }>;
-  setApprovalPreset?(agent: Context, preset: ApprovalPreset): Promise<{ providerSession: ProviderSessionData; approvalPreset: ApprovalPreset }>;
-  setPermissionMode?(agent: Context, mode: string): Promise<{ providerDefaults: ProviderDefaults }>;
+  /** Applies one of the permission ids the harness offers; a new session may start to carry it. */
+  setPermissionMode?(agent: Context, mode: string): Promise<{ providerDefaults: ProviderDefaults; providerSession?: ProviderSessionData }>;
   releaseConversation?(agentId: string): void | Promise<void>;
   archiveAgentConversation?(agent: Context): Promise<void>;
   deleteAgentConversation?(agent: Context): Promise<void>;

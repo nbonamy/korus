@@ -1064,7 +1064,7 @@ describe('mission execution', () => {
     // The tier is exactly what was chosen with the model, never whatever the lead happened to be using.
     if (selection.provider === 'codex' && 'serviceTier' in selection) expect(worker.providerDefaults).toMatchObject({ serviceTier: selection.serviceTier });
     else {
-      expect(worker.providerDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(worker.providerDefaults).toMatchObject({ permission: 'acceptEdits' });
       expect(worker.providerDefaults?.serviceTier).toBeNull();
       expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude', providerSession: undefined, providerDefaults: undefined }));
     }

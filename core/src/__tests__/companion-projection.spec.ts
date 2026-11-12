@@ -217,8 +217,8 @@ describe('companion workspace projection', () => {
     expect(projectCompanionWorkspace({ teams, agents: [] }).modelFavorites).toStrictEqual([]);
   });
   it('shares the last model and permission choice but no sandbox or approval policy', () => {
-    const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { providerDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access', approvalPolicy: 'never', sandboxMode: 'danger-full-access' } })] }).agents;
-    expect(first!.providerDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access' });
+    const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { providerDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access' } })] }).agents;
+    expect(first!.providerDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access' });
   });
   it('keeps only presentation fields', () => {
     const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, suggestedPrompt: 'Run the tests', mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;

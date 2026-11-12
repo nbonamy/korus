@@ -6,7 +6,6 @@ import { ref } from 'vue';
 import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption, type ConversationSubmissionResult } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { approvalPresetFromDefaults, approvalPresetOptions } from '@workspace/core/approval-presets';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentConversationView } from '../app-state';
 import { catalogModelId } from '../agent-composer-state';
@@ -41,7 +40,6 @@ export type AgentConversationActions = {
   selectReasoningEffort: (agentId: string, effort: ReasoningEffort) => void;
   selectServiceTier: (agentId: string, tier: string | null) => void;
   setPlanMode: (agentId: string, enabled: boolean) => void;
-  setApprovalPreset: (agentId: string, preset: ApprovalPreset) => void | Promise<void>;
   setPermissionMode: (agentId: string, mode: string) => void | Promise<void>;
   updateComposerState: (agentId: string, state: AgentConversationView['composerState']) => void;
   updateAttachments: (agentId: string, attachments: AgentConversationView['attachments']) => void;
@@ -88,13 +86,9 @@ export function agentConversationState(view: () => AgentConversationView, extens
   };
   /** The permission in effect: what the session reports, else what the agent's stored defaults select. */
   const permission = (): string | null => {
-    const defaults = view().agent.providerDefaults;
-    const native = provider()?.permission;
-    const presets = view().capabilities.approvals ? view().capabilities.approvalPresets ?? [] : [];
-    if (!presets.length) return native ?? (defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined) ?? (permissionOptions(view())[0]?.id ?? null);
-    if (native !== undefined) return native && presets.includes(native as ApprovalPreset) ? native : null;
-    const stored = approvalPresetFromDefaults(defaults);
-    return presets.includes(stored) ? stored : presets[0] ?? null;
+    const offered = permissionOptions(view());
+    const chosen = provider()?.permission ?? view().agent.providerDefaults?.permission;
+    return chosen && offered.some(option => option.id === chosen) ? chosen : offered[0]?.id ?? null;
   };
   return {
     identity: {
@@ -269,9 +263,7 @@ export function useAgentConversation(options: {
       if (defaults.reasoningEffort != null) options.actions.selectReasoningEffort(id, defaults.reasoningEffort);
       if (defaults.serviceTier !== undefined) options.actions.selectServiceTier(id, defaults.serviceTier);
       if (defaults.permission === undefined) return;
-      // The harness names its permissions; the list an id came from says how the agent stores it.
-      const option = (options.state.capabilities?.permissions as readonly AgentPermissionOption[] | undefined)?.find(candidate => candidate.id === defaults.permission);
-      return option?.stored === 'approvalPreset' ? options.actions.setApprovalPreset(id, option.id as ApprovalPreset) : options.actions.setPermissionMode(id, defaults.permission);
+      return options.actions.setPermissionMode(id, defaults.permission);
     },
     setPlanMode: (planMode) => options.actions.setPlanMode(agentId(), planMode),
     ...options.overrides,
@@ -280,17 +272,8 @@ export function useAgentConversation(options: {
   return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, codeAnnotation, threadFlagBusy, respondToThreadFlag };
 }
 
-type AgentPermissionOption = PermissionOption & { stored: 'approvalPreset' | 'permissionMode' };
-
 /** The permissions the agent's harness offers, in Korus's words: one list whichever harness it is. */
-function permissionOptions(view: AgentConversationView): AgentPermissionOption[] {
-  const capabilities = view.capabilities;
-  const presets = capabilities.approvals ? capabilities.approvalPresets ?? [] : [];
-  return [
-    ...approvalPresetOptions.filter(option => presets.includes(option.id)).map(option => ({
-      id: option.id, stored: 'approvalPreset' as const, label: localizedText(option.label, translate) ?? option.id,
-      ...(localizedText(option.description, translate) ? { description: localizedText(option.description, translate)! } : {}) })),
-    ...(capabilities.permissionModes ?? []).map(mode => ({ id: mode.id, stored: 'permissionMode' as const, label: localizedText(mode.label, translate) ?? mode.id,
-      ...(localizedText(mode.description, translate) ? { description: localizedText(mode.description, translate)! } : {}), ...(mode.dangerous ? { dangerous: true } : {}) })),
-  ];
+function permissionOptions(view: AgentConversationView): PermissionOption[] {
+  return (view.capabilities.permissionModes ?? []).map(mode => ({ id: mode.id, label: localizedText(mode.label, translate) ?? mode.id,
+    ...(localizedText(mode.description, translate) ? { description: localizedText(mode.description, translate)! } : {}), ...(mode.dangerous ? { dangerous: true } : {}) }));
 }

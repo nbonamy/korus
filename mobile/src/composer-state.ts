@@ -32,8 +32,8 @@ export function createComposerState(deps: {
   const permissions = computed(() => {
     const current = deps.agent(); if (!current) return null;
     const choice = permissionChoices[current.id] ?? {}; const saved = current.providerDefaults;
-    return { approvalPreset: choice.approvalPreset ?? (saved && 'approvalPreset' in saved ? saved.approvalPreset : undefined) ?? null,
-      permissionMode: choice.permissionMode ?? (saved && 'permissionMode' in saved ? saved.permissionMode : undefined) ?? null };
+    // The laptop stores one permission for every harness; the phone's screens still show it under either name.
+    return { approvalPreset: choice.approvalPreset ?? saved?.permission ?? null, permissionMode: choice.permissionMode ?? saved?.permission ?? null };
   });
 
   async function loadModels(id: string, capturedSession: CompanionSession) {

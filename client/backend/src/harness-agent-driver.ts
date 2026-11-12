@@ -14,7 +14,7 @@ const storedDefaults = (value: ProviderDefaults | undefined): HarnessDefaults | 
   ...(value.model ? { model: value.model } : {}),
   ...(value.reasoningEffort !== undefined ? { reasoningEffort: value.reasoningEffort } : {}),
   ...(value.serviceTier !== undefined ? { serviceTier: value.serviceTier } : {}),
-  ...('approvalPreset' in value && value.approvalPreset ? { permission: value.approvalPreset } : 'permissionMode' in value && value.permissionMode ? { permission: value.permissionMode } : {}),
+  ...(value.permission ? { permission: value.permission } : {}),
 };
 const identityOf = (data: ProviderSessionData): string => sessionConversationId(data);
 
@@ -295,7 +295,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   async setPermissionMode(agent: Agent, mode: string) {
     const session = await this.session(agent);
     await this.harness.setPermission(session, mode);
-    return { providerDefaults: { ...(agent.providerDefaults ?? { kind: this.provider }), permissionMode: mode } as ProviderDefaults };
+    const providerSession = this.admittedData(session);
+    return { providerDefaults: { ...(agent.providerDefaults ?? { kind: this.provider }), permission: mode } as ProviderDefaults, ...(providerSession ? { providerSession } : {}) };
   }
   /** The request may be pending in the agent's own session or in one of its scoped (review) sessions; without an agent, any session may hold it. */
   async respondToAgentRequest(response: Parameters<AgentProviderDriver['respondToAgentRequest']>[0]) {
