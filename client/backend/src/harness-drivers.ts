@@ -8,7 +8,7 @@ import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversati
 import { product } from '@workspace/core/product';
 import type { ProviderDriverRegistryOptions } from './driver-rpc';
 import { AgentRegistry, HarnessAgentDriver, type DriverPolicy } from './harness-agent-driver';
-import { agentScopedMcpUrl, appMcpUrlForAgent, buildAppMcpConfigOverrides, buildAppThreadConfig, buildAppThreadExtras } from './mcp/codex-config';
+import { agentScopedMcpUrl, appMcpUrlForAgent, buildAppMcpConfigOverrides, buildAppThreadExtras } from './mcp/codex-config';
 import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
 import { utilityTextModel } from './agents/utility-text-model';
@@ -129,12 +129,10 @@ export function codexHarnessOptions(options: Options, agents: AgentRegistry): Ha
       config: ['features.default_mode_request_user_input=true', ...buildAppMcpConfigOverrides(options.pluginSettings?.() ?? settings()?.plugins)],
       defaultModel: codexConversationDefaults,
       conversationConfig: (context, scope) => {
-        const agent = agents.get(context.id);
-        const plugins = options.pluginSettings?.() ?? settings()?.plugins;
-        // Instructions and MCP servers reach Codex through the options every harness shares; a scope brings its own.
-        if (!scope?.mcpServerUrl) return (options.appMcpServerUrl ? buildAppThreadExtras(plugins, options.hostedMcpServerUrls?.() ?? {}) : {}) as never;
-        return buildAppThreadConfig(agent, scope.mcpServerUrl, plugins,
-          { celebrationsEnabled: options.celebrationsEnabled?.() ?? settings()?.celebrationsEnabled, developerInstructions: options.additionalDeveloperInstructions?.(agent) }) as never;
+        // Instructions and MCP servers reach Codex through the options every harness shares, and a scope such as a
+        // review brings its own servers. Only the keys Codex alone has are set here.
+        if (!scope?.mcpServerUrl && !options.appMcpServerUrl) return {} as never;
+        return buildAppThreadExtras(options.pluginSettings?.() ?? settings()?.plugins, scope?.mcpServerUrl ? {} : options.hostedMcpServerUrls?.() ?? {}) as never;
       },
       syncTitle: context => shouldSyncConversationTitleFromAgent(agents.get(context.id)),
       retainedSessions: context => {

@@ -387,10 +387,8 @@ describe('ProviderDriverRpc', () => {
     expect(options.instructions!(options.context(agent), { planMode: false })).toContain(`Your ${product.name} agent ID`);
     // Korus hosts GitHub itself, so ChatGPT's own GitHub connector is turned off: a key only Codex has.
     expect(await options.native(agent)).toStrictEqual({ config: { 'apps.connector_76869538009648d5b282a4bb21c3d157.enabled': false } });
-    // A review runs in its own scope, configured from the review server alone.
-    const review = await options.native(agent, { mcpServerUrl: 'http://127.0.0.1:4321/review' });
-    expect(review.config?.[`mcp_servers.${product.mcpServerName}.url`]).toBe(`http://127.0.0.1:4321/review?agentId=${agent.id}`);
-    expect(review.developerInstructions).toContain(`Your ${product.name} agent ID`);
+    // A review runs in its own scope, whose server the scope itself defines: Korus adds no entry for it.
+    expect(await options.native(agent, { mcpServerUrl: 'http://127.0.0.1:4321/review' })).toStrictEqual({});
   });
 
   it(`configures the ${product.name} MCP tools for a new Quick Chat without a folder`, async () => {
@@ -833,10 +831,10 @@ describe('ProviderDriverRpc', () => {
     });
   });
 
-  it('deletes a conversation when the driver can and reports unsupported otherwise', async () => {
+  it('deletes a conversation when the harness can and reports unsupported otherwise', async () => {
     const agent = { id: 'agent-chat', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread-chat' } } as unknown as Agent;
     const deleteAgentConversation = vi.fn().mockResolvedValue(undefined);
-    await expect(new ProviderDriverRpc(new Map([['codex', createDriver({ deleteAgentConversation })]])).handle('driver/conversation/delete', { agent })).resolves.toStrictEqual({ supported: true });
+    await expect(new ProviderDriverRpc(new Map([['codex', createDriver({ deleteAgentConversation, getCapabilities: () => codexProviderCapabilities })]])).handle('driver/conversation/delete', { agent })).resolves.toStrictEqual({ supported: true });
     expect(deleteAgentConversation).toHaveBeenCalledExactlyOnceWith(agent);
     await expect(new ProviderDriverRpc(new Map([['codex', createDriver()]])).handle('driver/conversation/delete', { agent })).resolves.toStrictEqual({ supported: false });
   });

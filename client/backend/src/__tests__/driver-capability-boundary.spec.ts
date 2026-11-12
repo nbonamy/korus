@@ -5,6 +5,7 @@ import type { Agent } from '@workspace/core/contracts';
 import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { ProviderDriverRpc, createProviderDriver } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 
 const agent: Agent = { id: 'limited', name: 'Limited', folder: '/repo', provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 
@@ -73,6 +74,19 @@ describe('unified driver capability boundary', () => {
     await expect(rpc.handle(backendMethods.driverModelsList, { agent })).resolves.toStrictEqual([]);
     await expect(rpc.handle(backendMethods.driverSkillsList, { agent })).resolves.toStrictEqual([]);
     await expect(rpc.handle(backendMethods.driverConversationArchive, { agent })).resolves.toStrictEqual({ supported: false });
+  });
+
+  it('reports what a harness cannot do from its capabilities, so closing an agent never fails on a missing archive', async () => {
+    // The real driver has every operation; whether the harness offers one is a capability, not a missing method.
+    const claude = scriptedDriver('claude').driver; const cursor = scriptedDriver('cursor').driver;
+    const rpc = new ProviderDriverRpc(new Map([['claude', claude], ['cursor', cursor]]));
+    try {
+      const closing = { ...agent, providerSession: { kind: 'claude' as const, sessionId: 's', transport: 'stdio' as const } };
+      await expect(rpc.handle(backendMethods.driverConversationArchive, { agent: closing })).resolves.toStrictEqual({ supported: false });
+      const onCursor = { ...agent, provider: 'cursor' as const };
+      await expect(rpc.handle(backendMethods.driverConversationDelete, { agent: onCursor })).resolves.toStrictEqual({ supported: false });
+      await expect(rpc.handle(backendMethods.driverSkillsList, { agent: onCursor })).resolves.toStrictEqual([]);
+    } finally { await rpc.close(); }
   });
 
   it('rejects an unadvertised permission mode even when the operation exists', async () => {

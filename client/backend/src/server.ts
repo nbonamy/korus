@@ -1246,6 +1246,11 @@ export class AppBackendServer {
 
   /** A quick chat has no project to come back to, so closing it deletes the provider session; everything else is archived. */
   private async retireConversation(agent: Agent): Promise<void> {
+    // A conversation is put away only once its turn has stopped; archiving under a running turn, such as a review in
+    // progress, leaves the harness working on a conversation that is no longer there. A turn that already ended is fine.
+    if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
+      await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }).catch(() => undefined);
+    }
     if (agent.sessionKind === 'quickChat') {
       const deleted = await this.driverRpc?.handle(backendMethods.driverConversationDelete, { agent });
       if (isRecord(deleted) && deleted.supported === true) return;

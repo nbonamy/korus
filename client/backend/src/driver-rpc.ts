@@ -28,7 +28,7 @@ import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveCodexLaunch } from './codex/codex-command';
 import { listSourceBranches, listSourceWorktrees, suggestedSourceWorktreePath } from './git-worktrees';
 import { WorktreeManager } from './worktrees/worktree-manager';
-import { buildAppMcpConfigOverrides, buildAppThreadConfig } from './mcp/codex-config';
+import { buildAppMcpConfigOverrides } from './mcp/codex-config';
 import { backendCodexHomeDir } from './state';
 import { listSourceFolders } from './source-folders';
 import { detectSourceFolder, scanSourceRepositories } from './source-repositories';
@@ -409,14 +409,15 @@ export class ProviderDriverRpc {
       case backendMethods.driverConversationArchive: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.archiveAgentConversation) return { supported: false };
+        // Every driver has the operation; whether its harness archives is a capability.
+        if (!driver.archiveAgentConversation || !driver.getCapabilities(agent).conversationArchive) return { supported: false };
         await driver.archiveAgentConversation(agent);
         return { supported: true };
       }
       case backendMethods.driverConversationDelete: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.deleteAgentConversation) return { supported: false };
+        if (!driver.deleteAgentConversation || !driver.getCapabilities(agent).conversationDelete) return { supported: false };
         await driver.deleteAgentConversation(agent);
         return { supported: true };
       }
@@ -597,7 +598,7 @@ export class ProviderDriverRpc {
       case backendMethods.driverSkillsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.listSkills) return [];
+        if (!driver.listSkills || !driver.getCapabilities(agent).skills) return [];
         return requireRecord(params).forceReload === true ? driver.listSkills(agent, true) : driver.listSkills(agent);
       }
       case backendMethods.sourceFolderDetect:

@@ -3,7 +3,6 @@ import { product } from '@workspace/core/product';
 import { defaultPluginSettings } from '@workspace/core/settings';
 import { workProviderDefinition, workProviderKinds } from '@workspace/core/work-providers';
 import type { HarnessConversationConfig as CodexThreadStartExtension } from '@korus-dev/multi-agent-sdk';
-import { appDeveloperInstructions, type AgentEffectInstructionSettings } from './agent-prompts';
 
 const chatGptGitHubConnectorId = 'connector_76869538009648d5b282a4bb21c3d157';
 
@@ -21,39 +20,6 @@ export function buildAppMcpConfigOverrides(pluginSettings: AppPluginSettings = d
       ? [configOverride('mcp_servers.node_repl.enabled', true)]
       : []),
   ];
-}
-
-/** The whole configuration of a scoped conversation, such as a code review, whose only server is the scope's own. */
-export function buildAppThreadConfig(
-  agent: Agent,
-  mcpServerUrl: string | null,
-  pluginSettings: AppPluginSettings = defaultPluginSettings,
-  effects: AgentEffectInstructionSettings = {},
-  hostedMcpServerUrls: Readonly<Record<string, string>> = {},
-): CodexThreadStartExtension {
-  if (!mcpServerUrl) {
-    return effects.developerInstructions?.trim() ? { developerInstructions: effects.developerInstructions.trim() } : {};
-  }
-
-  return {
-    config: {
-      [`mcp_servers.${product.mcpServerName}.url`]: appMcpUrlForAgent(mcpServerUrl, agent),
-      [`mcp_servers.${product.mcpServerName}.default_tools_approval_mode`]: 'approve',
-      ...Object.fromEntries(
-        Object.entries(hostedMcpServerUrls).map(([serverId, serverUrl]) => [
-          `mcp_servers.${serverId}.url`,
-          agentScopedMcpUrl(serverUrl, agent.id),
-        ]),
-      ),
-      ...(hostedMcpServerUrls.github
-        ? { [`apps.${chatGptGitHubConnectorId}.enabled`]: false }
-        : {}),
-      ...(pluginSettings.chromeEnabled
-        ? { 'mcp_servers.node_repl.enabled': true }
-        : {}),
-    },
-    developerInstructions: appDeveloperInstructions(agent, pluginSettings, effects),
-  };
 }
 
 /**

@@ -50,6 +50,10 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private readonly scopes = new Map<string, Session>();
   /** The scope an agent is running right now, which steering, interrupts and answers address instead of its own conversation. */
   private readonly running = new Map<string, Session>();
+  /** The scoped run each agent has in flight, settled once it has fully unwound. */
+  private readonly scopedRuns = new Map<string, Promise<void>>();
+  /** Every scope open under an agent, released with it. */
+  private readonly agentScopes = new Map<string, Set<Session>>();
   /** Scopes whose events stay out of the agent's conversation. */
   private readonly quiet = new Set<Session>();
   /** The agent each session's conversation belongs to: a scope reports as the agent it works for. */
@@ -227,8 +231,13 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   }
   async interrupt(agent: Agent, expectedTurnId?: string) {
     const session = await this.target(agent);
+    const run = this.scopedRuns.get(agent.id);
     const admission = await this.harness.interrupt(session, expectedTurnId);
-    return { providerSession: this.dataOf(session), ...(admission.turnId ? { turnId: admission.turnId } : {}) };
+    const providerSession = this.admittedData(session) ?? agent.providerSession!;
+    // The harness acknowledges an interrupt before a scope's run has closed down its conversation. The caller may put
+    // that conversation away next, so wait for the run; a run that will not stop is not waited on forever.
+    if (run) await Promise.race([run, new Promise(resolve => setTimeout(resolve, 10_000))]);
+    return { providerSession, ...(admission.turnId ? { turnId: admission.turnId } : {}) };
   }
   continueInterruptedTurn(agent: Agent, safetyReview?: Parameters<NonNullable<AgentProviderDriver['continueInterruptedTurn']>>[1]) {
     return this.unless(agent, 'interrupted turn continuation', async () => { const session = await this.session(agent); const result = await this.harness.continueInterruptedTurn(session, safetyReview); return { providerSession: this.dataOf(session), activeTurnId: result.activeTurnId }; });
@@ -287,6 +296,16 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   async generateImage(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['generateImage']>>[1], signal?: AbortSignal) { return this.harness.generateImage(await this.session(agent), input as never, signal) as never; }
 
   async loadConversation(agent: Agent) {
+    // While the agent runs a scope, such as a review, readers follow that scope. Its conversation is live there, so
+    // loading it again under the agent's own session would only compete with the run.
+    const running = this.running.get(agent.id);
+    if (running) {
+      this.latest.set(agent.id, agent);
+      // A quiet scope, such as a summary, is never shown: readers keep the agent's own conversation as it stands.
+      const shown = this.quiet.has(running) ? this.sessions.get(agent.id) : running;
+      if (shown) this.publishConversation(shown);
+      return (shown && this.admittedData(shown)) ?? agent.providerSession ?? null;
+    }
     // When a review continued this very conversation, its history lives in the review's session.
     const own = agent.providerSession ? this.scopes.get(identityOf(agent.providerSession)) : undefined;
     const session = own ?? await this.session(agent);
@@ -332,12 +351,27 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   async releaseConversation(agentId: string) {
     const session = this.sessions.get(agentId);
     if (!session) return;
+    // The harness releases a session only after the scopes opened under it, such as its reviews.
+    for (const scope of [...this.agentScopes.get(agentId) ?? []]) await this.releaseScope(agentId, scope);
+    await this.harness.release(session);
+    // Forgotten only once the harness let go of it, so a refused release can be tried again.
     this.sessions.delete(agentId);
     if (this.published.get(agentId)?.session === session) this.published.delete(agentId);
-    await this.harness.release(session);
+  }
+  /** Lets go of a scope without deleting its conversation: a saved review can still be continued later. */
+  private async releaseScope(agentId: string, scope: Session): Promise<void> {
+    await this.harness.release(scope);
+    this.agentScopes.get(agentId)?.delete(scope);
+    for (const [key, held] of this.scopes) if (held === scope) this.scopes.delete(key);
   }
 
-  executeScopedPrompt(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) { return this.unless(agent, 'scoped execution', () => this.runScoped(agent, input)); }
+  executeScopedPrompt(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
+    const run = this.unless(agent, 'scoped execution', () => this.runScoped(agent, input));
+    const settled = run.then(() => undefined, () => undefined);
+    this.scopedRuns.set(agent.id, settled);
+    void settled.then(() => { if (this.scopedRuns.get(agent.id) === settled) this.scopedRuns.delete(agent.id); });
+    return run;
+  }
   private async runScoped(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
     const parent = await this.session(agent);
     const existing = input.session ? this.scopes.get(identityOf(input.session)) : undefined;
@@ -346,16 +380,24 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       : this.harness.openScope(parent, { cwd: input.cwd }));
     this.owners.set(scope, agent.id);
     this.running.set(agent.id, scope);
+    if (!this.agentScopes.has(agent.id)) this.agentScopes.set(agent.id, new Set());
+    this.agentScopes.get(agent.id)!.add(scope);
     if (input.silent) this.quiet.add(scope);
+    let failed = false;
     try {
       const result = await this.harness.executeScopedPrompt(parent, { prompt: input.prompt, cwd: input.cwd, scope: input.scope, options: input.options as never, session: scope, ...(input.signal ? { signal: input.signal } : {}) });
       const data = this.dataOf(result.session);
       this.owners.set(result.session, agent.id);
       this.scopes.set(identityOf(data), result.session);
       return { text: result.text, session: data };
+    } catch (error) {
+      failed = true;
+      throw error;
     } finally {
       if (this.running.get(agent.id) === scope) this.running.delete(agent.id);
       this.quiet.delete(scope);
+      // A scope opened for a run that failed is of no further use; one that was continued stays for its next round.
+      if (failed && !existing) await this.releaseScope(agent.id, scope).catch(() => { this.agentScopes.get(agent.id)?.delete(scope); });
       // Readers saw the scope while it ran; they return to the conversation the agent shows now.
       const shown = this.shownSession(agent.id);
       if (shown && this.published.get(agent.id)?.session === scope && shown !== scope) this.publishConversation(shown);
@@ -372,6 +414,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     }
     this.scopes.delete(key);
     await this.harness.disposeScopedSession(scope);
+    this.agentScopes.get(agent.id)?.delete(scope);
   }
   async runCodeReview(agent: Agent, input: ProviderCodeReviewInput): Promise<ProviderCodeReviewResult> {
     const result = await this.executeScopedPrompt(agent, { prompt: input.prompt, cwd: input.cwd, ...(input.reviewerSession ? { session: input.reviewerSession } : {}),

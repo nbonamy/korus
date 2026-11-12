@@ -77,7 +77,8 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
       drivers.set(kind, {
         provider: kind,
         getRuntimeStatus: () => ({ provider: kind, status: 'running' }),
-        getCapabilities: () => kind === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities,
+        // Both sides archive here, so the test can watch the source being put away whichever harness it is.
+        getCapabilities: () => ({ ...(kind === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities), conversationArchive: true }),
         sendPrompt: async (agent, prompt) => {
           (agent.id === 'source' ? sourceSend : targetSend)(prompt);
           return { providerSession: kind === 'codex' ? { kind: 'codex', threadId: agent.id } : { kind: 'claude', sessionId: agent.id, transport: 'stdio' }, turnId: 'note-turn' };

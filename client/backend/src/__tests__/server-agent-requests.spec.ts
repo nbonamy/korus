@@ -21,7 +21,7 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const native = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
     const drivers = (['codex', 'claude', 'antigravity'] as const).map(provider => ({
-      provider: provider, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(),
+      provider: provider, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(() => ({ skills: true }) as never),
       sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
     } satisfies AgentProviderDriver));
     snapshot.agents = drivers.map(({ provider: provider }) => ({ id: provider, teamId: 'team-test', name: provider,
@@ -1002,5 +1002,28 @@ describe('AppBackendServer', () => {
     expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-legacy-child' }, 'agent-dina');
     expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-root' }, 'agent-dina');
     await server.close();
+  });
+});
+
+describe('closing an agent whose turn is running', () => {
+  it('stops the turn before putting its conversation away, as a review in progress needs', async () => {
+    const snapshot = createTestSnapshot();
+    const running = { ...snapshot.agents[0]!, id: 'reviewer', name: 'Reviewer', provider: 'codex' as const, teamId: 'team-test', providerSession: { kind: 'codex' as const, threadId: 'review-thread' }, status: { type: 'working' as const } };
+    snapshot.agents.push(running);
+    snapshot.teams[0]!.agentIds.push(running.id);
+    const order: string[] = [];
+    const driver = {
+      provider: 'codex', getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(() => ({ conversationArchive: true }) as never),
+      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
+      interrupt: vi.fn(async () => { order.push('interrupt'); return { providerSession: running.providerSession }; }),
+      archiveAgentConversation: vi.fn(async () => { order.push('archive'); }),
+      releaseConversation: vi.fn(async () => { order.push('release'); }),
+    } satisfies AgentProviderDriver;
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'close', method: backendMethods.agentDelete, params: { agentId: 'reviewer' } });
+      expect(order).toStrictEqual(['interrupt', 'archive', 'release']);
+      expect(snapshot.agents.some(agent => agent.id === 'reviewer')).toBe(false);
+    } finally { await server.close(); }
   });
 });

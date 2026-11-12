@@ -125,6 +125,59 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(new Set(seen.map(event => event.payload.epoch)).size).toBe(1);
   });
 
+  it('closes an agent that ran a review, and one whose review failed, leaving nothing open under its name', async () => {
+    const { driver, script } = scriptedDriver('claude');
+    opened.push(driver);
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'claude', providerSession: { kind: 'claude', sessionId: 's', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    script.on('executeScopedPrompt', (async () => ({ text: 'ok', session: { kind: 'claude', sessionId: 'review', transport: 'stdio' } })) as never);
+    await driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } });
+    script.on('executeScopedPrompt', (async () => { throw new Error('Scoped execution was interrupted.'); }) as never);
+    await expect(driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } })).rejects.toThrow('interrupted');
+    await expect(driver.releaseConversation!('agent-a')).resolves.toBeUndefined();
+    // The agent can be used again: nothing of it is still open in the harness.
+    expect(() => driver.getCapabilities(agent)).not.toThrow();
+    await expect(driver.releaseConversation!('agent-a')).resolves.toBeUndefined();
+  });
+
+  it('reports a scope\'s run as interrupted only once the run has unwound, so its conversation can then be put away', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    opened.push(driver);
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'working' }, createdAt: '', updatedAt: '' } as never;
+    let stop!: (error: Error) => void;
+    const order: string[] = [];
+    script.on('executeScopedPrompt', (() => new Promise((_resolve, reject) => { stop = reject; })) as never);
+    const run = driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } }).catch(() => { order.push('run ended'); });
+    await vi.waitFor(() => expect(stop).toBeDefined());
+    const interrupted = driver.interrupt(agent).then(() => { order.push('interrupt returned'); });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    // The harness acknowledged the interrupt, but the run is still closing down its conversation.
+    expect(order).toStrictEqual([]);
+    stop(new Error('Scoped execution was interrupted.'));
+    await Promise.all([run, interrupted]);
+    expect(order).toStrictEqual(['run ended', 'interrupt returned']);
+  });
+
+  it('answers a history load from the scope an agent is running instead of loading its conversation a second time', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    opened.push(driver);
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', status: { type: 'working' }, createdAt: '', updatedAt: '' } as never;
+    let finish!: (value: unknown) => void;
+    script.on('executeScopedPrompt', ((context: { id: string }) => {
+      script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Review' } } as never);
+      return new Promise(resolve => { finish = resolve; });
+    }) as never);
+    const run = driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const seen: Array<{ type: string; payload: { snapshot?: { state: { title: string | null } } } }> = [];
+    driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
+    // The agent's record has adopted the review's conversation; a reader asks for its history while the review runs.
+    await expect(driver.loadConversation!({ ...(agent as object), providerSession: { kind: 'codex', threadId: 'review' } } as never)).resolves.not.toThrow();
+    expect(script.calls('loadConversation')).toHaveLength(0);
+    expect(seen).toMatchObject([{ type: 'conversation.sessionSnapshot', payload: { snapshot: { state: { title: 'Review' } } } }]);
+    finish({ text: 'ok', session: { kind: 'codex', threadId: 'review' } });
+    await run;
+  });
+
   it('publishes one conversation per agent: the scope it runs, then its own conversation again', async () => {
     const { driver, script } = scriptedDriver('codex');
     const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
