@@ -312,7 +312,8 @@ function selectMenuItem(itemId: string): void {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
+  /* Same inset as the menu items below, so icons and values line up with theirs. */
+  padding: var(--space-4);
   color: var(--color-text);
 }
 
