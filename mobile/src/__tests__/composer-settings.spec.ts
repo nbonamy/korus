@@ -18,13 +18,19 @@ describe('phone composer settings', () => {
     expect(resolveComposerSettings(agent({ provider: 'claude', providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }), [{ id: 'opus', model: 'opus', displayName: 'Opus' }], undefined).serviceTier).toBe('fast');
   });
   it('finds the alias a resolved model name belongs to, as the desktop does', () => {
+    // The live Claude catalog lists a default row that resolves to the same model as the real one.
     const catalog: ProviderModelOption[] = [
-      { id: 'default', model: 'default', displayName: 'Default (recommended)', isDefault: true },
+      { id: 'default', model: 'default', displayName: 'Default (recommended)', isDefault: true, providerMetadata: { resolvedModel: 'claude-sonnet-5-5' } },
+      { id: 'opus', model: 'opus', displayName: 'Opus 5.5', providerMetadata: { resolvedModel: 'claude-opus-5-5' } },
       { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet 5.5', providerMetadata: { resolvedModel: 'claude-sonnet-5-5' } },
     ];
-    const chat = agent({ provider: 'claude', providerDefaults: { kind: 'claude', model: 'claude-sonnet-5-5', userSelectedModel: true } });
-    expect(resolveComposerSettings(chat, catalog, undefined).model).toMatchObject({ id: 'sonnet' });
-    expect(resolveComposerSettings(chat, catalog, { model: 'claude-sonnet-5-5' }).model).toMatchObject({ id: 'sonnet' });
+    const chat = (model?: string) => agent({ provider: 'claude', providerDefaults: { kind: 'claude', ...(model ? { model, userSelectedModel: true } : {}) } });
+    expect(resolveComposerSettings(chat('claude-sonnet-5-5'), catalog, undefined).model).toMatchObject({ id: 'sonnet' });
+    expect(resolveComposerSettings(chat('claude-opus-5-5'), catalog, undefined).model).toMatchObject({ id: 'opus' });
+    expect(resolveComposerSettings(chat('claude-sonnet-5-5'), catalog, { model: 'claude-opus-5-5' }).model).toMatchObject({ id: 'opus' });
+    // Nothing saved, or the default row itself: the default shows as the model it resolves to.
+    expect(resolveComposerSettings(chat(), catalog, undefined).model).toMatchObject({ id: 'sonnet' });
+    expect(resolveComposerSettings(chat('default'), catalog, undefined).model).toMatchObject({ id: 'sonnet' });
   });
   it('switching model adopts that model\'s own effort and tier defaults', () => {
     const next = applyComposerChoice('codex', models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true }, { modelId: 'gpt-deep' });

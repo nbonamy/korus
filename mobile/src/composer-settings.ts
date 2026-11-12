@@ -1,5 +1,6 @@
 import type { Agent, HarnessProvider, ExecutionSelection, ProviderCapabilities, ProviderModelOption } from '@workspace/core/contracts';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { presentCatalog } from '@workspace/core/model-catalog';
 import type { CompanionPromptOptions } from './companion-port';
 
 /** The phone's own choice for one agent; anything unset follows the agent's saved choice, then the provider default. */
@@ -18,9 +19,13 @@ export function composerCapabilitiesFor(provider: HarnessProvider, models: reado
   return { ...capabilities, serviceTier: capabilities.serviceTier || models.some(model => Boolean(model.serviceTiers?.length)) };
 }
 
+/** The models the phone offers, as the desktop does: a default row that only points at another model is hidden. */
+export const pickableModels = (models: readonly ProviderModelOption[]) => presentCatalog(models.filter(model => !model.hidden)).models;
+
 export function resolveComposerSettings(agent: Agent, models: readonly ProviderModelOption[], choice: ComposerChoice | undefined): ComposerSettings {
   const saved = agent.providerDefaults;
-  const model = models.find((candidate) => matches(candidate, choice?.model ?? saved?.model)) ?? models.find((candidate) => candidate.isDefault) ?? models[0] ?? null;
+  const presented = presentCatalog(models.filter(candidate => !candidate.hidden));
+  const model = presented.models.find((candidate) => matches(candidate, choice?.model ?? saved?.model)) ?? presented.fallback ?? null;
   const savedTier = saved && 'serviceTier' in saved ? saved.serviceTier : undefined;
   return {
     provider: agent.provider, model,
@@ -31,7 +36,8 @@ export function resolveComposerSettings(agent: Agent, models: readonly ProviderM
 }
 
 /** Applies one change from the model menu. `save` is what to persist on the laptop; plan mode stays on the phone. */
-export function applyComposerChoice(provider: HarnessProvider, models: readonly ProviderModelOption[], current: ComposerChoice, change: ComposerChange): { choice: ComposerChoice; save: ExecutionSelection | null } {
+export function applyComposerChoice(provider: HarnessProvider, catalog: readonly ProviderModelOption[], current: ComposerChoice, change: ComposerChange): { choice: ComposerChoice; save: ExecutionSelection | null } {
+  const models = pickableModels(catalog);
   const model = models.find((candidate) => matches(candidate, current.model));
   if (change.modelId !== undefined) {
     const next = models.find((candidate) => candidate.id === change.modelId);
