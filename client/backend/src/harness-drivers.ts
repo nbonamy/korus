@@ -84,8 +84,10 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
 
 export function createAntigravityDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const agents = new AgentRegistry();
+  const home = (options.getGeneralSettings?.() ?? options.generalSettings)?.providerHomes?.antigravity;
   const harness = make('antigravity', { ...common(options, agents),
-    antigravity: { command: process.env.APP_ANTIGRAVITY_COMMAND, harnessPath: process.env.ANTIGRAVITY_HARNESS_PATH },
+    ...(home ? { home: home.homePath } : {}),
+    antigravity: { command: process.env.APP_ANTIGRAVITY_COMMAND },
   });
   return driver('antigravity', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },

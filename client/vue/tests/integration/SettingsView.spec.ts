@@ -449,8 +449,8 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('Accessibility');
     await wrapper.setProps({ providerConnections: [{ provider: 'antigravity', installed: false, connected: false, checking: false }] });
     expect(wrapper.get('.engine-hero__copy strong').text()).toBe('Antigravity');
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.get('.provider-install-actions a').attributes('href')).toBe('https://antigravity.google/docs/getting-started?tab=cli');
+    expect(installProvider).not.toHaveBeenCalled();
     await wrapper.get('button[aria-label="Check again"]').trigger('click');
     expect(refreshProvider).toHaveBeenCalledWith('antigravity');
     expect(connectAntigravity).not.toHaveBeenCalled();

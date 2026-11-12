@@ -1,3 +1,3 @@
-import * as runtime from '@korus-dev/multi-agent-sdk/runtime';
-import { backendHomeDir } from '../state';
-export const resolveAcpRuntime = () => runtime.resolveAcpRuntime(backendHomeDir(), { command: process.env.APP_ANTIGRAVITY_COMMAND, harnessPath: process.env.ANTIGRAVITY_HARNESS_PATH });
+import { resolveRuntimeExecutable } from '@workspace/core/runtime-discovery';
+/** The Antigravity CLI installed on this machine. */
+export const resolveAntigravityExecutable = () => process.env.APP_ANTIGRAVITY_COMMAND || resolveRuntimeExecutable('agy');

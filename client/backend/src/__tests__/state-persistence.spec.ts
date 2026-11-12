@@ -163,7 +163,7 @@ describe('state persistence', () => {
     snapshot.general.providerHomes = { antigravity: { homePath: '/private/acp', isolated: true, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, antigravity: false };
     snapshot.general.providerModelDefaults = { antigravity: {provider: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: null, serviceTier: null } };
-    snapshot.general.providerApprovalDefaults = { antigravity: 'auto_edit' };
+    snapshot.general.providerApprovalDefaults = { antigravity: 'accept-edits' };
     await store.save(snapshot);
     const restored = await store.load();
     expect(isAppSnapshot(restored)).toBe(true);

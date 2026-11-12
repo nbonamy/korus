@@ -912,8 +912,7 @@ not prove GUI installation, login or a full agent turn on a clean machine: do th
 acceptance check before promoting the first release for an OS. Windows installers
 are **unsigned** (SmartScreen warnings are expected; no certificate prerequisite).
 The selected provider runtimes are separately installed prerequisites, as are
-Git/GitHub tools. Antigravity requires the paired ACP runtime/harness described
-above, not an editor or CLI installation alone.
+Git/GitHub tools. Antigravity requires its CLI (`agy`) 1.5.1 or later.
 
 ## GitHub desktop releases
 

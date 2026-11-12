@@ -140,7 +140,7 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it.each(['antigravity', 'codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (provider) => {
+  it.each(['codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (provider) => {
     const { api } = createClientApiMock();
     const engine = { provider: provider, installed: false, connected: false, checking: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);

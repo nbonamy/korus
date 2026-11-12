@@ -71,6 +71,7 @@ describe('CodexLoginLanding', () => {
     expect(wrapper.findAll('a').map(link => [link.text(), link.attributes('href')])).toEqual([
       ['Install', 'https://learn.chatgpt.com/docs/codex/cli#getting-started'],
       ['Install', 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code'],
+      ['Install', 'https://antigravity.google/docs/getting-started?tab=cli'],
     ]);
     expect(wrapper.findAll('.codex-login__provider .el-button').every(button => button.attributes('disabled') !== undefined)).toBe(true);
     for (const link of wrapper.findAll('a')) {

@@ -691,7 +691,8 @@ export const messages = {
       },
       antigravity: {
         default: { label: 'Ask for approval', description: 'Antigravity asks before commands and file changes.' },
-        autoEdit: { label: 'Allow file edits', description: 'Allow native file edits; commands still use Antigravity approvals.' },
+        acceptEdits: { label: 'Allow file edits', description: 'Antigravity edits files in the workspace without asking; commands still need approval.' },
+        auto: { label: 'Auto', description: 'Antigravity runs edits and safe commands, and asks before anything irreversible.' },
       },
       approval: {
         ask: {

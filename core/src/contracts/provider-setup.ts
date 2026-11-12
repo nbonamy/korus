@@ -89,7 +89,7 @@ export type ProviderSetupCapabilities = {
 const providerSetupDefaults: Record<HarnessProvider, ProviderSetupCapabilities> = {
   codex: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://learn.chatgpt.com/docs/codex/cli#getting-started' } },
   claude: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code' } },
-  antigravity: { homeSelection: true, skillSharing: true, installation: { managed: true } },
+  antigravity: { homeSelection: true, skillSharing: true, installation: { managed: false, instructionsUrl: 'https://antigravity.google/docs/getting-started?tab=cli', command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash' } },
   cursor: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } },
 };
 

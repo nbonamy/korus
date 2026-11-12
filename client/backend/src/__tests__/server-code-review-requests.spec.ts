@@ -341,13 +341,12 @@ describe('AppBackendServer code review workflow', () => {
       name: '👀 Owner',
       folder: owner.folder,
       provider: provider,
-      providerDefaults: { kind: provider, model: 'review-model', ...(provider === 'antigravity' ? {} : { reasoningEffort: 'low' }) },
+      providerDefaults: { kind: provider, model: 'review-model', reasoningEffort: 'low' },
       teamId: owner.teamId,
     });
     expect(snapshot.agentGitStatuses[reviewer.id]).toStrictEqual(snapshot.agentGitStatuses[owner.id]);
     expect(owner.providerDefaults).toMatchObject({ model: 'gpt-5.6-sol', reasoningEffort: 'high' });
-    expect(snapshot.general.codeReviewDefaults?.providers[provider]).toStrictEqual({provider: provider, reasoningEffort: null, serviceTier: null, model: 'review-model', ...(provider === 'antigravity' ? {} : { reasoningEffort: 'low' }) });
-    if (provider === 'antigravity') expect(reviewer.providerDefaults?.reasoningEffort).toBeUndefined();
+    expect(snapshot.general.codeReviewDefaults?.providers[provider]).toStrictEqual({ provider, serviceTier: null, model: 'review-model', reasoningEffort: 'low' });
     const round = session.rounds[0]!;
     expect(runCodeReview).toHaveBeenNthCalledWith(1, reviewer, expect.objectContaining({
       reviewMcpServerUrl: expect.stringContaining('reviewContextId=1'),

@@ -261,7 +261,7 @@ describe('AppStateStore', () => {
     roster.schemaVersion = schemaVersion;
     const unknown = { id: 'future-agent', name: null, folder: '/future', createdAt: '2026-10-09',
       engine: { kind: 'future-provider', session: { opaque: ['future-session'] },
-        settings: { model: 'gemini-3.6-flash-low', permissionMode: 'auto_edit' }, extra: true },
+        settings: { model: 'gemini-3.6-flash-low', permissionMode: 'accept-edits' }, extra: true },
       futureField: { untouched: true } };
     (roster.data.agents as unknown[]).splice(1, 0, unknown);
     const teams = roster.data.teams as Array<{ id: string; agentIds: string[]; activeAgentId?: string }>;

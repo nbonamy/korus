@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import 'element-plus/theme-chalk/el-icon.css';
 import ProviderInstallActions from '../ProviderInstallActions.vue';
+import type { ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 
 describe('ProviderInstallActions', () => {
   it.each([{ provider: 'codex', name: 'Codex' }, { provider: 'claude', name: 'Claude Code' }] as const)('allows a controller installer for explicit $backend setup metadata', async ({ provider: backend, name }) => {
@@ -15,19 +16,20 @@ describe('ProviderInstallActions', () => {
   });
   it.each([
     { provider: 'cursor' as const },
+    { provider: 'antigravity' as const, command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash', url: 'https://antigravity.google/docs/getting-started?tab=cli' },
     { provider: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } },
-  ])('uses external installation policy for $backend despite a legacy automated caller', async ({ provider: backend, capabilities }) => {
+  ])('uses external installation policy for $provider despite a legacy automated caller', async ({ provider: backend, capabilities, command = 'curl https://cursor.com/install -fsS | bash', url = 'https://cursor.com/docs/cli/installation' }: { provider: 'cursor' | 'codex' | 'antigravity'; capabilities?: ProviderSetupCapabilities; command?: string; url?: string }) => {
     const wrapper = mount(ProviderInstallActions, { props: { provider: backend, capabilities, automated: true } });
-    expect(wrapper.text()).toContain('curl https://cursor.com/install -fsS | bash');
-    expect(wrapper.get('a').attributes('href')).toBe('https://cursor.com/docs/cli/installation');
+    expect(wrapper.text()).toContain(command);
+    expect(wrapper.get('a').attributes('href')).toBe(url);
     await wrapper.get('button[aria-label="Check again"]').trigger('click');
     expect(wrapper.emitted('refresh')).toStrictEqual([[]]);
     expect(wrapper.emitted('install')).toBeUndefined();
     wrapper.unmount();
   });
 
-  it('installs Antigravity in the app and shows only a spinner while preventing duplicate actions', async () => {
-    const wrapper = mount(ProviderInstallActions, { props: { provider: 'antigravity' } });
+  it('installs a managed provider in the app and shows only a spinner while preventing duplicate actions', async () => {
+    const wrapper = mount(ProviderInstallActions, { props: { provider: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: true } } } });
     expect(wrapper.find('a').exists()).toBe(false);
     const install = wrapper.get('button[aria-label="Install Antigravity"]');
     await install.trigger('click');

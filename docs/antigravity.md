@@ -1,18 +1,14 @@
 # Antigravity Integration
 
-`client/backend/src/antigravity` owns installation and discovery of the ACP
-runtime/harness, OAuth observations, and the provider replica. The agy CLI is not
-the execution path. OAuth renewal stays native, background checks suppress login UI,
-and child environments sanitize Google credentials/projects with isolated
-`GEMINI_HOME` and temporary storage. Home routing is not a filesystem sandbox.
-An explicit installation request downloads a pinned Google-hosted archive into
-private temporary storage. Size and SHA-256 checks precede bounded extraction of
-regular executable files; an ACP handshake in a disposable home verifies the
-qualified runtime before atomic activation. Installation never authenticates,
-and runtime binaries remain outside app release resources. Provider setup
-serializes installation with home changes and detection refreshes. Discovery
-accepts the managed pair, paired executables on PATH, explicit runtime/harness
-environment paths, or an existing versioned runtime directory.
+`client/backend/src/antigravity` owns discovery of the Antigravity CLI (`agy`),
+OAuth observations, and the provider replica. Execution runs through `agy acp`,
+the CLI's ACP server; Korus never installs or downloads it. OAuth renewal stays
+native, background checks suppress login UI, and child environments sanitize
+Google credentials/projects and use temporary storage. A separate home is passed
+to the CLI with `--gemini-dir`; sign-in is shared machine-wide. Home routing is
+not a filesystem sandbox. Provider setup
+serializes home changes and detection refreshes. Discovery accepts `agy` on PATH
+or the executable named by `APP_ANTIGRAVITY_COMMAND`.
 
 ACP process framing, directional request IDs, deadlines and process-group teardown
 are owned by the shared `client/backend/src/acp` transport. Provider adapters

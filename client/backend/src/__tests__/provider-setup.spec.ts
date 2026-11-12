@@ -38,7 +38,6 @@ beforeEach(async () => {
   vi.stubEnv('APP_HOME', path.join(root, 'app'));
   vi.stubEnv('CODEX_HOME', path.join(root, 'codex'));
   vi.stubEnv('CLAUDE_CONFIG_DIR', path.join(root, 'claude'));
-  vi.stubEnv('GEMINI_HOME', path.join(root, 'gemini'));
   vi.stubEnv('APP_BUNDLED_CODEX_PATH', '');
   vi.stubEnv('APP_CLAUDE_COMMAND', '');
   cli.installed.clear(); cli.installs = 0; cli.fail = false;
@@ -80,7 +79,7 @@ describe('provider onboarding setup', () => {
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/setup/get' })).toMatchObject({ result: expect.arrayContaining([
         expect.objectContaining({ provider: 'cursor', ...saved, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } }),
-        expect.objectContaining({ provider: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: true } } }),
+        expect.objectContaining({ provider: 'antigravity', capabilities: { homeSelection: true, skillSharing: true, installation: { managed: false, instructionsUrl: 'https://antigravity.google/docs/getting-started?tab=cli', command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash' } } }),
       ]) });
       await expect(setup.configure('cursor', { isolated: false, shareSkills: false })).rejects.toThrow('setup');
       expect((await loadBackendSnapshot()).general.providerHomes?.cursor).toEqual(saved);

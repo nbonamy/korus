@@ -25,7 +25,7 @@ describe('backend capabilities', () => {
   });
   it('never inherits unsupported Codex controls for Antigravity', () => {
     expect(defaultProviderCapabilities('antigravity')).toMatchObject({
-      goals: false, serviceTier: false, thinkingBudget: false, reasoningEffort: false,
+      goals: false, serviceTier: false, thinkingBudget: false, reasoningEffort: true,
       steerPrompt: false, conversationFork: false, deleteTurn: false, editTurn: false,
       retryTurn: false, plugins: false, remoteControl: false,
       conversationArchive: false,

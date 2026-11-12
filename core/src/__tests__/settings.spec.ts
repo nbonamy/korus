@@ -470,7 +470,7 @@ describe('settings contracts', () => {
       },
     }).providerModelDefaults).toStrictEqual({
       codex: {provider: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: null },
-      antigravity: {provider: 'antigravity',  model: 'gemini-low', reasoningEffort: null, serviceTier: null },
+      antigravity: {provider: 'antigravity',  model: 'gemini-low', reasoningEffort: 'high', serviceTier: null },
     });
   });
 

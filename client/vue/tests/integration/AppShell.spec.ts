@@ -1007,37 +1007,26 @@ describe('AppShell authentication and conversation', () => {
     reloaded.unmount();
   });
 
-  it('keeps Antigravity Connect disabled during installation, recovers from failure, and enables it after a retry', async () => {
+  it('keeps Antigravity Connect disabled until its CLI is detected, with the official install instructions at hand', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
     const setup = { provider: 'antigravity' as const, installed: false, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
-    let succeed!: (value: typeof setup) => void;
-    let fail!: (error: Error) => void;
-    const installProvider = vi.fn(() => new Promise<typeof setup>((resolve, reject) => { succeed = resolve; fail = reject; }));
+    const refreshProvider = vi.fn().mockResolvedValue({ ...setup, installed: true });
     const authenticateProvider = vi.fn().mockResolvedValue({ kind: 'antigravity', connected: false, state: { loggedIn: false, homePath: setup.homePath } });
-    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), installProvider, authenticateProvider } as Partial<AppApi> as AppApi;
+    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), refreshProvider, authenticateProvider } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
     const connect = () => wrapper.findAll('.codex-login__provider button').find(button => button.text() === 'Connect Antigravity')!;
     expect(connect().attributes('disabled')).toBeDefined();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    await flushPromises();
-    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
-    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.get('.provider-install-actions a').attributes('href')).toBe('https://antigravity.google/docs/getting-started?tab=cli');
+    expect(wrapper.get('.provider-install-actions code').text()).toBe('curl -fsSL https://antigravity.google/cli/install.sh | bash');
     await connect().trigger('click');
     expect(authenticateProvider).not.toHaveBeenCalled();
-    fail(new Error('Download failed'));
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.codex-login__error').text()).toContain('Download failed');
-    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('disabled')).toBeUndefined();
-    expect(connect().attributes('disabled')).toBeDefined();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    succeed({ ...setup, installed: true });
-    await flushPromises();
-    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
-    expect(wrapper.find('.codex-login__error').exists()).toBe(false);
+    expect(refreshProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(connect().attributes('disabled')).toBeUndefined();
-    expect(authenticateProvider).not.toHaveBeenCalled();
     await connect().trigger('click');
     await flushPromises();
     expect(authenticateProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'login');

@@ -30,18 +30,18 @@ describe('agent-manager', () => {
       codex: {provider: 'codex',  model: 'gpt-x', reasoningEffort: 'high', serviceTier: 'fast' },
       antigravity: {provider: 'antigravity',  model: 'gemini-3.8-flash-low', reasoningEffort: 'high', serviceTier: 'fast' },
     };
-    snapshot.general.providerApprovalDefaults = { antigravity: 'auto_edit' };
+    snapshot.general.providerApprovalDefaults = { antigravity: 'accept-edits' };
     createAgentInSnapshot(snapshot, { name: 'ACP', folder: '/repo', selection: { provider: 'antigravity' } }, undefined, 'acp');
     const agent = snapshot.agents.find(value => value.id === 'acp')!;
     expect(agent.provider).toBe('antigravity');
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', userSelectedModel: true, permissionMode: 'auto_edit' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permissionMode: 'accept-edits' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'claude' } });
     expect(agent.providerDefaults).toStrictEqual({ kind: 'claude' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'antigravity' } });
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', userSelectedModel: true, permissionMode: 'auto_edit' });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-3.8-flash-low', reasoningEffort: 'high', userSelectedModel: true, permissionMode: 'accept-edits' });
     updateAgentFromInput(snapshot, { id: agent.id, selection: {provider: 'antigravity',  model: 'gemini-high', reasoningEffort: 'low', serviceTier: 'fast' } });
-    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-high', userSelectedModel: true, permissionMode: 'auto_edit' });
-    expect(snapshot.general.providerModelDefaults.antigravity).toEqual({ provider: 'antigravity', model: 'gemini-high', reasoningEffort: null, serviceTier: null });
+    expect(agent.providerDefaults).toStrictEqual({ kind: 'antigravity', model: 'gemini-high', reasoningEffort: 'low', userSelectedModel: true, permissionMode: 'accept-edits' });
+    expect(snapshot.general.providerModelDefaults.antigravity).toEqual({ provider: 'antigravity', model: 'gemini-high', reasoningEffort: 'low', serviceTier: null });
   });
   it('applies a chosen model to a new agent on top of the provider approval defaults without changing them', () => {
     const snapshot = createInitialSnapshot();

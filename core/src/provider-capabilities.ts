@@ -48,7 +48,8 @@ export const antigravityProviderCapabilities: ProviderCapabilities = {
   conversationShare: true,
   permissionModes: [
     { id: 'default', label: { key: 'permissions.antigravity.default.label' }, description: { key: 'permissions.antigravity.default.description' } },
-    { id: 'auto_edit', label: { key: 'permissions.antigravity.autoEdit.label' }, description: { key: 'permissions.antigravity.autoEdit.description' } },
+    { id: 'accept-edits', label: { key: 'permissions.antigravity.acceptEdits.label' }, description: { key: 'permissions.antigravity.acceptEdits.description' } },
+    { id: 'auto', label: { key: 'permissions.antigravity.auto.label' }, description: { key: 'permissions.antigravity.auto.description' } },
   ]
 };
 export const cursorProviderCapabilities: ProviderCapabilities = {

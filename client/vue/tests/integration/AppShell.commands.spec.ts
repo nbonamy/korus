@@ -208,8 +208,7 @@ describe('AppShell dialogs and commands', () => {
 
     command({ type: 'debug-missing-engines', enabled: true });
     await flushPromises();
-    expect(wrapper.findAll('.codex-login .provider-install-actions a')).toHaveLength(2);
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    expect(wrapper.findAll('.codex-login .provider-install-actions a')).toHaveLength(3);
     expect(installProvider).not.toHaveBeenCalled();
     expect(wrapper.findAll('.codex-login__provider').slice(0, 2).some(provider => provider.text().includes('Customize'))).toBe(false);
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
