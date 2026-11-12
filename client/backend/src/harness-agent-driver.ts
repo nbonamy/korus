@@ -171,9 +171,13 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   }
   /** The agent's record changed: its conversation, folder, name or defaults. An operation in flight sees the new values. */
   agentChanged(agent: Agent): void { this.peek(agent); }
-  /** Tells the harness what the agent's record says now: the record is the authority on its conversation, folder, name and defaults. */
+  /**
+   * Tells the harness what the agent's record says now: its conversation, folder, name and defaults. A record without a
+   * conversation says nothing about the one the harness holds: clearing it would start a new conversation, and an agent's
+   * conversation ends only through `releaseConversation`.
+   */
   private restate(session: Session, agent: Agent): void {
-    this.harness.syncSession(session, { data: agent.providerSession ?? null, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: this.defaultsOf(agent) ?? {} });
+    this.harness.syncSession(session, { ...(agent.providerSession ? { data: agent.providerSession } : {}), folder: agent.folder ?? null, name: this.nameOf(agent), defaults: this.defaultsOf(agent) ?? {} });
   }
   private openFor(agent: Agent): Session {
     const stored = agent.providerSession;
@@ -235,7 +239,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const scope = this.running.get(agent.id);
     if (!scope) return this.session(agent);
     this.latest.set(agent.id, agent);
-    this.harness.syncSession(scope, { data: agent.providerSession ?? null });
+    if (agent.providerSession) this.harness.syncSession(scope, { data: agent.providerSession });
     return scope;
   }
   private async steer(agent: Agent, prompt: string, options?: SendPromptOptions) {
