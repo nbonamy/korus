@@ -1929,7 +1929,7 @@ const forkableAgentIds = computed(() => props.snapshot.agents
 const summaryReplacementAgentIds = computed(() => props.snapshot.agents
   .filter((agent) => {
     const runtime = props.snapshot.providerRuntimes.find((candidate) => candidate.provider === agent.provider);
-    return (runtime?.capabilities?.conversationReplaceWithSummary ?? defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary) === true;
+    return (runtime?.capabilities?.scopedExecution ?? defaultProviderCapabilities(agent.provider).scopedExecution) === true;
   }).map((agent) => agent.id));
 const currentAgent = computed(() => {
   const team = activeTeam.value;

@@ -500,7 +500,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'compress-active-session') {
       if (!isAgentWorkspaceVisible.value || !currentAgent.value) return;
-      if (options.state.canReplaceConversation?.() ?? defaultProviderCapabilities(currentAgent.value.provider).conversationReplaceWithSummary) {
+      if (options.state.canReplaceConversation?.() ?? defaultProviderCapabilities(currentAgent.value.provider).scopedExecution) {
         options.actions.replaceConversationWithSummary(currentAgent.value.id);
       }
       return;

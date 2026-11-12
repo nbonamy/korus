@@ -163,7 +163,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     const agent = contextMenuAgent.value;
     return Boolean(agent && (props.summaryReplacementAgentIds
       ? props.summaryReplacementAgentIds.includes(agent.id)
-      : defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary));
+      : defaultProviderCapabilities(agent.provider).scopedExecution === true));
   });
   const contextMenuAgentIsLocal = computed(() => {
     const agent = contextMenuAgent.value;

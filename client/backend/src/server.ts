@@ -2891,7 +2891,7 @@ export class AppBackendServer {
       case backendMethods.agentConversationReplaceWithSummary: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationReplaceWithSummary, { agentId }, async (agent) => {
-          if (!agent.providerSession || !defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary) {
+          if (!agent.providerSession || !defaultProviderCapabilities(agent.provider).scopedExecution) {
             throw new Error('Only an existing session on a harness that supports compression can be compressed.');
           }
           if (agent.status.type !== 'idle') {

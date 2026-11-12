@@ -115,6 +115,22 @@ describe('ProviderDriverRpc', () => {
       expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
     } finally { await rpc.close(); }
   });
+  it('compresses a session on any harness that runs scoped prompts, archiving the old conversation only where the harness can', async () => {
+    const session = { kind: 'claude' as const, sessionId: 'session-old', transport: 'stdio' as const };
+    const agent = { ...createAgent(), provider: 'claude' as const, providerSession: session };
+    const summarize = vi.fn().mockResolvedValue({ text: 'What happened so far.', session });
+    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { ...session, sessionId: 'session-new' } });
+    const driver = createDriver({ provider: 'claude', getCapabilities: () => ({ scopedExecution: true }) as never,
+      executeScopedPrompt: summarize, sendPrompt: startSeeded, loadConversation: async () => session });
+    const rpc = new ProviderDriverRpc(new Map([['claude', driver]]));
+    await expect(rpc.handle('driver/conversation/replaceWithSummary', { agent })).resolves.toStrictEqual({ providerSession: { ...session, sessionId: 'session-new' } });
+    expect(summarize).toHaveBeenCalledWith(agent, expect.objectContaining({ session, silent: true }));
+    expect(startSeeded).toHaveBeenCalledWith(expect.objectContaining({ providerSession: undefined }), expect.stringContaining('What happened so far.'));
+
+    const unable = new ProviderDriverRpc(new Map([['claude', createDriver({ provider: 'claude', getCapabilities: () => ({ scopedExecution: false }) as never, executeScopedPrompt: summarize })]]));
+    await expect(unable.handle('driver/conversation/replaceWithSummary', { agent })).rejects.toThrow(/compression/i);
+  });
+
   it('routes turn history through the owning agent without changing selection or submitting a prompt', async () => {
     const snapshot = createTestSnapshot(); const agent = createAgent();
     snapshot.agents.push(agent); snapshot.teams[0].agentIds.push(agent.id);
@@ -580,7 +596,7 @@ describe('ProviderDriverRpc', () => {
     const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({
       clearGoal,
       archiveAgentConversation,
-      getCapabilities: () => ({ ...codexProviderCapabilities, conversationReplaceWithSummary: true }),
+      getCapabilities: () => codexProviderCapabilities,
       executeScopedPrompt: summarize, sendPrompt: startSeeded, setConversationStorage: archiveStorage,
       loadConversation: async () => ({ kind: 'codex', threadId: 'thread-test' }),
       releaseConversation,

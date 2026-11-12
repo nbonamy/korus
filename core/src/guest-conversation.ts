@@ -6,7 +6,7 @@ import type { ConversationShareTarget } from './conversation-sharing';
 export const guestConversationCapabilities: ProviderCapabilities = {
   codeReview: false, planReview: false, questions: false,
   plugins: false, conversationArchive: false, conversationResume: false,
-  conversationReplaceWithSummary: false, remoteControl: false, conversationShare: false,
+  scopedExecution: false, remoteControl: false, conversationShare: false,
   attachments: false, models: false, skills: false, reasoningEffort: false,
   serviceTier: false, thinkingBudget: false, planMode: 'unsupported', goals: false,
   steerPrompt: false, interrupt: false, history: true, conversationFork: false,

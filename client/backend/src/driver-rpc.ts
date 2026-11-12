@@ -336,7 +336,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.provider);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.executeScopedPrompt || driver.getCapabilities(agent).conversationReplaceWithSummary !== true) throw unsupportedProviderFeature(agent, 'session compression');
+        if (!driver.executeScopedPrompt || driver.getCapabilities(agent).scopedExecution !== true) throw unsupportedProviderFeature(agent, 'session compression');
         const current = await driver.loadConversation?.(agent);
         if (current === undefined || current === null) throw new Error('Context must be idle before compressing its session.');
         // Compressing is a handoff from this harness to itself: a fresh conversation for the same agent, seeded with a summary.

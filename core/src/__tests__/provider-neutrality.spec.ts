@@ -4,9 +4,7 @@ import { defaultProviderCapabilities } from '../provider-capabilities';
 
 // Korus may add flags of its own to a harness's capabilities, but a flag that only one harness has is a provider check
 // under another name. Such a choice belongs in `providerPolicy`, with its reason, unless it is listed here.
-const singleHarnessFlags: Record<string, string> = {
-  conversationReplaceWithSummary: 'Compression seeds a new conversation from a summary, which Korus builds only on Codex threads.',
-};
+const singleHarnessFlags: Record<string, string> = {};
 
 describe('provider neutrality', () => {
   it('keeps Korus capability flags that one harness alone has to a short, explained list', () => {

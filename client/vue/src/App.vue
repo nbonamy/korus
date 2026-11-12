@@ -652,7 +652,7 @@ function requestSessionCompression(agentId: string): void {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (
     !agent ||
-    !defaultProviderCapabilities(agent.provider).conversationReplaceWithSummary ||
+    !defaultProviderCapabilities(agent.provider).scopedExecution ||
     !agent.providerSession ||
     agent.status.type !== 'idle'
   ) {

@@ -263,7 +263,6 @@ describe('Cursor ACP host transport boundary', () => {
     const controls = [
       ['driver/prompt/steer', { prompt: 'Adjust the task', expectedSessionId: null }, 'prompt steering'],
       ['driver/goal/update', { objective: 'Finish the task' }, 'goals'],
-      ['driver/conversation/replaceWithSummary', {}, 'session compression'],
       ['driver/conversation/fork', { targetAgent: { ...agent, id: 'fork-target' } }, 'conversation fork'],
       ['driver/approvalPreset/update', { preset: 'full-access' }, 'approval presets'],
     ] as const;
