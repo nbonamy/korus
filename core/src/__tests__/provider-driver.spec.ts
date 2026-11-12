@@ -18,8 +18,8 @@ import {
 
 describe('backend driver helpers', () => {
   it('resolves provider-independent legacy coordination defaults and explicit auth overrides', () => {
-    expect(resolveProviderCoordinationPolicy()).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout'], enableOnSuccess: true } });
-    expect(resolveProviderCoordinationPolicy({ authentication: { actions: ['check', 'login'], enableOnSuccess: false } })).toStrictEqual({ authentication: { actions: ['check', 'login'], enableOnSuccess: false } });
+    expect(resolveProviderCoordinationPolicy()).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout'] } });
+    expect(resolveProviderCoordinationPolicy({ authentication: { actions: ['check', 'login'] } })).toStrictEqual({ authentication: { actions: ['check', 'login'] } });
   });
   it('uses product-facing backend names in unsupported feature errors', () => {
     expect(providerDisplayName('codex')).toBe('Codex');

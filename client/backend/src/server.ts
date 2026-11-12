@@ -1356,13 +1356,21 @@ export class AppBackendServer {
     }) as ProviderAuthentication;
   }
 
+  /** Harnesses with a sign-in the user started and that has not finished yet. */
+  private readonly signingIn = new Set<Agent['provider']>();
   private coordinationPolicy(provider: Agent['provider']) {
     return this.driverRpc?.getCoordinationPolicy?.(provider) ?? resolveProviderCoordinationPolicy();
   }
 
-  private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
+  /**
+   * Records what a sign-in action found. An engine is turned on only when a sign-in the user started succeeds, whether
+   * at once or on a later check; a check on its own never turns one on.
+   */
+  private async observeAuthentication(authentication: ProviderAuthentication, action: ProviderAuthenticationAction['action']): Promise<void> {
     const { kind: provider, connected } = authentication;
-    if (connected && this.coordinationPolicy(provider).authentication.enableOnSuccess) {
+    if (action === 'login') this.signingIn.add(provider);
+    else if (action !== 'check') this.signingIn.delete(provider);
+    if (connected && this.signingIn.delete(provider)) {
       this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [provider]: true };
     }
     this.providerConnections?.observe(provider, connected, authentication);
@@ -3435,7 +3443,7 @@ export class AppBackendServer {
           this.locationFromRemoteConnectionId(remoteConnectionId), message.method, { provider: provider, action, ...options },
           async () => {
             const authentication = await this.authenticateProvider(provider, action, options);
-            await this.observeAuthentication(authentication);
+            await this.observeAuthentication(authentication, action);
             return authentication;
           });
       }
@@ -3465,7 +3473,7 @@ export class AppBackendServer {
           this.locationFromRemoteConnectionId(requireOptionalConnectionId(message.params)), message.method, { provider: provider },
           async () => {
             const authentication = await this.authenticateProvider(provider, 'logout');
-            await this.observeAuthentication(authentication);
+            await this.observeAuthentication(authentication, 'logout');
             return authentication;
           });
       }

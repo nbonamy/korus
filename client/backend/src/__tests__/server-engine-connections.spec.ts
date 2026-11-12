@@ -49,7 +49,7 @@ describe('connected engine admission', () => {
     const authenticate = vi.fn(async () => ({ kind: 'claude' as const, connected, state: { loggedIn: connected } }));
     const driver: AgentProviderDriver = {
       provider: 'claude',
-      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const, enableOnSuccess: false } } } : {}),
+      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const } } } : {}),
       authenticate, getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }), getCapabilities: () => defaultProviderCapabilities('claude'),
       sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {},
     };
@@ -58,8 +58,9 @@ describe('connected engine admission', () => {
       providerSetup: { isChanging: () => false, list: () => [{ provider: 'claude', installed: true, homePath: '/synthetic/claude' }] } as never });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'auth', method: 'provider/authenticate', params: { provider: 'claude', action: 'check' } });
-      expect(snapshot.general.providerEnabled?.claude).toBe(!declared);
-      if (declared) await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { provider: 'claude', enabled: true } });
+      // A check on its own turns no engine on.
+      expect(snapshot.general.providerEnabled?.claude).toBe(false);
+      await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { provider: 'claude', enabled: true } });
       const checks = authenticate.mock.calls.length;
       await expect(Promise.all([server.requireConnectedEngine('claude'), server.requireConnectedEngine('claude')])).resolves.toStrictEqual(['claude', 'claude']);
       // Starting work never checks a harness seen signed in: if that changed, its prompt says so.
@@ -103,6 +104,36 @@ describe('connected engine admission', () => {
       expect(onEvent.mock.calls.some(([event]) => event.type === 'account.rateLimitsUpdated')).toBe(false);
     } finally { await server.close(); }
   });
+  it('turns an engine on only when a sign-in the user started succeeds, at once or on a later check', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.general.providerEnabled = { cursor: false, codex: false };
+    const connected = { cursor: true, codex: false };
+    const handle = vi.fn(async (_method: string, params: { provider: 'cursor' | 'codex' }) => ({ kind: params.provider, connected: connected[params.provider], state: {} }));
+    const server = new AppBackendServer({ version: 'test', snapshot,
+      driverRpc: { handle, getCoordinationPolicy: () => resolveProviderCoordinationPolicy({ authentication: { actions: ['check', 'cancel', 'logout', 'login'] } }), onEvent: () => () => {}, close: async () => {} } as never,
+      providerSetup: { isChanging: () => false, list: () => [{ provider: 'cursor', installed: true, homePath: '/cursor' }, { provider: 'codex', installed: true, homePath: '/codex' }] } as never,
+    });
+    const authenticate = (provider: string, action: string) => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/authenticate', params: { provider, action } });
+    try {
+      // Already signed in elsewhere: finding that out is not the user choosing the engine.
+      await authenticate('cursor', 'check');
+      expect(snapshot.general.providerEnabled?.cursor).toBe(false);
+      await authenticate('cursor', 'login');
+      expect(snapshot.general.providerEnabled?.cursor).toBe(true);
+      // A sign-in that finishes in the browser is found by a later check.
+      await authenticate('codex', 'login');
+      expect(snapshot.general.providerEnabled?.codex).toBe(false);
+      connected.codex = true;
+      await authenticate('codex', 'check');
+      expect(snapshot.general.providerEnabled?.codex).toBe(true);
+      // A cancelled sign-in leaves nothing waiting.
+      snapshot.general.providerEnabled = { ...snapshot.general.providerEnabled, codex: false }; connected.codex = false;
+      await authenticate('codex', 'login'); await authenticate('codex', 'cancel');
+      connected.codex = true;
+      await authenticate('codex', 'check');
+      expect(snapshot.general.providerEnabled?.codex).toBe(false);
+    } finally { await server.close(); }
+  });
   it('observes and enables Cursor independently, and starts its work without checking the account again', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerEnabled = { cursor: false };
@@ -112,7 +143,7 @@ describe('connected engine admission', () => {
     let recordConnections = false;
     const server = new AppBackendServer({ version: 'test', snapshot,
       onEvent: event => { if (recordConnections && event.type === 'snapshot.updated') observedConnections.push(event.payload.providerConnections?.find(provider => provider.provider === 'cursor')?.connected ?? false); },
-      driverRpc: { handle, getCoordinationPolicy: () => resolveProviderCoordinationPolicy({ authentication: { enableOnSuccess: false } }), onEvent: () => () => {}, close: async () => {} } as never,
+      driverRpc: { handle, getCoordinationPolicy: () => resolveProviderCoordinationPolicy({ authentication: { } }), onEvent: () => () => {}, close: async () => {} } as never,
       providerSetup: { isChanging: () => false, list: () => [{ provider: 'cursor', installed: true, homePath: '/cursor' }] } as never,
     });
     try {

@@ -78,7 +78,7 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
     cursor: { command: resolveCursorExecutable, steeringFallback: () => settings()?.cursorSteeringFallbackEnabled === true },
   });
   return driver('cursor', harness, agents, {
-    coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'], enableOnSuccess: false } },
+    coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
   });
 }
 

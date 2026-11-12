@@ -128,10 +128,13 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     claudeLoading.value = true;
     claudeError.value = null;
     try {
+      const connecting = claudeDialogVisible.value;
       const next = providerAuthenticationState(await requireApi().authenticateProvider('claude', 'check'), 'claude');
       if (disposed) return;
       claudeAuthentication.value = next;
       if (next.loggedIn) claudeDialogVisible.value = false;
+      // Claude signs in outside the app: the dialog is the user connecting it, so a check on its own turns nothing on.
+      if (next.loggedIn && connecting) await requireApi().setProviderEnabled('claude', true);
     } catch (error) {
       if (!disposed) {
         claudeAuthentication.value = null;

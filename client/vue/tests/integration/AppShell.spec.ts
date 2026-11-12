@@ -426,6 +426,13 @@ describe('AppShell authentication and conversation', () => {
         expect(writeText).toHaveBeenLastCalledWith("CLAUDE_CONFIG_DIR='/app/claude-home' claude auth login --claudeai");
         await commands[1]!.get('button').trigger('click');
         expect(writeText).toHaveBeenLastCalledWith("CLAUDE_CONFIG_DIR='/app/claude-home' claude auth login --console");
+        // Checking while still signed out turns nothing on; finding the sign-in done from this dialog is the user connecting it.
+        expect(setProviderEnabled).not.toHaveBeenCalled();
+        checkClaude.mockResolvedValue({ loggedIn: true, configDirectory: '/app/claude-home' });
+        const check = [...wrapper.findAll('button').map(button => button.element), ...document.body.querySelectorAll('button')].find(button => button.closest('.claude-login-command') === null && /check|refresh/i.test(button.textContent ?? '') && button.classList.contains('app-button--primary'))!;
+        check.click();
+        await flushPromises();
+        expect(setProviderEnabled).toHaveBeenCalledExactlyOnceWith('claude', true);
       } else {
         expect(loginCodex).toHaveBeenCalledExactlyOnceWith({ method: 'browser' });
         expect(wrapper.get('.settings-view').text()).toContain('Cancel sign-in');
