@@ -1,3 +1,5 @@
+import { ProjectOverviewGitReader } from './project-overview/git-reader';
+import { ProjectOverviewService } from './project-overview/project-overview-service';
 import { cleanupPromptUploads } from './companion/uploads';
 import { DesignService } from './design-service';
 import { createDesignToolModuleProvider } from './mcp/design-tools';
@@ -373,6 +375,15 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    projectOverview: new ProjectOverviewService({
+      git: new ProjectOverviewGitReader(),
+      sessions: (repository, since) => localUsage.sessions(repository, since),
+      agents: () => snapshot.agents,
+      outerLoop: {
+        backlog: (repositoryId, since) => workIntegrations.backlogActivity(repositoryId, since),
+        pipelines: (repositoryId, since) => workIntegrations.pipelineRuns(repositoryId, since),
+      },
+    }),
     worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
     initializeWorktree: async (repositoryPath, folder) => {
       await worktreeManager.initializeWorktree(repositoryPath, folder, { backgroundInitialization: true });

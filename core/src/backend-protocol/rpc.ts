@@ -160,6 +160,10 @@ export type AppBackendRequestMap = {
     params: undefined;
     result: ClientState;
   };
+  [backendMethods.projectOverviewGet]: {
+    params: { agentId: string; input?: import('../project-overview').ProjectOverviewInput };
+    result: import('../project-overview').ProjectOverview;
+  };
   [backendMethods.agentGitLogGet]: {
     params: { agentId: string; input?: import('../contracts').AgentGitLogInput };
     result: import('../contracts').AgentGitLogPage;

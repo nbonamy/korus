@@ -1,7 +1,7 @@
 import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
-import { WorkProviderCliAuthenticationError, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver } from './types';
-import { workProviderConnectOptions, workProviderDefinition } from '@workspace/core/work-providers';
+import { WorkProviderCliAuthenticationError, type WorkProviderBacklogActivity, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver, type WorkProviderPipelineRun } from './types';
+import { workProviderConnectOptions, workProviderDefinition, workProviderForRepositoryId } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
   drivers: WorkProviderDriver[];
@@ -518,6 +518,31 @@ export class WorkIntegrationManager {
       if (!driver.listAssignedItems) throw new Error(`${providerLabel(provider)} cannot list assigned work across repositories.`);
       return driver.listAssignedItems(credential);
     });
+  }
+
+  /** Backlog items that moved since `since`, or null when no connected provider serves this repository or can report it. */
+  async backlogActivity(repositoryIdentity: string, since: number): Promise<(WorkProviderBacklogActivity & { provider: WorkProviderKind }) | null> {
+    return this.repositoryRead(repositoryIdentity, async (driver, credential, repositoryId, provider) => (
+      driver.listBacklogActivity ? { provider, ...(await driver.listBacklogActivity(credential, repositoryId, new Date(since).toISOString())) } : null
+    ));
+  }
+
+  /** Pipeline runs created since `since`, or null when no connected provider serves this repository or can report them. */
+  async pipelineRuns(repositoryIdentity: string, since: number): Promise<{ provider: WorkProviderKind; runs: WorkProviderPipelineRun[] } | null> {
+    return this.repositoryRead(repositoryIdentity, async (driver, credential, repositoryId, provider) => (
+      driver.listPipelineRuns ? { provider, runs: await driver.listPipelineRuns(credential, repositoryId, new Date(since).toISOString()) } : null
+    ));
+  }
+
+  private async repositoryRead<T>(
+    repositoryIdentity: string,
+    read: (driver: WorkProviderDriver, credential: WorkProviderCredential, repositoryId: string, provider: WorkProviderKind) => Promise<T | null>,
+  ): Promise<T | null> {
+    const provider = workProviderForRepositoryId(repositoryIdentity);
+    if (!provider || !(await this.repositoryConnected(repositoryIdentity))) return null;
+    // GitHub drivers address a repository as owner/name; GitLab keeps its host.
+    const repositoryId = provider === 'github' ? repositoryIdentity.slice('github.com/'.length) : repositoryIdentity;
+    return this.withCredential(provider, (driver, credential) => read(driver, credential, repositoryId, provider));
   }
 
   private async activePendingAuthorization(provider: WorkProviderKind): Promise<PendingAuthorization | null> {

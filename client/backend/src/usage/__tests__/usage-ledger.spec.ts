@@ -486,3 +486,29 @@ it("retains Cursor lifecycle counts across reload and projects unknown usage wit
     expect(ledger.projectDailyTelemetry({day:"2026-10-15",hour:12})).toStrictEqual([{provider:"cursor",model:"unknown",serviceTier:"unknown",turns:3,inputTokens:null,cachedInputTokens:null,outputTokens:null,estimatedCostUsd:null,measuredTurns:0,costCoverage:"unavailable"}]);
   } finally { await ledger.close(); await rm(directory,{recursive:true,force:true}); }
 });
+
+it("lists the sessions that ran against one repository inside a window, with their outcome", async () => {
+  const at = Date.parse("2026-11-10T12:00:00Z");
+  const hour = 3_600_000;
+  const ledger = new UsageLedger(":memory:", () => at);
+  const turn = (provider: string, sessionId: string, turnId: string, startedAt: number): ExecutionObservation =>
+    ({ provider, agentId: `agent-${sessionId}`, sessionId, turnId, model: "model", at: startedAt, phase: "started" });
+  try {
+    await ledger.load();
+    const here = { teamId: null, repository: "/work/korus" };
+    await ledger.observe(turn("codex", "s1", "t1", at - 5 * hour), here);
+    await ledger.observe({ ...turn("codex", "s1", "t1", at - 5 * hour), phase: "failed", at: at - 4 * hour }, here);
+    await ledger.observe(turn("codex", "s1", "t2", at - 3 * hour), here);
+    await ledger.observe(turn("claude", "s2", "t1", at - 2 * hour), here);
+    await ledger.observe(turn("codex", "s1", "t0", at - 48 * hour), here);
+    await ledger.observe(turn("codex", "s3", "t1", at - hour), { teamId: null, repository: "/work/other" });
+
+    expect(ledger.sessions("/work/korus", at - 24 * hour)).toStrictEqual([
+      { provider: "codex", sessionId: "s1", startedAt: at - 5 * hour, turns: 2, failedTurns: 1 },
+      { provider: "claude", sessionId: "s2", startedAt: at - 2 * hour, turns: 1, failedTurns: 0 },
+    ]);
+    expect(ledger.sessions("/work/missing", 0)).toStrictEqual([]);
+  } finally {
+    await ledger.close();
+  }
+});

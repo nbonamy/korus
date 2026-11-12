@@ -131,6 +131,7 @@ export type AppBackendServerOptions = {
   };
   requestCollaborationController?: (input: RemoteCollaborationCall) => Promise<unknown>;
   runProfiles?: RunProfileService;
+  projectOverview?: Pick<import('./project-overview/project-overview-service').ProjectOverviewService, 'get'>;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -1599,6 +1600,13 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.projectOverviewGet: {
+        const params = requireRecord(message.params);
+        return this.routeAgentResultRequest(message.id, requireString(params.agentId, 'agentId'), backendMethods.projectOverviewGet, params, (agent) => {
+          if (!this.options.projectOverview) throw new Error('The project overview is unavailable on this host.');
+          return this.options.projectOverview.get(agent, params.input);
+        });
+      }
       case backendMethods.collaborationTaskAccess: {
         const params = requireRecord(message.params);
         const team = this.snapshot.teams.find(team => team.id === params.teamId && team.collaborationOwnerId === params.ownerId);

@@ -29,6 +29,16 @@ describe('agent Git IPC', () => {
     });
   });
 
+  it('forwards a project overview request with its agent and window to the backend', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = { handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler) } as never;
+    const overview = { generatedAt: '2026-11-11T12:00:00.000Z' };
+    const request = vi.fn(async () => overview);
+    registerAgentGitIpcHandlers(ipc, () => ({ request }) as never);
+    await expect(handlers.get(ipcChannels.getProjectOverview)!({}, 'agent', { window: '12w', timeZone: 'Europe/Paris' })).resolves.toBe(overview);
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.projectOverviewGet, { agentId: 'agent', input: { window: '12w', timeZone: 'Europe/Paris' } });
+  });
+
   it('opts into request discovery only for the selected agent', async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const ipc = { handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler) } as never;

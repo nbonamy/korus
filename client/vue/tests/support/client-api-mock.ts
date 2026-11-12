@@ -97,6 +97,7 @@ export function createClientApiMock(
     chooseDocumentSavePath: unscripted<'chooseDocumentSavePath'>('chooseDocumentSavePath'),
     previewAgentFile: unscripted<'previewAgentFile'>('previewAgentFile'),
     readAgentFileChunk: unscripted<'readAgentFileChunk'>('readAgentFileChunk'),
+    getProjectOverview: unscripted<'getProjectOverview'>('getProjectOverview'),
     getAgentGitLog: unscripted<'getAgentGitLog'>('getAgentGitLog'),
     getAgentGitLogCommit: unscripted<'getAgentGitLogCommit'>('getAgentGitLogCommit'),
     getAgentGitLogFile: unscripted<'getAgentGitLogFile'>('getAgentGitLogFile'),

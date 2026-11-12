@@ -73,6 +73,7 @@ const api: AppApi = {
   chooseDocumentSavePath: (defaultPath: string) => ipc.invoke(ipcChannels.chooseDocumentSavePath, defaultPath),
   previewAgentFile: (agentId: string, filePath: string) => ipc.invoke(ipcChannels.previewAgentFile, agentId, filePath),
   readAgentFileChunk: (agentId, filePath, offset) => ipc.invoke(ipcChannels.readAgentFileChunk, agentId, filePath, offset),
+  getProjectOverview: (agentId, input) => ipc.invoke(ipcChannels.getProjectOverview, agentId, input),
   getAgentGitLog: (agentId: string, input?: import('@workspace/core/contracts').AgentGitLogInput) => ipc.invoke(ipcChannels.getAgentGitLog, agentId, input),
   getAgentGitLogCommit: (agentId: string, input: import('@workspace/core/contracts').AgentGitLogCommitInput) => ipc.invoke(ipcChannels.getAgentGitLogCommit, agentId, input),
   getAgentGitLogFile: (agentId: string, input: import('@workspace/core/contracts').AgentGitLogFileInput) => ipc.invoke(ipcChannels.getAgentGitLogFile, agentId, input),

@@ -1,12 +1,13 @@
 import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitHubOAuthClientId } from '../runtime-config';
-import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
+import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderPipelineRun } from './types';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 const GITHUB_OAUTH_BASE_URL = 'https://github.com/login';
 const GITHUB_API_VERSION = '2022-11-28';
 const DEFAULT_SCOPE = 'repo read:user read:org';
+const BACKLOG_ACTIVITY_PAGES = 3;
 
 export class GitHubWorkProviderDriver implements WorkProviderDriver {
   readonly provider = 'github' as const;
@@ -425,6 +426,29 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     return pullRequest;
   }
 
+  async listBacklogActivity(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderBacklogActivity> {
+    const repository = parseRepositoryId(repositoryId);
+    if (!repository) return { open: null, items: [] };
+    const items: WorkProviderBacklogItem[] = [];
+    for (let page = 1; page <= BACKLOG_ACTIVITY_PAGES; page++) {
+      const response = await this.apiPageRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues?state=all&since=${encodeURIComponent(since)}&sort=updated&direction=desc&per_page=100&page=${page}`);
+      if (!Array.isArray(response.value)) throw new Error('GitHub returned an invalid issues response.');
+      items.push(...response.value.map(githubBacklogItem).filter((item): item is WorkProviderBacklogItem => item !== null));
+      if (!linkedPageUrl(response.linkHeader, 'next')) break;
+    }
+    // The flow is still worth showing when the total cannot be read.
+    const search = await this.apiRequest(token, `/search/issues?q=${encodeURIComponent(`repo:${repository.fullName} is:issue is:open`)}&per_page=1`).catch(() => null);
+    return { open: isRecord(search) && typeof search.total_count === 'number' && Number.isInteger(search.total_count) ? search.total_count : null, items };
+  }
+
+  async listPipelineRuns(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderPipelineRun[]> {
+    const repository = parseRepositoryId(repositoryId);
+    if (!repository) return [];
+    const response = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/actions/runs?per_page=100&created=${encodeURIComponent(`>=${since}`)}`);
+    if (!isRecord(response) || !Array.isArray(response.workflow_runs)) throw new Error('GitHub returned an invalid workflow runs response.');
+    return response.workflow_runs.map(githubPipelineRun).filter((run): run is WorkProviderPipelineRun => run !== null);
+  }
+
   private async apiRequest(token: WorkProviderCredential, path: string, init: RequestInit = {}): Promise<unknown> {
     return (await this.apiResponse(token, path, init)).json();
   }
@@ -629,6 +653,29 @@ function githubIssue(value: unknown, repositoryId: string, sourceName: string): 
     createdAt: value.created_at,
     updatedAt: value.updated_at,
   };
+}
+
+/** Identity, title and dates only: bodies, authors and labels are not part of the flow. */
+function githubBacklogItem(value: unknown): WorkProviderBacklogItem | null {
+  if (!isRecord(value) || isRecord(value.pull_request) || !Number.isInteger(value.number) ||
+    typeof value.title !== 'string' || typeof value.created_at !== 'string' || typeof value.updated_at !== 'string') return null;
+  return {
+    id: `#${value.number}`,
+    title: value.title,
+    state: value.state === 'closed' ? 'closed' : 'open',
+    createdAt: value.created_at,
+    updatedAt: value.updated_at,
+    ...(typeof value.closed_at === 'string' ? { closedAt: value.closed_at } : {}),
+  };
+}
+
+function githubPipelineRun(value: unknown): WorkProviderPipelineRun | null {
+  if (!isRecord(value) || !Number.isInteger(value.id) || typeof value.head_branch !== 'string' || !value.head_branch || typeof value.created_at !== 'string') return null;
+  const status = value.status !== 'completed' ? 'running'
+    : value.conclusion === 'success' ? 'passed'
+      : value.conclusion === 'failure' || value.conclusion === 'timed_out' || value.conclusion === 'startup_failure' ? 'failed'
+        : 'cancelled';
+  return { id: String(value.id), branch: value.head_branch, status, at: value.created_at };
 }
 
 function githubPullRequestItem(value: unknown, repositoryId: string, sourceName: string): WorkItem | null {
