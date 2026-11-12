@@ -190,12 +190,18 @@ describe('project narrative drafts', () => {
     ['a branch that is not in the evidence', { lead: 'Fine.', workstreams: [{ ...sdk, branches: ['main'] }] }, 'Workstream 1 claims unknown branch main.'],
     ['an issue that is not in the evidence', { lead: 'Fine.', workstreams: [{ ...cursor, issues: ['#1'] }] }, 'Workstream 1 claims unknown issue #1.'],
     ['a state outside the closed set', { lead: 'Fine.', workstreams: [{ ...cursor, state: 'on fire' }] }, 'Workstream 1 has an unknown state.'],
-    ['an analysis that is too long', { lead: 'Fine.', workstreams: [{ ...sdk, analysis: 'x'.repeat(361) }] }, 'Workstream 1 needs an analysis of at most 360 characters.'],
-    ['a lead that is too long', { lead: 'x'.repeat(281), workstreams: [cursor] }, 'The lead must be 1 to 280 characters.'],
+    ['an analysis that is too long', { lead: 'Fine.', workstreams: [{ ...sdk, analysis: 'x'.repeat(181) }] }, 'Workstream 1 needs one sentence of at most 180 characters.'],
+    ['an analysis of two sentences', { lead: 'Fine.', workstreams: [{ ...sdk, analysis: 'One branch is waiting. It touches 273 files.' }] }, 'Workstream 1 needs one sentence of at most 180 characters.'],
+    ['a lead that is too long', { lead: 'x'.repeat(161), workstreams: [cursor] }, 'The lead must be one sentence of at most 160 characters.'],
+    ['a lead of two sentences', { lead: 'Korus coordinates agents. Cursor is settling.', workstreams: [cursor] }, 'The lead must be one sentence of at most 160 characters.'],
     ['more than four workstreams', { lead: 'Fine.', workstreams: [cursor, cursor, cursor, cursor, cursor] }, 'There must be 1 to 4 workstreams.'],
     ['something that is not a narrative', 'just prose', 'The reply is not a narrative object.'],
   ] as const)('rejects %s', (_name, draft, problem) => {
     expect(projectNarrativeFromDraft(draft, evidence)).toStrictEqual({ ok: false, problems: [problem] });
+  });
+
+  it('reads a version or a decimal inside a sentence as part of it, not as a second sentence', () => {
+    expect(projectNarrativeFromDraft({ lead: 'Release 0.56 shipped Cursor support.', workstreams: [cursor] }, evidence)).toMatchObject({ ok: true });
   });
 
   it('allows numbers written as words and reads grouped digits as one number', () => {

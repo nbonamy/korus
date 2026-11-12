@@ -40,6 +40,7 @@ export {
   IconArrowsHorizontal as ArrowsHorizontalIcon,
   IconArrowsVertical as ArrowsVerticalIcon,
   IconArrowsSort as ArrowsSortIcon,
+  IconBrandJira as BrandJiraIcon,
   IconBrandOpenai as BrandOpenaiIcon,
   IconBrandSpeedtest as BrandSpeedTest,
   IconBolt as BoltIcon,

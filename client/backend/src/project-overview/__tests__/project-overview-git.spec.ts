@@ -69,6 +69,8 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
       { name: 'feat/y', behind: 3, ahead: 1, files: ['a.txt', 'y.txt'], insertions: 2, deletions: 1, timed: true },
     ]);
     expect(facts!.baseCommitsPerDay).toBeCloseTo(5 / 7, 5);
+    expect(facts!.guide).toBeNull();
+    expect(facts!.messages.slice(0, 2)).toStrictEqual(["Merge branch 'feat/x'", 'chore: three']);
     // Every local branch tip counts as branch activity, merged or not.
     expect(facts!.branchActivity).toHaveLength(3);
     expect(facts!.branchActivity.every(at => Math.abs(at - now) < day)).toBe(true);
@@ -100,6 +102,16 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     // The branch's own work dates from its first commit ahead of the base, not from the base's history.
     const stale = kept!.branches[1]!;
     expect([stale.firstCommitAt, stale.lastCommitAt]).toStrictEqual([Date.parse('2020-01-02T00:00:00Z'), Date.parse('2020-01-02T00:00:00Z')]);
+  });
+
+  it('reads the project guide committed on the base branch, without its code blocks and bounded', async () => {
+    const { folder, commit, reader } = await fixture();
+    await commit('docs: add the guide', { 'AGENTS.md': `# AGENTS.md\n\nGuide for the repository.\n\n\`\`\`bash\nnpm test\n\`\`\`\n\n## Overview\n\n**Korus** coordinates teams of coding agents.\n${'More detail. '.repeat(400)}` });
+    const facts = await reader.read(folder, { now: Date.now() });
+    expect(facts!.guide!.startsWith('# AGENTS.md\n\nGuide for the repository.\n\n## Overview\n\n**Korus** coordinates teams of coding agents.')).toBe(true);
+    expect(facts!.guide).not.toContain('npm test');
+    expect(facts!.guide!.length).toBeLessThanOrEqual(2000);
+    expect(facts!.messages).toStrictEqual([`docs: add the guide`]);
   });
 
   it('uses the workspace default branch as the base and reports a detached head without a branch', async () => {

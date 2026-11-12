@@ -9,6 +9,9 @@ const maxBranches = 12;
 const maxFiles = 2_000;
 const activeBranchAge = 30 * day;
 const maxRefs = 2_000;
+const maxMessages = 500;
+const maxGuide = 2_000;
+const guideFiles = ['AGENTS.md', 'CLAUDE.md'];
 
 type ProjectOverviewGitCommit = { at: number; subject: string; merge: boolean };
 type ProjectOverviewGitBranch = {
@@ -31,6 +34,10 @@ export type ProjectOverviewGitFacts = {
   tags: { name: string; at: number }[];
   /** Tip times of local and remote branches, a sign of how much parallel work the repository sees. */
   branchActivity: number[];
+  /** The project's own description for agents (AGENTS.md, else CLAUDE.md) as committed on the base, without code blocks. */
+  guide: string | null;
+  /** Full messages of the latest base commits, newest first, for links to other tools. */
+  messages: string[];
   /** The base branch first, then branches that still have something to integrate, most recent first. */
   branches: ProjectOverviewGitBranch[];
   baseCommitsPerDay: number | null;
@@ -71,6 +78,16 @@ export class ProjectOverviewGitReader {
     return null;
   }
 
+  private async guide(folder: string, ref: string): Promise<string | null> {
+    for (const file of guideFiles) {
+      const text = await this.optional(folder, ['show', `${ref}:${file}`]);
+      if (!text) continue;
+      const prose = text.replace(/```[\s\S]*?```\n*/gu, '').replace(/\n{3,}/gu, '\n\n').trim();
+      return prose.slice(0, maxGuide);
+    }
+    return null;
+  }
+
   async read(folder: string, options: ProjectOverviewGitOptions): Promise<ProjectOverviewGitFacts | null> {
     const root = await this.optional(folder, ['rev-parse', '--show-toplevel']);
     if (!root) return null;
@@ -81,14 +98,16 @@ export class ProjectOverviewGitReader {
     const name = basename(dirname(resolve(root, commonDirectory.trim())));
     const branch = branchName || null;
     const base = await this.baseBranch(folder, branch, options.defaultBranch);
-    if (!base) return { name, branch, baseBranch: null, commits: [], tags: [], branches: [], branchActivity: [], baseCommitsPerDay: null };
+    if (!base) return { name, branch, baseBranch: null, commits: [], tags: [], branches: [], branchActivity: [], guide: null, messages: [], baseCommitsPerDay: null };
 
-    const [history, tagList, branchList, refList, recent] = await Promise.all([
+    const [history, tagList, branchList, refList, recent, messageList, guide] = await Promise.all([
       this.git(folder, ['log', '--no-show-signature', `--max-count=${maxCommits}`, '--format=%ct%x00%P%x00%s', '-z', base.ref, '--']),
       this.git(folder, ['for-each-ref', '--merged', base.ref, '--format=%(refname:short)%00%(creatordate:unix)', 'refs/tags']),
       this.git(folder, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%00%(committerdate:unix)', 'refs/heads']),
       this.git(folder, ['for-each-ref', '--sort=-committerdate', `--count=${maxRefs}`, '--format=%(refname)%00%(committerdate:unix)', 'refs/heads', 'refs/remotes']),
       this.git(folder, ['rev-list', '--count', `--since=${new Date(options.now - 7 * day).toISOString()}`, base.ref, '--']),
+      this.git(folder, ['log', '--no-show-signature', `--max-count=${maxMessages}`, '--format=%B%x00', base.ref, '--']),
+      this.guide(folder, base.ref),
     ]);
 
     const commits: ProjectOverviewGitCommit[] = [];
@@ -138,6 +157,8 @@ export class ProjectOverviewGitReader {
       commits,
       tags,
       branchActivity,
+      guide,
+      messages: messageList.split('\0').map(message => message.trim()).filter(Boolean),
       branches: [
         (at => ({ name: base.name, firstCommitAt: at, lastCommitAt: at, behind: 0, ahead: 0, files: [], insertions: 0, deletions: 0 }))(baseHead?.at ?? commits[0]?.at ?? options.now),
         ...inFlight.slice(0, maxBranches - 1),

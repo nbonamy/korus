@@ -18,6 +18,7 @@ import type { WorkProviderBacklogActivity, WorkProviderOpenPullRequest, WorkProv
 import { buildProjectEvidence, projectNarrativeInstructions, projectNarrativePrompt, projectNarrativeSchema, type ProjectEvidence } from './evidence';
 import type { ProjectOverviewGitFacts, ProjectOverviewGitReader } from './git-reader';
 import type { ProjectNarrativeStore } from './narrative-store';
+import { inferProjectToolLinks, proposeProjectTools, type ProjectToolConfigFile } from './tool-links';
 
 const day = 86_400_000;
 const cacheLifetime = 30_000;
@@ -44,6 +45,8 @@ export type ProjectOverviewServiceOptions = {
   agents: () => readonly Agent[];
   outerLoop?: ProjectOverviewOuterLoop;
   narratives: ProjectNarrativeStore;
+  /** The project's tool links, read from and first written to its own config file. */
+  tools?: Pick<ProjectToolConfigFile, 'load'>;
   now?: () => number;
 };
 
@@ -196,7 +199,11 @@ export class ProjectOverviewService {
       branches: facts?.branchActivity ?? [],
     });
     const since = lookback.since;
-    const [backlog, requests, pipelines] = await Promise.all([
+    const toolRoot = facts ? workspace?.primaryWorktreeRoot || workspace?.repositoryRoot || folder : null;
+    const [toolLinks, backlog, requests, pipelines] = await Promise.all([
+      toolRoot && this.options.tools
+        ? this.options.tools.load(toolRoot, () => ({ links: inferProjectToolLinks(repositoryId), proposals: proposeProjectTools(facts!.messages) })).catch(() => ({}))
+        : {},
       settle(() => outerLoop ? outerLoop.backlog(repositoryId!, since) : null, 'notConnected'),
       settle(() => outerLoop ? outerLoop.pullRequests(repositoryId!) : null, 'notConnected'),
       settle(() => outerLoop ? outerLoop.pipelines(repositoryId!, since) : null, 'notConnected'),
@@ -234,6 +241,7 @@ export class ProjectOverviewService {
       overview: {
         generatedAt: new Date(now).toISOString(),
         lookback: { days: lookback.days, since: new Date(lookback.since).toISOString() },
+        toolLinks,
         repository: {
           name: facts?.name ?? workspace?.repositoryName ?? (agent.workspace?.kind === 'folder' ? agent.workspace.label : basename(folder)),
           branch: facts ? facts.branch : workspace?.branch ?? null,

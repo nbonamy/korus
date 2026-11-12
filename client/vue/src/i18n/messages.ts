@@ -130,7 +130,7 @@ export const messages = {
         stations: { backlog: 'Backlog', building: 'Building', review: 'Review', ci: 'CI', shipped: 'Shipped' },
         arrived: '{count} arrived this week', agentsWorking: '{count} agents working', oldestWaiting: 'oldest waiting {age}',
         nothingWaiting: 'nothing waiting', failing: '{count} failing', mergedThisWeek: 'merged this week',
-        notConnected: 'not connected', unavailable: 'unavailable', constraint: 'Constraint',
+        notConnected: 'not connected', unavailable: 'unavailable', constraint: 'Constraint', openTool: 'Open {tool}',
         constraintSentence: '{station} is the constraint: {count} changes are waiting, the oldest for {age}.',
         involved: 'Involved: {names}.', nothingStuck: 'Nothing is stuck.',
         connectHint: 'Connect GitHub, GitLab or Linear in Settings to see what is arriving and what is waiting on review and CI.',

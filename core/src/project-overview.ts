@@ -45,9 +45,17 @@ export type ProjectFlow = { stations: ProjectFlowStation[]; links: ProjectFlowLi
 /** How far back the narrative looks. `days` is null when it covers the whole history, from `since`. */
 export type ProjectOverviewLookback = { days: number | null; since: string };
 
+export const projectToolKinds = ['github', 'gitlab', 'jira', 'linear', 'link'] as const;
+export type ProjectToolKind = typeof projectToolKinds[number];
+/** Where a flow station's work lives in another tool. Always an http(s) URL. */
+export type ProjectToolLink = { label: string; url: string; tool: ProjectToolKind };
+export type ProjectToolLinks = Partial<Record<ProjectFlowStationKind, ProjectToolLink>>;
+
 export type ProjectOverview = {
   generatedAt: string;
   lookback: ProjectOverviewLookback;
+  /** From the project's own config file, which is first written from what the git remote shows. */
+  toolLinks: ProjectToolLinks;
   repository: { name: string; branch: string | null; baseBranch: string | null };
   sources: ProjectOverviewSources;
   narrative: ProjectNarrativeState;
@@ -253,8 +261,8 @@ export type ProjectNarrativeDraft = {
   workstreams: (ProjectWorkstream & { branches: string[]; issues: string[] })[];
 };
 
-const leadLimit = 280;
-const analysisLimit = 360;
+const leadLimit = 160;
+const analysisLimit = 180;
 const nameLimit = 40;
 const maxWorkstreams = 4;
 const maxBasis = 2;
@@ -265,6 +273,8 @@ function figures(text: string): string[] {
 }
 
 const text = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length >= 1 && value.length <= limit;
+/** One sentence: no sentence ending before the last character. A full stop inside "0.56" is not an ending. */
+const sentence = (value: unknown, limit: number): value is string => text(value, limit) && !/[.!?]\s+\S/u.test(value.trim());
 const names = (value: unknown): value is string[] => Array.isArray(value) && value.every(entry => typeof entry === 'string');
 
 /**
@@ -275,7 +285,7 @@ export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarra
   if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return { ok: false, problems: ['The reply is not a narrative object.'] };
   const draft = reply as Record<string, unknown>;
   const problems: string[] = [];
-  if (!text(draft.lead, leadLimit)) problems.push(`The lead must be 1 to ${leadLimit} characters.`);
+  if (!sentence(draft.lead, leadLimit)) problems.push(`The lead must be one sentence of at most ${leadLimit} characters.`);
   if (!Array.isArray(draft.workstreams) || draft.workstreams.length < 1 || draft.workstreams.length > maxWorkstreams) {
     return { ok: false, problems: [...problems, `There must be 1 to ${maxWorkstreams} workstreams.`] };
   }
@@ -287,7 +297,7 @@ export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarra
     const value = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
     if (!text(value.name, nameLimit)) problems.push(`${label} needs a name of at most ${nameLimit} characters.`);
     if (!projectWorkstreamStates.includes(value.state as ProjectWorkstreamState)) problems.push(`${label} has an unknown state.`);
-    if (!text(value.analysis, analysisLimit)) problems.push(`${label} needs an analysis of at most ${analysisLimit} characters.`);
+    if (!sentence(value.analysis, analysisLimit)) problems.push(`${label} needs one sentence of at most ${analysisLimit} characters.`);
     const cited = names(value.facts) ? value.facts : [];
     const branches = value.branches === undefined ? [] : names(value.branches) ? value.branches : null;
     const issues = value.issues === undefined ? [] : names(value.issues) ? value.issues : null;

@@ -31,6 +31,17 @@
             :class="{ 'project-flow__station--constraint': flow.constraint?.station === station.kind, 'project-flow__station--absent': station.status !== 'available' }"
             :data-station="station.kind"
           >
+            <a
+              v-if="toolLinks[station.kind]"
+              class="project-flow__tool"
+              :href="toolLinks[station.kind]!.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="toolLinks[station.kind]!.label"
+              :aria-label="t('projectOverview.flow.openTool', { tool: toolLinks[station.kind]!.label })"
+            >
+              <component :is="toolIcons[toolLinks[station.kind]!.tool]" class="project-flow__tool-icon" aria-hidden="true" />
+            </a>
             <span v-if="flow.constraint?.station === station.kind" class="project-flow__constraint">{{ t('projectOverview.flow.constraint') }}</span>
             <span class="project-flow__name">{{ t(stationKeys[station.kind]) }}</span>
             <strong class="project-flow__count">{{ station.count ?? t('projectOverview.flow.noCount') }}</strong>
@@ -52,10 +63,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ProjectFlow, ProjectFlowStation, ProjectNarrative } from '@workspace/core/project-overview';
+import type { ProjectFlow, ProjectFlowStation, ProjectNarrative, ProjectToolKind, ProjectToolLinks } from '@workspace/core/project-overview';
+import { BrandJiraIcon, ExternalLinkIcon, GitHubIcon, GitLabIcon, LinearIcon } from '../shared/icons/app-icons';
 import { compactDuration, flowLegend, projectMarkClass } from './project-overview-presentation';
 
-const props = defineProps<{ flow: ProjectFlow; narrative: ProjectNarrative | null }>();
+const props = defineProps<{ flow: ProjectFlow; narrative: ProjectNarrative | null; toolLinks: ProjectToolLinks }>();
+const toolIcons: Record<ProjectToolKind, unknown> = { github: GitHubIcon, gitlab: GitLabIcon, jira: BrandJiraIcon, linear: LinearIcon, link: ExternalLinkIcon };
 const { t } = useI18n();
 const maxMarks = 8;
 
@@ -198,6 +211,29 @@ const sentence = computed(() => {
 .project-flow__station--absent {
   border-style: dashed;
   background: var(--color-surface);
+}
+
+.project-flow__tool {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.project-flow__tool:hover,
+.project-flow__tool:focus-visible {
+  color: var(--color-text);
+  background: var(--color-surface-base);
+}
+
+.project-flow__tool-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .project-flow__constraint {

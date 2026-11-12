@@ -73,8 +73,8 @@ const emptyKey = computed(() => props.state.status !== 'unavailable' ? 'projectO
 
 .project-narrative__workstreams {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-32);
+  flex-direction: column;
+  gap: var(--space-16);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -82,9 +82,9 @@ const emptyKey = computed(() => props.state.status !== 'unavailable' ? 'projectO
 
 .project-narrative__workstream {
   display: flex;
-  flex: 1 1 260px;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
+  max-width: 880px;
   min-width: 0;
 }
 
@@ -97,7 +97,16 @@ const emptyKey = computed(() => props.state.status !== 'unavailable' ? 'projectO
   font-weight: var(--font-weight-semibold);
 }
 
-.project-narrative__state,
+.project-narrative__state {
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+  background: var(--color-surface-base);
+  font-size: var(--font-size-11);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-18);
+}
+
 .project-narrative__basis,
 .project-narrative__provenance,
 .project-narrative__empty {

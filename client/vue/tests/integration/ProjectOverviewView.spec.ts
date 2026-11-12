@@ -25,6 +25,10 @@ function overview(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
   return {
     generatedAt: '2026-11-11T11:58:00.000Z',
     lookback: { days: 90, since: '2026-08-13T12:00:00.000Z' },
+    toolLinks: {
+      backlog: { label: 'GitLab issues', url: 'https://gitlab.com/acme/api/-/issues', tool: 'gitlab' },
+      ci: { label: 'GitLab CI', url: 'https://gitlab.com/acme/api/-/pipelines', tool: 'gitlab' },
+    },
     repository: { name: 'korus', branch: 'feat/cursor-steering', baseBranch: 'main' },
     sources: { git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' },
     narrative: written,
@@ -92,6 +96,11 @@ describe('project overview page', () => {
     expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Cursor engine', 'SDK extraction', 'Other work']);
     expect(wrapper.findAll('.project-flow__link').map(link => link.findAll('.project-flow__token').length)).toStrictEqual([1, 0, 1, 2]);
     expect(wrapper.get('.project-flow__sentence').text()).toBe('Review is the constraint: 3 changes are waiting, the oldest for 3d. Involved: Cursor engine, SDK extraction.');
+    // Stations link to the tool behind them, opened outside the app; a station with no tool has no link.
+    const issues = station(wrapper, 'backlog').get('a.project-flow__tool');
+    expect(issues.attributes()).toMatchObject({ href: 'https://gitlab.com/acme/api/-/issues', target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open GitLab issues' });
+    expect(station(wrapper, 'ci').get('a.project-flow__tool').attributes('href')).toBe('https://gitlab.com/acme/api/-/pipelines');
+    expect(station(wrapper, 'review').find('a.project-flow__tool').exists()).toBe(false);
     expect(wrapper.find('.project-flow__hint').exists()).toBe(false);
     wrapper.unmount();
   });

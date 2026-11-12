@@ -97,6 +97,7 @@ describe('AppShell navigation and teams', () => {
     const getProjectOverview = vi.fn(async () => ({
       generatedAt: new Date().toISOString(),
       lookback: { days: null, since: new Date().toISOString() },
+      toolLinks: {},
       repository: { name: 'korus', branch: 'main', baseBranch: 'main' },
       sources: { git: 'available' as const, backlog: 'notConnected' as const, pullRequests: 'notConnected' as const, pipelines: 'notConnected' as const },
       narrative: { status: 'unavailable' as const, reason: 'quiet' as const },

@@ -37,6 +37,7 @@ export type ProjectEvidence = ProjectNarrativeEvidence & {
   quiet: boolean;
   subjects: string[];
   issueTitles: string[];
+  guide: string | null;
   /** How the period reads in a sentence, such as "the last 90 days". */
   period: string;
 };
@@ -138,7 +139,8 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
 
   const branches = [...new Set([...units.map(unit => unit.branch), ...merged.map(merge => merge.branch)])];
   const key = createHash('sha256').update(JSON.stringify([
-    days, git.baseBranch, work.length, git.commits[0]?.at ?? null, git.tags.map(tag => tag.name),
+    // The writing rules are part of the key, so a narrative written under older rules is rewritten.
+    narrativeRules, git.guide, days, git.baseBranch, work.length, git.commits[0]?.at ?? null, git.tags.map(tag => tag.name),
     units.map(unit => [unit.branch, unit.behind, unit.ahead, unit.lastCommitAt, unit.pullRequest ? [unit.pullRequest.draft, unit.pullRequest.approved] : null, unit.latestPipeline?.status ?? null]),
     issues.map(issue => [issue.id, issue.state]),
   ])).digest('hex');
@@ -151,17 +153,21 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
     subjects: work.slice(0, maxSubjects).map(commit => commit.subject),
     issueTitles: issues.map(issue => `${issue.id} ${issue.title}`),
     period,
+    guide: git.guide,
   };
 }
 
 const states = 'starting, moving, settling, recurring, waiting, stalled';
+const narrativeRules = 2;
 export const projectNarrativeInstructions = [
   'You write a short status of a software project for the people working on it.',
   'Return only JSON that matches the schema: a lead and one to four workstreams.',
   'A workstream is a line of related work, not a single commit or ticket. Leave routine maintenance out.',
-  'The lead is at most two sentences on the state of the whole project.',
-  `Each workstream has a name of at most 40 characters, a state (one of: ${states}), and an analysis of at most two sentences.`,
-  'Interpret: say what is going on and why it matters. Never list commits, tickets, pull requests or runs.',
+  'The lead is one short sentence, at most 160 characters: what the project is and where it stands now.',
+  'When a project description is given, say what the project is in that description\'s own words.',
+  `Each workstream has a name of at most 40 characters, a state (one of: ${states}), and an analysis of one sentence, at most 180 characters.`,
+  'Keep each analysis on the changeset: what changed in the code and on which branches. Issues may inform its state but are not its subject.',
+  'Interpret: say what is going on. Never list commits, tickets, pull requests or runs.',
   'Cite the ids of the facts each workstream rests on. List the branches and issues from the evidence that belong to it.',
   'Use figures exactly as the facts you cite write them, or write no figure. Never compute or estimate a new one.',
   'Write plain text with no Markdown and no links.',
@@ -200,6 +206,7 @@ export function projectNarrativePrompt(repository: string, evidence: ProjectEvid
     `Write the project status for the repository "${repository}" from this evidence.`,
     `The evidence covers ${evidence.period}.`,
     '<<<EVIDENCE',
+    ...(evidence.guide ? ['Project description (from AGENTS.md):', evidence.guide, ''] : []),
     'Facts:',
     ...evidence.facts.map(fact => `${fact.id}: ${fact.text}`),
     ...list('Branches', evidence.branches),

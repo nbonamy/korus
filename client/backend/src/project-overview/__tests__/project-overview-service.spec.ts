@@ -6,6 +6,8 @@ import type { Agent } from '@workspace/core/contracts';
 import type { ProjectOverviewGitFacts } from '../git-reader';
 import { ProjectNarrativeStore } from '../narrative-store';
 import { ProjectOverviewService, type ProjectOverviewGenerate, type ProjectOverviewOuterLoop } from '../project-overview-service';
+import { inferProjectToolLinks } from '../tool-links';
+import type { ProjectToolLinks } from '@workspace/core/project-overview';
 
 const hour = 3_600_000;
 const day = 24 * hour;
@@ -47,6 +49,8 @@ const facts = (): ProjectOverviewGitFacts => ({
   ],
   // Eight branch tips this month, enough with the commits and merges above for a 30 day lookback.
   branchActivity: Array.from({ length: 8 }, (_, index) => start - (index + 1) * day),
+  guide: '# AGENTS.md\n\n**Korus** is an Electron desktop app for coordinating teams of coding agents.',
+  messages: ['fix: attach cursor sessions before streaming', 'SHOP-1 a', 'SHOP-2 b', 'SHOP-3 c'],
   baseCommitsPerDay: 45,
 });
 
@@ -60,6 +64,8 @@ const connected = (): ProjectOverviewOuterLoop => ({
 });
 
 function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoop?: ProjectOverviewOuterLoop; agents?: Agent[]; store?: ProjectNarrativeStore } = {}) {
+  // The config file answers what was inferred, as it does the first time it is written.
+  const tools = { load: vi.fn(async (_root: string, infer: () => { links: ProjectToolLinks; proposals: unknown[] }) => infer().links) };
   const requester = agent('a1', 'feat/cursor-steering', { name: 'Steering', status: { type: 'working' } });
   const agents = options.agents ?? [requester, agent('a2', 'refactor/sdk-extraction', { backend: 'codex' }), agent('a3', 'main', { folder: '/work/else', workspace: undefined })];
   const clock = { now: start };
@@ -67,8 +73,8 @@ function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoo
   const read = vi.fn(async () => { if (git instanceof Error) throw git; return git; });
   const sessions = vi.fn(() => [{ provider: 'claude', sessionId: 's1', startedAt: start - day, turns: 4, failedTurns: 1 }, { provider: 'codex', sessionId: 's2', startedAt: start - 2 * day, turns: 2, failedTurns: 0 }]);
   const store = options.store ?? new ProjectNarrativeStore(null);
-  const service = new ProjectOverviewService({ git: { read }, sessions, agents: () => agents, outerLoop: options.outerLoop, narratives: store, now: () => clock.now });
-  return { service, requester, read, sessions, clock, store };
+  const service = new ProjectOverviewService({ git: { read }, sessions, agents: () => agents, outerLoop: options.outerLoop, narratives: store, tools, now: () => clock.now });
+  return { service, requester, read, sessions, clock, store, tools };
 }
 
 /** A scripted engine: it answers from the fact ids it finds in the prompt, as a real reply would cite them. */
@@ -92,7 +98,7 @@ const grounded = (factId: (needle: string) => string) => ({
 describe('project overview flow', () => {
   it('places work in flight at its station from the repository, agents, pull requests and pipelines', async () => {
     const outerLoop = connected();
-    const { service, requester, read, clock } = setup({ outerLoop });
+    const { service, requester, read, clock, tools } = setup({ outerLoop });
 
     const overview = await service.get(requester);
 
@@ -103,6 +109,7 @@ describe('project overview flow', () => {
     expect(overview).toStrictEqual({
       generatedAt: '2026-11-11T12:00:00.000Z',
       lookback: { days: 30, since: ago(30 * day) },
+      toolLinks: expect.any(Object),
       repository: { name: 'korus', branch: 'feat/cursor-steering', baseBranch: 'main' },
       sources: { git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' },
       narrative: { status: 'missing' },
@@ -118,6 +125,14 @@ describe('project overview flow', () => {
         constraint: null,
       },
     });
+
+    // Tool links come from the project's config, kept at the primary checkout, first written from the remote and commits.
+    expect(tools.load).toHaveBeenCalledExactlyOnceWith('/work/korus', expect.any(Function));
+    expect(tools.load.mock.calls[0]![1]()).toStrictEqual({
+      links: inferProjectToolLinks('github.com/acme/korus'),
+      proposals: [{ tool: 'link', label: 'Issue tracker for SHOP', station: 'backlog', url: null, keys: ['SHOP'], reason: '3 commit messages mention SHOP keys. Add the tracker URL to use it.' }],
+    });
+    expect(overview.toolLinks.ci).toStrictEqual({ label: 'GitHub Actions', url: 'https://github.com/acme/korus/actions', tool: 'github' });
 
     clock.now += 29_000;
     await service.get(requester);
@@ -180,6 +195,8 @@ describe('project overview narrative', () => {
       '- #84 Cursor resume fails',
       '- fix: hide cursor thoughts',
     ]) expect(prompt).toContain(line);
+    expect(prompt).toContain('Project description (from AGENTS.md):\n# AGENTS.md\n\n**Korus** is an Electron desktop app for coordinating teams of coding agents.');
+    expect(prompt.indexOf('<<<EVIDENCE')).toBeLessThan(prompt.indexOf('Project description'));
     expect(prompt.indexOf('<<<EVIDENCE')).toBeLessThan(prompt.indexOf('- #84 Cursor resume fails'));
     expect(prompt.indexOf('EVIDENCE>>>')).toBeGreaterThan(prompt.indexOf('- #84 Cursor resume fails'));
 
