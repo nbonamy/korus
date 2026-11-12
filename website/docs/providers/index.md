@@ -98,6 +98,8 @@ Once detected:
 
 Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Each model appears once, and models that offer thinking levels let you pick one beside the model.
 
+Use the composer's **Permissions** menu to choose **Ask for approval**, **Allow file edits**, or **Auto**. These govern file edits and commands. Antigravity runs the tools of connected MCP servers without asking in every mode, so connect only servers you trust.
+
 Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for SSH-hosted agents and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 
 ## Connect GitHub, GitLab, or Linear {#connect-github-or-linear}
