@@ -30,7 +30,7 @@ export async function requestHandoffNote(agent: Agent, prompt: string, port: {
   });
   let expire!: (error: Error) => void;
   const deadline = new Promise<never>((_, no) => { expire = no; });
-  const timer = setTimeout(() => expire(new Error('Handoff note timed out. The source has been kept.')), port.timeoutMs ?? 90_000);
+  const timer = setTimeout(() => expire(new Error('Handoff note timed out. The source has been kept.')), port.timeoutMs ?? 300_000);
   timer.unref?.();
   try {
     accepted = await Promise.race([port.send(agent, prompt), deadline, complete.then(() => { throw new Error('Handoff ended before acceptance.'); })]);

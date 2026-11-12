@@ -119,7 +119,7 @@ describe('AppBackendServer', () => {
     snapshot.agents[0]!.handoff = { operationId: 'op', selection: {} as never, sourceAgentId: 'agent-dina', sourceTitle: 'Dina', sourceRef: {} as never, phase: 'closing' };
     const callsBeforeHandoff = loadConversation.mock.calls.length;
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } }))
-      .rejects.toThrow('Wait for the handoff to finish.');
+      .resolves.toEqual({ jsonrpc: '2.0', id: 'handoff', result: null });
     expect(loadConversation).toHaveBeenCalledTimes(callsBeforeHandoff);
     await server.close();
   });

@@ -275,11 +275,11 @@ export const messages = {
       signedInAs: 'Signed in as {account}',
     },
     handoff: {
-      action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel', hide: 'Hide',
+      action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel',
       model: 'Model',
       instructions: 'Additional handoff instructions', optional: 'Optional — what should the current agent emphasize in its note?',
       permissions: 'The new agent uses the selected provider’s default permissions.',
-      preparing: 'Preparing the note and replacement. You can hide this dialog; the handoff will continue.',
+      phase: { preparing: 'Preparing the handoff note…', closing: 'Closing the source conversation…', starting: 'Starting the new agent…' },
       savedNote: 'Saved handoff note', source: 'Source conversation',
     },
     engineConnection: {

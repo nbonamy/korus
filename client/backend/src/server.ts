@@ -2847,7 +2847,8 @@ export class AppBackendServer {
         // projection for compatibility with older owning daemons.
         if (requireRecord(message.params).omitSnapshot === true && (await this.locationForAgentId(agentId))?.kind === 'local') {
           return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { ...loadParams, omitSnapshot: true }, async (agent) => {
-            if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
+            // The handoff owns the conversation; there is nothing to hydrate until it ends.
+            if (handoffInProgress(agent)) return null;
             const boundSession = JSON.stringify(agent.providerSession ?? null);
             await this.agentConversations.hydrate(agentId, reportFailure);
             // A rebound session reference is only delivered by the snapshot, and
