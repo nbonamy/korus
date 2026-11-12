@@ -88,12 +88,12 @@ describe('unified backend → app state request lifecycle', () => {
     api.selectAgent.mockResolvedValue(navigated);
     api.loadConversationHistory.mockResolvedValue(navigated);
     await state.selectAgent(otherId);
-    api.respondToClientRequest.mockRejectedValueOnce(new Error('offline'));
-    await expect(state.respondToClientRequest({ agentId, id: '0', payload: { answers: {} } })).rejects.toThrow('offline');
+    api.respondToAgentRequest.mockRejectedValueOnce(new Error('offline'));
+    await expect(state.respondToActiveAgentRequest({ agentId, id: '0', outcome: { kind: 'answered', answers: {} } })).rejects.toThrow('offline');
     expect(state.snapshot.value.agentRequests?.[agentId]).toStrictEqual([request]);
-    api.respondToClientRequest.mockResolvedValue(navigated);
-    await state.respondToClientRequest({ agentId, id: '0', payload: { answers: {} } });
-    expect(api.respondToClientRequest).toHaveBeenLastCalledWith({ agentId, id: '0', payload: { answers: {} } });
+    api.respondToAgentRequest.mockResolvedValue(navigated);
+    await state.respondToActiveAgentRequest({ agentId, id: '0', outcome: { kind: 'answered', answers: {} } });
+    expect(api.respondToAgentRequest).toHaveBeenLastCalledWith({ agentId, id: '0', outcome: { kind: 'answered', answers: {} } });
     emit({ type: 'agentRequest.resolved', provider: provider, agentId, conversationId: 'conversation', payload: { id: '0', outcome: { kind: 'answered', answers: {} } } });
     expect(state.snapshot.value.agentRequests?.[agentId]).toStrictEqual([]);
     expect(state.snapshot.value.agentRequests?.[otherId]).toHaveLength(1);

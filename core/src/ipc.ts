@@ -235,7 +235,7 @@ export const ipcChannels = {
   browserResolveAnnotation: 'browser:annotation:resolve',
   browserClearAnnotations: 'browser:annotations:clear',
   browserClose: 'browser:close',
-  respondToClientRequest: 'client-request:respond',
+  respondToAgentRequest: 'agent-request:respond',
   event: 'app:event',
   appCommand: 'app:command',
   updateStatusChanged: 'app:update-status-changed',

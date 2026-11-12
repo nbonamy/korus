@@ -1,5 +1,6 @@
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import { contextBridge, ipcRenderer } from 'electron';
-import type { HarnessProvider, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, ProviderConversationRef, BrowserBounds, ClientRequestResponse, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, AgentGitBranchInput, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AppCommand, ApprovalPreset, ProviderConversationRef, BrowserBounds, AppApi, ConversationListInput, ConversationResumeTarget, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DesktopUpdateStatus, DuplicateAgentOptions, GlobalWorkItemQuery, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, RendererSendPromptOptions, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SetCodexResourceSharingInput, SourceFolderListInput, SpokenAnnouncementVoice, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkItemQuery, WorkProviderKind } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { exposeNativeRendererApi, TypedIpcRenderer } from '@korus-dev/agent-ui-sdk/electron/preload';
 
@@ -241,7 +242,7 @@ const api: AppApi = {
   browserResolveAnnotation: (token: string, comment: string | null) => ipc.invoke(ipcChannels.browserResolveAnnotation, token, comment),
   browserClearAnnotations: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserClearAnnotations, agentId, browserId),
   browserClose: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserClose, agentId, browserId),
-  respondToClientRequest: (response: ClientRequestResponse) => ipc.invoke(ipcChannels.respondToClientRequest, response),
+  respondToAgentRequest: (response: AgentRequestResponse) => ipc.invoke(ipcChannels.respondToAgentRequest, response),
   onEvent: (listener: (event: MainToRendererEvent) => void) => {
     return ipc.on(ipcChannels.event, listener);
   },

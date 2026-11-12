@@ -1067,7 +1067,8 @@ export type AppApi = {
   browserResolveAnnotation(token: string, comment: string | null): Promise<void>;
   browserClearAnnotations(agentId: string, browserId: string): Promise<void>;
   browserClose(agentId: string, browserId: string): Promise<void>;
-  respondToClientRequest(response: ClientRequestResponse): Promise<AppSnapshot>;
+  /** Answers a pending agent request in the shape the harness takes. */
+  respondToAgentRequest(response: import('./agent-request').AgentRequestResponse): Promise<AppSnapshot>;
   onEvent(listener: (event: MainToRendererEvent) => void): () => void;
   onAppCommand(listener: (command: AppCommand) => void): () => void;
   onUpdateStatusChanged(listener: (status: DesktopUpdateStatus) => void): () => void;

@@ -1,5 +1,4 @@
 import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
-import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { projectSessionConversation, type ConversationPresentation } from './provider-conversation-bindings';
 import { createSessionConversationState } from './session-conversation-state';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
@@ -14,7 +13,7 @@ import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import type { AgentGitBranchInput, AgentGitCommitInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow } from '@workspace/core/contracts';
 import type { AgentCreationProgress, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, ClientRequestResponse, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
 import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-manager';
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -1609,16 +1608,6 @@ export function useAppState() {
     await loadActiveAgentCatalogs();
   }
 
-  async function respondToClientRequest(response: ClientRequestResponse): Promise<void> {
-    if (!appApi) {
-      return;
-    }
-
-    const agentId = response.agentId ?? snapshot.value.activeAgentId;
-    adoptBackgroundSnapshot(await appApi.respondToClientRequest({ ...response, ...(agentId ? { agentId } : {}) }));
-    markClientRequestAnswered(response.id);
-  }
-
   /** Answers a pending request in the harness's shape, after the same checks an approval prompt applies. */
   async function respondToAgentRequest(agentId: string, response: AgentRequestResponse): Promise<void> {
     const approval = snapshot.value.providerApprovals[agentId]?.find((candidate) => candidate.id === response.id);
@@ -1627,7 +1616,15 @@ export function useAppState() {
       const scope = decision === 'allow_conversation' ? 'session' : 'once';
       if (decision === 'deny' ? approval.canDeny === false : Boolean(approval.allowedScopes && !approval.allowedScopes.includes(scope))) return;
     }
-    await respondToClientRequest({ ...clientResponseFromAgentResponse(response), agentId });
+    if (!appApi) return;
+    adoptBackgroundSnapshot(await appApi.respondToAgentRequest({ ...response, agentId }));
+    markClientRequestAnswered(response.id);
+  }
+
+  /** Answers a request for the conversation on screen when the response does not name its agent. */
+  async function respondToActiveAgentRequest(response: AgentRequestResponse): Promise<void> {
+    const agentId = response.agentId ?? snapshot.value.activeAgentId;
+    if (agentId) await respondToAgentRequest(agentId, response);
   }
 
   async function resolveProviderApproval(
@@ -1658,17 +1655,7 @@ export function useAppState() {
       return;
     }
 
-    await respondToClientRequest({
-      id: approvalId,
-      agentId,
-      payload: {
-        decision: decision === 'deny'
-          ? 'deny'
-          : scope === 'session'
-            ? 'allow_conversation'
-            : 'allow',
-      },
-    });
+    await respondToAgentRequest(agentId, { id: approvalId, outcome: { kind: 'decision', decision: decision === 'deny' ? 'deny' : scope === 'session' ? 'allow_conversation' : 'allow' } });
   }
 
   async function setApprovalPreset(preset: ApprovalPreset): Promise<void> {
@@ -1895,7 +1882,7 @@ export function useAppState() {
     closeAgent,
     resolveProviderApproval,
     resolveProviderApprovalForAgent,
-    respondToClientRequest,
+    respondToActiveAgentRequest,
     respondToAgentRequest,
     selectModel,
     selectModelForAgent,

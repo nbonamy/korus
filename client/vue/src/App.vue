@@ -193,7 +193,7 @@
     @resolve-approval="resolveProviderApproval"
     @update:plan-mode="setPlanMode"
     @clear-goal="clearActiveGoal"
-    @client-response="respondToClientRequest"
+    @agent-response="respondToActiveAgentRequest"
     @delete-queued-prompt="removeQueuedPrompt"
     @debug-mark-unread="markDebugAgentsUnread"
     @interrupt-agent="interruptActiveAgent"
@@ -434,7 +434,7 @@ const {
   removeWorkItemAssignment,
   resolveProviderApproval,
   resolveProviderApprovalForAgent,
-  respondToClientRequest,
+  respondToActiveAgentRequest,
   respondToAgentRequest,
   selectModel,
   selectModelForAgent,

@@ -11,7 +11,7 @@ import { product } from '@workspace/core/product';
 import { registerMissionIpcHandlers } from './mission-ipc';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { agentResponseFromClientResponse } from '@workspace/core/agent-request';
+import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { encodedAppError } from '@workspace/core/app-error';
@@ -33,7 +33,7 @@ import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
-import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type ClientRequestResponse, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
+import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
@@ -798,9 +798,9 @@ export class AppController {
     // A window that lost the pane to another one must not close it on its way out.
     ipc.handle(ipcChannels.browserClose, (event, agentId: string, browserId: string) => this.hostsBrowserPane(event, agentId, browserId) ? this.browserPane.close(agentId, browserId) : undefined);
 
-    ipc.handle(ipcChannels.respondToClientRequest, async (_event, response: ClientRequestResponse) => {
+    ipc.handle(ipcChannels.respondToAgentRequest, async (_event, response: AgentRequestResponse) => {
       try {
-        return await this.respondToClientRequest(response);
+        return await this.respondToAgentRequest(response);
       } catch (error) {
         throw encodedAppError(error);
       }
@@ -1937,8 +1937,9 @@ export class AppController {
     return this.backendClient;
   }
 
-  private async respondToClientRequest(response: ClientRequestResponse): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRequestRespond, { response: agentResponseFromClientResponse(response) }));
+  private async respondToAgentRequest(response: AgentRequestResponse): Promise<AppSnapshot> {
+    if (!isAgentRequestResponse(response)) throw new Error('Invalid agent request response.');
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRequestRespond, { response }));
   }
 
   private installUpdate(): void {

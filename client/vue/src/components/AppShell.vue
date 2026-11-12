@@ -652,9 +652,9 @@
 </template>
 
 <script setup lang="ts">
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import { conversationForView, conversationPlanForAgent, type ConversationPresentation } from '../provider-conversation-bindings';
 import type { PaneMessage } from '../conversation-presentation/presentation';
-import { clientResponseFromAgentResponse } from '@korus-dev/multi-agent-sdk/contracts';
 import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
@@ -672,7 +672,7 @@ import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import type { HarnessProvider, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, ClientRequestResponse, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -1104,7 +1104,7 @@ const emit = defineEmits<{
   'compress-session': [agentId: string];
   'cleanup-pull-request': [agentId: string];
   'clear-goal': [];
-  'client-response': [response: ClientRequestResponse];
+  'agent-response': [response: AgentRequestResponse];
   'delete-turn': [turnId: string];
   'delete-queued-prompt': [promptId: string];
   'debug-mark-unread': [];
@@ -2049,7 +2049,7 @@ const legacyConversationActions: AgentConversationActions = {
   editTurn: (_id, payload) => props.editTurnAction ? props.editTurnAction(payload) : emit('edit-turn', payload),
   forkTurn: (_id, turn) => emit('fork-turn', turn), retryTurn: (_id, turn) => props.retryTurnAction ? props.retryTurnAction(turn) : emit('retry-turn', turn),
   continueInterruptedTurn: () => props.continueInterruptedTurnAction?.(),
-  respond: (_id, response) => emit('client-response', clientResponseFromAgentResponse(response)),
+  respond: (_id, response) => emit('agent-response', response),
   selectModel: (_id, model) => emit('select-model', model), selectReasoningEffort: (_id, effort) => emit('select-reasoning-effort', effort),
   selectServiceTier: (_id, tier) => emit('select-service-tier', tier), setPlanMode: (_id, enabled) => emit('update:planMode', enabled),
   setApprovalPreset: (_id, preset) => emit('select-approval-preset', preset), setPermissionMode: (_id, mode) => emit('select-permission-mode', mode),

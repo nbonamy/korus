@@ -280,7 +280,7 @@ export function createClientApiMock(
     browserResolveAnnotation: unscripted<'browserResolveAnnotation'>('browserResolveAnnotation'),
     browserClearAnnotations: unscripted<'browserClearAnnotations'>('browserClearAnnotations'),
     browserClose: unscripted<'browserClose'>('browserClose'),
-    respondToClientRequest: unscripted<'respondToClientRequest'>('respondToClientRequest'),
+    respondToAgentRequest: unscripted<'respondToAgentRequest'>('respondToAgentRequest'),
     onEvent: unscripted<'onEvent'>('onEvent'),
     onAppCommand: unscripted<'onAppCommand'>('onAppCommand'),
     onUpdateStatusChanged: unscripted<'onUpdateStatusChanged'>('onUpdateStatusChanged'),

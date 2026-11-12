@@ -1144,7 +1144,7 @@ describe('AppShell dialogs and commands', () => {
     await conversationControllerActions(wrapper).respond?.({ id: 'debug-user-questions', outcome: { kind: 'cancelled' } });
     await nextTick();
     expect(conversationControllerState(wrapper).identity.messages).not.toContain(questionMessage);
-    expect(wrapper.emitted('client-response')).toBeUndefined();
+    expect(wrapper.emitted('agent-response')).toBeUndefined();
 
     listener({ type: 'debug-mark-unread' });
     await nextTick();

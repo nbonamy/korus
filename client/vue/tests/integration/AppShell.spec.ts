@@ -500,7 +500,7 @@ describe('AppShell authentication and conversation', () => {
     expect(footer.findAll('button').map(button => button.text())).toEqual(['Allow', 'Allow for session', 'Deny']);
     await footer.findAll('button')[1]!.trigger('click');
     await flushPromises();
-    expect(wrapper.emitted('client-response')).toEqual([[{ id: 'permission', payload: { decision: 'allow_conversation' } }]]);
+    expect(wrapper.emitted('agent-response')).toEqual([[{ id: 'permission', outcome: { kind: 'decision', decision: 'allow_conversation' } }]]);
     await wrapper.setProps({ conversationPresentation: conversationFrom(agent, { ...pending, answeredClientRequestIds: ['permission'] }) });
     expect(conversationControllerState(wrapper).thread?.requests).toEqual([]);
     expect(conversationControllerState(wrapper).identity.messages).toHaveLength(1);
@@ -587,8 +587,8 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.find('.agent-ui-conversation-pane__messages .chat-tool-user-input').exists()).toBe(false);
     await wrapper.get('.agent-ui-conversation-pane__footer button[aria-label="Vue"]').trigger('click');
 
-    expect(wrapper.emitted('client-response')).toStrictEqual([[
-      { id: question.id, payload: { answers: { framework: { answers: ['Vue'] } } } },
+    expect(wrapper.emitted('agent-response')).toStrictEqual([[
+      { id: question.id, outcome: { kind: 'answered', answers: { framework: { answers: ['Vue'] } } } },
     ]]);
   });
 

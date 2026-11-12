@@ -80,26 +80,21 @@ describe('useAppState', () => {
     stubElectronTestWindow({});
     const state = useAppState();
 
-    await state.respondToClientRequest({
-      id: 'request-local',
-      payload: {
-        decision: 'deny',
-      },
-    });
+    await state.respondToActiveAgentRequest({ id: 'request-local', outcome: { kind: 'decision', decision: 'deny' } });
 
     expect(state.answeredClientRequestIds.value.has('request-local')).toBe(false);
   });
 
-  it('stores detailed approvals by agent and maps every resolution through the existing client-response bridge', async () => {
+  it('stores detailed approvals by agent and maps every resolution through the agent-response bridge', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    const respondToClientRequest = vi.fn().mockImplementation(async () => {
+    const respondToAgentRequest = vi.fn().mockImplementation(async () => {
       return { ...remoteSnapshot, providerApprovals: {} };
     });
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
-        respondToClientRequest,
+        respondToAgentRequest,
         onEvent: vi.fn((listener) => {
           listeners.push(listener);
           return () => undefined;
@@ -148,10 +143,10 @@ describe('useAppState', () => {
     expect(state.activeProviderApprovals.value).toStrictEqual([approval]);
     await state.resolveProviderApproval('approval-native-1', 'approve', 'session');
 
-    expect(respondToClientRequest).toHaveBeenCalledWith({
+    expect(respondToAgentRequest).toHaveBeenCalledWith({
       agentId: 'agent-dina',
       id: 'approval-native-1',
-      payload: { decision: 'allow_conversation' },
+      outcome: { kind: 'decision', decision: 'allow_conversation' },
     });
     expect(state.activeProviderApprovals.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value.has('approval-native-1')).toBe(true);
@@ -168,10 +163,10 @@ describe('useAppState', () => {
     });
     await state.resolveProviderApproval('approval-once', 'approve', 'once');
 
-    expect(respondToClientRequest).toHaveBeenNthCalledWith(2, {
+    expect(respondToAgentRequest).toHaveBeenNthCalledWith(2, {
       agentId: 'agent-dina',
       id: 'approval-once',
-      payload: { decision: 'allow' },
+      outcome: { kind: 'decision', decision: 'allow' },
     });
 
     listeners[0]?.({
@@ -186,10 +181,10 @@ describe('useAppState', () => {
     });
     await state.resolveProviderApproval('approval-deny', 'deny', 'once');
 
-    expect(respondToClientRequest).toHaveBeenNthCalledWith(3, {
+    expect(respondToAgentRequest).toHaveBeenNthCalledWith(3, {
       agentId: 'agent-dina',
       id: 'approval-deny',
-      payload: { decision: 'deny' },
+      outcome: { kind: 'decision', decision: 'deny' },
     });
     expect(state.activeProviderApprovals.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value.has('approval-once')).toBe(true);
@@ -547,31 +542,24 @@ describe('useAppState', () => {
   it('responds to client requests through preload and tracks answered request ids', async () => {
     const updatedSnapshot = createInitialSnapshot();
     updatedSnapshot.agents[0].status = { type: 'working' };
-    const respondToClientRequest = vi.fn().mockResolvedValue(updatedSnapshot);
+    const respondToAgentRequest = vi.fn().mockResolvedValue(updatedSnapshot);
 
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(createInitialSnapshot()),
         onEvent: vi.fn(),
-        respondToClientRequest,
+        respondToAgentRequest,
       } satisfies Partial<AppApi>,
     });
 
     const state = useAppState();
     await state.loadSnapshot();
-    await state.respondToClientRequest({
-      id: 'approval-1',
-      payload: {
-        decision: 'allow',
-      },
-    });
+    await state.respondToActiveAgentRequest({ id: 'approval-1', outcome: { kind: 'decision', decision: 'allow' } });
 
-    expect(respondToClientRequest).toHaveBeenCalledWith({
+    expect(respondToAgentRequest).toHaveBeenCalledWith({
       agentId: 'agent-dina',
       id: 'approval-1',
-      payload: {
-        decision: 'allow',
-      },
+      outcome: { kind: 'decision', decision: 'allow' },
     });
     expect(state.answeredClientRequestIds.value.has('approval-1')).toBe(true);
     expect(state.snapshot.value.agents[0].status).toStrictEqual({ type: 'working' });

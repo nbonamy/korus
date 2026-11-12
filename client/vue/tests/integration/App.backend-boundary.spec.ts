@@ -603,7 +603,7 @@ describe('Unified backend → mounted application', () => {
     emit({ type: 'agent.statusChanged', agentId: agent.id, payload: { type: 'working' } });
     await flushPromises();
     expect(wrapper.findAll('[role="status"]').some(element => element.text().includes('Allow test workspace access'))).toBe(false);
-    expect(api.respondToClientRequest).not.toHaveBeenCalled();
+    expect(api.respondToAgentRequest).not.toHaveBeenCalled();
   });
 
   it.each(['codex', 'claude'] as const)('reviews a %s agent plan using only the common contract', async (backend) => {
