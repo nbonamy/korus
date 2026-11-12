@@ -60,14 +60,16 @@ const reviewTools = ['read-skill', 'report_finding', 'update_finding', 'delete_f
  * The scope a code review runs in, the same for every harness: Korus's review tools on its own MCP server, trusted and
  * required wherever the harness can express that.
  */
-export const reviewScope = (provider: HarnessProvider) => (url: string) => {
-  const { mcpAutoApproval, mcpRequiredServers } = defaultProviderCapabilities(provider);
+/** What the running harness says it can do; the policy below asks it, never a table keyed by the harness's name. */
+type LiveCapabilities = () => Pick<ReturnType<ReturnType<typeof createHarness>['getProviderCapabilities']>, 'mcpAutoApproval' | 'mcpRequiredServers' | 'structuredOutput'>;
+export const reviewScope = (capabilities: LiveCapabilities) => (url: string) => {
+  const { mcpAutoApproval, mcpRequiredServers } = capabilities();
   return { id: url, mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...reviewTools] }] } as never;
 };
 
 /** Every harness gets the same review scope and generation preparation; a harness adds only what is its own. */
 const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName' | 'reviewScope' | 'prepareGeneration'> = {}) =>
-  new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, reviewScope: reviewScope(provider), prepareGeneration: prepareGeneration(provider), ...policy });
+  new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, reviewScope: reviewScope(() => harness.getProviderCapabilities()), prepareGeneration: prepareGeneration(provider, () => harness.getProviderCapabilities()), ...policy });
 
 function createCursorDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
@@ -86,8 +88,8 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
  * A background generation, prepared the same way for every harness from what the harness can do: its own server is
  * trusted and required where that can be expressed, and a harness without structured output is asked in words instead.
  */
-export const prepareGeneration = (provider: HarnessProvider): NonNullable<DriverPolicy['prepareGeneration']> => (_agent, input) => {
-  const { mcpAutoApproval, mcpRequiredServers, structuredOutput } = defaultProviderCapabilities(provider);
+export const prepareGeneration = (provider: HarnessProvider, capabilities: LiveCapabilities): NonNullable<DriverPolicy['prepareGeneration']> => (_agent, input) => {
+  const { mcpAutoApproval, mcpRequiredServers, structuredOutput } = capabilities();
   const mcpServers = utilityMcpServers(input.mcpServers).map(server => ({ ...server, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}) }));
   const selectModel = (models: readonly ProviderModelOption[]) => utilityTextModel(provider, models, input.complexity);
   if (structuredOutput) return { ...input, mcpServers, selectModel } as never;

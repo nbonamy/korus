@@ -134,7 +134,7 @@ describe('owner Share workflow', () => {
     agent.sharedConversation = { joinId: 'shared-join' };
     const view: GuestJoinView = { id: 'shared-join', name: 'Guest', title: 'Owner chat', status: 'ready', participant: null, target: null,
       session: { agentId: 'owner', provider: 'claude', conversation: 'owner-session', epoch: 'fixture', snapshot: { revision: 1, state: { activeTurnId: 'turn', turns: [], messages: [], requests: [], busy: true, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null, goal: null, title: null } } },
-      proposalState: { writeAccess: true, proposals: [], authors: [] } };
+      proposalState: { writeAccess: true, steer: true, proposals: [], authors: [] } };
     const control = vi.fn().mockResolvedValue(true);
     const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
     const enterText = async (text: string) => {

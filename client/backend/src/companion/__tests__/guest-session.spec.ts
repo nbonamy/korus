@@ -45,7 +45,7 @@ async function fixture(provider: Agent['provider'] = 'claude', submit?: (target:
   const agent: Agent = { id: 'shared', name: 'Synthetic shared chat', teamId: 'team-test', provider: provider, folder: '/fixture', providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'bound' } : provider === 'claude' ? { kind: 'claude', sessionId: 'bound', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = ['shared'];
   let shareChanged: (agentId: string, state: import('@workspace/core/conversation-sharing').ConversationShareState) => void = () => {};
-  const shares = new ConversationShares({ directory: path.join(directory, 'shares'), endpoint: async () => ({ ownerId, relay: pin }), submit, canSubmit: () => !['working', 'awaitingInput'].includes(agent.status.type) }, () => snapshot, (agentId, state) => shareChanged(agentId, state)); cleanup.push(() => shares.close());
+  const shares = new ConversationShares({ directory: path.join(directory, 'shares'), endpoint: async () => ({ ownerId, relay: pin }), submit, canSubmit: () => !['working', 'awaitingInput'].includes(agent.status.type), canSteer: () => true }, () => snapshot, (agentId, state) => shareChanged(agentId, state)); cleanup.push(() => shares.close());
   const target = conversationShareTarget(agent)!;
   const handles: string[] = [];
   const created = await shares.control({ action: 'create', target }); const link = decodeConversationShareLink(created.link!, pin)!; handles.push(link.handle);
@@ -256,12 +256,15 @@ describe('encrypted guest conversation authorization', () => {
     const rejoined = await f.client('Alex', f.link, 1);
     expect(rejoined.joined.participant.identity).toBe(identity);
     expect((await rejoined.client.proposals()).writeAccess).toBe(false);
+    // Steering is offered only to a guest who may write, and as the owner's harness reports it.
+    expect(await rejoined.client.proposals()).not.toHaveProperty('steer');
     await rejoined.client.propose({ id: randomUUID(), text: 'Review again after reconnect' });
     expect(submit).toHaveBeenCalledTimes(1);
     await expect(f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity: 'absent', writeAccess: true })).rejects.toThrow();
     // A daemon restart cannot restore connection-scoped authority or automatically
     // dispatch a prompt accepted while the owner was busy.
     await f.shares.control({ action: 'access', target: f.target, handle: f.link.handle, identity, writeAccess: true });
+    expect(await f.shares.guestState(f.link.handle, identity)).toMatchObject({ writeAccess: true, steer: true });
     f.snapshot.agents[0]!.status = { type: 'working' };
     const beforeRestart = { id: randomUUID(), text: 'Review after owner restart' };
     await rejoined.client.propose(beforeRestart); await f.shares.dispatchQueued();

@@ -43,6 +43,8 @@ const pendingStatuses = ['pending', 'queued', 'dispatching'];
 const compactProposal = (record: StoredProposal): StoredProposal => ['dismissed', 'submitted', 'rejected'].includes(record.status) ? { ...record, fingerprint: record.fingerprint ?? fingerprint(record.text), text: '' } : record;
 export type ConversationSharingOptions = { directory: string; endpoint(): Promise<{ ownerId: string; relay: ShareRelay } | null>;
   canSubmit?(target: ConversationShareTarget, context: SubmissionContext): boolean;
+  /** Whether the harness running the shared conversation can steer a running turn now. */
+  canSteer?(target: ConversationShareTarget): boolean;
   submit?(target: ConversationShareTarget, text: string, context: SubmissionContext): Promise<{ turnId?: string; messageId?: string }>;
   routing?: {
     update(routes: ConversationShareRoute[]): Promise<ShareRoutingStatus>;
@@ -103,7 +105,9 @@ export class ConversationShares {
     return this.serial(async () => {
       await this.load();
       const records = (this.saved!.proposals ?? []).filter(record => record.handle === handle);
-      return structuredClone({ writeAccess: Boolean(this.writeAccess.get(handle)?.has(identity)), proposals: records.filter(record => record.identity === identity).map(publicProposal), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
+      const target = this.saved!.links.find(link => link.handle === handle)?.target;
+      const writeAccess = Boolean(this.writeAccess.get(handle)?.has(identity));
+      return structuredClone({ writeAccess, ...(writeAccess ? { steer: Boolean(target && this.options.canSteer?.(target)) } : {}), proposals: records.filter(record => record.identity === identity).map(publicProposal), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
     });
   }
   withdraw(handle: string, identity: string, proposalId: string): Promise<void> {

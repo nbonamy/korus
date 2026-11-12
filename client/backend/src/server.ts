@@ -640,6 +640,10 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
+      canSteer: target => {
+        const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
+        return Boolean(agent && this.providerDriverForAgent(agent).getCapabilities(agent).steerPrompt);
+      },
       canSubmit: (target, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         const steer = context.followUpBehavior === 'steer';

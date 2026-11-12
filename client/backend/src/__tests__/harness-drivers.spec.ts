@@ -3,6 +3,7 @@ import { createDefaultProviderDrivers } from '../driver-rpc';
 import { createClaudeDriver, prepareGeneration, reviewScope } from '../harness-drivers';
 import { plainTextGenerationPrompt, sessionHandoff } from '../agents/prompts';
 import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { scriptedDriver } from './support/scripted-driver';
 
 const opened: Array<{ close(): Promise<void> }> = [];
@@ -29,7 +30,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
 
   it('gives every reviewer the same tools, trusting and requiring the review server only where the harness can express it', () => {
     const tools = ['read-skill', 'report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'];
-    const scope = (provider: Parameters<typeof reviewScope>[0]) => reviewScope(provider)('http://review') as unknown as { mcpServers: Array<Record<string, unknown>> };
+    const scope = (provider: 'codex' | 'claude' | 'cursor' | 'antigravity') => reviewScope(() => defaultProviderCapabilities(provider))('http://review') as unknown as { mcpServers: Array<Record<string, unknown>> };
     const server = { name: 'korus', url: 'http://review', enabledTools: tools };
     expect(scope('codex')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto', required: true }] });
     expect(scope('claude')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto' }] });
@@ -84,10 +85,23 @@ describe('Korus provider drivers over the SDK Harness', () => {
     await expect(other.getRemoteControlStatus!()).rejects.toThrow('claude does not support remote control.');
   });
 
+  it('follows what the running harness reports, not what the table says for its name', async () => {
+    const { driver, script } = scriptedDriver('cursor', { capabilities: { mcpAutoApproval: true, mcpRequiredServers: true, structuredOutput: true, remoteControl: true, accountUsage: false } });
+    const capabilities = driver.getRuntimeStatus().capabilities!;
+    expect(capabilities).toMatchObject({ remoteControl: true, accountUsage: false });
+    // Korus describes permissions with its own labels.
+    expect(capabilities.permissionModes?.[0]).toHaveProperty('label');
+    script.on('generateText', (async (_context: unknown, input: unknown) => { generated.push(input); return { text: 'ok' }; }) as never);
+    const generated: unknown[] = [];
+    const agent = { id: 'a', name: 'A', avatar: 'A', folder: '/repo', provider: 'cursor', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    await driver.generateText!(agent, { cwd: '/repo', prompt: 'Write it', outputSchema: { type: 'object' } } as never);
+    expect(generated[0]).toMatchObject({ prompt: 'Write it', outputSchema: { type: 'object' } });
+  });
+
   it('prepares a background generation the same way for every harness, from what the harness can do', () => {
     const icons = { name: 'diagram_icons_a1', url: 'http://127.0.0.1:4000/mcp/abc', enabledTools: ['fetch_tech_icon'] };
     const input = { cwd: '/repo', prompt: 'Write it', developerInstructions: 'Be brief.', outputSchema: { type: 'object' }, mcpServers: [icons], complexity: 'simple' } as never;
-    const prepared = (provider: 'codex' | 'claude' | 'antigravity') => prepareGeneration(provider)({} as never, input) as unknown as Record<string, unknown> & { selectModel: (models: unknown[]) => unknown };
+    const prepared = (provider: 'codex' | 'claude' | 'antigravity') => prepareGeneration(provider, () => defaultProviderCapabilities(provider))({} as never, input) as unknown as Record<string, unknown> & { selectModel: (models: unknown[]) => unknown };
     // Its own server is trusted, and required, wherever the harness can express that.
     expect(prepared('codex').mcpServers).toStrictEqual([{ ...icons, approval: 'auto', required: true }]);
     expect(prepared('claude').mcpServers).toStrictEqual([{ ...icons, approval: 'auto' }]);

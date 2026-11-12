@@ -23,7 +23,8 @@ export type GuestAuthor = { messageId: string; identity: string; name: string; d
 export type GuestPromptInput = { id: string; text: string; followUpBehavior?: 'queue' | 'steer' };
 export type GuestProposal = { id: string; handle: string; identity: string; name: string; discriminator: string; text: string; status: 'pending' | 'queued' | 'dispatching' | 'dismissed' | 'submitted' | 'rejected' | 'unresolved'; createdAt: string; messageId?: string; turnId?: string };
 export type ConnectedConversationGuest = { identity: string; name: string; discriminator: string; writeAccess: boolean };
-export type GuestProposalState = { proposals: GuestProposal[]; authors: GuestAuthor[]; writeAccess?: boolean };
+/** `steer` says whether the owner's harness can steer a running turn now, so a guest with write access is offered it only then. */
+export type GuestProposalState = { proposals: GuestProposal[]; authors: GuestAuthor[]; writeAccess?: boolean; steer?: boolean };
 export type ConversationShareState = { active: boolean; handle: string | null; connectedGuests: number | null; availability: ShareRoutingStatus | 'transportPending' | 'notConfigured'; proposals?: GuestProposal[]; authors?: GuestAuthor[]; guests?: ConnectedConversationGuest[] };
 export type ConversationShareControl = { target: ConversationShareTarget } & (
   | { action: 'status' | 'create' | 'copy' }

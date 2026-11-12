@@ -212,7 +212,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const detail = runtimeStatusDetail(this.provider, runtime.status, runtime.detail);
     return { ...runtime, ...(detail === undefined ? {} : { detail }), capabilities: { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getProviderCapabilities()) } } as ProviderRuntimeStatus;
   }
-  private liveCapabilities({ permissions: _permissions, login: _login, realtime: _realtime, remoteControl: _remoteControl, accountUsage: _accountUsage, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
+  /** What the harness reports, as Korus records it: only the permission list has a shape of its own, which Korus describes with its own labels. */
+  private liveCapabilities({ permissions: _permissions, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
   authenticate(request: Parameters<NonNullable<AgentProviderDriver['authenticate']>>[0]) { return this.harness.authenticate(request).then(result => result.native as never); }
   getAccountRateLimits() { return this.harness.getAccountRateLimits(); }
   /**
