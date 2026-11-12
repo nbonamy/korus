@@ -90,7 +90,7 @@ import { SshConnectionService } from './connections/ssh-connections';
 import { installedByRemoteDaemon, installOverSsh } from './connections/remote-engines';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
-import { warnMain } from './log';
+import { logMain, warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
 import { codexResourceSharingAccess } from './codex-resource-sharing';
 import { AgentGitService } from './git/agent-git-service';
@@ -1279,19 +1279,27 @@ export class AppBackendServer {
   }
 
   async initialize(): Promise<void> {
-    await this.remoteTeams.activateConnections();
-    await this.agentHandoffs.recover();
-    await this.providerConnections?.refresh();
-    await this.initializeSourceFolderIfNeeded();
-    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await this.ensureRemoteControlStatus();
-    await this.agentWorkspaces.reconcile();
-    await this.reconcileConversationsOnce();
+    // Each step is timed, so a slow start names the step that held it.
+    const began = Date.now();
+    const step = async (name: string, run: () => unknown): Promise<void> => {
+      const started = Date.now();
+      try { await run(); }
+      finally { const ms = Date.now() - started; if (ms >= 250) logMain('startup', 'slow step', { step: name, ms, sinceStart: Date.now() - began }); }
+    };
+    await step('remote connections', () => this.remoteTeams.activateConnections());
+    await step('handoffs', () => this.agentHandoffs.recover());
+    await step('engine connections', () => this.providerConnections?.refresh());
+    await step('source folder', () => this.initializeSourceFolderIfNeeded());
+    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await step('remote control status', () => this.ensureRemoteControlStatus());
+    await step('workspaces', () => this.agentWorkspaces.reconcile());
+    await step('conversations', () => this.reconcileConversationsOnce());
     this.reconcileShares();
-    await this.subagentIdentities.backfill();
-    await this.missionExecution.refreshOwnedSkills();
-    await this.missionExecution.recoverInterruptedRuns();
-    for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent);
-    await this.resumeInterruptedWork();
+    await step('subagent identities', () => this.subagentIdentities.backfill());
+    await step('mission skills', () => this.missionExecution.refreshOwnedSkills());
+    await step('mission runs', () => this.missionExecution.recoverInterruptedRuns());
+    await step('code reviews', async () => { for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent); });
+    await step('interrupted work', () => this.resumeInterruptedWork());
+    logMain('startup', 'initialized', { ms: Date.now() - began });
   }
 
   private async resumeInterruptedWork(): Promise<void> {
@@ -1377,7 +1385,14 @@ export class AppBackendServer {
     await this.persistAndEmitSnapshot();
   }
 
+  /** Answers a message, and says so when a request took long enough for someone to have waited on it. */
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
+    const started = Date.now();
+    try { return await this.answerMessage(message); }
+    finally { const ms = Date.now() - started; if (ms >= 1_000 && isAppRpcRequest(message)) logMain('rpc', 'slow request', { method: message.method, ms }); }
+  }
+
+  private async answerMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
     const params = isRecord(message.params) ? { ...message.params } : undefined;
     const clientId = typeof params?._clientId === 'string' ? params._clientId : 'desktop';

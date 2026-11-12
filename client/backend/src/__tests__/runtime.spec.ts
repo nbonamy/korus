@@ -235,7 +235,7 @@ vi.mock('../runtime-config', () => ({
   runtimeGitHubOAuthClientId: mocks.runtimeGitHubOAuthClientId,
 }));
 
-vi.mock('../log', () => ({ warnMain: mocks.warnMain }));
+vi.mock('../log', () => ({ warnMain: mocks.warnMain, logMain: () => {} }));
 
 vi.mock('../git/agent-git-service', () => ({
   AgentGitService: class {
@@ -466,7 +466,8 @@ describe('daemon runtime', () => {
       runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
       expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
       const uploadTask = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'telemetry-upload')!;
-      expect(uploadTask).toMatchObject({intervalMs:60000,runOnStart:true});
+      // The first upload waits a minute, so starting up never pays for it.
+      expect(uploadTask).toMatchObject({intervalMs:60000,runOnStart:false});
       await uploadTask.run();
       expect(mocks.uploadTick).toHaveBeenCalledTimes(1);
       expect(mocks.uploadFlush).not.toHaveBeenCalled();
@@ -518,7 +519,7 @@ describe('daemon runtime', () => {
     expect(mocks.schedulerTasks).toEqual([
       expect.objectContaining({ id: 'automations', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
-      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: true }),
+      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: false }),
       expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),

@@ -48,7 +48,7 @@ import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
 import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
 import { GitLabCliWorkProviderDriver } from './work-integrations/gitlab-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
-import { warnMain } from './log';
+import { logMain, warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
 import { AgentGitService } from './git/agent-git-service';
 import { PullRequestMonitor } from './git/pull-request-monitor';
@@ -82,6 +82,23 @@ export type DaemonRuntime = {
   server: AppBackendServer;
   stop(): Promise<void>;
 };
+
+/**
+ * Says when the daemon could not run anything for a while: work that blocks instead of waiting holds up every request,
+ * and nothing else in the log would show it. Returns how to stop watching.
+ */
+function watchEventLoop(): () => void {
+  const every = 200;
+  let last = Date.now();
+  const timer = setInterval(() => {
+    const now = Date.now(), blocked = now - last - every;
+    // A gap of minutes is the machine asleep, not the daemon at work.
+    if (blocked >= 500 && blocked < 60_000) logMain('daemon', 'blocked', { ms: blocked, until: new Date(now).toISOString() });
+    last = now;
+  }, every);
+  timer.unref();
+  return () => clearInterval(timer);
+}
 
 export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promise<DaemonRuntime> {
   const requirements = await loadRequirements(backendHomeDir());
@@ -164,6 +181,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
   const pricing = new PricingCatalog({ cacheFile: path.join(backendHomeDir(), 'pricing.json') });
+  const stopWatchingEventLoop = watchEventLoop();
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, () => pricing.history);
   await localUsage.load({ interruptOpenExecutions: true });
   await pricing.start();
@@ -330,7 +348,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => automationRunner.runAll(),
   });
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
-  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: true, run: () => telemetryUpload!.tick() });
+  // The first upload re-checks every delivered hour, which is real work: it waits a minute, so starting up never pays for it.
+  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: false, run: () => telemetryUpload!.tick() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
   scheduler.register({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true, run: () => cleanupPromptUploads(path.join(backendHomeDir(), 'companion'), {
     activeAgentIds: snapshot.agents.filter(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput').map(agent => agent.id),
@@ -460,6 +479,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      stopWatchingEventLoop();
       scheduler.stop();
       await telemetryUpload?.close();
       await pricing.stop();
