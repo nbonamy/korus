@@ -85,7 +85,7 @@ test("architecture lint accepts legitimate host imports and ignores source-like 
     "core/src/runtime-discovery.ts":
       "import { readFileSync } from 'node:fs';\n",
     "core/src/example.ts": "const example = \"from 'electron'\";\n",
-    "core/src/host.ts": "import type { CodexHostCapabilities } from '@korus-dev/agent-ui-sdk/host'; import type { BrowserState } from '@korus-dev/agent-ui-sdk/browser/contracts'; import { parseBrowserViewport } from '@korus-dev/agent-ui-sdk/browser/viewport';",
+    "core/src/host.ts": "import type { CodexHostCapabilities } from '@korus-dev/agent-ui-sdk/host'; import type { BrowserState } from '@korus-dev/agent-ui-sdk/browser'; import { parseBrowserViewport } from '@korus-dev/agent-ui-sdk/browser';",
     "client/electron/src/main/native.ts":
       "import { readFile } from 'node:fs/promises';\n",
   });
