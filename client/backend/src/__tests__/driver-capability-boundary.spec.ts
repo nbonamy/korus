@@ -37,9 +37,9 @@ describe('unified driver capability boundary', () => {
     [backendMethods.driverConversationLoad, {}],
     [backendMethods.driverConversationHistoryLoadOlder, {}],
     [backendMethods.driverConversationsList, {}],
-    [backendMethods.driverConversationResume, { target: { ref: { provider: 'claude', sessionId: 'session' } } }],
+    [backendMethods.driverConversationResume, { target: { ref: { provider: 'claude', conversationId: 'session' } } }],
     [backendMethods.driverConversationFork, { targetAgent: { ...agent, id: 'fork' } }],
-    [backendMethods.driverConversationSummaryGet, { ref: { provider: 'claude', sessionId: 'session' } }],
+    [backendMethods.driverConversationSummaryGet, { ref: { provider: 'claude', conversationId: 'session' } }],
     [backendMethods.driverPromptSteer, { prompt: 'change course' }],
     [backendMethods.driverTurnDelete, { turnId: 'turn' }],
     [backendMethods.driverTurnEdit, { turnId: 'turn', content: 'replacement' }],
@@ -80,7 +80,7 @@ describe('unified driver capability boundary', () => {
     const claude = scriptedDriver('claude').driver; const cursor = scriptedDriver('cursor').driver;
     const rpc = new ProviderDriverRpc(new Map([['claude', claude], ['cursor', cursor]]));
     try {
-      const closing = { ...agent, providerSession: { kind: 'claude' as const, sessionId: 's', transport: 'stdio' as const } };
+      const closing = { ...agent, providerSession: { kind: 'claude' as const, conversationId: 's', transport: 'stdio' as const } };
       await expect(rpc.handle(backendMethods.driverConversationArchive, { agent: closing })).resolves.toStrictEqual({ supported: false });
       const onCursor = { ...agent, provider: 'cursor' as const };
       await expect(rpc.handle(backendMethods.driverConversationDelete, { agent: onCursor })).resolves.toStrictEqual({ supported: false });

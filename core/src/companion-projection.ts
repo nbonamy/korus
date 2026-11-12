@@ -1,7 +1,7 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, ProviderDefaults, Team } from './contracts';
-import type { CompanionGitStatus, CompanionMission, CompanionMissionReview, CompanionMissionTicketState, CompanionReviewFinding, CompanionWorkspace } from './companion-protocol';
+import { withLegacyConversationId, type CompanionGitStatus, type CompanionMission, type CompanionMissionReview, type CompanionMissionTicketState, type CompanionReviewFinding, type CompanionWorkspace } from './companion-protocol';
 import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentProviders, providerConnectionsForHost } from './agent-providers';
@@ -47,7 +47,7 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
     const { id, teamId, remoteConnectionId, name, avatar, provider: backend, providerSession: providerSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, providerDefaults: providerDefaults, hasSubmittedPrompt } = agent;
     return { id, teamId, ...(remoteConnectionId ? { remoteConnectionId } : {}), name, avatar, provider: backend,
-      providerSession: providerSession?.kind === 'claude' ? { kind: providerSession.kind, sessionId: providerSession.sessionId, transport: providerSession.transport } : providerSession,
+      providerSession: providerSession && withLegacyConversationId(providerSession.kind === 'claude' ? { kind: providerSession.kind, conversationId: providerSession.conversationId, transport: providerSession.transport } : providerSession),
       ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
       ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),

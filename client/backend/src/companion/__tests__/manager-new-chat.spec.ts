@@ -1,3 +1,5 @@
+import type { Agent } from '@workspace/core/contracts';
+import { companionSessionId } from '@workspace/core/companion-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -197,13 +199,13 @@ describe('mobile chat creation', () => {
 
   it('routes a rename through the existing desktop update operation and preserves the session', async () => {
     const f = await fixture();
-    f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'rename-session' };
+    f.snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'rename-session' };
     const source = structuredClone(f.snapshot.agents[0]!);
-    const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: JSON.stringify(source.providerSession) };
+    const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: companionSessionId({ providerSession: source.providerSession } as Agent) };
     await f.gateway.request('phone', 'agent.rename', { target, name: 'Mobile work' });
     expect(f.calls.find(call => call.method === backendMethods.agentUpdate)?.params).toStrictEqual({ input: { id: 'existing', name: 'Mobile work' }, _clientId: 'companion-write' });
     const result = await f.gateway.request('phone', 'snapshot.get', {});
-    expect(result).toMatchObject({ agents: [expect.objectContaining({ id: 'existing', name: 'Mobile work', provider: source.provider, providerSession: source.providerSession })] });
+    expect(result).toMatchObject({ agents: [expect.objectContaining({ id: 'existing', name: 'Mobile work', provider: source.provider, providerSession: { ...source.providerSession, threadId: 'rename-session' } })] });
   });
 
   it('duplicates the target through the desktop operation with an explicit available engine', async () => {

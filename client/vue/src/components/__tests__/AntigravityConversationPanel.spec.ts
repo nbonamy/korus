@@ -15,7 +15,7 @@ it('renders an Antigravity conversation, denies a tool confirmation, and keeps u
   const snapshot = createInitialSnapshot();
   const agent = snapshot.agents[0]!;
   agent.provider = 'antigravity'; agent.providerDefaults = { kind: 'antigravity', permission: 'default' };
-  agent.providerSession = { kind: 'antigravity', sessionId: 'native-session' };
+  agent.providerSession = { kind: 'antigravity', conversationId: 'native-session' };
   const streaming = textMessage('message', 'assistant', 'Native Antigravity response', { agentId: agent.id, turnId: 'turn', status: 'streaming' });
   const running = sessionState({ busy: true, activeTurnId: 'turn', turns: [runningTurn('turn')], messages: [streaming], requests: [{
     id: 'permission', conversationId: 'native-session', turnId: 'turn', kind: 'toolConfirmation', confirmation: {

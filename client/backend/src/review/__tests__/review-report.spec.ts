@@ -22,7 +22,7 @@ async function fixture() {
     activeRoundId: 'round-1', createdAt: 'start', updatedAt: 'end',
     automation: { enabled: true, state: 'completed', maxPriority: 'p2', maxRounds: 3, commits: ['abc123'] },
     rounds: [{ id: 'round-1', number: 1, status: 'completed', startedAt: 'start', completedAt: 'end',
-      reviewerSession: { kind: 'claude', sessionId: 'native-session', transport: 'stdio' },
+      reviewerSession: { kind: 'claude', conversationId: 'native-session', transport: 'stdio' },
       summary: 'Authorization verified. ```',
       findings: [{ id: 'finding-1', roundId: 'round-1', priority: 'p1', title: 'Check ownership', body: 'Missing authorization.',
         decision: { state: 'selected', decidedAt: 'start' }, discussion: [],

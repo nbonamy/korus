@@ -15,7 +15,7 @@ describe('backend capabilities', () => {
       conversationArchive: false, conversationResume: true,
       remoteControl: false, conversationShare: false, attachments: true, models: true, skills: false,
       reasoningEffort: true, serviceTier: false, thinkingBudget: false, planMode: 'native',
-      goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false,
+      goals: false, steerPrompt: false, interrupt: true, history: true, conversationFork: false, folderScopedConversations: true, subagentTranscripts: 'none',
       deleteTurn: false, editTurn: false, retryTurn: false, approvals: false,
       approvalPresets: [], permissionModes: [
         { id: 'default', label: { key: 'permissions.cursor.default.label' }, description: { key: 'permissions.cursor.default.description' } },

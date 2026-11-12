@@ -1,4 +1,4 @@
-import { isProviderCommandSummary, operationCapabilityFlags } from './capability-flags';
+import { isProviderCommandSummary, operationCapabilityFlags, subagentTranscriptKinds } from './capability-flags';
 import type {
   AccountRateLimits,
   AgentContextUsage,
@@ -264,6 +264,7 @@ function providerCapabilities(value: Record<string, unknown>): Partial<ProviderR
     ...(typeof value.thinkingBudget === 'boolean' ? { thinkingBudget: value.thinkingBudget } : {}),
     ...(isProviderPlanModeSupport(value.planMode) ? { planMode: value.planMode } : {}),
     ...(typeof value.goals === 'boolean' ? { goals: value.goals } : {}),
+    ...(subagentTranscriptKinds.includes(value.subagentTranscripts as never) ? { subagentTranscripts: value.subagentTranscripts as ProviderRuntimeCapabilities['subagentTranscripts'] } : {}),
     ...(typeof value.steerPrompt === 'boolean' ? { steerPrompt: value.steerPrompt } : {}),
     ...(typeof value.interrupt === 'boolean' ? { interrupt: value.interrupt } : {}),
     ...(typeof value.history === 'boolean' ? { history: value.history } : {}),

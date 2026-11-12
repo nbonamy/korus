@@ -27,7 +27,7 @@ async function harness(provider: 'codex' | 'claude' = 'codex') {
   const snapshot = createTestSnapshot();
   const owner: Agent = {
     id: 'owner', name: 'Owner', teamId: 'team-test', folder, provider: provider,
-    providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'owner-thread' } : { kind: 'claude', sessionId: 'owner-thread', transport: 'stdio' },
+    providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'owner-thread' } : { kind: 'claude', conversationId: 'owner-thread', transport: 'stdio' },
     providerDefaults: { kind: provider, model: 'stale-model', reasoningEffort: 'low' },
     status: { type: 'working' }, createdAt: 'now', updatedAt: 'now',
   };
@@ -46,8 +46,8 @@ async function harness(provider: 'codex' | 'claude' = 'codex') {
     const result = await rpc(input.reviewMcpServerUrl, 'tools/call', { name: 'finish_review_round', arguments: { findingCount: 0 } });
     expect(result.isError).toBe(false);
     return { text: 'No findings.', reviewerSession: agent.provider === 'codex'
-      ? { kind: 'codex', threadId: 'review-thread' }
-      : { kind: 'claude', sessionId: 'review-thread', transport: 'stdio' } };
+      ? { kind: 'codex', conversationId: 'review-thread' }
+      : { kind: 'claude', conversationId: 'review-thread', transport: 'stdio' } };
   });
   const driver = (kind: 'codex' | 'claude'): AgentProviderDriver => ({
     provider: kind, getRuntimeStatus: () => ({ provider: kind, status: 'running' }),

@@ -100,7 +100,7 @@ async function connectedPair() {
   if (!created || 'error' in created) throw new Error('UI chat creation failed');
   const workerId = (created.result as { agentId: string }).agentId;
   const worker = remote.agents.find(agent => agent.id === workerId)!;
-  worker.providerSession = { kind: 'codex', threadId: 'remote-worker' };
+  worker.providerSession = { kind: 'codex', conversationId: 'remote-worker' };
   return { owner, workerHost, network, clients, worker,
     send: (content: string) => owner.mcp.callTool(local.agents[0]!.id, 'send-message', { to: workerId, content }) };
 }
@@ -146,14 +146,14 @@ describe('collaboration across daemon ownership boundaries', () => {
     const childId = created.structuredContent!.agentId as string;
     expect(workerHost.snapshot.agents.find(agent => agent.id === childId)).toMatchObject({
       teamId: worker.teamId, delegatedByAgentId: worker.id, folder: '/remote/same-host-child',
-      providerSession: { kind: 'codex', threadId: 'remote-child' },
+      providerSession: { kind: 'codex', conversationId: 'remote-child' },
     });
     expect(parentConversation.handle.fork).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ cwd: '/remote/same-host-child' }), { extensionContext: expect.objectContaining({ context: expect.objectContaining({ id: childId }) }) });
     expect(childConversation.handle.sendMessage).toHaveBeenCalledOnce();
     expect(childConversation.handle.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Inspect the inherited context'), expect.objectContaining({ planMode: true }));
     expect(owner.provider.conversation('remote-worker').handle.fork).not.toHaveBeenCalled();
     expect(parentConversation.handle.sendMessage).not.toHaveBeenCalled();
-    if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { providerSession: { kind: 'codex', threadId: 'remote-child' } } });
+    if (durable) expect((await owner.store.loadTasks())[0]).toMatchObject({ workerAgentId: childId, acceptance: { providerSession: { kind: 'codex', conversationId: 'remote-child' } } });
   });
 
   it.each(['missing', 'other-team', 'different-caller'])('rejects a %s local parent in remote provisioning', async invalid => {
@@ -177,7 +177,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
     local.remoteConnections.connections = [readyRemoteConnection()];
     const parent = local.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'local-parent' };
+    parent.providerSession = { kind: 'codex', conversationId: 'local-parent' };
     const remote = createInitialSnapshot();
     remote.providerConnections = local.providerConnections;
     remote.agents = [];
@@ -351,7 +351,7 @@ describe('collaboration across daemon ownership boundaries', () => {
   it.each(['completion', 'cancellation', 'controller outage'] as const)('creates once on the selected host, exchanges messages, and persists remote %s', async lifecycle => {
     const local = createInitialSnapshot();
     const parent = local.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'local-parent' };
+    parent.providerSession = { kind: 'codex', conversationId: 'local-parent' };
     local.remoteConnections.connections = [readyRemoteConnection()];
     local.providerConnections = [{ provider: 'codex', connected: true, installed: true, checking: false }];
     const remote = createInitialSnapshot();
@@ -469,7 +469,7 @@ it.each(['complete', 'cancel'] as const)('retains original task authority throug
   remote.providerConnections = structuredClone(local.providerConnections);
   const remoteParent = remote.agents[0]!;
   remoteParent.id = 'existing-remote-parent';
-  remoteParent.providerSession = { kind: 'codex', threadId: 'remote-parent' };
+  remoteParent.providerSession = { kind: 'codex', conversationId: 'remote-parent' };
   remote.agents = [remoteParent]; remote.teams[0]!.agentIds = [remoteParent.id];
   let owner!: Awaited<ReturnType<typeof host>>;
   let workerHost = await host(remote, 'remote', undefined, input => owner.server.handleRemoteCollaborationCall('connection-devbox', input));
@@ -575,7 +575,7 @@ it('activates an existing migrated link at startup without creating another remo
   local.providerConnections = [];
   local.remoteConnections.connections = [readyRemoteConnection()];
   const remote = createInitialSnapshot();
-  remote.agents = [{ ...remote.agents[0]!, id: 'existing-remote', providerSession: { kind: 'codex', threadId: 'remote-parent' } }];
+  remote.agents = [{ ...remote.agents[0]!, id: 'existing-remote', providerSession: { kind: 'codex', conversationId: 'remote-parent' } }];
   remote.teams[0]!.agentIds = ['existing-remote'];
   local.teams[0]!.remoteLinks = [{ connectionId: 'connection-devbox', remoteTeamId: remote.teams[0]!.id }];
   const localSecond = { ...local.agents[0]!, id: 'local-second', teamId: 'second-local' };
@@ -640,9 +640,9 @@ it.each([[false, false], [true, false], [true, true]] as const)('preserves distr
   }
   delete parent.sessionKind;
   parent.folder = remoteParent ? '/remote/repo' : '/local/repo';
-  parent.providerSession = { kind: 'codex', threadId: remoteParent ? 'remote-worker' : 'local-parent' };
+  parent.providerSession = { kind: 'codex', conversationId: remoteParent ? 'remote-worker' : 'local-parent' };
   child.delegatedByAgentId = parent.id;
-  const native = parentHost.provider.conversation(parent.providerSession.threadId);
+  const native = parentHost.provider.conversation(parent.providerSession.conversationId);
   parentHost.provider.surface.createConversation.mockResolvedValue(sdkSnapshot('replacement-thread'));
   child.status = { type: 'working' };
   await expect(pair.owner.server.handleMessage({ jsonrpc: '2.0', id: 'busy-handoff', method: backendMethods.agentHandoff,
@@ -667,9 +667,9 @@ it.each([[false, false], [true, false], [true, true]] as const)('preserves distr
   const turnId = remoteParent ? 'remote-turn' : 'local-turn';
   native.setSnapshot({ activeTurnId: null, busy: false, messages: [{ id: 'handoff-note', role: 'assistant', status: 'complete', turnId,
     parts: [{ type: 'text', text: 'Continue the existing work.' }], createdAt: '', metadata: {} }] });
-  native.emit({ conversationId: parent.providerSession.threadId, seq: 2, origin: 'notification', occurredAt: '', type: 'conversation.activityChanged', payload: { busy: false, error: null, threadStatus: { type: 'idle' } } });
-  native.handle.readHistory.mockResolvedValue({ conversationId: parent.providerSession.threadId, messages: native.handle.getSnapshot().messages, threadStatus: { type: 'idle' } });
-  native.emit({ conversationId: parent.providerSession.threadId, turnId, seq: 2, origin: 'notification', occurredAt: '', type: 'turn.completed',
+  native.emit({ conversationId: parent.providerSession.conversationId, seq: 2, origin: 'notification', occurredAt: '', type: 'conversation.activityChanged', payload: { busy: false, error: null, threadStatus: { type: 'idle' } } });
+  native.handle.readHistory.mockResolvedValue({ conversationId: parent.providerSession.conversationId, messages: native.handle.getSnapshot().messages, threadStatus: { type: 'idle' } });
+  native.emit({ conversationId: parent.providerSession.conversationId, turnId, seq: 2, origin: 'notification', occurredAt: '', type: 'turn.completed',
     payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
   await operation;
   const replacement = parentHost.snapshot.agents.find(agent => agent.handoff?.sourceAgentId === parent.id && agent.id !== parent.id)!;

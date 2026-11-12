@@ -29,7 +29,7 @@ describe('AppBackendServer', () => {
         status: 'completed',
         completedAt: '2026-06-15T01:30:48.802Z',
 
-        agentId: 'agent-cleaned-up', agentName: 'Cleaned Up', conversationRef: { provider: 'codex', threadId: 'thread-cleaned-up' },
+        agentId: 'agent-cleaned-up', agentName: 'Cleaned Up', conversationRef: { provider: 'codex', conversationId: 'thread-cleaned-up' },
       }],
     }];
     const messages = [createTextMessage('user-thread-cleaned-up-user-1', 'agent-cleaned-up', 'done')];
@@ -38,8 +38,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       readConversationMessages,
       onEvent: () => () => undefined,
@@ -56,16 +56,16 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', threadId: 'thread-cleaned-up' } },
+      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', conversationId: 'thread-cleaned-up' } },
     })).resolves.toMatchObject({ result: messages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'unknown-ref',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', threadId: 'thread-unknown' } },
+      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', conversationId: 'thread-unknown' } },
     })).resolves.toMatchObject({ error: { message: 'Conversation reference is not available.' } });
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-cleaned-up' }, 'agent-cleaned-up');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-cleaned-up' }, 'agent-cleaned-up');
     await server.close();
   });
 

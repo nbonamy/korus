@@ -1,11 +1,20 @@
 import type { CompanionWorkspace } from './companion-port';
+import type { ProviderSessionData } from '@workspace/core/contracts';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
+
+type Agents = CompanionWorkspace['agents'];
+/** Laptops on earlier builds name the conversation `threadId` or `sessionId`. */
+const fromLaptop = (agents: Agents): Agents => agents.map(agent => agent.providerSession && !('conversationId' in agent.providerSession)
+  ? { ...agent, providerSession: withConversationId(agent.providerSession) as ProviderSessionData } : agent);
+
 
 /**
  * The laptop repeats its whole workspace on every update. Parts that did not change keep their previous
  * objects (and an unchanged workspace is the previous one), so nothing derived from them is recomputed or resent.
  */
-export function reconcileWorkspace(previous: CompanionWorkspace, next: CompanionWorkspace): CompanionWorkspace {
-  if (previous === next) return previous;
+export function reconcileWorkspace(previous: CompanionWorkspace, received: CompanionWorkspace): CompanionWorkspace {
+  if (previous === received) return previous;
+  const next = { ...received, agents: fromLaptop(received.agents), ...(received.missionAgents ? { missionAgents: fromLaptop(received.missionAgents) } : {}) };
   const same = <Value>(old: Value, current: Value): Value => (old === current || JSON.stringify(old) === JSON.stringify(current) ? old : current);
   const items = <Item extends { id: string }>(old: readonly Item[] | undefined, current: readonly Item[]): readonly Item[] => {
     const known = new Map((old ?? []).map((item) => [item.id, item]));

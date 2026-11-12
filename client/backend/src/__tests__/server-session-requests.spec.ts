@@ -14,7 +14,7 @@ import {
 describe('AppBackendServer', () => {
   it.each(['accept', 'revise', 'cancel'] as const)('delivers %s to a non-Cursor request-backed plan without submitting a prompt', async resolution => {
     const snapshot = createTestSnapshot();
-    const agent: Agent = { id: 'plan-agent', teamId: 'team-test', name: 'Plan', folder: '/synthetic', provider: 'claude', providerSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' };
+    const agent: Agent = { id: 'plan-agent', teamId: 'team-test', name: 'Plan', folder: '/synthetic', provider: 'claude', providerSession: { kind: 'claude', conversationId: 'session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' };
     snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     let publish!: (event: BackendEvent) => void;
@@ -54,8 +54,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-current' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-current' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
       respondToAgentRequest: async () => undefined,
       reconcileConversations,
       onEvent: () => () => undefined,
@@ -80,7 +80,7 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-current' }, status: { type: 'idle' },
+      providerSession: { kind: 'codex', conversationId: 'thread-current' }, status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const releaseConversation = vi.fn();
@@ -89,8 +89,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-current' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-current' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
       respondToAgentRequest: async () => undefined,
       archiveAgentConversation: async () => { throw new Error('Archive failed'); },
       releaseConversation,
@@ -106,7 +106,7 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0', id: 'restart-agent', method: 'agent/conversation/reset', params: { agentId: 'agent-dina' },
     })).rejects.toThrow('Archive failed');
 
-    expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-current' });
+    expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-current' });
     expect(releaseConversation).not.toHaveBeenCalled();
     expect(saveSnapshot).not.toHaveBeenCalled();
     await server.close();
@@ -114,10 +114,10 @@ describe('AppBackendServer', () => {
 
   it.each(['codex', 'cursor', 'antigravity'] as const)('restores the previous %s session when persisting a switch fails', async provider => {
     const snapshot = createTestSnapshot();
-    const oldSession = provider === 'codex' ? { kind: provider, threadId: 'thread-old' } : { kind: provider, sessionId: 'session-old' };
-    const newSession = provider === 'codex' ? { kind: provider, threadId: 'thread-new' } : { kind: provider, sessionId: 'session-new' };
-    const oldRef = provider === 'codex' ? { provider: provider, threadId: 'thread-old' } : { provider: provider, folder: '/repo', sessionId: 'session-old' };
-    const newRef = provider === 'codex' ? { provider: provider, threadId: 'thread-new' } : { provider: provider, folder: '/repo', sessionId: 'session-new' };
+    const oldSession = provider === 'codex' ? { kind: provider, conversationId: 'thread-old' } : { kind: provider, conversationId: 'session-old' };
+    const newSession = provider === 'codex' ? { kind: provider, conversationId: 'thread-new' } : { kind: provider, conversationId: 'session-new' };
+    const oldRef = provider === 'codex' ? { provider: provider, conversationId: 'thread-old' } : { provider: provider, folder: '/repo', conversationId: 'session-old' };
+    const newRef = provider === 'codex' ? { provider: provider, conversationId: 'thread-new' } : { provider: provider, folder: '/repo', conversationId: 'session-new' };
     const storageState = provider === 'codex' ? 'archived' : 'active';
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -173,7 +173,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -182,21 +182,21 @@ describe('AppBackendServer', () => {
     const archivedAgents: unknown[] = [];
     const archiveAgentConversation = vi.fn(async (agent) => { archivedAgents.push(structuredClone(agent)); });
     const resumeConversation = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-new' },
+      providerSession: { kind: 'codex', conversationId: 'thread-new' },
     });
-    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', threadId: 'thread-test' } });
-    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-compressed' } });
+    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', conversationId: 'thread-test' } });
+    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-compressed' } });
     const setConversationTitle = vi.fn().mockResolvedValue(undefined);
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt: startSeeded,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       releaseConversation,
       archiveAgentConversation,
-      executeScopedPrompt: summarize, loadConversation: async () => ({ kind: 'codex', threadId: 'thread-test' }),
+      executeScopedPrompt: summarize, loadConversation: async () => ({ kind: 'codex', conversationId: 'thread-test' }),
       resumeConversation,
       setConversationTitle,
       onEvent: () => () => undefined,
@@ -229,13 +229,13 @@ describe('AppBackendServer', () => {
       params: {
         agentId: 'agent-dina',
         target: {
-          ref: { provider: 'codex', threadId: 'thread-new' },
+          ref: { provider: 'codex', conversationId: 'thread-new' },
           storageState: 'archived',
         },
       },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-new' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-new' } }],
       },
     });
     await expect(server.handleMessage({
@@ -245,16 +245,16 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina' },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-compressed' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-compressed' } }],
       },
     });
 
     expect(releaseConversation).toHaveBeenCalledWith('agent-dina');
     expect(archivedAgents).toContainEqual(expect.objectContaining({
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
     }));
     expect(resumeConversation).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), {
-      ref: { provider: 'codex', threadId: 'thread-new' },
+      ref: { provider: 'codex', conversationId: 'thread-new' },
       storageState: 'archived',
     });
     expect(startSeeded).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina', providerSession: undefined }), expect.stringContaining('Summary'));
@@ -281,7 +281,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -297,7 +297,7 @@ describe('AppBackendServer', () => {
     }];
     snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['agent-dina', 'agent-jesse'] } } };
     const forkConversation = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-forked' },
+      providerSession: { kind: 'codex', conversationId: 'thread-forked' },
       activeTurnId: 'turn-forked',
     });
     const setConversationTitle = vi.fn().mockResolvedValue(undefined);
@@ -305,8 +305,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       forkConversation,
       setConversationTitle,
@@ -334,7 +334,7 @@ describe('AppBackendServer', () => {
           { id: 'agent-dina' },
           {
             name: 'Dina (fork)',
-            providerSession: { kind: 'codex', threadId: 'thread-forked' },
+            providerSession: { kind: 'codex', conversationId: 'thread-forked' },
             status: { type: 'working' },
           },
           { id: 'agent-jesse' },
@@ -350,7 +350,7 @@ describe('AppBackendServer', () => {
       'turn-2',
     );
     expect(setConversationTitle).toHaveBeenCalledWith(
-      expect.objectContaining({ id: forkedAgentId, providerSession: { kind: 'codex', threadId: 'thread-forked' } }),
+      expect.objectContaining({ id: forkedAgentId, providerSession: { kind: 'codex', conversationId: 'thread-forked' } }),
       'Dina (fork)',
     );
     expect(snapshot.teams[0]?.agentIds).toStrictEqual(['agent-dina', forkedAgentId, 'agent-jesse']);
@@ -374,23 +374,23 @@ describe('AppBackendServer', () => {
     const goal = createThreadGoal('thread-goal', 'Ship the goal shelf');
     const setConversationTitle = vi.fn().mockResolvedValue(undefined);
     const setGoal = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       goal,
     });
     const clearGoal = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       cleared: true,
     });
     const setPermissionMode = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-approval' },
+      providerSession: { kind: 'codex', conversationId: 'thread-approval' },
       providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       clearGoal,
       setPermissionMode,
@@ -417,7 +417,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina', objective: ' Ship the goal shelf ' },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-goal' }, goal }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-goal' }, goal }],
       },
     });
     await expect(server.handleMessage({
@@ -427,7 +427,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina' },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-goal' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-goal' } }],
       },
     });
     expect(snapshot.agents[0]?.goal).toBeUndefined();
@@ -440,7 +440,7 @@ describe('AppBackendServer', () => {
       result: {
         agents: [{
           id: 'agent-dina',
-          providerSession: { kind: 'codex', threadId: 'thread-approval' },
+          providerSession: { kind: 'codex', conversationId: 'thread-approval' },
           providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
         }],
       },
@@ -484,8 +484,8 @@ describe('AppBackendServer', () => {
       getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
       getCapabilities: () => claudeProviderCapabilities,
       setPermissionMode,
-      sendPrompt: async () => ({ providerSession: { kind: 'claude', sessionId: 'session-test', transport: 'stdio' } }),
-      interrupt: async () => ({ providerSession: { kind: 'claude', sessionId: 'session-test', transport: 'stdio' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
+      interrupt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -534,18 +534,18 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const steerPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-steer' },
+      providerSession: { kind: 'codex', conversationId: 'thread-steer' },
       turnId: 'turn-steer',
     });
     const interrupt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-interrupt' },
+      providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
       turnId: 'turn-interrupt',
     });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       interrupt,
       respondToAgentRequest: async () => undefined,
       steerPrompt,
@@ -572,7 +572,7 @@ describe('AppBackendServer', () => {
       },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-steer' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-steer' } }],
       },
     });
     await expect(server.handleMessage({
@@ -582,7 +582,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina' },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-interrupt' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-interrupt' } }],
       },
     });
 
@@ -612,7 +612,7 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       interrupt: vi.fn().mockRejectedValue(new Error('no active turn')),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
@@ -656,21 +656,21 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
       status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const deleteTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-rollback' },
+      providerSession: { kind: 'codex', conversationId: 'thread-rollback' },
       activeTurnId: null,
     });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       deleteTurn,
       onEvent: () => () => undefined,
@@ -694,7 +694,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina', turnId: 'turn-1' },
     })).resolves.toMatchObject({
       result: {
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-rollback' }, status: { type: 'idle' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-rollback' }, status: { type: 'idle' } }],
       },
     });
 

@@ -1,5 +1,6 @@
 import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 import type { Mission } from '@workspace/core/missions';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';
@@ -12,9 +13,9 @@ type ClaudeSession = Extract<ProviderSessionData, { kind: 'claude' }>;
 
 /** One provider block instead of three sibling fields that had to agree on `kind`. */
 type Engine =
-  | { kind: 'cursor'; session?: { sessionId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'cursor' }>, 'kind'> }
-  | { kind: 'antigravity'; session?: { sessionId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'antigravity' }>, 'kind'> }
-  | { kind: 'codex'; session?: { threadId: string }; settings?: Omit<CodexDefaults, 'kind'> }
+  | { kind: 'cursor'; session?: { conversationId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'cursor' }>, 'kind'> }
+  | { kind: 'antigravity'; session?: { conversationId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'antigravity' }>, 'kind'> }
+  | { kind: 'codex'; session?: { conversationId: string }; settings?: Omit<CodexDefaults, 'kind'> }
   | { kind: 'claude'; session?: Omit<ClaudeSession, 'kind'>; settings?: Omit<ClaudeDefaults, 'kind'> };
 
 export type RosterAgent = Omit<PersistedAgent, 'teamId' | 'provider' | 'providerSession' | 'providerDefaults'> & { engine: Engine };
@@ -200,7 +201,8 @@ function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
 }
 
 function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): PersistedAgent {
-  const { engine, ...kept } = agent;
+  const { engine: stored, ...kept } = agent;
+  const engine = (stored.session ? { ...stored, session: withConversationId(stored.session) } : stored) as Engine;
   if (engine.kind === 'antigravity' || engine.kind === 'cursor') return {
     ...kept, ...(teamId ? { teamId } : {}), provider: engine.kind,
     ...(engine.session ? { providerSession: { kind: engine.kind, ...engine.session } } : {}),
@@ -209,7 +211,7 @@ function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): Per
   const session = engine.session;
   const settings = engine.settings;
   const providerSession: ProviderSessionData | undefined = session
-    ? engine.kind === 'codex' ? { kind: 'codex', threadId: (session as { threadId: string }).threadId } : { kind: 'claude', ...(session as Omit<ClaudeSession, 'kind'>) }
+    ? engine.kind === 'codex' ? { kind: 'codex', conversationId: session.conversationId } : { kind: 'claude', ...(session as Omit<ClaudeSession, 'kind'>) }
     : undefined;
   const providerDefaults: ProviderDefaults | undefined = settings
     ? engine.kind === 'codex' ? codexDefaultsFrom(settings as Omit<CodexDefaults, 'kind'>) : { kind: 'claude', ...(settings as Omit<ClaudeDefaults, 'kind'>) }
@@ -235,7 +237,7 @@ function engineFrom(agent: PersistedAgent): Engine {
     const settings = providerDefaults?.kind === 'claude' ? withoutKind(providerDefaults) : undefined;
     return { kind: 'claude', ...(session ? { session } : {}), ...(settings ? { settings } : {}) };
   }
-  const session = providerSession?.kind === 'codex' ? { threadId: providerSession.threadId } : undefined;
+  const session = providerSession?.kind === 'codex' ? { conversationId: providerSession.conversationId } : undefined;
   const settings = providerDefaults?.kind === 'codex' ? codexSettingsFrom(providerDefaults) : undefined;
   return { kind: 'codex', ...(session ? { session } : {}), ...(settings ? { settings } : {}) };
 }

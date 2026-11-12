@@ -10,7 +10,7 @@ const agent: Agent = {
   folder: '~/src/agent-workspace',
   provider: 'codex',
   providerDefaults: { kind: 'codex' },
-  providerSession: { kind: 'codex', threadId: 'thread-current' },
+  providerSession: { kind: 'codex', conversationId: 'thread-current' },
   status: { type: 'idle' },
   createdAt: '2026-06-05T00:00:00.000Z',
   updatedAt: '2026-06-05T00:00:00.000Z',
@@ -23,7 +23,7 @@ const sessions: ConversationSummary[] = [
     updatedAt: '2026-06-10T09:30:00.000Z',
     messageCount: 12,
     storageState: 'active',
-    ref: { provider: 'codex', threadId: 'thread-current' },
+    ref: { provider: 'codex', conversationId: 'thread-current' },
   },
   {
     id: 'thread-old',
@@ -31,7 +31,7 @@ const sessions: ConversationSummary[] = [
     updatedAt: '2026-06-10T09:00:00.000Z',
     messageCount: 4,
     storageState: 'archived',
-    ref: { provider: 'codex', threadId: 'thread-old' },
+    ref: { provider: 'codex', conversationId: 'thread-old' },
   },
   {
     id: 'thread-child',
@@ -40,7 +40,7 @@ const sessions: ConversationSummary[] = [
     updatedAt: '2026-06-10T09:45:00.000Z',
     messageCount: 2,
     storageState: 'archived',
-    ref: { provider: 'codex', threadId: 'thread-child' },
+    ref: { provider: 'codex', conversationId: 'thread-child' },
   },
 ];
 
@@ -55,11 +55,11 @@ afterEach(() => {
 describe('useSessionHistory', () => {
   it.each(['antigravity', 'cursor'] as const)('does not offer to resume the active %s session or mistake another provider for it', async provider => {
     const { agentRef, history } = createHistory();
-    agentRef.value = { ...agent, provider: provider, providerSession: { kind: provider, sessionId: 'native-current' } };
-    const current: ConversationSummary = { ...sessions[0]!, id: 'native-current', ref: { provider: provider, folder: agent.folder, sessionId: 'native-current' } };
+    agentRef.value = { ...agent, provider: provider, providerSession: { kind: provider, conversationId: 'native-current' } };
+    const current: ConversationSummary = { ...sessions[0]!, id: 'native-current', ref: { provider: provider, folder: agent.folder, conversationId: 'native-current' } };
     expect(history.isCurrentSession(current)).toBe(true);
     expect(history.canResume(current)).toBe(false);
-    expect(history.isCurrentSession({ ...current, ref: { provider: 'claude', folder: agent.folder, sessionId: 'native-current' } })).toBe(false);
+    expect(history.isCurrentSession({ ...current, ref: { provider: 'claude', folder: agent.folder, conversationId: 'native-current' } })).toBe(false);
   });
   it('loads top-level sessions and filters them independently of the dialog', async () => {
     const listConversations = vi.fn().mockResolvedValue(sessions);
@@ -89,7 +89,7 @@ describe('useSessionHistory', () => {
 
     await expect(history.resume(sessions[1]!)).resolves.toBe(true);
     expect(resumeConversation).toHaveBeenCalledWith('agent-dina', {
-      ref: { provider: 'codex', threadId: 'thread-old' },
+      ref: { provider: 'codex', conversationId: 'thread-old' },
       storageState: 'archived',
     });
 

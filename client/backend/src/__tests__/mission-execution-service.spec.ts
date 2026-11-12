@@ -323,7 +323,7 @@ describe('mission execution', () => {
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const run = h.current().execution!.runs[0]!;
     const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
-    worker.providerSession = { kind: 'codex', threadId: 'same-worker-conversation' };
+    worker.providerSession = { kind: 'codex', conversationId: 'same-worker-conversation' };
     const agentCount = h.snapshot.agents.length;
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (attempt === 2) h.service = new MissionExecutionService(h.ports);
@@ -341,7 +341,7 @@ describe('mission execution', () => {
       expect(h.ports.continueStage).toHaveBeenCalledTimes(sends);
     }
     expect(h.snapshot.agents).toHaveLength(agentCount);
-    expect(worker.providerSession).toStrictEqual({ kind: 'codex', threadId: 'same-worker-conversation' });
+    expect(worker.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'same-worker-conversation' });
     expect(h.ports.continueStage).toHaveBeenCalledTimes(3);
     expect(h.ports.continueStage.mock.calls[1]![1]).toMatch(/preserve|Preserve/);
     const reports = h.ports.sendMessage.mock.calls.filter(([, id]) => id === lead.id).map(([, , content]) => content);
@@ -1601,7 +1601,7 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs[0]).toMatchObject({ status: 'awaitingReview', summary: 'Requirements revised after review' });
     expect(() => updateMission(h.snapshot, { id: mission.id, revision: h.current().revision, artifacts, stageAgentIds: {}, action: 'advance' })).toThrow('current mission run');
     const approvalRevision = h.current().revision;
-    worker.providerSession = { kind: 'codex', threadId: 'thread-mission' };
+    worker.providerSession = { kind: 'codex', conversationId: 'thread-mission' };
     await h.command({ action: 'accept', runId: run.id });
     expect(h.current().revision).toBe(approvalRevision + 1);
     expect(h.current().artifacts.requirements).toStrictEqual(revisedArtifacts.requirements);
@@ -1865,7 +1865,7 @@ describe('mission execution', () => {
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const ticketsRun = h.current().execution!.runs[0]!;
     const missionLead = h.snapshot.agents.find(agent => agent.id === ticketsRun.workerId)!;
-    missionLead.providerSession = { kind: 'codex', threadId: 'thread-mission-lead' };
+    missionLead.providerSession = { kind: 'codex', conversationId: 'thread-mission-lead' };
     // The live Mission choice can differ from both the original lead and assigned members.
     missionLead.providerDefaults = { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' };
     const otherMember = h.snapshot.agents.find(agent => agent.id === h.originalAgents[1]!.id)!;
@@ -1950,7 +1950,7 @@ describe('mission execution', () => {
       stage: 'review', status: 'running', workerId: ticketsRun.workerId,
     });
     expect(h.current().stageAgentIds.review).toBe(ticketsRun.workerId);
-    expect(missionLead.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-mission-lead' });
+    expect(missionLead.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-mission-lead' });
     expect(h.ports.refreshConversationContext).toHaveBeenCalledWith(missionLead);
     expect(h.ports.continueStage).toHaveBeenCalledWith(ticketsRun.workerId, expect.stringContaining('Begin the Mission review'));
   });
@@ -1978,9 +1978,8 @@ describe('mission execution', () => {
     const firstRun = h.current().execution!.runs.find(run => run.stage === 'implementation')!;
     const implementationWorkerId = firstRun.workerId;
     expect(implementationWorkerId).not.toBe(ticketsRun.workerId);
-    h.snapshot.agents.find(agent => agent.id === implementationWorkerId)!.providerSession = {
-      kind: 'codex',
-      threadId: 'thread-implementation',
+    h.snapshot.agents.find(agent => agent.id === implementationWorkerId)!.providerSession = { kind: 'codex',
+      conversationId: 'thread-implementation',
     };
     const firstResult = structuredClone(h.current().artifacts);
     firstResult.tickets[0]!.done = true;

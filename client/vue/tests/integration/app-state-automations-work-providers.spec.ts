@@ -591,11 +591,10 @@ describe('useAppState', () => {
     await state.deleteAutomationExecution('automation-bugs', 'automation-exec-1');
     await state.clearAutomationHistory('automation-bugs');
     await state.deleteAutomation('automation-bugs');
-    await expect(state.readConversationMessages({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
-    const reactiveConversationRef = reactive({
-      provider: 'claude' as const,
+    await expect(state.readConversationMessages({ provider: 'codex', conversationId: 'thread-dina' }, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
+    const reactiveConversationRef = reactive({ provider: 'claude' as const,
       folder: '/Users/nbonamy/src/agent-workspace',
-      sessionId: 'session-dina',
+      conversationId: 'session-dina',
       subagentId: 'child-explore',
     });
     await expect(state.readConversationMessages(reactiveConversationRef as ProviderConversationRef, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
@@ -611,11 +610,10 @@ describe('useAppState', () => {
     expect(deleteAutomationExecution).toHaveBeenCalledWith('automation-bugs', 'automation-exec-1');
     expect(clearAutomationHistory).toHaveBeenCalledWith('automation-bugs');
     expect(deleteAutomation).toHaveBeenCalledWith('automation-bugs');
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenLastCalledWith({
-      provider: 'claude',
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-dina' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenLastCalledWith({ provider: 'claude',
       folder: '/Users/nbonamy/src/agent-workspace',
-      sessionId: 'session-dina',
+      conversationId: 'session-dina',
       subagentId: 'child-explore',
     }, 'agent-dina');
     expect(readConversationMessages.mock.calls.at(-1)?.[0]).not.toBe(reactiveConversationRef);

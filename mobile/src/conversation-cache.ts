@@ -5,6 +5,7 @@ import {
   type CompanionConversation, type CompanionConversationFrame, type CompanionTarget,
 } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 
 type Entry = { target: CompanionTarget; frame: CompanionConversation | null; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionConversation | null>; subscribed?: boolean; resetting?: boolean; checkpoint?: CompanionCheckpoint; bytes?: number };
 type Request = (method: string, target: CompanionTarget, checkpoint?: CompanionCheckpoint | null) => Promise<unknown>;
@@ -14,7 +15,8 @@ const byteLength = (value: unknown) => new TextEncoder().encode(JSON.stringify(v
 /** The target names the conversation the phone opened; frames of another one wait for the workspace to name it. */
 function followsTarget(frame: CompanionConversationFrame, target: CompanionTarget): boolean {
   let session: ProviderSessionData | undefined;
-  try { session = target.sessionId ? JSON.parse(target.sessionId) as ProviderSessionData : undefined; } catch { return false; }
+  // The target key keeps the companion wire format, which names the conversation `threadId` or `sessionId`.
+  try { session = target.sessionId ? withConversationId(JSON.parse(target.sessionId)) as ProviderSessionData : undefined; } catch { return false; }
   return Boolean(session) && followsCompanionConversation(frame, { id: target.agentId, provider: session!.kind, providerSession: session });
 }
 

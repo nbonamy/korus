@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompanionConversation, CompanionConversationFrame, CompanionTarget } from '@workspace/core/companion-protocol';
 import { ConversationCache } from '../conversation-cache';
-const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'cursor', sessionId }) });
+const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'cursor', sessionId: sessionId }) });
 const state = (extra: Record<string, unknown> = {}) => ({ messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...extra }) as CompanionConversation['payload']['snapshot']['state'];
 const reset = (agentId: string, revision = 1, epoch = 'epoch', conversation = 'session'): CompanionConversation =>
   ({ type: 'conversation.sessionSnapshot', agentId, provider: 'cursor', payload: { conversation, epoch, snapshot: { revision, state: state() } } });

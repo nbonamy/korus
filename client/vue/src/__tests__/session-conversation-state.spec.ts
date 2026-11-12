@@ -6,7 +6,7 @@ import { createSessionConversationState } from '../session-conversation-state';
 const state = (patch: Partial<SessionState> = {}): SessionState => ({
   messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...patch,
 });
-const agent = (conversation?: string) => ({ id: 'a', provider: 'claude', ...(conversation ? { providerSession: { kind: 'claude', sessionId: conversation } } : {}) }) as Agent;
+const agent = (conversation?: string) => ({ id: 'a', provider: 'claude', ...(conversation ? { providerSession: { kind: 'claude', conversationId: conversation } } : {}) }) as Agent;
 const snapshot = (revision: number, value: SessionState, conversation: string | null = 's1', epoch = 'e1') =>
   ({ type: 'conversation.sessionSnapshot', agentId: 'a', provider: 'claude', seq: 0, occurredAt: '', payload: { conversation, epoch, snapshot: { revision, state: value } } }) as Extract<MainToRendererEvent, { type: 'conversation.sessionSnapshot' }>;
 const patch = (revision: number, busy: boolean, conversation: string | null = 's1', epoch = 'e1') =>

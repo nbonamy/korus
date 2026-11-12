@@ -225,7 +225,7 @@ describe('AgentGitWorkflowService', () => {
     const snapshot = createInitialSnapshot();
     const agent: Agent = {
       id: 'agent-1', name: 'Agent', folder: '/repo', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-1' }, status: { type: 'idle' },
+      providerSession: { kind: 'codex', conversationId: 'thread-1' }, status: { type: 'idle' },
       createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
     };
     snapshot.agents = [agent];

@@ -19,7 +19,7 @@ describe('non-Codex image generation over MCP', () => {
     const root = path.join(folder, 'generated_images');
     await mkdir(root);
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'claude', folder, providerSession: { kind: 'claude', sessionId: 'original', transport: 'stdio' } };
+    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'claude', folder, providerSession: { kind: 'claude', conversationId: 'original', transport: 'stdio' } };
     snapshot.agents[1] = { ...snapshot.agents[1]!, provider: 'codex' };
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const generateImage = vi.fn<NonNullable<AgentProviderDriver['generateImage']>>().mockResolvedValue({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] });

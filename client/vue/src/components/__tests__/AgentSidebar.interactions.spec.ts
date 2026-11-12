@@ -16,7 +16,7 @@ describe('AgentSidebar interactions', () => {
   it('emits fork for an idle Codex agent with a conversation', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {
-        agents: [{ ...agents[0], providerSession: { kind: 'codex', threadId: 'thread-dina' } }, agents[1]],
+        agents: [{ ...agents[0], providerSession: { kind: 'codex', conversationId: 'thread-dina' } }, agents[1]],
         activeAgentId: 'agent-dina',
         forkableAgentIds: ['agent-dina'],
         teamName: `${product.name}`,

@@ -16,7 +16,7 @@ import { conversationShareTarget, type ConversationShareControl } from '@workspa
 import { useConversationSharePresence } from '../../../../src/components/use-conversation-share-presence';
 
 // Presentation-only fixture. No credentials, provider sessions or relay connections.
-const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', provider: 'codex', providerSession: { kind: 'codex', threadId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 const team = { id: agent.teamId!, name: 'Synthetic workspace', agentIds: [agent.id] };
 createApp({
   setup() {

@@ -9,7 +9,7 @@ it('routes Design edits to their owning daemon, validates requests and publishes
   snapshot.agents.push({ id: 'designer', teamId: snapshot.teams[0].id, provider: 'codex', folder: '/tmp', name: 'Designer', status: { type: 'idle' }, createdAt: '', updatedAt: '' });
   snapshot.teams[0].agentIds.push('designer');
   const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-  const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'designer-session' }, turnId: 'comment-turn' });
+  const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'designer-session' }, turnId: 'comment-turn' });
   const driverRpc = new ProviderDriverRpc(new Map([['codex', { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities, sendPrompt, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn() }]]));
   const server = new AppBackendServer({ snapshot, version: 'test', saveSnapshot, driverRpc });
   const request = (input: unknown, agentId = 'designer') => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/design', params: { agentId, input } });

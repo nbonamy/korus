@@ -235,7 +235,7 @@ describe('encrypted companion circuit', () => {
     const image = `data:image/png;base64,${randomBytes(26 * 1024 * 1024).toString('base64')}`;
     const frame = { type: 'conversation.sessionSnapshot', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', snapshot: { revision: 1, state: { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] } } } } as unknown as CompanionConversation;
     expect(Buffer.byteLength(JSON.stringify(frame))).toBeGreaterThan(companionResponseLimit);
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' } }] } as CompanionWorkspace;
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => frame,
       loadOlderHistory: async () => ({ hasOlder: false }), save: async () => {},
@@ -270,7 +270,7 @@ describe('encrypted companion circuit', () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const events = new Set<(event: AppBackendEvent) => void>();
     const frame = { type: 'conversation.sessionSnapshot', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', snapshot: { revision: 1, state: {} } } } as CompanionConversation;
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' } }] } as CompanionWorkspace;
     workspace.agentRequests = { agent: [{ id: 'question', conversationId: 'thread', kind: 'question', question: { itemId: 'item', delivery: 'tool', blocking: true, questions: [] } }] };
     const responses: unknown[] = [];
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
@@ -346,7 +346,7 @@ describe('encrypted companion circuit', () => {
   }, 20_000);
   it('streams a catch-up replay longer than the send queue without aborting the updates stream', async () => {
     const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
-    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' } }] } as CompanionWorkspace;
     const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'conversation.sessionPatch', provider: 'codex', agentId: 'agent', payload: { conversation: 'thread', epoch: 'epoch', patch: { revision: index + 2, ops: [{ op: 'set', key: 'title', value: `Event ${index}` }] } } }));
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
       onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => { throw new Error('No snapshot.'); },

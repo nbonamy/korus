@@ -44,7 +44,7 @@ describe('AppBackendServer', () => {
         },
         provider: 'codex',
         status: { type: 'working' },
-        providerSession: { kind: 'codex', threadId: 'thread-dina' },
+        providerSession: { kind: 'codex', conversationId: 'thread-dina' },
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
@@ -55,7 +55,7 @@ describe('AppBackendServer', () => {
         folder: '/Users/nbonamy/src/multi-llm-ts',
         provider: 'codex',
         status: { type: 'working' },
-        providerSession: { kind: 'codex', threadId: 'thread-jesse' },
+        providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
@@ -77,8 +77,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: (listener) => {
         emitEvent = listener;
@@ -168,7 +168,7 @@ describe('AppBackendServer', () => {
     snapshot.activeAgentId = 'agent-dina';
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/Users/nbonamy/src/agent-workspace',
-      provider: 'codex', status: { type: 'working' }, providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      provider: 'codex', status: { type: 'working' }, providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     let emitEvent: (event: BackendEvent) => void = () => undefined;
@@ -178,8 +178,8 @@ describe('AppBackendServer', () => {
     });
     const driver: AgentProviderDriver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: (listener) => { emitEvent = listener; return () => undefined; },
       close: async () => undefined,
@@ -239,8 +239,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest,
       onEvent: (listener) => {
         emitEvent = listener;

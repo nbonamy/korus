@@ -18,7 +18,7 @@ describe('useAppState', () => {
     let receive!: (event: MainToRendererEvent) => void;
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.provider = 'cursor'; agent.providerDefaults = { kind: 'cursor' }; agent.providerSession = { kind: 'cursor', sessionId: 'cursor-native' };
+    agent.provider = 'cursor'; agent.providerDefaults = { kind: 'cursor' }; agent.providerSession = { kind: 'cursor', conversationId: 'cursor-native' };
     stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(snapshot), onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } satisfies Partial<AppApi> });
     const state = useAppState(); await state.loadSnapshot();
     const before = state.snapshot.value;

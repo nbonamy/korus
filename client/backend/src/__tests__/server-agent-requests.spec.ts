@@ -179,13 +179,13 @@ describe('AppBackendServer', () => {
   it.each(['working', 'awaitingInput', 'error'] as const)('rejects a restart before changing provider state when the agent is %s', async type => {
     const snapshot = createTestSnapshot();
     snapshot.agents = [{ id: 'restart', teamId: 'team-test', name: 'Restart', folder: '/code/repo', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'keep-thread' }, status: type === 'error' ? { type, message: 'Failed' } : { type }, createdAt: '', updatedAt: '' }];
+      providerSession: { kind: 'codex', conversationId: 'keep-thread' }, status: type === 'error' ? { type, message: 'Failed' } : { type }, createdAt: '', updatedAt: '' }];
     const handle = vi.fn(async () => undefined);
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never });
     try {
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 'restart', method: backendMethods.agentConversationReset, params: { agentId: 'restart' } })).rejects.toThrow('idle');
       expect(handle).not.toHaveBeenCalled();
-      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', threadId: 'keep-thread' });
+      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'keep-thread' });
     } finally { await server.close(); }
   });
 
@@ -194,7 +194,7 @@ describe('AppBackendServer', () => {
     snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     snapshot.general.providerModelDefaults = { claude: {provider: 'claude',  model: 'target-model', reasoningEffort: null, serviceTier: null } };
     snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', provider: 'codex', providerDefaults: { kind: 'codex', model: 'source-model' },
-      providerSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
+      providerSession: { kind: 'codex', conversationId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
     snapshot.agents.push({ ...snapshot.agents[0]!, id: 'leading', name: 'Leading' }, { ...snapshot.agents[0]!, id: 'following', name: 'Following' });
     snapshot.teams[0]!.agentIds = ['source', 'leading', 'following'];
     snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['leading', 'source', 'following'] } } };
@@ -211,7 +211,7 @@ describe('AppBackendServer', () => {
       expect(reply).toMatchObject({ result: { teams: [{ agentIds: ['leading', 'source', duplicate.id, 'following'] }] } });
       expect(duplicate).toMatchObject({ folder: '/code/repo-worktree', workspace: snapshot.agents[0]!.workspace, provider: 'claude', providerDefaults: { kind: 'claude', model: 'target-model' }, status: { type: 'idle' } });
       expect(duplicate.providerSession).toBeUndefined();
-      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
+      expect(snapshot.agents[0]!.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'source-thread' });
       const backgroundReply = await server.handleMessage({ jsonrpc: '2.0', id: 'background-duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { select: false, selection: { provider: 'claude' } } } });
       const background = snapshot.agents[1]!;
       expect(backgroundReply).toMatchObject({ result: {
@@ -439,7 +439,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/repo',
       provider: 'codex' as const,
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       status: { type: 'idle' as const },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
@@ -454,8 +454,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       releaseConversation,
       archiveAgentConversation,
@@ -477,7 +477,7 @@ describe('AppBackendServer', () => {
     })).resolves.toMatchObject({ result: { agents: [] } });
 
     expect(archiveAgentConversation).toHaveBeenCalledWith(expect.objectContaining({
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
     }));
     expect(releaseConversation).toHaveBeenCalledWith(agent.id);
     expect(snapshot.agents).toStrictEqual([]);
@@ -493,7 +493,7 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const agent = {
       id: 'agent-chat', teamId: 'team-test', name: null, folder: sessionKind ? null : '/repo', ...(sessionKind ? { sessionKind } : {}),
-      provider: 'codex' as const, providerSession: { kind: 'codex' as const, threadId: 'thread-chat' },
+      provider: 'codex' as const, providerSession: { kind: 'codex' as const, conversationId: 'thread-chat' },
       status: { type: 'idle' as const }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
     };
     snapshot.teams[0]!.agentIds = [agent.id];
@@ -775,7 +775,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-root' },
+      providerSession: { kind: 'codex', conversationId: 'thread-root' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -841,7 +841,7 @@ describe('AppBackendServer', () => {
         startedAt: '2026-06-13T00:00:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', threadId: 'thread-dina' },
+        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', conversationId: 'thread-dina' },
       }],
     }];
     const conversations = [{
@@ -850,7 +850,7 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-09T10:00:00.000Z',
       messageCount: 3,
       storageState: 'active' as const,
-      ref: { provider: 'codex' as const, threadId: 'thread-dina' },
+      ref: { provider: 'codex' as const, conversationId: 'thread-dina' },
     }];
     const messages = [{
       ...createTextMessage('user-thread-dina-user-1', 'agent-dina', 'hello'),
@@ -874,17 +874,17 @@ describe('AppBackendServer', () => {
     const listConversations = vi.fn().mockResolvedValue(conversations);
     const readConversationMessages = vi.fn(async (ref: ProviderConversationRef) => {
       if (ref.provider !== 'codex') return messages;
-      if (ref.threadId === 'thread-grandchild') return grandchildMessages;
-      if (ref.threadId === 'thread-child') return childMessages;
-      if (ref.threadId === 'thread-legacy-child') return legacyChildMessages;
+      if (ref.conversationId === 'thread-grandchild') return grandchildMessages;
+      if (ref.conversationId === 'thread-child') return childMessages;
+      if (ref.conversationId === 'thread-legacy-child') return legacyChildMessages;
       return messages;
     });
     const readConversationSummary = vi.fn(async (_agent: unknown, ref: ProviderConversationRef) => ({
-      id: ref.provider === 'codex' ? ref.threadId : 'thread-unknown',
-      parentConversationId: ref.provider === 'codex' && ref.threadId === 'thread-grandchild'
+      id: ref.provider === 'codex' ? ref.conversationId : 'thread-unknown',
+      parentConversationId: ref.provider === 'codex' && ref.conversationId === 'thread-grandchild'
         ? 'thread-child'
         : 'thread-root',
-      agentNickname: ref.provider === 'codex' ? `Nickname ${ref.threadId}` : undefined,
+      agentNickname: ref.provider === 'codex' ? `Nickname ${ref.conversationId}` : undefined,
       title: 'Subagent',
       status: 'idle' as const,
       createdAt: '2026-06-13T00:00:00.000Z',
@@ -897,8 +897,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       listConversations,
       listModels,
@@ -955,35 +955,35 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-dina' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', conversationId: 'thread-dina' } },
     })).resolves.toMatchObject({ result: messages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-child' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', conversationId: 'thread-child' } },
     })).resolves.toMatchObject({ result: childMessages });
-    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-root' }, 'agent-dina');
+    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-root' }, 'agent-dina');
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'nested-subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-grandchild' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', conversationId: 'thread-grandchild' } },
     })).resolves.toMatchObject({ result: grandchildMessages });
     expect(readConversationMessages.mock.calls.filter(([candidate]) => (
-      candidate.provider === 'codex' && candidate.threadId === 'thread-child'
+      candidate.provider === 'codex' && candidate.conversationId === 'thread-child'
     ))).toHaveLength(1);
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'legacy-subagent-messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-legacy-child' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', conversationId: 'thread-legacy-child' } },
     })).resolves.toMatchObject({ result: legacyChildMessages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'unknown-ref',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-dina', ref: { provider: 'codex', threadId: 'thread-unknown' } },
+      params: { agentId: 'agent-dina', ref: { provider: 'codex', conversationId: 'thread-unknown' } },
     })).resolves.toMatchObject({ error: { message: 'Conversation reference is not available.' } });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
@@ -996,11 +996,11 @@ describe('AppBackendServer', () => {
     expect(listPlugins).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
     expect(listSkills).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
     expect(listConversations).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), undefined);
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-dina' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-child' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-grandchild' }, 'agent-dina');
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-legacy-child' }, 'agent-dina');
-    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-root' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-dina' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-child' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-grandchild' }, 'agent-dina');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-legacy-child' }, 'agent-dina');
+    expect(readConversationMessages).not.toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-root' }, 'agent-dina');
     await server.close();
   });
 });
@@ -1008,7 +1008,7 @@ describe('AppBackendServer', () => {
 describe('closing an agent whose turn is running', () => {
   it('stops the turn before putting its conversation away, as a review in progress needs', async () => {
     const snapshot = createTestSnapshot();
-    const running = { ...snapshot.agents[0]!, id: 'reviewer', name: 'Reviewer', provider: 'codex' as const, teamId: 'team-test', providerSession: { kind: 'codex' as const, threadId: 'review-thread' }, status: { type: 'working' as const } };
+    const running = { ...snapshot.agents[0]!, id: 'reviewer', name: 'Reviewer', provider: 'codex' as const, teamId: 'team-test', providerSession: { kind: 'codex' as const, conversationId: 'review-thread' }, status: { type: 'working' as const } };
     snapshot.agents.push(running);
     snapshot.teams[0]!.agentIds.push(running.id);
     const order: string[] = [];

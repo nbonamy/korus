@@ -2,7 +2,10 @@
 export const operationCapabilityFlags = [
   'textGeneration', 'structuredOutput', 'imageGeneration', 'review', 'bankedResets', 'conversationDelete', 'conversationTitle', 'scopedExecution',
   'turnContinuation', 'conversationContent', 'turnHistory', 'conversationStorage', 'mcpRequiredServers', 'mcpAutoApproval',
+  'folderScopedConversations',
 ] as const;
+/** How a harness stores subagent conversations. */
+export const subagentTranscriptKinds = ['inline', 'separate', 'none'] as const;
 
 /** Whether a value is a slash command a harness reports in its capabilities. */
 export function isProviderCommandSummary(value: unknown): value is import('./contracts').ProviderCommandSummary {

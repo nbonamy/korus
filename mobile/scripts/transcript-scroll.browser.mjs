@@ -204,7 +204,7 @@ test('the transcript automatically retrieves bounded deferred Claude content thr
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'content-agent', name: 'Content', folder: null, provider: 'claude', providerSession: { kind: 'claude', sessionId: 'content-session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const agent = { id: 'content-agent', name: 'Content', folder: null, provider: 'claude', providerSession: { kind: 'claude', conversationId: 'content-session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
       const message = { id: 'deferred-message', agentId: agent.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: '工具🙂 '.repeat(15_000) + 'Lossless content reached the transcript.' }] };
       window.fullContentBytes = new TextEncoder().encode(JSON.stringify(message));
       const preview = { ...message, parts: [{ type: 'text', text: 'Preview only' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: window.fullContentBytes.length } };
@@ -679,7 +679,7 @@ test('summary turns load only the selected Working details through the native br
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'summary-agent', name: 'Summary', provider: 'codex', providerSession: { kind: 'codex', threadId: 'summary-thread' }, status: { type: 'idle' } };
+      const agent = { id: 'summary-agent', name: 'Summary', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'summary-thread' }, status: { type: 'idle' } };
       const turn = { id: 'summary-turn', itemsView: 'summary', status: 'completed', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
       const messages = [{ id: 'request', turnId: turn.id, role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Check this turn.' }] },
         { id: 'answer', turnId: turn.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Here is the final answer.', phase: 'final_answer' }] }];

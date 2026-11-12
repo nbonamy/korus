@@ -6,7 +6,7 @@ import type { Agent } from '@workspace/core/contracts';
 import AgentHandoffDialog from '../AgentHandoffDialog.vue';
 import { providerChoicesKey } from '../provider-selection';
 
-const agent: Agent = { id: 'source', name: 'Worker', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 'one' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'source', name: 'Worker', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'one' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 
 describe('AgentHandoffDialog', () => {
   it('hands off with the shared picker model, effort, tier and optional instructions', async () => {

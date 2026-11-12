@@ -15,7 +15,7 @@ describe('mission backend boundary', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const worker = snapshot.agents[0]!;
-    worker.providerSession = { kind: 'codex', threadId: 'mission-worker' }; worker.status = { type: 'working' };
+    worker.providerSession = { kind: 'codex', conversationId: 'mission-worker' }; worker.status = { type: 'working' };
     const mission = createMission(snapshot, { outcome: 'Checkout', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id });
     mission.stage = 'implementation';
     mission.execution!.dispatchPlan = { commandId: 'lead-authorized', expectedRevision: 0, revision: 1, leadId: worker.id, assignments: [], maxConcurrency: 1, continuationLimit: 2 };
@@ -71,7 +71,7 @@ describe('mission backend boundary', () => {
       snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
       const lead = snapshot.agents[0]!;
       lead.folder = repo;
-      const builder = { ...structuredClone(lead), id: 'mission-repository-worker', folder: worktree, status: { type: 'idle' as const }, providerSession: { kind: 'codex' as const, threadId: 'repository-thread' } };
+      const builder = { ...structuredClone(lead), id: 'mission-repository-worker', folder: worktree, status: { type: 'idle' as const }, providerSession: { kind: 'codex' as const, conversationId: 'repository-thread' } };
       snapshot.agents.push(builder);
       snapshot.teams[0]!.agentIds.push(builder.id);
       const mission = createMission(snapshot, { outcome: 'Ship', workflowType: 'shapeAndShipFeature', teamId: lead.teamId!, orchestratorMemberId: lead.id });
@@ -180,7 +180,7 @@ describe('mission backend boundary', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents.forEach((agent, index) => {
       agent.folder = `/src/${index ? 'web' : 'api'}`;
-      agent.providerSession = { kind: 'codex', threadId: `real-thread-${index}` };
+      agent.providerSession = { kind: 'codex', conversationId: `real-thread-${index}` };
     });
     const observer = { ...structuredClone(snapshot.agents[0]!), id: 'unnamed-observer', name: null };
     snapshot.agents.push(observer);
@@ -218,7 +218,7 @@ describe('mission backend boundary', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const worker = snapshot.agents[0]!;
-    worker.providerSession = { kind: 'codex', threadId: 'mission-thread' };
+    worker.providerSession = { kind: 'codex', conversationId: 'mission-thread' };
     worker.status = { type: 'working' };
     const mission = createMission(snapshot, {
       outcome: 'Linear tools', workflowType: 'shapeAndShipFeature', teamId: worker.teamId!, orchestratorMemberId: worker.id,
@@ -311,10 +311,10 @@ describe('mission backend boundary', () => {
     snapshot.general.missionInstructions = instructions;
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const onEvent = vi.fn();
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'lead-thread' }, turnId: 'lead-turn' });
     const driver: AgentProviderDriver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'lead-thread' } }),
+      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'lead-thread' } }),
       respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
     };
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent });
@@ -357,11 +357,11 @@ describe('mission backend boundary', () => {
   it('starts the Mission lead on the requested model and rejects one the provider does not offer', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'lead-thread' }, turnId: 'lead-turn' });
     const option = (model: string, efforts: string[], tiers: string[] = []) => ({ id: model, model, displayName: model, supportedReasoningEfforts: efforts.map(reasoningEffort => ({ reasoningEffort, description: reasoningEffort })), serviceTiers: tiers.map(id => ({ id, name: id, description: id })) });
     const driver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'lead-thread' } }),
+      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'lead-thread' } }),
       respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
       listModels: async () => [option('gpt-fast', ['low', 'high'], ['fast']), option('gpt-big', ['high'])],
     } as unknown as AgentProviderDriver;
@@ -515,8 +515,8 @@ it('prepares a mission without a provider turn, then starts it from the first us
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.agents[0]!.folder = repo;
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'mission-thread' } });
-    const interrupt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'mission-thread' } });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'mission-thread' } });
+    const interrupt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'mission-thread' } });
     const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
     const releaseConversation = vi.fn();
     const refreshedContexts: Array<{
@@ -528,7 +528,7 @@ it('prepares a mission without a provider turn, then starts it from the first us
         context: server!.missionContext(agent.id),
         instructions: server!.missionDeveloperInstructions(agent.id),
       });
-      return { kind: 'codex' as const, threadId: 'mission-thread' };
+      return { kind: 'codex' as const, conversationId: 'mission-thread' };
     });
     const driver: AgentProviderDriver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
@@ -560,7 +560,7 @@ it('prepares a mission without a provider turn, then starts it from the first us
     await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'agent/prompt/send', params: { agentId: run.workerId, prompt: 'Build team billing' } });
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: run.workerId }), 'Build team billing', undefined);
-    await vi.waitFor(() => expect(worker.providerSession).toEqual({ kind: 'codex', threadId: 'mission-thread' }));
+    await vi.waitFor(() => expect(worker.providerSession).toEqual({ kind: 'codex', conversationId: 'mission-thread' }));
     await expect(server.setMissionTitle(run.workerId!, 'Add team billing')).resolves.toEqual({ success: true, title: 'Add team billing' });
     expect(snapshotFromPersistedState(disk).missions![0]!.outcome).toBe('Add team billing');
     await expect(server.attachMissionRepository(run.workerId!, repo)).resolves.toEqual({ success: true, repoPath: repo });
@@ -578,7 +578,7 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(snapshotFromPersistedState(disk).missions![0]!.artifacts.requirements).toEqual(artifacts.requirements);
     expect(current().stage).toBe('tickets');
     expect(current().execution!.runs).toHaveLength(2);
-    expect(worker.providerSession).toEqual({ kind: 'codex', threadId: 'mission-thread' });
+    expect(worker.providerSession).toEqual({ kind: 'codex', conversationId: 'mission-thread' });
     expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'preparing' });
     expect(releaseConversation).not.toHaveBeenCalled();
     server.emitEvent(turnCompleted(worker.id, 'requirements-turn', { conversationId: 'mission-thread' }));
@@ -648,10 +648,10 @@ it('recovers a persisted preparing mission without starting its provider convers
         startedAt: '2026-09-19T19:18:51.911Z',
       }],
     };
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'recovered-mission-thread' } });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'recovered-mission-thread' } });
     const driver: AgentProviderDriver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'recovered-mission-thread' } }), respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
+      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'recovered-mission-thread' } }), respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
       listSkills: async () => [{ name: 'grilling', path: '/skills/grilling/SKILL.md', enabled: true }],
     };
     server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });

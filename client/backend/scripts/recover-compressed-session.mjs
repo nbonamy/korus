@@ -52,8 +52,8 @@ function isCodexAgent(agent) {
 
 export function stateWithRecoveredThread(currentState, agentId, recoveredThreadId, now) {
   const recovered = (agent) => (agent.engine
-    ? { ...agent, engine: { ...agent.engine, session: { threadId: recoveredThreadId } }, updatedAt: now }
-    : { ...agent, providerSession: { kind: 'codex', threadId: recoveredThreadId }, updatedAt: now });
+    ? { ...agent, engine: { ...agent.engine, session: { conversationId: recoveredThreadId } }, updatedAt: now }
+    : { ...agent, providerSession: { kind: 'codex', conversationId: recoveredThreadId }, updatedAt: now });
   const replace = (agents) => agents.map((agent) => (agent.id === agentId ? recovered(agent) : agent));
   return Array.isArray(currentState.data?.agents)
     ? { ...currentState, data: { ...currentState.data, agents: replace(currentState.data.agents) } }
@@ -89,7 +89,7 @@ async function main() {
     codex: { launch: { command: codexCommand } },
   });
   try {
-    const ref = harness.restoreRef({ provider: 'codex', data: { provider: 'codex', threadId: recoveredThreadId } });
+    const ref = harness.restoreRef({ provider: 'codex', data: { provider: 'codex', conversationId: recoveredThreadId } });
     await harness.setConversationStorage(ref, 'active');
   } finally {
     await harness.close();
@@ -147,8 +147,8 @@ function uniqueCodexAgent(state, agentFolder, source) {
 
 function codexThreadId(agent, source) {
   const threadId = agent.engine?.kind === 'codex'
-    ? agent.engine.session?.threadId
-    : agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : null;
+    ? agent.engine.session?.conversationId ?? agent.engine.session?.threadId
+    : agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId ?? agent.providerSession.threadId : null;
   if (typeof threadId !== 'string' || !threadId.trim()) {
     throw new Error(`The ${source} agent does not have a Codex thread id.`);
   }

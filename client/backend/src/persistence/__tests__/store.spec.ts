@@ -169,7 +169,7 @@ describe('AppStateStore', () => {
   it.each(['roster', 'legacy'] as const)('removes stale pointer-owned rows before %s import and later saves', async format => {
     const snapshot = createInitialSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
-    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', providerSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const foreign = { ...snapshot.agents[0]!, id: 'foreign', teamId: 'remote-pointer', folder: '/srv/foreign', providerSession: { kind: 'codex' as const, conversationId: 'foreign-session' } };
     const pointer = { id: 'remote-pointer', name: 'Remote', agentIds: [foreign.id, 'foreign-unknown'], activeAgentId: foreign.id, remoteConnectionId: 'connection-devbox', remoteTeamId: snapshot.teams[0]!.id };
     if (format === 'legacy') {
       await writeFile(file('state.json'), JSON.stringify({ ...persistedStateFromSnapshot(snapshot), teams: [...snapshot.teams, pointer], agents: [...snapshot.agents, foreign] }));
@@ -219,9 +219,9 @@ describe('AppStateStore', () => {
     const snapshot = snapshotWithVisualizations();
     const agent = snapshot.agents[0]!;
     agent.provider = backend;
-    agent.providerSession = backend === 'codex' ? { kind: backend, threadId: 'thread' }
-      : backend === 'claude' ? { kind: backend, sessionId: 'session', transport: 'stdio' }
-        : { kind: backend, sessionId: 'session' };
+    agent.providerSession = backend === 'codex' ? { kind: backend, conversationId: 'thread' }
+      : backend === 'claude' ? { kind: backend, conversationId: 'session', transport: 'stdio' }
+        : { kind: backend, conversationId: 'session' };
     delete agent.providerDefaults;
     snapshot.subagentTrees[agent.id] = { rootConversationId: 'root', nodes: {}, operations: {}, activities: {} };
     await new AppStateStore(home).save(snapshot);
@@ -616,5 +616,30 @@ describe('migrating the legacy state.json', () => {
     await writeFile(file('state.json'), '{ "teams": ');
     await expect(new AppStateStore(home).load()).rejects.toThrowError(/not valid JSON/);
     expect(await exists('roster.json')).toBe(false);
+  });
+});
+
+describe('conversations saved under their former names', () => {
+  it('loads agents and tasks whose conversation is still named threadId or sessionId', async () => {
+    const snapshot = createInitialSnapshot();
+    const [codex, claude] = [snapshot.agents[0]!, { ...structuredClone(snapshot.agents[0]!), id: 'agent-claude', provider: 'claude' as const }];
+    codex.providerSession = { kind: 'codex', conversationId: 'thread-1' };
+    claude.providerSession = { kind: 'claude', conversationId: 'session-1', transport: 'stdio', transcriptConversationId: 'root' };
+    snapshot.agents.push(claude); snapshot.teams[0]!.agentIds.push(claude.id);
+    await new AppStateStore(home).save(snapshot);
+    const roster = await readJson('roster.json');
+    const engines = (roster.data.agents as { engine: { session: Record<string, unknown> } }[]).map(agent => agent.engine);
+    engines[0]!.session = { threadId: 'thread-1' };
+    engines[1]!.session = { sessionId: 'session-1', transport: 'stdio', transcriptSessionId: 'root' };
+    await writeFile(file('roster.json'), JSON.stringify(roster));
+    await writeFile(file('tasks.json'), serializeStoreFile({ tasks: [{ id: 'task-1', requestId: 'request-1', requestFingerprint: 'fingerprint', parentAgentId: 'parent', workerAgentId: 'worker',
+      provider: 'codex', assignment: { title: 'Repair', doneWhen: 'Test passes' }, prompt: 'Repair the issue', attemptId: 'attempt-1', state: 'running',
+      createdAt: '2026-10-04T00:00:00Z', updatedAt: '2026-10-04T00:00:00Z', parentWakeBlocked: false, acceptance: { providerSession: { kind: 'codex', threadId: 'worker-thread' }, turnId: 'turn' } }] }));
+
+    const store = new AppStateStore(home);
+    const restored = await store.load();
+    expect(restored.agents.find(agent => agent.id === codex.id)?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-1' });
+    expect(restored.agents.find(agent => agent.id === claude.id)?.providerSession).toStrictEqual({ kind: 'claude', conversationId: 'session-1', transport: 'stdio', transcriptConversationId: 'root' });
+    expect((await store.loadTasks())[0]?.acceptance?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'worker-thread' });
   });
 });

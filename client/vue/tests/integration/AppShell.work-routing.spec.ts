@@ -1319,7 +1319,7 @@ describe('AppShell work routing', () => {
 
   it('forwards agent context menu action intents', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
 
     await wrapper.findAll('.agent-sidebar__agent')[0].trigger('contextmenu', {

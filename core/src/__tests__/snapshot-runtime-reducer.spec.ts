@@ -46,7 +46,7 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:02.000Z',
     } as unknown as SnapshotEventOwnedBy<'runtime'>);
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-1' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-1' });
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
     expect(snapshot.providerRuntimes).toContainEqual({
       provider: 'codex',
@@ -70,7 +70,7 @@ describe('snapshot runtime reducer', () => {
     applyMainEventToSnapshot(snapshot, { seq: 1, agentId: agent.id, provider: 'cursor', conversationId: 'cursor-review',
       type: 'agent.conversationAttached', payload: {}, occurredAt: '' });
     expect(agent.provider).toBe('cursor');
-    expect(agent.providerSession).toStrictEqual({ kind: 'cursor', sessionId: 'cursor-review' });
+    expect(agent.providerSession).toStrictEqual({ kind: 'cursor', conversationId: 'cursor-review' });
     expect(agent.providerDefaults).toStrictEqual({ kind: 'cursor', model: 'native-model' });
   });
 
@@ -89,9 +89,8 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({
-      kind: 'claude',
-      sessionId: 'claude-session-1',
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'claude',
+      conversationId: 'claude-session-1',
       transport: 'stdio',
     });
     expect(snapshot.agents[0].providerDefaults).toStrictEqual({
@@ -115,7 +114,7 @@ describe('snapshot runtime reducer', () => {
 
   it('records common conversation settings without changing the conversation binding', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-old' };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
@@ -134,7 +133,7 @@ describe('snapshot runtime reducer', () => {
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-old' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-old' });
     expect(snapshot.agents[0].providerDefaults).toStrictEqual({
       kind: 'codex',
       model: 'gpt-5.5',
@@ -167,7 +166,7 @@ describe('snapshot runtime reducer', () => {
 
   it('records backend-reported settings even when a saved model preference exists', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-old' };
     snapshot.agents[0].providerDefaults = {
       kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true,
     };

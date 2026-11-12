@@ -173,7 +173,7 @@ describe('App', () => {
 
   it('submits bare compact without opening the session-compression flow', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-old' };
     const sendPrompt = vi.fn().mockResolvedValue(snapshot);
     setElectronTestClient({
       getSnapshot: vi.fn().mockResolvedValue(snapshot),

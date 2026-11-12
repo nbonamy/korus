@@ -261,7 +261,7 @@ describe('useAppState', () => {
     persisted.general.claudeCodeEnabled = true;
     persisted.providerRuntimes = [{ provider: provider, status: 'running', capabilities: { reasoningEffort: true, serviceTier: true } }];
     persisted.agents[0]!.provider = provider;
-    persisted.agents[0]!.providerSession = provider === 'codex' ? { kind: 'codex', threadId: 'thread-1' } : { kind: 'claude', sessionId: 'thread-1', transport: 'stdio' };
+    persisted.agents[0]!.providerSession = provider === 'codex' ? { kind: 'codex', conversationId: 'thread-1' } : { kind: 'claude', conversationId: 'thread-1', transport: 'stdio' };
     persisted.agents[0]!.providerDefaults = { kind: provider, model: 'astra', reasoningEffort: 'medium' };
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     let releaseFirstSave = () => undefined;
@@ -350,9 +350,8 @@ describe('useAppState', () => {
     base.agents[0] = {
       ...base.agents[0],
       provider: 'claude',
-      providerSession: {
-        kind: 'claude',
-        sessionId: 'claude-session-current',
+      providerSession: { kind: 'claude',
+        conversationId: 'claude-session-current',
         transport: 'stdio',
         model: 'claude-sonnet-5',
         reasoningEffort: 'xhigh',
@@ -396,7 +395,7 @@ describe('useAppState', () => {
     agent.provider = 'claude';
     agent.delegatedByAgentId = snapshot.agents[1]!.id;
     agent.providerDefaults = { kind: 'claude', model: 'claude-sonnet-5-5', permission: 'auto' };
-    agent.providerSession = { kind: 'claude', sessionId: 'delegated-session', transport: 'stdio', model: 'claude-sonnet-5-5' };
+    agent.providerSession = { kind: 'claude', conversationId: 'delegated-session', transport: 'stdio', model: 'claude-sonnet-5-5' };
     let receive!: (event: MainToRendererEvent) => void;
     const sendPrompt = vi.fn().mockResolvedValue(snapshot);
     stubElectronTestWindow({ app: {
@@ -431,9 +430,8 @@ describe('useAppState', () => {
     base.agents[0] = {
       ...base.agents[0],
       provider: 'claude',
-      providerSession: {
-        kind: 'claude',
-        sessionId: 'claude-session-without-settings',
+      providerSession: { kind: 'claude',
+        conversationId: 'claude-session-without-settings',
         transport: 'stdio',
       },
       providerDefaults: {

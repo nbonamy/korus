@@ -118,7 +118,7 @@ describe('useAppState', () => {
   it('restores the selected agent when the desktop backend connects after the renderer starts', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     const getSnapshotState = vi.fn()
       .mockRejectedValueOnce(new Error('daemon snapshot is not available.'))
       .mockResolvedValue({
@@ -389,7 +389,7 @@ describe('useAppState', () => {
 
   it('shows the shell before persisted history hydration completes', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     const hydration = deferred<AppSnapshot>();
     const loadConversationHistory = vi.fn().mockReturnValue(hydration.promise);
     const selectAgent = vi.fn();
@@ -425,7 +425,7 @@ describe('useAppState', () => {
 
   it('adopts runtime metadata returned by startup history hydration', async () => {
     const cachedSnapshot = createInitialSnapshot();
-    cachedSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-persisted' };
+    cachedSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     cachedSnapshot.agents[0].status = { type: 'working' };
     const reconciledSnapshot = structuredClone(cachedSnapshot);
     reconciledSnapshot.agents[0].status = { type: 'idle' };
@@ -451,17 +451,15 @@ describe('useAppState', () => {
     remoteSnapshot.agents[0] = {
       ...remoteSnapshot.agents[0],
       provider: 'claude',
-      providerSession: {
-        kind: 'claude',
-        sessionId: 'claude-session-existing',
+      providerSession: { kind: 'claude',
+        conversationId: 'claude-session-existing',
         transport: 'stdio',
       },
       providerDefaults: { kind: 'claude', model: 'haiku' },
     };
     const hydratedSnapshot = structuredClone(remoteSnapshot);
-    hydratedSnapshot.agents[0].providerSession = {
-      kind: 'claude',
-      sessionId: 'claude-session-existing',
+    hydratedSnapshot.agents[0].providerSession = { kind: 'claude',
+      conversationId: 'claude-session-existing',
       transport: 'stdio',
       model: 'claude-sonnet-5',
       reasoningEffort: 'xhigh',
@@ -534,7 +532,7 @@ describe('useAppState', () => {
   it('replays a missing first history frame after an event gap, even without a cached conversation', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'dropped-initial-frame' };
+    agent.providerSession = { kind: 'codex', conversationId: 'dropped-initial-frame' };
     let receive!: (event: MainToRendererEvent) => void;
     const getSnapshotState = vi.fn().mockResolvedValueOnce({ snapshot, lastBackendEventSeq: 0, connection: { status: 'connected' } })
       .mockResolvedValue({ snapshot, lastBackendEventSeq: 3, connection: { status: 'connected' } });
@@ -554,7 +552,7 @@ describe('useAppState', () => {
 
   it('loads persisted thread metadata without hydration when the preload bridge cannot hydrate agents', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
@@ -565,6 +563,6 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
 
-    expect(state.activeAgent.value?.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-persisted' });
+    expect(state.activeAgent.value?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-persisted' });
   });
 });

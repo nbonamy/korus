@@ -97,7 +97,7 @@ describe('agent-manager', () => {
     agent.status = { type: 'working' };
     expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'codex' } })).toThrow('before the first prompt');
     agent.status = { type: 'idle' };
-    agent.providerSession = { kind: 'claude', sessionId: 'history', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'history', transport: 'stdio' };
     expect(() => updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'codex' } })).toThrow('before the first prompt');
     delete agent.providerSession;
     updateAgentFromInput(snapshot, { id: agent.id, selection: { provider: 'codex' } });
@@ -203,7 +203,7 @@ describe('agent-manager', () => {
     const forked = forkAgentInSnapshot(
       snapshot,
       'agent-dina',
-      { kind: 'codex', threadId: 'thread-forked' },
+      { kind: 'codex', conversationId: 'thread-forked' },
       '2026-06-05T10:11:12.000Z',
       () => 'agent-forked-dina',
     );
@@ -211,7 +211,7 @@ describe('agent-manager', () => {
     expect(forked).toMatchObject({
       id: 'agent-forked-dina',
       name: 'Dina (fork)',
-      providerSession: { kind: 'codex', threadId: 'thread-forked' },
+      providerSession: { kind: 'codex', conversationId: 'thread-forked' },
       status: { type: 'idle' },
     });
     expect(snapshot.teams[0].agentIds.slice(0, 2)).toStrictEqual(['agent-dina', 'agent-forked-dina']);
@@ -348,7 +348,7 @@ describe('agent-manager', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.agents[0].status = status;
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-running' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-running' };
     const before = structuredClone(snapshot.agents[0]);
     snapshot.teams.push({
       id: 'team-skwad',
@@ -482,7 +482,7 @@ describe('agent-manager', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const agent = snapshot.agents[0];
-    agent.providerSession = { kind: 'codex', threadId: 'thread-old' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-old' };
     agent.suggestedPrompt = 'Continue the old work';
     agent.contextUsage = {
       totalTokens: 397_740,
@@ -518,7 +518,7 @@ describe('agent-manager', () => {
     agent.mcpSessionId = 'mcp-session';
     agent.statusText = 'Registered';
     agent.visualize = {
-      id: 'visualize-old', conversationRef: { provider: 'codex', threadId: 'thread-old' }, isOpen: true,
+      id: 'visualize-old', conversationRef: { provider: 'codex', conversationId: 'thread-old' }, isOpen: true,
       suggestions: [], visualizations: [], selectedVisualizationId: null,
       createdAt: '2026-06-05T00:00:00.000Z', updatedAt: '2026-06-05T00:00:00.000Z',
     };
@@ -543,7 +543,7 @@ describe('agent-manager', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const agent = snapshot.agents[0];
-    agent.providerSession = { kind: 'codex', threadId: 'thread-old' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-old' };
     agent.contextUsage = {
       totalTokens: 397_740,
       inputTokens: 320_000,
@@ -565,9 +565,9 @@ describe('agent-manager', () => {
       updatedAt: '2026-06-05T00:00:00.000Z',
     };
     agent.isRegistered = true;
-    expect(resumeAgentConversationInSnapshot(snapshot, 'agent-dina', { kind: 'codex', threadId: 'thread-new' }, '2026-06-05T10:11:12.000Z')).toMatchObject({
+    expect(resumeAgentConversationInSnapshot(snapshot, 'agent-dina', { kind: 'codex', conversationId: 'thread-new' }, '2026-06-05T10:11:12.000Z')).toMatchObject({
       id: 'agent-dina',
-      providerSession: { kind: 'codex', threadId: 'thread-new' },
+      providerSession: { kind: 'codex', conversationId: 'thread-new' },
       status: { type: 'idle' },
       updatedAt: '2026-06-05T10:11:12.000Z',
     });
@@ -640,7 +640,7 @@ describe('agent-manager', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.agents[0].status = { type: 'working' };
     expect(() => restartAgentConversation(snapshot, 'agent-dina')).toThrow('Agent must be idle before restarting.');
-    expect(() => resumeAgentConversationInSnapshot(snapshot, 'agent-dina', { kind: 'codex', threadId: 'thread-new' })).toThrow('Agent must be idle before resuming a conversation.');
+    expect(() => resumeAgentConversationInSnapshot(snapshot, 'agent-dina', { kind: 'codex', conversationId: 'thread-new' })).toThrow('Agent must be idle before resuming a conversation.');
     expect(closeAgentInSnapshot(snapshot, 'agent-dina')).toMatchObject({ id: 'agent-dina' });
     expect(snapshot.agents.map((agent) => agent.id)).toStrictEqual(['agent-jesse']);
   });

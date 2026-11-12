@@ -31,7 +31,7 @@ async function setup(parentProvider: 'codex' | 'claude') {
   snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
   const parent = snapshot.agents[0]!;
   parent.provider = parentProvider;
-  parent.providerSession = parentProvider === 'codex' ? { kind: 'codex', threadId: 'codex-parent' } : { kind: 'claude', sessionId: 'claude-parent', transport: 'stdio' };
+  parent.providerSession = parentProvider === 'codex' ? { kind: 'codex', conversationId: 'codex-parent' } : { kind: 'claude', conversationId: 'claude-parent', transport: 'stdio' };
   parent.status = { type: 'idle' };
   const codex = codexSdkFixture();
   const claudeSdk = createQueryHarness([{ value: 'claude-sonnet-5-5', supportsFastMode: true }]);

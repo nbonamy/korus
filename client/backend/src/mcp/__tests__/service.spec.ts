@@ -82,7 +82,7 @@ describe('AppMcpService', () => {
       getInitializationMode: () => 'automatic', runCommand: runner,
     });
     const snapshot = createInitialSnapshot();
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker' }, turnId: 'turn' });
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     service = new AppMcpService({ snapshot, worktreeManager: manager });
     service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
@@ -240,10 +240,10 @@ describe('AppMcpService', () => {
         expect(saved?.agents.find(agent => agent.id === owner.id)?.codeReview).toMatchObject({
           status: 'reviewing', rounds: [{ inspectionCompletion: { findingCount: 2 } }],
         });
-        return { text: 'Two findings registered.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } };
+        return { text: 'Two findings registered.', reviewerSession: { kind: 'codex', conversationId: 'review-thread' } };
       },
     });
-    owner.providerSession = { kind: 'codex', threadId: 'review-thread' };
+    owner.providerSession = { kind: 'codex', conversationId: 'review-thread' };
     const session = reviewService.start(owner, { scope: { type: 'uncommitted' }, threadMode: 'current' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(session.rounds[0]?.findings.map(finding => finding.priority)).toEqual(['p1', 'p3']);
@@ -317,7 +317,7 @@ describe('AppMcpService', () => {
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Running verification' });
     expect(snapshot.agents[0]!.statusText).toBe('Running verification');
-    sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-1' }) }), 'agent-dina', 'Delegate this task', { delegation: { startingContext: 'conversation', instructions: 'Do not run tests.' } }, vi.fn());
+    sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-1' }) }), 'agent-dina', 'Delegate this task', { delegation: { startingContext: 'conversation', instructions: 'Do not run tests.' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
 
     service.handleBackendEvent({ ...turnCompleted('agent-dina', 'turn-1', { conversationId: 'thread-dina' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
@@ -334,7 +334,7 @@ describe('AppMcpService', () => {
   it('retains newer delegation controls through older and wrong-conversation terminals, including pending admission', async () => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    parent.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     let accept!: (result: import('@workspace/core/provider-driver').ProviderSendResult) => void;
     const receipt = new Promise<import('@workspace/core/provider-driver').ProviderSendResult>(resolve => { accept = resolve; });
     service = new AppMcpService({ snapshot });
@@ -342,7 +342,7 @@ describe('AppMcpService', () => {
     const terminal = (turnId: string, conversationId = 'thread-dina') => service!.handleBackendEvent({ ...turnCompleted(parent.id, turnId, { conversationId }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     terminal('turn-A');
     expect(parent.userDelegationOverrides?.instructions).toBe('Keep B local.');
-    accept({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
+    accept({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-B' });
     await new Promise(resolve => setImmediate(resolve));
     terminal('turn-A');
     terminal('turn-B', 'other-thread');
@@ -359,7 +359,7 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn(() => receipt) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff' } }, vi.fn());
     service.handleBackendEvent({ ...turnCompleted(parent.id, 'turn-B', { conversationId: 'thread-dina', status: 'interrupted' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
-    accept({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
+    accept({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-B' });
     await new Promise(resolve => setImmediate(resolve));
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
@@ -369,8 +369,8 @@ describe('AppMcpService', () => {
     const parent = snapshot.agents[0]!;
     parent.provider = provider;
     const providerSession = provider === 'claude'
-      ? { kind: 'claude' as const, sessionId: 'native-session', transport: 'stdio' as const }
-      : { kind: 'antigravity' as const, sessionId: 'native-session' };
+      ? { kind: 'claude' as const, conversationId: 'native-session', transport: 'stdio' as const }
+      : { kind: 'antigravity' as const, conversationId: 'native-session' };
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ provider: provider, sendPrompt: vi.fn().mockResolvedValue({ providerSession: providerSession, turnId: 'native-turn' }) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff', instructions: 'Native provider directions' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
@@ -693,7 +693,7 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: unknown[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-jesse',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
@@ -886,7 +886,7 @@ describe('AppMcpService', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const sendPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-jesse',
     });
     service = new AppMcpService({ snapshot });
@@ -905,7 +905,7 @@ describe('AppMcpService', () => {
     const snapshot = createInitialSnapshot();
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'idle' };
-    recipient.handoff = { operationId: 'handoff', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { provider: 'codex', threadId: 'original' }, phase: 'closing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
+    recipient.handoff = { operationId: 'handoff', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { provider: 'codex', conversationId: 'original' }, phase: 'closing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
     const events: BackendEvent[] = [];
     const sendPrompt = vi.fn();
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
@@ -923,10 +923,10 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const recipient = snapshot.agents.find((agent) => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'working' };
-    recipient.providerSession = { kind: 'codex', threadId: 'thread-jesse' };
+    recipient.providerSession = { kind: 'codex', conversationId: 'thread-jesse' };
     const events: any[] = [];
     const steerPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-active',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
@@ -953,7 +953,7 @@ describe('AppMcpService', () => {
     recipient.provider = provider;
     recipient.providerDefaults = { kind: provider };
     recipient.status = { type: 'working' };
-    recipient.providerSession = { kind: provider, sessionId: 'live-session' };
+    recipient.providerSession = { kind: provider, conversationId: 'live-session' };
     const events: any[] = [];
     const steerPrompt = vi.fn().mockResolvedValue({ providerSession: recipient.providerSession, turnId: 'turn-steer' });
     const defaults = provider === 'cursor' ? cursorProviderCapabilities : antigravityProviderCapabilities;
@@ -975,7 +975,7 @@ describe('AppMcpService', () => {
       expect.objectContaining({ id: 'agent-jesse', providerSession: recipient.providerSession }),
       expect.stringContaining('Check the failing test.'),
     );
-    expect(recipient.providerSession).toEqual({ kind: provider, sessionId: 'live-session' });
+    expect(recipient.providerSession).toEqual({ kind: provider, conversationId: 'live-session' });
     expect(events.some(event => event.type === 'agent.promptQueued')).toBe(false);
   });
 
@@ -986,7 +986,7 @@ describe('AppMcpService', () => {
     recipient.provider = 'cursor';
     recipient.providerDefaults = { kind: 'cursor' };
     recipient.status = { type: 'working' };
-    recipient.providerSession = { kind: 'cursor', sessionId: 'live-session' };
+    recipient.providerSession = { kind: 'cursor', conversationId: 'live-session' };
     const events: any[] = [];
     const steerPrompt = vi.fn();
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
@@ -1015,7 +1015,7 @@ describe('AppMcpService', () => {
     recipient.provider = 'cursor';
     recipient.providerDefaults = { kind: 'cursor' };
     recipient.status = { type: 'working' };
-    recipient.providerSession = { kind: 'cursor', sessionId: 'live-session' };
+    recipient.providerSession = { kind: 'cursor', conversationId: 'live-session' };
     const events: any[] = [];
     const steerPrompt = vi.fn()
       .mockRejectedValueOnce(new Error('Cursor turn changed during steering.'))
@@ -1050,7 +1050,7 @@ describe('AppMcpService', () => {
     recipient.status = { type: 'working' };
     const events: any[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-next' },
+      providerSession: { kind: 'codex', conversationId: 'thread-next' },
       turnId: 'turn-next',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
@@ -1329,7 +1329,7 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     createQuickChatInSnapshot(snapshot, { teamId: 'team-app' }, undefined, 'batch-caller');
     const initialCount = snapshot.agents.length;
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker' }, turnId: 'turn' });
     const manager = new WorktreeManager({ getInitializationMode: () => 'off' });
     service = new AppMcpService({ snapshot, worktreeManager: manager });
     service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
@@ -1443,7 +1443,7 @@ describe('AppMcpService', () => {
     };
     const events: any[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-delegated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-delegated' },
       turnId: 'turn-delegated',
     });
     const resolveWorkspaceIdentity = vi.fn().mockResolvedValue({
@@ -1549,7 +1549,7 @@ describe('AppMcpService', () => {
   ] as const)('selects effective worktree context and delivers scoped instructions: %j', async row => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'source' };
+    parent.providerSession = { kind: 'codex', conversationId: 'source' };
     if ('noSession' in row) parent.providerSession = undefined;
     const originalSession = structuredClone(parent.providerSession);
     snapshot.general.worktreeDelegationStartingContext = row.saved;
@@ -1557,11 +1557,11 @@ describe('AppMcpService', () => {
     snapshot.general.worktreeDelegationInstructions = 'Saved: run focused tests.';
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const sendPrompt = vi.fn(async (agent: Agent) => ({ providerSession: row.provider === 'codex'
-      ? { kind: 'codex' as const, threadId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : 'fresh' }
-      : { kind: 'claude' as const, sessionId: 'fresh', transport: 'stdio' as const }, turnId: 'assignment-turn' }));
+      ? { kind: 'codex' as const, conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId : 'fresh' }
+      : { kind: 'claude' as const, conversationId: 'fresh', transport: 'stdio' as const }, turnId: 'assignment-turn' }));
     const forkWorktreeConversation = vi.fn().mockImplementation(async () => {
       if (row.fork === 'failure') throw new Error('Provider fork rejected');
-      return { providerSession: { kind: 'codex', threadId: 'native-child' } };
+      return { providerSession: { kind: 'codex', conversationId: 'native-child' } };
     });
     const events: BackendEvent[] = [];
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event), worktreeManager: new WorktreeManager({
@@ -1598,21 +1598,21 @@ describe('AppMcpService', () => {
     expect(parent.providerSession).toStrictEqual(originalSession);
     expect(snapshot.activeAgentId).toBe(parent.id);
     if (row.effective === 'conversation') {
-      expect(child.providerSession).toStrictEqual({ kind: 'codex', threadId: 'native-child' });
+      expect(child.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'native-child' });
       expect(forkWorktreeConversation).toHaveBeenCalledExactlyOnceWith(parent, child);
     } else if (row.fork === 'failure') expect(forkWorktreeConversation).toHaveBeenCalledOnce();
     else expect(forkWorktreeConversation).not.toHaveBeenCalled();
   });
 
   it.each([
-    { providerSession: { kind: 'codex', threadId: 'source' } },
-    { providerSession: { kind: 'claude', sessionId: 'wrong-provider', transport: 'stdio' } },
-    { providerSession: { kind: 'codex', threadId: 'child' }, activeTurnId: 'running-child' },
+    { providerSession: { kind: 'codex', conversationId: 'source' } },
+    { providerSession: { kind: 'claude', conversationId: 'wrong-provider', transport: 'stdio' } },
+    { providerSession: { kind: 'codex', conversationId: 'child' }, activeTurnId: 'running-child' },
   ])('rejects a native fork that cannot isolate assignment execution: %j', async forkResult => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const parent = snapshot.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'source' };
+    parent.providerSession = { kind: 'codex', conversationId: 'source' };
     const sendPrompt = vi.fn();
     service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
       createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'worker', path: '/tmp/isolated-worker' }, created: true }), getInitializationMode: () => 'repository',
@@ -1622,17 +1622,17 @@ describe('AppMcpService', () => {
     expect(response.result.isError).toBe(true);
     expect(JSON.stringify(response.result.content)).toContain('independent idle worker');
     expect(sendPrompt).not.toHaveBeenCalled();
-    expect(parent.providerSession).toStrictEqual({ kind: 'codex', threadId: 'source' });
+    expect(parent.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'source' });
   });
 
   it('forks a durable assignment once and retains frozen instructions across creation retries', async () => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.providerSession = { kind: 'codex', threadId: 'parent-native' };
+    parent.providerSession = { kind: 'codex', conversationId: 'parent-native' };
     parent.userDelegationOverrides = { startingContext: 'conversation', instructions: 'User-only startup instructions' };
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.general.worktreeDelegationInstructions = 'Saved preference at assignment time';
-    const forkWorktreeConversation = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'worker-native' } });
+    const forkWorktreeConversation = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker-native' } });
     const send = vi.fn(async (worker: Agent) => ({ providerSession: worker.providerSession!, turnId: 'worker-turn' }));
     let disk: import('@workspace/core/delegated-task').DelegatedTask[] = [];
     const tasks = new DurableTaskService({ tasks: [], save: async value => { disk = structuredClone(value); },
@@ -1651,7 +1651,7 @@ describe('AppMcpService', () => {
       expect(first.promptSubmitted).toBe(true);
       expect(first.delegationContext).toStrictEqual({ requested: 'conversation', effective: 'conversation' });
       const worker = snapshot.agents.find(agent => agent.id === first.agentId)!;
-      expect(worker.providerSession).toStrictEqual({ kind: 'codex', threadId: 'worker-native' });
+      expect(worker.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'worker-native' });
       expect(worker.folder).toBe('/tmp/durable-worker');
       expect(disk[0]!.acceptance).toStrictEqual({ providerSession: worker.providerSession, turnId: 'worker-turn' });
       snapshot.general.worktreeDelegationInstructions = 'Changed after assignment';
@@ -1683,8 +1683,8 @@ describe('AppMcpService', () => {
     const parent = snapshot.agents[0]!;
     parent.provider = 'antigravity';
     parent.providerDefaults = { kind: 'antigravity', model: 'gemini-low', permission: 'default' };
-    parent.providerSession = { kind: 'antigravity', sessionId: 'parent-session' };
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'antigravity', sessionId: 'child-session' }, turnId: 'child-turn' });
+    parent.providerSession = { kind: 'antigravity', conversationId: 'parent-session' };
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'antigravity', conversationId: 'child-session' }, turnId: 'child-turn' });
     service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
       createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'acp-task', path: '/tmp/acp-task' }, created: true }),
       getInitializationMode: () => 'repository',
@@ -1695,9 +1695,9 @@ describe('AppMcpService', () => {
     });
     expect(response.result.structuredContent).toMatchObject({ success: true, promptSubmitted: true });
     const child = snapshot.agents.find(agent => agent.name === 'ACP worker')!;
-    expect(child).toMatchObject({ provider: 'antigravity', delegatedByAgentId: parent.id, providerDefaults: { kind: 'antigravity', model: 'gemini-low' }, providerSession: { kind: 'antigravity', sessionId: 'child-session' } });
+    expect(child).toMatchObject({ provider: 'antigravity', delegatedByAgentId: parent.id, providerDefaults: { kind: 'antigravity', model: 'gemini-low' }, providerSession: { kind: 'antigravity', conversationId: 'child-session' } });
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), { planMode: false });
-    expect(parent.providerSession).toEqual({ kind: 'antigravity', sessionId: 'parent-session' });
+    expect(parent.providerSession).toEqual({ kind: 'antigravity', conversationId: 'parent-session' });
     expect(snapshot.activeAgentId).toBe(parent.id);
   });
 
@@ -2005,11 +2005,11 @@ function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProvid
     getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
     getCapabilities: () => codexProviderCapabilities,
     sendPrompt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-test' },
+      providerSession: { kind: 'codex', conversationId: 'thread-test' },
       turnId: 'turn-test',
     }),
     interrupt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-test' },
+      providerSession: { kind: 'codex', conversationId: 'thread-test' },
       turnId: 'turn-test',
     }),
     respondToAgentRequest: vi.fn().mockResolvedValue(undefined),
@@ -2062,7 +2062,7 @@ function createTestAgent(id: string, teamId: string, name: string): Agent {
     name,
     folder: `/Users/nbonamy/src/${id}`,
     provider: 'codex',
-    providerSession: { kind: 'codex', threadId: `thread-${id}` },
+    providerSession: { kind: 'codex', conversationId: `thread-${id}` },
     status: { type: 'idle' },
     createdAt: '2026-06-15T01:00:00.000Z',
     updatedAt: '2026-06-15T01:00:00.000Z',

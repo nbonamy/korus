@@ -90,7 +90,7 @@ describe('AppShell dialogs and commands', () => {
     ];
     const conversation = sessionState({ messages: rows, turns: [turn] });
     const loadAgentTurnHistory = vi.fn().mockResolvedValue(undefined);
-    if (backend === 'claude') { agent.provider = 'claude'; agent.providerSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' }; }
+    if (backend === 'claude') { agent.provider = 'claude'; agent.providerSession = { kind: 'claude', conversationId: 'session', transport: 'stdio' }; }
     const wrapper = mountShell({ snapshot, stubAgentWorkspace: false, realConversationPane: true,
       conversation });
     try {
@@ -106,7 +106,7 @@ describe('AppShell dialogs and commands', () => {
   it('can page back to the first Claude request across multiple older pages', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.provider = 'claude'; agent.providerSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
+    agent.provider = 'claude'; agent.providerSession = { kind: 'claude', conversationId: 'session', transport: 'stdio' };
     const row = (id: string, text: string, role: 'user' | 'assistant' = 'assistant') => ({ id, agentId: agent.id, role, status: 'complete' as const,
       turnId: id, createdAt: '', parts: [{ type: 'text' as const, text }] });
     const recent = row('recent', 'Recent work'), older = row('older', 'Earlier work'), first = row('first', 'Original request', 'user');
@@ -268,7 +268,7 @@ describe('AppShell dialogs and commands', () => {
 
   it('continues a restored interrupted Codex turn without submitting a prompt', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     const continueInterruptedTurnAction = vi.fn().mockResolvedValue(undefined);
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountShell({
@@ -729,7 +729,7 @@ describe('AppShell dialogs and commands', () => {
     } as Partial<AppApi> as AppApi;
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.provider = 'antigravity';
-    snapshot.agents[0]!.providerSession = { kind: 'antigravity', sessionId: 'native' };
+    snapshot.agents[0]!.providerSession = { kind: 'antigravity', conversationId: 'native' };
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
     listener({ type: 'compact-active-session' });
     await nextTick();
@@ -749,8 +749,8 @@ describe('AppShell dialogs and commands', () => {
       onEvent: vi.fn(() => vi.fn()),
     } as Partial<AppApi> as AppApi;
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
-    snapshot.agents[1]!.providerSession = { kind: 'codex', threadId: 'thread-jesse' };
+    snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
+    snapshot.agents[1]!.providerSession = { kind: 'codex', conversationId: 'thread-jesse' };
     const wrapper = mountShell({ snapshot });
 
     listener({ type: 'compact-active-session' });
@@ -773,7 +773,7 @@ describe('AppShell dialogs and commands', () => {
       onEvent: vi.fn(() => vi.fn()),
     } as Partial<AppApi> as AppApi;
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     const wrapper = mountShell({ snapshot });
 
     listener({ type: 'fork-active-agent' });

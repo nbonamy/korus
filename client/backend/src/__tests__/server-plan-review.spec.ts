@@ -15,13 +15,13 @@ it('routes a native proposal → saved feedback → revision → explicit approv
   const snapshot = createInitialSnapshot();
   snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   const agent = snapshot.agents[0]!;
-  agent.providerSession = { kind: 'codex', threadId: 'review-thread' };
+  agent.providerSession = { kind: 'codex', conversationId: 'review-thread' };
   let publish!: (event: BackendEvent) => void;
   const sendPrompt = vi.fn().mockResolvedValue({ providerSession: agent.providerSession, turnId: 'revision-turn' });
   const driver: AgentProviderDriver = {
     provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
     getCapabilities: () => codexProviderCapabilities, sendPrompt,
-    interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'review-thread' } }),
+    interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'review-thread' } }),
     respondToAgentRequest: async () => undefined,
     onEvent: listener => { publish = listener; return () => undefined; }, close: async () => undefined,
   };

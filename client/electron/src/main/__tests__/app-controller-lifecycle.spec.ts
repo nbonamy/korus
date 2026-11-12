@@ -534,7 +534,7 @@ describe('controller desktop lifecycle', () => {
       const agentId = state.snapshot.agents[0]!.id;
       provider.request.mockResolvedValueOnce([{ id: 'viewed', agentId, role: 'assistant', status: 'complete',
         parts: [{ type: 'media', media: { url: pathToFileURL(imagePath).href, title: 'Viewed image', mimeType: 'image/png' } }] }]);
-      const messages = await invoke(ipcChannels.readConversationMessages, { provider: 'codex', threadId: 'history' }, agentId);
+      const messages = await invoke(ipcChannels.readConversationMessages, { provider: 'codex', conversationId: 'history' }, agentId);
       const reference = messages[0].parts[0].media.url;
       expect(reference).toMatch(/^agent-workspace-media:\/\/generated\//);
       expect(await invoke('agent-ui-native:read-image-preview', reference)).toBe('data:image/png;base64,' + png.toString('base64'));
@@ -558,7 +558,7 @@ describe('controller desktop lifecycle', () => {
     const { provider } = setup();
     await import('../../preload/index');
     const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
-    const target = { agentId: 'fixture', provider: 'codex' as const, sessionId: 'thread', conversation: { provider: 'codex' as const, threadId: 'thread' } };
+    const target = { agentId: 'fixture', provider: 'codex' as const, sessionId: 'thread', conversation: { provider: 'codex' as const, conversationId: 'thread' } };
     const input = { action: 'copy' as const, target };
     const result = { state: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' }, link: 'redacted-fixture' };
     provider.request.mockResolvedValueOnce(result);

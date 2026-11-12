@@ -13,9 +13,9 @@ describe('plan review identity', () => {
     expect(isPlanReview(draft)).toBe(true);
     expect(planReviewDelivery(draft)).toStrictEqual({ kind: 'prompt' });
     expect(planReviewDelivery({ ...draft, requestId: 'native-request' })).toStrictEqual({ kind: 'request', requestId: 'native-request', lifetime: 'process' });
-    agent.providerSession = { kind: 'claude', sessionId: 'session', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'session', transport: 'stdio' };
     expect(planReviewFromEvent(agent, event).conversationId).toBe('session');
-    agent.providerSession = { kind: 'codex', threadId: 'thread' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread' };
     expect(agentConversationId(agent)).toBe('thread');
     const targeted = planReviewFromEvent(agent, { ...event, conversationId: 'explicit', payload: { markdown: '# Plan', itemId: 'item' } });
     expect(targeted).toMatchObject({ conversationId: 'explicit', itemId: 'item', status: 'pending' });

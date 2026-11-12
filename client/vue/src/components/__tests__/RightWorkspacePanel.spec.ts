@@ -625,7 +625,7 @@ describe('RightWorkspacePanel', () => {
     if (kind === 'native review') {
       await wrapper.setProps({ agent: {
         ...wrapper.props('agent'),
-        providerSession: { kind: 'codex', threadId: 'plan-thread' },
+        providerSession: { kind: 'codex', conversationId: 'plan-thread' },
         planReview: { id: 'plan-review', conversationId: 'plan-thread', turnId: 'plan-turn', markdown: '# Plan\n\nKeep Browser available.', status: 'pending' },
       } });
     }
@@ -649,7 +649,7 @@ describe('RightWorkspacePanel', () => {
       if (response.resolution === 'save') review = { ...review, draft: response.draft, draftVersion: (response.draftVersion ?? 0) + 1 };
       return review;
     });
-    await wrapper.setProps({ agent: { ...wrapper.props('agent'), provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 'session' }, planReview: review }, updatePlanReview });
     expect(wrapper.get('h1').text()).toBe('Translation');
     await wrapper.findAll('input[type="radio"]')[1]!.setValue();
     await wrapper.get('button[aria-label="Comment on this section: French text"]').trigger('click');

@@ -1,5 +1,6 @@
 import { isProviderSafetyReview, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
@@ -401,8 +402,9 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const providerSession = sanitizeProviderSession(value.providerSession, provider);
   const providerDefaults = sanitizeProviderDefaults(value.providerDefaults, provider);
   const plan = sanitizeThreadPlan(value.plan);
-  const planReview = restorePlanReview(value, providerSession?.kind === 'codex' ? providerSession.threadId : providerSession?.sessionId ?? null);
+  const planReview = restorePlanReview(value, providerSession?.conversationId ?? null);
   const goal = sanitizeThreadGoal(value.goal);
+  const codeReview = withReviewerConversationIds(value.codeReview);
   const openInApplication = sanitizeOpenInApplication(value.openInApplication);
   const gitDiffTarget = isAgentGitDiffTarget(value.gitDiffTarget) ? { ...value.gitDiffTarget } : undefined;
   const workspace = sanitizeAgentWorkspace(value.workspace);
@@ -446,11 +448,11 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
-    ...(isCodeReviewSession(value.codeReview)
-      ? { codeReview: cloneCodeReviewSession(value.codeReview) }
+    ...(isCodeReviewSession(codeReview)
+      ? { codeReview: cloneCodeReviewSession(codeReview) }
       : {}),
     ...(goal ? { goal } : {}),
-    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace(structuredClone(value.designWorkspace)) } : {}),
+    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace({ ...structuredClone(value.designWorkspace), conversationRef: withConversationId(value.designWorkspace.conversationRef) as DesignWorkspace['conversationRef'] }) } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
     status: providerSafetyBlockMessage(isRecord(value.status) && value.status.type === 'error' ? value.status.message : null)
@@ -1085,12 +1087,13 @@ function sanitizeAutomation(value: unknown): Automation | null {
   const executionLog: AutomationExecutionLogEntry[] = Array.isArray(value.executionLog) ? value.executionLog.flatMap(entry => {
     if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.startedAt !== 'string' || entry.automationId !== automationId
       || !['working', 'awaitingInput', 'completed', 'failed'].includes(String(entry.status))) return [];
+    const conversationRef = withConversationId(entry.conversationRef);
     return [{ id: entry.id, automationId, startedAt: entry.startedAt, status: entry.status as AutomationExecutionLogEntry['status'],
       ...(typeof entry.agentId === 'string' ? { agentId: entry.agentId } : {}),
       ...(typeof entry.agentName === 'string' ? { agentName: entry.agentName } : {}),
       ...(typeof entry.completedAt === 'string' ? { completedAt: entry.completedAt } : {}),
       ...(typeof entry.error === 'string' ? { error: entry.error } : {}),
-      ...(isProviderConversationRef(entry.conversationRef) ? { conversationRef: entry.conversationRef } : {}),
+      ...(isProviderConversationRef(conversationRef) ? { conversationRef } : {}),
     }];
   }) : [];
   return { id: value.id, name: value.name, enabled: value.enabled !== false, prompt: value.prompt, target: { ...value.target },
@@ -1193,28 +1196,35 @@ function cloneThreadPlan(plan: ThreadPlan): ThreadPlan {
   };
 }
 
+/** Review rounds saved before conversations were named `conversationId`. */
+function withReviewerConversationIds(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.rounds)) return value;
+  return { ...value, rounds: value.rounds.map(round => isRecord(round) && round.reviewerSession !== undefined ? { ...round, reviewerSession: withConversationId(round.reviewerSession) } : round) };
+}
+
 function sanitizeProvider(value: unknown): HarnessProvider | null {
   return value === 'codex' || value === 'claude' || value === 'antigravity' || value === 'cursor' ? value : null;
 }
 
-function sanitizeProviderSession(value: unknown, expectedProvider: HarnessProvider): ProviderSessionData | undefined {
+function sanitizeProviderSession(stored: unknown, expectedProvider: HarnessProvider): ProviderSessionData | undefined {
+  const value = withConversationId(stored);
   if (!isRecord(value) || typeof value.kind !== 'string') {
     return undefined;
   }
-  if ((value.kind === 'antigravity' || value.kind === 'cursor') && expectedProvider === value.kind && typeof value.sessionId === 'string') {
-    return { kind: value.kind, sessionId: value.sessionId };
+  if ((value.kind === 'antigravity' || value.kind === 'cursor') && expectedProvider === value.kind && typeof value.conversationId === 'string') {
+    return { kind: value.kind, conversationId: value.conversationId };
   }
 
   if (value.kind === 'codex') {
-    const session = typeof value.threadId === 'string'
-      ? { kind: 'codex' as const, threadId: value.threadId }
+    const session = typeof value.conversationId === 'string'
+      ? { kind: 'codex' as const, conversationId: value.conversationId }
       : undefined;
     return session?.kind === expectedProvider ? session : undefined;
   }
 
   if (value.kind === 'claude') {
     if (
-      typeof value.sessionId !== 'string' ||
+      typeof value.conversationId !== 'string' ||
       (value.transport !== 'stdio' && value.transport !== 'websocket')
     ) {
       return undefined;
@@ -1222,9 +1232,9 @@ function sanitizeProviderSession(value: unknown, expectedProvider: HarnessProvid
 
     const session = {
       kind: 'claude',
-      sessionId: value.sessionId,
+      conversationId: value.conversationId,
       transport: value.transport,
-      ...(typeof value.transcriptSessionId === 'string' ? { transcriptSessionId: value.transcriptSessionId } : {}),
+      ...(typeof value.transcriptConversationId === 'string' ? { transcriptConversationId: value.transcriptConversationId } : {}),
       ...(typeof value.transcriptFolder === 'string' ? { transcriptFolder: value.transcriptFolder } : {}),
       ...(typeof value.serverUrl === 'string' ? { serverUrl: value.serverUrl } : {}),
       ...(typeof value.model === 'string' ? { model: value.model } : {}),

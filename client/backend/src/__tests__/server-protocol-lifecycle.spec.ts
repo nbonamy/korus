@@ -424,7 +424,7 @@ describe('AppBackendServer', () => {
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/repo', provider: 'codex',
       status: { type: 'idle' }, createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z',
-      providerSession: { kind: 'codex', threadId: 'thread-design' },
+      providerSession: { kind: 'codex', conversationId: 'thread-design' },
     }];
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.activeAgentId = 'agent-dina';
@@ -437,7 +437,7 @@ describe('AppBackendServer', () => {
     });
 
     const visualize = (result as { result: AppSnapshot }).result.agents[0]!.visualize!;
-    expect(visualize.conversationRef).toStrictEqual({ provider: 'codex', threadId: 'thread-design' });
+    expect(visualize.conversationRef).toStrictEqual({ provider: 'codex', conversationId: 'thread-design' });
     expect(visualize.isOpen).toBe(true);
     expect(visualize.selectedVisualizationId).toBe('debug-visualization-workflow');
     expect(visualize.visualizations.map(visualization => visualization.content.kind)).toStrictEqual(['mermaid', 'svg']);
@@ -843,7 +843,7 @@ describe('AppBackendServer', () => {
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
       status: { type: 'idle' },
-      providerSession: { kind: 'codex', threadId: 'thread-test' },
+      providerSession: { kind: 'codex', conversationId: 'thread-test' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
@@ -854,8 +854,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: (listener) => {
         emitEvent = listener;

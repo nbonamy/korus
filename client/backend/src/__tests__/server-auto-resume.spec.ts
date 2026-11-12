@@ -22,14 +22,14 @@ function host(snapshot = createTestSnapshot()) {
     driverRpc: new ProviderDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')], ['cursor', driver('cursor')]])), onEvent: event => events.push(event) });
   servers.push(server);
   const limit = (agent: Agent, message: string) => agent.provider === 'codex' ? server.emitEvent(sessionError(agent.id, { message, code: 'usageLimitExceeded' },
-    { conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : '', turnId: 'blocked' })) : server.emitEvent({ type: 'agent.statusChanged', agentId: agent.id, provider: agent.provider,
-    conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.threadId : agent.providerSession?.sessionId, payload: { type: 'error', message } });
+    { conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId : '', turnId: 'blocked' })) : server.emitEvent({ type: 'agent.statusChanged', agentId: agent.id, provider: agent.provider,
+    conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId : agent.providerSession?.conversationId, payload: { type: 'error', message } });
   const toggle = (agent: Agent, enabled: boolean) => server.handleMessage({ jsonrpc: '2.0', id: 'toggle', method: 'agent/autoResume/set', params: { agentId: agent.id, enabled } });
   return { server, snapshot, send, limit, toggle, events, saved };
 }
 function agents(): Agent[] {
   return (['codex', 'claude', 'cursor'] as const).map(provider => ({ id: provider, provider: provider, name: provider, folder: '/tmp/project', teamId: 'team-test',
-    providerSession: provider === 'codex' ? { kind: provider, threadId: provider } : provider === 'cursor' ? { kind: provider, sessionId: provider } : { kind: provider, sessionId: provider, transport: 'stdio' },
+    providerSession: provider === 'codex' ? { kind: provider, conversationId: provider } : provider === 'cursor' ? { kind: provider, conversationId: provider } : { kind: provider, conversationId: provider, transport: 'stdio' },
     status: { type: 'idle' }, createdAt: '', updatedAt: '' }));
 }
 function quota(resumeAt: number, weekly = false): AccountRateLimits {
@@ -81,7 +81,7 @@ it('persists the off preference, restores pending resets and cancels stale or ma
   restored.agents[0]!.status = { type: 'idle' };
   next.server.emitEvent({ type: 'account.rateLimitsUpdated', provider: 'codex', payload: { rateLimits: quota(Date.now() + 60_000) } });
   next.limit(restored.agents[0]!, 'Usage limit reached');
-  restored.agents[0]!.providerSession = { kind: 'codex', threadId: 'different' };
+  restored.agents[0]!.providerSession = { kind: 'codex', conversationId: 'different' };
   await vi.advanceTimersByTimeAsync(600_000);
   expect(next.send.mock.calls.map(([, prompt]) => prompt)).toEqual(['Do something else']);
 });

@@ -138,7 +138,7 @@ describe('AgentConversationPanel', () => {
 
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
-      view.agent = { ...view.agent, providerSession: { kind: 'cursor', sessionId: 'session' }, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
+      view.agent = { ...view.agent, providerSession: { kind: 'cursor', conversationId: 'session' }, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
       view.session = { ...view.session!, requests: [toolConfirmation('sidebar-plan',
         { integrationId: 'native-provider', integrationName: 'Provider', toolName: 'native_plan_request', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false })] };
       await flushPromises();
@@ -312,7 +312,7 @@ describe('AgentConversationPanel', () => {
     agent.provider = 'claude';
     agent.providerDefaults = { kind: 'claude' };
     agent.status = { type: 'working' };
-    agent.providerSession = { kind: 'claude', sessionId: 'session-claude', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'session-claude', transport: 'stdio' };
     const view = shallowReactive<SessionView>({
       get conversation() { return conversationFrom(this.agent, this.session); },
       agent, session: sessionState({ busy: true, activeTurnId: 'turn-1' }),
@@ -356,7 +356,7 @@ describe('AgentConversationPanel', () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.provider = 'claude'; agent.providerDefaults = { kind: 'claude' };
-    agent.providerSession = { kind: 'claude', sessionId: 'session-claude', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'session-claude', transport: 'stdio' };
     const view = shallowReactive<SessionView>({
       get conversation() { return conversationFrom(this.agent, this.session); },
       agent, session: sessionState(),

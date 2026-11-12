@@ -39,7 +39,7 @@ describe('Apple companion over a real relay', () => {
     const text = 'history '.repeat(800_000);
     const frame = conversation('agent', { conversation: 'thread', messages: [textMessage('large', 'assistant', text)], state: { historyState: { hasOlder: false, loadingOlder: false } } });
     const workspace = { repositoryIcons: {}, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', name: 'Agent', folder: null,
-      status: { type: 'idle' }, providerSession: { kind: 'codex', threadId: 'thread' }, createdAt: '', updatedAt: '' }] };
+      status: { type: 'idle' }, providerSession: { kind: 'codex', conversationId: 'thread' }, createdAt: '', updatedAt: '' }] };
     const failures: string[] = [];
     const serving = new Set<Promise<void>>();
     vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: async ({ command }: any) => {

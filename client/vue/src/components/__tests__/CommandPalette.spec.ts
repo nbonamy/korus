@@ -12,7 +12,7 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
   const context = reactive<Parameters<typeof commandPaletteActions>[0]>({
     settings: { appshots: true, availableProviders: ['codex', 'claude'] },
     shortcuts: { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true },
-    agent: { ...snapshot.agents[0]!, providerSession: { kind: 'codex', threadId: 'test-thread' } },
+    agent: { ...snapshot.agents[0]!, providerSession: { kind: 'codex', conversationId: 'test-thread' } },
     team: snapshot.teams[0]!, connected: true, hostConnected: true, engineConnected: true, canCreateAgent: true,
     capabilities: { ...defaultProviderCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, simulatorAvailable: true, ...overrides,
   });

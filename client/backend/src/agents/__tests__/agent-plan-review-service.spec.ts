@@ -8,7 +8,7 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../st
 function fixture() {
   const agent: Agent = {
     id: 'agent-1', name: 'main', folder: '/repo', provider: 'codex',
-    providerSession: { kind: 'codex', threadId: 'conversation-1' },
+    providerSession: { kind: 'codex', conversationId: 'conversation-1' },
     status: { type: 'idle' }, createdAt: '2026-09-16', updatedAt: '2026-09-16',
   };
   const snapshot = createEmptySnapshot();
@@ -67,7 +67,7 @@ describe('agent plan review lifecycle', () => {
   it('keeps an immediate replacement proposal when a native revision resolves its live request', async () => {
     const f = fixture();
     f.agent.provider = 'cursor';
-    f.agent.providerSession = { kind: 'cursor', sessionId: 'conversation-1' };
+    f.agent.providerSession = { kind: 'cursor', conversationId: 'conversation-1' };
     f.agent.planReview!.requestId = 'native-request';
     const nativeDecision = vi.fn(() => async () => {
       applyMainEventToSnapshot(f.snapshot, { ...f.ready, payload: { markdown: '# Revised plan', requestId: 'next-request' } });
@@ -102,9 +102,9 @@ describe('agent plan review lifecycle', () => {
   it('rejects stale identities, changed conversations and concurrent decisions', async () => {
     const f = fixture();
     await expect(f.service.respond(f.agent, { reviewId: 'old', resolution: 'accept' })).rejects.toThrow('no longer');
-    f.agent.providerSession = { kind: 'codex', threadId: 'other' };
+    f.agent.providerSession = { kind: 'codex', conversationId: 'other' };
     await expect(f.service.respond(f.agent, { reviewId: f.reviewId, resolution: 'accept' })).rejects.toThrow('no longer');
-    f.agent.providerSession = { kind: 'codex', threadId: 'conversation-1' };
+    f.agent.providerSession = { kind: 'codex', conversationId: 'conversation-1' };
     const pending = f.service.respond(f.agent, { reviewId: f.reviewId, resolution: 'accept' });
     await expect(f.service.respond(f.agent, { reviewId: f.reviewId, resolution: 'cancel' })).rejects.toThrow('already being submitted');
     await pending;

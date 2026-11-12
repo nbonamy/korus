@@ -23,7 +23,7 @@ it('keeps the explicitly selected model of the active agent when models load aft
 
 it('adopts restored backend settings over saved preferences while retaining unsent edits until native acknowledgment', async () => {
   const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
-  agent.provider = 'codex'; agent.providerSession = { kind: 'codex', threadId: 'native' };
+  agent.provider = 'codex'; agent.providerSession = { kind: 'codex', conversationId: 'native' };
   agent.providerDefaults = { kind: 'codex', model: 'saved', reasoningEffort: 'high', userSelectedModel: true };
   stubElectronTestWindow({ app: { listProviderModels: async () => ['saved', 'native', 'draft'].map(id => ({ id, model: id, displayName: id, defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' as const, description: 'High' }] })) } });
   const composer = createAgentComposerState({ getSnapshot: () => snapshot, persistSelection: async () => {} });

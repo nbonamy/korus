@@ -144,10 +144,10 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
-      result: { providerSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
 
-    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({
       agentId: 'agent-remote',
       type: 'agent.statusChanged',
@@ -211,10 +211,10 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
-      result: { providerSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
 
-    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
     expect(onEvent).toHaveBeenCalledOnce();
     expect(onEvent).toHaveBeenCalledWith(validEvent);
     expect(child.process.kill).not.toHaveBeenCalled();
@@ -254,9 +254,9 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: firstRequest.id,
-      result: { providerSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
-    await expect(streamingRequest).resolves.toStrictEqual({ providerSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(streamingRequest).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
 
     const metadataRequest = manager.request(readyConnection(), 'agent/models/list', {
       provider: 'codex',

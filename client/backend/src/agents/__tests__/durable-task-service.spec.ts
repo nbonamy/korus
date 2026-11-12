@@ -17,7 +17,7 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
   const save = vi.fn(async (tasks: DelegatedTask[]) => { disk = structuredClone(tasks); });
   const send = vi.fn(async (agent: Agent, _prompt: string) => {
     agent.status = { type: 'working' };
-    agent.providerSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+    agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     const turnId = `turn-${agent.id}`;
     event(agent.id, 'turn.started', turnId);
     return { providerSession: agent.providerSession, turnId };
@@ -144,7 +144,7 @@ describe('durable assignment lifecycle', () => {
   it('rejects a result after replacing the worker conversation', async () => {
     const f = fixture();
     const task = await f.create();
-    f.agents[1]!.providerSession = { kind: 'codex', threadId: 'replacement' };
+    f.agents[1]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     await expect(f.service.complete(task.workerAgentId, result)).rejects.toThrow('conversation changed');
   });
 
@@ -285,9 +285,9 @@ describe('durable assignment lifecycle', () => {
     saved[0]!.delivery!.state = 'sending';
     const readHistory = vi.fn(async () => [{ role: 'user', turnId: 'accepted-parent-turn', parts: [{ type: 'text', text: format === 'hidden' ? f.send.mock.calls[1]![1] : `${product.name} task results (${saved[0]!.delivery!.id}). Delivered result` }] }] as RendererMessage[]);
     const recovered = fixture(saved, readHistory);
-    recovered.parent.providerSession = { kind: 'codex', threadId: 'parent-thread' };
+    recovered.parent.providerSession = { kind: 'codex', conversationId: 'parent-thread' };
     await recovered.service.recover();
-    expect(recovered.disk()[0]!.delivery).toEqual({ id: saved[0]!.delivery!.id, state: 'accepted', acceptance: { providerSession: { kind: 'codex', threadId: 'parent-thread' }, turnId: 'accepted-parent-turn' } });
+    expect(recovered.disk()[0]!.delivery).toEqual({ id: saved[0]!.delivery!.id, state: 'accepted', acceptance: { providerSession: { kind: 'codex', conversationId: 'parent-thread' }, turnId: 'accepted-parent-turn' } });
     expect(recovered.send).not.toHaveBeenCalled();
   });
 

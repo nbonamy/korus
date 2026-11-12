@@ -419,7 +419,7 @@ describe('AppController', () => {
   it('routes session compression through daemon and adopts the replacement snapshot', async () => {
     const snapshot = createInitialSnapshot();
     const backendSnapshot = structuredClone(snapshot);
-    backendSnapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-compressed' };
+    backendSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-compressed' };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
 

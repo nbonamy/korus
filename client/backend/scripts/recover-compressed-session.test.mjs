@@ -37,7 +37,7 @@ it('recovers only the matching Codex agent thread', () => {
   );
   expect(nextState.agents[0]).toEqual({
     ...currentState.agents[0],
-    providerSession: { kind: 'codex', threadId: 'thread-recovered' },
+    providerSession: { kind: 'codex', conversationId: 'thread-recovered' },
     updatedAt: '2026-09-07T12:00:00.000Z',
   });
   expect(nextState.agents[1]).toBe(currentState.agents[1]);
@@ -52,7 +52,7 @@ it('recovers a thread in the roster layout and still reads a backup of the older
   const next = stateWithRecoveredThread(current, recovery.currentAgent.id, recovery.recoveredThreadId, '2026-10-03T12:00:00.000Z');
   expect(next.data.agents[0]).toEqual({
     ...current.data.agents[0],
-    engine: { kind: 'codex', session: { threadId: 'thread-recovered' } },
+    engine: { kind: 'codex', session: { conversationId: 'thread-recovered' } },
     updatedAt: '2026-10-03T12:00:00.000Z',
   });
   expect(next.schemaVersion).toBe(1);

@@ -26,8 +26,8 @@ describe('ProviderDriverRpc', () => {
     const sending = new Promise<void>(resolve => { accept = resolve; });
     const steering = new Promise<void>((_resolve, fail) => { reject = fail; });
     const agent = { ...createAgent(), provider: provider };
-    const reference = provider === 'codex' ? { kind: provider, threadId: 'thread' } : provider === 'claude'
-      ? { kind: provider, sessionId: 'session', transport: 'stdio' as const } : { kind: provider, sessionId: 'session' };
+    const reference = provider === 'codex' ? { kind: provider, conversationId: 'thread' } : provider === 'claude'
+      ? { kind: provider, conversationId: 'session', transport: 'stdio' as const } : { kind: provider, conversationId: 'session' };
     const driver = createDriver({ provider: provider, getCapabilities: () => ({ ...codexProviderCapabilities, steerPrompt: true }),
       sendPrompt: vi.fn(async () => { await sending; return { providerSession: reference }; }),
       steerPrompt: vi.fn(async () => { await steering; return { providerSession: reference }; }),
@@ -64,7 +64,7 @@ describe('ProviderDriverRpc', () => {
 
   it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('reports %s busy while a request is in flight so upgrades wait', async provider => {
     let finish!: () => void;
-    const sendPrompt = vi.fn(() => new Promise<ProviderSendResult>(resolve => { finish = () => resolve({ providerSession: { kind: provider, sessionId: 'session' } as never }); }));
+    const sendPrompt = vi.fn(() => new Promise<ProviderSendResult>(resolve => { finish = () => resolve({ providerSession: { kind: provider, conversationId: 'session' } as never }); }));
     const rpc = new ProviderDriverRpc(new Map([[provider, createDriver({ provider, sendPrompt })]]));
     const sent = rpc.handle('driver/prompt/send', { agent: { ...createAgent(), provider }, prompt: 'Work' });
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalled());
@@ -97,7 +97,7 @@ describe('ProviderDriverRpc', () => {
   it('rejects another provider session for Cursor catalog and prompt requests without falling through', async () => {
     const cursor = createProviderDriver('cursor');
     const other = createDriver();
-    const agent = { ...createAgent(), provider: 'cursor' as const, providerSession: { kind: 'codex' as const, threadId: 'foreign-session' } };
+    const agent = { ...createAgent(), provider: 'cursor' as const, providerSession: { kind: 'codex' as const, conversationId: 'foreign-session' } };
     const rpc = new ProviderDriverRpc(new Map([['cursor', cursor], ['codex', other]]));
     try {
       await expect(rpc.handle('driver/models/list', { agent })).rejects.toThrow(/identity mismatch/i);
@@ -106,17 +106,17 @@ describe('ProviderDriverRpc', () => {
     } finally { await rpc.close(); }
   });
   it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
-    const agent = { ...createAgent(), providerSession: { kind: 'codex' as const, threadId: 'original' } };
+    const agent = { ...createAgent(), providerSession: { kind: 'codex' as const, conversationId: 'original' } };
     const sendPrompt = vi.fn(); const steerPrompt = vi.fn();
     const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]), undefined,
-      async () => { agent.providerSession = { kind: 'codex', threadId: 'replacement' }; });
+      async () => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     try {
       await expect(rpc.handle(method, { agent, prompt: 'Keep this in the original chat', expectedSessionId: JSON.stringify({ kind: 'codex', threadId: 'original' }) })).rejects.toThrow('stale');
       expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
     } finally { await rpc.close(); }
   });
   it('compresses a session on any harness that runs scoped prompts, archiving the old conversation only where the harness can', async () => {
-    const session = { kind: 'claude' as const, sessionId: 'session-old', transport: 'stdio' as const };
+    const session = { kind: 'claude' as const, conversationId: 'session-old', transport: 'stdio' as const };
     const agent = { ...createAgent(), provider: 'claude' as const, providerSession: session };
     const summarize = vi.fn().mockResolvedValue({ text: 'What happened so far.', session });
     const startSeeded = vi.fn().mockResolvedValue({ providerSession: { ...session, sessionId: 'session-new' } });
@@ -147,7 +147,7 @@ describe('ProviderDriverRpc', () => {
     } finally { await server.close(); }
   });
   it('routes bounded content reads through the owning driver and rejects invalid offsets', async () => {
-    const snapshot = createTestSnapshot(); const agent = { ...createAgent(), provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+    const snapshot = createTestSnapshot(); const agent = { ...createAgent(), provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } };
     snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     const readConversationContent = vi.fn().mockResolvedValue(chunk);
@@ -167,7 +167,7 @@ describe('ProviderDriverRpc', () => {
     const agent = createAgent();
     snapshot.agents = [agent];
     snapshot.teams[0].agentIds = [agent.id];
-    const driver = createDriver({ steerPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-send' }, turnId: 'turn-send' }) });
+    const driver = createDriver({ steerPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-send' }, turnId: 'turn-send' }) });
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
     const delegation = { startingContext: 'handoff', instructions: 'Say Hello only' } as const;
     try {
@@ -190,8 +190,8 @@ describe('ProviderDriverRpc', () => {
     } finally { await server.close(); }
   });
   it('expands /mission into a request for the create-mission tool on send and steer', async () => {
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
-    const steerPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread' }, turnId: 'turn' });
+    const steerPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread' }, turnId: 'turn' });
     const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]));
     const agent = createAgent();
     try {
@@ -484,7 +484,7 @@ describe('ProviderDriverRpc', () => {
 
   it('routes code review only through a driver that advertises the capability', async () => {
     const agent = createAgent();
-    const result = { text: '', reviewerSession: { kind: 'codex' as const, threadId: 'review-thread' } };
+    const result = { text: '', reviewerSession: { kind: 'codex' as const, conversationId: 'review-thread' } };
     const runCodeReview = vi.fn().mockResolvedValue(result);
     const disposeCodeReview = vi.fn().mockResolvedValue(undefined);
     const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({
@@ -496,7 +496,7 @@ describe('ProviderDriverRpc', () => {
       prompt: 'Review independently.',
       cwd: '/repo',
       reviewMcpServerUrl: 'http://127.0.0.1:4321/mcp?reviewContextId=one',
-      reviewerSession: { kind: 'codex' as const, threadId: 'review-thread' },
+      reviewerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
     };
 
     await expect(rpc.handle('driver/codeReview/run', { agent, ...input })).resolves.toEqual(result);
@@ -537,7 +537,7 @@ describe('ProviderDriverRpc', () => {
   it('lets backend drivers handle slash commands before normal prompts', async () => {
     const agent = createAgent();
     const commandResult: ProviderSendResult = {
-      providerSession: { kind: 'codex', threadId: 'thread-command' },
+      providerSession: { kind: 'codex', conversationId: 'thread-command' },
       turnId: 'turn-command',
     };
     const tryHandlePromptCommand = vi.fn().mockReturnValue(Promise.resolve(commandResult));
@@ -563,46 +563,46 @@ describe('ProviderDriverRpc', () => {
       updatedAt: 0,
     };
     const setGoal = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       goal,
     });
     const clearGoal = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       cleared: true,
     });
     const setPermissionMode = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-approval' },
+      providerSession: { kind: 'codex', conversationId: 'thread-approval' },
       providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     const steerPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-steer' },
+      providerSession: { kind: 'codex', conversationId: 'thread-steer' },
       turnId: 'turn-steer',
     });
     const interrupt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-interrupt' },
+      providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
       turnId: 'turn-interrupt',
     });
     const deleteTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: null,
     });
     const editTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: 'turn-new',
     });
     const retryTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: 'turn-new',
     });
     const resumeConversation = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-resumed' },
+      providerSession: { kind: 'codex', conversationId: 'thread-resumed' },
     });
     // Compressing is composed from basic operations: a quiet summary, a new conversation seeded with it, the old one archived.
-    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', threadId: 'thread-test' } });
-    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-compressed' } });
+    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', conversationId: 'thread-test' } });
+    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-compressed' } });
     const archiveStorage = vi.fn().mockResolvedValue(undefined);
     const forkConversation = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-forked' },
+      providerSession: { kind: 'codex', conversationId: 'thread-forked' },
     });
     const releaseConversation = vi.fn();
     const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
@@ -613,7 +613,7 @@ describe('ProviderDriverRpc', () => {
       archiveAgentConversation,
       getCapabilities: () => codexProviderCapabilities,
       executeScopedPrompt: summarize, sendPrompt: startSeeded, setConversationStorage: archiveStorage,
-      loadConversation: async () => ({ kind: 'codex', threadId: 'thread-test' }),
+      loadConversation: async () => ({ kind: 'codex', conversationId: 'thread-test' }),
       releaseConversation,
       forkConversation,
       interrupt,
@@ -627,52 +627,52 @@ describe('ProviderDriverRpc', () => {
       setGoal,
       steerPrompt,
     })]]));
-    const ref = { provider: 'codex' as const, threadId: 'thread-resumed' };
+    const ref = { provider: 'codex' as const, conversationId: 'thread-resumed' };
 
     await expect(rpc.handle('driver/goal/update', { agent, objective: 'Ship the goal shelf' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       goal,
     });
     await expect(rpc.handle('driver/goal/clear', { agent })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-goal' },
+      providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       cleared: true,
     });
     await expect(rpc.handle('driver/permissionMode/update', { agent, mode: 'approve-for-me' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-approval' },
+      providerSession: { kind: 'codex', conversationId: 'thread-approval' },
       providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
     });
     await expect(rpc.handle('driver/prompt/steer', { agent, prompt: 'try smaller' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-steer' },
+      providerSession: { kind: 'codex', conversationId: 'thread-steer' },
       turnId: 'turn-steer',
     });
     await expect(rpc.handle('driver/interrupt', { agent })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-interrupt' },
+      providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
       turnId: 'turn-interrupt',
     });
     await expect(rpc.handle('driver/turn/delete', { agent, turnId: 'turn-1' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: null,
     });
     await expect(rpc.handle('driver/turn/edit', { agent, turnId: 'turn-1', content: 'edited' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: 'turn-new',
     });
     await expect(rpc.handle('driver/turn/retry', { agent, turnId: 'turn-1' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId: 'turn-new',
     });
     const target = { ref, storageState: 'archived' as const };
     await expect(rpc.handle('driver/conversation/resume', { agent, target })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-resumed' },
+      providerSession: { kind: 'codex', conversationId: 'thread-resumed' },
     });
     await expect(rpc.handle('driver/conversation/replaceWithSummary', { agent })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-compressed' },
+      providerSession: { kind: 'codex', conversationId: 'thread-compressed' },
     });
     await expect(rpc.handle('driver/conversation/fork', { agent, targetAgent })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-forked' },
+      providerSession: { kind: 'codex', conversationId: 'thread-forked' },
     });
     await expect(rpc.handle('driver/conversation/fork', { agent, targetAgent, turnId: 'turn-5' })).resolves.toStrictEqual({
-      providerSession: { kind: 'codex', threadId: 'thread-forked' },
+      providerSession: { kind: 'codex', conversationId: 'thread-forked' },
     });
     await expect(rpc.handle('driver/conversation/release', { provider: 'codex', agentId: 'agent-dina' })).resolves.toBeNull();
     await expect(rpc.handle('driver/conversation/archive', { agent })).resolves.toEqual({ supported: true });
@@ -693,7 +693,7 @@ describe('ProviderDriverRpc', () => {
     expect(resumeConversation).toHaveBeenCalledWith(agent, target);
     expect(summarize).toHaveBeenCalledWith(expect.objectContaining({ id: agent.id }), expect.objectContaining({ silent: true }));
     expect(startSeeded).toHaveBeenCalledWith(expect.objectContaining({ id: agent.id, providerSession: undefined }), expect.stringContaining('Summary'));
-    expect(archiveStorage).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-test' }, 'archived');
+    expect(archiveStorage).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-test' }, 'archived');
     expect(forkConversation).toHaveBeenNthCalledWith(1, agent, targetAgent);
     expect(forkConversation).toHaveBeenNthCalledWith(2, agent, targetAgent, 'turn-5');
     expect(releaseConversation).toHaveBeenCalledWith('agent-dina');
@@ -832,7 +832,7 @@ describe('ProviderDriverRpc', () => {
   });
 
   it('deletes a conversation when the harness can and reports unsupported otherwise', async () => {
-    const agent = { id: 'agent-chat', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread-chat' } } as unknown as Agent;
+    const agent = { id: 'agent-chat', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread-chat' } } as unknown as Agent;
     const deleteAgentConversation = vi.fn().mockResolvedValue(undefined);
     await expect(new ProviderDriverRpc(new Map([['codex', createDriver({ deleteAgentConversation, getCapabilities: () => codexProviderCapabilities })]])).handle('driver/conversation/delete', { agent })).resolves.toStrictEqual({ supported: true });
     expect(deleteAgentConversation).toHaveBeenCalledExactlyOnceWith(agent);
@@ -846,11 +846,11 @@ function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProvid
     getRuntimeStatus: vi.fn().mockReturnValue({ provider: 'codex', status: 'running' }),
     getCapabilities: vi.fn().mockReturnValue({}),
     sendPrompt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-send' },
+      providerSession: { kind: 'codex', conversationId: 'thread-send' },
       turnId: 'turn-send',
     }),
     interrupt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-interrupt' },
+      providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
       turnId: 'turn-interrupt',
     }),
     respondToAgentRequest: vi.fn().mockResolvedValue(undefined),

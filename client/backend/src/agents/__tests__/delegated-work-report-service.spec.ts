@@ -136,7 +136,7 @@ describe('DelegatedWorkReportService', () => {
     const worker = {
       ...agent('agent-worker', 'fix/provider'),
       provider: 'claude' as const,
-      providerSession: { kind: 'claude' as const, sessionId: 'session-worker', transport: 'stdio' as const },
+      providerSession: { kind: 'claude' as const, conversationId: 'session-worker', transport: 'stdio' as const },
       delegatedByAgentId: parent.id,
     };
     snapshot.agents = [parent, worker];

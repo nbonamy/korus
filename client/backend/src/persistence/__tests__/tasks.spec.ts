@@ -14,8 +14,8 @@ const task = (): DelegatedTask => ({
   id: 'task-1', requestId: 'request-1', requestFingerprint: 'fingerprint', parentAgentId: 'parent', workerAgentId: 'worker',
   provider: 'codex', assignment: { title: 'Repair', doneWhen: 'Test passes' }, prompt: 'Repair the issue', attemptId: 'attempt-1',
   state: 'completed', createdAt: '2026-10-04T00:00:00Z', updatedAt: '2026-10-04T00:00:00Z', parentWakeBlocked: false,
-  acceptance: { providerSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' },
-  submission: { id: 'result-1', attemptId: 'attempt-1', turnId: 'turn', providerSession: { kind: 'codex', threadId: 'thread' }, summary: 'Repaired', evidence: ['Test passes'], artifacts: ['src/fix.ts'], caveats: [] },
+  acceptance: { providerSession: { kind: 'codex', conversationId: 'thread' }, turnId: 'turn' },
+  submission: { id: 'result-1', attemptId: 'attempt-1', turnId: 'turn', providerSession: { kind: 'codex', conversationId: 'thread' }, summary: 'Repaired', evidence: ['Test passes'], artifacts: ['src/fix.ts'], caveats: [] },
   delivery: { id: 'delivery-1', state: 'pending' },
 });
 
@@ -23,15 +23,15 @@ describe('tasks.json persistence', () => {
   it('round-trips Cursor task acceptance and submission without a migration', async () => {
     const value = task();
     value.provider = 'cursor';
-    value.acceptance!.providerSession = { kind: 'cursor', sessionId: 'cursor-child' };
-    value.submission!.providerSession = { kind: 'cursor', sessionId: 'cursor-child' };
+    value.acceptance!.providerSession = { kind: 'cursor', conversationId: 'cursor-child' };
+    value.submission!.providerSession = { kind: 'cursor', conversationId: 'cursor-child' };
     await new AppStateStore(home).saveTasks([value]);
     expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
   });
   it('retains a Claude worker native store reference in acceptance and result after restart', async () => {
     const value = task();
     value.provider = 'claude';
-    const providerSession = { kind: 'claude' as const, sessionId: 'native-child', transport: 'stdio' as const, transcriptFolder: '/parent-provider-store' };
+    const providerSession = { kind: 'claude' as const, conversationId: 'native-child', transport: 'stdio' as const, transcriptFolder: '/parent-provider-store' };
     value.acceptance!.providerSession = providerSession;
     value.submission!.providerSession = providerSession;
     await new AppStateStore(home).saveTasks([value]);
@@ -92,7 +92,7 @@ describe('tasks.json persistence', () => {
     serializeStoreFile({ tasks: [{ ...task(), state: 'invented' }] }),
     serializeStoreFile({ tasks: [{ ...task(), state: 'running' }] }),
     serializeStoreFile({ tasks: [{ ...task(), delivery: { id: 'delivery-1', state: 'accepted' } }] }),
-    serializeStoreFile({ tasks: [{ ...task(), acceptance: { providerSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } } }] }),
+    serializeStoreFile({ tasks: [{ ...task(), acceptance: { providerSession: { kind: 'claude', conversationId: 'session', transport: 'stdio' } } }] }),
     JSON.stringify({ schemaVersion: 999, data: { tasks: [] } }),
   ])('refuses corrupt or unsupported task data instead of treating it as empty', async content => {
     await writeFile(path.join(home, 'tasks.json'), content);

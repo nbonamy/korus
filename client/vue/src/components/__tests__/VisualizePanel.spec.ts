@@ -10,7 +10,7 @@ vi.mock('../ExcalidrawCanvas.vue', () => ({ default: defineComponent({ props: ['
 function visualizeSession(): VisualizeSession {
   return {
     id: 'visualize-1',
-    conversationRef: { provider: 'codex', threadId: 'thread-1' },
+    conversationRef: { provider: 'codex', conversationId: 'thread-1' },
     isOpen: true,
     suggestions: [
       { id: 'suggestion-system', title: 'System map', description: 'Services, boundaries, and data flow.' },

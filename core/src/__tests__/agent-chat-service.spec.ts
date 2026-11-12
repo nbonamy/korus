@@ -8,15 +8,15 @@ import { claudeProviderCapabilities, codexProviderCapabilities } from '../provid
 describe('agent chat service', () => {
   it('delivers explicit mention content even when it is the only prompt option', () => {
     const snapshot = createInitialSnapshot();
-    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'bound' } }));
+    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'bound' } }));
     const options = { content: [{ type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', value: 'cp', label: 'Commit and push' }] };
     sendAgentPrompt(snapshot, driver, 'agent-dina', 'Commit and push', options, vi.fn());
     expect(driver.sendPrompt).toHaveBeenCalledWith(snapshot.agents[0], 'Commit and push', options);
   });
   it('delivers approved guest text verbatim without invoking app slash commands', async () => {
     const snapshot = createInitialSnapshot();
-    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'bound' }, messageId: 'canonical' }));
-    driver.tryHandlePromptCommand = vi.fn(() => Promise.resolve({ providerSession: { kind: 'codex' as const, threadId: 'wrong' } }));
+    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'bound' }, messageId: 'canonical' }));
+    driver.tryHandlePromptCommand = vi.fn(() => Promise.resolve({ providerSession: { kind: 'codex' as const, conversationId: 'wrong' } }));
     sendAgentPrompt(snapshot, driver, 'agent-dina', '  /review exact guest text  ', undefined, vi.fn(), { plainText: true });
     expect(driver.tryHandlePromptCommand).not.toHaveBeenCalled();
     expect(driver.sendPrompt).toHaveBeenCalledWith(snapshot.agents[0], '  /review exact guest text  ');
@@ -25,7 +25,7 @@ describe('agent chat service', () => {
   it.each([{ interactive: true, planMode: true }, { interactive: false, planMode: true }, { interactive: true, planMode: false }, { interactive: true, planMode: undefined }])('adds hidden choice guidance only for interactive Plan-mode turns: %j', ({ interactive, planMode }) => {
     const snapshot = createInitialSnapshot();
     snapshot.general.useInteractivePlans = interactive;
-    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'plan-thread' } }));
+    const driver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'plan-thread' } }));
     const options = planMode === undefined ? undefined : { planMode };
     sendAgentPrompt(snapshot, driver, 'agent-dina', 'Plan the requested change.', options, vi.fn());
     const [, prompt, deliveredOptions] = vi.mocked(driver.sendPrompt).mock.calls[0]!;
@@ -41,7 +41,7 @@ describe('agent chat service', () => {
 
   it('rejects malformed user delegation controls without changing agent state or executing a prompt', () => {
     const snapshot = createInitialSnapshot();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'unused' } }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'unused' } }));
     expect(() => sendAgentPrompt(snapshot, providerDriver, 'agent-dina', '/delegate task', { delegation: { startingContext: 'replay' } } as never, vi.fn())).toThrow('Invalid worktree delegation overrides');
     expect(providerDriver.sendPrompt).not.toHaveBeenCalled();
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'idle' });
@@ -49,7 +49,7 @@ describe('agent chat service', () => {
   });
   it('delivers delegation-only options to the provider without requiring attachments or model options', async () => {
     const snapshot = createInitialSnapshot();
-    const receipt = { providerSession: { kind: 'codex' as const, threadId: 'delegating-thread' }, turnId: 'delegating-turn' };
+    const receipt = { providerSession: { kind: 'codex' as const, conversationId: 'delegating-thread' }, turnId: 'delegating-turn' };
     const providerDriver = createFakeProviderDriver(Promise.resolve(receipt));
     const options = { delegation: { startingContext: 'handoff' as const, instructions: 'Say Hello only' } };
     sendAgentPrompt(snapshot, providerDriver, 'agent-dina', '/delegate Translate the README', options, vi.fn());
@@ -119,11 +119,11 @@ describe('agent chat service', () => {
     ]);
 
     completion.resolve({
-      providerSession: { kind: 'claude', sessionId: 'session-1', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'session-1', transport: 'stdio' },
     });
     await flushMicrotasks();
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'claude', sessionId: 'session-1', transport: 'stdio' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'claude', conversationId: 'session-1', transport: 'stdio' });
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
     expect(events.map((event) => event.payload)).toMatchObject([
       { type: 'working' },
@@ -145,7 +145,7 @@ describe('agent chat service', () => {
   it('leaves Codex optimistic message identity to the backend driver', () => {
     const snapshot = createInitialSnapshot();
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'codex', threadId: 'thread-1' },
+      providerSession: { kind: 'codex', conversationId: 'thread-1' },
       turnId: 'turn-1',
     }));
     const events: MainToRendererEvent[] = [];
@@ -186,7 +186,7 @@ describe('agent chat service', () => {
 
   it('ignores blank prompts, missing agents, and busy agents', () => {
     const snapshot = createInitialSnapshot();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-1' }, turnId: 'turn-1' }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-1' }, turnId: 'turn-1' }));
 
     sendAgentPrompt(snapshot, providerDriver, 'agent-dina', '   ', undefined, vi.fn());
     sendAgentPrompt(snapshot, providerDriver, 'missing-agent', 'hello', undefined, vi.fn());
@@ -199,7 +199,7 @@ describe('agent chat service', () => {
   it('routes backend prompt commands without appending visible user prompts', async () => {
     const snapshot = createInitialSnapshot();
     const completion = deferred<ProviderSendResult>();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-ignored' } }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-ignored' } }));
     providerDriver.tryHandlePromptCommand = vi.fn().mockReturnValue(completion.promise);
     const events: MainToRendererEvent[] = [];
 
@@ -218,18 +218,18 @@ describe('agent chat service', () => {
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
 
     completion.resolve({
-      providerSession: { kind: 'codex', threadId: 'thread-compact' },
+      providerSession: { kind: 'codex', conversationId: 'thread-compact' },
     });
     await flushMicrotasks();
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-compact' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-compact' });
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
   });
 
   it('routes backend review instructions without appending visible user prompts', async () => {
     const snapshot = createInitialSnapshot();
     const completion = deferred<ProviderSendResult>();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-ignored' } }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-ignored' } }));
     providerDriver.tryHandlePromptCommand = vi.fn().mockReturnValue(completion.promise);
 
     sendAgentPrompt(snapshot, providerDriver, 'agent-dina', '/review check regressions', undefined, vi.fn());
@@ -239,17 +239,17 @@ describe('agent chat service', () => {
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
 
     completion.resolve({
-      providerSession: { kind: 'codex', threadId: 'thread-review' },
+      providerSession: { kind: 'codex', conversationId: 'thread-review' },
     });
     await flushMicrotasks();
 
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-review' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-review' });
     expect(snapshot.agents[0].status).toStrictEqual({ type: 'working' });
   });
 
   it('lets the backend driver prepare selected model and reasoning options', () => {
     const snapshot = createInitialSnapshot();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-1' }, turnId: 'turn-1' }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-1' }, turnId: 'turn-1' }));
     providerDriver.preparePromptOptions = vi.fn((_agent, options) => ({
       selection: options?.selection,
       providerOptions: { kind: 'codex' as const },
@@ -278,7 +278,7 @@ describe('agent chat service', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].providerDefaults = { kind: 'codex', serviceTier: 'default' };
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'codex', threadId: 'thread-1' },
+      providerSession: { kind: 'codex', conversationId: 'thread-1' },
       turnId: 'turn-1',
     }));
 
@@ -299,7 +299,7 @@ describe('agent chat service', () => {
 
   it('passes explicit disabled plan mode to the session manager', () => {
     const snapshot = createInitialSnapshot();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-1' }, turnId: 'turn-1' }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-1' }, turnId: 'turn-1' }));
 
     sendAgentPrompt(
       snapshot,
@@ -320,7 +320,7 @@ describe('agent chat service', () => {
   it('preserves dictated input provenance without other prompt options', () => {
     const snapshot = createInitialSnapshot();
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'codex', threadId: 'thread-1' },
+      providerSession: { kind: 'codex', conversationId: 'thread-1' },
       turnId: 'turn-1',
     }));
 
@@ -344,7 +344,7 @@ describe('agent chat service', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].provider = 'claude';
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'claude', sessionId: 'session-1', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'session-1', transport: 'stdio' },
     }), 'claude');
 
     sendAgentPrompt(
@@ -369,7 +369,7 @@ describe('agent chat service', () => {
     snapshot.agents[0].provider = 'claude';
     snapshot.agents[0].providerDefaults = { kind: 'claude' };
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'claude', sessionId: 'session-1', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'session-1', transport: 'stdio' },
     }), 'claude');
     const attachments = [
       {
@@ -404,7 +404,7 @@ describe('agent chat service', () => {
     snapshot.agents[0].provider = 'claude';
     snapshot.agents[0].providerDefaults = { kind: 'claude' };
     const providerDriver = createFakeProviderDriver(Promise.resolve({
-      providerSession: { kind: 'claude', sessionId: 'session-1', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'session-1', transport: 'stdio' },
     }), 'claude');
     const attachments = [{ type: 'file' as const, path: '/tmp/report.txt', name: 'report.txt' }];
 
@@ -419,7 +419,7 @@ describe('agent chat service', () => {
 
   it('lets the backend driver prepare selected prompt skills', () => {
     const snapshot = createInitialSnapshot();
-    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', threadId: 'thread-1' }, turnId: 'turn-1' }));
+    const providerDriver = createFakeProviderDriver(Promise.resolve({ providerSession: { kind: 'codex', conversationId: 'thread-1' }, turnId: 'turn-1' }));
     providerDriver.preparePromptOptions = vi.fn((_agent, options) => ({
       providerOptions: {
         kind: 'codex' as const,
@@ -471,8 +471,8 @@ function createFakeProviderDriver(
     getCapabilities: () => provider === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities,
     sendPrompt: vi.fn().mockReturnValue(sendResult),
     interrupt: vi.fn().mockResolvedValue(provider === 'codex'
-      ? { providerSession: { kind: 'codex', threadId: 'thread-1' } }
-      : { providerSession: { kind: 'claude', sessionId: 'session-1', transport: 'stdio' } }),
+      ? { providerSession: { kind: 'codex', conversationId: 'thread-1' } }
+      : { providerSession: { kind: 'claude', conversationId: 'session-1', transport: 'stdio' } }),
     respondToAgentRequest: vi.fn().mockResolvedValue(undefined),
     onEvent: vi.fn(() => () => undefined),
     close: vi.fn().mockResolvedValue(undefined),

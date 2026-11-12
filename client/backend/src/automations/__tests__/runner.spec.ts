@@ -14,7 +14,7 @@ function setup(target: Automation['target'] = { kind: 'newQuickChat', teamId: 't
   const automation: Automation = { id: 'auto', name: 'Daily check', enabled: true, prompt: 'Check my tasks', target,
     schedule: { intervalMinutes: 60 }, executionLog: [], createdAt: '', updatedAt: '' };
   snapshot.automations = [automation];
-  const sendPrompt = vi.fn().mockResolvedValue({ provider: 'codex', threadId: 'thread' });
+  const sendPrompt = vi.fn().mockResolvedValue({ provider: 'codex', conversationId: 'thread' });
   const saveSnapshot = vi.fn().mockResolvedValue(undefined);
   const runner = new AutomationRunner({ getSnapshot: () => snapshot, sendPrompt, saveSnapshot,
     notifySnapshotUpdated: vi.fn(), now: () => new Date('2026-10-06T12:00:00Z') });
@@ -130,7 +130,7 @@ describe('scheduled prompts', () => {
   it.each(['codex', 'claude', 'antigravity', 'cursor'] as const)('creates fresh %s quick chats without changing selection or provider, retaining run history', async provider => {
     const { snapshot, automation, runner, sendPrompt } = setup({ kind: 'newQuickChat', teamId: 'team', selection: { provider: provider, model: null, reasoningEffort: null, serviceTier: null } });
     snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, enabled: true, checking: false }];
-    const conversationRef = provider === 'codex' ? { provider: provider, threadId: 'thread' } : { provider: provider, sessionId: 'session', folder: null };
+    const conversationRef = provider === 'codex' ? { provider: provider, conversationId: 'thread' } : { provider: provider, conversationId: 'session', folder: null };
     sendPrompt.mockResolvedValue(conversationRef);
     await runner.runAutomation('auto');
     const run = automation.executionLog[0]!;

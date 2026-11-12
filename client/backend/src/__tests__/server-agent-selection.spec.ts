@@ -22,12 +22,12 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', threadId: 'thread-hydrated' });
+    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/agent-workspace',
       branch: 'main',
@@ -44,8 +44,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       loadConversation,
       onEvent: () => () => undefined,
@@ -83,7 +83,7 @@ describe('AppBackendServer', () => {
     })).resolves.toMatchObject({
       result: {
         activeAgentId: 'agent-dina',
-        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-hydrated' } }],
+        agents: [{ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-hydrated' } }],
         agentGitStatuses: {
           'agent-dina': expect.objectContaining({ branch: 'main', state: 'dirty' }),
         },
@@ -108,13 +108,13 @@ describe('AppBackendServer', () => {
     const legacy = await server.handleMessage({ jsonrpc: '2.0', id: 'legacy', method: 'agent/conversation/load', params: { agentId: 'agent-dina' } });
     // Decode the released request's JSON independently of current shared types.
     const decoded = JSON.parse(JSON.stringify(legacy));
-    expect(decoded.result.agents[0].providerSession).toEqual({ kind: 'codex', threadId: 'thread-hydrated' });
+    expect(decoded.result.agents[0].providerSession).toEqual({ kind: 'codex', conversationId: 'thread-hydrated' });
     expect(decoded.result.missions[0].execution.runs[0].proposal.requirements.problem).toHaveLength(6_000_000);
     expect(getGitStatus).toHaveBeenCalledTimes(2);
     // A rebound session reference reaches the renderer; the compact response stays null otherwise.
-    loadConversation.mockResolvedValueOnce({ kind: 'codex', threadId: 'thread-rebound' });
+    loadConversation.mockResolvedValueOnce({ kind: 'codex', conversationId: 'thread-rebound' });
     const rebound = JSON.parse(JSON.stringify(await server.handleMessage({ jsonrpc: '2.0', id: 'rebound', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } })));
-    expect(rebound.result.agents[0].providerSession).toEqual({ kind: 'codex', threadId: 'thread-rebound' });
+    expect(rebound.result.agents[0].providerSession).toEqual({ kind: 'codex', conversationId: 'thread-rebound' });
     // Recovery hydration must not run while a handoff owns the conversation.
     snapshot.agents[0]!.handoff = { operationId: 'op', selection: {} as never, sourceAgentId: 'agent-dina', sourceTitle: 'Dina', sourceRef: {} as never, phase: 'closing' };
     const callsBeforeHandoff = loadConversation.mock.calls.length;
@@ -144,19 +144,19 @@ describe('AppBackendServer', () => {
         name: 'Jesse',
         folder: '/Users/nbonamy/src/multi-llm-ts',
         provider: 'codex',
-        providerSession: { kind: 'codex', threadId: 'thread-old' },
+        providerSession: { kind: 'codex', conversationId: 'thread-old' },
         status: { type: 'idle' },
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
     ];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', threadId: 'thread-hydrated' });
+    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       loadConversation,
       onEvent: () => () => undefined,
@@ -183,7 +183,7 @@ describe('AppBackendServer', () => {
         activeAgentId: 'agent-dina',
         agents: [
           { id: 'agent-dina' },
-          { id: 'agent-jesse', providerSession: { kind: 'codex', threadId: 'thread-hydrated' } },
+          { id: 'agent-jesse', providerSession: { kind: 'codex', conversationId: 'thread-hydrated' } },
         ],
       },
     });
@@ -204,7 +204,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/repo',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       status: { type: 'idle' },
       createdAt: '2026-09-05T00:00:00.000Z',
       updatedAt: '2026-09-05T00:00:00.000Z',
@@ -213,8 +213,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       loadConversation: vi.fn().mockRejectedValue(new Error('active writer: provider-only detail')),
       onEvent: () => () => undefined,
@@ -261,19 +261,19 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-live' },
+      providerSession: { kind: 'codex', conversationId: 'thread-live' },
       status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', threadId: 'thread-stale' });
+    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-stale' });
     const getGitStatus = vi.fn().mockResolvedValue(null);
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       loadConversation,
       onEvent: () => () => undefined,
@@ -329,7 +329,7 @@ describe('AppBackendServer', () => {
         name: 'Jesse',
         folder: '/Users/nbonamy/src/multi-llm-ts',
         provider: 'codex',
-        providerSession: { kind: 'codex', threadId: 'thread-old' },
+        providerSession: { kind: 'codex', conversationId: 'thread-old' },
         status: { type: 'idle' },
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
@@ -367,7 +367,7 @@ describe('AppBackendServer', () => {
       originUrl: `https://github.com/current-owner/${folder.split('/').at(-1)!}.git`,
       updatedAt: '2026-06-13T00:00:00.000Z',
     }));
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', threadId: 'thread-hydrated' });
+    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/multi-llm-ts',
       branch: 'main',
@@ -384,8 +384,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       loadConversation,
       onEvent: () => () => undefined,
@@ -416,7 +416,7 @@ describe('AppBackendServer', () => {
         activeAgentId: 'agent-jesse',
         agents: [
           { id: 'agent-dina' },
-          { id: 'agent-jesse', providerSession: { kind: 'codex', threadId: 'thread-hydrated' }, workspace: { branch: 'main' } },
+          { id: 'agent-jesse', providerSession: { kind: 'codex', conversationId: 'thread-hydrated' }, workspace: { branch: 'main' } },
           { id: 'agent-sam' },
         ],
         agentGitStatuses: {

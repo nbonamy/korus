@@ -9,13 +9,15 @@ import { defaultProviderCapabilities } from '@workspace/core/provider-capabiliti
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
 import { conversationRefId } from '@korus-dev/multi-agent-sdk/contracts';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 
 const bounded = z.string().min(1).max(4096);
-const conversation = z.discriminatedUnion('provider', [
-  z.object({ provider: z.literal('codex'), threadId: bounded }).strict(),
-  z.object({ provider: z.literal('claude'), sessionId: bounded, folder: bounded.nullable() }).strict(),
-  z.object({ provider: z.literal('antigravity'), sessionId: bounded, folder: bounded.nullable() }).strict(),
-]);
+// Shares saved before conversations were named `conversationId` still load.
+const conversation = z.preprocess(withConversationId, z.discriminatedUnion('provider', [
+  z.object({ provider: z.literal('codex'), conversationId: bounded }).strict(),
+  z.object({ provider: z.literal('claude'), conversationId: bounded, folder: bounded.nullable() }).strict(),
+  z.object({ provider: z.literal('antigravity'), conversationId: bounded, folder: bounded.nullable() }).strict(),
+]));
 const targetSchema = z.object({ agentId: bounded, provider: z.enum(['codex', 'claude', 'antigravity']), sessionId: bounded, conversation }).strict();
 const handleSchema = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
 const recordSchema = z.object({ v: z.literal(2), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,

@@ -33,13 +33,13 @@ describe('state persistence', () => {
     for (const item of snapshot.agents) item.lastActivityAt = item.createdAt;
     const agent = snapshot.agents[0]!;
     agent.provider = 'cursor';
-    agent.providerSession = { kind: 'cursor', sessionId: 'cursor-native-session' };
+    agent.providerSession = { kind: 'cursor', conversationId: 'cursor-native-session' };
     agent.providerDefaults = { kind: 'cursor', model: 'composer-fixture', reasoningEffort: 'high', serviceTier: null, permission: 'allowlist', userSelectedModel: true };
     agent.userDelegationOverrides = { startingContext: 'handoff', instructions: 'Synthetic constraint', execution: { provider: 'cursor', conversationId: 'cursor-native-session', turnId: 'turn-1' } };
     agent.handoff = { operationId: 'cursor-handoff', sourceAgentId: agent.id, sourceTitle: 'Cursor source',
-      sourceRef: { provider: 'cursor', folder: agent.folder, sessionId: 'cursor-source' }, phase: 'complete',
+      sourceRef: { provider: 'cursor', folder: agent.folder, conversationId: 'cursor-source' }, phase: 'complete',
       selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } };
-    agent.visualize = { id: 'cursor-viz', conversationRef: { provider: 'cursor', folder: agent.folder, sessionId: 'cursor-native-session' },
+    agent.visualize = { id: 'cursor-viz', conversationRef: { provider: 'cursor', folder: agent.folder, conversationId: 'cursor-native-session' },
       isOpen: true, suggestions: [], visualizations: [], selectedVisualizationId: null, createdAt: '', updatedAt: '' };
     snapshot.general.preferredProviders = { local: 'cursor' };
     snapshot.general.providerHomes = { cursor: { homePath: '/cursor', isolated: false, shareSkills: false } };
@@ -62,7 +62,7 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     const persisted = persistedStateFromSnapshot(snapshot);
     persisted.agents[0]!.provider = 'cursor';
-    persisted.agents[0]!.providerSession = backend === 'codex' ? { kind: backend, threadId: 'other' } : backend === 'claude' ? { kind: backend, sessionId: 'other', transport: 'stdio' } : { kind: backend, sessionId: 'other' };
+    persisted.agents[0]!.providerSession = backend === 'codex' ? { kind: backend, conversationId: 'other' } : backend === 'claude' ? { kind: backend, conversationId: 'other', transport: 'stdio' } : { kind: backend, conversationId: 'other' };
     persisted.agents[0]!.providerDefaults = { kind: backend, model: 'other-only' };
     const restored = snapshotFromPersistedState(persisted);
     expect(restored.agents[0]!.provider).toBe('cursor');
@@ -108,7 +108,7 @@ describe('state persistence', () => {
     snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
     snapshot.agents[1]!.provider = 'claude';
     snapshot.agents[1]!.providerDefaults = { kind: 'claude' };
-    snapshot.agents[1]!.providerSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
+    snapshot.agents[1]!.providerSession = { kind: 'claude', conversationId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
     await new AppStateStore(home).save(snapshot);
     const restored = await new AppStateStore(home).load();
     expect(restored.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
@@ -158,7 +158,7 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.provider = 'antigravity';
-    agent.providerSession = { kind: 'antigravity', sessionId: 'native-acp-session' };
+    agent.providerSession = { kind: 'antigravity', conversationId: 'native-acp-session' };
     agent.providerDefaults = { kind: 'antigravity', model: 'gemini-3.8-flash-low', permission: 'default' };
     snapshot.general.providerHomes = { antigravity: { homePath: '/private/acp', isolated: true, shareSkills: false } };
     snapshot.general.providerEnabled = { codex: true, antigravity: false };
@@ -206,7 +206,7 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     const runner = new AutomationRunner({ getSnapshot: () => snapshot,
-      sendPrompt: async () => ({ provider: provider, sessionId: 'remote-chat', folder: null }), saveSnapshot: () => persistence.save(snapshot), notifySnapshotUpdated: () => {},
+      sendPrompt: async () => ({ provider: provider, conversationId: 'remote-chat', folder: null }), saveSnapshot: () => persistence.save(snapshot), notifySnapshotUpdated: () => {},
     });
     const remote = new AppBackendServer({ version: 'test', snapshot, automationRunner: runner, saveSnapshot: value => persistence.save(value) });
     const localSnapshot = createInitialSnapshot();
@@ -230,7 +230,7 @@ describe('state persistence', () => {
       const saved = await persistence.load();
       expect(isAppSnapshot(saved)).toBe(true);
       expect(saved.automations).toEqual([expect.objectContaining({ ...input, id, enabled: true })]);
-      expect(saved.automations[0]?.executionLog[0]).toMatchObject({ status: 'working', conversationRef: { provider: provider, sessionId: 'remote-chat', folder: null } });
+      expect(saved.automations[0]?.executionLog[0]).toMatchObject({ status: 'working', conversationRef: { provider: provider, conversationId: 'remote-chat', folder: null } });
       expect(localSnapshot.automations).toEqual([]);
       expect(localSnapshot.workBacklog.assignments).toEqual({});
       const invalid = { ...input, prompt: '' };
@@ -394,7 +394,7 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].visualize = {
       id: 'visualize-1',
-      conversationRef: { provider: 'codex', threadId: 'thread-visualize' },
+      conversationRef: { provider: 'codex', conversationId: 'thread-visualize' },
       isOpen: true,
       suggestions: [{ id: 'suggestion-1', title: 'System map', description: 'Show the architecture.', visualizationId: 'visualization-1' }],
       visualizations: [{
@@ -513,7 +513,7 @@ describe('state persistence', () => {
     const persisted = structuredClone(persistedStateFromSnapshot(snapshot)) as unknown as { agents: Array<Record<string, unknown>> };
     persisted.agents[0].design = {
       id: 'legacy-design',
-      conversationRef: { provider: 'codex', threadId: 'thread-design' },
+      conversationRef: { provider: 'codex', conversationId: 'thread-design' },
       suggestions: [{ id: 'suggestion-1', title: 'System map', description: 'Show the architecture.', diagramId: 'diagram-1' }],
       diagrams: [{
         id: 'diagram-1', title: 'System map', content: { kind: 'mermaid', source: 'flowchart LR\n A --> B' }, revision: 1,
@@ -562,7 +562,7 @@ describe('state persistence', () => {
         id: 'round-1',
         number: 1,
         status: 'completed',
-        reviewerSession: { kind: 'codex', threadId: 'reviewer-1' },
+        reviewerSession: { kind: 'codex', conversationId: 'reviewer-1' },
         startedAt: '2026-09-19T10:00:00.000Z',
         completedAt: '2026-09-19T10:20:00.000Z',
         findings: [{
@@ -758,7 +758,7 @@ describe('state persistence', () => {
     } };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       providerDefaults: {
         kind: 'codex',
         permission: 'approve-for-me',
@@ -832,7 +832,7 @@ describe('state persistence', () => {
     const writtenAgent = (written.agents as Array<Record<string, unknown>>)[0];
     expect(writtenAgent.engine).toStrictEqual({
       kind: 'codex',
-      session: { threadId: 'thread-dina' },
+      session: { conversationId: 'thread-dina' },
       settings: { permission: 'approve-for-me', serviceTier: 'fast' },
     });
     expect(writtenAgent).not.toHaveProperty('provider');
@@ -915,7 +915,7 @@ describe('state persistence', () => {
     } };
     snapshot.agents[0] = {
       ...snapshot.agents[0],
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       providerDefaults: {
         kind: 'codex',
         permission: 'approve-for-me',
@@ -1008,7 +1008,7 @@ describe('state persistence', () => {
         permission: 'approve-for-me',
         serviceTier: 'fast',
       },
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       contextUsage: {
         totalTokens: 1200,
         inputTokens: 900,
@@ -1244,7 +1244,7 @@ describe('state persistence', () => {
         completedAt: '2026-06-09T10:03:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', threadId: 'thread-dina' },
+        agentId: 'agent-dina', agentName: 'Dina', conversationRef: { provider: 'codex', conversationId: 'thread-dina' },
       }, {
         id: 'automation-exec-2',
         automationId: 'automation-bugs',
@@ -1339,7 +1339,7 @@ describe('state persistence', () => {
         name: 'Dina',
         folder: '~/src/agent-workspace',
         provider: 'codex',
-        providerSession: { kind: 'codex', threadId: 'thread-dina' },
+        providerSession: { kind: 'codex', conversationId: 'thread-dina' },
         plan: {
           threadId: 'thread-dina',
           turnId: 'turn-plan',
@@ -1372,7 +1372,7 @@ describe('state persistence', () => {
         name: 'Dina',
         folder: '~/src/agent-workspace',
         provider: 'codex',
-        providerSession: { kind: 'codex', threadId: 'thread-dina' },
+        providerSession: { kind: 'codex', conversationId: 'thread-dina' },
         contextUsage: {
           totalTokens: 1200,
           inputTokens: 900,
@@ -1403,7 +1403,7 @@ describe('state persistence', () => {
         name: 'Dina',
         folder: '~/src/agent-workspace',
         provider: 'claude',
-        providerSession: { kind: 'codex', threadId: 'thread-dina' },
+        providerSession: { kind: 'codex', conversationId: 'thread-dina' },
         providerDefaults: { kind: 'codex', model: 'gpt-5.1-codex' },
         createdAt: '2026-06-05T00:00:00.000Z',
         updatedAt: '2026-06-05T00:00:00.000Z',
@@ -1423,11 +1423,10 @@ describe('state persistence', () => {
     snapshot.agents[0] = {
       ...snapshot.agents[0],
       provider: 'claude',
-      providerSession: {
-        kind: 'claude',
-        sessionId: 'claude-session-1',
+      providerSession: { kind: 'claude',
+        conversationId: 'claude-session-1',
         transport: 'stdio',
-        transcriptSessionId: 'claude-session-1',
+        transcriptConversationId: 'claude-session-1',
         model: 'claude-sonnet-5',
         reasoningEffort: 'xhigh',
       },

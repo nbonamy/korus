@@ -27,7 +27,7 @@ async function harness(taskState?: DelegatedTask['state']) {
   snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   const [parent, other] = snapshot.agents;
   parent!.status = { type: 'working' };
-  const worker: Agent = { ...parent!, id: 'worker', name: 'Worker', delegatedByAgentId: parent!.id, status: { type: 'idle' }, providerSession: { kind: 'codex', threadId: 'worker-thread' } };
+  const worker: Agent = { ...parent!, id: 'worker', name: 'Worker', delegatedByAgentId: parent!.id, status: { type: 'idle' }, providerSession: { kind: 'codex', conversationId: 'worker-thread' } };
   snapshot.agents.push(worker);
   snapshot.teams[0]!.agentIds.push(worker.id);
   const task: DelegatedTask = {
@@ -68,7 +68,7 @@ it('closes a creator-owned worker through MCP, persists removal, and preserves d
   expect(created.isError).toBe(false);
   const child = f.snapshot.agents.find(agent => agent.id === created.structuredContent!.agentId)!;
   expect(child.delegatedByAgentId).toBe(f.parent.id);
-  child.providerSession = { kind: 'codex', threadId: 'child-thread' };
+  child.providerSession = { kind: 'codex', conversationId: 'child-thread' };
   await writeFile(path.join(child.folder!, 'uncommitted.txt'), 'keep my work');
   expect((await f.call(f.parent.id, { agentId: child.id })).structuredContent).toMatchObject({ success: true, agentId: child.id });
   expect((await f.store.load()).agents.some(agent => agent.id === child.id)).toBe(false);
@@ -100,7 +100,7 @@ it('rejects other callers, missing ownership, self-close, busy workers and injec
   f.snapshot.queuedPrompts = [{ id: 'queued', agentId: f.worker.id, text: 'Still pending', createdAt: 'now' }];
   await denied(f.parent.id, { agentId: f.worker.id });
   f.snapshot.queuedPrompts = [];
-  f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { provider: 'codex', threadId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
+  f.worker.handoff = { operationId: 'handoff', sourceAgentId: f.worker.id, sourceTitle: 'Worker', sourceRef: { provider: 'codex', conversationId: 'worker-thread' }, phase: 'preparing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
   await denied(f.parent.id, { agentId: f.worker.id });
   delete f.worker.handoff;
   f.codex.surface.archiveConversation.mockRejectedValueOnce(new Error('Provider unavailable'));

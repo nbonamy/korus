@@ -3,7 +3,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { CompanionNotifications } from '../notifications';
 
-const workspace: CompanionWorkspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', name: 'Builder', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' }, folder: '/private', createdAt: '', updatedAt: '', status: { type: 'idle' } }] };
+const workspace: CompanionWorkspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', name: 'Builder', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' }, folder: '/private', createdAt: '', updatedAt: '', status: { type: 'idle' } }] };
 const completed = (status = 'completed', conversationId = 'thread'): AppBackendEvent =>
   ({ type: 'turn.completed', agentId: 'agent', provider: 'codex', conversationId, turnId: 'turn', seq: 1, occurredAt: '', payload: { status, error: null, willRetry: false } }) as AppBackendEvent;
 
@@ -12,7 +12,7 @@ describe('companion attention events', () => {
     const source = new CompanionNotifications('host');
     expect(source.create(completed('interrupted'), workspace)).toBeNull();
     expect(source.create(completed('failed'), workspace)).toBeNull();
-    expect(source.create(completed(), { ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', threadId: 'new' } }] })).toBeNull();
+    expect(source.create(completed(), { ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'new' } }] })).toBeNull();
     expect(source.create(completed(), { teams: [], agents: [] })).toBeNull();
     const result = source.create(completed(), workspace)!;
     expect(result).toStrictEqual({ id: expect.stringMatching(/^[a-f0-9]{64}$/), name: 'Builder', kind: 'completed', createdAt: expect.any(Number),
@@ -37,7 +37,7 @@ describe('companion attention events', () => {
       expect(source.create(event, workspace)?.kind).toBe(kind === 'question' ? 'question' : 'approval');
       expect(source.create(event, workspace)).toBeNull();
     }
-    const claude = { ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } }] };
+    const claude = { ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } }] };
     expect(source.create(completed('completed', 'session'), claude)?.kind).toBe('completed');
   });
   it('pairs a finished turn with the read revision it caused, for local and remote agents alike', () => {
@@ -50,7 +50,7 @@ describe('companion attention events', () => {
 
   describe('mission agents', () => {
     const base = workspace.agents[0]!;
-    const worker = { ...base, id: 'worker', name: 'api', providerSession: { kind: 'codex' as const, threadId: 'worker-thread' } };
+    const worker = { ...base, id: 'worker', name: 'api', providerSession: { kind: 'codex' as const, conversationId: 'worker-thread' } };
     const missionWorkspace: CompanionWorkspace = {
       ...workspace,
       missionAgents: [worker],

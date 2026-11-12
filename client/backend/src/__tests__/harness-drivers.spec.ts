@@ -125,17 +125,17 @@ describe('Korus provider drivers over the SDK Harness', () => {
   });
 
   it('delegates to a worktree through a native fork, or returns null so Korus hands off instead', async () => {
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     const worker = { ...(agent as object), id: 'worker', folder: '/repo-worktree', providerSession: undefined } as never;
     const { driver, script } = scriptedDriver('codex');
-    script.on('forkConversation', () => ({ providerSession: { kind: 'codex', threadId: 'forked' }, forkedFromTurnId: 'turn-1' }));
-    await expect(driver.forkWorktreeConversation!(agent, worker)).resolves.toStrictEqual({ providerSession: { kind: 'codex', threadId: 'forked' } });
+    script.on('forkConversation', () => ({ providerSession: { kind: 'codex', conversationId: 'forked' }, forkedFromTurnId: 'turn-1' }));
+    await expect(driver.forkWorktreeConversation!(agent, worker)).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'forked' } });
     expect(script.calls('forkConversation')[0]?.args[1]).toMatchObject({ id: 'worker', folder: '/repo-worktree' });
     script.on('forkConversation', () => null);
     await expect(driver.forkWorktreeConversation!(agent, worker)).resolves.toBeNull();
     await expect(driver.forkConversation!(agent, worker)).rejects.toThrow('cannot fork this conversation right now');
     const cursor = scriptedDriver('cursor');
-    const cursorAgent = { ...(agent as object), provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' } } as never;
+    const cursorAgent = { ...(agent as object), provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 's' } } as never;
     await expect(cursor.driver.forkWorktreeConversation!(cursorAgent, { ...(cursorAgent as object), id: 'worker', folder: '/repo-worktree' } as never)).resolves.toBeNull();
     expect(cursor.script.calls('forkConversation')).toStrictEqual([]);
   });
@@ -144,7 +144,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
     const { driver, script } = scriptedDriver('antigravity');
     const agent = (permission: string) => ({ id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'antigravity', providerDefaults: { kind: 'antigravity', model: 'gemini', permission }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }) as never;
     const sent: unknown[] = [];
-    script.on('sendPrompt', (async (context: { providerDefaults?: unknown }) => { sent.push(structuredClone(context.providerDefaults)); return { providerSession: { kind: 'antigravity', sessionId: 's' } }; }) as never);
+    script.on('sendPrompt', (async (context: { providerDefaults?: unknown }) => { sent.push(structuredClone(context.providerDefaults)); return { providerSession: { kind: 'antigravity', conversationId: 's' } }; }) as never);
     await driver.sendPrompt(agent('auto_edit'), 'hello');
     await driver.sendPrompt(agent('accept-edits'), 'again');
     expect(sent).toStrictEqual([{ kind: 'antigravity', model: 'gemini' }, { kind: 'antigravity', model: 'gemini', permission: 'accept-edits' }]);
@@ -152,7 +152,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
 
   it('publishes the conversation as neutral session state: a snapshot to start from, then patches', async () => {
     const { driver, script } = scriptedDriver('codex');
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     const seen: Array<{ type: string; agentId?: string; payload?: unknown }> = [];
     driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
     await driver.loadConversation!(agent);
@@ -167,7 +167,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
 
   it('reloads a conversation whose provider stream broke, and hands readers the repaired state', async () => {
     const { driver, script } = scriptedDriver('cursor');
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 's' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     await driver.loadConversation!(agent);
     script.emit({ type: 'cursor.conversationSnapshotChanged', agentId: 'agent-a', provider: 'cursor', providerSessionId: 's', payload: { revision: 1, snapshot: { agentId: 'agent-a', sessionId: 's', activeTurnId: null, turns: [], messages: [], clientRequests: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } as never);
     const loads = script.calls('loadConversation').length;
@@ -186,7 +186,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
     driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
     script.on('sendPrompt', (async (context: { id: string }) => {
       script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Before admission' } } as never);
-      return { providerSession: { kind: 'codex', threadId: 't' }, turnId: 'turn-1' };
+      return { providerSession: { kind: 'codex', conversationId: 't' }, turnId: 'turn-1' };
     }) as never);
     await driver.sendPrompt(agent, 'Hello');
     script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'After admission' } } as never);
@@ -200,8 +200,8 @@ describe('Korus provider drivers over the SDK Harness', () => {
   it('closes an agent that ran a review, and one whose review failed, leaving nothing open under its name', async () => {
     const { driver, script } = scriptedDriver('claude');
     opened.push(driver);
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'claude', providerSession: { kind: 'claude', sessionId: 's', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
-    script.on('executeScopedPrompt', (async () => ({ text: 'ok', session: { kind: 'claude', sessionId: 'review', transport: 'stdio' } })) as never);
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'claude', providerSession: { kind: 'claude', conversationId: 's', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    script.on('executeScopedPrompt', (async () => ({ text: 'ok', session: { kind: 'claude', conversationId: 'review', transport: 'stdio' } })) as never);
     await driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } });
     script.on('executeScopedPrompt', (async () => { throw new Error('Scoped execution was interrupted.'); }) as never);
     await expect(driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } })).rejects.toThrow('interrupted');
@@ -214,7 +214,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
   it('reports a scope\'s run as interrupted only once the run has unwound, so its conversation can then be put away', async () => {
     const { driver, script } = scriptedDriver('codex');
     opened.push(driver);
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'working' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 't' }, status: { type: 'working' }, createdAt: '', updatedAt: '' } as never;
     let stop!: (error: Error) => void;
     const order: string[] = [];
     script.on('executeScopedPrompt', (() => new Promise((_resolve, reject) => { stop = reject; })) as never);
@@ -243,16 +243,16 @@ describe('Korus provider drivers over the SDK Harness', () => {
     const seen: Array<{ type: string; payload: { snapshot?: { state: { title: string | null } } } }> = [];
     driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
     // The agent's record has adopted the review's conversation; a reader asks for its history while the review runs.
-    await expect(driver.loadConversation!({ ...(agent as object), providerSession: { kind: 'codex', threadId: 'review' } } as never)).resolves.not.toThrow();
+    await expect(driver.loadConversation!({ ...(agent as object), providerSession: { kind: 'codex', conversationId: 'review' } } as never)).resolves.not.toThrow();
     expect(script.calls('loadConversation')).toHaveLength(0);
     expect(seen).toMatchObject([{ type: 'conversation.sessionSnapshot', payload: { snapshot: { state: { title: 'Review' } } } }]);
-    finish({ text: 'ok', session: { kind: 'codex', threadId: 'review' } });
+    finish({ text: 'ok', session: { kind: 'codex', conversationId: 'review' } });
     await run;
   });
 
   it('publishes one conversation per agent: the scope it runs, then its own conversation again', async () => {
     const { driver, script } = scriptedDriver('codex');
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     await driver.loadConversation!(agent);
     const seen: Array<{ type: string; payload: { epoch: string; snapshot?: { state: { title: string | null } } } }> = [];
     driver.onEvent(event => { if (event.type.startsWith('conversation.session')) seen.push(event as never); });
@@ -261,7 +261,7 @@ describe('Korus provider drivers over the SDK Harness', () => {
       // The agent's own conversation changes meanwhile; readers keep seeing the scope it runs.
       script.emit({ type: 'agent.updated', agentId: 'agent-a', provider: 'codex', payload: { id: 'agent-a', conversationTitle: 'Main' } } as never);
       script.emit({ type: 'agent.updated', agentId: context.id, provider: 'codex', payload: { id: context.id, conversationTitle: 'Review done' } } as never);
-      return { text: 'ok', session: { kind: 'codex', threadId: 'review' } };
+      return { text: 'ok', session: { kind: 'codex', conversationId: 'review' } };
     }) as never);
     await driver.executeScopedPrompt!(agent, { prompt: 'x', cwd: '/repo', scope: { id: 's' } });
     expect(seen.map(event => event.type)).toStrictEqual(['conversation.sessionSnapshot', 'conversation.sessionPatch', 'conversation.sessionSnapshot']);
@@ -271,11 +271,11 @@ describe('Korus provider drivers over the SDK Harness', () => {
 
   it('publishes a scoped run as its agent, unless the run is silent', async () => {
     const { driver, script } = scriptedDriver('codex');
-    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', threadId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
+    const agent = { id: 'agent-a', name: 'A', avatar: 'A', folder: '/repo', provider: 'codex', providerSession: { kind: 'codex', conversationId: 't' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never;
     await driver.loadConversation!(agent);
     script.on('executeScopedPrompt', async (context: { id: string }) => {
       script.emit({ type: 'agent.statusChanged', agentId: context.id, provider: 'codex', payload: { type: 'working' } } as never);
-      return { text: 'ok', session: { kind: 'codex', threadId: 't' } };
+      return { text: 'ok', session: { kind: 'codex', conversationId: 't' } };
     });
     const seen: Array<{ agentId?: string }> = [];
     driver.onEvent(event => seen.push(event as { agentId?: string }));

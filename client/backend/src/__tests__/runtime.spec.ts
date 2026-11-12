@@ -356,7 +356,7 @@ describe('daemon runtime', () => {
 
   it.each(['codex', 'cursor'] as const)('waits for local work, replaces only %s and reloads the same conversation', async provider => {
     const snapshot: AppSnapshot = createTestSnapshot();
-    const agent: Agent = { ...mocks.snapshot.agents[0]!, provider: provider, providerDefaults: { kind: provider }, status: { type: 'working' }, providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'existing-thread' } : { kind: 'cursor', sessionId: 'existing-session' } };
+    const agent: Agent = { ...mocks.snapshot.agents[0]!, provider: provider, providerDefaults: { kind: provider }, status: { type: 'working' }, providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'existing-thread' } : { kind: 'cursor', conversationId: 'existing-session' } };
     snapshot.agents = [agent];
     const reference = structuredClone(agent.providerSession);
     snapshot.general.providerHomes = { cursor: { isolated: true, shareSkills: false, homePath: '/private/.cursor' } };
@@ -805,10 +805,10 @@ describe('daemon runtime', () => {
     mocks.sendAgentPrompt.mockImplementation((_snapshot, _driver, _agentId, _prompt, _options, emit, hooks) => {
       emit({ agentId: 'agent-dina', type: 'agent.statusChanged', payload: { type: 'working' } });
       titlePromise = hooks.onProviderSessionUpdated({
-        providerSession: { kind: 'codex', threadId: 'thread-42' },
+        providerSession: { kind: 'codex', conversationId: 'thread-42' },
       }, true);
       startedPromise = hooks.onPromptStarted({
-        providerSession: { kind: 'codex', threadId: 'thread-42' },
+        providerSession: { kind: 'codex', conversationId: 'thread-42' },
       });
     });
 
@@ -819,7 +819,7 @@ describe('daemon runtime', () => {
     expect(mocks.sendAgentPrompt).not.toHaveBeenCalled();
 
     await expect(automations.sendPrompt('agent-dina', 'run tests'))
-      .resolves.toEqual({ provider: 'codex', threadId: 'thread-42' });
+      .resolves.toEqual({ provider: 'codex', conversationId: 'thread-42' });
     await titlePromise;
     await startedPromise;
     expect(mocks.sendAgentPrompt).toHaveBeenCalledWith(
@@ -848,14 +848,14 @@ describe('daemon runtime', () => {
     let hooks: { onProviderSessionUpdated(result: unknown, isNew: boolean): Promise<void> } | undefined;
     mocks.sendAgentPrompt.mockImplementation((_snapshot, _driver, _agentId, _prompt, _options, _emit, value) => {
       hooks = value;
-      value.onPromptStarted({ providerSession: { kind: 'codex', threadId: 'thread' } });
+      value.onPromptStarted({ providerSession: { kind: 'codex', conversationId: 'thread' } });
     });
     driver.setConversationTitle.mockRejectedValue('rename failed');
     const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
     const automations = mocks.automationRunnerOptions[0] as AutomationRunnerOptions;
     await automations.sendPrompt('agent-dina', 'run');
-    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', threadId: 'thread' } }, false);
-    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', threadId: 'thread' } }, true);
+    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', conversationId: 'thread' } }, false);
+    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', conversationId: 'thread' } }, true);
     expect(mocks.warnMain).toHaveBeenCalledWith('conversation-title', 'failed', {
       agentId: 'agent-dina',
       message: 'rename failed',

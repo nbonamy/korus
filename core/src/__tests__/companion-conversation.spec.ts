@@ -26,10 +26,10 @@ describe('following a companion conversation', () => {
     expect(followCompanionConversation(null, snapshot(1))?.payload.epoch).toBe('epoch');
   });
   it('belongs to the conversation the agent is attached to, and to any before it attaches', () => {
-    const agent = { id: 'agent', provider: 'cursor' as const, providerSession: { kind: 'cursor' as const, sessionId: 'chat' } };
+    const agent = { id: 'agent', provider: 'cursor' as const, providerSession: { kind: 'cursor' as const, conversationId: 'chat' } };
     expect(followsCompanionConversation(snapshot(1), agent)).toBe(true);
     expect(followsCompanionConversation({ ...snapshot(1), payload: { ...snapshot(1).payload, conversation: null } }, agent)).toBe(true);
-    expect(followsCompanionConversation(snapshot(1), { ...agent, providerSession: { kind: 'cursor', sessionId: 'other' } })).toBe(false);
+    expect(followsCompanionConversation(snapshot(1), { ...agent, providerSession: { kind: 'cursor', conversationId: 'other' } })).toBe(false);
     expect(followsCompanionConversation(snapshot(1), { ...agent, provider: 'claude' })).toBe(false);
     expect(followsCompanionConversation(snapshot(1), { ...agent, providerSession: undefined })).toBe(true);
   });

@@ -3,7 +3,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionConversation, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { CompanionSubscription } from '../subscription';
 const target: CompanionTarget = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' } }] }) as CompanionWorkspace;
+const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' } }] }) as CompanionWorkspace;
 const frame = (revision: number, reset = false, epoch = 'epoch', conversation = 'thread') => ({ type: reset ? 'conversation.sessionSnapshot' : 'conversation.sessionPatch', provider: 'codex', agentId: 'agent', seq: revision, occurredAt: 'now',
   payload: { conversation, epoch, ...(reset ? { snapshot: { revision, state: {} } } : { patch: { revision, ops: [] } }) } }) as unknown as AppBackendEvent;
 type Sent = { frame: { payload: { snapshot?: { revision: number }; patch?: { revision: number } } } };

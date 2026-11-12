@@ -1,4 +1,4 @@
-import { operationCapabilityFlags } from '../capability-flags';
+import { operationCapabilityFlags, subagentTranscriptKinds } from '../capability-flags';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isProviderAuthentication } from '../contracts/provider-setup';
@@ -48,6 +48,7 @@ function expectProviderCapabilities(value: unknown, path: string): void {
     'approvals',
   ];
   booleans.forEach((key) => expectOptional(value, key, path, expectBoolean));
+  expectOptional(value, 'subagentTranscripts', path, (candidate, candidatePath) => expectLiteral(candidate, subagentTranscriptKinds, candidatePath));
   expectOptional(value, 'planMode', path, (candidate, candidatePath) => {
     expectLiteral(
       candidate,

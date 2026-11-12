@@ -44,7 +44,7 @@ describe('AgentHeader', () => {
     const client = createClientApiMock();
     setElectronTestClient({ onEvent: client.api.onEvent, conversationShareControl: vi.fn(() => new Promise<{ state: typeof state }>(resolve => { resolveStatus = resolve; })) });
     const wrapper = mount(AgentHeader, {
-      props: { agent: { ...agent, providerSession: { kind: 'codex', threadId: 'owner' } }, shareAvailable: true, shareStatusOnMount: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+      props: { agent: { ...agent, providerSession: { kind: 'codex', conversationId: 'owner' } }, shareAvailable: true, shareStatusOnMount: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
     });
     try {
       client.emit(decodeAppBackendEvent({ seq: 1, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, connectedGuests: 3 } }));
@@ -53,7 +53,7 @@ describe('AgentHeader', () => {
       resolveStatus({ state });
       await flushPromises();
       expect(wrapper.get('.agent-header__guest-count').text()).toBe('3');
-      await wrapper.setProps({ agent: { ...agent, id: 'other', providerSession: { kind: 'codex', threadId: 'other' } } });
+      await wrapper.setProps({ agent: { ...agent, id: 'other', providerSession: { kind: 'codex', conversationId: 'other' } } });
       expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
       resolveStatus({ state });
       await flushPromises();

@@ -88,7 +88,7 @@ describe('companion state', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const initial = await session.getWorkspace();
-      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', threadId: agent.id } })) };
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: agent.id } })) };
       return { ...session, getWorkspace: async () => workspace,
         onUpdate: listener => { update = listener; return () => {}; },
         loadConversation: async agentId => delayed ? new Promise(resolve => { finish = resolve; }) : session.loadConversation(agentId) };
@@ -99,7 +99,7 @@ describe('companion state', () => {
       const old = state.conversation.value!;
       delayed = true;
       workspace = { ...workspace,
-        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' ? agent : change === 'location' ? { ...agent, remoteConnectionId: 'new-host' } : { ...agent, providerSession: change === 'reset' ? undefined : { kind: 'codex', threadId: 'replacement' } }) };
+        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' ? agent : change === 'location' ? { ...agent, remoteConnectionId: 'new-host' } : { ...agent, providerSession: change === 'reset' ? undefined : { kind: 'codex', conversationId: 'replacement' } }) };
       update(workspace, null);
       expect(state.conversation.value).toBeNull();
       expect(state.canSend.value).toBe(false);
@@ -331,7 +331,7 @@ describe('companion state', () => {
       connector.connect = async (id) => {
         const session = await connect(id);
         const workspace = await session.getWorkspace();
-        return { ...session, getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: 'replacement' } })) }),
+        return { ...session, getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: 'replacement' } })) }),
           loadConversation: async () => { throw new Error('Unavailable'); } };
       };
       await state.reconnect();
@@ -573,7 +573,7 @@ describe('companion state', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const initial = await session.getWorkspace();
-      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', threadId: 'original' } })) };
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: 'original' } })) };
       return { ...session, sendPrompt, getWorkspace: async () => workspace, onUpdate: listener => { update = listener; return () => {}; } };
     };
     let saving: (() => void) | undefined; let hold = false;
@@ -585,7 +585,7 @@ describe('companion state', () => {
       const sent = state.submit('Ship it');
       await vi.waitFor(() => expect(saving).toBeDefined());
       hold = false;
-      workspace = { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', threadId: 'replacement' } })) };
+      workspace = { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: 'replacement' } })) };
       update(workspace, null);
       saving!();
       await sent;
@@ -659,7 +659,7 @@ it('shows a stale cached conversation immediately but separates its paint genera
   let cached: CompanionConversation | null;
   connector.connect = async id => {
     const session = await connect(id); const base = await session.getWorkspace();
-    current = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: agent.id } })) };
+    current = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
     return { ...session, getWorkspace: async () => current, onUpdate: listener => { publish = listener; return () => {}; }, cachedConversation: () => cached, isConversationCurrent: () => !stale,
       async loadConversation(id) {
         if (stale) return new Promise<CompanionConversation | null>(resolve => { finish = resolve; });

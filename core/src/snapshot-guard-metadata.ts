@@ -1,4 +1,4 @@
-import { isProviderCommandSummary, operationCapabilityFlags } from './capability-flags';
+import { isProviderCommandSummary, operationCapabilityFlags, subagentTranscriptKinds } from './capability-flags';
 import { isProviderSafetyReview } from './provider-safety-block';
 import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isDesignWorkspace } from './design';
@@ -215,12 +215,9 @@ function isAgentWorkspaceIdentity(value: unknown): boolean {
 
 function isProviderSession(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
-  if (value.kind === 'codex') return typeof value.threadId === 'string';
-  return value.kind === 'claude' &&
-    typeof value.sessionId === 'string' &&
-    includes(['stdio', 'websocket'], value.transport) &&
-    optional(value, 'transcriptSessionId', isString) &&
+  if (!isHarnessProvider(value.kind) || typeof value.conversationId !== 'string') return false;
+  return value.kind !== 'claude' || includes(['stdio', 'websocket'], value.transport) &&
+    optional(value, 'transcriptConversationId', isString) &&
     optional(value, 'transcriptFolder', isString) &&
     optional(value, 'serverUrl', isString) &&
     optional(value, 'model', isString) &&
@@ -339,6 +336,7 @@ function isProviderCapabilities(value: unknown): boolean {
     optional(value, 'thinkingBudget', isBoolean) &&
     optional(value, 'planMode', (candidate) => includes(['native', 'prompted', 'unsupported'], candidate)) &&
     optional(value, 'goals', isBoolean) &&
+    optional(value, 'subagentTranscripts', (candidate) => includes(subagentTranscriptKinds, candidate)) &&
     optional(value, 'steerPrompt', isBoolean) &&
     optional(value, 'interrupt', isBoolean) &&
     optional(value, 'history', isBoolean) &&

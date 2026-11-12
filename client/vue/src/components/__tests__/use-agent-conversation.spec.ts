@@ -121,7 +121,7 @@ describe('agentConversationState identity', () => {
   });
 
   it('keeps an unhydrated conversation loading even if a bootstrap provider frame says not loading', () => {
-    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', providerSession: { kind: 'codex' as const, threadId: 'restored' } };
+    const agent = { ...createInitialSnapshot().agents[0]!, id: 'restored', providerSession: { kind: 'codex' as const, conversationId: 'restored' } };
     const view = { agent,
       conversation: conversationFrom(agent, sessionState({ historyLoading: false })),
       history: { hydrating: true } } as unknown as AgentConversationView;

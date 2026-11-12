@@ -453,8 +453,8 @@ describe('AppShell authentication and conversation', () => {
     agent.provider = provider;
     agent.providerDefaults = { kind: provider };
     agent.providerSession = provider === 'claude'
-      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
-      : { kind: 'codex', threadId: 'thread-1' };
+      ? { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'codex', conversationId: 'thread-1' };
     agent.status = { type: 'working' };
     const wrapper = mountShell({
       snapshot, stubAgentWorkspace: false, realConversationPane: true,
@@ -483,7 +483,7 @@ describe('AppShell authentication and conversation', () => {
     const agent = snapshot.agents[0]!;
     agent.provider = 'claude';
     agent.providerDefaults = { kind: 'claude' };
-    agent.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' };
     const confirmation = { integrationId: 'claude', integrationName: 'Claude', toolName: 'Bash', summary: 'Run the tests?', argumentsPreview: '{"command":"npm test"}', allowConversation: true, allowAlways: false };
     // Claude records the tool call it asks about in the transcript.
     const pending = sessionState({ messages: [{
@@ -518,7 +518,7 @@ describe('AppShell authentication and conversation', () => {
   it('uses the provider-owned Codex conversation', () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'thread-provider' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-provider' };
     const providerMessages = [
       textMessage('provider-user', 'user', 'Provider prompt', { agentId: agent.id, turnId: 'turn-provider' }),
       textMessage('provider-assistant', 'assistant', 'Provider response', { agentId: agent.id, turnId: 'turn-provider' }),
@@ -557,8 +557,8 @@ describe('AppShell authentication and conversation', () => {
     agent.provider = backend;
     agent.providerDefaults = { kind: backend };
     agent.providerSession = backend === 'codex'
-      ? { kind: 'codex', threadId: 'thread-question' }
-      : { kind: 'cursor', sessionId: 'thread-question' };
+      ? { kind: 'codex', conversationId: 'thread-question' }
+      : { kind: 'cursor', conversationId: 'thread-question' };
     const question = {
       id: 'request-framework', kind: 'question', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
@@ -605,8 +605,8 @@ describe('AppShell authentication and conversation', () => {
     agent.provider = backend;
     agent.providerDefaults = { kind: backend };
     agent.providerSession = backend === 'claude'
-      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
-      : { kind: 'cursor', sessionId: 'cursor-session-1' };
+      ? { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'cursor', conversationId: 'cursor-session-1' };
     const messages = [textMessage('claude-owned', 'assistant', 'Provider owned', { agentId: agent.id, createdAt: '2026-09-06T00:00:01.000Z' })];
     const providerSnapshot = sessionState({
       messages,
@@ -625,7 +625,7 @@ describe('AppShell authentication and conversation', () => {
   it('forwards an edited terminal Codex prompt with its authoritative turn id', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'thread-edit' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-edit' };
     const providerMessages = [
       textMessage('user-turn-edit', 'user', 'Original prompt', { agentId: agent.id, turnId: 'turn-edit' }),
       textMessage('assistant-turn-edit', 'assistant', 'Original response', { agentId: agent.id, turnId: 'turn-edit' }),
@@ -655,7 +655,7 @@ describe('AppShell authentication and conversation', () => {
   it('keeps the asynchronous edit action attached so the SDK renders failures', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'thread-edit' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-edit' };
     const editTurnAction = vi.fn().mockRejectedValue(new Error('Codex rollback timed out'));
     const wrapper = mountShell({
       snapshot,
@@ -1258,7 +1258,7 @@ describe('AppShell authentication and conversation', () => {
       updatedAt: '2026-08-01T00:00:00.000Z',
     };
     activeAgent.plan = plan;
-    activeAgent.providerSession = { kind: 'codex', threadId: 'thread-plan' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-plan' };
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
@@ -1285,7 +1285,7 @@ describe('AppShell authentication and conversation', () => {
   it('shows the conversation\'s own execution plan', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0]!;
-    activeAgent.providerSession = { kind: 'codex', threadId: 'thread-plan' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-plan' };
     const providerSnapshot = sessionState({
       messages: [textMessage('assistant-plan', 'assistant', 'Working on it.', { agentId: activeAgent.id, turnId: 'turn-plan' })],
       activeTurnId: 'turn-plan',
@@ -1326,7 +1326,7 @@ describe('AppShell authentication and conversation', () => {
   it('shows an active debug execution plan beside newer conversation history', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0]!;
-    activeAgent.providerSession = { kind: 'codex', threadId: 'thread-debug-plan' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-debug-plan' };
     activeAgent.plan = {
       threadId: 'thread-debug-plan',
       turnId: 'debug-plan-1',
@@ -1357,7 +1357,7 @@ describe('AppShell authentication and conversation', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
-    activeAgent.providerSession = { kind: 'codex', threadId: 'thread-persisted' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     activeAgent.plan = {
       threadId: 'thread-persisted',
       turnId: 'turn-old-plan',
@@ -1557,7 +1557,7 @@ describe('AppShell authentication and conversation', () => {
       ...source,
       id: 'agent-reviewer',
       name: 'Review',
-      providerSession: { kind: 'codex' as const, threadId: 'review-thread' },
+      providerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
     };
     const next = structuredClone(snapshot);
     next.agents.push(reviewer);
@@ -1602,7 +1602,7 @@ describe('AppShell authentication and conversation', () => {
       ...source,
       id: 'agent-reviewer',
       name: 'Review',
-      providerSession: { kind: 'codex' as const, threadId: 'review-thread' },
+      providerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
     };
     const next = structuredClone(snapshot);
     next.agents.push(reviewer);
@@ -1633,7 +1633,7 @@ describe('AppShell authentication and conversation', () => {
   it('attaches a finding to the real composer and submits the user question through its stable link', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'review-thread' };
+    agent.providerSession = { kind: 'codex', conversationId: 'review-thread' };
     const finding = {
       id: 'finding-1', roundId: 'round-1', priority: 'p1' as const,
       title: 'Authorize before writing',
@@ -1713,7 +1713,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.find('.agent-ui-conversation-pane__hero').exists()).toBe(false);
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
 
-    agent.providerSession = { kind: 'codex', threadId: 'thread-created' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-created' };
     await wrapper.setProps({
       snapshot: { ...snapshot },
       activeAgent: agent,
@@ -1751,7 +1751,7 @@ describe('AppShell authentication and conversation', () => {
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
-    activeAgent.providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     const providerSnapshot = sessionState({ selection: { model: 'native-model', reasoningEffort: 'low', serviceTier: null } });
     const wrapper = mount(AppShell, {
       props: {
@@ -2080,7 +2080,7 @@ describe('AppShell authentication and conversation', () => {
     const agent = snapshot.agents[0]!;
     agent.provider = 'cursor';
     agent.providerDefaults = { kind: 'cursor' };
-    agent.providerSession = { kind: 'cursor', sessionId: 'cursor-permissions' };
+    agent.providerSession = { kind: 'cursor', conversationId: 'cursor-permissions' };
     const wrapper = mountShell({ snapshot,
       conversation: sessionState(),
       realConversationPane: true, stubAgentWorkspace: false });

@@ -132,7 +132,7 @@ describe('split-screen conversations', () => {
     const [first, second] = snapshot.agents;
     for (const agent of [first!, second!]) {
       agent.folder = `/workspace/${agent.id}`;
-      agent.providerSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+      agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     }
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async id => ({
@@ -339,7 +339,7 @@ describe('split-screen conversations', () => {
   ] as const)('focuses navigation in %s (leave before history completes: %s) without stealing pane-control focus', async (layout, leaveBeforeLoad) => {
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
-    second!.providerSession = { kind: 'codex', threadId: 'cold-thread' };
+    second!.providerSession = { kind: 'codex', conversationId: 'cold-thread' };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot, activeAgentId: id,
@@ -530,7 +530,7 @@ describe('split-screen conversations', () => {
       });
     snapshot.teams[0]!.agentIds = agents.map((agent) => agent.id);
     for (const agent of agents)
-      agent.providerSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+      agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot,
@@ -681,7 +681,7 @@ describe('split-screen conversations', () => {
   it('does not interrupt the only generating background agent when Escape is pressed in the focused idle pane', async () => {
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
-    first!.providerSession = { kind: 'codex', threadId: 'background-thread' };
+    first!.providerSession = { kind: 'codex', conversationId: 'background-thread' };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot,

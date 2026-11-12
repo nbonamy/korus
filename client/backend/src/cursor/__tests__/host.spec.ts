@@ -221,7 +221,7 @@ describe('Cursor ACP host transport boundary', () => {
       // The agent's own session was never closed, so it keeps its own tool scope without reloading.
       expect((await wire()).filter(call => call.fixture === 'prompt-admission')).toHaveLength(3);
       expect((await wire()).filter(call => call.method === 'session/load')).toHaveLength(1);
-      await expect(rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: { kind: 'cursor', sessionId: 'stale' } })).rejects.toThrow(/changed/);
+      await expect(rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: { kind: 'cursor', conversationId: 'stale' } })).rejects.toThrow(/changed/);
       await rpc.handle('driver/codeReview/dispose', { agent: reviewer, reviewerSession: result.reviewerSession });
     } finally { await rpc.close(); }
   });
@@ -418,7 +418,7 @@ describe('Cursor ACP host transport boundary', () => {
       const before = completions().length;
       const saved = current.providerSession;
       if (saved?.kind !== 'cursor') throw new Error('Expected Cursor session');
-      await host.resumeConversation!(current, { ref: { provider: 'cursor', folder: root, sessionId: saved.sessionId }, storageState: 'active' });
+      await host.resumeConversation!(current, { ref: { provider: 'cursor', folder: root, conversationId: saved.conversationId }, storageState: 'active' });
       await usage.drain();
       expect(completions()).toHaveLength(before);
       await sample(4); // A cold resume's first cumulative sample establishes a baseline, not new work.
@@ -499,7 +499,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('cold loads native history once without executing or counting replay, then continues that session', async () => {
     const observations: unknown[] = []; host.onUsage!(event => observations.push(event));
-    const saved = { ...agent, providerSession: { kind: 'cursor' as const, sessionId: 'saved-session' } };
+    const saved = { ...agent, providerSession: { kind: 'cursor' as const, conversationId: 'saved-session' } };
     await host.loadConversation!(saved);
     await host.loadConversation!(saved);
     const frames = events.filter(event => event.type === 'conversation.sessionSnapshot');
@@ -520,7 +520,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('rejects missing or foreign-workspace native history before load and never creates a replacement', async () => {
     for (const sessionId of ['missing-session', 'foreign-session']) {
-      await expect(host.loadConversation!({ ...agent, providerSession: { kind: 'cursor', sessionId } })).rejects.toThrow(/missing|workspace/i);
+      await expect(host.loadConversation!({ ...agent, providerSession: { kind: 'cursor', conversationId: sessionId } })).rejects.toThrow(/missing|workspace/i);
     }
     expect((await wire()).some(call => ['session/new', 'session/load', 'session/prompt'].includes(call.method))).toBe(false);
   });
@@ -573,18 +573,18 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('lists workspace history without creating a session and explicitly resumes only idle validated targets', async () => {
     const history = await host.listConversations!(agent, { searchTerm: 'saved', limit: 1 });
-    expect(history).toMatchObject([{ sessionId: 'saved-session', updatedAt: '', ref: { provider: 'cursor', folder: root, sessionId: 'saved-session' } }]);
+    expect(history).toMatchObject([{ sessionId: 'saved-session', updatedAt: '', ref: { provider: 'cursor', folder: root, conversationId: 'saved-session' } }]);
     expect((await wire()).some(call => call.method === 'session/new')).toBe(false);
-    await expect(host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: 'foreign-session' }, storageState: 'active' })).rejects.toThrow(/workspace/);
+    await expect(host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, conversationId: 'foreign-session' }, storageState: 'active' })).rejects.toThrow(/workspace/);
     const resumed = await host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' });
-    expect(resumed.providerSession).toStrictEqual({ kind: 'cursor', sessionId: 'saved-session' });
+    expect(resumed.providerSession).toStrictEqual({ kind: 'cursor', conversationId: 'saved-session' });
     const active = await host.sendPrompt({ ...agent, providerSession: resumed.providerSession }, 'wait');
     await expect(host.resumeConversation!(agent, { ref: history[0]!.ref, storageState: 'active' })).rejects.toThrow(/current|finish/i);
     await host.interrupt(agent, active.turnId);
   });
   it('cancels an explicit resume during replay without adopting its session', async () => {
     await writeFile(path.join(root, 'hold-load'), '');
-    const pending = host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: 'saved-session' }, storageState: 'active' }).catch(error => error);
+    const pending = host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, conversationId: 'saved-session' }, storageState: 'active' }).catch(error => error);
     await vi.waitFor(async () => expect((await wire()).some(call => call.method === 'session/load')).toBe(true));
     await host.releaseConversation!(agent.id);
     expect(await pending).toBeInstanceOf(Error);
@@ -593,11 +593,11 @@ describe('Cursor ACP host transport boundary', () => {
   it('reads validated stored messages without replacing the live session or emitting execution frames', async () => {
     const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
     const before = events.length; const observations: unknown[] = []; host.onUsage!(value => observations.push(value));
-    const messages = await host.readConversationMessages!({provider:'cursor',folder:root,sessionId:'saved-session'},agent.id);
+    const messages = await host.readConversationMessages!({ provider: 'cursor',folder:root,conversationId:'saved-session'},agent.id);
     expect(JSON.stringify(messages)).toContain('Remember synthetic marker');
     expect(events.slice(before).filter(event => event.type.startsWith('cursor.'))).toStrictEqual([]);
     expect(observations).toStrictEqual([]);
-    await expect(host.readConversationMessages!({provider:'cursor',folder:root,sessionId:'foreign-session'},agent.id)).rejects.toThrow(/workspace/i);
+    await expect(host.readConversationMessages!({ provider: 'cursor',folder:root,conversationId:'foreign-session'},agent.id)).rejects.toThrow(/workspace/i);
     await host.sendPrompt({...agent,providerSession:first.providerSession},'continue'); await vi.waitFor(() => expect(completions()).toHaveLength(2));
     expect((await wire()).filter(call => call.method === 'session/new')).toHaveLength(1);
   });
@@ -1116,7 +1116,7 @@ describe('Cursor ACP host transport boundary', () => {
   });
   it('rejects cross-session and workspace mutations without sending another prompt', async () => {
     const first = await host.sendPrompt(agent, 'hello'); await vi.waitFor(() => expect(completions()).toHaveLength(1));
-    await expect(host.sendPrompt({ ...agent, providerSession: { kind: 'cursor', sessionId: 'wrong' } }, 'wrong')).rejects.toThrow('identity');
+    await expect(host.sendPrompt({ ...agent, providerSession: { kind: 'cursor', conversationId: 'wrong' } }, 'wrong')).rejects.toThrow('identity');
     await expect(host.sendPrompt({ ...agent, folder: path.join(root, 'different') }, 'wrong')).rejects.toThrow(/workspace|identity/);
     expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
     expect(first.providerSession.kind).toBe('cursor');
@@ -1141,7 +1141,7 @@ describe('Cursor ACP host transport boundary', () => {
       expect((await snapshot()).turns).toMatchObject([{ status: 'interrupted' }]);
       vi.useRealTimers();
       if (first.providerSession.kind !== 'cursor') throw new Error('Invalid session');
-      await host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, sessionId: first.providerSession.sessionId }, storageState: 'active' });
+      await host.resumeConversation!(agent, { ref: { provider: 'cursor', folder: root, conversationId: first.providerSession.conversationId }, storageState: 'active' });
       await host.sendPrompt({ ...agent, providerSession: first.providerSession }, 'RECOVERED');
       await vi.waitFor(() => expect(completions()).toHaveLength(2));
     } finally { vi.useRealTimers(); }

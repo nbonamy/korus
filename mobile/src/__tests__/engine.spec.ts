@@ -169,7 +169,7 @@ describe('companion engine', () => {
     const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents[0] = { ...workspace.agents[0]!, provider: provider, providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'session' } : { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      workspace.agents[0] = { ...workspace.agents[0]!, provider: provider, providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'session' } : { kind: 'claude', conversationId: 'session', transport: 'stdio' } };
       return { ...session, getWorkspace: async () => workspace, readConversationContent };
     };
     const { engine, events } = open(connector);
@@ -686,7 +686,7 @@ describe('companion engine', () => {
       const session = await connect(id);
       return { ...session, loadTurnHistory, getWorkspace: async () => {
         const workspace = await session.getWorkspace();
-        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: agent.id } })) };
+        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
       } };
     };
     const { engine, events } = open(connector);
@@ -1118,7 +1118,7 @@ it('uses acknowledged transcript checkpoints for warm agent switching and recove
   const extended: import('../companion-port').CompanionConnector = { ...connector,
     cachedConversation: value => cache?.peek(value), conversationUpdates: (value, since) => cache?.updates(value, since) ?? null,
     async connect(id) {
-      const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
       cache = new ConversationCache(async (_method, value) => { cache.receive((await session.loadConversation(value.agentId))!); }, () => {});
       return { ...session, getWorkspace: async () => workspace, cachedConversation: id => cache.peek(target(id)), loadConversation: id => cache.select(target(id)) };
     },

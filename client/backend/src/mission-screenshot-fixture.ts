@@ -12,7 +12,7 @@ export const missionScreenshotModel: ProviderModelOption = {
 
 /** Reserved synthetic sessions never reach a provider, including after a daemon restart. */
 export function isMissionScreenshotAgent(agent: Agent): boolean {
-  return agent.providerSession?.kind === 'claude' && agent.providerSession.sessionId.startsWith(sessionPrefix);
+  return agent.providerSession?.kind === 'claude' && agent.providerSession.conversationId.startsWith(sessionPrefix);
 }
 
 export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: string, now = new Date().toISOString()): Mission {
@@ -28,7 +28,7 @@ export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: 
   ].map(({ role, name, repository, working }): Agent => ({
     id: `${missionId}-screenshot-${role}`, teamId: team.id, name,
     folder: repositories[repository]!, provider: 'claude',
-    providerSession: { kind: 'claude', sessionId: `${sessionPrefix}${missionId}:${role}`, transport: 'stdio' },
+    providerSession: { kind: 'claude', conversationId: `${sessionPrefix}${missionId}:${role}`, transport: 'stdio' },
     providerDefaults: { kind: 'claude', model: missionScreenshotModel.model, userSelectedModel: true },
     workspace: { kind: 'git', folder: repositories[repository]!, repositoryName: repositories[repository]!.split('/').at(-1)!,
       repositoryRoot: repositories[repository]!, primaryWorktreeRoot: repositories[repository]!, branch, isLinkedWorktree: true, updatedAt: now },
@@ -123,5 +123,5 @@ export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: st
 export function missionScreenshotSnapshotEvent(agentId: string, agent: Agent | null | undefined, state: SessionState): import('@workspace/core/provider-driver').BackendEvent {
   const session = agent?.providerSession;
   return { agentId, provider: 'claude', type: 'conversation.sessionSnapshot',
-    payload: { conversation: session && session.kind !== 'codex' ? session.sessionId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state } } };
+    payload: { conversation: session && session.kind !== 'codex' ? session.conversationId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state } } };
 }

@@ -5,7 +5,7 @@ import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 
 const prompts = { request: 'Write the handoff.', continuation: (summary: string) => `Background:\n${summary}`, model: 'small', reasoningEffort: 'low', maxCharacters: 20 };
 const agent = (provider: Agent['provider'], id: string, session?: Agent['providerSession']): Agent => ({ id, name: id, avatar: 'A', folder: '/repo', provider, providerSession: session, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent);
-const codexSession = { kind: 'codex', threadId: 'old-thread' } as const;
+const codexSession = { kind: 'codex', conversationId: 'old-thread' } as const;
 
 describe('handing a conversation from one harness to another', () => {
   it('summarizes on the first harness, starts the second with the summary and archives the first conversation', async () => {

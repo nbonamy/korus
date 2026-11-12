@@ -17,7 +17,7 @@ describe('agent-manager lifecycle', () => {
   it('updates the agent folder and clears the old thread mapping', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-old' };
     snapshot.agents[0].contextUsage = {
       totalTokens: 397_740,
       inputTokens: 320_000,
@@ -112,7 +112,7 @@ describe('agent-manager lifecycle', () => {
     resumeAgentConversationInSnapshot(
       resumeSnapshot,
       'agent-dina',
-      { kind: 'codex', threadId: 'thread-resumed' },
+      { kind: 'codex', conversationId: 'thread-resumed' },
     );
     expect(resumeSnapshot.agents[0].conversationTitle).toBeUndefined();
     expect(resumeSnapshot.agents[0].autoResumePending).toBeUndefined();
@@ -331,7 +331,7 @@ describe('agent-manager lifecycle', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const agent = snapshot.agents[0];
     agent.status = { type: 'working', detail: 'Running tests' };
-    agent.providerSession = { kind: 'codex', threadId: 'thread-old' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-old' };
     agent.contextUsage = {
       totalTokens: 397_740,
       inputTokens: 320_000,
@@ -375,7 +375,7 @@ describe('agent-manager lifecycle', () => {
       avatar: 'DI',
       folder: '~/src/agent-workspace',
       status: { type: 'working', detail: 'Running tests' },
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
       plan: { turnId: 'turn-plan' },
       goal: { objective: 'Old goal' },
       updatedAt: '2026-06-05T10:11:12.000Z',
@@ -388,7 +388,7 @@ describe('agent-manager lifecycle', () => {
   it('clears an edited name without changing the existing agent workspace', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-existing' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-existing' };
 
     updateAgentFromInput(snapshot, {
       id: 'agent-dina',
@@ -398,7 +398,7 @@ describe('agent-manager lifecycle', () => {
     expect(snapshot.agents[0].name).toBeNull();
     expect(snapshot.agents[0].avatar).toBe('DI');
     expect(snapshot.agents[0].folder).toBe('~/src/agent-workspace');
-    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-existing' });
+    expect(snapshot.agents[0].providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-existing' });
   });
 
   it('updates the Git diff target without changing the agent name', () => {

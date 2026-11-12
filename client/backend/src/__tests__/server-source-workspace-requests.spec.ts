@@ -210,8 +210,8 @@ describe('AppBackendServer', () => {
     snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
     createQuickChatInSnapshot(snapshot, { teamId: 'team-test', selection: { provider: provider } }, undefined, 'agent-quick-chat', { select: false });
     const providerSession = provider === 'codex'
-      ? { kind: 'codex', threadId: 'thread-project' }
-      : { kind: 'claude', sessionId: 'session-project', transport: 'stdio' };
+      ? { kind: 'codex', conversationId: 'thread-project' }
+      : { kind: 'claude', conversationId: 'session-project', transport: 'stdio' };
     const repository = {
       name: 'new-product', path: '/src/new-product', worktrees: [{ name: 'main', path: '/src/new-product' }],
     };

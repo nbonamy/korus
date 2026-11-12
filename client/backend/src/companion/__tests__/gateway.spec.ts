@@ -1,3 +1,4 @@
+import type { Agent } from '@workspace/core/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { CompanionGateway, companionAgentMethods, type GatewayState } from '../gateway';
@@ -51,10 +52,10 @@ describe('companion authorization gateway', () => {
   it.each([false, true])('keeps phone subscriptions readable while a published snapshot is still saving (safety findings: %s)', async (withFindings) => {
     const f = fixture(); await f.pair();
     const app = createTestSnapshot();
-    const agent = { ...workspace.agents[0]!, providerSession: { kind: 'codex' as const, threadId: 'thread' } };
+    const agent = { ...workspace.agents[0]!, providerSession: { kind: 'codex' as const, conversationId: 'thread' } };
     app.agents = [agent];
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [agent] });
-    const phoneTarget = { ...target, sessionId: JSON.stringify(agent.providerSession) };
+    const phoneTarget = { ...target, sessionId: companionSessionId({ providerSession: agent.providerSession } as Agent) };
     const frame = conversationOf(agent.id, 'codex', 'thread', [], withFindings ? {
       turns: [{ id: 'blocked', status: 'failed', willRetry: false,
         startedAt: null, completedAt: null, durationMs: null,
@@ -240,7 +241,7 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     const sessionId = 'image-session'; const contentId = 'a'.repeat(64);
     const reference = `conversation-image:${sessionId}:${contentId}`;
-    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', threadId: sessionId } }] });
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: sessionId } }] });
     const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: sessionId }) };
     // Reading a thumbnail must not reload history: overlapping reloads can leave
     // the companion snapshot unavailable, even though the provider owns the image.
@@ -438,14 +439,14 @@ describe('companion authorization gateway', () => {
   });
   it('answers an older page with the conversation that includes it, and checks content reads again after revocation or session changes', async () => {
     const f = fixture();
-    const providerSession = { kind: 'claude' as const, sessionId: 'claude-session', transport: 'stdio' as const };
+    const providerSession = { kind: 'claude' as const, conversationId: 'claude-session', transport: 'stdio' as const };
     const claudeWorkspace = { ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'claude' as const, providerSession: providerSession }] };
     f.port.workspace.mockResolvedValue(claudeWorkspace);
-    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'claude', sessionId: providerSession.sessionId }) };
-    const frame = conversationOf('agent', 'claude', providerSession.sessionId, [{ id: 'older', role: 'user', parts: [] }], {}, 2);
+    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'claude', sessionId: providerSession.conversationId }) };
+    const frame = conversationOf('agent', 'claude', providerSession.conversationId, [{ id: 'older', role: 'user', parts: [] }], {}, 2);
     f.port.loadOlderHistory.mockResolvedValue({ hasOlder: false });
     f.port.conversation.mockResolvedValue(frame);
-    const input = { sessionId: providerSession.sessionId, contentId: 'a'.repeat(64), offset: 0 };
+    const input = { sessionId: providerSession.conversationId, contentId: 'a'.repeat(64), offset: 0 };
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('authorized');
     await f.pair();
     expect(await f.gateway.request('phone', 'conversation.loadOlder', currentTarget)).toStrictEqual({ frame, hasOlder: false });
@@ -453,7 +454,7 @@ describe('companion authorization gateway', () => {
     expect(await f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).toStrictEqual({ data: 'e30=', totalBytes: 2, nextOffset: null });
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input: { ...input, offset: -1 } })).rejects.toThrow();
     f.port.readConversationContent.mockImplementationOnce(async () => {
-      f.port.workspace.mockResolvedValue({ ...claudeWorkspace, agents: [{ ...claudeWorkspace.agents[0]!, providerSession: { ...providerSession, sessionId: 'new' } }] });
+      f.port.workspace.mockResolvedValue({ ...claudeWorkspace, agents: [{ ...claudeWorkspace.agents[0]!, providerSession: { ...providerSession, conversationId: 'new' } }] });
       return { data: 'e30=', totalBytes: 2, nextOffset: null };
     });
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('stale');
@@ -644,7 +645,7 @@ describe('companion authorization gateway', () => {
   });
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
-    const claude = { provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session' } };
+    const claude = { provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session' } };
     type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadTurnHistory' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setProvider' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview' | 'readReview' | 'reviewAction'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'agent.rename': { args: t => ({ target: t, name: 'Renamed' }), effect: 'renameAgent' },
@@ -945,13 +946,13 @@ describe('companion authorization gateway', () => {
   });
   it('rejects a conversation for another live session, even if it has the selected agent ID', async () => {
     const f = fixture(); await f.pair();
-    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', threadId: 'current-thread' } }] });
+    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'current-thread' } }] });
     f.port.conversation.mockResolvedValue(conversationOf('agent', 'codex', 'other-thread'));
     await expect(f.gateway.request('phone', 'conversation.subscribe', { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'current-thread' }) })).rejects.toThrow('session mismatch');
   });
   it('serves the conversation an agent is attached to, or one before the session names it, for any provider', async () => {
     const f = fixture(); await f.pair();
-    const claude = { ...workspace.agents[1]!, providerSession: { kind: 'claude', sessionId: 'resumed-session' } } as unknown as typeof workspace.agents[number];
+    const claude = { ...workspace.agents[1]!, providerSession: { kind: 'claude', conversationId: 'resumed-session' } } as unknown as typeof workspace.agents[number];
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [workspace.agents[0]!, claude] });
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: JSON.stringify({ kind: 'claude', sessionId: 'resumed-session' }) };
     f.port.conversation.mockResolvedValue(conversationOf('remote-agent', 'claude', 'resumed-session', [], {}, 4));
@@ -1093,13 +1094,13 @@ describe('companion authorization gateway', () => {
       expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
     });
     it.each([
-      ['a chat that already has a conversation', { providerSession: { kind: 'codex', threadId: 'thread' } }, 'claude'],
+      ['a chat that already has a conversation', { providerSession: { kind: 'codex', conversationId: 'thread' } }, 'claude'],
       ['a chat that has sent a prompt', { hasSubmittedPrompt: true }, 'claude'],
       ['a chat that is working', { status: { type: 'working' } }, 'claude'],
       ['an engine the laptop cannot use', {}, 'antigravity'],
     ])('refuses %s', async (_name, change, provider) => {
       const f = await ready(change);
-      const current = 'providerSession' in change ? { ...target, sessionId: JSON.stringify(change.providerSession) } : target;
+      const current = 'providerSession' in change ? { ...target, sessionId: companionSessionId({ providerSession: change.providerSession } as Agent) } : target;
       await expect(f.gateway.request('phone', 'agent.provider.set', { target: current, provider: provider })).rejects.toThrow();
       await expect(f.gateway.request('phone', 'agent.provider.set', { target: { ...target, agentId: 'ghost' }, provider: 'claude' })).rejects.toThrow('stale');
       expect(f.port.setProvider).not.toHaveBeenCalled();
@@ -1166,7 +1167,7 @@ it('lists, streams and admits Cursor agents like every other provider', async ()
   vi.useFakeTimers();
   const f = fixture(); await f.pair();
   const providers = ['codex','claude','antigravity','cursor'];
-  const agents = providers.map(provider => ({...workspace.agents[0]!,id:provider,provider: provider,providerSession:provider === 'codex' ? {kind:'codex',threadId:provider} : provider === 'claude' ? {kind:'claude',sessionId:provider,transport:'stdio'} : {kind:provider,sessionId:provider}})) as CompanionWorkspace['agents'];
+  const agents = providers.map(provider => ({...workspace.agents[0]!,id:provider,provider: provider,providerSession:provider === 'codex' ? { kind: 'codex',conversationId:provider} : provider === 'claude' ? { kind: 'claude',conversationId:provider,transport:'stdio'} : { kind: provider,conversationId:provider}})) as CompanionWorkspace['agents'];
   const mixed: CompanionWorkspace = {teams:[{id:'team',name:'Team',agentIds:agents.map(agent=>agent.id)}],agents,providers:{team:['codex','claude','antigravity','cursor']},modelFavorites:[{provider:'cursor',modelId:'cursor-model',reasoningEffort:null,serviceTier:null}],agentRequests:{cursor:[]},queuedPrompts:[{id:'q',agentId:'cursor',text:'cursor prompt'}]};
   f.port.workspace.mockResolvedValue(mixed);
   f.port.conversation.mockImplementation(async (id: string) => conversationOf(id, id, id));

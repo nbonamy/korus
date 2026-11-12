@@ -16,7 +16,7 @@ describe('injected prompt presentation', () => {
     const snapshot = createTestSnapshot();
     const agent: Agent = { id: 'worker', name: 'Worker', folder: '/repo', provider: 'codex', teamId: 'team-test',
       pendingPrompts: [{ id: 'stale', text: 'Old injection', createdAt: '2026-11-09T00:00:00.000Z' }],
-      providerSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
+      providerSession: { kind: 'codex', conversationId: 'thread' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
     snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
     let release!: () => void;
     let fail!: (error: Error) => void;

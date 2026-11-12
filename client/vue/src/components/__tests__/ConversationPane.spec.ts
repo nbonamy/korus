@@ -96,7 +96,7 @@ describe('ConversationPane', () => {
   afterEach(() => { delete nativeWindow.agentUiHostCapabilities; vi.unstubAllGlobals(); });
   it('loads consecutive older Claude pages when more history remains', async () => {
     const snapshot = createInitialSnapshot();
-    const owner = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+    const owner = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } };
     const recent = { ...messages[1]!, id: 'recent' };
     const older = { ...messages[1]!, id: 'older', turnId: 'older-turn' };
     const view = shallowReactive<AgentConversationView & { session: SessionState | null }>({
@@ -159,7 +159,7 @@ describe('ConversationPane', () => {
       expect(submit).not.toHaveBeenCalled();
     } finally { wrapper.unmount(); }
   });
-  const claudeAgent = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+  const claudeAgent = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } };
   it.each([
     ['claude', '/repo/banner.png', '/repo/banner.png'],
     ['codex', 'file:///repo/blue%20flower.png', '/repo/blue flower.png'],
@@ -225,7 +225,7 @@ describe('ConversationPane', () => {
     const setAutoResume = vi.fn().mockResolvedValue({});
     setElectronTestClient({ setAutoResume });
     const pause = { provider: 'claude' as const, conversationId: 'session', detectedAt: Date.now(), resumeAt: Date.now() + 60_000, enabled: true };
-    const current = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
+    const current = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
     const wrapper = mountPane({ controller: controllerFor(messages), agent: current });
     expect(wrapper.get('.agent-ui-conversation-pane__composer-shelf [role="status"]').text()).toContain('Auto-resume');
     expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('true');
@@ -379,7 +379,7 @@ describe('ConversationPane', () => {
   });
 
   it('keeps an interrupted handoff and its saved note visible after restoring the agent', () => {
-    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { provider: 'claude', sessionId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'codex' } } } });
+    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { provider: 'claude', conversationId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'codex' } } } });
     expect(wrapper.get('[role="status"]').text()).toContain('Check the target conversation before resending.');
     expect(wrapper.get('details pre').text()).toBe('The next action is to review the diff.');
   });

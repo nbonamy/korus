@@ -135,7 +135,7 @@ it('refreshes review findings, serializes actions and never replays an uncertain
     expect(reviewAction).toHaveBeenCalledTimes(2);
     expect(engine.snapshot().review.action).toBe('failed');
     details.target = { ...details.target, sessionId: 'next-round-session' };
-    workspace = { ...workspace, reviewFindings: { "demo-agent": 3 }, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerSession: { kind: 'codex' as const, threadId: 'next-round-session' } } : agent) };
+    workspace = { ...workspace, reviewFindings: { "demo-agent": 3 }, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerSession: { kind: 'codex' as const, conversationId: 'next-round-session' } } : agent) };
     update(workspace, null);
     expect(engine.snapshot().reviewFindingsCount).toBe(3);
     await vi.waitFor(() => expect(engine.snapshot().review.details?.target.sessionId).toBe('next-round-session'));

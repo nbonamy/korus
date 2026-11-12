@@ -667,8 +667,8 @@ describe('AppShell workspace and plans', () => {
     snapshot.agents[0].provider = provider;
     snapshot.agents[0].providerDefaults = { kind: provider };
     snapshot.agents[0].providerSession = provider === 'codex'
-      ? { kind: 'codex', threadId: 'thread-root' }
-      : { kind: 'claude', sessionId: 'thread-root', transport: 'stdio' };
+      ? { kind: 'codex', conversationId: 'thread-root' }
+      : { kind: 'claude', conversationId: 'thread-root', transport: 'stdio' };
     snapshot.subagentTrees[snapshot.agents[0].id] = {
       rootConversationId: 'thread-root',
       nodes: {
@@ -707,13 +707,13 @@ describe('AppShell workspace and plans', () => {
     ]);
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['scout', 'reviewer']);
     expect(readConversationMessages).toHaveBeenCalledWith(
-      provider === 'codex' ? { provider: provider, threadId: 'thread-scout' }
-        : { provider: provider, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-scout' },
+      provider === 'codex' ? { provider: provider, conversationId: 'thread-scout' }
+        : { provider: provider, folder: snapshot.agents[0].folder, conversationId: 'thread-root', subagentId: 'thread-scout' },
       snapshot.agents[0].id,
     );
     expect(readConversationMessages).toHaveBeenCalledWith(
-      provider === 'codex' ? { provider: provider, threadId: 'thread-reviewer' }
-        : { provider: provider, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-reviewer' },
+      provider === 'codex' ? { provider: provider, conversationId: 'thread-reviewer' }
+        : { provider: provider, folder: snapshot.agents[0].folder, conversationId: 'thread-root', subagentId: 'thread-reviewer' },
       snapshot.agents[0].id,
     );
   });
@@ -1545,7 +1545,7 @@ describe('AppShell workspace and plans', () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.provider = backend;
-    agent.providerSession = backend === 'codex' ? { kind: 'codex', threadId: 'planning' } : { kind: 'cursor', sessionId: 'planning' };
+    agent.providerSession = backend === 'codex' ? { kind: 'codex', conversationId: 'planning' } : { kind: 'cursor', conversationId: 'planning' };
     agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
     const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'accept' });
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, updatePlanReview } });

@@ -96,7 +96,7 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/repo',
       provider: 'codex' as const,
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       status: { type: 'idle' as const },
       createdAt: '2026-09-08T00:00:00.000Z',
       updatedAt: '2026-09-08T00:00:00.000Z',

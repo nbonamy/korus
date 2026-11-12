@@ -488,7 +488,7 @@ describe('AppShell navigation and teams', () => {
         completedAt: '2026-06-09T10:01:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { provider: 'codex', threadId: 'thread-jesse' },
+        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { provider: 'codex', conversationId: 'thread-jesse' },
       }],
       createdAt: '2026-06-09T09:59:00.000Z',
       updatedAt: '2026-06-09T10:01:00.000Z',
@@ -516,7 +516,7 @@ describe('AppShell navigation and teams', () => {
     await wrapper.get('[aria-label="View conversation for automation-exec-1"]').trigger('click');
     await flushPromises();
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', threadId: 'thread-jesse' }, 'agent-jesse');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-jesse' }, 'agent-jesse');
     expect(wrapper.emitted('select-agent')).toBeUndefined();
     expect(wrapper.find('.automations-view').exists()).toBe(true);
     expect(wrapper.find('.automation-execution-conversation-overlay').exists()).toBe(true);

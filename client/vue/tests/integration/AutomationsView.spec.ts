@@ -151,7 +151,7 @@ describe('AutomationsView', () => {
     const wrapper = view({ automations: [automation({ executionLog: [
       { id: 'active', automationId: 'auto', status: 'awaitingInput', startedAt: '2026-10-06T12:00:00Z', agentId: 'quick', agentName: 'Quick Chat' },
       { id: 'done', automationId: 'auto', status: 'completed', startedAt: '2026-10-06T11:00:00Z', completedAt: '2026-10-06T11:01:00Z',
-        agentId: 'quick', agentName: 'Quick Chat', conversationRef: { provider: provider, sessionId: 'session', folder: null } },
+        agentId: 'quick', agentName: 'Quick Chat', conversationRef: { provider: provider, conversationId: 'session', folder: null } },
       { id: 'failed', automationId: 'auto', status: 'failed', startedAt: '2026-10-06T10:00:00Z', error: 'Login required' },
     ] })], readConversationMessages, deleteAutomationExecution, clearAutomationHistory });
     expect(wrapper.get('[aria-label="Run Morning"]').attributes('disabled')).toBeDefined();
@@ -160,7 +160,7 @@ describe('AutomationsView', () => {
     expect(wrapper.text()).toContain('Login required');
     expect(wrapper.get('[aria-label="Delete execution for active"]').attributes('disabled')).toBeDefined();
     await wrapper.get('[aria-label="View conversation for done"]').trigger('click'); await flushPromises();
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: provider, sessionId: 'session', folder: null }, 'quick');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: provider, conversationId: 'session', folder: null }, 'quick');
     expect(wrapper.get('.automation-execution-conversation-overlay').text()).toContain('Quick Chat');
     expect(wrapper.get('.automation-execution-conversation-overlay').text()).not.toContain('done');
     await wrapper.get('[aria-label="Close conversation preview"]').trigger('click');

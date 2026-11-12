@@ -152,7 +152,7 @@ describe('Linear hosted MCP through daemon', () => {
         }
       });
       try {
-        const currentAgent = index === 0 ? agent : { ...agent, providerSession: { kind: 'claude' as const, sessionId: 'persisted-session', transport: 'stdio' as const } };
+        const currentAgent = index === 0 ? agent : { ...agent, providerSession: { kind: 'claude' as const, conversationId: 'persisted-session', transport: 'stdio' as const } };
         const send = driver.sendPrompt(currentAgent, 'Read ENG-12');
         await vi.waitFor(() => expect(sdk.options).toHaveLength(index + 1));
         const options = sdk.options[index]!;

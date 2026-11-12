@@ -8,7 +8,7 @@ const state = (patch: Partial<SessionState> = {}): SessionState => ({
   messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...patch,
 });
 const message = (id: string, parts: Message['parts']): Message => ({ id, agentId: 'a', role: 'assistant', status: 'complete', createdAt: '', parts });
-const agent = (patch: Partial<Agent> = {}) => ({ id: 'a', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' }, ...patch }) as Agent;
+const agent = (patch: Partial<Agent> = {}) => ({ id: 'a', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' }, ...patch }) as Agent;
 
 describe('conversation presentation', () => {
   it('shows the harness state as it is, with the latest turn', () => {
@@ -26,7 +26,7 @@ describe('conversation presentation', () => {
       message('mixed', [{ type: 'reasoning', itemId: 'r', summary: 'Thought', summaryIndex: 0 }, { type: 'text', text: 'Answer' }]),
       message('thought', [{ type: 'reasoning', itemId: 'r2', summary: 'Thought', summaryIndex: 0 }]),
     ];
-    const cursor = projectSessionConversation(state({ messages }), agent({ provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 's' } }))!;
+    const cursor = projectSessionConversation(state({ messages }), agent({ provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 's' } }))!;
     expect(cursor.messages.map(m => m.parts)).toStrictEqual([[{ type: 'text', text: 'Answer' }]]);
     expect(projectSessionConversation(state({ messages }), agent())!.messages).toHaveLength(2);
   });

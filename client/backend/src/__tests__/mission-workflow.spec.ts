@@ -51,7 +51,7 @@ it.each([
         const worker = snapshot.agents.find(agent => agent.id === id)!;
         expect(worker.provider).toBe(backend);
         expect(worker.providerDefaults).toEqual({ kind: backend, model: 'selected-model' });
-        worker.providerSession = backend === 'codex' ? { kind: backend, threadId: id } : { kind: backend, sessionId: id };
+        worker.providerSession = backend === 'codex' ? { kind: backend, conversationId: id } : { kind: backend, conversationId: id };
         prompts.push(prompt);
       }, startRemediation: async () => {},
       createWorktree: createSourceWorktree, getHead: readWorktreeHead,

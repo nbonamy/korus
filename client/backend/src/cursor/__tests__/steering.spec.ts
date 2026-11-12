@@ -106,7 +106,7 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     const prompts = calls.filter(call => call.method === 'session/prompt');
     expect(prompts).toHaveLength(2);
     expect(JSON.stringify(prompts[1].params.prompt)).toContain('ATTACHMENT_MARKER');
-    expect(calls.filter(call => call.method === 'session/set_config_option').map(call => call.params)).toEqual(expect.arrayContaining([{ sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.sessionId : '', configId: 'model', value: 'composer-2.5' }, { sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.sessionId : '', configId: 'mode', value: 'plan' }]));
+    expect(calls.filter(call => call.method === 'session/set_config_option').map(call => call.params)).toEqual(expect.arrayContaining([{ sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.conversationId : '', configId: 'model', value: 'composer-2.5' }, { sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.conversationId : '', configId: 'mode', value: 'plan' }]));
     await host.loadConversation!(agent);
     const frame = events.filter(event => event.type === 'conversation.sessionSnapshot').at(-1);
     if (frame?.type !== 'conversation.sessionSnapshot') throw new Error('Missing snapshot');
@@ -126,7 +126,7 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     await vi.waitFor(async () => expect((await wire()).some(call => call.fixture === 'fence-held')).toBe(true));
     await expect(steer()).rejects.toThrow(/steer|operation/i);
     if (change === 'opt-out') enabled = false;
-    if (change === 'session') agent.providerSession = { kind: 'cursor', sessionId: 'different-session' };
+    if (change === 'session') agent.providerSession = { kind: 'cursor', conversationId: 'different-session' };
     if (change === 'workspace') agent.folder = path.dirname(root);
     // The daemon tells the driver when an agent's record changed; an operation in flight then sees the new values.
     if (change === 'session' || change === 'workspace') host.agentChanged!(agent);

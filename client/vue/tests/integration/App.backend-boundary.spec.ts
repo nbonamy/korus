@@ -21,7 +21,7 @@ describe('Unified backend → mounted application', () => {
   it('shows a history error after a startup event is covered by the roster, and Retry loads the transcript', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'restored-history' };
+    agent.providerSession = { kind: 'codex', conversationId: 'restored-history' };
     const { api, emitSequenced } = installBackendFixture(snapshot);
     let fail!: (error: Error) => void;
     api.loadConversationHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
@@ -376,7 +376,7 @@ describe('Unified backend → mounted application', () => {
   it.each(['during', 'after'])('renders the first Codex history reset received %s the startup snapshot read', async timing => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'first-history' };
+    agent.providerSession = { kind: 'codex', conversationId: 'first-history' };
     const { api, emitSequenced } = installBackendFixture(snapshot);
     let finishHistory!: (value: typeof snapshot) => void;
     api.loadConversationHistory.mockImplementationOnce(() => new Promise(resolve => { finishHistory = resolve; }));
@@ -401,7 +401,7 @@ describe('Unified backend → mounted application', () => {
   it.each(['backend gap', 'desktop recovery'])('settles a silent completed report after %s without another user prompt', async (recovery) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'thread-1' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-1' };
     const { api, emit, emitSequenced } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
@@ -527,7 +527,7 @@ describe('Unified backend → mounted application', () => {
   it('reflects execution progress and queued work from backend events without inventing review state', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.providerSession = { kind: 'codex', threadId: 'thread-1' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-1' };
     const { emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
@@ -696,14 +696,14 @@ describe('Unified backend → mounted application', () => {
       ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
-      providerSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
+      providerSession: { kind: 'codex' as const, conversationId: 'reviewer-1' },
     };
     reviewer.codeReview = {
       id: 'review-1', targetAgentId: agent.id, reviewerAgentId: reviewer.id,
       scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready', activeRoundId: 'round-1',
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:01:00.000Z',
       rounds: [{
-        id: 'round-1', number: 1, status: 'ready', reviewerSession: { kind: 'codex', threadId: 'reviewer-1' },
+        id: 'round-1', number: 1, status: 'ready', reviewerSession: { kind: 'codex', conversationId: 'reviewer-1' },
         startedAt: '2026-09-19T10:00:00.000Z', completedAt: '2026-09-19T10:01:00.000Z',
         findings: [{
           id: 'finding-1', roundId: 'round-1', priority: 'p1',

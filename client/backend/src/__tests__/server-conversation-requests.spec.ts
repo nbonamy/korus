@@ -27,7 +27,7 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const source = {
       id: 'proposal-source', teamId: snapshot.teams[0]!.id, name: 'Source', folder: '/workspace/source', provider: 'codex' as const,
-      providerSession: { kind: 'codex' as const, threadId: 'source-thread' }, status: { type: 'idle' as const },
+      providerSession: { kind: 'codex' as const, conversationId: 'source-thread' }, status: { type: 'idle' as const },
       threadFlags: { work_proposed: true as const, ready_for_review: true as const },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     };
@@ -36,14 +36,14 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = [other.id, source.id];
     snapshot.activeAgentId = other.id;
     let rejectPrompt!: (error: Error) => void;
-    let acceptPrompt!: (result: { providerSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
+    let acceptPrompt!: (result: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
     const sendPrompt = vi.fn()
       .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPrompt = reject; }))
       .mockImplementationOnce(() => new Promise(resolve => { acceptPrompt = resolve; }));
     const driver: AgentProviderDriver = {
       provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities, sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'source-thread' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'source-thread' } }),
       respondToAgentRequest: async () => undefined, onEvent: () => () => undefined, close: async () => undefined,
     };
     const persisted: AppSnapshot[] = [];
@@ -73,7 +73,7 @@ describe('AppBackendServer', () => {
       expect(source.threadFlags).toBeUndefined();
       // A fresh flag published before the admission reply must survive that reply.
       source.threadFlags = { ready_for_review: true } as typeof source.threadFlags;
-      acceptPrompt({ providerSession: { kind: 'codex', threadId: 'source-thread' }, turnId: 'accepted' });
+      acceptPrompt({ providerSession: { kind: 'codex', conversationId: 'source-thread' }, turnId: 'accepted' });
       expect(await retry).toMatchObject({ result: { agents: [
         { id: other.id, threadFlags: { work_proposed: true } },
         { id: source.id, threadFlags: { ready_for_review: true } },
@@ -101,7 +101,7 @@ describe('AppBackendServer', () => {
         createdAt: '2026-06-13T00:00:00.000Z',
         updatedAt: '2026-06-13T00:00:00.000Z',
       }];
-      let accept!: (value: { providerSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
+      let accept!: (value: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
       const sendPrompt = vi.fn().mockImplementation(() => new Promise(resolve => { accept = resolve; }));
       const setConversationTitle = vi.fn().mockResolvedValue(undefined);
       const driver: AgentProviderDriver = {
@@ -109,7 +109,7 @@ describe('AppBackendServer', () => {
         getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
         getCapabilities: () => codexProviderCapabilities,
         sendPrompt,
-        interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+        interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
         respondToAgentRequest: async () => undefined,
         setConversationTitle,
         onEvent: () => () => undefined,
@@ -140,17 +140,17 @@ describe('AppBackendServer', () => {
       expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toBeUndefined();
       expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
       emitTurnStarted(server, 'agent-dina', 'turn-1');
-      accept({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-1' });
+      accept({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-1' });
       await vi.advanceTimersByTimeAsync(0);
       await flushMicrotasks();
 
       expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'revert everything', undefined);
-      expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-dina' });
+      expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-dina' });
       expect(snapshot.agents[0]?.conversationTitle).toBe('Dina');
       expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
       expect(snapshot.agents[0]?.status).toStrictEqual({ type: 'working' });
       expect(setConversationTitle).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'agent-dina', providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+        expect.objectContaining({ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
         'Dina',
       );
       expect(events).toEqual(expect.arrayContaining([
@@ -169,7 +169,7 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' }, status: { type: 'working' },
       threadFlags: { ready_for_review: true },
       suggestedPrompt: 'Review the diff',
       userDelegationOverrides: { startingContext: 'conversation', instructions: 'Existing user directions', execution: { provider: 'codex', conversationId: 'thread-dina', turnId: 'turn-original' } },
@@ -177,14 +177,14 @@ describe('AppBackendServer', () => {
     }];
     const steerPrompt = vi.fn()
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValue({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-steered' });
+      .mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-steered' });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt: vi.fn(),
       steerPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -219,7 +219,7 @@ describe('AppBackendServer', () => {
   it.each(['codex', 'claude'] as const)('clears hints on an internal %s turn, persists them, and ignores duplicate starts', async provider => {
     const snapshot = createTestSnapshot();
     const agent = { id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', provider: provider,
-      providerSession: provider === 'codex' ? { kind: 'codex' as const, threadId: 'thread-dina' } : { kind: 'claude' as const, sessionId: 'thread-dina', transport: 'stdio' as const },
+      providerSession: provider === 'codex' ? { kind: 'codex' as const, conversationId: 'thread-dina' } : { kind: 'claude' as const, conversationId: 'thread-dina', transport: 'stdio' as const },
       status: { type: 'idle' as const }, threadFlags: { work_proposed: true as const, ready_for_review: true as const }, suggestedPrompt: 'Old suggestion', createdAt: '', updatedAt: '' };
     snapshot.agents = [agent];
     let stored: AppSnapshot | undefined;
@@ -261,7 +261,7 @@ describe('AppBackendServer', () => {
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -274,8 +274,8 @@ describe('AppBackendServer', () => {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
       respondToAgentRequest: async () => undefined,
       setConversationTitle,
       onEvent: () => () => undefined,
@@ -354,7 +354,7 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const commandResult = Promise.resolve({
-      providerSession: { kind: 'codex' as const, threadId: 'thread-command' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-command' },
       turnId: 'turn-command',
     });
     const tryHandlePromptCommand = vi.fn().mockReturnValue(commandResult);
@@ -365,7 +365,7 @@ describe('AppBackendServer', () => {
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt,
       tryHandlePromptCommand,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -387,7 +387,7 @@ describe('AppBackendServer', () => {
 
     expect(tryHandlePromptCommand).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), '/compact');
     expect(sendPrompt).not.toHaveBeenCalled();
-    expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-command' });
+    expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-command' });
     await server.close();
   });
 
@@ -399,12 +399,12 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' }, status: { type: 'working' },
       threadFlags: { ready_for_review: true, work_proposed: true },
       suggestedPrompt: 'Previous turn suggestion',
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    let acceptPrompt!: (value: { providerSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
+    let acceptPrompt!: (value: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
     const sendPrompt = vi.fn().mockReturnValue(new Promise((resolve) => { acceptPrompt = resolve; }));
     const onPromptStarting = vi.fn();
     const onPromptSource = vi.fn();
@@ -415,7 +415,7 @@ describe('AppBackendServer', () => {
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -478,7 +478,7 @@ describe('AppBackendServer', () => {
     emitTurnStarted(server, 'agent-dina', 'turn-next');
     expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
     expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
-    acceptPrompt({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-next' });
+    acceptPrompt({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-next' });
     await vi.waitFor(() => expect(snapshot.queuedPrompts).toStrictEqual([]));
     if (delegation.delegation) expect(snapshot.agents[0]?.userDelegationOverrides).toStrictEqual({ ...delegation.delegation, execution: { provider: 'codex', conversationId: 'thread-dina', turnId: 'turn-next' } });
     await server.close();
@@ -491,7 +491,7 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' }, status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     snapshot.queuedPrompts = [
@@ -505,7 +505,7 @@ describe('AppBackendServer', () => {
       },
     ];
     const steerPrompt = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       turnId: 'turn-steered',
     });
     const events: Array<{ type: string; payload: unknown }> = [];
@@ -515,7 +515,7 @@ describe('AppBackendServer', () => {
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt: vi.fn(),
       steerPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -566,19 +566,19 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
       id: 'agent-dina', teamId: 'team-test', name: 'Dina', folder: '/workspace/dina', provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
+      providerSession: { kind: 'codex', conversationId: 'thread-dina' }, status: { type: 'working' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const failure = blocked ? 'This request was blocked by our safety systems. Reason: Potentially unintended activity.' : 'transport disconnected';
     const sendPrompt = vi.fn()
       .mockRejectedValueOnce(new Error(failure))
-      .mockResolvedValueOnce({ providerSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-retry' });
+      .mockResolvedValueOnce({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-retry' });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
       sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-dina' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -630,29 +630,29 @@ describe('AppBackendServer', () => {
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
       provider: 'codex',
-      providerSession: { kind: 'codex', threadId: 'thread-old' },
+      providerSession: { kind: 'codex', conversationId: 'thread-old' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const retryTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-new',
     });
     const continueInterruptedTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-continued',
     });
     const editTurn = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-edited',
     });
     const driver: AgentProviderDriver = {
       provider: 'codex',
       getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
       getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'thread-test' } }),
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       editTurn,
       retryTurn,

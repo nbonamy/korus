@@ -41,7 +41,7 @@ it('routes an ambiguous remote retry through the linked replacement without crea
   snapshot.remoteConnections.connections = [readyRemoteConnection()];
   snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
   const replacement = createRemoteAgent();
-  replacement.handoff = { operationId: 'once', sourceAgentId: 'old-remote', sourceTitle: 'Source', sourceRef: { provider: 'codex', threadId: 'thread' }, targetAgentId: replacement.id, phase: 'complete', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
+  replacement.handoff = { operationId: 'once', sourceAgentId: 'old-remote', sourceTitle: 'Source', sourceRef: { provider: 'codex', conversationId: 'thread' }, targetAgentId: replacement.id, phase: 'complete', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
   const remoteSnapshot = createRemoteTeamSnapshot([replacement]);
   const remoteClients = {
     request: vi.fn().mockResolvedValueOnce({ snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValue(remoteSnapshot),
@@ -61,7 +61,7 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
   it('waits for the note and runtime release, rejects competing work, and preserves readable source history', async () => {
     const targetProvider: HarnessProvider = provider === 'codex' ? 'claude' : 'codex';
     const snapshot = createTestSnapshot();
-    snapshot.agents = [{ id: 'source', name: 'Worker', folder: '/repo', provider: provider, teamId: 'team-test', providerSession: provider === 'codex' ? { kind: 'codex', threadId: 'original' } : { kind: 'claude', sessionId: 'original', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
+    snapshot.agents = [{ id: 'source', name: 'Worker', folder: '/repo', provider: provider, teamId: 'team-test', providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'original' } : { kind: 'claude', conversationId: 'original', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
     snapshot.teams[0]!.agentIds = ['source'];
     snapshot.activeAgentId = 'source';
     let sourceListener!: (event: BackendEvent) => void;
@@ -81,13 +81,13 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
         getCapabilities: () => ({ ...(kind === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities), conversationArchive: true }),
         sendPrompt: async (agent, prompt) => {
           (agent.id === 'source' ? sourceSend : targetSend)(prompt);
-          return { providerSession: kind === 'codex' ? { kind: 'codex', threadId: agent.id } : { kind: 'claude', sessionId: agent.id, transport: 'stdio' }, turnId: 'note-turn' };
+          return { providerSession: kind === 'codex' ? { kind: 'codex', conversationId: agent.id } : { kind: 'claude', conversationId: agent.id, transport: 'stdio' }, turnId: 'note-turn' };
         },
         readConversationMessages: read,
         archiveAgentConversation: archive,
         assertHandoffReady: async () => undefined,
         releaseConversation: () => releaseGate,
-        interrupt: async () => ({ providerSession: { kind: 'codex', threadId: 'original' } }),
+        interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'original' } }),
         respondToAgentRequest: async () => undefined,
         onEvent: listener => { if (kind === provider) sourceListener = listener; return () => undefined; },
         close: async () => undefined,

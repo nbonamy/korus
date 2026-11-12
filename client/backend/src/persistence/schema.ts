@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AccountRateLimits, AppGeneralSettings, AppThemeSettings, Automation, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogAssignment, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 import type { Mission } from '@workspace/core/missions';
 import { isVisualization } from '@workspace/core/visualize';
 import { StoreFormatError } from './store-format';
@@ -18,25 +19,28 @@ import type { BrowserBookmark } from '@workspace/core/browser-bookmarks';
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const entity = <T>(label: string) => z.custom<T>(isRecord, `${label} must be an object`);
 
+// Sessions saved before conversations were named `conversationId` still load.
+const storedSession = (fields: z.ZodRawShape) => z.preprocess(withConversationId, z.looseObject({ conversationId: z.string(), ...fields })).optional();
+
 const engineSchema = z.discriminatedUnion('kind', [
   z.looseObject({
     kind: z.literal('cursor'),
-    session: z.looseObject({ sessionId: z.string() }).optional(),
+    session: storedSession({}),
     settings: z.looseObject({}).optional(),
   }),
   z.looseObject({
     kind: z.literal('antigravity'),
-    session: z.looseObject({ sessionId: z.string() }).optional(),
+    session: storedSession({}),
     settings: z.looseObject({}).optional(),
   }),
   z.looseObject({
     kind: z.literal('codex'),
-    session: z.looseObject({ threadId: z.string() }).optional(),
+    session: storedSession({}),
     settings: z.looseObject({}).optional(),
   }),
   z.looseObject({
     kind: z.literal('claude'),
-    session: z.looseObject({ sessionId: z.string(), transport: z.enum(['stdio', 'websocket']) }).optional(),
+    session: storedSession({ transport: z.enum(['stdio', 'websocket']) }),
     settings: z.looseObject({}).optional(),
   }),
 ]);

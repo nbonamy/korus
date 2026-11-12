@@ -12,7 +12,7 @@ describe('AgentConversationService', () => {
   ] as const)('keeps the Codex transcript provider-owned while applying %s status', async (method, driverMethod, args, activeTurnId) => {
     const { agent, driverRequest, events, persistSnapshot, service, snapshot } = createService();
     driverRequest.mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'thread-updated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-updated' },
       activeTurnId,
     });
 
@@ -23,7 +23,7 @@ describe('AgentConversationService', () => {
       turnId: 'turn-1',
       ...(method === 'editTurn' ? { content: 'edited' } : {}),
     });
-    expect(agent.providerSession).toStrictEqual({ kind: 'codex', threadId: 'thread-updated' });
+    expect(agent.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-updated' });
     expect(events).toStrictEqual([
       {
         agentId: agent.id,
@@ -38,14 +38,13 @@ describe('AgentConversationService', () => {
   it('adopts Claude turn-operation results and names the conversation they changed', async () => {
     const { agent, driverRequest, events, service } = createService();
     driverRequest.mockResolvedValue({
-      providerSession: { kind: 'claude', sessionId: 'session-updated', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'session-updated', transport: 'stdio' },
       activeTurnId: null,
     });
 
     await service.deleteTurn(agent.id, 'turn-1');
 
-    expect(agent.providerSession).toStrictEqual({
-      kind: 'claude', sessionId: 'session-updated', transport: 'stdio',
+    expect(agent.providerSession).toStrictEqual({ kind: 'claude', conversationId: 'session-updated', transport: 'stdio',
     });
     expect(events).toStrictEqual([{
       agentId: agent.id,
@@ -95,23 +94,23 @@ describe('AgentConversationService', () => {
         startedAt: '2026-09-02T00:00:00.000Z',
         status: 'completed',
 
-        agentId: agent.id, agentName: 'Dina', conversationRef: { provider: 'claude', folder: '/repo', sessionId: 'session-1' },
+        agentId: agent.id, agentName: 'Dina', conversationRef: { provider: 'claude', folder: '/repo', conversationId: 'session-1' },
       }],
       createdAt: '2026-09-02T00:00:00.000Z',
       updatedAt: '2026-09-02T00:00:00.000Z',
     }];
 
-    expect(service.isStoredConversationRef({ provider: 'codex', threadId: 'thread-child' }, agent.id)).toBe(true);
-    expect(service.isStoredConversationRef({ provider: 'claude', folder: '/repo', sessionId: 'session-1' }, agent.id)).toBe(true);
-    expect(service.isStoredConversationRef({ provider: 'claude', folder: '/repo', sessionId: 'session-1', subagentId: 'unknown-child' }, agent.id)).toBe(false);
-    expect(service.isStoredConversationRef({ provider: 'codex', threadId: 'thread-unknown' }, agent.id)).toBe(false);
+    expect(service.isStoredConversationRef({ provider: 'codex', conversationId: 'thread-child' }, agent.id)).toBe(true);
+    expect(service.isStoredConversationRef({ provider: 'claude', folder: '/repo', conversationId: 'session-1' }, agent.id)).toBe(true);
+    expect(service.isStoredConversationRef({ provider: 'claude', folder: '/repo', conversationId: 'session-1', subagentId: 'unknown-child' }, agent.id)).toBe(false);
+    expect(service.isStoredConversationRef({ provider: 'codex', conversationId: 'thread-unknown' }, agent.id)).toBe(false);
   });
 
   it.each(['codex', 'cursor', 'antigravity'] as const)('hydrates the %s session, refreshes workspace metadata, and synchronizes a generated title', async backend => {
     const { agent, driverRequest, persistSnapshot, refreshGitStatus, refreshWorkspaceIdentity, service } = createService();
     agent.provider = backend;
-    agent.providerSession = backend === 'codex' ? { kind: 'codex', threadId: 'thread-root' } : { kind: backend, sessionId: 'session-root' };
-    const session = backend === 'codex' ? { kind: 'codex' as const, threadId: 'thread-hydrated' } : { kind: backend, sessionId: 'session-hydrated' };
+    agent.providerSession = backend === 'codex' ? { kind: 'codex', conversationId: 'thread-root' } : { kind: backend, conversationId: 'session-root' };
+    const session = backend === 'codex' ? { kind: 'codex' as const, conversationId: 'thread-hydrated' } : { kind: backend, conversationId: 'session-hydrated' };
     driverRequest.mockImplementation(async (_agent, method) => (
       method === backendMethods.driverConversationLoad
         ? session
@@ -171,7 +170,7 @@ describe('AgentConversationService', () => {
       const { agent, driverRequest, events, service } = createService();
       driverRequest
         .mockRejectedValueOnce(new Error(message))
-        .mockResolvedValueOnce({ kind: 'codex', threadId: 'thread-root' });
+        .mockResolvedValueOnce({ kind: 'codex', conversationId: 'thread-root' });
 
       const hydration = service.hydrate(agent.id);
       await vi.runAllTimersAsync();
@@ -243,7 +242,7 @@ function createService() {
     name: 'Dina',
     folder: '/repo',
     provider: 'codex',
-    providerSession: { kind: 'codex', threadId: 'thread-root' },
+    providerSession: { kind: 'codex', conversationId: 'thread-root' },
     status: { type: 'idle' },
     createdAt: '2026-09-02T00:00:00.000Z',
     updatedAt: '2026-09-02T00:00:00.000Z',

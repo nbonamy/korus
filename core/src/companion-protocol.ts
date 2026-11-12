@@ -153,11 +153,17 @@ export type CompanionProvider = typeof companionProviders[number];
 export const companionQuotaProviders: readonly HarnessProvider[] = ['codex', 'claude'];
 /** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
 export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
+/** The companion wire format names a session's conversation `threadId` (Codex) or `sessionId`, as shipped phones read it. */
+const wireConversationField = (provider: HarnessProvider) => provider === 'codex' ? 'threadId' : 'sessionId';
+/** Session data for the phone: the conversation under both its current and its wire name. */
+export function withLegacyConversationId<T extends ProviderSessionData>(session: T): T {
+  return { ...session, [wireConversationField(session.kind)]: session.conversationId };
+}
 export function companionSessionId(agent: Agent): string | null {
   const session = agent.providerSession;
   if (!session) return null;
   // The phone stores this id as the host wrote it, so its shape is part of the companion wire format.
-  return JSON.stringify(session.kind === 'codex' ? { kind: session.kind, threadId: session.threadId } : { kind: session.kind, sessionId: session.sessionId });
+  return JSON.stringify({ kind: session.kind, [wireConversationField(session.kind)]: session.conversationId });
 }
 export function companionTarget(hostId: string, team: Team, agent: Agent): CompanionTarget {
   return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent) };

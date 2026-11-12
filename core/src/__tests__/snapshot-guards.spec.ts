@@ -72,12 +72,12 @@ describe('snapshot guards', () => {
         const workspace = snapshot.agents[0]!.workspace;
         if (workspace?.kind === 'git') workspace.isLinkedWorktree = 'yes' as never;
       } },
-      { name: 'agent backend session', mutate: (snapshot) => { snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 42 as never }; } },
+      { name: 'agent backend session', mutate: (snapshot) => { snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 42 as never }; } },
       { name: 'agent backend defaults', mutate: (snapshot) => { snapshot.agents[0]!.providerDefaults = { kind: 'codex', permission: 7 as never }; } },
       { name: 'handoff provider selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { provider: 'other' as never, model: null, reasoningEffort: null, serviceTier: null }; } },
       { name: 'missing handoff selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = null as never; } },
       { name: 'handoff service tier', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { provider: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 42 as never }; } },
-      { name: 'handoff source identity', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.sourceRef = { provider: 'codex', threadId: 42 as never }; } },
+      { name: 'handoff source identity', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.sourceRef = { provider: 'codex', conversationId: 42 as never }; } },
       { name: 'agent application', mutate: (snapshot) => { snapshot.agents[0]!.openInApplication = 'emacs' as never; } },
       { name: 'agent context', mutate: (snapshot) => { snapshot.agents[0]!.contextUsage!.inputTokens = 'many' as never; } },
       { name: 'agent plan', mutate: (snapshot) => { snapshot.agents[0]!.plan!.steps[0]!.status = 'working' as never; } },
@@ -86,7 +86,7 @@ describe('snapshot guards', () => {
       { name: 'automation target', mutate: (snapshot) => { snapshot.automations[0]!.target = { kind: 'unknown' } as never; } },
       { name: 'automation schedule', mutate: (snapshot) => { snapshot.automations[0]!.schedule = { intervalMinutes: 'hourly' as never }; } },
       { name: 'automation log', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.status = 'pending' as never; } },
-      { name: 'automation created agent', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.conversationRef = { provider: 'codex', threadId: 42 as never }; } },
+      { name: 'automation created agent', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.conversationRef = { provider: 'codex', conversationId: 42 as never }; } },
       { name: 'backend runtime', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.status = 'stopped' as never; } },
       { name: 'backend capabilities', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.capabilities!.planMode = 'automatic' as never; } },
       { name: 'approval presets', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.capabilities!.approvalPresets = [7 as never]; } },
@@ -175,7 +175,7 @@ function completeSnapshot(): AppSnapshot {
   const codexAgent = snapshot.agents[0]!;
   codexAgent.handoff = {
     operationId: 'handoff-1', sourceAgentId: codexAgent.id, sourceTitle: 'Implement ticket',
-    sourceRef: { provider: 'codex', threadId: 'thread-codex' }, targetAgentId: 'agent-claude', phase: 'complete',
+    sourceRef: { provider: 'codex', conversationId: 'thread-codex' }, targetAgentId: 'agent-claude', phase: 'complete',
     selection: { provider: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' },
     instructions: 'Keep the existing tests', note: 'Continue from the current checkout',
   };
@@ -206,7 +206,7 @@ function completeSnapshot(): AppSnapshot {
       originUrl: 'git@github.com:openai/agent-workspace.git',
       updatedAt: '2026-09-04T00:00:00.000Z',
     },
-    providerSession: { kind: 'codex', threadId: 'thread-codex' },
+    providerSession: { kind: 'codex', conversationId: 'thread-codex' },
     providerDefaults: {
       kind: 'codex',
       model: 'gpt-5',
@@ -257,11 +257,10 @@ function completeSnapshot(): AppSnapshot {
     name: null,
     folder: null,
     provider: 'claude',
-    providerSession: {
-      kind: 'claude',
-      sessionId: 'session-claude',
+    providerSession: { kind: 'claude',
+      conversationId: 'session-claude',
       transport: 'websocket',
-      transcriptSessionId: 'transcript-claude',
+      transcriptConversationId: 'transcript-claude',
       serverUrl: 'ws://localhost',
       model: 'claude-opus',
       reasoningEffort: 'high',
@@ -297,7 +296,7 @@ function completeSnapshot(): AppSnapshot {
       completedAt: '2026-09-04T00:01:00.000Z',
       status: 'completed',
 
-      agentId: codexAgent.id, agentName: 'Dina', conversationRef: { provider: 'codex', threadId: 'thread-codex' },
+      agentId: codexAgent.id, agentName: 'Dina', conversationRef: { provider: 'codex', conversationId: 'thread-codex' },
     }],
     createdAt: '2026-09-04T00:00:00.000Z',
     updatedAt: '2026-09-04T00:01:00.000Z',

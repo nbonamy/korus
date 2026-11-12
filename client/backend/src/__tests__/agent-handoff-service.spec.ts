@@ -10,7 +10,7 @@ function fixture() {
   const snapshot = createTestSnapshot();
   const source: Agent = {
     id: 'source', name: 'Worker', provider: 'codex', teamId: 'team-test', folder: '/repo/worktree',
-    providerSession: { kind: 'codex', threadId: 'original' }, status: { type: 'idle' },
+    providerSession: { kind: 'codex', conversationId: 'original' }, status: { type: 'idle' },
     createdAt: '', updatedAt: '',
   };
   snapshot.agents.push(source);
@@ -39,7 +39,7 @@ describe('agent handoff', () => {
     await f.service.run(f.source.id, input);
     const target = f.snapshot.agents[0]!;
     expect(f.snapshot.agents).toHaveLength(1);
-    expect(target).toMatchObject({ provider: provider, folder: '/repo/worktree', providerDefaults: { kind: provider, model: 'sonnet' }, handoff: { sourceAgentId: 'source', sourceRef: { provider: 'codex', threadId: 'original' }, phase: 'complete' } });
+    expect(target).toMatchObject({ provider: provider, folder: '/repo/worktree', providerDefaults: { kind: provider, model: 'sonnet' }, handoff: { sourceAgentId: 'source', sourceRef: { provider: 'codex', conversationId: 'original' }, phase: 'complete' } });
     expect(f.note).toHaveBeenCalledWith(f.source, expect.stringContaining(provider === 'antigravity' ? 'Antigravity' : 'Claude Code'));
     expect(f.note).toHaveBeenCalledWith(f.source, expect.stringContaining('Mention the flaky test.'));
     expect(f.events.slice(f.events.indexOf('close') - 1, f.events.indexOf('close') + 3)).toEqual(['save', 'close', 'save', 'start']);
@@ -102,7 +102,7 @@ describe('agent handoff', () => {
     const f = fixture();
     f.source.status = { type: 'working' };
     await expect(f.service.run(f.source.id, f.input)).rejects.toThrow('finish');
-    f.source.handoff = { ...f.input, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: { provider: 'codex', threadId: 'original' }, phase: 'preparing' };
+    f.source.handoff = { ...f.input, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: { provider: 'codex', conversationId: 'original' }, phase: 'preparing' };
     await f.service.recover();
     expect(f.source.handoff.phase).toBe('failed');
     expect(f.note).not.toHaveBeenCalled();

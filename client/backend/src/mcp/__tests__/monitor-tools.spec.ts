@@ -101,7 +101,7 @@ it('retains completion events while busy, delivers to the owning idle agent, and
   const sendPrompt = vi
     .fn()
     .mockResolvedValue({
-      providerSession: { kind: 'codex', threadId: 'monitor-thread' },
+      providerSession: { kind: 'codex', conversationId: 'monitor-thread' },
       turnId: 'monitor-turn',
     });
   const driver: import('@workspace/core/provider-driver').AgentProviderDriver = {

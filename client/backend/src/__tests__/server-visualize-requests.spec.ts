@@ -129,7 +129,7 @@ function setup(): {
   snapshot.agents.push(agent);
   snapshot.teams[0].agentIds.push(agent.id);
   const sendPrompt = vi.fn().mockResolvedValue({
-    providerSession: { kind: 'codex' as const, threadId: 'thread-visualize' },
+    providerSession: { kind: 'codex' as const, conversationId: 'thread-visualize' },
     turnId: 'turn-visualize',
   });
   const driver: AgentProviderDriver = {

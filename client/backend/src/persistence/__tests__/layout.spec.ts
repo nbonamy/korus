@@ -25,10 +25,10 @@ describe('store layout', () => {
   it('stores each agent as one engine block and restores the exact provider state', () => {
     const snapshot = withAgents(3);
     const [codex, claude, bare] = snapshot.agents;
-    codex!.providerSession = { kind: 'codex', threadId: 'thread-1' };
+    codex!.providerSession = { kind: 'codex', conversationId: 'thread-1' };
     codex!.providerDefaults = { kind: 'codex', model: 'gpt-x', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permission: 'approve-for-me' };
     claude!.provider = 'claude';
-    claude!.providerSession = { kind: 'claude', sessionId: 'session-1', transport: 'stdio', model: 'opus' };
+    claude!.providerSession = { kind: 'claude', conversationId: 'session-1', transport: 'stdio', model: 'opus' };
     claude!.providerDefaults = { kind: 'claude', model: 'opus', thinking: { type: 'enabled', budgetTokens: 1024 } };
     delete bare!.providerDefaults;
     delete bare!.providerSession;
@@ -37,12 +37,12 @@ describe('store layout', () => {
 
     expect(roster.agents[0]!.engine).toStrictEqual({
       kind: 'codex',
-      session: { threadId: 'thread-1' },
+      session: { conversationId: 'thread-1' },
       settings: { model: 'gpt-x', userSelectedModel: true, permission: 'approve-for-me', reasoningEffort: 'high', serviceTier: null },
     });
     expect(roster.agents[1]!.engine).toStrictEqual({
       kind: 'claude',
-      session: { sessionId: 'session-1', transport: 'stdio', model: 'opus' },
+      session: { conversationId: 'session-1', transport: 'stdio', model: 'opus' },
       settings: { model: 'opus', thinking: { type: 'enabled', budgetTokens: 1024 } },
     });
     expect(roster.agents[2]!.engine).toStrictEqual({ kind: 'codex' });

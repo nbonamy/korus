@@ -35,7 +35,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   const agent = {
     id: 'agent-phone', teamId: 'team-test', name: 'Phone', provider: 'codex' as const,
     folder: '/workspace/phone', status: { type: status },
-    providerSession: { kind: 'codex' as const, threadId: 'thread-phone' },
+    providerSession: { kind: 'codex' as const, conversationId: 'thread-phone' },
     createdAt: '', updatedAt: '',
   };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
@@ -97,7 +97,7 @@ describe('mobile prompt admission', () => {
   });
 
   it.each(['steer', 'delete'] as const)('rechecks the session at the backend before a queued %s', async action => {
-    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' }];
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(1);
@@ -130,7 +130,7 @@ describe('mobile prompt admission', () => {
     f.snapshot.queuedPrompts = [{ id: 'other', createdAt: '', agentId: 'another-agent', text: 'Private queue' }];
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'other' })).rejects.toThrow();
     f.snapshot.queuedPrompts!.push({ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' });
-    f.snapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'replacement' };
+    f.snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(2);
     expect(f.steerPrompt).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe('mobile prompt admission', () => {
   it('waits for provider acceptance when Queue is chosen for an idle agent', async () => {
     const f = await fixture('idle');
     let accept!: () => void;
-    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { providerSession: { kind: 'codex', threadId: 'thread-phone' }, turnId: 'queued-idle' }; });
+    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { providerSession: { kind: 'codex', conversationId: 'thread-phone' }, turnId: 'queued-idle' }; });
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     const sending = f.gateway.request('phone', 'prompt.submit', command);
     try {
@@ -169,7 +169,7 @@ describe('mobile prompt admission', () => {
   });
 
   it('rejects a queued send if its session changes after gateway admission', async () => {
-    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
     expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
@@ -177,7 +177,7 @@ describe('mobile prompt admission', () => {
   });
 
   it.each(['idle', 'working'] as const)('rejects a session replaced after gateway admission without dispatching (%s)', async status => {
-    const f = await fixture(status, false, agent => { agent.providerSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture(status, false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     const command = { ...f.command, attachments: [{ type: 'file', name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('note').toString('base64') }] };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
     expect(f.sendPrompt).not.toHaveBeenCalled();

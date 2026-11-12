@@ -32,7 +32,7 @@ describe('conversation share deep links', () => {
 
 it('gates sharing on the capability catalog rather than provider-name exceptions', () => {
   for (const provider of ['codex','claude','antigravity','cursor'] as const) {
-    const agent: import('../contracts').Agent = {id:'agent',name:'Synthetic',provider: provider,folder:null,status:{type:'idle'},createdAt:'now',updatedAt:'now',providerSession: provider === 'codex' ? {kind:'codex',threadId:'session'} : provider === 'claude' ? {kind:'claude',sessionId:'session',transport:'stdio'} : {kind:provider,sessionId:'session'}};
+    const agent: import('../contracts').Agent = {id:'agent',name:'Synthetic',provider: provider,folder:null,status:{type:'idle'},createdAt:'now',updatedAt:'now',providerSession: provider === 'codex' ? { kind: 'codex',conversationId:'session'} : provider === 'claude' ? { kind: 'claude',conversationId:'session',transport:'stdio'} : { kind: provider,conversationId:'session'}};
     const allowed = defaultProviderCapabilities(provider).conversationShare !== false;
     expect(supportsConversationSharing(agent)).toBe(allowed);
     if (allowed) expect(conversationShareTarget(agent)).toMatchObject({agentId:'agent',provider: provider,sessionId:'session'});

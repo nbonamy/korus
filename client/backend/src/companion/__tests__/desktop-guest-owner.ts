@@ -21,7 +21,7 @@ const pin = { origin: `ws://127.0.0.1:${port}`, peerId: relay.peerId.toString() 
 const key = await generateKeyPairFromSeed('Ed25519', new Uint8Array(32).fill(74)); const ownerId = peerIdFromPrivateKey(key).toString();
 const snapshot = createEmptySnapshot();
 snapshot.teams = [{ id: 'synthetic', name: 'Synthetic', agentIds: ['shared'] }];
-snapshot.agents = [{ id: 'shared', name: 'Synthetic conversation', provider: 'codex', providerSession: { kind: 'codex', threadId: 'synthetic-session' }, teamId: 'synthetic', folder: '/synthetic', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
+snapshot.agents = [{ id: 'shared', name: 'Synthetic conversation', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'synthetic-session' }, teamId: 'synthetic', folder: '/synthetic', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
 const guestState = createEmptySnapshot(); guestState.general.providerEnabled = { codex: false, claude: false, antigravity: false };
 guestState.general.providerHomes = { codex: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-codex') }, claude: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-claude') }, antigravity: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-antigravity') } };
 await writeFile(path.join(directory, 'guest-state.json'), JSON.stringify(guestState), { mode: 0o600 });

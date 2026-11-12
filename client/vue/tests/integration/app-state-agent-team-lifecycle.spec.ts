@@ -373,7 +373,7 @@ describe('useAppState', () => {
       id: 'agent-joel',
       teamId: 'team-other',
       name: 'Joel',
-      providerSession: { kind: 'codex', threadId: 'thread-joel' },
+      providerSession: { kind: 'codex', conversationId: 'thread-joel' },
     });
     remoteSnapshot.teams.push({
       id: 'team-other',
@@ -435,7 +435,7 @@ describe('useAppState', () => {
       ...remoteSnapshot.agents[0],
       id: 'agent-jesse',
       name: 'Jesse',
-      providerSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
     });
     const pristine = structuredClone(remoteSnapshot);
     const setDockBadgeCount = vi.fn().mockResolvedValue(undefined);
@@ -853,10 +853,10 @@ describe('useAppState', () => {
     await expect(state.clearAutomationHistory('missing')).resolves.toBeUndefined();
     await expect(state.deleteAutomationExecution('missing', 'execution')).resolves.toBeUndefined();
     await expect(state.deleteAutomation('missing')).resolves.toBeUndefined();
-    await expect(state.readConversationMessages({ provider: 'codex', threadId: 'thread' }, 'agent-dina')).resolves.toStrictEqual([]);
+    await expect(state.readConversationMessages({ provider: 'codex', conversationId: 'thread' }, 'agent-dina')).resolves.toStrictEqual([]);
     await expect(state.listAgentConversations('agent-dina')).resolves.toStrictEqual([]);
     await state.resumeAgentConversation('agent-dina', {
-      ref: { provider: 'codex', threadId: 'thread' },
+      ref: { provider: 'codex', conversationId: 'thread' },
       storageState: 'archived',
     });
     await state.updateSettings({});
@@ -905,8 +905,8 @@ describe('useAppState', () => {
     const initialSnapshot = createInitialSnapshot();
     const first = initialSnapshot.agents[0]!;
     first.provider = 'antigravity';
-    first.providerSession = { kind: 'antigravity', sessionId: 'native-first' };
-    const second = { ...first, id: 'other-antigravity', providerSession: { kind: 'antigravity' as const, sessionId: 'native-second' } };
+    first.providerSession = { kind: 'antigravity', conversationId: 'native-first' };
+    const second = { ...first, id: 'other-antigravity', providerSession: { kind: 'antigravity' as const, conversationId: 'native-second' } };
     initialSnapshot.agents.push(second);
     const restartedSnapshot = structuredClone(initialSnapshot);
     delete restartedSnapshot.agents[0]!.providerSession;
@@ -920,7 +920,7 @@ describe('useAppState', () => {
     for (const [index, agent] of [first, second].entries()) {
       if (agent.providerSession?.kind !== 'antigravity') throw new Error('Missing fixture session');
       const conversation = sessionState({ messages: [textMessage(agent.id + '-answer', 'assistant', agent.id + ' previous answer', { agentId: agent.id, createdAt: '' })] });
-      listeners[0]?.(sessionSnapshotEvent(agent.id, conversation, { seq: index + 1, provider: 'antigravity', conversation: agent.providerSession.sessionId }));
+      listeners[0]?.(sessionSnapshotEvent(agent.id, conversation, { seq: index + 1, provider: 'antigravity', conversation: agent.providerSession.conversationId }));
     }
     expect(state.activeConversationPresentation.value?.messages).toHaveLength(1);
     await state.restartAgent(first.id);
@@ -934,7 +934,7 @@ describe('useAppState', () => {
     const initialSnapshot = createInitialSnapshot();
     const agent = initialSnapshot.agents[0]!;
     agent.provider = 'claude';
-    agent.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    agent.providerSession = { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' };
     const restartedSnapshot = structuredClone(initialSnapshot);
     delete restartedSnapshot.agents[0]!.providerSession;
     stubElectronTestWindow({ app: {
@@ -958,9 +958,9 @@ describe('useAppState', () => {
     const initialSnapshot = createInitialSnapshot();
     const source = initialSnapshot.agents[0]!;
     source.provider = 'claude';
-    source.providerSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    source.providerSession = { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' };
     const forkedSnapshot = structuredClone(initialSnapshot);
-    const fork = { ...structuredClone(source), id: 'agent-fork', providerSession: { kind: 'claude' as const, sessionId: 'claude-fork-1', transport: 'stdio' as const } };
+    const fork = { ...structuredClone(source), id: 'agent-fork', providerSession: { kind: 'claude' as const, conversationId: 'claude-fork-1', transport: 'stdio' as const } };
     forkedSnapshot.agents.push(fork);
     forkedSnapshot.activeAgentId = fork.id;
     const loadConversationHistory = vi.fn().mockResolvedValueOnce(structuredClone(initialSnapshot)).mockResolvedValue(forkedSnapshot);
@@ -982,7 +982,7 @@ describe('useAppState', () => {
   it('clears a failed history state when the agent is restarted', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', threadId: 'thread-dina' };
+    remoteSnapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
     const restartedSnapshot = structuredClone(remoteSnapshot);
     delete restartedSnapshot.agents[0]!.providerSession;
     const restartAgent = vi.fn().mockResolvedValue(restartedSnapshot);

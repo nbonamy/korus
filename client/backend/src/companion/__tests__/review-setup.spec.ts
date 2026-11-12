@@ -61,7 +61,7 @@ it('reads and arbitrates the bound review, rejects stale rounds and follows reme
   const f = fixture();
   const session: import('@workspace/core/code-review').CodeReviewSession = { id: 'review', targetAgentId: 'a', reviewerAgentId: 'reviewer',
     scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'reviewing', activeRoundId: 'round', createdAt: '', updatedAt: 'v1',
-    rounds: [{ id: 'round', number: 1, status: 'reviewing', startedAt: '', reviewerSession: { kind: 'codex', threadId: 'secret' },
+    rounds: [{ id: 'round', number: 1, status: 'reviewing', startedAt: '', reviewerSession: { kind: 'codex', conversationId: 'secret' },
       findings: [{ id: 'finding', roundId: 'round', priority: 'p1', title: 'Keep the draft', body: 'Do not lose input on reconnect.',
         location: { file: '/private/workspace/src/composer.ts', line: 42 }, decision: { state: 'undecided' }, discussion: [], remediation: { state: 'notStarted' }, createdAt: '', updatedAt: '' }] }] };
   f.snapshot.agents.push({ ...f.snapshot.agents[0]!, id: 'reviewer', codeReview: session });

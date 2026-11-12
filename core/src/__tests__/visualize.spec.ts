@@ -10,7 +10,7 @@ import {
 function session(overrides: Partial<VisualizeSession> = {}): VisualizeSession {
   return {
     id: 'visualize-1',
-    conversationRef: { provider: 'codex', threadId: 'thread-1' },
+    conversationRef: { provider: 'codex', conversationId: 'thread-1' },
     isOpen: true,
     suggestions: [{
       id: 'suggestion-1',
@@ -57,7 +57,7 @@ describe('Visualize session contract', () => {
 
   it.each(['claude', 'antigravity', 'cursor'] as const)('accepts %s conversation references', provider => {
     for (const folder of ['/workspace', null]) expect(isVisualizeSession(session({
-      conversationRef: { provider: provider, folder, sessionId: 'session-1' },
+      conversationRef: { provider: provider, folder, conversationId: 'session-1' },
     }))).toBe(true);
   });
 

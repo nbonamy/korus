@@ -2,6 +2,7 @@ import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '@workspace/core/delegation-c
 import * as z from 'zod/v4';
 import type { DelegatedTask, TaskContract, TaskResultInput } from '@workspace/core/delegated-task';
 import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
+import { withConversationId } from '@workspace/core/legacy-conversation-id';
 
 const text = z.string().trim().min(1);
 export const taskContractSchema = z.strictObject({ title: text.max(200), doneWhen: text.max(4000) }) satisfies z.ZodType<TaskContract>;
@@ -11,16 +12,17 @@ export const taskResultSchema = z.strictObject({
   artifacts: z.array(text.max(500)).max(10),
   caveats: z.array(text.max(500)).max(10),
 }) satisfies z.ZodType<TaskResultInput>;
-const session = z.discriminatedUnion('kind', [
-  z.looseObject({ kind: z.literal('cursor'), sessionId: text }),
-  z.looseObject({ kind: z.literal('antigravity'), sessionId: text }),
-  z.looseObject({ kind: z.literal('codex'), threadId: text }),
+// Tasks saved before conversations were named `conversationId` still load.
+const session = z.preprocess(withConversationId, z.discriminatedUnion('kind', [
+  z.looseObject({ kind: z.literal('cursor'), conversationId: text }),
+  z.looseObject({ kind: z.literal('antigravity'), conversationId: text }),
+  z.looseObject({ kind: z.literal('codex'), conversationId: text }),
   z.looseObject({
-    kind: z.literal('claude'), sessionId: text, transport: z.enum(['stdio', 'websocket']),
-    transcriptSessionId: text.optional(), transcriptFolder: text.optional(), serverUrl: text.optional(), model: text.optional(),
+    kind: z.literal('claude'), conversationId: text, transport: z.enum(['stdio', 'websocket']),
+    transcriptConversationId: text.optional(), transcriptFolder: text.optional(), serverUrl: text.optional(), model: text.optional(),
     reasoningEffort: text.optional(),
   }),
-]);
+]));
 const acceptance = z.looseObject({ providerSession: session, turnId: text.optional() });
 // Command inputs stay strict; stored records accept additive fields from newer builds.
 const taskSchema = z.looseObject({

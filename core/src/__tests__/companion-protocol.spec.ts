@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, companionTarget, encodeCompanionFrame } from '../companion-protocol';
+import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, companionSessionId, companionTarget, encodeCompanionFrame, withLegacyConversationId } from '../companion-protocol';
 import type { Agent } from '../contracts';
 
 describe('companion wire framing', () => {
   it('keeps a session target stable when private provider connection metadata changes', () => {
     const agent: Agent = { id: 'agent', teamId: 'team', name: 'Agent', provider: 'claude', folder: null,
-      status: { type: 'idle' }, createdAt: '', updatedAt: '', providerSession: { kind: 'claude', sessionId: 'session', transport: 'websocket', serverUrl: 'https://private.example' }, remoteConnectionId: 'owner' };
+      status: { type: 'idle' }, createdAt: '', updatedAt: '', providerSession: { kind: 'claude', conversationId: 'session', transport: 'websocket', serverUrl: 'https://private.example' }, remoteConnectionId: 'owner' };
     const team = { id: 'team', name: 'Team', agentIds: ['agent'] };
     const first = companionTarget('laptop', team, agent);
-    const changed = companionTarget('laptop', team, { ...agent, providerSession: { ...agent.providerSession!, kind: 'claude', sessionId: 'session', transport: 'stdio', serverUrl: 'https://other-private.example' } });
+    const changed = companionTarget('laptop', team, { ...agent, providerSession: { ...agent.providerSession!, kind: 'claude', conversationId: 'session', transport: 'stdio', serverUrl: 'https://other-private.example' } });
     expect(changed).toEqual(first);
     expect(first.locationId).toBe('owner'); expect(first.sessionId).not.toContain('private.example');
   });
@@ -39,5 +39,16 @@ describe('companion wire framing', () => {
     expect(() => new CompanionFrameDecoder().push(header)).toThrow('length');
     expect(() => encodeCompanionFrame('x'.repeat(companionFrameLimit))).toThrow('large');
     expect(() => new CompanionFrameDecoder().push(new Uint8Array([0, 0, 0, 1, 33]))).toThrow();
+  });
+});
+
+describe('conversation names on the companion wire', () => {
+  it('keeps the names shipped phones read', () => {
+    const codex = { kind: 'codex' as const, conversationId: 't1' };
+    const claude = { kind: 'claude' as const, conversationId: 's1', transport: 'stdio' as const };
+    expect(companionSessionId({ providerSession: codex } as Agent)).toBe('{"kind":"codex","threadId":"t1"}');
+    expect(companionSessionId({ providerSession: claude } as Agent)).toBe('{"kind":"claude","sessionId":"s1"}');
+    expect(withLegacyConversationId(codex)).toEqual({ ...codex, threadId: 't1' });
+    expect(withLegacyConversationId(claude)).toEqual({ ...claude, sessionId: 's1' });
   });
 });

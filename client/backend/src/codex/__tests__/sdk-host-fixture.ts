@@ -12,7 +12,7 @@ export const sdkSnapshot = (id = 'conversation-a', overrides: Partial<CodexConve
 export function sdkAgent(id = 'agent-a', conversationId = 'conversation-a'): Agent {
   return {
     id, name: id, avatar: 'A', folder: '/repo', provider: 'codex',
-    providerSession: { kind: 'codex', threadId: conversationId },
+    providerSession: { kind: 'codex', conversationId: conversationId },
     status: { type: 'idle' }, createdAt: '2026-09-16T00:00:00Z', updatedAt: '2026-09-16T00:00:00Z',
   };
 }

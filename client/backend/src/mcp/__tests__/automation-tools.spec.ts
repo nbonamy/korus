@@ -48,7 +48,7 @@ it('restores and dispatches scheduled GitLab backlog context independently of Gi
   }
   const restored = await store.load();
   expect(restored.automations.map(automation => automation.prompt)).toStrictEqual(prompts);
-  const sendPrompt = vi.fn().mockResolvedValue({ provider: 'codex', threadId: 'scheduled' });
+  const sendPrompt = vi.fn().mockResolvedValue({ provider: 'codex', conversationId: 'scheduled' });
   const runner = new AutomationRunner({ getSnapshot: () => restored, saveSnapshot: async () => {}, notifySnapshotUpdated: vi.fn(), sendPrompt });
   await runner.runAutomation(restored.automations[1]!.id);
   expect(sendPrompt).toHaveBeenCalledWith('agent-dina', expect.stringContaining('GitLab merge request !7'));

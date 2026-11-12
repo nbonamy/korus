@@ -63,7 +63,7 @@ function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent)
       const script = scripts.shift();
       const result = script && activeHandlers ? await script(activeHandlers) : { text: '' };
       if (result.findingCount !== undefined) await activeHandlers!.finishReviewRound({ findingCount: result.findingCount });
-      return { ...result, reviewerSession: reviewerSession ?? { kind: 'codex', threadId: `review-thread-${turns.length}` } };
+      return { ...result, reviewerSession: reviewerSession ?? { kind: 'codex', conversationId: `review-thread-${turns.length}` } };
     },
     resetReviewer,
     saveReport,
@@ -123,7 +123,7 @@ describe('CodeReviewService', () => {
       return { text: 'Reviewed', findingCount: findings };
     }]);
     test.snapshot.general.codeReviewDiscussWithOriginalThread = enabled;
-    test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
+    test.owner.providerSession = { kind: 'codex', conversationId: 'owner-thread' };
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns).toHaveLength(1);
@@ -324,7 +324,7 @@ describe('CodeReviewService', () => {
 
   it.each(['current', 'independent'] as const)('keeps user instructions across %s review rounds and restoration without saving them as defaults', async threadMode => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
-    test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
+    test.owner.providerSession = { kind: 'codex', conversationId: 'owner-thread' };
     test.snapshot.general.codeReviewInstructions = 'Always check authorization.';
     test.snapshot.general.codeReviewDiscussWithOriginalThread = true;
     const instructions = 'Focus on race conditions.\nCheck backward compatibility.';
@@ -464,7 +464,7 @@ describe('CodeReviewService', () => {
     expect(context).toMatch(/^<context>\n/);
     expect(context).toContain('literal &lt;/context&gt; handling');
     expect(context).toContain(`/reports/${session.id}.md`);
-    expect(session.rounds[0]?.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(session.rounds[0]?.reviewerSession).toEqual({ kind: 'codex', conversationId: 'review-thread-1' });
     expect(session.rounds[0]?.summary).toBe('Found a defect.');
     expect(session.rounds[1]?.summary).toBe('No actionable findings.');
     expect(test.saveReport).toHaveBeenCalledTimes(2);
@@ -480,7 +480,7 @@ describe('CodeReviewService', () => {
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3 } });
     await vi.waitFor(() => expect(session.automation?.state).toBe('paused'));
     expect(test.deleted).toEqual([]);
-    expect(reviewer(test, session).providerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(reviewer(test, session).providerSession).toEqual({ kind: 'codex', conversationId: 'review-thread-1' });
     expect(session.automation?.reason).toContain('Report disk is full');
     expect(test.handoffs[0]?.content.split('</context>')[1]).not.toContain('No review findings to report');
   });
@@ -792,7 +792,7 @@ describe('CodeReviewService', () => {
 
     it.each(['current', 'independent'] as const)('preserves committed changes across restored %s review rounds', async threadMode => {
       const test = harness([async () => ({ text: '', findingCount: 0 }), async () => ({ text: 'Committed.' })]);
-      test.owner.providerSession = { kind: 'codex', threadId: 'owner-thread' };
+      test.owner.providerSession = { kind: 'codex', conversationId: 'owner-thread' };
       const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode });
       await vi.waitFor(() => expect(session.status).toBe('ready'));
       const visibleReviewer = reviewer(test, session);
@@ -962,7 +962,7 @@ describe('CodeReviewService', () => {
 
   it('rejects review model overrides on the current thread and leaves the agent and saved preferences alone', () => {
     const test = harness([]);
-    test.owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
+    test.owner.providerSession = { kind: 'codex', conversationId: 'current-thread' };
     test.owner.providerDefaults = { kind: 'codex', model: 'owner-model', reasoningEffort: 'low' };
     const saved = structuredClone(test.snapshot.general.codeReviewDefaults);
 
@@ -978,7 +978,7 @@ describe('CodeReviewService', () => {
       async () => ({ text: '', findingCount: 0 }),
       async () => ({ text: '', findingCount: 0 }),
     ]);
-    test.owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
+    test.owner.providerSession = { kind: 'codex', conversationId: 'current-thread' };
 
     const session = test.service.start(test.owner, {
       scope: { type: 'branch', baseRef: 'origin/main' },
@@ -988,7 +988,7 @@ describe('CodeReviewService', () => {
 
     expect(session.scope).toStrictEqual({ type: 'branch', baseRef: 'origin/main' });
     expect(session.threadMode).toBe('current');
-    expect(test.turns[0]?.reviewerSession).toStrictEqual({ kind: 'codex', threadId: 'current-thread' });
+    expect(test.turns[0]?.reviewerSession).toStrictEqual({ kind: 'codex', conversationId: 'current-thread' });
     const initialPrompt = test.turns[0]!.prompt;
     const contextEnd = initialPrompt.indexOf('</context>');
     expect(initialPrompt.slice(0, contextEnd)).toContain('the current branch against origin/main');
@@ -1001,8 +1001,8 @@ describe('CodeReviewService', () => {
     await test.service.reviewAgain(test.owner, session.id);
     await vi.waitFor(() => expect(session.status).toBe('ready'));
 
-    expect(test.turns[1]?.reviewerSession).toStrictEqual({ kind: 'codex', threadId: 'current-thread' });
-    expect(session.rounds[1]?.reviewerSession).toStrictEqual({ kind: 'codex', threadId: 'current-thread' });
+    expect(test.turns[1]?.reviewerSession).toStrictEqual({ kind: 'codex', conversationId: 'current-thread' });
+    expect(session.rounds[1]?.reviewerSession).toStrictEqual({ kind: 'codex', conversationId: 'current-thread' });
     test.service.submit(test.owner, session.id);
     await test.service.finish(test.owner, session.id);
     expect(test.reset).toStrictEqual([]);
@@ -1147,7 +1147,7 @@ describe('CodeReviewService', () => {
     expect(firstRound.findings[0]?.priority).toBe('p0');
     expect(firstRound.findings[0]?.title).toBe('Authorize before writing');
     expect(firstRound.findings.map((finding) => finding.decision.state)).toEqual(['selected', 'selected']);
-    expect(firstRound.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(firstRound.reviewerSession).toEqual({ kind: 'codex', conversationId: 'review-thread-1' });
 
     test.service.discuss(visibleReviewer, {
       sessionId: session.id, roundId: firstRound.id, findingId: selectedId,
@@ -1174,13 +1174,13 @@ describe('CodeReviewService', () => {
     });
     expect(firstRound.findings.find((finding) => finding.id === rejectedId)?.remediation.state).toBe('skipped');
     expect(test.turns.slice(1, 3).map((turn) => turn.reviewerSession)).toEqual([
-      { kind: 'codex', threadId: 'review-thread-1' },
-      { kind: 'codex', threadId: 'review-thread-1' },
+      { kind: 'codex', conversationId: 'review-thread-1' },
+      { kind: 'codex', conversationId: 'review-thread-1' },
     ]);
 
     const secondRound = await test.service.reviewAgain(visibleReviewer, session.id);
     await vi.waitFor(() => expect(session.status).toBe('ready'));
-    expect(secondRound.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(secondRound.reviewerSession).toEqual({ kind: 'codex', conversationId: 'review-thread-1' });
     expect(test.turns[3]?.reviewerSession).toStrictEqual(test.turns[2]?.reviewerSession);
     expect(test.turns[3]?.prompt).toContain('Not selected for remediation.');
     expect(test.turns[3]?.prompt).toContain(selectedId);
@@ -1207,7 +1207,7 @@ describe('CodeReviewService', () => {
     const snapshot = createEmptySnapshot();
     snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const owner = agent('owner');
-    owner.providerSession = { kind: 'codex', threadId: 'current-thread' };
+    owner.providerSession = { kind: 'codex', conversationId: 'current-thread' };
     snapshot.agents = [owner];
     const contexts = new Map<string, ReviewToolHandlers>();
     const reviewUrls: string[] = [];
@@ -1243,7 +1243,7 @@ describe('CodeReviewService', () => {
         } else {
           await tools.updateFinding({ findingId, status: 'fixed' });
         }
-        return { text: '', reviewerSession: reviewerSession ?? { kind: 'codex', threadId: 'current-thread' } };
+        return { text: '', reviewerSession: reviewerSession ?? { kind: 'codex', conversationId: 'current-thread' } };
       },
       resetReviewer: async () => undefined,
       deleteReviewer: async () => undefined,
@@ -1525,6 +1525,6 @@ describe('CodeReviewService', () => {
 
     await vi.waitFor(() => expect(restoredReviewer.codeReview?.status).toBe('readyToFinish'));
     expect(restoredReviewer.codeReview?.rounds[0]?.findings[0]?.remediation.state).toBe('fixed');
-    expect(restored.turns[0]?.reviewerSession).toEqual({ kind: 'codex', threadId: 'review-thread-1' });
+    expect(restored.turns[0]?.reviewerSession).toEqual({ kind: 'codex', conversationId: 'review-thread-1' });
   });
 });

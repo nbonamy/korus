@@ -1,3 +1,4 @@
+import type { Agent } from '@workspace/core/contracts';
 import { conversation, conversationPatch, textMessage } from './support/conversation';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,7 @@ import { companionPushAuthorizationMessage } from '@workspace/core/companion-not
 import { liveActivityAuthorizationMessage, type LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
-import { CompanionFrameDecoder, companionCompressedProtocol, companionProtocol, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionCompressedProtocol, companionProtocol, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, companionSessionId } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
@@ -260,7 +261,7 @@ describe('native relay host adapter', () => {
       }
     } finally { await connector.dispose!(); }
   });
-  const agent = { id: 'agent', name: 'Agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
+  const agent = { id: 'agent', name: 'Agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
   it('reads an image through the paired host and complete owning conversation target', async () => {
     const connector = connect(); await pairWith(connector);
     const image = { dataUrl: 'data:image/png;base64,cG5n' };
@@ -348,7 +349,7 @@ describe('native relay host adapter', () => {
     const connector = connect();
     try {
       await pairWith(connector);
-      const claude = { ...agent, provider: 'cursor', providerSession: { kind: 'cursor', sessionId: 'session' } };
+      const claude = { ...agent, provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 'session' } };
       const frame = conversation(agent.id, { provider: 'cursor', conversation: 'session', state: { historyState: { hasOlder: false, loadingOlder: false } } });
       const answer = { ...textMessage('answer', 'assistant', 'The completed answer.'), status: 'streaming' as const };
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] } : frame;
@@ -512,7 +513,7 @@ describe('native relay host adapter', () => {
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     await session.loadConversation('agent');
-    const remoteTarget = { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify(agent.providerSession) };
+    const remoteTarget = { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: companionSessionId({ providerSession: agent.providerSession } as Agent) };
     const commandId = randomUUID(); await session.sendPrompt(remoteTarget, 'Reply once', commandId);
     expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ clientCommandId: commandId, target: remoteTarget });
     expect(await session.commandStatus!(commandId)).toBe('accepted');
@@ -612,7 +613,7 @@ describe('native relay host adapter', () => {
 it('retains paired-host conversations across reconnects and uses checkpoints only when the host advertises support', async () => {
   const connector = createRelayConnector(vault(), host.relay);
   await pairWith(connector);
-  const claude = { id: 'agent', teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', sessionId: 'session' } };
+  const claude = { id: 'agent', teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', conversationId: 'session' } };
   const workspace = { conversationSync: true, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] };
   const frame = conversation('agent', { provider: 'claude', conversation: 'session' });
   transport.response = (method, args) => {

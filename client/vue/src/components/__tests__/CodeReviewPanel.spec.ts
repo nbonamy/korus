@@ -41,7 +41,7 @@ function session(findings: CodeReviewFinding[], status: CodeReviewSession['statu
     createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:05:00.000Z',
     rounds: [{
       id: 'round-1', number: 1, status: roundStatus,
-      reviewerSession: { kind: 'codex', threadId: 'review-thread-1' },
+      reviewerSession: { kind: 'codex', conversationId: 'review-thread-1' },
       findings, startedAt: '2026-09-19T10:00:00.000Z',
     }],
   };
@@ -71,7 +71,7 @@ function mountPanel(
   const owner: Agent = {
     id: 'owner', name: 'Owner', folder: '/repo', provider: 'codex', status: { type: 'idle' },
     ...(currentThreadAvailable
-      ? { providerSession: { kind: 'codex' as const, threadId: 'current-thread' } }
+      ? { providerSession: { kind: 'codex' as const, conversationId: 'current-thread' } }
       : {}),
     createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
     ...(review ? { codeReview: review } : {}),

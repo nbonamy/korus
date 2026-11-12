@@ -8,7 +8,7 @@ describe('snapshot subagent reducer', () => {
   it('builds and updates the current subagent tree from app-owned events', () => {
     const snapshot = createInitialSnapshot();
     const agentId = snapshot.agents[0].id;
-    snapshot.agents[0].providerSession = { kind: 'codex', threadId: 'thread-root' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-root' };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,

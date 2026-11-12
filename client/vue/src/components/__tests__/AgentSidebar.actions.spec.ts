@@ -474,7 +474,7 @@ describe('AgentSidebar actions', () => {
       props: {
         agents: [{
           ...agents[0]!,
-          providerSession: { kind: 'codex', threadId: 'thread-dina' },
+          providerSession: { kind: 'codex', conversationId: 'thread-dina' },
         }],
         activeAgentId: 'agent-dina',
         teamName: `${product.name}`,
@@ -496,7 +496,7 @@ describe('AgentSidebar actions', () => {
   it('offers compact for an idle agent with a backend session', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {
-        agents: [{ ...agents[0]!, providerSession: { kind: 'codex', threadId: 'thread-dina' } }],
+        agents: [{ ...agents[0]!, providerSession: { kind: 'codex', conversationId: 'thread-dina' } }],
         activeAgentId: 'agent-dina',
         teamName: `${product.name}`,
       },

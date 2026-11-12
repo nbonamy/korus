@@ -78,14 +78,14 @@ describe('AppBackendServer code review workflow', () => {
     const reviewer: Agent = {
       id: 'reviewer', teamId: 'team-test', name: 'Review', folder: '/repo', provider: 'claude',
       status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
-      providerSession: { kind: 'claude', sessionId: 'saved-review-thread', transport: 'stdio' },
+      providerSession: { kind: 'claude', conversationId: 'saved-review-thread', transport: 'stdio' },
       codeReview: {
         id: 'saved-review', targetAgentId: 'reviewer', reviewerAgentId: 'reviewer',
         scope: { type: 'uncommitted' }, threadMode: 'current', status,
         activeRoundId: 'saved-round', createdAt: 'now', updatedAt: 'now',
         rounds: [{
           id: 'saved-round', number: 1, status: status === 'fixing' ? 'submitted' : 'reviewing', startedAt: 'now',
-          reviewerSession: { kind: 'claude', sessionId: 'saved-review-thread', transport: 'stdio' },
+          reviewerSession: { kind: 'claude', conversationId: 'saved-review-thread', transport: 'stdio' },
           findings: [{
             id: 'saved-finding', roundId: 'saved-round', priority: 'p1', title: 'Check ownership',
             body: 'Authorize before writing.', decision: { state: 'selected', decidedAt: 'now' },
@@ -137,7 +137,7 @@ describe('AppBackendServer code review workflow', () => {
       expect(snapshot.agents[0]?.codeReview).toMatchObject({
         id: 'saved-review', status: status === 'fixing' ? 'readyToFinish' : 'ready', rounds: [{
           id: 'saved-round', status: status === 'fixing' ? 'completed' : 'ready',
-          reviewerSession: { kind: 'claude', sessionId: 'saved-review-thread' },
+          reviewerSession: { kind: 'claude', conversationId: 'saved-review-thread' },
           findings: [status === 'fixing'
             ? { id: 'saved-finding', remediation: { state: 'fixed', evidence: 'Ownership verified.' } }
             : { title: 'Check ownership', remediation: { state: 'notStarted' } }],
@@ -272,9 +272,9 @@ describe('AppBackendServer code review workflow', () => {
       return {
         text: '',
         reviewerSession: input.reviewerSession ?? (provider === 'codex'
-          ? { kind: 'codex' as const, threadId: `review-thread-${reviewRun}` }
-          : provider === 'claude' ? { kind: 'claude' as const, sessionId: `review-thread-${reviewRun}`, transport: 'stdio' as const }
-          : { kind: 'antigravity' as const, sessionId: `review-thread-${reviewRun}` }),
+          ? { kind: 'codex' as const, conversationId: `review-thread-${reviewRun}` }
+          : provider === 'claude' ? { kind: 'claude' as const, conversationId: `review-thread-${reviewRun}`, transport: 'stdio' as const }
+          : { kind: 'antigravity' as const, conversationId: `review-thread-${reviewRun}` }),
       };
     });
     const disposeCodeReview = vi.fn().mockResolvedValue(undefined);
@@ -361,8 +361,8 @@ describe('AppBackendServer code review workflow', () => {
     await vi.waitFor(() => expect(session.status).toBe('readyToFinish'));
 
     expect(runCodeReview).toHaveBeenNthCalledWith(2, reviewer, expect.objectContaining({
-      reviewerSession: provider === 'codex' ? { kind: 'codex', threadId: 'review-thread-1' }
-        : provider === 'claude' ? { kind: 'claude', sessionId: 'review-thread-1', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'review-thread-1' },
+      reviewerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'review-thread-1' }
+        : provider === 'claude' ? { kind: 'claude', conversationId: 'review-thread-1', transport: 'stdio' } : { kind: 'antigravity', conversationId: 'review-thread-1' },
     }));
     expect(round.findings[0]!.remediation.state).toBe('fixed');
 
@@ -416,7 +416,7 @@ describe('AppBackendServer code review workflow', () => {
       settleTurn = async () => {
         if (completion === 'confirmed') await activeHandlers!.finishReviewRound({ findingCount: 1 });
         if (completion === 'reject') reject(new Error('Provider turn cancelled.'));
-        else resolve({ text: 'Inspection response.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } });
+        else resolve({ text: 'Inspection response.', reviewerSession: { kind: 'codex', conversationId: 'review-thread' } });
       };
     });
     const runCodeReview = vi.fn(async (_agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['runCodeReview']>>[1]) => {
@@ -430,7 +430,7 @@ describe('AppBackendServer code review workflow', () => {
         await activeHandlers.finishReviewRound({ findingCount: 1 });
         return {
           text: '',
-          reviewerSession: { kind: 'codex' as const, threadId: 'review-thread' },
+          reviewerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
         };
       }
       return interruptedTurn;
@@ -441,7 +441,7 @@ describe('AppBackendServer code review workflow', () => {
         await new Promise<void>(resolve => setImmediate(resolve));
       }
       return {
-        providerSession: agent.providerSession ?? { kind: 'codex' as const, threadId: 'review-thread' },
+        providerSession: agent.providerSession ?? { kind: 'codex' as const, conversationId: 'review-thread' },
       };
     });
     const driver: AgentProviderDriver = {
@@ -525,7 +525,7 @@ describe('AppBackendServer code review workflow', () => {
       getCapabilities: () => codexProviderCapabilities,
       runCodeReview: vi.fn(async (_agent, input) => {
         await reviewTools.finishReviewRound({ findingCount: 0 });
-        return { text: '', reviewerSession: input.reviewerSession ?? { kind: 'codex', threadId: 'review-thread' } };
+        return { text: '', reviewerSession: input.reviewerSession ?? { kind: 'codex', conversationId: 'review-thread' } };
       }),
       archiveAgentConversation: vi.fn().mockResolvedValue(undefined),
       releaseConversation,

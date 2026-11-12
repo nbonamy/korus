@@ -73,14 +73,10 @@ function expectWorkspace(value: unknown, path: string): void {
 function expectProviderSession(value: unknown, path: string): void {
   expectRecord(value, path);
   expectLiteral(value.kind, harnessProviders, `${path}.kind`);
-  if (value.kind === 'codex') {
-    expectString(value.threadId, `${path}.threadId`);
-    return;
-  }
-  expectString(value.sessionId, `${path}.sessionId`);
-  if (value.kind === 'antigravity' || value.kind === 'cursor') return;
+  expectString(value.conversationId, `${path}.conversationId`);
+  if (value.kind !== 'claude') return;
   expectLiteral(value.transport, ['stdio', 'websocket'], `${path}.transport`);
-  ['transcriptSessionId', 'transcriptFolder', 'serverUrl', 'model', 'reasoningEffort'].forEach(
+  ['transcriptConversationId', 'transcriptFolder', 'serverUrl', 'model', 'reasoningEffort'].forEach(
     (key) => expectOptional(value, key, path, expectString),
   );
 }

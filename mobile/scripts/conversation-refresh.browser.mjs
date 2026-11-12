@@ -26,7 +26,7 @@ test('retained conversations switch locally and apply incremental refreshes thro
       }
       const firstInstance = await restoredEngineInstance();
       const nextInstance = await restoredEngineInstance();
-      const agent = id => ({ id, teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', sessionId: id }, name: id, status: { type: 'idle' } });
+      const agent = id => ({ id, teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', conversationId: id }, name: id, status: { type: 'idle' } });
       const context = id => ({ engineInstance: firstInstance, agentId: id, agent: agent(id), peers: [], ready: true, generation: 1, history: { hasOlder: false, loadingOlder: false, failed: false } });
       const reset = id => ({ type: 'claude.conversationSnapshotChanged', provider: 'claude', agentId: id, payload: { revision: 1, snapshot: { agentId: id, sessionId: id, activeTurnId: null, turnIds: [], turns: [], messages: Array.from({ length: 70 }, (_, i) => ({ id: `${id}-${i}`, agentId: id, role: 'assistant', status: 'complete', parts: [{ type: 'text', text: `${id} message ${i}. `.repeat(20) }] })), answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } });
       const transfer = (id, revision, frames) => ({ type: 'conversationTransfer', identity: id, checkpoint: { epoch: id, revision }, ...context(id), frames });
