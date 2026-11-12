@@ -1,5 +1,5 @@
 <template>
-  <slot v-if="$slots.default" :summary="enabled === false || provider === 'antigravity' || (!state && loading) ? '' : versionSummary" :upgrade-available="state?.status === 'available' && state.canUpgrade" :busy="loading || pending" :upgrade="upgrade" :menu-items="updateMenuItems" :select-menu-item="selectUpdateMenuItem" />
+  <slot v-if="$slots.default" :summary="enabled === false || (!state && loading) ? '' : versionSummary" :upgrade-available="state?.status === 'available' && state.canUpgrade" :busy="loading || pending" :upgrade="upgrade" :menu-items="updateMenuItems" :select-menu-item="selectUpdateMenuItem" />
   <FormRow v-else :title="$t('providerUpdate.version')">
     <template #copy>
       <span class="provider-update__version" :class="{ 'provider-update__current': state?.status === 'current', 'provider-update__available': state?.status === 'available' || pending }" :role="errorText ? 'alert' : pending ? 'status' : undefined">
@@ -52,9 +52,9 @@ const versionSummary = computed(() => {
       : !state.value && loading.value ? t('auth.checking') : '');
   return [state.value?.installedVersion, detail].filter(Boolean).join(' · ') || '—';
 });
-const instructionsUrl = computed(() => props.provider === 'cursor' ? 'https://cursor.com/docs/cli/installation#updates' : props.provider === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
+const instructionsUrl = computed(() => props.provider === 'cursor' ? 'https://cursor.com/docs/cli/installation#updates' : props.provider === 'antigravity' ? 'https://antigravity.google/docs/getting-started?tab=cli' : props.provider === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
 const updateMenuItems = computed<AppMenuItem[]>(() => {
-  if (props.enabled === false || props.provider === 'antigravity') return [];
+  if (props.enabled === false) return [];
   const items: AppMenuItem[] = [{ id: 'check-updates', type: 'action', label: t('providerUpdate.check'), icon: SearchIcon, disabled: loading.value || pending.value }];
   if (state.value?.status === 'available' && state.value.canUpgrade) items.unshift({ id: 'upgrade', type: 'action', label: t('engineConnection.update'), disabled: loading.value });
   if (state.value?.status === 'waiting') items.unshift({ id: 'cancel-update', type: 'action', label: t('common.cancel'), disabled: loading.value });
@@ -94,7 +94,7 @@ function changePreview(action: 'upgrade' | 'cancel') {
   }, 2_000);
 }
 async function refresh(force = false) {
-  if (props.enabled === false || props.provider === 'antigravity') return;
+  if (props.enabled === false) return;
   if (preview.value) { resetPreview(); return; }
   const expected = revision;
   loading.value = true;

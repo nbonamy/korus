@@ -10,7 +10,7 @@ import type { ProviderInstallation } from './provider-updates';
 import type { ProviderUpdateAdapter, ProviderUpdateIO } from './provider-update-adapter';
 import { createCodexUpdateAdapter } from './codex/provider-update';
 import { createClaudeUpdateAdapter } from './claude/provider-update';
-import { createAntigravityUpdateAdapter } from './antigravity/provider-update';
+import { AntigravityUpdateAdapter } from './antigravity/provider-update';
 import { CursorUpdateAdapter } from './cursor/provider-update';
 
 const exec = promisify(execFile);
@@ -38,7 +38,7 @@ export class ProviderUpdateRuntime {
     this.adapters = new Map<HarnessProvider, ProviderUpdateAdapter>([
       ['codex', createCodexUpdateAdapter(this.io, { command: () => options.command('codex') })],
       ['claude', createClaudeUpdateAdapter(this.io, { command: () => options.command('claude'), home: options.claudeHome, env: options.env })],
-      ['antigravity', createAntigravityUpdateAdapter()],
+      ['antigravity', new AntigravityUpdateAdapter(this.io)],
       ['cursor', new CursorUpdateAdapter(this.io, options.cursorHome)],
     ]);
   }
