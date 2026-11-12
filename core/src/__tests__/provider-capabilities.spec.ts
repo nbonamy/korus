@@ -65,3 +65,11 @@ describe('backend capabilities', () => {
     });
   });
 });
+
+describe('previousConversationStorage', () => {
+  it('looks for a conversation the agent left among archived ones only on a harness that archives', async () => {
+    const { previousConversationStorage } = await import('../provider-capabilities');
+    expect(previousConversationStorage('codex')).toBe('archived');
+    expect(['claude', 'cursor', 'antigravity'].map(provider => previousConversationStorage(provider as 'claude'))).toStrictEqual(['active', 'active', 'active']);
+  });
+});

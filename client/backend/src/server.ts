@@ -74,7 +74,7 @@ import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, 
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { isInstructionEngine, readEngineInstructions, saveEngineInstructions } from './engine-instructions';
 import { SkillManager } from './skill-manager';
-import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities, previousConversationStorage } from '@workspace/core/provider-capabilities';
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
 import { teamColors } from '@workspace/core/team-colors';
 import { sanitizeWorkItemAssignmentSource } from '@workspace/core/work-assignments';
@@ -2866,7 +2866,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: this.coordinationPolicy(previousRef.provider).rollbackStorageState },
+                  target: { ref: previousRef, storageState: previousConversationStorage(previousRef.provider) },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -2977,7 +2977,7 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as ProviderPermissionModeResult;
           agent.providerDefaults = result.providerDefaults;
-          if (this.coordinationPolicy(agent.provider).permissionModeScope === 'provider') this.snapshot.general.providerApprovalDefaults = {
+          this.snapshot.general.providerApprovalDefaults = {
             ...this.snapshot.general.providerApprovalDefaults, [agent.provider]: mode,
           };
           return this.persistAndEmitSnapshot();

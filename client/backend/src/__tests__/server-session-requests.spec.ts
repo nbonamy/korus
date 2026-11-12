@@ -130,7 +130,6 @@ describe('AppBackendServer', () => {
       .mockResolvedValueOnce({ providerSession: oldSession });
     const driver: AgentProviderDriver = {
       provider: provider,
-      ...(provider === 'codex' ? {} : { coordinationPolicy: { rollbackStorageState: 'active' as const } }),
       getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
       getCapabilities: () => defaultProviderCapabilities(provider),
       sendPrompt: async () => ({ providerSession: oldSession }),
@@ -468,7 +467,7 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it.each(['provider', 'conversation'] as const)('persists Claude permission modes with %s default scope', async permissionModeScope => {
+  it('persists a Claude permission mode as the default for new Claude agents', async () => {
     const snapshot = createTestSnapshot();
     snapshot.general.providerApprovalDefaults = { codex: 'ask-for-approval' };
     snapshot.teams[0]!.agentIds = ['agent-claude'];
@@ -488,7 +487,6 @@ describe('AppBackendServer', () => {
     });
     const driver: AgentProviderDriver = {
       provider: 'claude',
-      ...(permissionModeScope === 'conversation' ? { coordinationPolicy: { permissionModeScope } } : {}),
       getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
       getCapabilities: () => claudeProviderCapabilities,
       setPermissionMode,
@@ -522,7 +520,7 @@ describe('AppBackendServer', () => {
     });
 
     expect(setPermissionMode).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-claude' }), 'bypassPermissions');
-    expect(snapshot.general.providerApprovalDefaults).toStrictEqual(permissionModeScope === 'provider' ? { codex: 'ask-for-approval', claude: 'bypassPermissions' } : { codex: 'ask-for-approval' });
+    expect(snapshot.general.providerApprovalDefaults).toStrictEqual({ codex: 'ask-for-approval', claude: 'bypassPermissions' });
     expect(snapshot.agents[0]?.providerSession).toBeUndefined();
     expect(saveSnapshot).toHaveBeenCalledOnce();
     await server.close();

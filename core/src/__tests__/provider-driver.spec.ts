@@ -18,8 +18,8 @@ import {
 
 describe('backend driver helpers', () => {
   it('resolves provider-independent legacy coordination defaults and explicit auth overrides', () => {
-    expect(resolveProviderCoordinationPolicy()).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
-    expect(resolveProviderCoordinationPolicy({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } })).toStrictEqual({ permissionModeScope: 'conversation', rollbackStorageState: 'active', authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+    expect(resolveProviderCoordinationPolicy()).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+    expect(resolveProviderCoordinationPolicy({ authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } })).toStrictEqual({ authentication: { actions: ['check', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
   });
   it('uses product-facing backend names in unsupported feature errors', () => {
     expect(providerDisplayName('codex')).toBe('Codex');

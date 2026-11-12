@@ -89,7 +89,7 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
     cursor: { command: resolveCursorExecutable, steeringFallback: () => settings()?.cursorSteeringFallbackEnabled === true },
   });
   return driver('cursor', harness, agents, {
-    coordinationPolicy: { permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } },
+    coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } },
     reviewScope: reviewScope('cursor'),
   });
 }

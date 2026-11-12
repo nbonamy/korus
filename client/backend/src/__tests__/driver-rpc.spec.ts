@@ -77,10 +77,10 @@ describe('ProviderDriverRpc', () => {
   it('reads native authentication policies from registered factories and defaults unregistered metadata', async () => {
     const rpc = new ProviderDriverRpc(new Map([['cursor', createProviderDriver('cursor')], ['antigravity', createProviderDriver('antigravity')], ['codex', createProviderDriver('codex')]]));
     try {
-      expect(rpc.getCoordinationPolicy('codex')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
-      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
-      expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
-      expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ permissionModeScope: 'provider', rollbackStorageState: 'archived', authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
+      expect(rpc.getCoordinationPolicy('codex')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
+      expect(rpc.getCoordinationPolicy('cursor')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } });
+      expect(rpc.getCoordinationPolicy('antigravity')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: false, enableOnSuccess: true } });
+      expect(rpc.getCoordinationPolicy('claude')).toStrictEqual({ authentication: { actions: ['check', 'cancel', 'logout'], refreshOnAdmission: false, enableOnSuccess: true } });
     } finally { await rpc.close(); }
   });
   it('passes the requested login method to the driver and returns its authentication as is', async () => {

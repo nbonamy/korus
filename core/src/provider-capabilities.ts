@@ -64,6 +64,10 @@ export const cursorProviderCapabilities: ProviderCapabilities = {
 const providerCapabilities: Record<HarnessProvider, ProviderCapabilities> = {
   codex: codexProviderCapabilities, claude: claudeProviderCapabilities, cursor: cursorProviderCapabilities, antigravity: antigravityProviderCapabilities,
 };
+/** Where a conversation the agent switched away from is found again: archived on a harness that archives, otherwise still active. */
+export function previousConversationStorage(provider: HarnessProvider): 'active' | 'archived' {
+  return defaultProviderCapabilities(provider).conversationArchive ? 'archived' : 'active';
+}
 /**
  * Choices Korus makes for one harness that no capability explains. Each needs a reason; keep this list short.
  */
