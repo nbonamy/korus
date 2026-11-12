@@ -46,6 +46,21 @@ protocol types). On the desktop, Electron main is the adapter, `daemon`
 the renderer owns visual state. See [client/AGENTS.md](client/AGENTS.md) and
 [docs/architecture.md](docs/architecture.md).
 
+## Agent-Agnostic Design
+
+Korus never codes to a specific agent (Codex, Claude, Antigravity, ...). No
+agent-named branches, fields or special cases in `core`, the daemon, the renderer or
+mobile: differences between agents surface as capabilities, models, settings and
+events of one common contract. `multi-agent-sdk` owns that contract for running
+agents (one driver interface over every harness) and `agent-ui-sdk` owns it for
+conversation UI and rendering; `codex-sdk` is the Codex harness underneath. Existing
+agent-specific code is debt to move into the SDKs, not a pattern to extend.
+
+When Korus needs something the abstraction does not offer, change the SDK and consume
+it, rather than working around it here. The lead agent coordinates that work with the
+agents owning each SDK: send a concrete contract request (what Korus needs, not how
+to build it), then adopt the new version.
+
 ## Mobile API Compatibility
 
 Every endpoint and wire contract the mobile app consumes must stay strictly
