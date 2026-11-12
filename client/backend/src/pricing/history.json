@@ -4851,6 +4851,110 @@
         }
       ]
     },
+    "claude-fable-5-2": {
+      "metadata": {
+        "canonicalId": "anthropic/claude-fable-5-2",
+        "source": {
+          "path": "providers/anthropic/models/claude-fable-5-2.toml",
+          "urls": [
+            "https://platform.claude.com/docs/en/about-claude/pricing#data-residency-pricing",
+            "https://platform.claude.com/docs/en/about-claude/pricing#fast-mode-pricing",
+            "https://platform.claude.com/docs/en/about-claude/pricing#model-pricing",
+            "https://platform.claude.com/docs/en/about-claude/pricing#web-search-tool",
+            "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools#forcing-tool-use.",
+            "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool#model-compatibility",
+            "https://platform.claude.com/docs/en/api/openai-sdk",
+            "https://platform.claude.com/docs/en/build-with-claude/effort#change-effort-mid-conversation-beta",
+            "https://platform.claude.com/docs/en/build-with-claude/fast-mode",
+            "https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages;",
+            "https://platform.claude.com/docs/en/build-with-claude/prompt-caching#cache-limitations",
+            "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+            "https://platform.claude.com/docs/en/models/fable-5-2/overview",
+            "https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2#feature-support"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-09T00:00:00.000Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 8,
+                "cache": {
+                  "read": 0.2,
+                  "write": {
+                    "1h": 16,
+                    "5m": 10
+                  }
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 40,
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "region": {
+                    "equals": "us"
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "fast"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "fast"
+          ],
+          "cache": {
+            "explicit": {
+              "ttl": [
+                "1h",
+                "5m"
+              ],
+              "min_tokens": 512,
+              "max_breakpoints": 4,
+              "targets": [
+                "messages",
+                "system",
+                "tools"
+              ]
+            }
+          },
+          "modes": {
+            "fast": {
+              "body": {
+                "speed": "fast"
+              }
+            }
+          },
+          "source": {
+            "revision": "df354983bc923bf2751bd757e63590709ebfb614",
+            "collectedAt": "2026-11-11T22:54:40.824Z",
+            "blobSha": "9319b24c241c68d2ca3d1ff7bf9f3c9560f75cc1"
+          }
+        }
+      ]
+    },
     "claude-haiku-4-5": {
       "metadata": {
         "canonicalId": "anthropic/claude-haiku-4-5",
