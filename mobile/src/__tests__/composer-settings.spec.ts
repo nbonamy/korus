@@ -17,6 +17,15 @@ describe('phone composer settings', () => {
     expect(resolveComposerSettings(agent(), [], undefined)).toMatchObject({ model: null, reasoningEffort: null });
     expect(resolveComposerSettings(agent({ provider: 'claude', providerDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }), [{ id: 'opus', model: 'opus', displayName: 'Opus' }], undefined).serviceTier).toBe('fast');
   });
+  it('finds the alias a resolved model name belongs to, as the desktop does', () => {
+    const catalog: ProviderModelOption[] = [
+      { id: 'default', model: 'default', displayName: 'Default (recommended)', isDefault: true },
+      { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet 5.5', providerMetadata: { resolvedModel: 'claude-sonnet-5-5' } },
+    ];
+    const chat = agent({ provider: 'claude', providerDefaults: { kind: 'claude', model: 'claude-sonnet-5-5', userSelectedModel: true } });
+    expect(resolveComposerSettings(chat, catalog, undefined).model).toMatchObject({ id: 'sonnet' });
+    expect(resolveComposerSettings(chat, catalog, { model: 'claude-sonnet-5-5' }).model).toMatchObject({ id: 'sonnet' });
+  });
   it('switching model adopts that model\'s own effort and tier defaults', () => {
     const next = applyComposerChoice('codex', models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true }, { modelId: 'gpt-deep' });
     expect(next.choice).toStrictEqual({ model: 'gpt-deep-0914', reasoningEffort: 'high', serviceTier: null, planMode: true });

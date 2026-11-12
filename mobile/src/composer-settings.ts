@@ -8,7 +8,9 @@ export type ComposerSettings = Pick<ExecutionSelection, 'provider' | 'reasoningE
 export type ComposerChange = { modelId?: string; reasoningEffort?: string; serviceTier?: string | null; planMode?: boolean };
 
 const defaultEffort = (model: ProviderModelOption) => model.defaultReasoningEffort || model.supportedReasoningEfforts?.[0]?.reasoningEffort || null;
-const matches = (model: ProviderModelOption, selection: string | null | undefined) => Boolean(selection && (model.id === selection || model.model === selection));
+/** A saved model can be the resolved name behind an alias (`sonnet` resolves to `claude-sonnet-5-5`). */
+const matches = (model: ProviderModelOption, selection: string | null | undefined) =>
+  Boolean(selection && (model.id === selection || model.model === selection || model.providerMetadata?.resolvedModel === selection));
 
 /** The laptop's model catalog can advertise controls beyond the provider's static defaults. */
 export function composerCapabilitiesFor(provider: HarnessProvider, models: readonly ProviderModelOption[]): ProviderCapabilities {
