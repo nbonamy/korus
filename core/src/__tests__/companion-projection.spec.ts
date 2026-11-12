@@ -218,7 +218,8 @@ describe('companion workspace projection', () => {
   });
   it('shares the last model and permission choice but no sandbox or approval policy', () => {
     const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { providerDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access' } })] }).agents;
-    expect(first!.providerDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access' });
+    // Shipped phones read the choice as `approvalPreset`, so it travels under both names.
+    expect(first!.providerDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access', approvalPreset: 'full-access' });
   });
   it('keeps only presentation fields', () => {
     const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, suggestedPrompt: 'Run the tests', mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;

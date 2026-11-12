@@ -20,7 +20,7 @@ describe('shared activity sidebar across the companion boundary', () => {
     ] };
     const wire = projectCompanionWorkspace(source);
     expect(wire.agents.find(a => a.id === 'recent')!.lastActivityAt).toBe('2026-10-15T11:59:00Z');
-    expect(wire.agents.find(a => a.id === 'idle')!.providerDefaults).toStrictEqual({ kind: 'claude', model: 'opus', serviceTier: 'fast', permission: 'default' });
+    expect(wire.agents.find(a => a.id === 'idle')!.providerDefaults).toStrictEqual({ kind: 'claude', model: 'opus', serviceTier: 'fast', permission: 'default', permissionMode: 'default' });
     const groups = (agents: Agent[], time: number) => projectActivitySidebar({ agents, now: time,
       repositoryGroups: projectWorkspaceSidebar({ agents, activeAgentId: 'working', quickChatsLabel: 'Chats' }), label: activity => activity });
     const ids = (agents: Agent[], time: number) => groups(agents, time).map(group => [group.activity, group.sessions.map(s => s.agentId)]);

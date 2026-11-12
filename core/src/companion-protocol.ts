@@ -1,6 +1,6 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { AccountRateLimits, Agent, HarnessProvider, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
+import type { AccountRateLimits, Agent, HarnessProvider, ProviderDefaults, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
 import { applySessionPatch, sessionConversationId, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
 // Conversations travel as neutral session state; a phone speaking an earlier version fails to negotiate.
@@ -158,6 +158,11 @@ const wireConversationField = (provider: HarnessProvider) => provider === 'codex
 /** Session data for the phone: the conversation under both its current and its wire name. */
 export function withLegacyConversationId<T extends ProviderSessionData>(session: T): T {
   return { ...session, [wireConversationField(session.kind)]: session.conversationId };
+}
+/** Shipped phones read the saved permission as `approvalPreset` (Codex) or `permissionMode`, so phone payloads carry both. */
+export function withLegacyPermission<T extends ProviderDefaults>(defaults: T): T {
+  if (defaults.permission === undefined) return defaults;
+  return { ...defaults, [defaults.kind === 'codex' ? 'approvalPreset' : 'permissionMode']: defaults.permission };
 }
 export function companionSessionId(agent: Agent): string | null {
   const session = agent.providerSession;

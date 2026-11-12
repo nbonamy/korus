@@ -1,7 +1,7 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, ProviderDefaults, Team } from './contracts';
-import { withLegacyConversationId, type CompanionGitStatus, type CompanionMission, type CompanionMissionReview, type CompanionMissionTicketState, type CompanionReviewFinding, type CompanionWorkspace } from './companion-protocol';
+import { withLegacyConversationId, withLegacyPermission, type CompanionGitStatus, type CompanionMission, type CompanionMissionReview, type CompanionMissionTicketState, type CompanionReviewFinding, type CompanionWorkspace } from './companion-protocol';
 import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentProviders, providerConnectionsForHost } from './agent-providers';
@@ -22,8 +22,8 @@ function projectDefaults(defaults: ProviderDefaults): ProviderDefaults {
   const { kind, model, reasoningEffort } = defaults;
   const serviceTier = 'serviceTier' in defaults ? defaults.serviceTier : undefined;
   const permission = defaults.permission;
-  return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    ...(serviceTier === undefined ? {} : { serviceTier }), ...(permission === undefined ? {} : { permission }) } as ProviderDefaults;
+  return withLegacyPermission({ kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(serviceTier === undefined ? {} : { serviceTier }), ...(permission === undefined ? {} : { permission }) } as ProviderDefaults);
 }
 
 function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?: string): AgentWorkspaceIdentity {

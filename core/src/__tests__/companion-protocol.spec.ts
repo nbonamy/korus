@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, companionSessionId, companionTarget, encodeCompanionFrame, withLegacyConversationId } from '../companion-protocol';
+import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, companionSessionId, companionTarget, encodeCompanionFrame, withLegacyConversationId, withLegacyPermission } from '../companion-protocol';
 import type { Agent } from '../contracts';
 
 describe('companion wire framing', () => {
@@ -50,5 +50,8 @@ describe('conversation names on the companion wire', () => {
     expect(companionSessionId({ providerSession: claude } as Agent)).toBe('{"kind":"claude","sessionId":"s1"}');
     expect(withLegacyConversationId(codex)).toEqual({ ...codex, threadId: 't1' });
     expect(withLegacyConversationId(claude)).toEqual({ ...claude, sessionId: 's1' });
+    expect(withLegacyPermission({ kind: 'codex', permission: 'approve-for-me' })).toEqual({ kind: 'codex', permission: 'approve-for-me', approvalPreset: 'approve-for-me' });
+    expect(withLegacyPermission({ kind: 'cursor', permission: 'full-access' })).toEqual({ kind: 'cursor', permission: 'full-access', permissionMode: 'full-access' });
+    expect(withLegacyPermission({ kind: 'claude' })).toEqual({ kind: 'claude' });
   });
 });
