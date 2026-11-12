@@ -42,12 +42,14 @@
   white-space: nowrap;
 }
 
-.agent-sidebar__session-title {
+.agent-sidebar__session-title,
+.agent-sidebar__overview-title {
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-18);
 }
 
-.agent-sidebar__session-title--active {
+.agent-sidebar__session-title--active,
+.agent-sidebar__overview-title--active {
   font-weight: var(--font-weight-bold);
 }

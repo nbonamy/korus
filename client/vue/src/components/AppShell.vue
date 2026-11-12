@@ -75,6 +75,7 @@
     <AppShellNavigation
       ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
+      :active-overview-agent-id="overviewVisible ? overviewAgentId : null"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"

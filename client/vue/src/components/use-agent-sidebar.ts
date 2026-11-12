@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, ChartBarIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { useBackendChoices } from './backend-selection';
 import { backendDisplayName } from '@workspace/core/backend-driver';
@@ -135,10 +135,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
   const contextMenuRepositoryAgentId = ref<string | null>(null);
   const contextMenuFeature = ref<WorkspaceSidebarGroup | null>(null);
-  const repositoryMenuItems = computed<AppMenuItem[]>(() => [
-    { id: 'overview', type: 'action', label: t('projectOverview.open'), icon: ChartBarIcon },
-    { id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true },
-  ]);
+  const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
   const hasReadyRemote = computed(() => (props.remoteConnections ?? []).some(connection => connection.status === 'ready'));
   const repositorySessionMenu = markRaw(useRepositorySessionMenu(() => props.listRepositoryBranches, t, () => repositoryGroups.value));
   const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
@@ -413,10 +410,20 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     contextMenuPosition.value = { x: event.clientX, y: event.clientY };
   }
 
-  function selectContextRepositoryItem(itemId: string): void {
+  function deleteContextRepository(): void {
     const agentId = contextMenuRepositoryAgentId.value;
     contextMenuRepositoryAgentId.value = null;
-    if (agentId) emit(itemId === 'overview' ? 'open-project-overview' : 'delete-repository', agentId);
+    if (agentId) emit('delete-repository', agentId);
+  }
+
+  /** The pinned overview entry belongs to the whole repository; any of its agents can open it. */
+  function projectOverviewActive(group: WorkspaceSidebarGroup): boolean {
+    return Boolean(props.activeOverviewAgentId && group.sessions.some(session => session.agentId === props.activeOverviewAgentId));
+  }
+
+  function openProjectOverview(group: WorkspaceSidebarGroup): void {
+    const agentId = group.sessions[0]?.agentId;
+    if (agentId) emit('open-project-overview', agentId);
   }
 
   function openAgentMenu(agentId: string, event: MouseEvent): void {
@@ -590,7 +597,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     closeContextMenu,
     contextMenuRepositoryAgentId,
     repositoryMenuItems,
-    selectContextRepositoryItem,
+    deleteContextRepository,
+    projectOverviewActive,
+    openProjectOverview,
     contextMenuMissionId,
     deleteContextMission,
     openContextMissionWindow,

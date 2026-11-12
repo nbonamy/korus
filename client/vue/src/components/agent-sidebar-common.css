@@ -233,7 +233,9 @@
   white-space: nowrap;
 }
 
-.agent-sidebar__agent {
+/* The pinned overview entry is laid out like an agent row without being one. */
+.agent-sidebar__agent,
+.agent-sidebar__overview-entry {
   position: relative;
   width: 100%;
   min-height: var(--agent-sidebar-row-min-height);
@@ -363,7 +365,8 @@
   opacity: 0.48;
 }
 
-.agent-sidebar__agent--active {
+.agent-sidebar__agent--active,
+.agent-sidebar__overview-entry--active {
   background: color-mix(in srgb, var(--color-surface-base) 72%, transparent);
 }
 
@@ -435,7 +438,8 @@
   --agent-status-dot-size: var(--space-4);
 }
 
-.agent-sidebar--compact .agent-sidebar__agent {
+.agent-sidebar--compact .agent-sidebar__agent,
+.agent-sidebar--compact .agent-sidebar__overview-entry {
   padding-top: 1px;
   padding-bottom: 1px;
 }

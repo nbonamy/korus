@@ -43,7 +43,8 @@
       :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
-      :active-agent-id="activeMissionId ? null : currentAgent?.id ?? null"
+      :active-agent-id="activeMissionId || activeOverviewAgentId ? null : currentAgent?.id ?? null"
+      :active-overview-agent-id="activeOverviewAgentId ?? null"
       :missions="teamMissions"
       :active-mission-id="activeMissionId"
       :mission-creation-error="missionCreationError"
@@ -145,6 +146,7 @@ type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: st
 
 const props = defineProps<{
   activeMissionId?: string | null;
+  activeOverviewAgentId?: string | null;
   missionCreationError?: string;
   missionCreationPending?: boolean;
   phoneScope?: boolean;

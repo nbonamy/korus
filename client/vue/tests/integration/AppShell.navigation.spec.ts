@@ -88,7 +88,7 @@ describe('AppShell navigation and teams', () => {
     expect(wrapper.emitted('interrupt-agent')).toStrictEqual([[]]);
   });
 
-  it('opens the project overview from a repository group menu beside the sidebar and leaves it when an agent is selected', async () => {
+  it('opens the project overview from its pinned repository entry beside the sidebar and leaves it when an agent is selected', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.folder = '/work/korus';
@@ -112,17 +112,18 @@ describe('AppShell navigation and teams', () => {
     setElectronTestClient({ getProjectOverview, refreshProjectNarrative: vi.fn() });
     const wrapper = mount(AppShell, { attachTo: document.body, props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
 
-    await wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
-    const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.trim() === 'Project overview');
-    expect(action).toBeDefined();
-    action!.click();
+    const overviewEntry = () => wrapper.get('[data-group-kind="repository"] [data-entry="project-overview"]');
+    await overviewEntry().trigger('click');
     await flushPromises();
 
     expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith(agent.id);
     expect(wrapper.get('.project-overview h1').text()).toBe('korus');
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    // The pinned entry is the selection while the overview is open, not the agent it was opened from.
+    expect(overviewEntry().attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-group-kind="repository"] .agent-sidebar__repository-agent.agent-sidebar__agent--active').exists()).toBe(false);
 
-    await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('click');
+    await wrapper.get('[data-group-kind="repository"] .agent-sidebar__repository-agent').trigger('click');
     expect(wrapper.find('.project-overview').exists()).toBe(false);
     wrapper.unmount();
   });

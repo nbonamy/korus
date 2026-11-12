@@ -25,7 +25,7 @@
       :y="contextMenuPosition.y"
       :ariaLabel="t('repositoryDeletion.action')"
       :items="repositoryMenuItems"
-      @select="selectContextRepositoryItem"
+      @select="deleteContextRepository"
       @close="contextMenuRepositoryAgentId = null"
     />
 
@@ -78,7 +78,7 @@ const {
   contextMenuRepositoryAgentId,
   t,
   repositoryMenuItems,
-  selectContextRepositoryItem,
+  deleteContextRepository,
   contextMenuFeature,
   featureMenuItems,
   featureAction,

@@ -8,6 +8,8 @@ export interface AgentSidebarProps {
   missions?: Mission[];
   activeMissionId?: string | null;
   activeAgentId: string | null;
+  /** The agent a project overview was opened from, while that overview is showing. */
+  activeOverviewAgentId?: string | null;
   unreadAgentIds?: string[];
   forkableAgentIds?: string[];
   summaryReplacementAgentIds?: string[];
