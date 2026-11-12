@@ -756,8 +756,9 @@ describe('Cursor ACP host transport boundary', () => {
     await host.sendPrompt(defaults,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(2));
     await host.sendPrompt(defaults,'hello',{selection:{model:'fixture-beta'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(3));
     await writeFile(path.join(root,'native-thinking-change'),'');
+    // A conversation that stays open keeps its own settings: a change of saved model reaches it as an explicit selection.
     const dual={...agent,providerDefaults:{kind:'cursor' as const,model:'fixture-dual'}};
-    await host.sendPrompt(dual,'hello'); await vi.waitFor(()=>expect(completions()).toHaveLength(4));
+    await host.sendPrompt(dual,'hello',{selection:{model:'fixture-dual'}}); await vi.waitFor(()=>expect(completions()).toHaveLength(4));
     await host.sendPrompt(dual,'hello',{selection:{reasoningEffort:null}}); await vi.waitFor(()=>expect(completions()).toHaveLength(5));
     expect((await wire()).filter(call=>call.fixture==='prompt-admission').map(call=>({model:call.model,thoughts:call.thoughts}))).toStrictEqual([
       {model:'fixture-alpha',thoughts:{reasoning:'extra-high'}},{model:'fixture-alpha',thoughts:{reasoning:'extra-high'}},{model:'fixture-beta',thoughts:{reasoning_effort:'medium'}},
