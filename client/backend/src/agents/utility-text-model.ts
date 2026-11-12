@@ -17,10 +17,16 @@ const preferences: Record<HarnessProvider, Record<UtilityTaskComplexity, readonl
   },
 };
 
+const fallbackTiers: Record<UtilityTaskComplexity, readonly UtilityTaskComplexity[]> = {
+  simple: ['simple', 'normal', 'complex'], normal: ['normal', 'simple', 'complex'], complex: ['complex', 'normal', 'simple'],
+};
+
 export function utilityTextModel(provider: HarnessProvider, models: readonly ProviderModelOption[], complexity: UtilityTaskComplexity = 'simple'): { model: string; reasoningEffort?: string } {
-  const model = preferences[provider][complexity].map(pattern => models.find(model => pattern.test(model.model) || pattern.test(model.displayName)))
-    .find(model => model !== undefined);
-  if (!model) throw new Error(`No ${complexity === 'simple' ? 'lightweight' : complexity} text model is available for ${provider}. Refresh the provider's model catalog and retry.`);
+  // The family meant for the task, else the nearest one the account offers (cheapest first), else whatever it runs by default.
+  const tiers = fallbackTiers[complexity];
+  const model = tiers.flatMap(tier => preferences[provider][tier]).map(pattern => models.find(model => pattern.test(model.model) || pattern.test(model.displayName)))
+    .find(model => model !== undefined) ?? models.find(model => model.isDefault) ?? models[0];
+  if (!model) throw new Error(`No text model is available for ${provider}. Refresh the provider's model catalog and try again.`);
   const efforts = model.supportedReasoningEfforts;
   const desired = { simple: 'low', normal: 'medium', complex: 'high' }[complexity];
   const reasoningEffort = efforts?.find(effort => effort.reasoningEffort === desired)?.reasoningEffort
