@@ -33,7 +33,7 @@ describe('handoff note capture', () => {
       subscribe: callback => { listener = callback; return () => undefined; },
       send: async () => { listener(completion('accepted', 'interrupted')); return { providerSession: { kind: 'codex', conversationId: 'thread' }, turnId: 'accepted' }; },
       read,
-    })).rejects.toThrow('did not complete');
+    })).rejects.toThrow('stopped before finishing');
     expect(read).not.toHaveBeenCalled();
   });
 
@@ -47,7 +47,7 @@ describe('handoff note capture', () => {
         send: async () => { listener(completion('accepted')); return { providerSession: { kind: 'codex', conversationId: 'thread' }, turnId: 'accepted' }; },
         read: () => new Promise(() => undefined), timeoutMs: 100,
       });
-      const failed = expect(operation).rejects.toThrow('timed out');
+      const failed = expect(operation).rejects.toThrow('didn’t finish');
       await vi.advanceTimersByTimeAsync(101);
       await failed;
       expect(unsubscribe).toHaveBeenCalledOnce();

@@ -884,6 +884,10 @@ export class AppBackendServer {
         await this.requireDriverRpc().handle(backendMethods.driverHandoffCheck, { agent });
       },
       checkDelegates: agent => this.checkDelegationHandoff(agent, agent.handoff!.operationId),
+      abandoned: agent => {
+        const team = this.snapshot.teams.find(team => team.id === agent.teamId);
+        if (team?.delegationHandoffs?.[agent.id] && !team.delegationHandoffs[agent.id]!.targetAgentId) delete team.delegationHandoffs[agent.id];
+      },
       replaced: async (source, target) => {
         this.recordDelegationHandoff(source.teamId!, target);
         await this.persistSnapshotOnly();

@@ -2,6 +2,7 @@ import { provideToolCallDetails } from '@korus-dev/agent-ui-sdk';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
+import type { Agent } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { AgentRequest, SessionState } from '@korus-dev/multi-agent-sdk';
@@ -30,7 +31,7 @@ describe('AgentConversationPanel', () => {
       approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
     });
     const actions = { prepare: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn() } as unknown as AgentConversationActions;
-    const update = vi.fn(async (_id: string, provider: typeof agent.provider) => { view.agent = { ...view.agent, provider }; });
+    const update = vi.fn(async (_id: string, provider: Agent['provider']) => { view.agent = { ...view.agent, provider }; });
     const wrapper = mount({ setup() {
       provideProviderSwitch(update);
       return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [],

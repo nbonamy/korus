@@ -17,7 +17,6 @@ export type AgentHandoff = AgentHandoffInput & {
   targetAgentId?: string;
   phase: 'preparing' | 'closing' | 'starting' | 'complete' | 'failed';
   note?: string;
-  error?: string;
 };
 
 export const handoffNoteLimit = 32_000;
@@ -51,7 +50,6 @@ export function isAgentHandoff(value: unknown): value is AgentHandoff {
     && (v.targetAgentId === undefined || typeof v.targetAgentId === 'string')
     && (v.instructions === undefined || (typeof v.instructions === 'string' && v.instructions.length <= 4000))
     && (v.note === undefined || (typeof v.note === 'string' && v.note.length <= handoffNoteLimit))
-    && (v.error === undefined || typeof v.error === 'string')
     && isProviderConversationRef(ref);
 }
 

@@ -3,7 +3,7 @@
     <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
     <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
-      <p>{{ agent.handoff.error }}</p>
+      <p>{{ t('handoff.interrupted') }}</p>
       <details v-if="agent.handoff.note">
         <summary>{{ t('handoff.savedNote') }}</summary>
         <pre>{{ agent.handoff.note }}</pre>

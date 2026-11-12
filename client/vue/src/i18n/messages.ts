@@ -278,6 +278,7 @@ export const messages = {
       model: 'Model',
       instructions: 'Additional handoff instructions', optional: 'Optional — what should the current agent emphasize in its note?',
       permissions: 'The new agent uses the selected provider’s default permissions.',
+      interrupted: 'The handoff didn’t finish. Check both conversations before continuing; the saved note isn’t resent automatically.',
       phase: { preparing: 'Preparing the handoff note…', closing: 'Closing the source conversation…', starting: 'Starting the new agent…' },
       savedNote: 'Saved handoff note', source: 'Source conversation',
     },

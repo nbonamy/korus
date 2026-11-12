@@ -15,7 +15,6 @@
       <el-alert v-if="blocker || error" :title="error || blocker || ''" type="error" :closable="false" />
       <details v-if="agent.handoff?.note">
         <summary>{{ t('handoff.savedNote') }}</summary>
-        <p v-if="agent.handoff.error">{{ agent.handoff.error }}</p>
         <pre class="handoff-note">{{ agent.handoff.note }}</pre>
         <button class="app-button app-button--tertiary" type="button" @click="openSource">{{ t('handoff.source') }}</button>
       </details>

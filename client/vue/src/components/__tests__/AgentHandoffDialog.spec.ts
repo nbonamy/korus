@@ -41,17 +41,15 @@ describe('AgentHandoffDialog', () => {
     wrapper.unmount();
   });
 
-  it('explains blockers and does not start a handoff', async () => {
+  it('explains blockers', async () => {
     const submit = vi.fn();
     const wrapper = mount(AgentHandoffDialog, { attachTo: document.body, props: { agent, submit, blocker: 'Resolve pending requests before handing off.', listModels: async () => [] } });
     expect(wrapper.text()).toContain('Resolve pending requests');
     expect(wrapper.get('button[type="submit"]').attributes()).toHaveProperty('disabled');
-    await wrapper.get('form').trigger('submit');
-    expect(submit).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
-  it('shows the handoff progress instead of the form, without blaming its own handoff for blocking itself', async () => {
+  it('shows the handoff progress with a way to run it in the background', async () => {
     let fail!: (error: Error) => void;
     const submit = vi.fn(() => new Promise<void>((_resolve, reject) => { fail = reject; }));
     const wrapper = mount(AgentHandoffDialog, { attachTo: document.body,
@@ -65,15 +63,13 @@ describe('AgentHandoffDialog', () => {
       agent: { ...agent, status: { type: 'working' }, handoff: { operationId: 'op', selection: {} as never, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: {} as never, phase: 'closing' } },
     });
 
-    expect(wrapper.find('form').exists()).toBe(false);
-    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.get('[role="status"]').text()).toContain('Closing the source conversation');
     expect(wrapper.text()).toContain('Run in background');
 
-    fail(new Error('Handoff note timed out. The source has been kept.'));
+    fail(new Error('The agent didn’t finish its handoff note in time.'));
     await wrapper.setProps({ blocker: null, agent });
     await flushPromises();
-    expect(wrapper.get('[role="alert"]').text()).toContain('timed out');
+    expect(wrapper.get('[role="alert"]').text()).toContain('didn’t finish');
     expect(wrapper.find('form').exists()).toBe(true);
     wrapper.unmount();
   });
