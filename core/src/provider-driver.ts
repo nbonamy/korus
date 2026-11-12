@@ -201,6 +201,8 @@ export function resolveProviderCoordinationPolicy(policy?: ProviderCoordinationP
 export type AgentProviderDriver = Omit<HarnessDriver<Agent, BackendEvent>, 'getCapabilities' | 'getRuntimeStatus' | 'generateText'> & {
   readonly provider: HarnessProvider;
   readonly coordinationPolicy?: ProviderCoordinationPolicy;
+  /** The agent's record changed; an operation in flight for it sees the new conversation, folder, name and defaults. */
+  agentChanged?(agent: Agent): void;
   onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;

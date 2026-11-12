@@ -169,6 +169,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     this.restate(session, agent);
     return session;
   }
+  /** The agent's record changed: its conversation, folder, name or defaults. An operation in flight sees the new values. */
+  agentChanged(agent: Agent): void { this.peek(agent); }
   /** Tells the harness what the agent's record says now: the record is the authority on its conversation, folder, name and defaults. */
   private restate(session: Session, agent: Agent): void {
     this.harness.syncSession(session, { data: agent.providerSession ?? null, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: defaultsOf(agent.providerDefaults) ?? {} });
@@ -200,9 +202,12 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private liveCapabilities({ permissions: _permissions, login: _login, realtime: _realtime, remoteControl: _remoteControl, accountUsage: _accountUsage, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
   authenticate(request: Parameters<NonNullable<AgentProviderDriver['authenticate']>>[0]) { return this.harness.authenticate(request).then(result => result.native as never); }
   getAccountRateLimits() { return this.harness.getAccountRateLimits(); }
-  /** What Korus offers on this harness (`provider-capabilities`), narrowed by what the session reports right now. */
+  /**
+   * What Korus offers on this harness (`provider-capabilities`), narrowed by what the session reports right now.
+   * A read: it does not re-state the agent's record to the harness, which only an operation on the agent does.
+   */
   getCapabilities(agent: Agent) {
-    return { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getCapabilities(this.peek(agent))) } as ReturnType<AgentProviderDriver['getCapabilities']>;
+    return { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getCapabilities(this.sessions.get(agent.id) ?? this.openFor(agent))) } as ReturnType<AgentProviderDriver['getCapabilities']>;
   }
   /** Product wording for operations the provider does not offer. */
   private async unless<T>(agent: Agent, feature: string, run: () => Promise<T>): Promise<T> {

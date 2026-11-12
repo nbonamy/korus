@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { claudeProviderCapabilities, codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -136,7 +136,7 @@ describe('ProviderDriverRpc', () => {
     snapshot.agents.push(agent); snapshot.teams[0].agentIds.push(agent.id);
     const selected = snapshot.activeAgentId;
     const loadTurnHistory = vi.fn().mockResolvedValue(undefined);
-    const driver = createDriver({ loadTurnHistory });
+    const driver = createDriver({ loadTurnHistory, getCapabilities: () => codexProviderCapabilities });
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
     try {
       expect(await server.handleMessage({ jsonrpc: '2.0', id: 'details', method: 'agent/conversation/turn/history/load', params: { agentId: agent.id, turnId: 'older-turn' } })).toMatchObject({ result: null });
@@ -151,7 +151,7 @@ describe('ProviderDriverRpc', () => {
     snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     const readConversationContent = vi.fn().mockResolvedValue(chunk);
-    const driver = createDriver({ provider: 'claude', readConversationContent });
+    const driver = createDriver({ provider: 'claude', readConversationContent, getCapabilities: () => claudeProviderCapabilities });
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['claude', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
     const input = { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 };
     try {
@@ -476,7 +476,7 @@ describe('ProviderDriverRpc', () => {
     const agent = createAgent();
     const plugins = [{ id: 'dropbox', name: 'dropbox', displayName: 'Dropbox', enabled: true }];
     const listPlugins = vi.fn().mockResolvedValue(plugins);
-    const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({ listPlugins })]]));
+    const rpc = new ProviderDriverRpc(new Map([['codex', createDriver({ listPlugins, getCapabilities: () => codexProviderCapabilities })]]));
 
     await expect(rpc.handle('driver/plugins/list', { agent })).resolves.toStrictEqual(plugins);
     expect(listPlugins).toHaveBeenCalledWith(agent);

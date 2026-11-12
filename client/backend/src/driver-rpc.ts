@@ -56,6 +56,15 @@ export function createDefaultProviderDrivers(options: ProviderDriverRegistryOpti
 
 export { createProviderDriver };
 
+/**
+ * Whether the agent's harness offers something. Every real driver has every operation, so support is read from the
+ * harness's capabilities, never from a missing method: a method check only says the driver object is complete.
+ */
+function offers(driver: AgentProviderDriver, agent: Agent, capability: keyof ReturnType<AgentProviderDriver['getCapabilities']>): boolean {
+  const value = (driver.getCapabilities(agent) as Record<string, unknown> | undefined)?.[capability];
+  return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== false && value !== 'unsupported';
+}
+
 export class ProviderDriverRpc {
   private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
   private closing = false;
@@ -263,7 +272,7 @@ export class ProviderDriverRpc {
         try {
           await this.requireNewWork(agent.provider);
           const driver = this.requireDriver(agent.provider);
-          if (!driver.generateText) throw unsupportedProviderFeature(agent, 'ephemeral text generation');
+          if (!driver.generateText || !offers(driver, agent, 'textGeneration')) throw unsupportedProviderFeature(agent, 'ephemeral text generation');
           if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
           if (record.timeoutMs !== undefined && record.timeoutMs !== null) throw new Error('Invalid utility timeout.');
           controller.signal.throwIfAborted();
@@ -312,7 +321,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.disposeCodeReview) throw unsupportedProviderFeature(agent, 'code review cleanup');
+        if (!driver.disposeCodeReview || !offers(driver, agent, 'codeReview')) throw unsupportedProviderFeature(agent, 'code review cleanup');
         await driver.disposeCodeReview(agent, record.reviewerSession as ProviderSessionData);
         return null;
       }
@@ -348,7 +357,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.setConversationTitle) {
+        if (!driver.setConversationTitle || !offers(driver, agent, 'conversationTitle')) {
           throw unsupportedProviderFeature(agent, 'conversation titles');
         }
         await driver.setConversationTitle(agent, requireString(record.title, 'title'));
@@ -358,7 +367,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.setGoal) {
+        if (!driver.setGoal || !offers(driver, agent, 'goals')) {
           throw unsupportedProviderFeature(agent, 'goals');
         }
         return driver.setGoal(agent, requireString(record.objective, 'objective'));
@@ -366,7 +375,7 @@ export class ProviderDriverRpc {
       case backendMethods.driverGoalClear: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.clearGoal) {
+        if (!driver.clearGoal || !offers(driver, agent, 'goals')) {
           throw unsupportedProviderFeature(agent, 'goals');
         }
         return driver.clearGoal(agent);
@@ -375,7 +384,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.setApprovalPreset) {
+        if (!driver.setApprovalPreset || !offers(driver, agent, 'approvalPresets')) {
           throw unsupportedProviderFeature(agent, 'approval presets');
         }
         return driver.setApprovalPreset(agent, record.preset as never);
@@ -384,7 +393,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.setPermissionMode) {
+        if (!driver.setPermissionMode || !offers(driver, agent, 'permissionModes')) {
           throw unsupportedProviderFeature(agent, 'permission modes');
         }
         const mode = requireString(record.mode, 'mode');
@@ -409,15 +418,14 @@ export class ProviderDriverRpc {
       case backendMethods.driverConversationArchive: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        // Every driver has the operation; whether its harness archives is a capability.
-        if (!driver.archiveAgentConversation || !driver.getCapabilities(agent).conversationArchive) return { supported: false };
+        if (!driver.archiveAgentConversation || !offers(driver, agent, 'conversationArchive')) return { supported: false };
         await driver.archiveAgentConversation(agent);
         return { supported: true };
       }
       case backendMethods.driverConversationDelete: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.deleteAgentConversation || !driver.getCapabilities(agent).conversationDelete) return { supported: false };
+        if (!driver.deleteAgentConversation || !offers(driver, agent, 'conversationDelete')) return { supported: false };
         await driver.deleteAgentConversation(agent);
         return { supported: true };
       }
@@ -445,21 +453,21 @@ export class ProviderDriverRpc {
       case backendMethods.driverConversationLoad: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.loadConversation) throw unsupportedProviderFeature(agent, 'conversation loading');
+        if (!driver.loadConversation || !offers(driver, agent, 'history')) throw unsupportedProviderFeature(agent, 'conversation loading');
         return driver.loadConversation(agent);
       }
       case backendMethods.driverConversationTurnHistoryLoad: {
         const { agent } = requireAgentParams(params);
         const turnId = requireString(requireRecord(params).turnId, 'turnId');
         const driver = this.requireDriver(agent.provider);
-        if (!driver.loadTurnHistory) throw unsupportedProviderFeature(agent, 'turn history');
+        if (!driver.loadTurnHistory || !offers(driver, agent, 'turnHistory')) throw unsupportedProviderFeature(agent, 'turn history');
         await driver.loadTurnHistory(agent, turnId);
         return null;
       }
       case backendMethods.driverConversationHistoryLoadOlder: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.loadOlderHistory) {
+        if (!driver.loadOlderHistory || !offers(driver, agent, 'history')) {
           throw unsupportedProviderFeature(agent, 'demand-paged conversation history');
         }
         return driver.loadOlderHistory(agent);
@@ -469,21 +477,21 @@ export class ProviderDriverRpc {
         const input = requireRecord(requireRecord(params).input);
         if (typeof input.sessionId !== 'string' || typeof input.contentId !== 'string' || !Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error('Invalid conversation content request.');
         const driver = this.requireDriver(agent.provider);
-        if (!driver.readConversationContent) throw unsupportedProviderFeature(agent, 'conversation content');
+        if (!driver.readConversationContent || !offers(driver, agent, 'conversationContent')) throw unsupportedProviderFeature(agent, 'conversation content');
         return driver.readConversationContent(agent, { sessionId: input.sessionId, contentId: input.contentId, offset: input.offset as number });
       }
       case backendMethods.driverConversationsList: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.listConversations) throw unsupportedProviderFeature(agent, 'conversation listing');
+        if (!driver.listConversations || !offers(driver, agent, 'conversationResume')) throw unsupportedProviderFeature(agent, 'conversation listing');
         return driver.listConversations(agent, record.input as ConversationListInput | undefined);
       }
       case backendMethods.driverConversationResume: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.resumeConversation) {
+        if (!driver.resumeConversation || !offers(driver, agent, 'conversationResume')) {
           throw unsupportedProviderFeature(agent, 'conversation resume');
         }
         return driver.resumeConversation(agent, record.target as ConversationResumeTarget);
@@ -501,7 +509,7 @@ export class ProviderDriverRpc {
         const targetAgent = requireAgent(record.targetAgent, 'targetAgent');
         const turnId = record.turnId === undefined ? undefined : requireString(record.turnId, 'turnId');
         const driver = this.requireDriver(agent.provider);
-        if (!driver.forkConversation) {
+        if (!driver.forkConversation || !offers(driver, agent, 'conversationFork')) {
           throw unsupportedProviderFeature(agent, 'conversation fork');
         }
         return turnId === undefined
@@ -546,7 +554,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.deleteTurn) {
+        if (!driver.deleteTurn || !offers(driver, agent, 'deleteTurn')) {
           throw unsupportedProviderFeature(agent, 'turn deletion');
         }
         return driver.deleteTurn(agent, requireString(record.turnId, 'turnId'));
@@ -556,7 +564,7 @@ export class ProviderDriverRpc {
         await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.editTurn) {
+        if (!driver.editTurn || !offers(driver, agent, 'editTurn')) {
           throw unsupportedProviderFeature(agent, 'turn editing');
         }
         const turnId = requireString(record.turnId, 'turnId');
@@ -568,7 +576,7 @@ export class ProviderDriverRpc {
         await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.retryTurn) {
+        if (!driver.retryTurn || !offers(driver, agent, 'retryTurn')) {
           throw unsupportedProviderFeature(agent, 'turn retry');
         }
         return driver.retryTurn(agent, requireString(record.turnId, 'turnId'));
@@ -577,7 +585,7 @@ export class ProviderDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.provider);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.continueInterruptedTurn) {
+        if (!driver.continueInterruptedTurn || !offers(driver, agent, 'turnContinuation')) {
           throw unsupportedProviderFeature(agent, 'interrupted turn continuation');
         }
         const review = requireRecord(params).safetyReview;
@@ -592,13 +600,13 @@ export class ProviderDriverRpc {
       case backendMethods.driverPluginsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.listPlugins) throw unsupportedProviderFeature(agent, 'plugins');
+        if (!driver.listPlugins || !offers(driver, agent, 'plugins')) throw unsupportedProviderFeature(agent, 'plugins');
         return driver.listPlugins(agent);
       }
       case backendMethods.driverSkillsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.provider);
-        if (!driver.listSkills || !driver.getCapabilities(agent).skills) return [];
+        if (!driver.listSkills || !offers(driver, agent, 'skills')) return [];
         return requireRecord(params).forceReload === true ? driver.listSkills(agent, true) : driver.listSkills(agent);
       }
       case backendMethods.sourceFolderDetect:
