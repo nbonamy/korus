@@ -100,14 +100,13 @@ describe('standalone CLI', () => {
     for (const id of ['codex', 'claude', 'agy']) { await writeFile(path.join(bin, id), '#!/bin/sh\n'); await chmod(path.join(bin, id), 0o755); }
     f.context.env.CODEX_HOME = path.join(f.directory, 'custom-codex');
     f.context.env.CLAUDE_CONFIG_DIR = path.join(f.directory, 'custom-claude');
-    f.context.env.GEMINI_HOME = path.join(f.directory, 'custom-gemini');
     f.exec.mockImplementation(async (_file: string, args: string[]) => ({ stdout: args[0] === 'auth' ? '{"loggedIn":false,"email":"PRIVATE_ACCOUNT"}' : args[0] === 'models' ? 'gemini-test\tGemini Test' : args[0] === 'login' ? '' : 'provider 1.2.3', stderr: args[0] === 'login' ? 'Logged in using ChatGPT' : '' }));
     expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
     const json = f.out.pop()!;
     expect(JSON.parse(json).providers).toMatchObject([
       { id: 'codex', home: f.context.env.CODEX_HOME, auth: 'authenticated' },
       { id: 'claude', home: f.context.env.CLAUDE_CONFIG_DIR, auth: 'signed-out' },
-      { id: 'antigravity', home: f.context.env.GEMINI_HOME, auth: 'authenticated' },
+      { id: 'antigravity', home: path.join(f.directory, '.gemini'), auth: 'authenticated' },
     ]);
     expect(json).not.toContain('PRIVATE_ACCOUNT');
     const homes = Object.fromEntries(['codex', 'claude', 'antigravity'].map(id => [id, { homePath: path.join(f.home, `${id}-home`), isolated: true, shareSkills: false }]));
@@ -118,7 +117,8 @@ describe('standalone CLI', () => {
     expect(JSON.parse(configured).providers.map((provider: { home: string }) => provider.home)).toStrictEqual(['codex', 'claude', 'antigravity'].map(id => homes[id]!.homePath));
     expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'codex'), ['login', 'status'], expect.objectContaining({ env: expect.objectContaining({ CODEX_HOME: homes.codex!.homePath }) }));
     expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'claude'), ['auth', 'status', '--json'], expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: homes.claude!.homePath }) }));
-    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'agy'), ['models'], expect.objectContaining({ env: expect.objectContaining({ GEMINI_HOME: homes.antigravity!.homePath }) }));
+    // Antigravity's CLI reads no home variable: its sign-in is the machine's.
+    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'agy'), ['models'], expect.objectContaining({ env: expect.not.objectContaining({ GEMINI_HOME: expect.anything() }) }));
     expect(configured).not.toMatch(/PRIVATE_ACCOUNT|PRIVATE_SETTINGS/);
 
     f.exec.mockImplementation(async (_file: string, args: string[]) => {
