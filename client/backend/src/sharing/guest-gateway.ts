@@ -1,3 +1,4 @@
+import type { Message } from '@korus-dev/multi-agent-sdk';
 import { shareInvitationPattern } from '@workspace/core/conversation-share-relay';
 import { conversationImageInput, readEmbeddedConversationImage } from '@workspace/core/conversation-images';
 import { createHash } from 'node:crypto';
@@ -58,8 +59,10 @@ export class GuestConversationGateway {
     stream.inactivityTimeout = 10_000;
     let grant: GuestConversationGrant | undefined; let handle = ''; let guestName = ''; let closed = false; let unlisten: (() => void) | undefined; let unRevoke: (() => void) | undefined; let unwatch: (() => void) | undefined;
     const images = new Set<string>(); const contentIds = new Set<string>();
+    // The messages a patch changed in place, read when it was observed: later patches may move them.
+    const changedInPlace = new WeakMap<GuestConversationUpdate, Message[]>();
     const remember = (update: GuestConversationUpdate) => {
-      const messages = deliveredMessages(update);
+      const messages = changedInPlace.get(update) ?? deliveredMessages(update);
       // Check each addition so a single large page cannot grow the retained index beyond its cap.
       const add = (set: Set<string>, value: string) => {
         if (!set.has(value) && images.size + contentIds.size >= 2048) throw new GuestResourceLimit();
@@ -129,6 +132,7 @@ export class GuestConversationGateway {
               if (!watching || !isSessionConversationEvent(event)) return;
               const update = guestConversationUpdate(event);
               if (!bound(update, grant!.target)) return;
+              changedInPlace.set(update, deliveredMessages(update, this.source.current(event.agentId, event.payload.conversation)?.snapshot.state));
               if (pending) {
                 bufferedBytes += Buffer.byteLength(JSON.stringify(update));
                 if (buffered.length >= 256 || bufferedBytes > companionResponseLimit * 2) { close(); return; }

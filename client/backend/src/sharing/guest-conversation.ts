@@ -20,7 +20,7 @@ function guestState({ messages, busy, activeTurnId, turns, historyLoading, histo
 }
 function guestPatch(patch: SessionPatch): SessionPatch {
   // A patch keeps its revision with no visible change, so the guest's revisions stay contiguous.
-  return { revision: patch.revision, ops: patch.ops.filter(op => op.op === 'spliceMessages' || guestFields.has(op.key)) };
+  return { revision: patch.revision, ops: patch.ops.filter(op => op.op !== 'set' || guestFields.has(op.key)) };
 }
 
 /** Keep only the routing envelope and the guest-visible transcript. App snapshots, proposals and owner state never cross this boundary. */
@@ -34,10 +34,22 @@ export function guestSnapshotUpdate(session: GuestConversationSession): GuestCon
   const { agentId, provider, conversation, epoch, snapshot } = session;
   return guestConversationUpdate({ type: 'conversation.sessionSnapshot', agentId, provider, payload: { conversation, epoch, snapshot } });
 }
-/** The messages an update delivers, which the guest may then ask the owner to expand or preview. */
-export function deliveredMessages(update: GuestConversationUpdate): Message[] {
-  return update.type === 'conversation.sessionSnapshot' ? update.payload.snapshot.state.messages
-    : update.payload.patch.ops.flatMap(op => op.op === 'spliceMessages' ? op.messages : []);
+/**
+ * The messages an update delivers, which the guest may then ask the owner to expand or preview. A patch that changes a
+ * message in place delivers that whole message as it stands in `after`, the state the patch produced; without it,
+ * only what the ops themselves carry.
+ */
+export function deliveredMessages(update: GuestConversationUpdate, after?: SessionState): Message[] {
+  if (update.type === 'conversation.sessionSnapshot') return update.payload.snapshot.state.messages;
+  const changed = new Set<number>();
+  return update.payload.patch.ops.flatMap((op): Message[] => {
+    if (op.op === 'spliceMessages') return op.messages;
+    if (op.op === 'set') return [];
+    const whole = after?.messages[op.index];
+    if (whole) { if (changed.has(op.index)) return []; changed.add(op.index); return [whole]; }
+    if (op.op === 'spliceParts') return [{ parts: op.parts } as Message];
+    return op.op === 'setMessageFields' ? [{ ...op.fields, parts: [] } as unknown as Message] : [];
+  });
 }
 
 /**
@@ -107,6 +119,8 @@ export class SessionConversationSource {
     if (next.ok && next.session) this.sessions.set(key, next.session); else this.sessions.delete(key);
   }
   clear(): void { this.sessions.clear(); }
+  /** The watched conversation as it stands now, if it is held. */
+  current(agentId: string, conversation: string | null): GuestConversationSession | undefined { return this.sessions.get(SessionConversationSource.key(agentId, conversation)); }
   async read(agentId: string, conversation: string): Promise<GuestConversationSession> {
     const key = SessionConversationSource.key(agentId, conversation);
     // Loading publishes a fresh snapshot, which observe() retains before the load resolves. A revision missed
