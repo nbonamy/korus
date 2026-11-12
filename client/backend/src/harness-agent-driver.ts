@@ -310,6 +310,23 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   async listModels(agent: Agent) { return this.harness.listModels(await this.session(agent)) as never; }
   async listSkills(agent: Agent, forceReload?: boolean) { return this.harness.listSkills(await this.session(agent), forceReload) as never; }
   async listPlugins(agent: Agent) { return this.harness.listPlugins(await this.session(agent)) as never; }
+  /** Account features one harness offers: the others answer that they have none. */
+  async getBankedResets() { return this.harness.getProviderCapabilities().bankedResets ? this.harness.getBankedResets() : { status: 'unsupported' as const }; }
+  async useBankedReset(input: Parameters<Harness['useBankedReset']>[0]) {
+    if (!this.harness.getProviderCapabilities().bankedResets) throw new Error('Reset redemption is unsupported');
+    return this.harness.useBankedReset(input);
+  }
+  private remoteControl(): Harness {
+    if (!this.harness.getProviderCapabilities().remoteControl) throw new Error(`${this.provider} does not support remote control.`);
+    return this.harness;
+  }
+  async getRemoteControlStatus() { return this.remoteControl().getRemoteControl(); }
+  async enableRemoteControl() { return this.remoteControl().setRemoteControl(true); }
+  async disableRemoteControl() { return this.remoteControl().setRemoteControl(false); }
+  async startDevicePairing() { return this.remoteControl().startDevicePairing(); }
+  async checkDevicePairing(pairing: Parameters<Harness['checkDevicePairing']>[0]) { return this.remoteControl().checkDevicePairing(pairing); }
+  async listPairedDevices(environmentId: string) { return this.remoteControl().listPairedDevices(environmentId); }
+  async revokePairedDevice(environmentId: string, clientId: string) { return this.remoteControl().revokePairedDevice(environmentId, clientId); }
   async generateText(agent: Agent, input: ProviderTextGeneration) { return this.harness.generateText(await this.session(agent), (this.policy.prepareGeneration?.(agent, input) ?? input) as never); }
   async generateImage(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['generateImage']>>[1], signal?: AbortSignal) { return this.harness.generateImage(await this.session(agent), input as never, signal) as never; }
 
