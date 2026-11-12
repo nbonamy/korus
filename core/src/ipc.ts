@@ -86,6 +86,7 @@ export const ipcChannels = {
   previewAgentFile: 'agent:file:preview',
   readAgentFileChunk: 'agent:file:chunk:read',
   getProjectOverview: 'project:overview:get',
+  refreshProjectNarrative: 'project:overview:narrative:refresh',
   getAgentGitLog: 'agent:git-log:get',
   getAgentGitLogCommit: 'agent:git-log-commit:get',
   getAgentGitLogFile: 'agent:git-log-file:get',

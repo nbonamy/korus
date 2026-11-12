@@ -1,17 +1,24 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@workspace/core/contracts';
-import { dayStart } from '@workspace/core/usage-time';
 import type { ProjectOverviewGitFacts } from '../git-reader';
-import { ProjectOverviewService, type ProjectOverviewOuterLoop, type ProjectOverviewSession } from '../project-overview-service';
+import { ProjectNarrativeStore } from '../narrative-store';
+import { ProjectOverviewService, type ProjectOverviewGenerate, type ProjectOverviewOuterLoop } from '../project-overview-service';
 
-const now = Date.parse('2026-11-11T12:00:00Z');
-const at = (iso: string) => Date.parse(iso);
+const hour = 3_600_000;
+const day = 24 * hour;
+const start = Date.parse('2026-11-11T12:00:00Z');
+const ago = (ms: number) => new Date(start - ms).toISOString();
+const folders: string[] = [];
+afterEach(async () => { await Promise.all(folders.splice(0).map(folder => rm(folder, { recursive: true, force: true }))); });
 
 function agent(id: string, branch: string, overrides: Partial<Agent> = {}): Agent {
   return {
     id, name: null, backend: 'claude', folder: `/work/korus-${id}`, status: { type: 'idle' },
     workspace: {
-      kind: 'git', folder: `/work/korus-${id}`, repositoryName: 'korus', repositoryRoot: `/work/korus-${id}`,
+      kind: 'git', folder: `/work/korus-${id}`, repositoryName: 'korus', repositoryRoot: `/work/korus-${id}`, originUrl: 'git@github.com:acme/korus.git',
       primaryWorktreeRoot: '/work/korus', branch, isLinkedWorktree: true, updatedAt: '2026-11-11T00:00:00Z',
     },
     ...overrides,
@@ -20,218 +27,236 @@ function agent(id: string, branch: string, overrides: Partial<Agent> = {}): Agen
 
 const facts = (): ProjectOverviewGitFacts => ({
   name: 'korus',
-  branch: 'feat/overview',
+  branch: 'feat/cursor-steering',
   baseBranch: 'main',
   commits: [
-    { at: at('2026-11-10T11:00:00Z'), subject: 'fix: b', merge: false },
-    { at: at('2026-11-10T10:00:00Z'), subject: 'feat: a', merge: false },
-    { at: at('2026-11-09T12:00:00Z'), subject: "Merge branch 'feat/git-log'", merge: true },
-    { at: at('2026-11-09T11:00:00Z'), subject: 'chore: c', merge: false },
-    { at: at('2026-11-09T10:00:00Z'), subject: 'weird subject', merge: false },
+    { at: start - 2 * hour, subject: "Merge branch 'feat/cursor-usage'", merge: true },
+    { at: start - 3 * hour, subject: 'fix: attach cursor sessions before streaming', merge: false },
+    { at: start - 5 * hour, subject: 'fix: remember cursor defaults', merge: false },
+    { at: start - day, subject: 'fix: hide cursor thoughts', merge: false },
+    { at: start - 2 * day, subject: 'fix: separate cursor usage from billing', merge: false },
+    { at: start - 3 * day, subject: "Merge branch 'feat/multi-window'", merge: true },
+    { at: start - 4 * day, subject: 'feat: add interface zoom', merge: false },
+    { at: start - 20 * day, subject: "Merge branch 'feat/old'", merge: true },
   ],
-  tags: [{ name: 'v1.2.0', at: at('2026-11-09T13:00:00Z') }],
+  tags: [{ name: 'v0.56.0', at: start - 2 * day }],
   branches: [
-    { name: 'main', lastCommitAt: at('2026-11-10T11:00:00Z'), behind: 0, ahead: 0, files: [] },
-    { name: 'feat/overview', lastCommitAt: at('2026-11-11T09:00:00Z'), behind: 14, ahead: 6, files: ['a.ts', 'b.ts', 'c.ts'] },
-    { name: 'feat/other', lastCommitAt: at('2026-11-08T09:00:00Z'), behind: 2, ahead: 1, files: ['a.ts', 'z.ts'] },
+    { name: 'main', firstCommitAt: start - 2 * hour, lastCommitAt: start - 2 * hour, behind: 0, ahead: 0, files: [], insertions: 0, deletions: 0 },
+    { name: 'feat/cursor-steering', firstCommitAt: start - 3 * hour, lastCommitAt: start - hour, behind: 3, ahead: 2, files: ['a.ts', 'b.ts'], insertions: 40, deletions: 10 },
+    { name: 'refactor/sdk-extraction', firstCommitAt: start - 2 * day, lastCommitAt: start - 2 * day, behind: 0, ahead: 1, files: Array.from({ length: 273 }, (_, index) => `f${index}.ts`), insertions: 921, deletions: 26_411 },
   ],
-  baseCommitsPerDay: 22,
+  baseCommitsPerDay: 45,
 });
 
-const sessions = (): ProjectOverviewSession[] => [
-  { provider: 'claude', sessionId: 's3', startedAt: at('2026-11-09T09:00:00Z'), turns: 1, failedTurns: 0 },
-  { provider: 'codex', sessionId: 's1', startedAt: at('2026-11-10T09:00:00Z'), turns: 3, failedTurns: 1 },
-  { provider: 'codex', sessionId: 's2', startedAt: at('2026-11-10T15:00:00Z'), turns: 2, failedTurns: 0 },
-];
+const connected = (): ProjectOverviewOuterLoop => ({
+  backlog: vi.fn(async () => ({ provider: 'github' as const, open: 47, items: [
+    { id: '#84', title: 'Cursor resume fails', state: 'open' as const, createdAt: ago(day), updatedAt: ago(day) },
+    { id: '#83', title: 'Annotations hidden', state: 'closed' as const, createdAt: ago(20 * day), closedAt: ago(2 * day), updatedAt: ago(2 * day) },
+  ] })),
+  pullRequests: vi.fn(async () => [{ branch: 'refactor/sdk-extraction', draft: false, approved: false, openedAt: ago(2 * day) }]),
+  pipelines: vi.fn(async () => ({ provider: 'github' as const, runs: [{ id: '1', branch: 'refactor/sdk-extraction', status: 'failed' as const, at: ago(day) }] })),
+});
 
-function setup(options: { git?: ProjectOverviewGitFacts | null | Error; ledger?: ProjectOverviewSession[] | null; outerLoop?: ProjectOverviewOuterLoop; agents?: Agent[] } = {}) {
-  const requester = agent('a1', 'feat/overview', { name: 'Overview', status: { type: 'working' } });
-  const agents = options.agents ?? [
-    requester,
-    agent('a2', 'feat/other', { backend: 'codex' }),
-    agent('a3', 'feat/overview', { workspace: { kind: 'git', folder: '/work/else', repositoryName: 'else', repositoryRoot: '/work/else', primaryWorktreeRoot: '/work/else', branch: 'feat/overview', isLinkedWorktree: false, updatedAt: '' } }),
-  ];
-  const clock = { now };
+function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoop?: ProjectOverviewOuterLoop; agents?: Agent[]; store?: ProjectNarrativeStore } = {}) {
+  const requester = agent('a1', 'feat/cursor-steering', { name: 'Steering', status: { type: 'working' } });
+  const agents = options.agents ?? [requester, agent('a2', 'refactor/sdk-extraction', { backend: 'codex' }), agent('a3', 'main', { folder: '/work/else', workspace: undefined })];
+  const clock = { now: start };
   const git = options.git === undefined ? facts() : options.git;
   const read = vi.fn(async () => { if (git instanceof Error) throw git; return git; });
-  const ledger = vi.fn(() => options.ledger === undefined ? sessions() : options.ledger);
-  const service = new ProjectOverviewService({ git: { read }, sessions: ledger, agents: () => agents, outerLoop: options.outerLoop, now: () => clock.now });
-  return { service, requester, read, ledger, clock };
+  const sessions = vi.fn(() => [{ provider: 'claude', sessionId: 's1', startedAt: start - day, turns: 4, failedTurns: 1 }, { provider: 'codex', sessionId: 's2', startedAt: start - 2 * day, turns: 2, failedTurns: 0 }]);
+  const store = options.store ?? new ProjectNarrativeStore(null);
+  const service = new ProjectOverviewService({ git: { read }, sessions, agents: () => agents, outerLoop: options.outerLoop, narratives: store, now: () => clock.now });
+  return { service, requester, read, sessions, clock, store };
 }
 
-const since = dayStart('2026-11-05', 'UTC');
-const emptyCommits = { feat: 0, fix: 0, test: 0, chore: 0, other: 0 };
+/** A scripted engine: it answers from the fact ids it finds in the prompt, as a real reply would cite them. */
+function engine(reply?: (factId: (needle: string) => string) => unknown) {
+  const prompts: string[] = [];
+  const generate = vi.fn<ProjectOverviewGenerate>(async (_agent, request) => {
+    prompts.push(request.prompt);
+    const factId = (needle: string) => /^(F\d+): /mu.exec(request.prompt.split('\n').find(line => /^F\d+: /u.test(line) && line.includes(needle)) ?? '')?.[1] ?? 'F0';
+    return { text: JSON.stringify((reply ?? grounded)(factId)) };
+  });
+  return { generate, prompts };
+}
+const grounded = (factId: (needle: string) => string) => ({
+  lead: 'Cursor follow-up dominates while one large refactor waits.',
+  workstreams: [
+    { name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but 4 fixes have followed.', facts: [factId('"cursor"')], branches: ['feat/cursor-steering', 'feat/cursor-usage'], issues: ['#84'] },
+    { name: 'SDK extraction', state: 'waiting', analysis: 'One branch changes 273 files and is waiting for review.', facts: [factId('refactor/sdk-extraction is')], branches: ['refactor/sdk-extraction'] },
+  ],
+});
 
-describe('project overview service', () => {
-  it('composes the story, sessions, branches and risk from the repository and the ledger alone', async () => {
-    const { service, requester, read, ledger } = setup();
+describe('project overview flow', () => {
+  it('places work in flight at its station from the repository, agents, pull requests and pipelines', async () => {
+    const outerLoop = connected();
+    const { service, requester, read, clock } = setup({ outerLoop });
 
-    const overview = await service.get(requester, { window: '7d', timeZone: 'UTC' });
+    const overview = await service.get(requester);
 
-    expect(read).toHaveBeenCalledExactlyOnceWith('/work/korus-a1', { since, now, defaultBranch: null, keepBranches: ['feat/overview', 'feat/other'] });
-    expect(ledger).toHaveBeenCalledExactlyOnceWith('/work/korus', since);
+    expect(read).toHaveBeenCalledExactlyOnceWith('/work/korus-a1', { since: start - 30 * day, now: start, defaultBranch: null, keepBranches: ['feat/cursor-steering', 'refactor/sdk-extraction'] });
+    expect(outerLoop.backlog).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', start - 30 * day);
+    expect(outerLoop.pullRequests).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus');
+    expect(outerLoop.pipelines).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', start - 30 * day);
     expect(overview).toStrictEqual({
       generatedAt: '2026-11-11T12:00:00.000Z',
-      repository: { name: 'korus', branch: 'feat/overview', baseBranch: 'main' },
-      window: { kind: '7d', bucket: 'day', timeZone: 'UTC' },
-      sources: { git: 'available', sessions: 'available', backlog: 'notConnected', pipelines: 'notConnected' },
-      totals: { commits: 4, merges: 1, releases: 1, sessions: 3, turns: 6, workingAgents: 1, baseCommitsPerDay: 22 },
-      buckets: [
-        { start: '2026-11-05', commits: emptyCommits, merges: 0, mergedBranches: [], releases: [], sessions: [] },
-        { start: '2026-11-06', commits: emptyCommits, merges: 0, mergedBranches: [], releases: [], sessions: [] },
-        { start: '2026-11-07', commits: emptyCommits, merges: 0, mergedBranches: [], releases: [], sessions: [] },
-        { start: '2026-11-08', commits: emptyCommits, merges: 0, mergedBranches: [], releases: [], sessions: [] },
-        { start: '2026-11-09', commits: { ...emptyCommits, chore: 1, other: 1 }, merges: 1, mergedBranches: ['feat/git-log'], releases: ['v1.2.0'], sessions: [{ provider: 'claude', sessions: 1, turns: 1, failedTurns: 0 }] },
-        { start: '2026-11-10', commits: { ...emptyCommits, feat: 1, fix: 1 }, merges: 0, mergedBranches: [], releases: [], sessions: [{ provider: 'codex', sessions: 2, turns: 5, failedTurns: 1 }] },
-        { start: '2026-11-11', commits: emptyCommits, merges: 0, mergedBranches: [], releases: [], sessions: [] },
-      ],
-      chapters: [{ start: '2026-11-09', buckets: 2, title: 'Git log', branches: ['feat/git-log'] }],
-      branches: [
-        { name: 'main', base: true, current: false, lastCommitAt: '2026-11-10T11:00:00.000Z', behind: 0, ahead: 0, changedFiles: 0, agents: [], pipelineRuns: null, risk: null },
-        {
-          name: 'feat/overview', base: false, current: true, lastCommitAt: '2026-11-11T09:00:00.000Z', behind: 14, ahead: 6, changedFiles: 3,
-          agents: [{ id: 'a1', name: 'Overview', backend: 'claude', status: 'working' }],
-          pipelineRuns: null,
-          risk: { level: 'medium', gitOnly: true, reasons: [{ kind: 'behind', commits: 14 }, { kind: 'overlap', files: 1, branches: 1 }, { kind: 'velocity', commitsPerDay: 22 }] },
-        },
-        {
-          name: 'feat/other', base: false, current: false, lastCommitAt: '2026-11-08T09:00:00.000Z', behind: 2, ahead: 1, changedFiles: 2,
-          agents: [{ id: 'a2', name: 'feat/other', backend: 'codex', status: 'idle' }],
-          pipelineRuns: null,
-          risk: { level: 'medium', gitOnly: true, reasons: [{ kind: 'behind', commits: 2 }, { kind: 'overlap', files: 1, branches: 1 }, { kind: 'velocity', commitsPerDay: 22 }] },
-        },
-      ],
-      backlog: null,
-      pipelines: null,
+      repository: { name: 'korus', branch: 'feat/cursor-steering', baseBranch: 'main' },
+      sources: { git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' },
+      narrative: { status: 'missing' },
+      flow: {
+        stations: [
+          { kind: 'backlog', status: 'available', count: 47, note: 1, marks: [] },
+          { kind: 'building', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }] },
+          { kind: 'review', status: 'available', count: 1, note: 2 * day, marks: [{ workstreamId: null, units: 1 }] },
+          { kind: 'ci', status: 'available', count: 0, note: 0, marks: [] },
+          { kind: 'shipped', status: 'available', count: 2, note: null, marks: [] },
+        ],
+        links: [{ to: 'building', tokens: [null] }, { to: 'review', tokens: [] }, { to: 'ci', tokens: [] }, { to: 'shipped', tokens: [null] }],
+        constraint: null,
+      },
     });
-  });
 
-  it('serves a repeated request from its cache for thirty seconds and reads again afterwards or for another window', async () => {
-    const { service, requester, read, clock } = setup();
-    const first = await service.get(requester, { window: '7d', timeZone: 'UTC' });
     clock.now += 29_000;
-    expect(await service.get(requester, { window: '7d', timeZone: 'UTC' })).toBe(first);
+    await service.get(requester);
     expect(read).toHaveBeenCalledTimes(1);
-    await service.get(requester, { window: '30d', timeZone: 'UTC' });
-    expect(read).toHaveBeenCalledTimes(2);
     clock.now += 2_000;
-    expect(await service.get(requester, { window: '7d', timeZone: 'UTC' })).not.toBe(first);
-    expect(read).toHaveBeenCalledTimes(3);
+    await service.get(requester);
+    expect(read).toHaveBeenCalledTimes(2);
   });
 
-  it('adds backlog flow and pipeline runs when the repository\'s code host is connected', async () => {
-    const outerLoop: ProjectOverviewOuterLoop = {
-      backlog: vi.fn(async () => ({
-        provider: 'github' as const,
-        open: 47,
-        items: [
-          { id: '#83', title: 'Annotations hidden in older messages', state: 'closed' as const, createdAt: '2026-10-20T10:00:00Z', closedAt: '2026-11-09T10:00:00Z', updatedAt: '2026-11-09T10:00:00Z' },
-          { id: '#84', title: 'Worktree delete leaves a folder', state: 'open' as const, createdAt: '2026-11-10T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z' },
-          { id: '#80', title: 'Older issue with a new comment', state: 'open' as const, createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-11-11T08:00:00Z' },
-        ],
-      })),
-      pipelines: vi.fn(async () => ({
-        provider: 'github' as const,
-        runs: [
-          { id: '5', branch: 'feat/overview', status: 'failed' as const, at: '2026-11-11T09:30:00Z' },
-          { id: '1', branch: 'main', status: 'passed' as const, at: '2026-11-09T12:10:00Z' },
-          { id: '3', branch: 'main', status: 'passed' as const, at: '2026-11-10T11:10:00Z' },
-          { id: '2', branch: 'main', status: 'failed' as const, at: '2026-11-10T10:10:00Z' },
-          { id: '4', branch: 'feat/overview', status: 'passed' as const, at: '2026-11-11T09:10:00Z' },
-          { id: '6', branch: 'main', status: 'running' as const, at: '2026-11-11T11:50:00Z' },
-        ],
-      })),
-    };
-    const { service } = setup({ outerLoop });
-    const requester = agent('a1', 'feat/overview', { name: 'Overview' });
-    requester.workspace = { ...requester.workspace!, kind: 'git', originUrl: 'git@github.com:acme/korus.git' } as Agent['workspace'];
-
-    const overview = await service.get(requester, { window: '7d', timeZone: 'UTC' });
-
-    expect(outerLoop.backlog).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', since);
-    expect(outerLoop.pipelines).toHaveBeenCalledExactlyOnceWith('github.com/acme/korus', since);
-    expect(overview.sources).toStrictEqual({ git: 'available', sessions: 'available', backlog: 'available', pipelines: 'available' });
-    expect(overview.backlog).toStrictEqual({
-      provider: 'github',
-      open: 47,
-      opened: 1,
-      closed: 1,
-      buckets: [
-        { start: '2026-11-05', opened: 0, closed: 0 }, { start: '2026-11-06', opened: 0, closed: 0 },
-        { start: '2026-11-07', opened: 0, closed: 0 }, { start: '2026-11-08', opened: 0, closed: 0 },
-        { start: '2026-11-09', opened: 0, closed: 1 }, { start: '2026-11-10', opened: 1, closed: 0 },
-        { start: '2026-11-11', opened: 0, closed: 0 },
-      ],
-      latest: [
-        { id: '#80', title: 'Older issue with a new comment', change: 'updated', at: '2026-11-11T08:00:00Z' },
-        { id: '#84', title: 'Worktree delete leaves a folder', change: 'opened', at: '2026-11-10T10:00:00Z' },
-        { id: '#83', title: 'Annotations hidden in older messages', change: 'closed', at: '2026-11-09T10:00:00Z' },
-      ],
-    });
-    expect(overview.pipelines).toStrictEqual({
-      provider: 'github',
-      passRate: 2 / 3,
-      baseRuns: [
-        { id: '1', branch: 'main', status: 'passed', at: '2026-11-09T12:10:00Z' },
-        { id: '2', branch: 'main', status: 'failed', at: '2026-11-10T10:10:00Z' },
-        { id: '3', branch: 'main', status: 'passed', at: '2026-11-10T11:10:00Z' },
-        { id: '6', branch: 'main', status: 'running', at: '2026-11-11T11:50:00Z' },
-      ],
-    });
-    const [base, current, other] = overview.branches;
-    expect(base!.pipelineRuns).toHaveLength(4);
-    expect(current!.pipelineRuns).toStrictEqual([
-      { id: '4', branch: 'feat/overview', status: 'passed', at: '2026-11-11T09:10:00Z' },
-      { id: '5', branch: 'feat/overview', status: 'failed', at: '2026-11-11T09:30:00Z' },
+  it('keeps every unit in building from the repository alone, and isolates a failing provider read', async () => {
+    const alone = await setup().service.get(agent('a1', 'feat/cursor-steering'));
+    expect(alone.sources).toStrictEqual({ git: 'available', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' });
+    expect(alone.flow.stations.map(station => [station.kind, station.status, station.count])).toStrictEqual([
+      ['backlog', 'notConnected', null], ['building', 'available', 2], ['review', 'notConnected', null], ['ci', 'notConnected', null], ['shipped', 'available', 2],
     ]);
-    expect(current!.risk).toStrictEqual({
-      level: 'high', gitOnly: false,
-      reasons: [{ kind: 'behind', commits: 14 }, { kind: 'overlap', files: 1, branches: 1 }, { kind: 'velocity', commitsPerDay: 22 }, { kind: 'failingPipeline' }],
+
+    const outerLoop = { ...connected(), pullRequests: vi.fn(async () => { throw new Error('GitHub request failed with 500: secret detail'); }) };
+    const failing = await setup({ outerLoop }).service.get(agent('a1', 'feat/cursor-steering'));
+    expect(failing.sources).toStrictEqual({ git: 'available', backlog: 'available', pullRequests: 'failed', pipelines: 'available' });
+    expect(failing.flow.stations.map(station => [station.kind, station.status, station.count])).toStrictEqual([
+      ['backlog', 'available', 47], ['building', 'available', 2], ['review', 'failed', null], ['ci', 'failed', null], ['shipped', 'available', 2],
+    ]);
+    expect(JSON.stringify(failing)).not.toContain('secret detail');
+  });
+
+  it('reports a folder without a repository, a failed repository read and a malformed agent', async () => {
+    const plain = await setup({ git: null }).service.get(agent('a1', 'main'));
+    expect(plain.sources.git).toBe('unavailable');
+    expect(plain.narrative).toStrictEqual({ status: 'unavailable', reason: 'quiet' });
+    expect(plain.flow.stations.every(station => station.count === null)).toBe(true);
+
+    const failed = await setup({ git: new Error('git exploded') }).service.get(agent('a1', 'main'));
+    expect(failed.sources.git).toBe('failed');
+    expect(failed.repository).toStrictEqual({ name: 'korus', branch: 'main', baseBranch: null });
+
+    await expect(setup().service.get({ ...agent('a1', 'main'), folder: null })).rejects.toThrow('This agent has no folder.');
+  });
+});
+
+describe('project overview narrative', () => {
+  it('writes a grounded narrative from computed evidence, marks its work in the flow and keeps it across a restart', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'korus-narrative-'));
+    folders.push(folder);
+    const file = join(folder, 'project-overviews.json');
+    const { service, requester, clock } = setup({ outerLoop: connected(), store: new ProjectNarrativeStore(file) });
+    const { generate, prompts } = engine();
+
+    const overview = await service.refreshNarrative(requester, generate);
+
+    expect(generate).toHaveBeenCalledExactlyOnceWith(requester, expect.objectContaining({ cwd: '/work/korus-a1', complexity: 'normal' }));
+    const prompt = prompts[0]!;
+    for (const line of [
+      'Release 0.56.0 (0.56) was tagged on Nov 9.',
+      '4 of 4 fix commits in the last 30 days mention "cursor".',
+      'Branch feat/cursor-usage was merged into main on Nov 11.',
+      'Branch refactor/sdk-extraction is 0 commits behind and 1 ahead of main, changes 273 files, adds 921 and removes about 26,000 lines, has an open pull request waiting for review and a failing pipeline; landing risk is high.',
+      'main took about 45 commits a day over the last 7 days.',
+      '2 issues were opened and 1 closed in the last 30 days; 47 are open.',
+      '2 agent sessions ran here in the last 30 days (claude 1, codex 1); 1 turns failed.',
+      '- #84 Cursor resume fails',
+      '- fix: hide cursor thoughts',
+    ]) expect(prompt).toContain(line);
+    expect(prompt.indexOf('<<<EVIDENCE')).toBeLessThan(prompt.indexOf('- #84 Cursor resume fails'));
+    expect(prompt.indexOf('EVIDENCE>>>')).toBeGreaterThan(prompt.indexOf('- #84 Cursor resume fails'));
+
+    expect(overview.narrative).toStrictEqual({
+      status: 'fresh',
+      narrative: {
+        lead: 'Cursor follow-up dominates while one large refactor waits.',
+        workstreams: [
+          { id: 'w1', name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but 4 fixes have followed.', basis: ['4 cursor fixes in 30 days'] },
+          { id: 'w2', name: 'SDK extraction', state: 'waiting', analysis: 'One branch changes 273 files and is waiting for review.', basis: ['refactor/sdk-extraction'] },
+        ],
+        writtenBy: 'claude',
+        writtenAt: '2026-11-11T12:00:00.000Z',
+      },
     });
-    // The host is connected but this branch has no runs yet, so its level still rests on the repository alone.
-    expect(other!.pipelineRuns).toStrictEqual([]);
-    expect(other!.risk!.gitOnly).toBe(true);
+    expect(overview.flow.stations[1]!.marks).toStrictEqual([{ workstreamId: 'w1', units: 1 }]);
+    expect(overview.flow.stations[2]!.marks).toStrictEqual([{ workstreamId: 'w2', units: 1 }]);
+    expect(overview.flow.links.at(-1)).toStrictEqual({ to: 'shipped', tokens: ['w1'] });
+
+    // Unchanged evidence spends nothing, here or after a restart with the same store file.
+    clock.now += hour;
+    expect((await service.refreshNarrative(requester, generate)).narrative.status).toBe('fresh');
+    const restarted = setup({ outerLoop: connected(), store: new ProjectNarrativeStore(file) });
+    expect((await restarted.service.get(restarted.requester)).narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'claude' } });
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a failing provider and a failing repository read inside their own zones', async () => {
-    const outerLoop: ProjectOverviewOuterLoop = {
-      backlog: vi.fn(async () => { throw new Error('GitHub request failed with 500: secret detail'); }),
-      pipelines: vi.fn(async () => null),
-    };
-    const { service } = setup({ git: new Error('git exploded'), outerLoop });
-    const requester = agent('a1', 'feat/overview');
-    requester.workspace = { ...requester.workspace!, kind: 'git', originUrl: 'https://github.com/acme/korus.git' } as Agent['workspace'];
+  it('retries an ungrounded reply once with the reasons, then reports failure and waits fifteen minutes before trying again', async () => {
+    const { service, requester, clock } = setup({ outerLoop: connected() });
+    const { generate, prompts } = engine(factId => ({ lead: 'Fine.', workstreams: [{ name: 'Cursor engine', state: 'settling', analysis: 'There were 99 fixes.', facts: [factId('"cursor"')] }] }));
 
-    const overview = await service.get(requester, { window: '7d', timeZone: 'UTC' });
+    expect((await service.refreshNarrative(requester, generate)).narrative).toStrictEqual({ status: 'unavailable', reason: 'failed' });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(prompts[1]).toContain('Workstream 1 states 99, which none of its cited facts contain.');
 
-    expect(overview.sources).toStrictEqual({ git: 'failed', sessions: 'available', backlog: 'failed', pipelines: 'notConnected' });
-    expect(overview.repository).toStrictEqual({ name: 'korus', branch: 'feat/overview', baseBranch: null });
-    expect(overview.branches).toStrictEqual([]);
-    expect(overview.chapters).toStrictEqual([]);
-    expect(overview.backlog).toBeNull();
-    expect(overview.pipelines).toBeNull();
-    expect(overview.totals).toMatchObject({ commits: 0, merges: 0, sessions: 3, turns: 6, baseCommitsPerDay: null });
-    expect(overview.buckets.find(bucket => bucket.start === '2026-11-10')!.sessions).toStrictEqual([{ provider: 'codex', sessions: 2, turns: 5, failedTurns: 1 }]);
-    expect(JSON.stringify(overview)).not.toContain('secret detail');
+    clock.now += 14 * 60_000;
+    expect((await service.refreshNarrative(requester, generate)).narrative).toStrictEqual({ status: 'unavailable', reason: 'failed' });
+    expect(generate).toHaveBeenCalledTimes(2);
+    clock.now += 2 * 60_000;
+    const { generate: working } = engine();
+    expect((await service.refreshNarrative(requester, working)).narrative.status).toBe('fresh');
   });
 
-  it('shows what it can for a plain folder with no repository and no statistics', async () => {
-    const { service } = setup({ git: null, ledger: null });
-    const plain = { id: 'p1', name: 'Notes', backend: 'codex', folder: '/work/notes', status: { type: 'idle' }, workspace: { kind: 'folder', folder: '/work/notes', label: 'notes', updatedAt: '' } } as Agent;
+  it('marks the narrative stale when the project moves, keeps showing it, and rewrites it on request', async () => {
+    const git = facts();
+    const { service, requester, clock } = setup({ git, outerLoop: connected() });
+    const { generate } = engine();
+    await service.refreshNarrative(requester, generate);
 
-    const overview = await service.get(plain);
-
-    expect(overview.window).toStrictEqual({ kind: '30d', bucket: 'day', timeZone: 'UTC' });
-    expect(overview.sources).toStrictEqual({ git: 'unavailable', sessions: 'unavailable', backlog: 'notConnected', pipelines: 'notConnected' });
-    expect(overview.repository).toStrictEqual({ name: 'notes', branch: null, baseBranch: null });
-    expect(overview.buckets).toHaveLength(30);
-    expect(overview.totals).toStrictEqual({ commits: 0, merges: 0, releases: 0, sessions: 0, turns: 0, workingAgents: 0, baseCommitsPerDay: null });
+    git.commits.unshift({ at: start + hour, subject: 'feat: add zoom shortcuts', merge: false });
+    clock.now += 16 * 60_000;
+    expect((await service.get(requester)).narrative).toMatchObject({ status: 'stale', narrative: { lead: 'Cursor follow-up dominates while one large refactor waits.' } });
+    expect((await service.refreshNarrative(requester, generate)).narrative.status).toBe('fresh');
+    expect(generate).toHaveBeenCalledTimes(2);
   });
 
-  it('rejects a malformed request and an agent without a folder before reading anything', async () => {
-    const { service, requester, read } = setup();
-    await expect(service.get(requester, { window: 'forever' })).rejects.toThrow('Invalid project overview request.');
-    await expect(service.get({ ...requester, folder: null }, {})).rejects.toThrow('This agent has no folder.');
-    expect(read).not.toHaveBeenCalled();
+  it('falls back to a teammate on another engine when the first cannot generate, and shares one generation between callers', async () => {
+    const { service, requester } = setup({ outerLoop: connected() });
+    const { generate } = engine();
+    const picky = vi.fn<ProjectOverviewGenerate>(async (candidate, request) => {
+      if (candidate.backend === 'claude') throw new Error('No lightweight text model is available for claude.');
+      return generate(candidate, request);
+    });
+
+    const [first, second] = await Promise.all([service.refreshNarrative(requester, picky), service.refreshNarrative(requester, picky)]);
+
+    expect(first.narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'codex' } });
+    expect(second.narrative.status).toBe('fresh');
+    expect(picky.mock.calls.map(call => call[0].backend)).toStrictEqual(['claude', 'codex']);
+
+    const none = setup({ outerLoop: connected() });
+    const broken = vi.fn<ProjectOverviewGenerate>(async () => { throw new Error('nope'); });
+    expect((await none.service.refreshNarrative(none.requester, broken)).narrative).toStrictEqual({ status: 'unavailable', reason: 'noEngine' });
+  });
+
+  it('writes nothing for a repository where nothing has happened', async () => {
+    const quiet: ProjectOverviewGitFacts = { ...facts(), commits: [], tags: [], branches: [facts().branches[0]!] };
+    const { service, requester } = setup({ git: quiet });
+    const { generate } = engine();
+    expect((await service.refreshNarrative(requester, generate)).narrative).toStrictEqual({ status: 'unavailable', reason: 'quiet' });
+    expect(generate).not.toHaveBeenCalled();
   });
 });

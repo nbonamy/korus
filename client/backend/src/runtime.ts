@@ -1,4 +1,5 @@
 import { ProjectOverviewGitReader } from './project-overview/git-reader';
+import { ProjectNarrativeStore } from './project-overview/narrative-store';
 import { ProjectOverviewService } from './project-overview/project-overview-service';
 import { cleanupPromptUploads } from './companion/uploads';
 import { DesignService } from './design-service';
@@ -379,8 +380,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       git: new ProjectOverviewGitReader(),
       sessions: (repository, since) => localUsage.sessions(repository, since),
       agents: () => snapshot.agents,
+      narratives: new ProjectNarrativeStore(path.join(backendHomeDir(), 'project-overviews.json')),
       outerLoop: {
         backlog: (repositoryId, since) => workIntegrations.backlogActivity(repositoryId, since),
+        pullRequests: repositoryId => workIntegrations.openPullRequests(repositoryId),
         pipelines: (repositoryId, since) => workIntegrations.pipelineRuns(repositoryId, since),
       },
     }),

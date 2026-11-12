@@ -131,7 +131,7 @@ export type AppBackendServerOptions = {
   };
   requestCollaborationController?: (input: RemoteCollaborationCall) => Promise<unknown>;
   runProfiles?: RunProfileService;
-  projectOverview?: Pick<import('./project-overview/project-overview-service').ProjectOverviewService, 'get'>;
+  projectOverview?: Pick<import('./project-overview/project-overview-service').ProjectOverviewService, 'get' | 'refreshNarrative'>;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -1600,11 +1600,15 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
-      case backendMethods.projectOverviewGet: {
+      case backendMethods.projectOverviewGet:
+      case backendMethods.projectNarrativeRefresh: {
         const params = requireRecord(message.params);
-        return this.routeAgentResultRequest(message.id, requireString(params.agentId, 'agentId'), backendMethods.projectOverviewGet, params, (agent) => {
-          if (!this.options.projectOverview) throw new Error('The project overview is unavailable on this host.');
-          return this.options.projectOverview.get(agent, params.input);
+        return this.routeAgentResultRequest(message.id, requireString(params.agentId, 'agentId'), message.method, params, (agent) => {
+          const overview = this.options.projectOverview;
+          if (!overview) throw new Error('The project overview is unavailable on this host.');
+          return message.method === backendMethods.projectOverviewGet ? overview.get(agent) : overview.refreshNarrative(agent, (engine, request) => (
+            this.handleAgentDriverRequest(engine, backendMethods.driverTextGenerate, { agent: engine, ...request })
+          ));
         });
       }
       case backendMethods.collaborationTaskAccess: {

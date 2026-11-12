@@ -98,6 +98,7 @@ export function createClientApiMock(
     previewAgentFile: unscripted<'previewAgentFile'>('previewAgentFile'),
     readAgentFileChunk: unscripted<'readAgentFileChunk'>('readAgentFileChunk'),
     getProjectOverview: unscripted<'getProjectOverview'>('getProjectOverview'),
+    refreshProjectNarrative: unscripted<'refreshProjectNarrative'>('refreshProjectNarrative'),
     getAgentGitLog: unscripted<'getAgentGitLog'>('getAgentGitLog'),
     getAgentGitLogCommit: unscripted<'getAgentGitLogCommit'>('getAgentGitLogCommit'),
     getAgentGitLogFile: unscripted<'getAgentGitLogFile'>('getAgentGitLogFile'),

@@ -623,3 +623,34 @@ describe('GitHub project overview reads', () => {
     await expect(new GitHubWorkProviderDriver('id').listPipelineRuns(token, 'acme/korus', '2026-11-05T00:00:00.000Z')).rejects.toThrow('GitHub returned an invalid workflow runs response.');
   });
 });
+
+describe('GitHub open pull requests for the project overview', () => {
+  const token: WorkProviderToken = { provider: 'github', accessToken: 'secret', tokenType: 'bearer', connectedAt: 'now' };
+
+  it('reads open pull requests with their branch, draft state and review decision in one query', async () => {
+    const node = (headRefName: string, isDraft: boolean, reviewDecision: string | null) => ({ headRefName, isDraft, reviewDecision, createdAt: '2026-11-10T10:00:00Z', title: 'private title', author: { login: 'someone' } });
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ data: { repository: { pullRequests: { nodes: [
+      node('feat/ready', false, 'APPROVED'),
+      node('feat/waiting', false, 'REVIEW_REQUIRED'),
+      node('feat/changes', false, 'CHANGES_REQUESTED'),
+      node('feat/no-rule', false, null),
+      node('feat/draft', true, null),
+      { headRefName: 7 },
+    ] } } } }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(new GitHubWorkProviderDriver('id').listOpenPullRequests(token, 'acme/korus')).resolves.toStrictEqual([
+      { branch: 'feat/ready', draft: false, approved: true, openedAt: '2026-11-10T10:00:00Z' },
+      { branch: 'feat/waiting', draft: false, approved: false, openedAt: '2026-11-10T10:00:00Z' },
+      { branch: 'feat/changes', draft: false, approved: false, openedAt: '2026-11-10T10:00:00Z' },
+      { branch: 'feat/no-rule', draft: false, approved: null, openedAt: '2026-11-10T10:00:00Z' },
+      { branch: 'feat/draft', draft: true, approved: null, openedAt: '2026-11-10T10:00:00Z' },
+    ]);
+    const [url, init] = fetch.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe('https://api.github.com/graphql');
+    expect(JSON.parse(init.body as string).variables).toStrictEqual({ owner: 'acme', name: 'korus' });
+
+    fetch.mockResolvedValue(jsonResponse({ errors: [{ message: 'nope' }] }));
+    await expect(new GitHubWorkProviderDriver('id').listOpenPullRequests(token, 'acme/korus')).rejects.toThrow('GitHub returned an invalid pull requests response.');
+  });
+});

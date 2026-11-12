@@ -639,13 +639,16 @@ describe('project overview reads', () => {
   }
 
   it('reads backlog activity and pipeline runs from the connected code host that serves a repository', async () => {
-    const driver = { ...fakeDriver(), listBacklogActivity: vi.fn().mockResolvedValue({ open: 3, items: [] }), listPipelineRuns: vi.fn().mockResolvedValue([run]) };
+    const request = { branch: 'feat/a', draft: false, approved: null, openedAt: '2026-11-10T10:00:00Z' };
+    const driver = { ...fakeDriver(), listBacklogActivity: vi.fn().mockResolvedValue({ open: 3, items: [] }), listPipelineRuns: vi.fn().mockResolvedValue([run]), listOpenPullRequests: vi.fn().mockResolvedValue([request]) };
     const { manager, token } = await connected(driver);
 
     await expect(manager.backlogActivity('github.com/acme/korus', since)).resolves.toStrictEqual({ provider: 'github', open: 3, items: [] });
     await expect(manager.pipelineRuns('github.com/acme/korus', since)).resolves.toStrictEqual({ provider: 'github', runs: [run] });
     expect(driver.listBacklogActivity).toHaveBeenCalledExactlyOnceWith(token, 'acme/korus', '2026-11-05T00:00:00.000Z');
     expect(driver.listPipelineRuns).toHaveBeenCalledExactlyOnceWith(token, 'acme/korus', '2026-11-05T00:00:00.000Z');
+    await expect(manager.openPullRequests('github.com/acme/korus')).resolves.toStrictEqual([request]);
+    expect(driver.listOpenPullRequests).toHaveBeenCalledExactlyOnceWith(token, 'acme/korus');
   });
 
   it('answers null when no connected provider serves the repository or the provider cannot report it', async () => {
@@ -662,5 +665,6 @@ describe('project overview reads', () => {
     const { manager: limited } = await connected(fakeDriver());
     await expect(limited.backlogActivity('github.com/acme/korus', since)).resolves.toBeNull();
     await expect(limited.pipelineRuns('github.com/acme/korus', since)).resolves.toBeNull();
+    await expect(limited.openPullRequests('github.com/acme/korus')).resolves.toBeNull();
   });
 });

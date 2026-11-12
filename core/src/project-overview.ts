@@ -1,110 +1,57 @@
-import { dayOf, validTimeZone } from './usage-time';
-import type { WorkProviderKind } from './work-providers';
-
 /**
- * A read-only picture of one repository: what the harness did there (history and agent sessions)
- * beside what happens around it (backlog and pipelines). Zones are null when their source has
- * nothing to say, so a reader never infers a state from an empty list.
+ * A read-only picture of one repository in two parts: a short written narrative of its workstreams,
+ * and a flow of where work sits between backlog and shipped. The narrative is written by an engine
+ * from evidence computed by code; the flow is computed by the policy here, with no model involved.
  */
-export const projectOverviewWindows = ['7d', '30d', '12w', '1y'] as const;
-export type ProjectOverviewWindow = typeof projectOverviewWindows[number];
-export type ProjectOverviewInput = { window?: ProjectOverviewWindow; timeZone?: string };
-export type ProjectOverviewBucketKind = 'day' | 'week';
-
-export type ProjectOverviewSource = 'git' | 'sessions' | 'backlog' | 'pipelines';
+export type ProjectOverviewSource = 'git' | 'backlog' | 'pullRequests' | 'pipelines';
 /** notConnected: no provider serves this repository. unavailable: nothing to read. failed: the read itself failed. */
 export type ProjectOverviewSourceStatus = 'available' | 'notConnected' | 'unavailable' | 'failed';
+export type ProjectOverviewSources = Record<ProjectOverviewSource, ProjectOverviewSourceStatus>;
 
-export const projectOverviewCommitKinds = ['feat', 'fix', 'test', 'chore', 'other'] as const;
-export type ProjectOverviewCommitKind = typeof projectOverviewCommitKinds[number];
-
-export type ProjectOverviewEngineSessions = { provider: string; sessions: number; turns: number; failedTurns: number };
-
-export type ProjectOverviewBucket = {
-  /** The calendar day (YYYY-MM-DD) the bucket starts on in the reader's time zone. */
-  start: string;
-  commits: Record<ProjectOverviewCommitKind, number>;
-  merges: number;
-  mergedBranches: string[];
-  releases: string[];
-  sessions: ProjectOverviewEngineSessions[];
-};
-
-export type ProjectOverviewChapter = { start: string; buckets: number; title: string; branches: string[] };
-
-export type ProjectOverviewPipelineStatus = 'passed' | 'failed' | 'running' | 'cancelled';
-export type ProjectOverviewPipelineRun = { id: string; branch: string; status: ProjectOverviewPipelineStatus; at: string };
-export type ProjectOverviewPipelines = { provider: WorkProviderKind; baseRuns: ProjectOverviewPipelineRun[]; passRate: number | null };
-
-export type ProjectOverviewRiskLevel = 'low' | 'medium' | 'high';
-export type ProjectOverviewRiskReason =
-  | { kind: 'behind'; commits: number }
-  | { kind: 'size'; files: number }
-  | { kind: 'overlap'; files: number; branches: number }
-  | { kind: 'velocity'; commitsPerDay: number }
-  | { kind: 'failingPipeline' };
-/** gitOnly: no pipeline result was known, so the level rests on repository facts alone. */
-export type ProjectOverviewRisk = { level: ProjectOverviewRiskLevel; gitOnly: boolean; reasons: ProjectOverviewRiskReason[] };
-
-export type ProjectOverviewBranchAgent = { id: string; name: string; backend: string; status: string };
-export type ProjectOverviewBranch = {
+export const projectWorkstreamStates = ['starting', 'moving', 'settling', 'recurring', 'waiting', 'stalled'] as const;
+export type ProjectWorkstreamState = typeof projectWorkstreamStates[number];
+export type ProjectWorkstream = {
+  id: string;
   name: string;
-  base: boolean;
-  current: boolean;
-  lastCommitAt: string | null;
-  behind: number;
-  ahead: number;
-  changedFiles: number;
-  agents: ProjectOverviewBranchAgent[];
-  /** Oldest first. Null when no code host reports pipelines for this repository. */
-  pipelineRuns: ProjectOverviewPipelineRun[] | null;
-  /** Null on the base branch, which everything else is measured against. */
-  risk: ProjectOverviewRisk | null;
+  state: ProjectWorkstreamState;
+  analysis: string;
+  /** Labels of the facts the analysis rests on, composed by the producer and never by the model. */
+  basis: string[];
 };
+export type ProjectNarrative = { lead: string; workstreams: ProjectWorkstream[]; writtenBy: string; writtenAt: string };
+/** noEngine: no engine here can write it. failed: it could not be written or was not grounded. quiet: nothing to write about. */
+export type ProjectNarrativeState =
+  | { status: 'fresh' | 'stale'; narrative: ProjectNarrative }
+  | { status: 'missing' }
+  | { status: 'unavailable'; reason: 'noEngine' | 'failed' | 'quiet' };
 
-export type ProjectOverviewBacklogChange = { id: string; title: string; change: 'opened' | 'closed' | 'updated'; at: string };
-export type ProjectOverviewBacklog = {
-  provider: WorkProviderKind;
-  /** Null when the provider cannot report a total cheaply. */
-  open: number | null;
-  opened: number;
-  closed: number;
-  buckets: { start: string; opened: number; closed: number }[];
-  latest: ProjectOverviewBacklogChange[];
+export const projectFlowStationKinds = ['backlog', 'building', 'review', 'ci', 'shipped'] as const;
+export type ProjectFlowStationKind = typeof projectFlowStationKinds[number];
+export type ProjectFlowWorkStation = 'building' | 'review' | 'ci';
+export type ProjectFlowMark = { workstreamId: string | null; units: number };
+export type ProjectFlowStation = {
+  kind: ProjectFlowStationKind;
+  status: ProjectOverviewSourceStatus;
+  count: number | null;
+  /** Backlog: arrivals in seven days. Building: agents working. Review: longest wait in ms. CI: failing units. */
+  note: number | null;
+  marks: ProjectFlowMark[];
 };
+/** Work that reached `to` in the last day, as the workstream of each unit. */
+export type ProjectFlowLink = { to: Exclude<ProjectFlowStationKind, 'backlog'>; tokens: (string | null)[] };
+export type ProjectFlowConstraint = { station: ProjectFlowWorkStation; units: number; oldestWaitMs: number; workstreamIds: string[] };
+export type ProjectFlow = { stations: ProjectFlowStation[]; links: ProjectFlowLink[]; constraint: ProjectFlowConstraint | null };
 
 export type ProjectOverview = {
   generatedAt: string;
   repository: { name: string; branch: string | null; baseBranch: string | null };
-  window: { kind: ProjectOverviewWindow; bucket: ProjectOverviewBucketKind; timeZone: string };
-  sources: Record<ProjectOverviewSource, ProjectOverviewSourceStatus>;
-  totals: {
-    commits: number;
-    merges: number;
-    releases: number;
-    sessions: number;
-    turns: number;
-    workingAgents: number;
-    baseCommitsPerDay: number | null;
-  };
-  buckets: ProjectOverviewBucket[];
-  chapters: ProjectOverviewChapter[];
-  branches: ProjectOverviewBranch[];
-  backlog: ProjectOverviewBacklog | null;
-  pipelines: ProjectOverviewPipelines | null;
+  sources: ProjectOverviewSources;
+  narrative: ProjectNarrativeState;
+  flow: ProjectFlow;
 };
 
-export const defaultProjectOverviewWindow: ProjectOverviewWindow = '30d';
-
-export function validProjectOverviewInput(value: unknown): value is ProjectOverviewInput | undefined {
-  if (value === undefined) return true;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const input = value as Record<string, unknown>;
-  if (!Object.keys(input).every(key => key === 'window' || key === 'timeZone')) return false;
-  if (input.window !== undefined && !projectOverviewWindows.includes(input.window as ProjectOverviewWindow)) return false;
-  return input.timeZone === undefined || validTimeZone(input.timeZone);
-}
-
+export const projectOverviewCommitKinds = ['feat', 'fix', 'test', 'chore', 'other'] as const;
+export type ProjectOverviewCommitKind = typeof projectOverviewCommitKinds[number];
 const conventionalKinds: Record<string, ProjectOverviewCommitKind> = {
   feat: 'feat', fix: 'fix', test: 'test',
   chore: 'chore', docs: 'chore', doc: 'chore', refactor: 'chore', perf: 'chore', build: 'chore', ci: 'chore', style: 'chore',
@@ -114,37 +61,6 @@ const conventionalKinds: Record<string, ProjectOverviewCommitKind> = {
 export function projectOverviewCommitKind(subject: string): ProjectOverviewCommitKind {
   const prefix = /^([a-z]+)(?:\([^)]*\))?!?:/iu.exec(subject.trim())?.[1]?.toLowerCase();
   return (prefix && conventionalKinds[prefix]) || 'other';
-}
-
-function shiftDay(day: string, days: number): string {
-  const [year, month, date] = day.split('-').map(Number) as [number, number, number];
-  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10);
-}
-
-function mondayOf(day: string): string {
-  const [year, month, date] = day.split('-').map(Number) as [number, number, number];
-  return shiftDay(day, -((new Date(Date.UTC(year, month - 1, date)).getUTCDay() + 6) % 7));
-}
-
-const windowShapes: Record<ProjectOverviewWindow, { bucket: ProjectOverviewBucketKind; count: number }> = {
-  '7d': { bucket: 'day', count: 7 },
-  '30d': { bucket: 'day', count: 30 },
-  '12w': { bucket: 'week', count: 12 },
-  '1y': { bucket: 'week', count: 52 },
-};
-
-/** Every bucket of a window, oldest first, ending with the one that holds `now` in `timeZone`. */
-export function projectOverviewWindowBuckets(window: ProjectOverviewWindow, now: number, timeZone = 'UTC'): { bucket: ProjectOverviewBucketKind; starts: string[] } {
-  const { bucket, count } = windowShapes[window];
-  const step = bucket === 'day' ? 1 : 7;
-  const last = projectOverviewBucketOf(now, bucket, timeZone);
-  return { bucket, starts: Array.from({ length: count }, (_, index) => shiftDay(last, -step * (count - 1 - index))) };
-}
-
-/** The start of the bucket an instant falls in. Weeks start on Monday. */
-export function projectOverviewBucketOf(at: number, bucket: ProjectOverviewBucketKind, timeZone = 'UTC'): string {
-  const day = dayOf(at, timeZone);
-  return bucket === 'day' ? day : mondayOf(day);
 }
 
 /** The branch a merge commit brought into `baseBranch`, or null for anything else, including merges of the base into a branch. */
@@ -158,42 +74,24 @@ export function projectOverviewMergedBranch(subject: string, baseBranch: string)
   return branch;
 }
 
-const maintenanceBranch = /^(?:fix|hotfix|bugfix)\//u;
-const maxChapters = 6;
+export type ProjectOverviewPipelineStatus = 'passed' | 'failed' | 'running' | 'cancelled';
+export type ProjectOverviewRiskReason =
+  | { kind: 'behind'; commits: number }
+  | { kind: 'size'; files: number }
+  | { kind: 'overlap'; files: number; branches: number }
+  | { kind: 'velocity'; commitsPerDay: number }
+  | { kind: 'failingPipeline' };
+export type ProjectOverviewRisk = { level: 'low' | 'medium' | 'high'; reasons: ProjectOverviewRiskReason[] };
 
-function branchTopic(branch: string): string {
-  const words = branch.slice(branch.indexOf('/') + 1).replace(/-[0-9a-f]{6,}$/u, '').split(/[-_/]+/u).filter(Boolean).join(' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-/**
- * Names stretches of the window after the feature branches merged in them. Spans are equal and
- * fixed so the same history always reads the same; a span that merged nothing has no chapter.
- */
-export function projectOverviewChapters(buckets: readonly Pick<ProjectOverviewBucket, 'start' | 'mergedBranches'>[]): ProjectOverviewChapter[] {
-  const span = Math.max(1, Math.ceil(buckets.length / maxChapters));
-  const chapters: ProjectOverviewChapter[] = [];
-  for (let index = 0; index < buckets.length; index += span) {
-    const members = buckets.slice(index, index + span);
-    const branches = [...new Set(members.flatMap(bucket => bucket.mergedBranches))].filter(branch => !maintenanceBranch.test(branch));
-    if (!branches.length) continue;
-    const named = branches.slice(0, 2).map(branchTopic).join(', ');
-    chapters.push({ start: members[0]!.start, buckets: members.length, title: branches.length > 2 ? `${named} +${branches.length - 2}` : named, branches });
-  }
-  return chapters;
-}
-
-export type ProjectOverviewRiskInput = {
+/** How hard a branch will be to land. Deterministic: every point scored is also a reason. */
+export function projectOverviewIntegrationRisk(input: {
   behind: number;
   changedFiles: number;
   overlapFiles: number;
   overlapBranches: number;
   baseCommitsPerDay: number | null;
   latestPipeline: ProjectOverviewPipelineStatus | null;
-};
-
-/** A deterministic, explainable level: every point scored is also a reason the reader is shown. */
-export function projectOverviewIntegrationRisk(input: ProjectOverviewRiskInput): ProjectOverviewRisk {
+}): ProjectOverviewRisk {
   const reasons: ProjectOverviewRiskReason[] = [];
   let points = 0;
   if (input.behind >= 1) {
@@ -216,5 +114,184 @@ export function projectOverviewIntegrationRisk(input: ProjectOverviewRiskInput):
     points += 2;
     reasons.push({ kind: 'failingPipeline' });
   }
-  return { level: points >= 6 ? 'high' : points >= 3 ? 'medium' : 'low', gitOnly: input.latestPipeline === null, reasons };
+  return { level: points >= 6 ? 'high' : points >= 3 ? 'medium' : 'low', reasons };
+}
+
+/** One piece of work in flight: a branch ahead of the base, with its pull request when it has one. */
+export type ProjectFlowUnit = {
+  branch: string;
+  /** `approved` is null when the provider cannot say. */
+  pullRequest: { draft: boolean; approved: boolean | null; openedAt: number } | null;
+  latestPipeline: { status: ProjectOverviewPipelineStatus; at: number } | null;
+  firstCommitAt: number;
+  lastCommitAt: number;
+  agentWorking: boolean;
+};
+
+export type ProjectFlowInput = {
+  now: number;
+  sources: ProjectOverviewSources;
+  /** Null when no backlog source reports for this repository. */
+  backlog: { open: number | null; arrived: number } | null;
+  /** Merges into the base in seven days, and the branches merged in the last day. Null when the repository could not be read. */
+  shipped: { count: number; recentBranches: string[] } | null;
+  agentsWorking: number;
+  /** In narrative order. A branch no workstream claims is other work. */
+  workstreams: readonly { id: string; branches: readonly string[] }[];
+  units: readonly ProjectFlowUnit[];
+};
+
+const day = 86_400_000;
+const maxTokens = 3;
+
+/** The station a unit sits at, by what it is waiting on. */
+export function projectFlowStation(unit: ProjectFlowUnit): ProjectFlowWorkStation {
+  const request = unit.pullRequest;
+  if (!request || request.draft) return 'building';
+  if (request.approved !== null) return request.approved ? 'ci' : 'review';
+  return unit.latestPipeline?.status === 'running' || unit.latestPipeline?.status === 'failed' ? 'ci' : 'review';
+}
+
+/** Stations, marks, moving tokens and the constraint. Sources that cannot report leave their stations without a count. */
+export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
+  const gitReady = input.sources.git === 'available';
+  const requestsReady = gitReady && input.sources.pullRequests === 'available';
+  const order = input.workstreams.map(workstream => workstream.id);
+  const workstreamOf = (branch: string) => input.workstreams.find(workstream => workstream.branches.includes(branch))?.id ?? null;
+  const rank = (id: string | null) => id === null ? order.length : order.indexOf(id);
+
+  const placed = (gitReady ? input.units : []).map(unit => {
+    const station = requestsReady ? projectFlowStation(unit) : 'building';
+    const arrivedAt = station === 'building' ? unit.firstCommitAt : station === 'review' ? unit.pullRequest!.openedAt : unit.latestPipeline?.at ?? unit.pullRequest!.openedAt;
+    const waitMs = station === 'building' ? (unit.agentWorking ? 0 : Math.max(0, input.now - unit.lastCommitAt)) : Math.max(0, input.now - arrivedAt);
+    return { unit, station, arrivedAt, waitMs, workstreamId: workstreamOf(unit.branch) };
+  });
+  const at = (station: ProjectFlowWorkStation) => placed.filter(entry => entry.station === station);
+  const marks = (station: ProjectFlowWorkStation): ProjectFlowMark[] => {
+    const counts = new Map<string | null, number>();
+    for (const entry of at(station)) counts.set(entry.workstreamId, (counts.get(entry.workstreamId) ?? 0) + 1);
+    return [...counts].sort((a, b) => rank(a[0]) - rank(b[0])).map(([workstreamId, units]) => ({ workstreamId, units }));
+  };
+  const statusOf = (station: ProjectFlowWorkStation): ProjectOverviewSourceStatus => !gitReady ? input.sources.git : station === 'building' ? 'available' : input.sources.pullRequests;
+  const work = (station: ProjectFlowWorkStation, note: () => number | null): ProjectFlowStation => {
+    const status = statusOf(station);
+    return status === 'available'
+      ? { kind: station, status, count: at(station).length, note: note(), marks: marks(station) }
+      : { kind: station, status, count: null, note: null, marks: [] };
+  };
+  const arrivals = (station: ProjectFlowWorkStation) => statusOf(station) === 'available'
+    ? at(station).filter(entry => input.now - entry.arrivedAt <= day).slice(0, maxTokens).map(entry => entry.workstreamId)
+    : [];
+
+  let constraint: ProjectFlowConstraint | null = null;
+  let longest = -1;
+  for (const station of ['building', 'review', 'ci'] as const) {
+    const entries = statusOf(station) === 'available' ? at(station) : [];
+    const oldestWaitMs = Math.max(0, ...entries.map(entry => entry.waitMs));
+    const total = entries.reduce((sum, entry) => sum + entry.waitMs, 0);
+    if (entries.length < 2 || oldestWaitMs <= day || total < longest) continue;
+    longest = total;
+    constraint = {
+      station, units: entries.length, oldestWaitMs,
+      workstreamIds: order.filter(id => entries.some(entry => entry.workstreamId === id)),
+    };
+  }
+
+  return {
+    stations: [
+      input.backlog && input.sources.backlog === 'available'
+        ? { kind: 'backlog', status: 'available', count: input.backlog.open, note: input.backlog.arrived, marks: [] }
+        : { kind: 'backlog', status: input.sources.backlog === 'available' ? 'unavailable' : input.sources.backlog, count: null, note: null, marks: [] },
+      work('building', () => input.agentsWorking),
+      work('review', () => at('review').length ? Math.max(...at('review').map(entry => entry.waitMs)) : null),
+      work('ci', () => at('ci').filter(entry => entry.unit.latestPipeline?.status === 'failed').length),
+      gitReady && input.shipped
+        ? { kind: 'shipped', status: 'available', count: input.shipped.count, note: null, marks: [] }
+        : { kind: 'shipped', status: gitReady ? 'unavailable' : input.sources.git, count: null, note: null, marks: [] },
+    ],
+    links: [
+      { to: 'building', tokens: arrivals('building') },
+      { to: 'review', tokens: arrivals('review') },
+      { to: 'ci', tokens: arrivals('ci') },
+      { to: 'shipped', tokens: gitReady && input.shipped ? input.shipped.recentBranches.slice(0, maxTokens).map(workstreamOf) : [] },
+    ],
+    constraint,
+  };
+}
+
+/** One thing code worked out about the repository. `text` is given to the engine; `label` names it to the reader. */
+export type ProjectNarrativeFact = { id: string; text: string; label: string };
+export type ProjectNarrativeEvidence = { facts: readonly ProjectNarrativeFact[]; branches: readonly string[]; issues: readonly string[] };
+export type ProjectNarrativeDraft = {
+  lead: string;
+  workstreams: (ProjectWorkstream & { branches: string[]; issues: string[] })[];
+};
+
+const leadLimit = 280;
+const analysisLimit = 360;
+const nameLimit = 40;
+const maxWorkstreams = 4;
+const maxBasis = 2;
+
+/** Every figure written in digits, with grouping commas removed. Numbers written as words are not figures. */
+function figures(text: string): string[] {
+  return (text.match(/\d+(?:[.,]\d+)*/gu) ?? []).map(figure => figure.replace(/,/gu, ''));
+}
+
+const text = (value: unknown, limit: number): value is string => typeof value === 'string' && value.trim().length >= 1 && value.length <= limit;
+const names = (value: unknown): value is string[] => Array.isArray(value) && value.every(entry => typeof entry === 'string');
+
+/**
+ * Accepts an engine's reply only when it is grounded: every workstream cites supplied facts, claims
+ * only branches and issues that exist, and states no figure its cited facts do not contain.
+ */
+export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarrativeEvidence): ({ ok: true } & ProjectNarrativeDraft) | { ok: false; problems: string[] } {
+  if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return { ok: false, problems: ['The reply is not a narrative object.'] };
+  const draft = reply as Record<string, unknown>;
+  const problems: string[] = [];
+  if (!text(draft.lead, leadLimit)) problems.push(`The lead must be 1 to ${leadLimit} characters.`);
+  if (!Array.isArray(draft.workstreams) || draft.workstreams.length < 1 || draft.workstreams.length > maxWorkstreams) {
+    return { ok: false, problems: [...problems, `There must be 1 to ${maxWorkstreams} workstreams.`] };
+  }
+  const facts = new Map(evidence.facts.map(fact => [fact.id, fact]));
+  const citedFigures = new Set<string>();
+  const workstreams = draft.workstreams.map((entry: unknown, index): ProjectNarrativeDraft['workstreams'][number] | null => {
+    const label = `Workstream ${index + 1}`;
+    const before = problems.length;
+    const value = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+    if (!text(value.name, nameLimit)) problems.push(`${label} needs a name of at most ${nameLimit} characters.`);
+    if (!projectWorkstreamStates.includes(value.state as ProjectWorkstreamState)) problems.push(`${label} has an unknown state.`);
+    if (!text(value.analysis, analysisLimit)) problems.push(`${label} needs an analysis of at most ${analysisLimit} characters.`);
+    const cited = names(value.facts) ? value.facts : [];
+    const branches = value.branches === undefined ? [] : names(value.branches) ? value.branches : null;
+    const issues = value.issues === undefined ? [] : names(value.issues) ? value.issues : null;
+    if (!cited.length) problems.push(`${label} cites no facts.`);
+    for (const id of cited) if (!facts.has(id)) problems.push(`${label} cites unknown fact ${id}.`);
+    for (const branch of branches ?? []) if (!evidence.branches.includes(branch)) problems.push(`${label} claims unknown branch ${branch}.`);
+    for (const issue of issues ?? []) if (!evidence.issues.includes(issue)) problems.push(`${label} claims unknown issue ${issue}.`);
+    if (!branches || !issues) problems.push(`${label} has malformed references.`);
+    if (problems.length > before) return null;
+    const supplied = new Set(cited.flatMap(id => figures(facts.get(id)!.text)));
+    for (const figure of supplied) citedFigures.add(figure);
+    const unsupported = figures(value.analysis as string).find(figure => !supplied.has(figure));
+    if (unsupported) {
+      problems.push(`${label} states ${unsupported}, which none of its cited facts contain.`);
+      return null;
+    }
+    return {
+      id: `w${index + 1}`,
+      name: (value.name as string).trim(),
+      state: value.state as ProjectWorkstreamState,
+      analysis: (value.analysis as string).trim(),
+      basis: cited.slice(0, maxBasis).map(id => facts.get(id)!.label),
+      branches: branches!,
+      issues: issues!,
+    };
+  });
+  if (!problems.length) {
+    const unsupported = figures(draft.lead as string).find(figure => !citedFigures.has(figure));
+    if (unsupported) problems.push(`The lead states ${unsupported}, which no cited fact contains.`);
+  }
+  if (problems.length) return { ok: false, problems };
+  return { ok: true, lead: (draft.lead as string).trim(), workstreams: workstreams as ProjectNarrativeDraft['workstreams'] };
 }

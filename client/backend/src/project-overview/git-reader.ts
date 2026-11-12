@@ -10,7 +10,17 @@ const maxFiles = 2_000;
 const activeBranchAge = 30 * day;
 
 export type ProjectOverviewGitCommit = { at: number; subject: string; merge: boolean };
-export type ProjectOverviewGitBranch = { name: string; lastCommitAt: number; behind: number; ahead: number; files: string[] };
+export type ProjectOverviewGitBranch = {
+  name: string;
+  /** The first commit this branch has that the base does not. */
+  firstCommitAt: number;
+  lastCommitAt: number;
+  behind: number;
+  ahead: number;
+  files: string[];
+  insertions: number;
+  deletions: number;
+};
 export type ProjectOverviewGitFacts = {
   name: string;
   branch: string | null;
@@ -96,12 +106,24 @@ export class ProjectOverviewGitReader {
     const candidates = heads.filter(head => head.name !== base.name && (keep.has(head.name) || options.now - head.at <= activeBranchAge));
     const inFlight = (await Promise.all(candidates.map(async (head): Promise<ProjectOverviewGitBranch> => {
       const ref = `refs/heads/${head.name}`;
-      const [counts, names] = await Promise.all([
+      const [counts, names, size, times] = await Promise.all([
         this.git(folder, ['rev-list', '--left-right', '--count', `${base.ref}...${ref}`, '--']),
         this.git(folder, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', `${base.ref}...${ref}`, '--']),
+        this.git(folder, ['diff', '--shortstat', '--no-renames', '--no-ext-diff', `${base.ref}...${ref}`, '--']),
+        this.git(folder, ['log', '--no-show-signature', `--max-count=${maxCommits}`, '--format=%ct', `${base.ref}..${ref}`, '--']),
       ]);
       const [behind, ahead] = counts.trim().split(/\s+/u).map(Number) as [number, number];
-      return { name: head.name, lastCommitAt: head.at, behind, ahead, files: names.split('\0').filter(Boolean).sort().slice(0, maxFiles) };
+      const own = times.split('\n').filter(Boolean).map(seconds => Number(seconds) * 1000);
+      return {
+        name: head.name,
+        firstCommitAt: own.length ? Math.min(...own) : head.at,
+        lastCommitAt: head.at,
+        behind,
+        ahead,
+        files: names.split('\0').filter(Boolean).sort().slice(0, maxFiles),
+        insertions: Number(/(\d+) insertion/u.exec(size)?.[1] ?? 0),
+        deletions: Number(/(\d+) deletion/u.exec(size)?.[1] ?? 0),
+      };
     }))).filter(candidate => candidate.ahead > 0 || keep.has(candidate.name));
 
     return {
@@ -111,7 +133,7 @@ export class ProjectOverviewGitReader {
       commits,
       tags,
       branches: [
-        { name: base.name, lastCommitAt: baseHead?.at ?? commits[0]?.at ?? options.now, behind: 0, ahead: 0, files: [] },
+        (at => ({ name: base.name, firstCommitAt: at, lastCommitAt: at, behind: 0, ahead: 0, files: [], insertions: 0, deletions: 0 }))(baseHead?.at ?? commits[0]?.at ?? options.now),
         ...inFlight.slice(0, maxBranches - 1),
       ],
       baseCommitsPerDay: Number(recent.trim()) / 7,

@@ -1,75 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import {
-  projectOverviewBucketOf,
-  projectOverviewChapters,
+  buildProjectFlow,
+  projectFlowStation,
+  projectNarrativeFromDraft,
   projectOverviewCommitKind,
   projectOverviewIntegrationRisk,
   projectOverviewMergedBranch,
-  projectOverviewWindowBuckets,
-  validProjectOverviewInput,
+  type ProjectFlowInput,
+  type ProjectFlowUnit,
+  type ProjectNarrativeEvidence,
 } from '../project-overview';
 
-describe('project overview commit kinds', () => {
+const hour = 3_600_000;
+const day = 24 * hour;
+const now = Date.parse('2026-11-11T12:00:00Z');
+
+function unit(branch: string, overrides: Partial<ProjectFlowUnit> = {}): ProjectFlowUnit {
+  return { branch, pullRequest: null, latestPipeline: null, firstCommitAt: now - 2 * day, lastCommitAt: now - hour, agentWorking: false, ...overrides };
+}
+const pullRequest = (approved: boolean | null, openedAgo: number, draft = false) => ({ draft, approved, openedAt: now - openedAgo });
+
+describe('project overview commit and merge reading', () => {
   it.each([
     ['feat: add project overview', 'feat'],
-    ['Feat(sidebar): open the overview', 'feat'],
-    ['fix(git)!: count merges once', 'fix'],
+    ['Fix(git)!: count merges once', 'fix'],
     ['test: cover drift', 'test'],
-    ['chore: release prep', 'chore'],
     ['docs: describe the overview', 'chore'],
-    ['refactor: split the reader', 'chore'],
-    ['perf: bound history', 'chore'],
-    ["Merge branch 'feat/missions'", 'other'],
     ['update readme', 'other'],
   ] as const)('classifies %j as %s', (subject, kind) => {
     expect(projectOverviewCommitKind(subject)).toBe(kind);
   });
-});
 
-describe('project overview windows', () => {
-  const now = Date.parse('2026-11-11T03:00:00Z');
-
-  it('lists the last seven local days, ending on the reader\'s today', () => {
-    expect(projectOverviewWindowBuckets('7d', now, 'America/Chicago')).toStrictEqual({
-      bucket: 'day',
-      starts: ['2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10'],
-    });
-  });
-
-  it('lists twelve Monday-started weeks ending with the current week', () => {
-    const weeks = projectOverviewWindowBuckets('12w', now, 'UTC');
-    expect(weeks.bucket).toBe('week');
-    expect(weeks.starts).toHaveLength(12);
-    expect(weeks.starts[0]).toBe('2026-08-24');
-    expect(weeks.starts.at(-1)).toBe('2026-11-09');
-  });
-
-  it('sizes the thirty day and one year windows', () => {
-    expect(projectOverviewWindowBuckets('30d', now, 'UTC').starts).toHaveLength(30);
-    const year = projectOverviewWindowBuckets('1y', now, 'UTC');
-    expect(year.bucket).toBe('week');
-    expect(year.starts).toHaveLength(52);
-  });
-
-  it('places an instant in the local day or the Monday of its local week', () => {
-    const sundayEvening = Date.parse('2026-11-09T02:30:00Z');
-    expect(projectOverviewBucketOf(sundayEvening, 'day', 'America/Chicago')).toBe('2026-11-08');
-    expect(projectOverviewBucketOf(sundayEvening, 'week', 'America/Chicago')).toBe('2026-11-02');
-    expect(projectOverviewBucketOf(sundayEvening, 'week', 'UTC')).toBe('2026-11-09');
-  });
-
-  it('accepts only known windows and real time zones', () => {
-    expect(validProjectOverviewInput(undefined)).toBe(true);
-    expect(validProjectOverviewInput({})).toBe(true);
-    expect(validProjectOverviewInput({ window: '30d', timeZone: 'Europe/Paris' })).toBe(true);
-    expect(validProjectOverviewInput({ window: 'forever' })).toBe(false);
-    expect(validProjectOverviewInput({ timeZone: 'Mars/Olympus' })).toBe(false);
-    expect(validProjectOverviewInput({ window: '7d', path: '/etc' })).toBe(false);
-    expect(validProjectOverviewInput('7d')).toBe(false);
-  });
-});
-
-describe('project overview merged branches', () => {
   it.each([
     ["Merge branch 'feat/missions'", 'feat/missions'],
     ["Merge branch 'feat/git-log' into main", 'feat/git-log'],
@@ -83,69 +44,161 @@ describe('project overview merged branches', () => {
   });
 });
 
-describe('project overview chapters', () => {
-  const bucket = (start: string, mergedBranches: string[] = []) => ({ start, mergedBranches });
-
-  it('names spans of buckets after the feature branches merged in them', () => {
-    const chapters = projectOverviewChapters([
-      bucket('2026-08-24'), bucket('2026-08-31'),
-      bucket('2026-09-07'), bucket('2026-09-14', ['feat/missions', 'fix/gh-27', 'feat/design-mode']),
-      bucket('2026-09-21', ['feat/visualize-excalidraw']), bucket('2026-09-28'),
-      bucket('2026-10-05'), bucket('2026-10-12'),
-      bucket('2026-10-19', ['mission/add-gitlab-alongside-github-across-projects-and--dd72f4']), bucket('2026-10-26'),
-      bucket('2026-11-02'), bucket('2026-11-09'),
-    ]);
-    expect(chapters).toStrictEqual([
-      { start: '2026-09-07', buckets: 2, title: 'Missions, Design mode', branches: ['feat/missions', 'feat/design-mode'] },
-      { start: '2026-09-21', buckets: 2, title: 'Visualize excalidraw', branches: ['feat/visualize-excalidraw'] },
-      { start: '2026-10-19', buckets: 2, title: 'Add gitlab alongside github across projects and', branches: ['mission/add-gitlab-alongside-github-across-projects-and--dd72f4'] },
-    ]);
+describe('project overview integration risk', () => {
+  it('scores drift, overlap and a fast base into a level with its reasons', () => {
+    expect(projectOverviewIntegrationRisk({ behind: 14, changedFiles: 9, overlapFiles: 3, overlapBranches: 2, baseCommitsPerDay: 22.4, latestPipeline: 'passed' })).toStrictEqual({
+      level: 'medium',
+      reasons: [{ kind: 'behind', commits: 14 }, { kind: 'overlap', files: 3, branches: 2 }, { kind: 'velocity', commitsPerDay: 22 }],
+    });
+    expect(projectOverviewIntegrationRisk({ behind: 0, changedFiles: 4, overlapFiles: 0, overlapBranches: 0, baseCommitsPerDay: 2, latestPipeline: null })).toStrictEqual({ level: 'low', reasons: [] });
   });
 
-  it('keeps one chapter per bucket in a short window and notes further branches', () => {
-    const chapters = projectOverviewChapters([
-      bucket('2026-11-08', ['feat/a', 'feat/b', 'feat/c', 'feat/a']),
-      bucket('2026-11-09'),
-    ]);
-    expect(chapters).toStrictEqual([
-      { start: '2026-11-08', buckets: 1, title: 'A, B +1', branches: ['feat/a', 'feat/b', 'feat/c'] },
-    ]);
+  it('is high for a very large change and for a far-behind branch with a failing pipeline', () => {
+    expect(projectOverviewIntegrationRisk({ behind: 0, changedFiles: 273, overlapFiles: 40, overlapBranches: 3, baseCommitsPerDay: 22, latestPipeline: null }).level).toBe('high');
+    expect(projectOverviewIntegrationRisk({ behind: 31, changedFiles: 12, overlapFiles: 0, overlapBranches: 0, baseCommitsPerDay: 22, latestPipeline: 'failed' }))
+      .toStrictEqual({ level: 'high', reasons: [{ kind: 'behind', commits: 31 }, { kind: 'velocity', commitsPerDay: 22 }, { kind: 'failingPipeline' }] });
   });
 });
 
-describe('project overview integration risk', () => {
-  it('is low with no reasons for a branch that matches a quiet base', () => {
-    expect(projectOverviewIntegrationRisk({ behind: 0, changedFiles: 4, overlapFiles: 0, overlapBranches: 0, baseCommitsPerDay: 2, latestPipeline: null }))
-      .toStrictEqual({ level: 'low', gitOnly: true, reasons: [] });
+describe('project flow stations', () => {
+  it.each([
+    ['no pull request', unit('a'), 'building'],
+    ['a draft pull request', unit('a', { pullRequest: pullRequest(null, day, true) }), 'building'],
+    ['an open pull request that is not approved', unit('a', { pullRequest: pullRequest(false, day) }), 'review'],
+    ['an approved pull request', unit('a', { pullRequest: pullRequest(true, day) }), 'ci'],
+    ['unknown approval with a running pipeline', unit('a', { pullRequest: pullRequest(null, day), latestPipeline: { status: 'running', at: now - hour } }), 'ci'],
+    ['unknown approval with a failed pipeline', unit('a', { pullRequest: pullRequest(null, day), latestPipeline: { status: 'failed', at: now - hour } }), 'ci'],
+    ['unknown approval with a passed pipeline', unit('a', { pullRequest: pullRequest(null, day), latestPipeline: { status: 'passed', at: now - hour } }), 'review'],
+    ['unknown approval and no pipeline', unit('a', { pullRequest: pullRequest(null, day) }), 'review'],
+  ] as const)('places a unit with %s', (_name, value, station) => {
+    expect(projectFlowStation(value)).toBe(station);
+  });
+});
+
+describe('project flow', () => {
+  const connected = { git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' } as const;
+  const input = (overrides: Partial<ProjectFlowInput> = {}): ProjectFlowInput => ({
+    now,
+    sources: connected,
+    backlog: { open: 47, arrived: 9 },
+    shipped: { count: 31, recentBranches: ['feat/cursor-usage', 'fix/gh-90'] },
+    agentsWorking: 4,
+    workstreams: [{ id: 'w1', branches: ['feat/cursor-usage', 'feat/cursor-steering', 'fix/cursor-resume'] }, { id: 'w2', branches: ['refactor/sdk-extraction'] }],
+    units: [
+      unit('feat/cursor-steering', { firstCommitAt: now - 3 * hour, agentWorking: true }),
+      unit('feat/other', { firstCommitAt: now - 5 * day, lastCommitAt: now - 2 * day }),
+      unit('fix/cursor-resume', { pullRequest: pullRequest(false, 3 * day) }),
+      unit('refactor/sdk-extraction', { pullRequest: pullRequest(false, 2 * day) }),
+      unit('fix/gh-91', { pullRequest: pullRequest(false, 2 * hour) }),
+      unit('feat/ready', { pullRequest: pullRequest(true, 4 * day), latestPipeline: { status: 'failed', at: now - 3 * hour } }),
+    ],
+    ...overrides,
   });
 
-  it('is medium when drift, overlap and a fast base add up', () => {
-    expect(projectOverviewIntegrationRisk({ behind: 14, changedFiles: 9, overlapFiles: 3, overlapBranches: 2, baseCommitsPerDay: 22.4, latestPipeline: 'passed' }))
-      .toStrictEqual({
-        level: 'medium',
-        gitOnly: false,
-        reasons: [
-          { kind: 'behind', commits: 14 },
-          { kind: 'overlap', files: 3, branches: 2 },
-          { kind: 'velocity', commitsPerDay: 22 },
-        ],
-      });
+  it('places work at its station with marks, moving tokens and the constraint', () => {
+    expect(buildProjectFlow(input())).toStrictEqual({
+      stations: [
+        { kind: 'backlog', status: 'available', count: 47, note: 9, marks: [] },
+        { kind: 'building', status: 'available', count: 2, note: 4, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: null, units: 1 }] },
+        { kind: 'review', status: 'available', count: 3, note: 3 * day, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: 'w2', units: 1 }, { workstreamId: null, units: 1 }] },
+        { kind: 'ci', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }] },
+        { kind: 'shipped', status: 'available', count: 31, note: null, marks: [] },
+      ],
+      links: [
+        { to: 'building', tokens: ['w1'] },
+        { to: 'review', tokens: [null] },
+        { to: 'ci', tokens: [null] },
+        { to: 'shipped', tokens: ['w1', null] },
+      ],
+      constraint: { station: 'review', units: 3, oldestWaitMs: 3 * day, workstreamIds: ['w1', 'w2'] },
+    });
   });
 
-  it('is high for a far-behind branch whose latest pipeline run failed', () => {
-    const risk = projectOverviewIntegrationRisk({ behind: 31, changedFiles: 12, overlapFiles: 0, overlapBranches: 0, baseCommitsPerDay: 22, latestPipeline: 'failed' });
-    expect(risk.level).toBe('high');
-    expect(risk.reasons).toStrictEqual([{ kind: 'behind', commits: 31 }, { kind: 'velocity', commitsPerDay: 22 }, { kind: 'failingPipeline' }]);
+  it('names no constraint when little is waiting, and prefers the later station on a tie', () => {
+    expect(buildProjectFlow(input({ units: [unit('a', { pullRequest: pullRequest(false, 5 * day) })] })).constraint).toBeNull();
+    expect(buildProjectFlow(input({ units: [unit('a', { pullRequest: pullRequest(false, 20 * hour) }), unit('b', { pullRequest: pullRequest(false, 23 * hour) })] })).constraint).toBeNull();
+    const tie = buildProjectFlow(input({
+      workstreams: [],
+      units: [
+        unit('a', { pullRequest: pullRequest(false, 2 * day) }), unit('b', { pullRequest: pullRequest(false, 2 * day) }),
+        unit('c', { pullRequest: pullRequest(true, 9 * day), latestPipeline: { status: 'passed', at: now - 2 * day } }),
+        unit('d', { pullRequest: pullRequest(true, 9 * day), latestPipeline: { status: 'passed', at: now - 2 * day } }),
+      ],
+    }));
+    expect(tie.constraint).toStrictEqual({ station: 'ci', units: 2, oldestWaitMs: 2 * day, workstreamIds: [] });
   });
 
-  it('is high for a very large change even when it is up to date', () => {
-    const risk = projectOverviewIntegrationRisk({ behind: 0, changedFiles: 273, overlapFiles: 40, overlapBranches: 3, baseCommitsPerDay: 22, latestPipeline: null });
-    expect(risk.level).toBe('high');
-    expect(risk.reasons).toContainEqual({ kind: 'size', files: 273 });
+  it('does not count a branch an agent is working on as waiting, and caps tokens at three', () => {
+    const busy = buildProjectFlow(input({
+      units: [
+        unit('a', { firstCommitAt: now - hour, lastCommitAt: now - 9 * day, agentWorking: true }),
+        unit('b', { firstCommitAt: now - hour, lastCommitAt: now - 9 * day, agentWorking: true }),
+        unit('c', { firstCommitAt: now - hour }), unit('d', { firstCommitAt: now - hour }),
+      ],
+    }));
+    expect(busy.constraint).toBeNull();
+    expect(busy.links[0]).toStrictEqual({ to: 'building', tokens: [null, null, null] });
   });
 
-  it('does not count a slow base or a running pipeline against the branch', () => {
-    expect(projectOverviewIntegrationRisk({ behind: 3, changedFiles: 2, overlapFiles: 0, overlapBranches: 0, baseCommitsPerDay: 9.4, latestPipeline: 'running' }))
-      .toStrictEqual({ level: 'low', gitOnly: false, reasons: [{ kind: 'behind', commits: 3 }] });
+  it('keeps every unit in building and marks review and CI as not connected without a code host', () => {
+    const flow = buildProjectFlow(input({ sources: { git: 'available', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' }, backlog: null }));
+    expect(flow.stations.map(station => [station.kind, station.status, station.count])).toStrictEqual([
+      ['backlog', 'notConnected', null], ['building', 'available', 6], ['review', 'notConnected', null], ['ci', 'notConnected', null], ['shipped', 'available', 31],
+    ]);
+    expect(flow.links.map(link => link.tokens.length)).toStrictEqual([1, 0, 0, 2]);
+  });
+
+  it('shows nothing from a repository that could not be read', () => {
+    const flow = buildProjectFlow(input({ sources: { ...connected, git: 'failed' }, units: [], shipped: null }));
+    expect(flow.stations.map(station => [station.kind, station.status, station.count])).toStrictEqual([
+      ['backlog', 'available', 47], ['building', 'failed', null], ['review', 'failed', null], ['ci', 'failed', null], ['shipped', 'failed', null],
+    ]);
+    expect(flow.constraint).toBeNull();
+  });
+});
+
+describe('project narrative drafts', () => {
+  const evidence: ProjectNarrativeEvidence = {
+    facts: [
+      { id: 'F1', text: 'Release 0.56 shipped on Nov 9.', label: 'the 0.56 release' },
+      { id: 'F2', text: '32 fix commits since Oct 20 mention "cursor".', label: '32 Cursor fixes since Oct 20' },
+      { id: 'F3', text: 'Branch refactor/sdk-extraction changes 273 files and removes about 26,000 lines.', label: 'refactor/sdk-extraction' },
+    ],
+    branches: ['refactor/sdk-extraction', 'feat/cursor-steering'],
+    issues: ['#84', '#83'],
+  };
+  const cursor = { name: 'Cursor engine', state: 'settling', analysis: 'Shipped in 0.56 and still settling: 32 fixes have followed since Oct 20.', facts: ['F1', 'F2'], branches: ['feat/cursor-steering'], issues: ['#84'] };
+  const sdk = { name: 'Shared SDK extraction', state: 'waiting', analysis: 'One branch removes about 26,000 lines across 273 files and gets harder to land every day.', facts: ['F3'], branches: ['refactor/sdk-extraction'] };
+
+  it('accepts a grounded draft and composes ids and the basis from cited facts', () => {
+    expect(projectNarrativeFromDraft({ lead: 'Cursor shipped in 0.56 and one large refactor is waiting.', workstreams: [cursor, sdk] }, evidence)).toStrictEqual({
+      ok: true,
+      lead: 'Cursor shipped in 0.56 and one large refactor is waiting.',
+      workstreams: [
+        { id: 'w1', name: 'Cursor engine', state: 'settling', analysis: cursor.analysis, basis: ['the 0.56 release', '32 Cursor fixes since Oct 20'], branches: ['feat/cursor-steering'], issues: ['#84'] },
+        { id: 'w2', name: 'Shared SDK extraction', state: 'waiting', analysis: sdk.analysis, basis: ['refactor/sdk-extraction'], branches: ['refactor/sdk-extraction'], issues: [] },
+      ],
+    });
+  });
+
+  it.each([
+    ['a number no cited fact contains', { lead: 'Fine.', workstreams: [{ ...cursor, analysis: 'There were 45 fixes.' }] }, 'Workstream 1 states 45, which none of its cited facts contain.'],
+    ['a number in the lead that no cited fact contains', { lead: 'There were 99 fixes.', workstreams: [cursor] }, 'The lead states 99, which no cited fact contains.'],
+    ['a fact that was never supplied', { lead: 'Fine.', workstreams: [{ ...cursor, facts: ['F9'] }] }, 'Workstream 1 cites unknown fact F9.'],
+    ['no fact at all', { lead: 'Fine.', workstreams: [{ ...cursor, facts: [] }] }, 'Workstream 1 cites no facts.'],
+    ['a branch that is not in the evidence', { lead: 'Fine.', workstreams: [{ ...sdk, branches: ['main'] }] }, 'Workstream 1 claims unknown branch main.'],
+    ['an issue that is not in the evidence', { lead: 'Fine.', workstreams: [{ ...cursor, issues: ['#1'] }] }, 'Workstream 1 claims unknown issue #1.'],
+    ['a state outside the closed set', { lead: 'Fine.', workstreams: [{ ...cursor, state: 'on fire' }] }, 'Workstream 1 has an unknown state.'],
+    ['an analysis that is too long', { lead: 'Fine.', workstreams: [{ ...sdk, analysis: 'x'.repeat(361) }] }, 'Workstream 1 needs an analysis of at most 360 characters.'],
+    ['a lead that is too long', { lead: 'x'.repeat(281), workstreams: [cursor] }, 'The lead must be 1 to 280 characters.'],
+    ['more than four workstreams', { lead: 'Fine.', workstreams: [cursor, cursor, cursor, cursor, cursor] }, 'There must be 1 to 4 workstreams.'],
+    ['something that is not a narrative', 'just prose', 'The reply is not a narrative object.'],
+  ] as const)('rejects %s', (_name, draft, problem) => {
+    expect(projectNarrativeFromDraft(draft, evidence)).toStrictEqual({ ok: false, problems: [problem] });
+  });
+
+  it('allows numbers written as words and reads grouped digits as one number', () => {
+    const draft = { lead: 'Two workstreams matter.', workstreams: [{ ...sdk, analysis: 'One branch removes about 26,000 lines in a single commit.' }] };
+    expect(projectNarrativeFromDraft(draft, evidence)).toMatchObject({ ok: true });
   });
 });

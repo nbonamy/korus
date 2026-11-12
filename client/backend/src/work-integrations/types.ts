@@ -44,6 +44,8 @@ export type WorkProviderDeviceTokenResult =
 /** A backlog item that moved inside a window. Titles are provider content: they stay on this host and its clients. */
 export type WorkProviderBacklogItem = { id: string; title: string; state: 'open' | 'closed'; createdAt: string; closedAt?: string; updatedAt: string };
 export type WorkProviderBacklogActivity = { open: number | null; items: WorkProviderBacklogItem[] };
+/** `approved` is null when the provider records no review decision for the request. */
+export type WorkProviderOpenPullRequest = { branch: string; draft: boolean; approved: boolean | null; openedAt: string };
 export type WorkProviderPipelineRun = { id: string; branch: string; status: import('@workspace/core/project-overview').ProjectOverviewPipelineStatus; at: string };
 
 export interface WorkProviderDriver {
@@ -65,6 +67,8 @@ export interface WorkProviderDriver {
   createPullRequest?(token: WorkProviderCredential, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest>;
   /** Read-only: items created, closed or updated since `since` (ISO), bounded by the driver. */
   listBacklogActivity?(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderBacklogActivity>;
+  /** Read-only: open pull or merge requests, bounded by the driver. */
+  listOpenPullRequests?(token: WorkProviderCredential, repositoryId: string): Promise<WorkProviderOpenPullRequest[]>;
   /** Read-only: pipeline runs created since `since` (ISO), bounded by the driver. */
   listPipelineRuns?(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderPipelineRun[]>;
 }

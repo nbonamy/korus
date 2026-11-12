@@ -57,6 +57,7 @@ export const backendMethods = {
   agentCreate: 'agent/create',
   projectCreate: 'project/create',
   projectOverviewGet: 'project/overview/get',
+  projectNarrativeRefresh: 'project/overview/narrative/refresh',
   missionExecute: 'mission/execution/update',
   missionCreate: 'mission/create',
   missionDelete: 'mission/delete',

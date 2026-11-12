@@ -1,6 +1,6 @@
 import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
-import { WorkProviderCliAuthenticationError, type WorkProviderBacklogActivity, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver, type WorkProviderPipelineRun } from './types';
+import { WorkProviderCliAuthenticationError, type WorkProviderBacklogActivity, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver, type WorkProviderOpenPullRequest, type WorkProviderPipelineRun } from './types';
 import { workProviderConnectOptions, workProviderDefinition, workProviderForRepositoryId } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
@@ -524,6 +524,13 @@ export class WorkIntegrationManager {
   async backlogActivity(repositoryIdentity: string, since: number): Promise<(WorkProviderBacklogActivity & { provider: WorkProviderKind }) | null> {
     return this.repositoryRead(repositoryIdentity, async (driver, credential, repositoryId, provider) => (
       driver.listBacklogActivity ? { provider, ...(await driver.listBacklogActivity(credential, repositoryId, new Date(since).toISOString())) } : null
+    ));
+  }
+
+  /** Open pull or merge requests, or null when no connected provider serves this repository or can report them. */
+  async openPullRequests(repositoryIdentity: string): Promise<WorkProviderOpenPullRequest[] | null> {
+    return this.repositoryRead(repositoryIdentity, async (driver, credential, repositoryId) => (
+      driver.listOpenPullRequests ? driver.listOpenPullRequests(credential, repositoryId) : null
     ));
   }
 

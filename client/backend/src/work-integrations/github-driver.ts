@@ -1,7 +1,7 @@
 import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitHubOAuthClientId } from '../runtime-config';
-import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderPipelineRun } from './types';
+import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderOpenPullRequest, type WorkProviderPipelineRun } from './types';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 const GITHUB_OAUTH_BASE_URL = 'https://github.com/login';
@@ -439,6 +439,21 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     // The flow is still worth showing when the total cannot be read.
     const search = await this.apiRequest(token, `/search/issues?q=${encodeURIComponent(`repo:${repository.fullName} is:issue is:open`)}&per_page=1`).catch(() => null);
     return { open: isRecord(search) && typeof search.total_count === 'number' && Number.isInteger(search.total_count) ? search.total_count : null, items };
+  }
+
+  async listOpenPullRequests(token: WorkProviderCredential, repositoryId: string): Promise<WorkProviderOpenPullRequest[]> {
+    const repository = parseRepositoryId(repositoryId);
+    if (!repository) return [];
+    const response = await this.apiRequest(token, '/graphql', { method: 'POST', body: JSON.stringify({
+      query: 'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC}){nodes{headRefName isDraft createdAt reviewDecision}}}}',
+      variables: { owner: repository.owner, name: repository.name },
+    }) });
+    const nodes = isRecord(response) && isRecord(response.data) && isRecord(response.data.repository) && isRecord(response.data.repository.pullRequests)
+      ? response.data.repository.pullRequests.nodes : null;
+    if (!Array.isArray(nodes)) throw new Error('GitHub returned an invalid pull requests response.');
+    return nodes.flatMap((node): WorkProviderOpenPullRequest[] => isRecord(node) && typeof node.headRefName === 'string' && node.headRefName && typeof node.createdAt === 'string'
+      ? [{ branch: node.headRefName, draft: node.isDraft === true, approved: typeof node.reviewDecision === 'string' ? node.reviewDecision === 'APPROVED' : null, openedAt: node.createdAt }]
+      : []);
   }
 
   async listPipelineRuns(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderPipelineRun[]> {

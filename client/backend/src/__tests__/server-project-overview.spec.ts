@@ -17,12 +17,18 @@ it('answers a project overview from the local service for the requesting agent w
   snapshot.agents.push(agent);
   snapshot.teams[0]!.agentIds.push(agent.id);
   const get = vi.fn().mockResolvedValue(overview);
-  const server = new AppBackendServer({ version: 'test', snapshot, projectOverview: { get } });
+  const refreshNarrative = vi.fn().mockResolvedValue(overview);
+  const server = new AppBackendServer({ version: 'test', snapshot, projectOverview: { get, refreshNarrative } });
   try {
-    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id, input: { window: '7d' } } }))
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id } }))
       .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'overview', result: overview });
-    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id, folder: '/work/korus' }), { window: '7d' });
+    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id, folder: '/work/korus' }));
     expect(snapshot.activeAgentId).toBeNull();
+
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'rewrite', method: backendMethods.projectNarrativeRefresh, params: { agentId: agent.id } }))
+      .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'rewrite', result: overview });
+    expect(refreshNarrative).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }), expect.any(Function));
+    expect(get).toHaveBeenCalledTimes(1);
 
     const unknown = await server.handleMessage({ jsonrpc: '2.0', id: 'missing', method: backendMethods.projectOverviewGet, params: { agentId: 'nobody' } });
     expect(unknown).toMatchObject({ id: 'missing', error: { message: 'Agent not found: nobody' } });
@@ -34,7 +40,7 @@ it('routes a project overview to the host that owns a remote agent and never rea
   const agent = createRemoteAgent();
   const remoteGet = vi.fn().mockResolvedValue(overview);
   const localGet = vi.fn().mockRejectedValue(new Error('A remote repository must not be read locally'));
-  const daemon = new AppBackendServer({ version: 'test', snapshot: createRemoteTeamSnapshot([agent]), projectOverview: { get: remoteGet } });
+  const daemon = new AppBackendServer({ version: 'test', snapshot: createRemoteTeamSnapshot([agent]), projectOverview: { get: remoteGet, refreshNarrative: vi.fn() } });
   const snapshot = createTestSnapshot();
   const connection = readyRemoteConnection();
   snapshot.remoteConnections.connections = [connection];
@@ -44,11 +50,11 @@ it('routes a project overview to the host that owns a remote agent and never rea
     if (response && 'result' in response) return response.result;
     throw new Error(JSON.stringify(response));
   });
-  const controller = new AppBackendServer({ version: 'test', snapshot, projectOverview: { get: localGet }, remoteClients: { request, close: vi.fn() } as never });
+  const controller = new AppBackendServer({ version: 'test', snapshot, projectOverview: { get: localGet, refreshNarrative: localGet }, remoteClients: { request, close: vi.fn() } as never });
   try {
-    await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id, input: { window: '12w' } } }))
+    await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id } }))
       .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'overview', result: overview });
-    expect(remoteGet).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }), { window: '12w' });
+    expect(remoteGet).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }));
     expect(localGet).not.toHaveBeenCalled();
   } finally { await controller.close(); await daemon.close(); }
 });

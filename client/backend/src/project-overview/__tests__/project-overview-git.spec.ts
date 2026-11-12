@@ -64,9 +64,9 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     expect(facts!.commits.every(commit => Math.abs(commit.at - now) < day)).toBe(true);
     expect(facts!.tags.map(tag => tag.name)).toStrictEqual(['v1.0.0']);
     // The merged branch has nothing left to integrate, so only the base and the open branch remain.
-    expect(facts!.branches.map(branch => ({ ...branch, lastCommitAt: typeof branch.lastCommitAt }))).toStrictEqual([
-      { name: 'main', lastCommitAt: 'number', behind: 0, ahead: 0, files: [] },
-      { name: 'feat/y', lastCommitAt: 'number', behind: 3, ahead: 1, files: ['a.txt', 'y.txt'] },
+    expect(facts!.branches.map(({ firstCommitAt, lastCommitAt, ...branch }) => ({ ...branch, timed: firstCommitAt <= lastCommitAt && Math.abs(lastCommitAt - now) < day }))).toStrictEqual([
+      { name: 'main', behind: 0, ahead: 0, files: [], insertions: 0, deletions: 0, timed: true },
+      { name: 'feat/y', behind: 3, ahead: 1, files: ['a.txt', 'y.txt'], insertions: 2, deletions: 1, timed: true },
     ]);
     expect(facts!.baseCommitsPerDay).toBeCloseTo(5 / 7, 5);
   });
@@ -88,10 +88,13 @@ describe('project overview git facts', { timeout: 20_000 }, () => {
     expect(facts!.baseCommitsPerDay).toBeCloseTo(1 / 7, 5);
 
     const kept = await reader.read(folder, { since: now - 7 * day, now, keepBranches: ['feat/stale'] });
-    expect(kept!.branches.map(branch => [branch.name, branch.behind, branch.ahead, branch.files])).toStrictEqual([
-      ['main', 0, 0, []],
-      ['feat/stale', 1, 1, ['s.txt']],
+    expect(kept!.branches.map(branch => [branch.name, branch.behind, branch.ahead, branch.files, branch.insertions, branch.deletions])).toStrictEqual([
+      ['main', 0, 0, [], 0, 0],
+      ['feat/stale', 1, 1, ['s.txt'], 1, 0],
     ]);
+    // The branch's own work dates from its first commit ahead of the base, not from the base's history.
+    const stale = kept!.branches[1]!;
+    expect([stale.firstCommitAt, stale.lastCommitAt]).toStrictEqual([Date.parse('2020-01-02T00:00:00Z'), Date.parse('2020-01-02T00:00:00Z')]);
   });
 
   it('uses the workspace default branch as the base and reports a detached head without a branch', async () => {
