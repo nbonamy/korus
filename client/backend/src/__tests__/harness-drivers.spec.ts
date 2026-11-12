@@ -27,13 +27,14 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(drivers.get('claude')!.getCapabilities({ ...(agent as object), provider: 'claude' } as never)).toMatchObject({ codeReview: true, conversationShare: true });
   });
 
-  it('trusts and requires the review server only where the harness can express it', () => {
-    const base = ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round'];
-    const server = (provider: Parameters<typeof reviewScope>[0]) => (reviewScope(provider)('http://review') as unknown as { developerInstructions?: string; mcpServers: Array<Record<string, unknown>> });
-    expect(server('codex')).toStrictEqual({ id: 'http://review', mcpServers: [{ name: 'korus', url: 'http://review', approval: 'auto', required: true, enabledTools: [...base, 'send-message', 'set-status', 'finish_turn'] }] });
-    expect(server('claude').mcpServers).toStrictEqual([{ name: 'korus', url: 'http://review', approval: 'auto', enabledTools: [...base, 'send-message', 'set-status', 'finish_turn'] }]);
-    expect(server('cursor').mcpServers).toStrictEqual([{ name: 'korus', url: 'http://review', enabledTools: ['read-skill', ...base, 'send-message', 'set-status', 'finish_turn'] }]);
-    expect(server('antigravity')).toStrictEqual({ id: 'http://review', developerInstructions: '', mcpServers: [{ name: 'korus', url: 'http://review', enabledTools: [...base, 'set-status', 'finish_turn'] }] });
+  it('gives every reviewer the same tools, trusting and requiring the review server only where the harness can express it', () => {
+    const tools = ['read-skill', 'report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'];
+    const scope = (provider: Parameters<typeof reviewScope>[0]) => reviewScope(provider)('http://review') as unknown as { mcpServers: Array<Record<string, unknown>> };
+    const server = { name: 'korus', url: 'http://review', enabledTools: tools };
+    expect(scope('codex')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto', required: true }] });
+    expect(scope('claude')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto' }] });
+    expect(scope('cursor')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
+    expect(scope('antigravity')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
   });
 
   it('tells the harness which Korus tools are bookkeeping', () => {

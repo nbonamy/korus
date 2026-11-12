@@ -27,7 +27,6 @@ type Options = ProviderDriverRegistryOptions;
 /** Builds the Harness for a provider; tests substitute a scripted one. */
 export type HarnessFactory = (provider: Agent['provider'], options: HarnessOptions) => ReturnType<typeof createHarness>;
 const realHarness: HarnessFactory = (provider, options) => createHarness(provider, options);
-const reviewBaseTools = ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round'] as const;
 const planOnly = '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.';
 
 /** App identity, instructions and MCP wiring shared by every provider. */
@@ -55,26 +54,15 @@ function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, '
   };
 }
 
+/** What every reviewer may call on Korus's server: its skills, the review ledger, and messages to the agent it reviews. */
+const reviewTools = ['read-skill', 'report_finding', 'update_finding', 'delete_finding', 'finish_review_round', 'send-message', 'set-status', 'finish_turn'] as const;
 /**
- * Where a reviewer's tools or instructions differ from the rest. Carried over as they were; the review prompts ask every
- * reviewer to use read-skill and send-message, so these are worth checking against a live review before keeping them.
- */
-const reviewerDifferences: Partial<Record<HarnessProvider, { tools?: readonly string[]; developerInstructions?: string }>> = {
-  cursor: { tools: ['read-skill', ...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] },
-  antigravity: { developerInstructions: '', tools: [...reviewBaseTools, 'set-status', 'finish_turn'] },
-};
-const reviewTools = [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] as const;
-/**
- * The scope a code review runs in: Korus's review tools on its own MCP server. The server is trusted and required
- * wherever the harness can express that; `tools` and `developerInstructions` are the reviewer's own, when they differ.
+ * The scope a code review runs in, the same for every harness: Korus's review tools on its own MCP server, trusted and
+ * required wherever the harness can express that.
  */
 export const reviewScope = (provider: HarnessProvider) => (url: string) => {
   const { mcpAutoApproval, mcpRequiredServers } = defaultProviderCapabilities(provider);
-  const extra = reviewerDifferences[provider] ?? {};
-  return {
-    id: url, ...(extra.developerInstructions === undefined ? {} : { developerInstructions: extra.developerInstructions }),
-    mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...extra.tools ?? reviewTools] }],
-  } as never;
+  return { id: url, mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...reviewTools] }] } as never;
 };
 
 const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName'>) =>
