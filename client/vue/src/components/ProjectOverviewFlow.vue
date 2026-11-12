@@ -9,28 +9,49 @@
         <li v-if="legend.other"><span class="project-mark project-mark--other" aria-hidden="true" />{{ t('projectOverview.flow.otherWork') }}</li>
       </ul>
     </header>
-    <div class="project-flow__scroll">
-      <ol class="project-flow__line">
-        <li
-          v-for="(station, index) in flow.stations"
-          :key="station.kind"
-          class="project-flow__step"
-          :class="{ 'project-flow__step--first': index === 0 }"
-        >
-          <span v-if="index > 0" class="project-flow__link" aria-hidden="true">
-            <span
-              v-for="(token, position) in flow.links[index - 1]?.tokens ?? []"
-              :key="position"
-              class="project-flow__token"
-              :class="projectMarkClass(token, narrative)"
-              :style="{ left: `${20 + position * 25}%`, animationDelay: `${-position * 0.9}s` }"
-            />
-          </span>
+    <!-- One row of stations when there is room, a column when there is not: never a horizontal scroll. -->
+    <ol class="project-flow__line">
+      <li
+        v-for="(station, index) in flow.stations"
+        :key="station.kind"
+        class="project-flow__step"
+        :class="{ 'project-flow__step--first': index === 0 }"
+      >
+        <span v-if="index > 0" class="project-flow__link" aria-hidden="true">
+          <span
+            v-for="(token, position) in flow.links[index - 1]?.tokens ?? []"
+            :key="position"
+            class="project-flow__token"
+            :class="projectMarkClass(token, narrative)"
+            :style="{ animationDelay: `${-position * 0.9}s` }"
+          />
+        </span>
+        <div class="project-flow__stop">
           <div
             class="project-flow__station"
-            :class="{ 'project-flow__station--constraint': flow.constraint?.station === station.kind, 'project-flow__station--absent': station.status !== 'available' }"
+            :class="{ 'project-flow__station--stuck': station.stuck.length, 'project-flow__station--absent': station.status !== 'available' }"
             :data-station="station.kind"
           >
+            <template v-if="station.stuck.length">
+              <a
+                v-if="station.stuck.length === 1 && station.stuck[0]!.target?.kind === 'url'"
+                class="project-flow__stuck"
+                :href="station.stuck[0]!.target.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="stuckLabel(station.stuck[0]!)"
+                :aria-label="stuckLabel(station.stuck[0]!)"
+              ><AlertTriangleIcon class="project-flow__icon" aria-hidden="true" /></a>
+              <button
+                v-else
+                class="project-flow__stuck"
+                type="button"
+                :title="stuckSummary(station)"
+                :aria-label="stuckSummary(station)"
+                :aria-expanded="station.stuck.length > 1 || !station.stuck[0]!.target ? openStation === station.kind : undefined"
+                @click="openStuck(station)"
+              ><AlertTriangleIcon class="project-flow__icon" aria-hidden="true" /></button>
+            </template>
             <a
               v-if="toolLinks[station.kind]"
               class="project-flow__tool"
@@ -40,45 +61,70 @@
               :title="toolLinks[station.kind]!.label"
               :aria-label="t('projectOverview.flow.openTool', { tool: toolLinks[station.kind]!.label })"
             >
-              <component :is="toolIcons[toolLinks[station.kind]!.tool]" class="project-flow__tool-icon" aria-hidden="true" />
+              <component :is="toolIcons[toolLinks[station.kind]!.tool]" class="project-flow__icon" aria-hidden="true" />
             </a>
-            <span v-if="flow.constraint?.station === station.kind" class="project-flow__constraint">{{ t('projectOverview.flow.constraint') }}</span>
             <span class="project-flow__name">{{ t(stationKeys[station.kind]) }}</span>
             <strong class="project-flow__count">{{ station.count ?? t('projectOverview.flow.noCount') }}</strong>
-            <span v-if="station.marks.length" class="project-flow__marks" aria-hidden="true">
+            <span class="project-flow__marks" aria-hidden="true">
               <template v-for="mark in station.marks" :key="mark.workstreamId ?? 'other'">
                 <span v-for="unit in Math.min(mark.units, maxMarks)" :key="unit" :class="projectMarkClass(mark.workstreamId, narrative)" />
               </template>
             </span>
-            <span class="project-flow__note">{{ note(station) }}</span>
           </div>
-        </li>
-      </ol>
-    </div>
-    <p class="project-flow__sentence">{{ sentence }}</p>
+          <span class="project-flow__note">{{ note(station) }}</span>
+          <ul v-if="openStation === station.kind" class="project-flow__stuck-list" :aria-label="stuckSummary(station)">
+            <li v-for="item in station.stuck" :key="item.branch">
+              <a v-if="item.target?.kind === 'url'" :href="item.target.url" target="_blank" rel="noopener noreferrer">{{ item.branch }}</a>
+              <button v-else-if="item.target?.kind === 'agent'" type="button" @click="emit('select-agent', item.target.agentId)">{{ item.branch }}</button>
+              <span v-else>{{ item.branch }}</span>
+              <span class="project-flow__stuck-reason">{{ reasonText(item) }}</span>
+            </li>
+          </ul>
+        </div>
+      </li>
+    </ol>
     <p v-if="disconnected" class="project-flow__hint">{{ t('projectOverview.flow.connectHint') }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ProjectFlow, ProjectFlowStation, ProjectNarrative, ProjectToolKind, ProjectToolLinks } from '@workspace/core/project-overview';
-import { BrandJiraIcon, ExternalLinkIcon, GitHubIcon, GitLabIcon, LinearIcon } from '../shared/icons/app-icons';
-import { compactDuration, flowLegend, projectMarkClass } from './project-overview-presentation';
+import type { ProjectFlow, ProjectFlowStation, ProjectFlowStuck, ProjectNarrative, ProjectToolKind, ProjectToolLinks } from '@workspace/core/project-overview';
+import { AlertTriangleIcon, BrandJiraIcon, ExternalLinkIcon, GitHubIcon, GitLabIcon, LinearIcon } from '../shared/icons/app-icons';
+import { flowLegend, projectMarkClass, compactDuration } from './project-overview-presentation';
 
 const props = defineProps<{ flow: ProjectFlow; narrative: ProjectNarrative | null; toolLinks: ProjectToolLinks }>();
+const emit = defineEmits<{ 'select-agent': [agentId: string] }>();
 const toolIcons: Record<ProjectToolKind, unknown> = { github: GitHubIcon, gitlab: GitLabIcon, jira: BrandJiraIcon, linear: LinearIcon, link: ExternalLinkIcon };
 const { t } = useI18n();
 const maxMarks = 8;
+const openStation = ref<ProjectFlowStation['kind'] | null>(null);
 
 const stationKeys = {
   backlog: 'projectOverview.flow.stations.backlog', building: 'projectOverview.flow.stations.building', review: 'projectOverview.flow.stations.review',
   ci: 'projectOverview.flow.stations.ci', shipped: 'projectOverview.flow.stations.shipped',
 } as const;
+const reasonKeys = {
+  conflicts: 'projectOverview.flow.stuck.conflicts', failing: 'projectOverview.flow.stuck.failing',
+  needsInput: 'projectOverview.flow.stuck.needsInput', overdue: 'projectOverview.flow.stuck.overdue',
+} as const;
 const legend = computed(() => flowLegend(props.flow));
 const disconnected = computed(() => props.flow.stations.some(station => station.status === 'notConnected'));
 const workstreamName = (id: string) => props.narrative?.workstreams.find(workstream => workstream.id === id)?.name ?? t('projectOverview.flow.otherWork');
+const reasonText = (item: ProjectFlowStuck) => t(reasonKeys[item.reason]);
+const stuckLabel = (item: ProjectFlowStuck) => `${item.branch}: ${reasonText(item)}`;
+const stuckSummary = (station: ProjectFlowStation) => station.stuck.length === 1 ? stuckLabel(station.stuck[0]!) : t('projectOverview.flow.stuck.summary', { count: station.stuck.length });
+
+/** One item goes straight to its request or thread; several open a list to choose from. */
+function openStuck(station: ProjectFlowStation): void {
+  const [only] = station.stuck;
+  if (station.stuck.length === 1 && only?.target?.kind === 'agent') {
+    emit('select-agent', only.target.agentId);
+    return;
+  }
+  openStation.value = openStation.value === station.kind ? null : station.kind;
+}
 
 function note(station: ProjectFlowStation): string {
   if (station.status === 'notConnected') return t('projectOverview.flow.notConnected');
@@ -89,17 +135,11 @@ function note(station: ProjectFlowStation): string {
   if (station.kind === 'ci') return t('projectOverview.flow.failing', { count: station.note ?? 0 });
   return t('projectOverview.flow.mergedThisWeek');
 }
-
-const sentence = computed(() => {
-  const constraint = props.flow.constraint;
-  if (!constraint) return t('projectOverview.flow.nothingStuck');
-  const stated = t('projectOverview.flow.constraintSentence', { station: t(stationKeys[constraint.station]), count: constraint.units, age: compactDuration(constraint.oldestWaitMs) });
-  return constraint.workstreamIds.length ? `${stated} ${t('projectOverview.flow.involved', { names: constraint.workstreamIds.map(workstreamName).join(', ') })}` : stated;
-});
 </script>
 
 <style scoped>
 .project-flow {
+  container: project-flow / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--space-16);
@@ -138,36 +178,33 @@ const sentence = computed(() => {
   gap: var(--space-6);
 }
 
-.project-flow__scroll {
-  overflow-x: auto;
-}
-
+/* Five equal cards with the arrows between them taking what is left, so the row always fits its width. */
 .project-flow__line {
-  display: flex;
-  align-items: flex-end;
-  min-width: 760px;
+  display: grid;
+  grid-template-columns: minmax(80px, 160px) repeat(4, minmax(16px, 1fr) minmax(80px, 160px));
+  align-items: start;
   margin: 0;
-  padding: var(--space-24) 0 0;
+  padding: 0;
   list-style: none;
 }
 
 .project-flow__step {
-  display: flex;
-  flex: 1 1 0;
-  align-items: flex-end;
-  min-width: 0;
+  display: contents;
 }
 
-.project-flow__step--first {
-  flex: 0 0 auto;
+.project-flow__stop {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-6);
+  min-width: 0;
 }
 
 .project-flow__link {
   position: relative;
-  flex: 1 1 0;
-  min-width: var(--space-32);
+  align-self: start;
   height: 2px;
-  margin: 0 var(--space-4) 62px;
+  margin: 58px var(--space-4) 0;
   background: var(--color-outline);
 }
 
@@ -184,28 +221,26 @@ const sentence = computed(() => {
 .project-flow__token {
   position: absolute;
   top: -4px;
+  left: 0;
 }
 
 .project-flow__station {
   position: relative;
   display: flex;
-  flex: 0 0 136px;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
   box-sizing: border-box;
-  width: 136px;
-  min-height: 124px;
-  padding: var(--space-10) var(--space-8);
+  min-height: 116px;
+  padding: var(--space-32) var(--space-6) var(--space-10);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-shell-main);
   text-align: center;
 }
 
-.project-flow__station--constraint {
-  border: 2px solid var(--color-warning);
-  background: var(--color-warning-container);
+.project-flow__station--stuck {
+  border-color: var(--color-warning);
 }
 
 .project-flow__station--absent {
@@ -213,43 +248,51 @@ const sentence = computed(() => {
   background: var(--color-surface);
 }
 
-.project-flow__tool {
+.project-flow__tool,
+.project-flow__stuck {
   position: absolute;
   top: var(--space-4);
-  right: var(--space-4);
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.project-flow__tool {
+  right: var(--space-4);
+}
+
+.project-flow__stuck {
+  left: var(--space-4);
+  color: var(--color-warning);
 }
 
 .project-flow__tool:hover,
-.project-flow__tool:focus-visible {
-  color: var(--color-text);
+.project-flow__tool:focus-visible,
+.project-flow__stuck:hover,
+.project-flow__stuck:focus-visible {
   background: var(--color-surface-base);
 }
 
-.project-flow__tool-icon {
+.project-flow__icon {
   width: 16px;
   height: 16px;
-}
-
-.project-flow__constraint {
-  position: absolute;
-  top: calc(-1 * var(--space-24));
-  right: 0;
-  left: 0;
-  color: var(--color-on-warning-container);
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-semibold);
 }
 
 .project-flow__name,
 .project-flow__note {
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
+}
+
+.project-flow__note {
+  text-align: center;
 }
 
 .project-flow__count {
@@ -263,24 +306,106 @@ const sentence = computed(() => {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-4);
-  min-height: var(--space-8);
+  min-height: 10px;
 }
 
-.project-flow__sentence,
+.project-flow__stuck-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-shell-main);
+  font-size: var(--font-size-12);
+  list-style: none;
+}
+
+.project-flow__stuck-list li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-flow__stuck-list a,
+.project-flow__stuck-list button {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: var(--color-primary);
+  background: none;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.project-flow__stuck-reason {
+  color: var(--color-text-muted);
+}
+
 .project-flow__hint {
   max-width: 880px;
   margin: 0;
-  font-size: var(--font-size-14);
-}
-
-.project-flow__hint {
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
+}
+
+/* Too narrow for five stations in a row: stack them, with the arrows pointing down. */
+@container project-flow (max-width: 600px) {
+  .project-flow__line,
+  .project-flow__step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .project-flow__step {
+    width: 100%;
+  }
+
+  .project-flow__stop {
+    width: min(100%, 320px);
+  }
+
+  .project-flow__station {
+    min-height: 0;
+  }
+
+  .project-flow__link {
+    align-self: center;
+    width: 2px;
+    height: var(--space-24);
+    margin: var(--space-4) 0;
+  }
+
+  .project-flow__link::after {
+    top: auto;
+    right: -4px;
+    bottom: -1px;
+    border-top: 7px solid var(--color-outline);
+    border-right: 5px solid transparent;
+    border-bottom: 0;
+    border-left: 5px solid transparent;
+  }
+
+  .project-flow__token {
+    top: 0;
+    left: -4px;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .project-flow__token {
     animation: project-flow-token 2.8s linear infinite;
+  }
+
+  @container project-flow (max-width: 600px) {
+    .project-flow__token {
+      animation-name: project-flow-token-down;
+    }
   }
 }
 
@@ -297,6 +422,23 @@ const sentence = computed(() => {
 
   100% {
     left: calc(100% - var(--space-10));
+    opacity: 0;
+  }
+}
+
+@keyframes project-flow-token-down {
+  0% {
+    top: 0;
+    opacity: 0;
+  }
+
+  15%,
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    top: calc(100% - var(--space-10));
     opacity: 0;
   }
 }

@@ -289,6 +289,7 @@
         :activity-key="overviewActivityKey"
         :sidebar-collapsed="agentSidebarCollapsed || compactViewport"
         @expand-sidebar="expandSidebar"
+        @select-agent="selectAgentFromShell"
       />
       <AgentWorkspace
         v-else
@@ -1992,7 +1993,8 @@ watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
   [compactViewport, activeSurface],
   ([compact, surface]) => {
-    if (compact && surface !== 'agent' && !missionWindow.value) activeSurface.value = 'agent';
+    // An open project overview fits a narrow window, so it stays; other full-pane surfaces give way to conversations.
+    if (compact && surface !== 'agent' && surface !== 'overview' && !missionWindow.value) activeSurface.value = 'agent';
   },
   { immediate: true },
 );

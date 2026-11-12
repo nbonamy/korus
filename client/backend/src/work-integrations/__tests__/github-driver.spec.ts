@@ -624,33 +624,43 @@ describe('GitHub project overview reads', () => {
   });
 });
 
-describe('GitHub open pull requests for the project overview', () => {
+describe('GitHub pull request activity for the project overview', () => {
   const token: WorkProviderToken = { provider: 'github', accessToken: 'secret', tokenType: 'bearer', connectedAt: 'now' };
 
-  it('reads open pull requests with their branch, draft state and review decision in one query', async () => {
-    const node = (headRefName: string, isDraft: boolean, reviewDecision: string | null) => ({ headRefName, isDraft, reviewDecision, createdAt: '2026-11-10T10:00:00Z', title: 'private title', author: { login: 'someone' } });
-    const fetch = vi.fn().mockResolvedValue(jsonResponse({ data: { repository: { pullRequests: { nodes: [
-      node('feat/ready', false, 'APPROVED'),
-      node('feat/waiting', false, 'REVIEW_REQUIRED'),
-      node('feat/changes', false, 'CHANGES_REQUESTED'),
-      node('feat/no-rule', false, null),
-      node('feat/draft', true, null),
-      { headRefName: 7 },
-    ] } } } }));
+  it('reads open pull requests with draft, review and conflict state, and how long recent merges took, in one query', async () => {
+    const node = (number: number, headRefName: string, isDraft: boolean, reviewDecision: string | null, mergeable: string) => ({
+      number, url: `https://github.com/acme/korus/pull/${number}`, headRefName, isDraft, reviewDecision, mergeable, createdAt: '2026-11-10T10:00:00Z', title: 'private title', author: { login: 'someone' },
+    });
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ data: { repository: {
+      pullRequests: { nodes: [
+        node(1, 'feat/ready', false, 'APPROVED', 'MERGEABLE'),
+        node(2, 'feat/waiting', false, 'REVIEW_REQUIRED', 'CONFLICTING'),
+        node(3, 'feat/no-rule', false, null, 'UNKNOWN'),
+        node(4, 'feat/draft', true, null, 'MERGEABLE'),
+        { headRefName: 7 },
+      ] },
+      merged: { nodes: [
+        { createdAt: '2026-11-01T10:00:00Z', mergedAt: '2026-11-02T10:00:00Z' },
+        { createdAt: '2026-11-03T10:00:00Z', mergedAt: '2026-11-03T16:00:00Z' },
+        { createdAt: '2026-11-05T10:00:00Z', mergedAt: null },
+      ] },
+    } } }));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(new GitHubWorkProviderDriver('id').listOpenPullRequests(token, 'acme/korus')).resolves.toStrictEqual([
-      { branch: 'feat/ready', draft: false, approved: true, openedAt: '2026-11-10T10:00:00Z' },
-      { branch: 'feat/waiting', draft: false, approved: false, openedAt: '2026-11-10T10:00:00Z' },
-      { branch: 'feat/changes', draft: false, approved: false, openedAt: '2026-11-10T10:00:00Z' },
-      { branch: 'feat/no-rule', draft: false, approved: null, openedAt: '2026-11-10T10:00:00Z' },
-      { branch: 'feat/draft', draft: true, approved: null, openedAt: '2026-11-10T10:00:00Z' },
-    ]);
+    await expect(new GitHubWorkProviderDriver('id').listPullRequestActivity(token, 'acme/korus')).resolves.toStrictEqual({
+      open: [
+        { number: 1, url: 'https://github.com/acme/korus/pull/1', branch: 'feat/ready', draft: false, approved: true, conflicts: false, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 2, url: 'https://github.com/acme/korus/pull/2', branch: 'feat/waiting', draft: false, approved: false, conflicts: true, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 3, url: 'https://github.com/acme/korus/pull/3', branch: 'feat/no-rule', draft: false, approved: null, conflicts: null, openedAt: '2026-11-10T10:00:00Z' },
+        { number: 4, url: 'https://github.com/acme/korus/pull/4', branch: 'feat/draft', draft: true, approved: null, conflicts: false, openedAt: '2026-11-10T10:00:00Z' },
+      ],
+      mergeTimesMs: [86_400_000, 21_600_000],
+    });
     const [url, init] = fetch.mock.calls[0]! as [string, RequestInit];
     expect(url).toBe('https://api.github.com/graphql');
     expect(JSON.parse(init.body as string).variables).toStrictEqual({ owner: 'acme', name: 'korus' });
 
     fetch.mockResolvedValue(jsonResponse({ errors: [{ message: 'nope' }] }));
-    await expect(new GitHubWorkProviderDriver('id').listOpenPullRequests(token, 'acme/korus')).rejects.toThrow('GitHub returned an invalid pull requests response.');
+    await expect(new GitHubWorkProviderDriver('id').listPullRequestActivity(token, 'acme/korus')).rejects.toThrow('GitHub returned an invalid pull requests response.');
   });
 });

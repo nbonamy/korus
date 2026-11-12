@@ -34,11 +34,17 @@ function overview(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     narrative: written,
     flow: {
       stations: [
-        { kind: 'backlog', status: 'available', count: 47, note: 9, marks: [] },
-        { kind: 'building', status: 'available', count: 2, note: 4, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: null, units: 1 }] },
-        { kind: 'review', status: 'available', count: 3, note: 3 * day, marks: [{ workstreamId: 'w1', units: 2 }, { workstreamId: 'w2', units: 1 }] },
-        { kind: 'ci', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }] },
-        { kind: 'shipped', status: 'available', count: 31, note: null, marks: [] },
+        { kind: 'backlog', status: 'available', count: 47, note: 9, marks: [], stuck: [] },
+        { kind: 'building', status: 'available', count: 2, note: 4, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: null, units: 1 }], stuck: [] },
+        {
+          kind: 'review', status: 'available', count: 3, note: 3 * day, marks: [{ workstreamId: 'w1', units: 2 }, { workstreamId: 'w2', units: 1 }],
+          stuck: [
+            { branch: 'fix/cursor-resume', reason: 'overdue', target: { kind: 'url', url: 'https://gitlab.com/acme/api/-/merge_requests/7' } },
+            { branch: 'feat/asks', reason: 'needsInput', target: { kind: 'agent', agentId: 'agent-7' } },
+          ],
+        },
+        { kind: 'ci', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }], stuck: [{ branch: 'feat/ready', reason: 'failing', target: { kind: 'url', url: 'https://gitlab.com/acme/api/-/merge_requests/9' } }] },
+        { kind: 'shipped', status: 'available', count: 31, note: null, marks: [], stuck: [] },
       ],
       links: [{ to: 'building', tokens: ['w1'] }, { to: 'review', tokens: [] }, { to: 'ci', tokens: [null] }, { to: 'shipped', tokens: ['w1', null] }],
       constraint: { station: 'review', units: 3, oldestWaitMs: 3 * day, workstreamIds: ['w1', 'w2'] },
@@ -61,7 +67,7 @@ beforeEach(() => { vi.useFakeTimers({ now: start }); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe('project overview page', () => {
-  it('shows the written narrative above a flow of where the work is, with the constraint explained', async () => {
+  it('shows the written narrative above a flow of where the work is', async () => {
     const getProjectOverview = vi.fn(async () => overview());
     const refreshProjectNarrative = vi.fn();
     setElectronTestClient({ getProjectOverview, refreshProjectNarrative });
@@ -85,17 +91,14 @@ describe('project overview page', () => {
     expect(narrative.get('[data-workstream="w2"] .project-mark').classes()).toContain('project-mark--1');
     expect(station(wrapper, 'review').findAll('.project-mark--1')).toHaveLength(1);
 
-    expect(wrapper.findAll('.project-flow__station').map(item => item.text())).toStrictEqual([
-      'Backlog479 arrived this week',
-      'Building24 agents working',
-      'ConstraintReview3oldest waiting 3d',
-      'CI11 failing',
-      'Shipped31merged this week',
-    ]);
-    expect(station(wrapper, 'review').classes()).toContain('project-flow__station--constraint');
+    expect(wrapper.findAll('.project-flow__station').map(item => item.text())).toStrictEqual(['Backlog47', 'Building2', 'Review3', 'CI1', 'Shipped31']);
+    expect(wrapper.findAll('.project-flow__note').map(item => item.text())).toStrictEqual(['9 arrived this week', '4 agents working', 'oldest waiting 3d', '1 failing', 'merged this week']);
+    // Stuck work is an icon on its station, never a sentence.
+    expect(wrapper.text()).not.toContain('constraint');
+    expect(wrapper.text()).not.toContain('Nothing is stuck');
+    expect(wrapper.findAll('.project-flow__station--stuck').map(item => item.attributes('data-station'))).toStrictEqual(['review', 'ci']);
     expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Cursor engine', 'SDK extraction', 'Other work']);
     expect(wrapper.findAll('.project-flow__link').map(link => link.findAll('.project-flow__token').length)).toStrictEqual([1, 0, 1, 2]);
-    expect(wrapper.get('.project-flow__sentence').text()).toBe('Review is the constraint: 3 changes are waiting, the oldest for 3d. Involved: Cursor engine, SDK extraction.');
     // Stations link to the tool behind them, opened outside the app; a station with no tool has no link.
     const issues = station(wrapper, 'backlog').get('a.project-flow__tool');
     expect(issues.attributes()).toMatchObject({ href: 'https://gitlab.com/acme/api/-/issues', target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Open GitLab issues' });
@@ -158,7 +161,7 @@ describe('project overview page', () => {
     setElectronTestClient({ getProjectOverview: vi.fn(async () => overview({
       sources: { git: 'available', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' },
       flow: {
-        stations: base.flow.stations.map(entry => ['building', 'shipped'].includes(entry.kind) ? entry : { ...entry, status: 'notConnected' as const, count: null, note: null, marks: [] }),
+        stations: base.flow.stations.map(entry => ['building', 'shipped'].includes(entry.kind) ? entry : { ...entry, status: 'notConnected' as const, count: null, note: null, marks: [], stuck: [] }),
         links: base.flow.links,
         constraint: null,
       },
@@ -168,10 +171,11 @@ describe('project overview page', () => {
 
     expect(wrapper.get('.project-overview__live').text()).toBe('Live · updated 2m ago · repository only');
     expect(wrapper.get('.project-narrative__provenance').text()).toBe('Covers the last 90 daysWritten by Claude Code from the code alone · 3h');
-    expect(station(wrapper, 'review').text()).toBe('Review–not connected');
+    expect(station(wrapper, 'review').text()).toBe('Review–');
+    expect(wrapper.findAll('.project-flow__note')[2]!.text()).toBe('not connected');
     expect(station(wrapper, 'review').classes()).toContain('project-flow__station--absent');
     expect(station(wrapper, 'building').classes()).not.toContain('project-flow__station--absent');
-    expect(wrapper.get('.project-flow__sentence').text()).toBe('Nothing is stuck.');
+    expect(wrapper.find('.project-flow__stuck').exists()).toBe(false);
     expect(wrapper.get('.project-flow__hint').text()).toContain('Connect GitHub, GitLab or Linear in Settings');
     wrapper.unmount();
   });
@@ -189,6 +193,46 @@ describe('project overview page', () => {
     expect(plain.get('.project-overview__state').text()).toBe('This folder has no Git repository to read.');
     expect(plain.find('.project-flow').exists()).toBe(false);
     plain.unmount();
+  });
+});
+
+describe('stuck work in the flow', () => {
+  it('goes straight to a single stuck request, and lists several to choose from, opening an agent thread in the app', async () => {
+    setElectronTestClient({ getProjectOverview: vi.fn(async () => overview()), refreshProjectNarrative: vi.fn() });
+    const wrapper = mountView();
+    await flushPromises();
+
+    // One stuck item: the icon itself is the link to its request.
+    const failing = station(wrapper, 'ci').get('.project-flow__stuck');
+    expect(failing.element.tagName).toBe('A');
+    expect(failing.attributes()).toMatchObject({ href: 'https://gitlab.com/acme/api/-/merge_requests/9', target: '_blank', 'aria-label': 'feat/ready: CI failing' });
+
+    // Several: the icon opens a list, each entry going to its request or its agent thread.
+    const several = station(wrapper, 'review').get('button.project-flow__stuck');
+    expect(several.attributes('aria-label')).toBe('2 need attention');
+    expect(wrapper.find('.project-flow__stuck-list').exists()).toBe(false);
+    await several.trigger('click');
+    const list = wrapper.get('.project-flow__stuck-list');
+    expect(list.findAll('li').map(item => item.text())).toStrictEqual(['fix/cursor-resumeOpen longer than usual', 'feat/asksWaiting for input']);
+    expect(list.get('a').attributes('href')).toBe('https://gitlab.com/acme/api/-/merge_requests/7');
+    await list.get('button').trigger('click');
+    expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-7']]);
+    await several.trigger('click');
+    expect(wrapper.find('.project-flow__stuck-list').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('opens the agent thread directly when the only stuck item is a teammate waiting for input', async () => {
+    const base = overview();
+    setElectronTestClient({ getProjectOverview: vi.fn(async () => overview({ flow: { ...base.flow, stations: base.flow.stations.map(entry => entry.kind === 'building'
+      ? { ...entry, stuck: [{ branch: 'feat/asks', reason: 'needsInput' as const, target: { kind: 'agent' as const, agentId: 'agent-7' } }] }
+      : { ...entry, stuck: [] }) } })), refreshProjectNarrative: vi.fn() });
+    const wrapper = mountView();
+    await flushPromises();
+    await station(wrapper, 'building').get('button.project-flow__stuck').trigger('click');
+    expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-7']]);
+    expect(wrapper.find('.project-flow__stuck-list').exists()).toBe(false);
+    wrapper.unmount();
   });
 });
 

@@ -3,6 +3,7 @@ import {
   buildProjectFlow,
   chooseProjectLookback,
   projectFlowStation,
+  projectMedianDuration,
   projectNarrativeFromDraft,
   projectOverviewCommitKind,
   projectOverviewIntegrationRisk,
@@ -17,9 +18,9 @@ const day = 24 * hour;
 const now = Date.parse('2026-11-11T12:00:00Z');
 
 function unit(branch: string, overrides: Partial<ProjectFlowUnit> = {}): ProjectFlowUnit {
-  return { branch, pullRequest: null, latestPipeline: null, firstCommitAt: now - 2 * day, lastCommitAt: now - hour, agentWorking: false, ...overrides };
+  return { branch, pullRequest: null, latestPipeline: null, firstCommitAt: now - 2 * day, lastCommitAt: now - hour, agentWorking: false, agentId: null, agentNeedsInput: false, ...overrides };
 }
-const pullRequest = (approved: boolean | null, openedAgo: number, draft = false) => ({ draft, approved, openedAt: now - openedAgo });
+const pullRequest = (approved: boolean | null, openedAgo: number, draft = false, conflicts: boolean | null = false) => ({ draft, approved, conflicts, openedAt: now - openedAgo, url: `https://example.com/pr/${openedAgo}` });
 
 describe('project overview commit and merge reading', () => {
   it.each([
@@ -84,6 +85,8 @@ describe('project flow', () => {
     backlog: { open: 47, arrived: 9 },
     shipped: { count: 31, recentBranches: ['feat/cursor-usage', 'fix/gh-90'] },
     agentsWorking: 4,
+    // Recently merged pull requests stayed open two days, half of them longer.
+    medianMergeMs: 2 * day,
     workstreams: [{ id: 'w1', branches: ['feat/cursor-usage', 'feat/cursor-steering', 'fix/cursor-resume'] }, { id: 'w2', branches: ['refactor/sdk-extraction'] }],
     units: [
       unit('feat/cursor-steering', { firstCommitAt: now - 3 * hour, agentWorking: true }),
@@ -96,14 +99,18 @@ describe('project flow', () => {
     ...overrides,
   });
 
-  it('places work at its station with marks, moving tokens and the constraint', () => {
+  it('places work at its station with marks, moving tokens, stuck work and the constraint', () => {
     expect(buildProjectFlow(input())).toStrictEqual({
       stations: [
-        { kind: 'backlog', status: 'available', count: 47, note: 9, marks: [] },
-        { kind: 'building', status: 'available', count: 2, note: 4, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: null, units: 1 }] },
-        { kind: 'review', status: 'available', count: 3, note: 3 * day, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: 'w2', units: 1 }, { workstreamId: null, units: 1 }] },
-        { kind: 'ci', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }] },
-        { kind: 'shipped', status: 'available', count: 31, note: null, marks: [] },
+        { kind: 'backlog', status: 'available', count: 47, note: 9, marks: [], stuck: [] },
+        { kind: 'building', status: 'available', count: 2, note: 4, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: null, units: 1 }], stuck: [] },
+        {
+          kind: 'review', status: 'available', count: 3, note: 3 * day, marks: [{ workstreamId: 'w1', units: 1 }, { workstreamId: 'w2', units: 1 }, { workstreamId: null, units: 1 }],
+          // Open three days against a two day median; the one open exactly two days is not over it.
+          stuck: [{ branch: 'fix/cursor-resume', reason: 'overdue', target: { kind: 'url', url: `https://example.com/pr/${3 * day}` } }],
+        },
+        { kind: 'ci', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }], stuck: [{ branch: 'feat/ready', reason: 'failing', target: { kind: 'url', url: `https://example.com/pr/${4 * day}` } }] },
+        { kind: 'shipped', status: 'available', count: 31, note: null, marks: [], stuck: [] },
       ],
       links: [
         { to: 'building', tokens: ['w1'] },
@@ -113,6 +120,33 @@ describe('project flow', () => {
       ],
       constraint: { station: 'review', units: 3, oldestWaitMs: 3 * day, workstreamIds: ['w1', 'w2'] },
     });
+  });
+
+  it('flags conflicts and a teammate waiting for input, linking to the request or the agent thread', () => {
+    const flow = buildProjectFlow(input({
+      units: [
+        unit('feat/asks', { agentId: 'agent-7', agentNeedsInput: true }),
+        unit('feat/clash', { pullRequest: pullRequest(false, hour, false, true), agentId: 'agent-8' }),
+        unit('feat/quiet', { agentId: 'agent-9' }),
+      ],
+    }));
+    expect(flow.stations[1]!.stuck).toStrictEqual([{ branch: 'feat/asks', reason: 'needsInput', target: { kind: 'agent', agentId: 'agent-7' } }]);
+    expect(flow.stations[2]!.stuck).toStrictEqual([{ branch: 'feat/clash', reason: 'conflicts', target: { kind: 'url', url: `https://example.com/pr/${hour}` } }]);
+  });
+
+  it('measures "open too long" against three days when there is no merge history, and links to the agent when a request has no address', () => {
+    const flow = buildProjectFlow(input({
+      medianMergeMs: null,
+      units: [
+        unit('a', { pullRequest: { ...pullRequest(false, 4 * day), url: null }, agentId: 'agent-1' }),
+        unit('b', { pullRequest: pullRequest(false, 2 * day) }),
+        unit('c', { pullRequest: { ...pullRequest(false, 5 * day), url: null } }),
+      ],
+    }));
+    expect(flow.stations[2]!.stuck).toStrictEqual([
+      { branch: 'a', reason: 'overdue', target: { kind: 'agent', agentId: 'agent-1' } },
+      { branch: 'c', reason: 'overdue', target: null },
+    ]);
   });
 
   it('names no constraint when little is waiting, and prefers the later station on a tie', () => {
@@ -236,5 +270,13 @@ describe('project lookback', () => {
     const first = now - 1000 * day;
     expect(chooseProjectLookback({ now, commits: [now - day, first, now - 400 * day], merges: [], branches: [now - 900 * day] })).toStrictEqual({ days: null, since: first });
     expect(chooseProjectLookback({ now, commits: [], merges: [], branches: [] })).toStrictEqual({ days: null, since: now });
+  });
+});
+
+describe('project median duration', () => {
+  it('needs three merges to say what is usual, and takes the middle of them', () => {
+    expect(projectMedianDuration([day, 2 * day])).toBeNull();
+    expect(projectMedianDuration([5 * day, day, 2 * day])).toBe(2 * day);
+    expect(projectMedianDuration([day, 2 * day, 3 * day, 4 * day])).toBe(2.5 * day);
   });
 });

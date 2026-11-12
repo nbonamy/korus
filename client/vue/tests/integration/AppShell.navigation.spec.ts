@@ -93,7 +93,7 @@ describe('AppShell navigation and teams', () => {
     const agent = snapshot.agents[0]!;
     agent.folder = '/work/korus';
     agent.workspace = { kind: 'git', folder: '/work/korus', repositoryName: 'korus', repositoryRoot: '/work/korus', primaryWorktreeRoot: '/work/korus', branch: 'main', isLinkedWorktree: false, updatedAt: '2026-11-11T00:00:00Z' };
-    const absent = { status: 'notConnected' as const, count: null, note: null, marks: [] };
+    const absent = { status: 'notConnected' as const, count: null, note: null, marks: [], stuck: [] };
     const getProjectOverview = vi.fn(async () => ({
       generatedAt: new Date().toISOString(),
       lookback: { days: null, since: new Date().toISOString() },
@@ -103,8 +103,8 @@ describe('AppShell navigation and teams', () => {
       narrative: { status: 'unavailable' as const, reason: 'quiet' as const },
       flow: {
         stations: [
-          { kind: 'backlog' as const, ...absent }, { kind: 'building' as const, status: 'available' as const, count: 0, note: 0, marks: [] },
-          { kind: 'review' as const, ...absent }, { kind: 'ci' as const, ...absent }, { kind: 'shipped' as const, status: 'available' as const, count: 0, note: null, marks: [] },
+          { kind: 'backlog' as const, ...absent }, { kind: 'building' as const, status: 'available' as const, count: 0, note: 0, marks: [], stuck: [] },
+          { kind: 'review' as const, ...absent }, { kind: 'ci' as const, ...absent }, { kind: 'shipped' as const, status: 'available' as const, count: 0, note: null, marks: [], stuck: [] },
         ],
         links: [{ to: 'building' as const, tokens: [] }, { to: 'review' as const, tokens: [] }, { to: 'ci' as const, tokens: [] }, { to: 'shipped' as const, tokens: [] }],
         constraint: null,

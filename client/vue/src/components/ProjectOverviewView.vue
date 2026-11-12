@@ -15,7 +15,7 @@
       <p v-else-if="overview.sources.git === 'unavailable'" class="project-overview__state">{{ t('projectOverview.noRepository') }}</p>
       <template v-else>
         <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :now="now" />
-        <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" />
+        <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" @select-agent="emit('select-agent', $event)" />
       </template>
     </div>
   </section>
@@ -39,7 +39,7 @@ const props = defineProps<{
   activityKey: string;
   sidebarCollapsed?: boolean;
 }>();
-const emit = defineEmits<{ 'expand-sidebar': [] }>();
+const emit = defineEmits<{ 'expand-sidebar': []; 'select-agent': [agentId: string] }>();
 const { t } = useI18n();
 const { overview, failed, writing, now } = useProjectOverview(() => props.agentId, () => props.activityKey);
 

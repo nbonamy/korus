@@ -29,6 +29,13 @@ export const projectFlowStationKinds = ['backlog', 'building', 'review', 'ci', '
 export type ProjectFlowStationKind = typeof projectFlowStationKinds[number];
 export type ProjectFlowWorkStation = 'building' | 'review' | 'ci';
 export type ProjectFlowMark = { workstreamId: string | null; units: number };
+/** Why a piece of work needs someone, and where to go to help it: the request, or the agent's thread. */
+export type ProjectFlowStuckReason = 'conflicts' | 'failing' | 'needsInput' | 'overdue';
+export type ProjectFlowStuck = {
+  branch: string;
+  reason: ProjectFlowStuckReason;
+  target: { kind: 'url'; url: string } | { kind: 'agent'; agentId: string } | null;
+};
 export type ProjectFlowStation = {
   kind: ProjectFlowStationKind;
   status: ProjectOverviewSourceStatus;
@@ -36,6 +43,7 @@ export type ProjectFlowStation = {
   /** Backlog: arrivals in seven days. Building: agents working. Review: longest wait in ms. CI: failing units. */
   note: number | null;
   marks: ProjectFlowMark[];
+  stuck: ProjectFlowStuck[];
 };
 /** Work that reached `to` in the last day, as the workstream of each unit. */
 export type ProjectFlowLink = { to: Exclude<ProjectFlowStationKind, 'backlog'>; tokens: (string | null)[] };
@@ -154,12 +162,15 @@ export function projectOverviewIntegrationRisk(input: {
 /** One piece of work in flight: a branch ahead of the base, with its pull request when it has one. */
 export type ProjectFlowUnit = {
   branch: string;
-  /** `approved` is null when the provider cannot say. */
-  pullRequest: { draft: boolean; approved: boolean | null; openedAt: number } | null;
+  /** `approved` and `conflicts` are null when the provider cannot say; `url` is null when it gave no address. */
+  pullRequest: { draft: boolean; approved: boolean | null; conflicts: boolean | null; openedAt: number; url: string | null } | null;
   latestPipeline: { status: ProjectOverviewPipelineStatus; at: number } | null;
   firstCommitAt: number;
   lastCommitAt: number;
   agentWorking: boolean;
+  /** The agent thread on this branch, preferring one that is working or waiting. */
+  agentId: string | null;
+  agentNeedsInput: boolean;
 };
 
 export type ProjectFlowInput = {
@@ -170,6 +181,8 @@ export type ProjectFlowInput = {
   /** Merges into the base in seven days, and the branches merged in the last day. Null when the repository could not be read. */
   shipped: { count: number; recentBranches: string[] } | null;
   agentsWorking: number;
+  /** How long recently merged requests stayed open, at the median; null without enough history. */
+  medianMergeMs: number | null;
   /** In narrative order. A branch no workstream claims is other work. */
   workstreams: readonly { id: string; branches: readonly string[] }[];
   units: readonly ProjectFlowUnit[];
@@ -177,6 +190,8 @@ export type ProjectFlowInput = {
 
 const day = 86_400_000;
 const maxTokens = 3;
+/** "Open too long" when no merge history says otherwise. */
+const defaultOverdueMs = 3 * day;
 
 /** The station a unit sits at, by what it is waiting on. */
 export function projectFlowStation(unit: ProjectFlowUnit): ProjectFlowWorkStation {
@@ -206,12 +221,24 @@ export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
     for (const entry of at(station)) counts.set(entry.workstreamId, (counts.get(entry.workstreamId) ?? 0) + 1);
     return [...counts].sort((a, b) => rank(a[0]) - rank(b[0])).map(([workstreamId, units]) => ({ workstreamId, units }));
   };
+  const overdueMs = input.medianMergeMs ?? defaultOverdueMs;
+  const stuck = (station: ProjectFlowWorkStation): ProjectFlowStuck[] => at(station).flatMap(({ unit, waitMs }) => {
+    const request = station === 'building' ? null : unit.pullRequest;
+    const reason: ProjectFlowStuckReason | null = request?.conflicts ? 'conflicts'
+      : station !== 'building' && unit.latestPipeline?.status === 'failed' ? 'failing'
+        : unit.agentNeedsInput ? 'needsInput'
+          : request && waitMs > overdueMs ? 'overdue' : null;
+    if (!reason) return [];
+    const target: ProjectFlowStuck['target'] = reason !== 'needsInput' && request?.url ? { kind: 'url', url: request.url }
+      : unit.agentId ? { kind: 'agent', agentId: unit.agentId } : request?.url ? { kind: 'url', url: request.url } : null;
+    return [{ branch: unit.branch, reason, target }];
+  });
   const statusOf = (station: ProjectFlowWorkStation): ProjectOverviewSourceStatus => !gitReady ? input.sources.git : station === 'building' ? 'available' : input.sources.pullRequests;
   const work = (station: ProjectFlowWorkStation, note: () => number | null): ProjectFlowStation => {
     const status = statusOf(station);
     return status === 'available'
-      ? { kind: station, status, count: at(station).length, note: note(), marks: marks(station) }
-      : { kind: station, status, count: null, note: null, marks: [] };
+      ? { kind: station, status, count: at(station).length, note: note(), marks: marks(station), stuck: stuck(station) }
+      : { kind: station, status, count: null, note: null, marks: [], stuck: [] };
   };
   const arrivals = (station: ProjectFlowWorkStation) => statusOf(station) === 'available'
     ? at(station).filter(entry => input.now - entry.arrivedAt <= day).slice(0, maxTokens).map(entry => entry.workstreamId)
@@ -234,14 +261,14 @@ export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
   return {
     stations: [
       input.backlog && input.sources.backlog === 'available'
-        ? { kind: 'backlog', status: 'available', count: input.backlog.open, note: input.backlog.arrived, marks: [] }
-        : { kind: 'backlog', status: input.sources.backlog === 'available' ? 'unavailable' : input.sources.backlog, count: null, note: null, marks: [] },
+        ? { kind: 'backlog', status: 'available', count: input.backlog.open, note: input.backlog.arrived, marks: [], stuck: [] }
+        : { kind: 'backlog', status: input.sources.backlog === 'available' ? 'unavailable' : input.sources.backlog, count: null, note: null, marks: [], stuck: [] },
       work('building', () => input.agentsWorking),
       work('review', () => at('review').length ? Math.max(...at('review').map(entry => entry.waitMs)) : null),
       work('ci', () => at('ci').filter(entry => entry.unit.latestPipeline?.status === 'failed').length),
       gitReady && input.shipped
-        ? { kind: 'shipped', status: 'available', count: input.shipped.count, note: null, marks: [] }
-        : { kind: 'shipped', status: gitReady ? 'unavailable' : input.sources.git, count: null, note: null, marks: [] },
+        ? { kind: 'shipped', status: 'available', count: input.shipped.count, note: null, marks: [], stuck: [] }
+        : { kind: 'shipped', status: gitReady ? 'unavailable' : input.sources.git, count: null, note: null, marks: [], stuck: [] },
     ],
     links: [
       { to: 'building', tokens: arrivals('building') },
@@ -330,4 +357,12 @@ export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarra
   }
   if (problems.length) return { ok: false, problems };
   return { ok: true, lead: (draft.lead as string).trim(), workstreams: workstreams as ProjectNarrativeDraft['workstreams'] };
+}
+
+/** The middle of a set of durations, or null when there are too few to say what is usual. */
+export function projectMedianDuration(durations: readonly number[], minimum = 3): number | null {
+  if (durations.length < minimum) return null;
+  const sorted = [...durations].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }

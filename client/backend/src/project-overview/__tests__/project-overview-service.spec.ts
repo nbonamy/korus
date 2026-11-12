@@ -59,7 +59,10 @@ const connected = (): ProjectOverviewOuterLoop => ({
     { id: '#84', title: 'Cursor resume fails', state: 'open' as const, createdAt: ago(day), updatedAt: ago(day) },
     { id: '#83', title: 'Annotations hidden', state: 'closed' as const, createdAt: ago(20 * day), closedAt: ago(2 * day), updatedAt: ago(2 * day) },
   ] })),
-  pullRequests: vi.fn(async () => [{ branch: 'refactor/sdk-extraction', draft: false, approved: false, openedAt: ago(2 * day) }]),
+  pullRequests: vi.fn(async () => ({
+    open: [{ number: 12, url: 'https://github.com/acme/korus/pull/12', branch: 'refactor/sdk-extraction', draft: false, approved: false, conflicts: true, openedAt: ago(2 * day) }],
+    mergeTimesMs: [day, day, 3 * day],
+  })),
   pipelines: vi.fn(async () => ({ provider: 'github' as const, runs: [{ id: '1', branch: 'refactor/sdk-extraction', status: 'failed' as const, at: ago(day) }] })),
 });
 
@@ -115,11 +118,12 @@ describe('project overview flow', () => {
       narrative: { status: 'missing' },
       flow: {
         stations: [
-          { kind: 'backlog', status: 'available', count: 47, note: 1, marks: [] },
-          { kind: 'building', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }] },
-          { kind: 'review', status: 'available', count: 1, note: 2 * day, marks: [{ workstreamId: null, units: 1 }] },
-          { kind: 'ci', status: 'available', count: 0, note: 0, marks: [] },
-          { kind: 'shipped', status: 'available', count: 2, note: null, marks: [] },
+          { kind: 'backlog', status: 'available', count: 47, note: 1, marks: [], stuck: [] },
+          { kind: 'building', status: 'available', count: 1, note: 1, marks: [{ workstreamId: null, units: 1 }], stuck: [] },
+          // The open request has merge conflicts, so it links straight to the request.
+          { kind: 'review', status: 'available', count: 1, note: 2 * day, marks: [{ workstreamId: null, units: 1 }], stuck: [{ branch: 'refactor/sdk-extraction', reason: 'conflicts', target: { kind: 'url', url: 'https://github.com/acme/korus/pull/12' } }] },
+          { kind: 'ci', status: 'available', count: 0, note: 0, marks: [], stuck: [] },
+          { kind: 'shipped', status: 'available', count: 2, note: null, marks: [], stuck: [] },
         ],
         links: [{ to: 'building', tokens: [null] }, { to: 'review', tokens: [] }, { to: 'ci', tokens: [] }, { to: 'shipped', tokens: [null] }],
         constraint: null,

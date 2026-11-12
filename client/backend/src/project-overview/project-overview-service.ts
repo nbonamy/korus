@@ -5,6 +5,7 @@ import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import {
   buildProjectFlow,
   chooseProjectLookback,
+  projectMedianDuration,
   projectNarrativeFromDraft,
   projectOverviewMergedBranch,
   type ProjectFlowUnit,
@@ -14,7 +15,7 @@ import {
 } from '@workspace/core/project-overview';
 import type { WorkProviderKind } from '@workspace/core/work-providers';
 import { repositoryIdentityOf } from '../usage/repository-identity';
-import type { WorkProviderBacklogActivity, WorkProviderOpenPullRequest, WorkProviderPipelineRun } from '../work-integrations/types';
+import type { WorkProviderBacklogActivity, WorkProviderPipelineRun, WorkProviderPullRequestActivity } from '../work-integrations/types';
 import { buildProjectEvidence, projectNarrativeInstructions, projectNarrativePrompt, projectNarrativeSchema, type ProjectEvidence } from './evidence';
 import type { ProjectOverviewGitFacts, ProjectOverviewGitReader } from './git-reader';
 import type { ProjectNarrativeStore } from './narrative-store';
@@ -31,7 +32,7 @@ type ProjectOverviewSession = { provider: string; sessionId: string; startedAt: 
 /** What happens around the code. Each read answers null when no connected provider serves the repository. */
 export type ProjectOverviewOuterLoop = {
   backlog(repositoryId: string, since: number): Promise<(WorkProviderBacklogActivity & { provider: WorkProviderKind }) | null>;
-  pullRequests(repositoryId: string): Promise<WorkProviderOpenPullRequest[] | null>;
+  pullRequests(repositoryId: string): Promise<WorkProviderPullRequestActivity | null>;
   pipelines(repositoryId: string, since: number): Promise<{ provider: WorkProviderKind; runs: WorkProviderPipelineRun[] } | null>;
 };
 
@@ -210,15 +211,19 @@ export class ProjectOverviewService {
     ]);
     const runs = [...(pipelines.value?.runs ?? [])].sort((a, b) => a.at.localeCompare(b.at));
     const units = (facts?.branches ?? []).filter(branch => branch.name !== facts!.baseBranch && branch.ahead > 0).map(branch => {
-      const request = requests.value?.find(candidate => candidate.branch === branch.name);
+      const request = requests.value?.open.find(candidate => candidate.branch === branch.name);
+      const onBranch = teammates.filter(mate => branchOf(mate) === branch.name);
+      const thread = onBranch.find(mate => mate.status.type === 'awaitingInput') ?? onBranch.find(mate => mate.status.type === 'working') ?? onBranch[0];
       const latest = runs.filter(run => run.branch === branch.name).at(-1);
       return {
         branch: branch.name,
-        pullRequest: request ? { draft: request.draft, approved: request.approved, openedAt: Date.parse(request.openedAt) } : null,
+        pullRequest: request ? { draft: request.draft, approved: request.approved, conflicts: request.conflicts, openedAt: Date.parse(request.openedAt), url: request.url } : null,
         latestPipeline: latest ? { status: latest.status, at: Date.parse(latest.at) } : null,
         firstCommitAt: branch.firstCommitAt,
         lastCommitAt: branch.lastCommitAt,
-        agentWorking: teammates.some(mate => branchOf(mate) === branch.name && mate.status.type === 'working'),
+        agentWorking: onBranch.some(mate => mate.status.type === 'working'),
+        agentId: thread?.id ?? null,
+        agentNeedsInput: onBranch.some(mate => mate.status.type === 'awaitingInput'),
         behind: branch.behind, ahead: branch.ahead, files: branch.files, insertions: branch.insertions, deletions: branch.deletions,
       } satisfies ProjectFlowUnit & Record<string, unknown>;
     });
@@ -232,6 +237,7 @@ export class ProjectOverviewService {
         recentBranches: merges.filter(commit => now - commit.at <= day).flatMap(commit => (facts.baseBranch ? projectOverviewMergedBranch(commit.subject, facts.baseBranch) : null) ?? []),
       } : null,
       agentsWorking: teammates.filter(mate => mate.status.type === 'working').length,
+      medianMergeMs: projectMedianDuration(requests.value?.mergeTimesMs ?? []),
       units,
     };
     return {

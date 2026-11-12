@@ -1,7 +1,7 @@
 import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitHubOAuthClientId } from '../runtime-config';
-import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderOpenPullRequest, type WorkProviderPipelineRun } from './types';
+import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderOpenPullRequest, type WorkProviderPipelineRun, type WorkProviderPullRequestActivity } from './types';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 const GITHUB_OAUTH_BASE_URL = 'https://github.com/login';
@@ -441,19 +441,34 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     return { open: isRecord(search) && typeof search.total_count === 'number' && Number.isInteger(search.total_count) ? search.total_count : null, items };
   }
 
-  async listOpenPullRequests(token: WorkProviderCredential, repositoryId: string): Promise<WorkProviderOpenPullRequest[]> {
+  async listPullRequestActivity(token: WorkProviderCredential, repositoryId: string): Promise<WorkProviderPullRequestActivity> {
     const repository = parseRepositoryId(repositoryId);
-    if (!repository) return [];
+    if (!repository) return { open: [], mergeTimesMs: [] };
     const response = await this.apiRequest(token, '/graphql', { method: 'POST', body: JSON.stringify({
-      query: 'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC}){nodes{headRefName isDraft createdAt reviewDecision}}}}',
+      query: 'query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
+        + 'pullRequests(states:OPEN,first:100,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number url headRefName isDraft createdAt reviewDecision mergeable}}'
+        + 'merged:pullRequests(states:MERGED,first:50,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{createdAt mergedAt}}}}',
       variables: { owner: repository.owner, name: repository.name },
     }) });
-    const nodes = isRecord(response) && isRecord(response.data) && isRecord(response.data.repository) && isRecord(response.data.repository.pullRequests)
-      ? response.data.repository.pullRequests.nodes : null;
+    const data = isRecord(response) && isRecord(response.data) && isRecord(response.data.repository) ? response.data.repository : null;
+    const nodes = data && isRecord(data.pullRequests) ? data.pullRequests.nodes : null;
     if (!Array.isArray(nodes)) throw new Error('GitHub returned an invalid pull requests response.');
-    return nodes.flatMap((node): WorkProviderOpenPullRequest[] => isRecord(node) && typeof node.headRefName === 'string' && node.headRefName && typeof node.createdAt === 'string'
-      ? [{ branch: node.headRefName, draft: node.isDraft === true, approved: typeof node.reviewDecision === 'string' ? node.reviewDecision === 'APPROVED' : null, openedAt: node.createdAt }]
-      : []);
+    const merged = data && isRecord(data.merged) && Array.isArray(data.merged.nodes) ? data.merged.nodes : [];
+    return {
+      open: nodes.flatMap((node): WorkProviderOpenPullRequest[] => isRecord(node) && typeof node.headRefName === 'string' && node.headRefName
+        && typeof node.createdAt === 'string' && Number.isInteger(node.number) && typeof node.url === 'string'
+        ? [{
+          number: node.number as number, url: node.url, branch: node.headRefName, draft: node.isDraft === true,
+          approved: typeof node.reviewDecision === 'string' ? node.reviewDecision === 'APPROVED' : null,
+          conflicts: node.mergeable === 'CONFLICTING' ? true : node.mergeable === 'MERGEABLE' ? false : null,
+          openedAt: node.createdAt,
+        }]
+        : []),
+      mergeTimesMs: merged.flatMap((node: unknown) => {
+        const duration = isRecord(node) && typeof node.createdAt === 'string' && typeof node.mergedAt === 'string' ? Date.parse(node.mergedAt) - Date.parse(node.createdAt) : Number.NaN;
+        return Number.isFinite(duration) && duration >= 0 ? [duration] : [];
+      }),
+    };
   }
 
   async listPipelineRuns(token: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderPipelineRun[]> {

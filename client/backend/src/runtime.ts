@@ -386,7 +386,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       tools: new ProjectToolConfigFile(product.homeDirectory),
       outerLoop: {
         backlog: (repositoryId, since) => workIntegrations.backlogActivity(repositoryId, since),
-        pullRequests: repositoryId => workIntegrations.openPullRequests(repositoryId),
+        pullRequests: repositoryId => workIntegrations.pullRequestActivity(repositoryId),
         pipelines: (repositoryId, since) => workIntegrations.pipelineRuns(repositoryId, since),
       },
     }),
