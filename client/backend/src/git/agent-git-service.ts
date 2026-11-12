@@ -920,7 +920,8 @@ export function parseBranchStatus(output: string): Pick<AgentGitStatus, 'ahead' 
     return { ahead: 0, behind: 0 };
   }
 
-  const content = branchLine.slice(3).trim();
+  // An unborn branch is reported as "No commits yet on <branch>" (older git: "Initial commit on <branch>").
+  const content = branchLine.slice(3).trim().replace(/^(?:No commits yet|Initial commit) on /, '');
   const [branchPart, trackingPart] = content.split('...');
   const branch = branchPart && branchPart !== 'HEAD (no branch)' ? branchPart : undefined;
   if (!trackingPart) {

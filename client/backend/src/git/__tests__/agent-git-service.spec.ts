@@ -52,6 +52,13 @@ describe('agent git service parsers', () => {
     });
   });
 
+  it.each([
+    ['## No commits yet on main\n?? README.md\n', 'main'],
+    ['## Initial commit on feature/x\n', 'feature/x'],
+  ])('reads the branch name on an empty repository (%j)', (output, branch) => {
+    expect(parseBranchStatus(output)).toStrictEqual({ branch, ahead: 0, behind: 0 });
+  });
+
   it('parses changed and untracked files from porcelain status', () => {
     expect(parseChangedFiles([
       '## main',
