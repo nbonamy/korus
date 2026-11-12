@@ -14,8 +14,8 @@ import ActivityKit
     private var crowded: Bool { ProcessInfo.processInfo.arguments.contains("--crowded") }
     private var workState: WorkActivityAttributes.ContentState {
         .init(running: crowded ? 3 : approval ? 0 : 1, attention: approval ? 1 : 0, agents: [
-            .init(id: "main", name: "main", status: approval ? "approval" : "working", detail: "Debugging screenshot visibility", backend: "codex", startedAt: originalStart - 74_000),
-            .init(id: "mobile", name: "mobile", status: crowded ? "working" : "idle", detail: crowded ? "Refining Live Activity rows" : "Completing Live Activity delivery", backend: "codex", startedAt: originalStart - 19_000)
+            .init(id: "main", name: "main", status: approval ? "approval" : "working", detail: "Debugging screenshot visibility", provider: "codex", startedAt: originalStart - 74_000),
+            .init(id: "mobile", name: "mobile", status: crowded ? "working" : "idle", detail: crowded ? "Refining Live Activity rows" : "Completing Live Activity delivery", provider: "codex", startedAt: originalStart - 19_000)
         ], more: crowded ? 1 : 0, hostName: "Nicolas-MacBook-Pro.local", active: crowded ? 3 : 1)
     }
     var body: some Scene {

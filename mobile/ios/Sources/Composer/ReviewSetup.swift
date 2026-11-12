@@ -26,9 +26,9 @@ struct ReviewSetup: Decodable, Equatable {
     let currentThread: Bool
     let activeReview: Bool
     var reviewerAgentId: String? = nil
-    let agentBackend: String
-    let backend: String
-    let backends: [String]
+    let agentProvider: String
+    let provider: String
+    let providers: [String]
     let models: [Model]
     let preferences: Preferences?
 }
@@ -46,7 +46,7 @@ struct ReviewChoices {
     }
     var scope = "uncommitted"
     var thread = "independent"
-    var backend = ""
+    var provider = ""
     var model = ""
     var effort = ""
     var serviceTier: String?
@@ -58,8 +58,8 @@ struct ReviewChoices {
 
     mutating func load(_ setup: ReviewSetup, initial: Bool) {
         if initial { scope = setup.uncommitted ? "uncommitted" : "branch" }
-        if initial || backend != setup.backend { backend = setup.backend }
-        let saved = setup.preferences?.providers[backend]
+        if initial || provider != setup.provider { provider = setup.provider }
+        let saved = setup.preferences?.providers[provider]
         model = setup.models.first(where: { $0.id == saved?.model })?.id ?? ""
         effort = setup.models.first(where: { $0.id == model })?.efforts.first(where: { $0 == saved?.reasoningEffort }) ?? ""
         let selected = setup.models.first { $0.id == model }
@@ -67,15 +67,15 @@ struct ReviewChoices {
     }
 
     func input(_ setup: ReviewSetup) -> Input? {
-        guard !setup.activeReview, setup.backend == backend,
+        guard !setup.activeReview, setup.provider == provider,
               scope == "uncommitted" ? setup.uncommitted : (setup.branchChanges && setup.baseRef != nil),
               thread != "current" || (setup.currentThread && !automatic),
-              setup.backends.contains(thread == "current" ? setup.agentBackend : backend) else { return nil }
+              setup.providers.contains(thread == "current" ? setup.agentProvider : provider) else { return nil }
         let independent = thread == "independent"
         let selected = setup.models.first { $0.id == model }
         let text = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         return Input(scope: .init(type: scope, baseRef: scope == "branch" ? setup.baseRef : nil), threadMode: thread,
-                     selection: independent ? .init(backend: backend, model: selected?.id, reasoningEffort: selected?.efforts.contains(effort) == true ? effort : nil,
+                     selection: independent ? .init(provider: provider, model: selected?.id, reasoningEffort: selected?.efforts.contains(effort) == true ? effort : nil,
                                                     serviceTier: selected?.supportedTier(serviceTier)) : nil,
                      instructions: text.isEmpty ? nil : text,
                      automation: .init(enabled: automatic, maxPriority: priority, maxRounds: min(10, max(1, rounds)), autoCommit: automatic && autoCommit))
@@ -83,14 +83,14 @@ struct ReviewChoices {
 }
 
 struct ExecutionSelection: Encodable {
-    let backend: String
+    let provider: String
     let model: String?
     let reasoningEffort: String?
     let serviceTier: String?
-    enum CodingKeys: String, CodingKey { case backend, model, reasoningEffort, serviceTier }
+    enum CodingKeys: String, CodingKey { case provider, model, reasoningEffort, serviceTier }
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
-        try values.encode(backend, forKey: .backend)
+        try values.encode(provider, forKey: .provider)
         try values.encode(model, forKey: .model)
         try values.encode(reasoningEffort, forKey: .reasoningEffort)
         try values.encode(serviceTier, forKey: .serviceTier)

@@ -119,10 +119,10 @@ struct EngineState: Decodable {
     let chatCreation: ChatCreation
     let teamCreation: ChatCreation?
     let branches: RepositoryBranches?
-    let backend: String?
-    let backends: [String]
-    let conversationBackends: [String]?
-    let repositoryBackends: [String: [String]]?
+    let provider: String?
+    let providers: [String]
+    let conversationProviders: [String]?
+    let repositoryProviders: [String: [String]]?
     let suggestedPrompt: String?
     let draft: String
     let models: [Model]

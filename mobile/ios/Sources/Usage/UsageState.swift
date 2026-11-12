@@ -8,15 +8,15 @@ struct UsageState: Decodable, Equatable {
     var visibleProviders: [Provider] { providers.filter { $0.failed || !$0.rows.isEmpty } }
 
     struct Provider: Decodable, Equatable, Identifiable {
-        let backend: String
+        let provider: String
         let limits: Limits?
         let failed: Bool
-        var id: String { backend }
+        var id: String { provider }
         var name: String {
-            switch backend {
+            switch provider {
             case "codex": "Codex"
             case "claude": "Claude"
-            default: backend.capitalized
+            default: provider.capitalized
             }
         }
         var rows: [Row] {

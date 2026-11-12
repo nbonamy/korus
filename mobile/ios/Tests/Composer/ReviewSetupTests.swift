@@ -6,7 +6,7 @@ final class ReviewSetupTests: XCTestCase {
     private func setup(current: Bool = false, tiers: [ReviewSetup.Model.Tier]? = nil) -> ReviewSetup {
         .init(target: .init(hostId: "host", locationId: "local", teamId: "team", agentId: "agent", sessionId: nil),
               branch: "feature", baseRef: "main", uncommitted: false, branchChanges: true, currentThread: current, activeReview: false,
-              agentBackend: "codex", backend: "claude", backends: ["codex", "claude"], models: [.init(id: "review", name: "Review", efforts: ["high"], tiers: tiers)],
+              agentProvider: "codex", provider: "claude", providers: ["codex", "claude"], models: [.init(id: "review", name: "Review", efforts: ["high"], tiers: tiers)],
               preferences: .init(providers: ["claude": .init(model: "review", reasoningEffort: "high")]))
     }
 
@@ -16,7 +16,7 @@ final class ReviewSetupTests: XCTestCase {
         choices.instructions = "  Check retries  "
         let input = try XCTUnwrap(choices.input(setup))
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? NSDictionary)
-        XCTAssertEqual(json, ["scope": ["type": "branch", "baseRef": "main"], "threadMode": "independent", "selection": ["backend": "claude", "model": "review", "reasoningEffort": "high", "serviceTier": NSNull()], "instructions": "Check retries",
+        XCTAssertEqual(json, ["scope": ["type": "branch", "baseRef": "main"], "threadMode": "independent", "selection": ["provider": "claude", "model": "review", "reasoningEffort": "high", "serviceTier": NSNull()], "instructions": "Check retries",
                               "automation": ["enabled": false, "maxPriority": "p2", "maxRounds": 3, "autoCommit": false]] as NSDictionary)
         choices.autoCommit = true
         XCTAssertFalse(try XCTUnwrap(choices.input(setup)).automation.autoCommit)
