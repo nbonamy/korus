@@ -2,6 +2,7 @@ import { createHarness, type HarnessOptions } from '@korus-dev/multi-agent-sdk';
 import { isBookkeepingTool } from '@workspace/core/bookkeeping-tools';
 import type { Agent, HarnessProvider, ProviderModelOption } from '@workspace/core/contracts';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import { product } from '@workspace/core/product';
@@ -54,10 +55,27 @@ function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, '
   };
 }
 
-const reviewScope = (extra: { approval?: 'auto'; required?: boolean; tools: readonly string[]; developerInstructions?: string }) => (url: string) => ({
-  id: url, ...(extra.developerInstructions === undefined ? {} : { developerInstructions: extra.developerInstructions }),
-  mcpServers: [{ name: product.mcpServerName, url, ...(extra.approval ? { approval: extra.approval } : {}), ...(extra.required ? { required: true } : {}), enabledTools: [...extra.tools] }],
-}) as never;
+/**
+ * Where a reviewer's tools or instructions differ from the rest. Carried over as they were; the review prompts ask every
+ * reviewer to use read-skill and send-message, so these are worth checking against a live review before keeping them.
+ */
+const reviewerDifferences: Partial<Record<HarnessProvider, { tools?: readonly string[]; developerInstructions?: string }>> = {
+  cursor: { tools: ['read-skill', ...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] },
+  antigravity: { developerInstructions: '', tools: [...reviewBaseTools, 'set-status', 'finish_turn'] },
+};
+const reviewTools = [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] as const;
+/**
+ * The scope a code review runs in: Korus's review tools on its own MCP server. The server is trusted and required
+ * wherever the harness can express that; `tools` and `developerInstructions` are the reviewer's own, when they differ.
+ */
+export const reviewScope = (provider: HarnessProvider) => (url: string) => {
+  const { mcpAutoApproval, mcpRequiredServers } = defaultProviderCapabilities(provider);
+  const extra = reviewerDifferences[provider] ?? {};
+  return {
+    id: url, ...(extra.developerInstructions === undefined ? {} : { developerInstructions: extra.developerInstructions }),
+    mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...extra.tools ?? reviewTools] }],
+  } as never;
+};
 
 const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName'>) =>
   new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, ...policy });
@@ -72,7 +90,7 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
   });
   return driver('cursor', harness, agents, {
     coordinationPolicy: { permissionModeScope: 'provider', rollbackStorageState: 'active', authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } },
-    reviewScope: reviewScope({ tools: ['read-skill', ...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
+    reviewScope: reviewScope('cursor'),
   });
 }
 
@@ -83,7 +101,7 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
   });
   return driver('antigravity', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    reviewScope: reviewScope({ developerInstructions: '', tools: [...reviewBaseTools, 'set-status', 'finish_turn'] }),
+    reviewScope: reviewScope('antigravity'),
     prepareGeneration: (_agent, input) => {
       const { outputSchema, ...rest } = input;
       const mcpServers = utilityMcpServers(input.mcpServers);
@@ -103,7 +121,7 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
   });
   void settings;
   return driver('claude', harness, agents, {
-    reviewScope: reviewScope({ approval: 'auto', tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
+    reviewScope: reviewScope('claude'),
     prepareGeneration: (_agent, input) => ({ ...input, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('claude', models, input.complexity) }),
   });
 }
@@ -151,7 +169,7 @@ export function createCodexDriver(options: Options = {}, make: HarnessFactory = 
   const harness = make('codex', codexHarnessOptions(options, agents));
   return driver('codex', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    reviewScope: reviewScope({ approval: 'auto', required: true, tools: [...reviewBaseTools, 'send-message', 'set-status', 'finish_turn'] }),
+    reviewScope: reviewScope('codex'),
     prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('codex', models, input.complexity) }),
   });
 }

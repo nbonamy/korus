@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultProviderDrivers } from '../driver-rpc';
-import { createClaudeDriver } from '../harness-drivers';
+import { createClaudeDriver, reviewScope } from '../harness-drivers';
 import { antigravityGenerationPrompt, sessionHandoff } from '../agents/prompts';
 import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 import { scriptedDriver } from './support/scripted-driver';
@@ -25,6 +25,15 @@ describe('Korus provider drivers over the SDK Harness', () => {
     const agent = { id: 'a', name: 'A', folder: '/work', provider: 'cursor', status: { type: 'idle' }, avatar: 'A', createdAt: '', updatedAt: '' } as never;
     expect(drivers.get('cursor')!.getCapabilities(agent)).toMatchObject({ codeReview: true, planReview: true, conversationShare: false });
     expect(drivers.get('claude')!.getCapabilities({ ...(agent as object), provider: 'claude' } as never)).toMatchObject({ codeReview: true, conversationShare: true });
+  });
+
+  it('trusts and requires the review server only where the harness can express it', () => {
+    const base = ['report_finding', 'update_finding', 'delete_finding', 'finish_review_round'];
+    const server = (provider: Parameters<typeof reviewScope>[0]) => (reviewScope(provider)('http://review') as unknown as { developerInstructions?: string; mcpServers: Array<Record<string, unknown>> });
+    expect(server('codex')).toStrictEqual({ id: 'http://review', mcpServers: [{ name: 'korus', url: 'http://review', approval: 'auto', required: true, enabledTools: [...base, 'send-message', 'set-status', 'finish_turn'] }] });
+    expect(server('claude').mcpServers).toStrictEqual([{ name: 'korus', url: 'http://review', approval: 'auto', enabledTools: [...base, 'send-message', 'set-status', 'finish_turn'] }]);
+    expect(server('cursor').mcpServers).toStrictEqual([{ name: 'korus', url: 'http://review', enabledTools: ['read-skill', ...base, 'send-message', 'set-status', 'finish_turn'] }]);
+    expect(server('antigravity')).toStrictEqual({ id: 'http://review', developerInstructions: '', mcpServers: [{ name: 'korus', url: 'http://review', enabledTools: [...base, 'set-status', 'finish_turn'] }] });
   });
 
   it('tells the harness which Korus tools are bookkeeping', () => {
