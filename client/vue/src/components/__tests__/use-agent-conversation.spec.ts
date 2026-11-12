@@ -85,7 +85,7 @@ describe('agentConversationState identity', () => {
       composer: { selectedModelId: 'saved', selectedReasoningEffort: 'high', selectedServiceTier: null, pendingSelection: null },
     } as unknown as AgentConversationView;
     const state = agentConversationState(() => view);
-    expect(state.composer!.approvalPreset).toBe('ask-for-approval');
+    expect(state.composer!.permission).toBe('ask-for-approval');
     expect(state.composer!.selectedModelId).toBe('native');
     expect(state.composer!.selectedReasoningEffort).toBe('low');
     expect(state.composer!.selectedServiceTier).toBe('fast');

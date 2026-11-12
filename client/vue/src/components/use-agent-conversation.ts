@@ -3,10 +3,10 @@ import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
 import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
+import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption } from '@korus-dev/agent-ui-sdk';
 import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
+import { approvalPresetFromDefaults, approvalPresetOptions } from '@workspace/core/approval-presets';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentConversationView } from '../app-state';
 import { useImageAnnotation } from './use-image-annotation';
@@ -14,8 +14,8 @@ import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
 import { conversationCommandMenuItems } from './conversation-command-menu';
-import { conversationPermissionMenuItems } from './conversation-permission-menu';
 import { translate } from '../i18n';
+import { localizedText } from '../i18n/errors';
 
 export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
@@ -77,12 +77,15 @@ export function agentConversationState(view: () => AgentConversationView, extens
         parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
-  const approvalPreset = () => {
-    const allowed = view().capabilities.approvalPresets ?? [];
+  /** The permission in effect: what the session reports, else what the agent's stored defaults select. */
+  const permission = (): string | null => {
+    const defaults = view().agent.providerDefaults;
     const native = provider()?.permission;
-    if (native !== undefined) return native && allowed.includes(native as ApprovalPreset) ? native as ApprovalPreset : null;
-    const stored = approvalPresetFromDefaults(view().agent.providerDefaults);
-    return view().capabilities.approvals ? (allowed.includes(stored) ? stored : allowed[0] ?? null) : null;
+    const presets = view().capabilities.approvals ? view().capabilities.approvalPresets ?? [] : [];
+    if (!presets.length) return native ?? (defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined) ?? (permissionOptions(view())[0]?.id ?? null);
+    if (native !== undefined) return native && presets.includes(native as ApprovalPreset) ? native : null;
+    const stored = approvalPresetFromDefaults(defaults);
+    return presets.includes(stored) ? stored : presets[0] ?? null;
   };
   return {
     identity: {
@@ -121,8 +124,8 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get attachments() { return view().attachments; },
       get placeholder() { return extensions.placeholder?.() ?? translate('surface.appShell.askForFollowUpChanges'); },
       get suggestedPrompt() { return view().agent.suggestedPrompt ?? undefined; },
-      get approvalPreset() { return approvalPreset(); },
-      get leadingMenuItems() { return [...permissionMenuItems(view()), ...conversationCommandMenuItems()]; },
+      get permission() { return permission(); },
+      get leadingMenuItems() { return conversationCommandMenuItems(); },
       get modelMenuItems() { return extensions.modelMenuItems?.(); },
       get planMode() { return view().composer.planMode; },
       get selectedModelId() {
@@ -157,7 +160,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
         goals: capabilities.goals, steerPrompt: capabilities.steerPrompt, interrupt: capabilities.interrupt,
         history: capabilities.history, deleteTurn: capabilities.deleteTurn, editTurn: capabilities.editTurn,
         retryTurn: capabilities.retryTurn, approvals: capabilities.approvals,
-        approvalPresets: capabilities.approvalPresets ?? [],
+        permissions: permissionOptions(view()),
       };
     },
     policy: {
@@ -227,11 +230,7 @@ export function useAgentConversation(options: {
     openLink: options.openLink,
     openImage: options.openImage,
     openVisualization: options.openVisualization,
-    menuSelect: (item) => {
-      const payload = item.payload as { kind?: string; mode?: string } | undefined;
-      if (payload?.kind === 'permission-mode' && payload.mode) return options.actions.setPermissionMode(agentId(), payload.mode);
-      return options.onMenuSelect?.(item);
-    },
+    menuSelect: (item) => options.onMenuSelect?.(item),
     cancel: () => options.actions.interrupt(agentId()),
     interrupt: () => options.actions.interrupt(agentId()),
     continueInterruptedTurn: () => options.actions.continueInterruptedTurn(agentId()),
@@ -256,7 +255,10 @@ export function useAgentConversation(options: {
       if (defaults.model !== undefined) options.actions.selectModel(id, defaults.model);
       if (defaults.reasoningEffort != null) options.actions.selectReasoningEffort(id, defaults.reasoningEffort);
       if (defaults.serviceTier !== undefined) options.actions.selectServiceTier(id, defaults.serviceTier);
-      if (defaults.permission !== undefined) return options.actions.setApprovalPreset(id, defaults.permission as ApprovalPreset);
+      if (defaults.permission === undefined) return;
+      // The harness names its permissions; the list an id came from says how the agent stores it.
+      const option = (options.state.capabilities?.permissions as readonly AgentPermissionOption[] | undefined)?.find(candidate => candidate.id === defaults.permission);
+      return option?.stored === 'approvalPreset' ? options.actions.setApprovalPreset(id, option.id as ApprovalPreset) : options.actions.setPermissionMode(id, defaults.permission);
     },
     setPlanMode: (planMode) => options.actions.setPlanMode(agentId(), planMode),
     ...options.overrides,
@@ -265,8 +267,17 @@ export function useAgentConversation(options: {
   return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, codeAnnotation, threadFlagBusy, respondToThreadFlag };
 }
 
-function permissionMenuItems(view: AgentConversationView): ComposerMenuItem[] {
-  const defaults = view.agent.providerDefaults;
-  const selected = view.conversation?.permission ?? (defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined);
-  return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
+type AgentPermissionOption = PermissionOption & { stored: 'approvalPreset' | 'permissionMode' };
+
+/** The permissions the agent's harness offers, in Korus's words: one list whichever harness it is. */
+function permissionOptions(view: AgentConversationView): AgentPermissionOption[] {
+  const capabilities = view.capabilities;
+  const presets = capabilities.approvals ? capabilities.approvalPresets ?? [] : [];
+  return [
+    ...approvalPresetOptions.filter(option => presets.includes(option.id)).map(option => ({
+      id: option.id, stored: 'approvalPreset' as const, label: localizedText(option.label, translate) ?? option.id,
+      ...(localizedText(option.description, translate) ? { description: localizedText(option.description, translate)! } : {}) })),
+    ...(capabilities.permissionModes ?? []).map(mode => ({ id: mode.id, stored: 'permissionMode' as const, label: localizedText(mode.label, translate) ?? mode.id,
+      ...(localizedText(mode.description, translate) ? { description: localizedText(mode.description, translate)! } : {}), ...(mode.dangerous ? { dangerous: true } : {}) })),
+  ];
 }

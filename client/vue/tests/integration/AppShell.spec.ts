@@ -2109,7 +2109,7 @@ describe('AppShell authentication and conversation', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('exposes Claude permission modes as a distinct composer submenu', async () => {
+  it('offers Claude permission modes through the pane\'s own permission list', async () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
@@ -2127,33 +2127,17 @@ describe('AppShell authentication and conversation', () => {
       },
     });
 
-    expect(conversationControllerState(wrapper).capabilities?.approvalPresets).toStrictEqual([]);
-    expect(conversationControllerState(wrapper).composer?.leadingMenuItems?.find((item) => item.id === 'backend-permissions')).toEqual(
-      expect.objectContaining({
-        id: 'backend-permissions',
-        type: 'submenu',
-        label: 'Permissions',
-        items: [
-          expect.objectContaining({ id: 'permission-mode:default', label: 'Default', checked: false }),
-          expect.objectContaining({ id: 'permission-mode:acceptEdits', label: 'Accept edits', checked: true }),
-          expect.objectContaining({ id: 'permission-mode:dontAsk', label: "Don't ask", checked: false }),
-          expect.objectContaining({ id: 'permission-mode:auto', label: 'Auto (experimental)', checked: false }),
-          expect.objectContaining({
-            id: 'permission-mode:bypassPermissions',
-            label: 'Dangerously skip permissions',
-            checked: false,
-          }),
-        ],
-      }),
-    );
+    expect(conversationControllerState(wrapper).capabilities?.permissions).toStrictEqual([
+      expect.objectContaining({ id: 'default', label: 'Default' }),
+      expect.objectContaining({ id: 'acceptEdits', label: 'Accept edits' }),
+      expect.objectContaining({ id: 'dontAsk', label: "Don't ask" }),
+      expect.objectContaining({ id: 'auto', label: 'Auto (experimental)' }),
+      expect.objectContaining({ id: 'bypassPermissions', label: 'Dangerously skip permissions', dangerous: true }),
+    ]);
+    expect(conversationControllerState(wrapper).composer?.permission).toBe('acceptEdits');
+    expect(conversationControllerState(wrapper).composer?.leadingMenuItems?.some((item) => item.id === 'backend-permissions')).toBe(false);
 
-    await conversationControllerActions(wrapper).menuSelect?.({
-      id: 'permission-mode:bypassPermissions',
-      type: 'radio',
-      label: 'Dangerously skip permissions',
-      checked: false,
-      payload: { kind: 'permission-mode', mode: 'bypassPermissions' },
-    });
+    await conversationControllerActions(wrapper).updateSettings?.({ permission: 'bypassPermissions' });
     expect(wrapper.emitted('select-permission-mode')).toStrictEqual([['bypassPermissions']]);
   });
 

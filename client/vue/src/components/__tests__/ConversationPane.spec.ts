@@ -479,7 +479,7 @@ describe('ConversationPane', () => {
         models: true, skills: false, reasoningEffort: false, serviceTier: false,
         planMode: false, goals: false, steerPrompt: false, interrupt: false,
         history: false, deleteTurn: false, editTurn: false, retryTurn: false,
-        approvals: false, approvalPresets: [],
+        approvals: false, permissions: [],
       },
         catalogs: { models: [{ id: 'cursor-model', model: 'cursor-model', displayName: 'Cursor model', isDefault: true }] } },
       actions: { updateSettings },
