@@ -99,8 +99,8 @@ final class AppModel {
     var goalBusy = false
     var goalError = false
     var goalMode: Bool { composerDrafts.goalMode }
-    var approvalPreset: String?
-    var approvalPresets: [String] = []
+    var permission: String?
+    var permissionOptions: [EngineState.PermissionOption] = []
     var canSend = false
     var providerBlock: EngineState.ProviderBlock?
     var canInterrupt = false
@@ -368,8 +368,8 @@ final class AppModel {
         set(\.selectedServiceTier, state.composer.serviceTier)
         set(\.supportsServiceTier, state.capabilities.serviceTier)
         set(\.planMode, state.composer.planMode)
-        set(\.approvalPreset, state.permissions.approvalPreset)
-        set(\.approvalPresets, state.permissions.presets)
+        set(\.permission, state.permissions.current)
+        set(\.permissionOptions, state.permissions.options)
         if let target = composerDrafts.target, target != state.composerTarget {
             let sameReview = reviewState.details?.session?.id != nil && reviewState.details?.session?.id == state.review?.details?.session?.id
                 && target.hostId == state.composerTarget?.hostId && target.locationId == state.composerTarget?.locationId
@@ -523,7 +523,7 @@ final class AppModel {
               let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
         command("clearGoal", ["target": fields])
     }
-    func setApprovalPreset(_ preset: String) { command("approvalPreset", ["preset": preset]) }
+    func setPermission(_ permission: String) { command("permission", ["permission": permission]) }
     func interrupt() { command("interrupt") }
     func restartSession() { dictation.cancel(); command("restartSession") }
     func closeSession() { dictation.cancel(); command("closeSession") }

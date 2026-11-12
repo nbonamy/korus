@@ -2,7 +2,7 @@ import type { CompanionConversationSync } from '@workspace/core/companion-journa
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import {
-  companionAgents, companionConversationFrame, companionFrameRevision, companionIdleTimeoutMs, companionTarget, followsCompanionConversation, isCompanionConversationFrame, sameCompanionStream,
+  companionAgents, companionConversationFrame, companionFrameRevision, companionIdleTimeoutMs, companionTarget, followsCompanionConversation, sameCompanionTarget, isCompanionConversationFrame, sameCompanionStream,
   type CompanionConversation, type CompanionConversationFrame, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace,
 } from '@workspace/core/companion-protocol';
 import { warnMain } from '../log';
@@ -148,7 +148,7 @@ export class CompanionSubscription {
     for (const [id, entry] of this.watched) {
       const agent = companionAgents(next).find((agent) => agent.id === id);
       const team = next.teams.find((team) => team.id === agent?.teamId);
-      if (!agent || !team || JSON.stringify(companionTarget(entry.target.hostId, team, agent)) !== JSON.stringify(entry.target)) this.watched.delete(id);
+      if (!agent || !team || !sameCompanionTarget(companionTarget(entry.target.hostId, team, agent), entry.target)) this.watched.delete(id);
     }
     const serialized = JSON.stringify(combined);
     if (serialized !== this.workspaceJSON) { this.workspaceJSON = serialized; this.emit({ type: 'workspace', workspace: next }); }

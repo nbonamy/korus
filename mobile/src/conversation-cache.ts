@@ -1,16 +1,13 @@
 import { CompanionJournal, type CompanionCheckpoint, type CompanionConversationSync } from '@workspace/core/companion-journal';
 import type { ProviderSessionData } from '@workspace/core/contracts';
-import {
-  companionFrameRevision, followCompanionConversation, followsCompanionConversation,
-  type CompanionConversation, type CompanionConversationFrame, type CompanionTarget,
-} from '@workspace/core/companion-protocol';
+import { sameCompanionTarget, companionFrameRevision, followCompanionConversation, followsCompanionConversation, type CompanionConversation, type CompanionConversationFrame, type CompanionTarget } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 import { withConversationId } from '@workspace/core/legacy-fields';
 
 type Entry = { target: CompanionTarget; frame: CompanionConversation | null; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionConversation | null>; subscribed?: boolean; resetting?: boolean; checkpoint?: CompanionCheckpoint; bytes?: number };
 type Request = (method: string, target: CompanionTarget, checkpoint?: CompanionCheckpoint | null) => Promise<unknown>;
 const graceMs = 5 * 60_000;
-const same = (a: CompanionTarget, b: CompanionTarget) => JSON.stringify(a) === JSON.stringify(b);
+const same = sameCompanionTarget;
 const byteLength = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 /** The target names the conversation the phone opened; frames of another one wait for the workspace to name it. */
 function followsTarget(frame: CompanionConversationFrame, target: CompanionTarget): boolean {

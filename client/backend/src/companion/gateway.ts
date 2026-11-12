@@ -16,7 +16,7 @@ import { z } from 'zod';
 import type { HarnessProvider, AgentGitDiff, AgentGitDiffTarget, ProviderSkillSummary, ProviderPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionConversation, CompanionConversationFrame, CompanionGrant, CompanionPending, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionConversationOf, companionMaxUploadBytes, companionMaxUploads, companionProviders, companionSessionId, followsCompanionConversation } from '@workspace/core/companion-protocol';
+import { companionConversationOf, companionDataModel, companionMaxUploadBytes, companionMaxUploads, companionProviders, companionSessionId, followsCompanionConversation, sameCompanionSession } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
@@ -141,8 +141,7 @@ export type GatewayPort = {
   setProvider(agentId: string, provider: HarnessProvider): Promise<void>;
   closePreview(agentId: string): Promise<Omit<CompanionClosePreview, 'target'>>;
   close(agentId: string, input?: CompanionCloseOptions): Promise<void>;
-  setApprovalPreset(agentId: string, preset: string): Promise<void>;
-  setPermissionMode(agentId: string, mode: string): Promise<void>;
+  setPermission(agentId: string, permission: string): Promise<void>;
   startReview(agentId: string, input: z.infer<typeof reviewSchema>['input']): Promise<string | void>;
   readReview?(agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails>;
   reviewAction?(agentId: string, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
@@ -293,11 +292,15 @@ const agentOperations = {
     act: async (port, agent, input) => { const selection = 'selection' in input ? input.selection : { provider: agent.provider, ...input }; if (selection.provider !== agent.provider) throw new Error('Execution selection does not match the agent provider.'); await port.selectModel(agent.id, selection); return {}; },
   }),
   'agent.interrupt': agentOperation(onlyTarget)({ act: async (port, agent) => { await port.interrupt(agent.id); return {}; } }),
+  'agent.permission.set': agentOperation(withTarget(z.object({ permission: z.string().min(1).max(80) }).strict()))({
+    act: async (port, agent, { permission }) => { await port.setPermission(agent.id, permission); return {}; },
+  }),
+  // The calls shipped phones make, before `companionDataModel` 2.
   'agent.approvalPreset.set': agentOperation(withTarget(z.object({ preset: z.string().min(1).max(40) }).strict()))({
-    act: async (port, agent, { preset }) => { await port.setApprovalPreset(agent.id, preset); return {}; },
+    act: async (port, agent, { preset }) => { await port.setPermission(agent.id, preset); return {}; },
   }),
   'agent.permissionMode.set': agentOperation(withTarget(z.object({ mode: z.string().min(1).max(80) }).strict()))({
-    act: async (port, agent, { mode }) => { await port.setPermissionMode(agent.id, mode); return {}; },
+    act: async (port, agent, { mode }) => { await port.setPermission(agent.id, mode); return {}; },
   }),
   'agent.goal.set': agentOperation(withTarget(z.object({ objective: z.string().trim().min(1).max(100_000).nullable() }).strict()))({
     check: (agent) => { if (!defaultProviderCapabilities(agent.provider).goals) throw new Error('Goals unavailable.'); },
@@ -606,7 +609,7 @@ export class CompanionGateway {
       const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);
       // Icons are large and rarely change: send them only when the phone's copy is out of date.
       const version = createHash('sha256').update(JSON.stringify(Object.entries(repositoryIcons).sort())).digest('hex').slice(0, 16);
-      return { ...projected, ...(this.port.synchronize ? { conversationSync: true } : {}), iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
+      return { ...projected, dataModel: companionDataModel, ...(this.port.synchronize ? { conversationSync: true } : {}), iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
     },
     'prompt.submit': (peer, args) => {
       const command = commandSchema.parse(args);
@@ -779,7 +782,7 @@ export class CompanionGateway {
     if (mission && !worker) throw new Error('Mission workers are read-only.');
     const agent = own ?? mission;
     if (target.hostId !== this.hostId || !team || !agent
-      || target.locationId !== (agent.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
+      || target.locationId !== (agent.remoteConnectionId ?? 'local') || !sameCompanionSession(target.sessionId, companionSessionId(agent))) throw new Error('Target is stale.');
     return { agent, workspace };
   }
   /** Drops expired receipts and those of devices that are no longer paired. */

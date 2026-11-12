@@ -4,10 +4,8 @@ import { companionAgents } from '@workspace/core/companion-protocol';
 import type { CompanionSession, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 
-type PermissionChoice = { approvalPreset?: string; permissionMode?: string };
-
 /**
- * The model menu and the permission pickers of the selected chat. Choices are remembered here at once and saved on
+ * The model menu and the permission picker of the selected chat. Choices are remembered here at once and saved on
  * the laptop; models and choices belong to a chat under one engine, because another engine has its own.
  */
 export function createComposerState(deps: {
@@ -20,7 +18,7 @@ export function createComposerState(deps: {
 }) {
   const catalog = shallowRef<Record<string, ProviderModelOption[]>>({});
   const choices = reactive<Record<string, ComposerChoice>>({});
-  const permissionChoices = reactive<Record<string, PermissionChoice>>({});
+  const permissionChoices = reactive<Record<string, string>>({});
   const permissionRequests = new Map<string, symbol>();
 
   const modelKey = (id: string, provider: string | undefined) => `${id}:${provider ?? ''}`;
@@ -28,12 +26,10 @@ export function createComposerState(deps: {
   const models = computed(() => catalog.value[currentKey()] ?? []);
   const composerSettings = computed(() => { const agent = deps.agent(); return agent ? resolveComposerSettings(agent, models.value, choices[currentKey()]) : null; });
   const modelFavorites = computed(() => deps.workspace().modelFavorites ?? []);
-  /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
-  const permissions = computed(() => {
+  /** The permission the agent runs with now: the phone's latest choice, else what the laptop reports. */
+  const permission = computed(() => {
     const current = deps.agent(); if (!current) return null;
-    const choice = permissionChoices[current.id] ?? {}; const saved = current.providerDefaults;
-    // The laptop stores one permission for every harness; the phone's screens still show it under either name.
-    return { approvalPreset: choice.approvalPreset ?? saved?.permission ?? null, permissionMode: choice.permissionMode ?? saved?.permission ?? null };
+    return permissionChoices[current.id] ?? current.providerDefaults?.permission ?? null;
   });
 
   async function loadModels(id: string, capturedSession: CompanionSession) {
@@ -63,14 +59,14 @@ export function createComposerState(deps: {
   }
 
   /** Optimistic only until the owning laptop answers; subsequent policy updates stay authoritative. */
-  async function changePermissions(change: PermissionChoice, send: (active: CompanionSession, id: string) => Promise<void> | undefined) {
+  async function setPermission(permission: string) {
     const id = deps.agentId(); const active = deps.session();
     if (!id || !active) return;
     const token = Symbol();
     permissionRequests.set(id, token);
-    permissionChoices[id] = { ...permissionChoices[id], ...change };
+    permissionChoices[id] = permission;
     try {
-      await send(active, id);
+      await active.setPermission?.(id, permission);
       if (active !== deps.session()) return;
       const next = await active.getWorkspace();
       if (active === deps.session()) deps.applyWorkspace(next);
@@ -81,9 +77,7 @@ export function createComposerState(deps: {
   }
 
   return {
-    models, composerSettings, modelFavorites, permissions, loadModels, updateSettings,
-    setApprovalPreset: (preset: string) => changePermissions({ approvalPreset: preset }, (active, id) => active.setApprovalPreset?.(id, preset)),
-    setPermissionMode: (mode: string) => changePermissions({ permissionMode: mode }, (active, id) => active.setPermissionMode?.(id, mode)),
+    models, composerSettings, modelFavorites, permission, loadModels, updateSettings, setPermission,
     /** The laptop reported this chat's policy itself: a pending local choice no longer applies. */
     forgetPermission(id: string) { permissionRequests.delete(id); delete permissionChoices[id]; },
     /** The connection ended: no pending local choice survives it. */

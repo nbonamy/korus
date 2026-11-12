@@ -84,8 +84,7 @@ type CompanionOperations = {
   reviewAction?(target: CompanionTarget, input: import('@workspace/core/companion-review').CompanionReviewAction): Promise<void>;
   reviewSetup?(agentId: string, provider?: HarnessProvider): Promise<CompanionReviewSetup>;
   startReview?(target: CompanionTarget, input: CompanionReviewInput): Promise<string | void>;
-  setApprovalPreset?(agentId: string, preset: string): Promise<void>;
-  setPermissionMode?(agentId: string, mode: string): Promise<void>;
+  setPermission?(agentId: string, permission: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
 };

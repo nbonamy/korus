@@ -13,7 +13,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import type { PromptPart } from '@korus-dev/multi-agent-sdk';
 import type { Agent, HarnessProvider, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionAgents, companionConversationOf, companionTarget, companionSessionId, followsCompanionConversation, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { sameCompanionTarget, companionTargetFor, companionAgents, companionConversationOf, companionTarget, companionSessionId, followsCompanionConversation, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -258,8 +258,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   async function respondRequest(reply: CompanionRequestReply) {
     const pending = requests.value.find((entry) => entry.request.id === reply.id && entry.request.conversationId === reply.conversationId
-      && entry.target.hostId === reply.target.hostId && entry.target.locationId === reply.target.locationId
-      && entry.target.teamId === reply.target.teamId && entry.target.agentId === reply.target.agentId && entry.target.sessionId === reply.target.sessionId);
+      && sameCompanionTarget(entry.target, reply.target));
     if (!pending || respondingRequest.value || status.value !== 'connected' || !session?.respondRequest) return;
     const active = session; const epoch = connectionEpoch;
     respondingRequest.value = pending.key; failedRequest.value = null;
@@ -284,7 +283,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
   const composer = createComposerState({ session: () => session, agent: () => agent.value, agentId: () => agentId.value, workspace: () => workspace.value, applyWorkspace: (next) => { applyWorkspace(next); } });
-  const { models, composerSettings, modelFavorites, permissions, loadModels } = composer;
+  const { models, composerSettings, modelFavorites, loadModels } = composer;
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
@@ -294,7 +293,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   /** The agent as the laptop identifies it: host, location, team, agent and session. */
   function targetOf(owner: Agent | null | undefined): CompanionTarget | null {
     const team = workspace.value.teams.find(team => team.id === owner?.teamId);
-    return owner && team ? companionTarget(laptopId.value, team, owner) : null;
+    return owner && team ? companionTargetFor(workspace.value, laptopId.value, team, owner) : null;
   }
   /** The selected conversation as the laptop identifies it, captured before any await. */
   const currentTarget = () => targetOf(agent.value);
@@ -334,7 +333,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     for (const agent of next.agents) {
       const team = next.teams.find(team => team.id === agent.teamId);
       if (team && agent.readState && agent.readState.readRevision > 0) forwardNotification({ id: 'read', kind: 'read', revision: agent.readState.readRevision,
-        name: '', createdAt: Date.now(), target: companionTarget(laptopId.value, team, agent) });
+        name: '', createdAt: Date.now(), target: companionTargetFor(next, laptopId.value, team, agent) });
     }
   }
   function applyWorkspace(next: CompanionWorkspace): boolean {
@@ -464,7 +463,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         // from the goal's owner. Keep its uncertain result visible across that rebind.
         const owner = agent.value; const current = targetOf(owner);
         if (active === session && owner?.provider === selected.provider && current
-          && (Object.keys(target) as (keyof CompanionTarget)[]).every(key => (key === 'sessionId' && target.sessionId === null) || target[key] === current[key])) goalError.value = true;
+          && sameCompanionTarget(target.sessionId === null ? { ...target, sessionId: current.sessionId } : target, current)) goalError.value = true;
         return 'unknown';
       }
       // The command was accepted even if refreshing later loses the connection.
@@ -784,7 +783,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     },
     // The composer: the draft, sending it, and what was sent along with it.
     draft, updateDraft, submit, canSend, deliveryUnknown, models, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
-    permissions, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode,
+    permission: composer.permission, setPermission: composer.setPermission,
     skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
     // Goals and questions the agent asks.
     goalBusy, goalError, changeGoal, requests, dismissRequest, respondRequest, respondingRequest, failedRequest,

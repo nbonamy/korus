@@ -1,5 +1,6 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
+import { withConversationId } from './legacy-fields';
 import type { AccountRateLimits, Agent, HarnessProvider, ProviderDefaults, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
 import { applySessionPatch, sessionConversationId, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
@@ -105,7 +106,13 @@ export type CompanionMission = { id: string; teamId: string; outcome: string; st
   next?: 'review' | 'ship';
   review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; providers?: Record<string, HarnessProvider[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+export type CompanionWorkspace = {
+  /**
+   * 2: the laptop takes one permission (`agent.permission.set`) and target keys that name the conversation
+   * `conversationId`. Laptops on earlier builds leave it out and take the former names.
+   */
+  dataModel?: number;
+  conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; providers?: Record<string, HarnessProvider[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
   /** Active-round finding counts, keyed by reviewer conversation; full findings stay on demand. */
   reviewFindings?: Record<string, number>;
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
@@ -164,14 +171,41 @@ export function withLegacyPermission<T extends ProviderDefaults>(defaults: T): T
   if (defaults.permission === undefined) return defaults;
   return { ...defaults, [defaults.kind === 'codex' ? 'approvalPreset' : 'permissionMode']: defaults.permission };
 }
-export function companionSessionId(agent: Agent): string | null {
+/** The data model this build speaks: see `CompanionWorkspace.dataModel`. */
+export const companionDataModel = 2;
+/**
+ * The key that names an agent's conversation in a target. `legacy` writes it under the former names, for the side
+ * that may be talking to a build before `companionDataModel` 2.
+ */
+export function companionSessionId(agent: Pick<Agent, 'providerSession'>, legacy = false): string | null {
   const session = agent.providerSession;
   if (!session) return null;
-  // The phone stores this id as the host wrote it, so its shape is part of the companion wire format.
-  return JSON.stringify({ kind: session.kind, [wireConversationField(session.kind)]: session.conversationId });
+  return JSON.stringify({ kind: session.kind, [legacy ? wireConversationField(session.kind) : 'conversationId']: session.conversationId });
 }
-export function companionTarget(hostId: string, team: Team, agent: Agent): CompanionTarget {
-  return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent) };
+export function companionTarget(hostId: string, team: Team, agent: Agent, legacy = false): CompanionTarget {
+  return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent, legacy) };
+}
+/** Whether a laptop takes the current data model; see `CompanionWorkspace.dataModel`. */
+export const speaksCurrentDataModel = (workspace: Pick<CompanionWorkspace, 'dataModel'>): boolean => (workspace.dataModel ?? 0) >= companionDataModel;
+/** The target a phone sends a laptop, with the key in the names that laptop takes. */
+export function companionTargetFor(workspace: Pick<CompanionWorkspace, 'dataModel'>, hostId: string, team: Team, agent: Agent): CompanionTarget {
+  return companionTarget(hostId, team, agent, !speaksCurrentDataModel(workspace));
+}
+/** Whether two target keys name the same conversation, whichever names each was written with. */
+export function sameCompanionSession(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const read = (key: string) => { try { const value = withConversationId(JSON.parse(key)) as { kind?: unknown; conversationId?: unknown }; return typeof value.kind === 'string' && typeof value.conversationId === 'string' ? `${value.kind}\u0000${value.conversationId}` : null; } catch { return null; } };
+  const left = read(a);
+  return left !== null && left === read(b);
+}
+/** Whether two targets address the same chat, whichever names their keys were written with. */
+export function sameCompanionTarget(a: CompanionTarget, b: CompanionTarget): boolean {
+  return a.hostId === b.hostId && a.locationId === b.locationId && a.teamId === b.teamId && a.agentId === b.agentId && sameCompanionSession(a.sessionId, b.sessionId);
+}
+/** How a laptop before `companionDataModel` 2 takes a permission change: Codex's as an approval preset, the others' as a permission mode. */
+export function legacyPermissionCall(provider: HarnessProvider, permission: string): { method: 'agent.approvalPreset.set'; input: { preset: string } } | { method: 'agent.permissionMode.set'; input: { mode: string } } {
+  return provider === 'codex' ? { method: 'agent.approvalPreset.set', input: { preset: permission } } : { method: 'agent.permissionMode.set', input: { mode: permission } };
 }
 /** App framing only. Cryptographic authentication and encryption are owned by Noise/libp2p. */
 export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit): Uint8Array {

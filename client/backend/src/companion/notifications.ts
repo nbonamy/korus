@@ -64,7 +64,8 @@ export class CompanionNotifications {
       if (!view.turnId && !turn?.id) return null;
     }
     if (kind !== 'read' && revision !== undefined && revision <= (agent.readState?.readRevision ?? -1)) return null;
-    const target = companionTarget(this.hostId, team, agent);
+    // Shipped phones compare this target with keys of their own, written under the former names.
+    const target = companionTarget(this.hostId, team, agent, true);
     const id = createHash('sha256').update(JSON.stringify([target, kind, identity])).digest('hex');
     if (this.seen.has(id)) return null;
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);

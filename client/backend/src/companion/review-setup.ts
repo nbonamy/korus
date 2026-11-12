@@ -20,7 +20,7 @@ export async function readReviewSetup(port: CompanionBackendPort, hostId: string
   const catalog = status?.diffCatalog;
   const review = activeReviewForAgent(snapshot.agents, agent);
   return {
-    target: companionTarget(hostId, team, agent), branch: status?.branch ?? null, baseRef: catalog?.branch?.baseRef ?? null,
+    target: companionTarget(hostId, team, agent, true), branch: status?.branch ?? null, baseRef: catalog?.branch?.baseRef ?? null,
     ...codeReviewAvailability(agent, status), activeReview: Boolean(review), reviewerAgentId: review?.reviewerAgentId ?? null,
     agentProvider: agent.provider, provider: selected, providers: providers,
     models: models.filter(model => !model.hidden && model.model).map(model => ({ id: model.model!, name: model.displayName,
@@ -46,7 +46,7 @@ export async function readReviewSession(port: CompanionBackendPort, hostId: stri
   const { snapshot, agent, reviewer, session } = await reviewContext(port, agentId);
   const team = snapshot.teams.find(candidate => candidate.id === agent.teamId);
   if (!team) throw new Error('Review team unavailable.');
-  return { target: companionTarget(hostId, team, agent), session: session ? {
+  return { target: companionTarget(hostId, team, agent, true), session: session ? {
     id: session.id, targetAgentId: session.targetAgentId, reviewerAgentId: session.reviewerAgentId,
     status: session.status, activeRoundId: session.activeRoundId, updatedAt: session.updatedAt,
     commitAvailable: (snapshot.agentGitStatuses[reviewer!.id]?.changedFiles ?? 0) > 0,

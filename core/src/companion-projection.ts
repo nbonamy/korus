@@ -38,7 +38,7 @@ function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?
  * What a paired phone sees of the laptop: enough to rebuild the desktop sidebar (repositories,
  * branch and conversation titles, repository icons) without paths, remotes or provider internals.
  */
-export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
+export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync' | 'dataModel'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
   const teams = source.teams.map(({ id, name, avatar, agentIds }): Team => ({ id, name, avatar, agentIds }));
   const repositoryIcons: Record<string, string> = {};
   const projectAgent = (agent: Agent): Agent => {

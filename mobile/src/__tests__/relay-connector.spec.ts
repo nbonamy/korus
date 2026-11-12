@@ -274,6 +274,18 @@ describe('native relay host adapter', () => {
       } });
     } finally { await connector.dispose!(); }
   });
+  it('speaks the current data model to a laptop that takes it: conversationId keys and one permission call', async () => {
+    const connector = connect(); await pairWith(connector);
+    transport.response = method => method === 'snapshot.get' ? { dataModel: 2, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : {};
+    try {
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
+      await session.setPermission!('agent', 'full-access');
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.permission.set', args: {
+        target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","conversationId":"thread"}' }, permission: 'full-access',
+      } });
+    } finally { await connector.dispose!(); }
+  });
+
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);
     const page = { frame: conversation('agent', { conversation: 'thread', messages: [textMessage('large', 'assistant', 'x'.repeat(companionFrameLimit))] }), hasOlder: false };
@@ -412,9 +424,10 @@ describe('native relay host adapter', () => {
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.file.preview', args: { target: selectedTarget, input: { path: 'src/app.ts', action: 'edit', turnId: 'turn' } } });
     await session.startReview!(selectedTarget, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { target: selectedTarget, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
-    await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
-    expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
-      .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }], ['agent.permissionMode.set', { target: selectedTarget, mode: 'acceptEdits' }]]);
+    // This laptop predates the current data model: it takes Codex's permission as an approval preset.
+    await session.interrupt!('agent'); await session.setPermission!('agent', 'full-access');
+    expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode|permission)\b/.test(request.method)).map((request) => [request.method, request.args]))
+      .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }]]);
     await session.renameAgent!(selectedTarget, 'Mobile work');
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.rename', args: { target: selectedTarget, name: 'Mobile work' } });
     await session.restartSession!('agent');

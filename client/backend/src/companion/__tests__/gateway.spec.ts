@@ -37,7 +37,7 @@ function fixture(autoAcceptCode?: string) {
     readReview: vi.fn(async () => ({ target, session: null })), reviewAction: vi.fn(async () => {}),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), duplicateAgent: vi.fn(async () => 'duplicate'), setProvider: vi.fn(async () => {}), close: vi.fn(async () => {}),
-    closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
+    closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setPermission: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now, autoAcceptCode);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
@@ -237,6 +237,17 @@ describe('companion authorization gateway', () => {
     await f.gateway.revoke('phone'); release();
     await expect(loading).rejects.toThrow('not authorized');
   });
+  it('speaks the current data model and takes targets named either way', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'thread-1' } }] });
+    expect(await f.gateway.request('phone', 'snapshot.get', {})).toMatchObject({ dataModel: 2 });
+    await f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","conversationId":"thread-1"}' });
+    // Shipped phones write the key under the former names.
+    await f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","threadId":"thread-1"}' });
+    expect(f.port.interrupt).toHaveBeenCalledTimes(2);
+    await expect(f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","conversationId":"other"}' })).rejects.toThrow('stale');
+  });
+
   it('serves referenced embedded images through the existing build 97 image request without granting other content', async () => {
     const f = fixture(); await f.pair();
     const sessionId = 'image-session'; const contentId = 'a'.repeat(64);
@@ -646,7 +657,7 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadTurnHistory' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setProvider' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview' | 'readReview' | 'reviewAction'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadTurnHistory' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setPermission' | 'changeGoal' | 'setProvider' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview' | 'readReview' | 'reviewAction'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'agent.rename': { args: t => ({ target: t, name: 'Renamed' }), effect: 'renameAgent' },
       'agent.duplicate': { args: t => ({ target: t, provider: 'claude' }), effect: 'duplicateAgent' },
@@ -665,8 +676,9 @@ describe('companion authorization gateway', () => {
       'models.list': { args: (t) => t, effect: 'models', read: true },
       'agent.model.select': { args: (t) => ({ target: t, selection: { provider: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }), effect: 'selectModel' },
       'agent.interrupt': { args: (t) => t, effect: 'interrupt' },
-      'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setApprovalPreset' },
-      'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermissionMode' },
+      'agent.permission.set': { args: (t) => ({ target: t, permission: 'full-access' }), effect: 'setPermission' },
+      'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setPermission' },
+      'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermission' },
       'agent.goal.set': { args: (t) => ({ target: t, objective: 'Ship' }), effect: 'changeGoal' },
       'agent.queuedPrompt.steer': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
       'agent.queuedPrompt.delete': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
@@ -872,11 +884,12 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
     await f.gateway.request('phone', 'agent.interrupt', target);
-    await f.gateway.request('phone', 'agent.approvalPreset.set', { target, preset: 'full-access' });
+    await f.gateway.request('phone', 'agent.permission.set', { target, permission: 'full-access' });
+    // Shipped phones still name the permission a preset or a mode.
+    await f.gateway.request('phone', 'agent.approvalPreset.set', { target, preset: 'approve-for-me' });
     await f.gateway.request('phone', 'agent.permissionMode.set', { target: remote, mode: 'acceptEdits' });
     expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('agent');
-    expect(f.port.setApprovalPreset).toHaveBeenCalledExactlyOnceWith('agent', 'full-access');
-    expect(f.port.setPermissionMode).toHaveBeenCalledExactlyOnceWith('remote-agent', 'acceptEdits');
+    expect(f.port.setPermission.mock.calls).toStrictEqual([['agent', 'full-access'], ['agent', 'approve-for-me'], ['remote-agent', 'acceptEdits']]);
     await expect(f.gateway.request('phone', 'agent.interrupt', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.interrupt', target)).rejects.toThrow('authorized');
     for (const [method, args] of [['agent.approvalPreset.set', { preset: 'x' }], ['agent.permissionMode.set', { mode: 'x' }]] as const) {
@@ -897,7 +910,7 @@ describe('companion authorization gateway', () => {
       ['agent.review.start', { target: old, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } }],
     ];
     for (const [method, args] of commands) await expect(f.gateway.request('phone', method, args)).rejects.toThrow('stale');
-    for (const port of [f.port.interrupt, f.port.models, f.port.selectModel, f.port.setApprovalPreset, f.port.setPermissionMode, f.port.setProvider, f.port.startReview]) expect(port).not.toHaveBeenCalled();
+    for (const port of [f.port.interrupt, f.port.models, f.port.selectModel, f.port.setPermission, f.port.setProvider, f.port.startReview]) expect(port).not.toHaveBeenCalled();
   });
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();

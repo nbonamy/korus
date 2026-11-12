@@ -1157,9 +1157,10 @@ it('renames a paired laptop and shows the new name, leaving it alone when the na
 it('uses a permission identity when an option has no provider-authored label', () => {
   const original = composerSettings.composerCapabilitiesFor;
   const capabilities = vi.spyOn(composerSettings, 'composerCapabilitiesFor').mockImplementation((...args) => ({
-    ...original(...args), permissionModes: [{ id: 'future-mode' }],
+    ...original(...args), permissionModes: [{ id: 'future-mode' }, { id: 'acceptEdits', label: 'Accept edits as you go' }, { id: 'full-access', label: { key: 'permissions.approval.fullAccess.label' }, dangerous: true }],
   }));
   const { engine, latest } = open();
-  try { expect(latest().permissions.modes).toStrictEqual([{ id: 'future-mode', label: 'future-mode' }]); }
+  try { expect(latest().permissions.options).toStrictEqual([{ id: 'future-mode', label: 'Future mode', dangerous: false },
+    { id: 'acceptEdits', label: 'Accept edits as you go', dangerous: false }, { id: 'full-access', label: 'Full access', dangerous: true }]); }
   finally { engine.dispose(); capabilities.mockRestore(); }
 });

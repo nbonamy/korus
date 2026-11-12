@@ -17,7 +17,7 @@ import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
-import { companionQuotaProviders, companionTarget, type CompanionControl, type CompanionControlResult, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionQuotaProviders, companionTarget, sameCompanionTarget, type CompanionControl, type CompanionControlResult, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -180,8 +180,7 @@ export class CompanionManager {
       const agent = snapshot.agents.find(agent => agent.id === snapshot.activeAgentId);
       const team = snapshot.teams.find(team => team.id === snapshot.activeTeamId && team.id === agent?.teamId);
       if (!agent || !team) return false;
-      const selected = companionTarget(target.hostId, team, agent);
-      return (Object.keys(target) as (keyof CompanionTarget)[]).every(key => selected[key] === target[key]);
+      return sameCompanionTarget(companionTarget(target.hostId, team, agent), target);
     } catch { return false; }
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
@@ -365,8 +364,7 @@ export class CompanionManager {
       setProvider: async (agentId, provider) => { await this.provider.request(backendMethods.agentUpdate, { input: { id: agentId, selection: { provider: provider } }, _clientId: 'companion-write' }); },
       closePreview: agentId => this.provider.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
       close: async (agentId, input) => { await this.provider.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
-      setApprovalPreset: async (agentId, preset) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode: preset, _clientId: 'companion-write' }); },
-      setPermissionMode: async (agentId, mode) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
+      setPermission: async (agentId, permission) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode: permission, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => (await this.provider.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
       readReview: agentId => readReviewSession(this.provider, peerIdFromPrivateKey(this.key).toString(), agentId),
       reviewAction: (agentId, input) => actOnReview(this.provider, agentId, input),

@@ -11,7 +11,7 @@ import type { Agent, HarnessProvider, ProviderModelOption } from '@workspace/cor
 import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { sameCompanionTarget, companionTargetFor, companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
@@ -93,7 +93,8 @@ export type EngineState = {
   skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; value: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
-  permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
+  /** The permission the chat runs with, and the ones its engine offers. */
+  permissions: { current: string | null; options: { id: string; label: string; dangerous: boolean }[] };
   capabilities: { goals: boolean; models: boolean; reasoningEffort: boolean; serviceTier: boolean; planMode: boolean; interrupt: boolean; attachments: boolean };
   favorites: { modelId: string; reasoningEffort: string | null; serviceTier: string | null }[];
 };
@@ -173,7 +174,7 @@ export type EngineCommand =
   | { type: 'loadBranches'; repositoryId: string } | { type: 'dismissBranches' }
   | { type: 'newChat'; repositoryId: string; provider: CompanionProvider; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; provider: CompanionProvider } | { type: 'dismissNewChat' } | { type: 'provider'; provider: CompanionProvider }
   | { type: 'composer'; change: ComposerChange }
-  | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
+  | { type: 'permission'; permission: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
   | { type: 'loadReview'; provider?: CompanionProvider } | { type: 'dismissReview' }
   | { type: 'loadReviewDetails' }
@@ -183,6 +184,12 @@ export type EngineCommand =
 export type EnginePort = { connector: CompanionConnector; imageCache?: ImageCacheStore; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
 
 const effortsOf = (model: ProviderModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
+
+/** A permission without words of its own, shown as its id in plain words: `approve-for-me` reads "Approve for me". */
+function readableId(id: string): string {
+  const words = id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export function createEngine(port: EnginePort) {
   const engineInstance = crypto.randomUUID();
@@ -320,7 +327,6 @@ export function createEngine(port: EnginePort) {
       : null;
     const capabilities = composerCapabilitiesFor(agent?.provider ?? defaultHarnessProvider, state.models.value);
     const settings = state.composerSettings.value;
-    const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
       missions, missionAttention: attentionFor(visibleMissions), mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
@@ -343,7 +349,7 @@ export function createEngine(port: EnginePort) {
         status: displayStatus, statusText: displayStatusText, icon: active.group.icon ?? null }
         : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
-      composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
+      composerTarget: agent && team ? companionTargetFor(state.workspace.value, state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
@@ -370,8 +376,8 @@ export function createEngine(port: EnginePort) {
       canSelectProvider: engines() !== null,
       models: pickableModels(state.models.value).map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
-      permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
-        modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label?.key ?? mode.id })) },
+      permissions: { current: state.permission.value, options: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id,
+        label: typeof mode.label === 'string' ? mode.label : readableId(mode.id), dangerous: mode.dangerous === true })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
         planMode: capabilities.planMode !== 'unsupported', interrupt: !providerBlock && capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: !providerBlock && capabilities.attachments && !agent?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.provider === agent?.provider).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
@@ -515,7 +521,7 @@ export function createEngine(port: EnginePort) {
         if (!foreground || state.status.value !== 'connected') { pendingNotification = target; return; }
         const agent = state.workspace.value.agents.find(agent => agent.id === target.agentId);
         const team = state.workspace.value.teams.find(team => team.id === target.teamId);
-        if (!agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
+        if (!agent || !team || !sameCompanionTarget(companionTarget(target.hostId, team, agent), target)) {
           port.post({ type: 'notificationOpenFailed' }); return;
         }
         await state.selectTeam(target.teamId, target.agentId);
@@ -720,8 +726,7 @@ export function createEngine(port: EnginePort) {
       case 'cancelCloseSession': return state.cancelCloseSession();
       case 'dismissSessionError': return state.dismissSessionError();
       case 'composer': return state.updateComposerSettings(command.change);
-      case 'approvalPreset': return state.setApprovalPreset(command.preset);
-      case 'permissionMode': return state.setPermissionMode(command.mode);
+      case 'permission': return state.setPermission(command.permission);
       case 'delegate': return state.delegate({ startingContext: command.startingContext, ...(command.instructions ? { instructions: command.instructions } : {}) });
       case 'loadReviewDetails': return state.loadReviewDetails();
       case 'reviewAction': return state.actOnReview(command.target, command.input);

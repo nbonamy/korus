@@ -2,7 +2,7 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
-import { companionAgents, companionTarget, companionUpdatesProtocol } from '@workspace/core/companion-protocol';
+import { legacyPermissionCall, speaksCurrentDataModel, companionTargetFor, companionAgents, companionTarget, companionUpdatesProtocol } from '@workspace/core/companion-protocol';
 import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
@@ -67,7 +67,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const target = (agentId: string) => {
     const agent = companionAgents(workspace).find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
     if (!agent || !team) throw new Error('Agent is outside the paired scope.');
-    return companionTarget(host.hostId, team, agent);
+    return companionTargetFor(workspace, host.hostId, team, agent);
   };
   const notify = (frame: CompanionConversation | null = null) => { if (!closed && ownsCache()) for (const listener of updates) listener(workspace, frame); };
   const failed = (reason?: CompanionDisconnectReason) => {
@@ -88,7 +88,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
       cache.reconcile(companionAgents(workspace).flatMap((agent) => {
         const team = workspace.teams.find((team) => team.id === agent.teamId);
-        return team ? [companionTarget(host.hostId, team, agent)] : [];
+        return team ? [companionTargetFor(workspace, host.hostId, team, agent)] : [];
       }));
       notify();
     } else if (update.type === 'notification') {
@@ -210,8 +210,13 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       const result = await call<{ reviewerAgentId?: string | null }>('agent.review.start', { target, input });
       return result.reviewerAgentId ?? undefined;
     },
-    async setApprovalPreset(agentId, preset) { await call('agent.approvalPreset.set', { target: target(agentId), preset }); },
-    async setPermissionMode(agentId, mode) { await call('agent.permissionMode.set', { target: target(agentId), mode }); },
+    async setPermission(agentId, permission) {
+      if (speaksCurrentDataModel(workspace)) { await call('agent.permission.set', { target: target(agentId), permission }); return; }
+      const provider = companionAgents(workspace).find((agent) => agent.id === agentId)?.provider;
+      if (!provider) throw new Error('Agent is outside the paired scope.');
+      const { method, input } = legacyPermissionCall(provider, permission);
+      await call(method, { target: target(agentId), ...input });
+    },
     async commandStatus(clientCommandId) { return (await call<{ state: CompanionCommandReceipt['state'] | 'notReceived' }>('command.status', { clientCommandId })).state; },
     onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     onUpdate(listener) { updates.add(listener); return () => updates.delete(listener); },

@@ -119,20 +119,20 @@ describe('companion state', () => {
     let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
     let workspace!: CompanionWorkspace;
     let accept!: () => void;
-    const setApprovalPreset = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
+    const setPermission = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
     connector.connect = async id => {
       const session = await connect(id); workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, onUpdate: listener => { update = listener; return () => {}; } };
+      return { ...session, getWorkspace: async () => workspace, setPermission, onUpdate: listener => { update = listener; return () => {}; } };
     };
     const state = createCompanionState(connector);
     const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerDefaults: { kind: 'codex' as const, permission: preset } })) });
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
-      const changing = state.setApprovalPreset('ask-for-approval');
-      expect(state.permissions.value?.approvalPreset).toBe('ask-for-approval');
+      const changing = state.setPermission('ask-for-approval');
+      expect(state.permission.value).toBe('ask-for-approval');
       workspace = policy('ask-for-approval'); update(workspace, null); accept(); await changing;
       workspace = policy('full-access'); update(workspace, null);
-      expect(state.permissions.value?.approvalPreset).toBe('full-access');
+      expect(state.permission.value).toBe('full-access');
     } finally { state.dispose(); }
   });
 
@@ -608,26 +608,27 @@ describe('companion state', () => {
   it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
     let workspace!: CompanionWorkspace;
-    const setApprovalPreset = vi.fn(async () => {
-      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerDefaults: { kind: 'codex', permission: 'full-access' } } : agent) };
+    const setPermission = vi.fn(async (_agentId: string, permission: string) => {
+      if (permission !== 'full-access') throw new Error('refused');
+      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerDefaults: { kind: 'codex', permission } } : agent) };
     });
-    const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
+    const interrupt = vi.fn(async () => {});
     connector.connect = async (id) => {
       const session = await original(id); workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, setPermissionMode, interrupt };
+      return { ...session, getWorkspace: async () => workspace, setPermission, interrupt };
     };
     const state = createCompanionState(connector);
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
-      expect(state.permissions.value).toStrictEqual({ approvalPreset: null, permissionMode: null });
-      state.setApprovalPreset('full-access');
-      expect(state.permissions.value!.approvalPreset).toBe('full-access');
-      expect(setApprovalPreset).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
-      state.setPermissionMode('acceptEdits');
-      expect(state.permissions.value!.permissionMode).toBe('acceptEdits');
-      // Refused: the phone shows the one permission the laptop keeps.
-      await vi.waitFor(() => expect(state.permissions.value!.permissionMode).toBe('full-access'));
-      expect(state.permissions.value!.approvalPreset).toBe('full-access');
+      expect(state.permission.value).toBeNull();
+      await state.setPermission('full-access');
+      expect(state.permission.value).toBe('full-access');
+      expect(setPermission).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
+      const refused = state.setPermission('acceptEdits');
+      expect(state.permission.value).toBe('acceptEdits');
+      // Refused: the phone shows the permission the laptop keeps.
+      await refused;
+      expect(state.permission.value).toBe('full-access');
       state.interrupt();
       expect(interrupt).toHaveBeenCalledExactlyOnceWith('demo-agent');
     } finally { state.dispose(); }

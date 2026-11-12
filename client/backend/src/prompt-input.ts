@@ -1,5 +1,5 @@
 import type { Agent, SendPromptOptions } from '@workspace/core/contracts';
-import { companionSessionId } from '@workspace/core/companion-protocol';
+import { companionSessionId, sameCompanionSession } from '@workspace/core/companion-protocol';
 import { PromptRejectedError } from './agents/prompt-rejected';
 
 /** An absent expectation preserves ordinary desktop prompt behavior; null names a new session. */
@@ -10,7 +10,7 @@ export function requireExpectedSessionId(record: Record<string, unknown>): strin
 }
 
 export function assertPromptSession(agent: Agent, expectedSessionId: string | null | undefined): void {
-  if (expectedSessionId !== undefined && companionSessionId(agent) !== expectedSessionId) throw new PromptRejectedError('Conversation target is stale.');
+  if (expectedSessionId !== undefined && !sameCompanionSession(companionSessionId(agent), expectedSessionId)) throw new PromptRejectedError('Conversation target is stale.');
 }
 
 /** An image or file can be the entire prompt; other string-valued RPC fields still require text. */
