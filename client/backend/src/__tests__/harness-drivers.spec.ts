@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultProviderDrivers } from '../driver-rpc';
-import { createClaudeDriver, reviewScope } from '../harness-drivers';
-import { antigravityGenerationPrompt, sessionHandoff } from '../agents/prompts';
+import { createClaudeDriver, prepareGeneration, reviewScope } from '../harness-drivers';
+import { plainTextGenerationPrompt, sessionHandoff } from '../agents/prompts';
 import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 import { scriptedDriver } from './support/scripted-driver';
 
@@ -55,11 +55,30 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(sessionHandoff.continuation('NOTES')).toContain('NOTES');
   });
 
-  it('words an Antigravity generation itself, since the provider has no structured output or tool switches', () => {
+  it('prepares a background generation the same way for every harness, from what the harness can do', () => {
+    const icons = { name: 'diagram_icons_a1', url: 'http://127.0.0.1:4000/mcp/abc', enabledTools: ['fetch_tech_icon'] };
+    const input = { cwd: '/repo', prompt: 'Write it', developerInstructions: 'Be brief.', outputSchema: { type: 'object' }, mcpServers: [icons], complexity: 'simple' } as never;
+    const prepared = (provider: 'codex' | 'claude' | 'antigravity') => prepareGeneration(provider)({} as never, input) as unknown as Record<string, unknown> & { selectModel: (models: unknown[]) => unknown };
+    // Its own server is trusted, and required, wherever the harness can express that.
+    expect(prepared('codex').mcpServers).toStrictEqual([{ ...icons, approval: 'auto', required: true }]);
+    expect(prepared('claude').mcpServers).toStrictEqual([{ ...icons, approval: 'auto' }]);
+    expect(prepared('antigravity').mcpServers).toStrictEqual([icons]);
+    // A harness with structured output takes the schema and instructions as they are.
+    for (const provider of ['codex', 'claude'] as const) expect(prepared(provider)).toMatchObject({ prompt: 'Write it', developerInstructions: 'Be brief.', outputSchema: { type: 'object' } });
+    // One without it is asked for the same thing in words.
+    expect(prepared('antigravity')).toMatchObject({ prompt: 'Be brief.\n\nReturn only the requested text. The supplied MCP tools are available; workspace tools are disabled.\n\nReturn JSON matching this schema: {"type":"object"}\n\nWrite it' });
+    expect(prepared('antigravity')).not.toHaveProperty('outputSchema');
+    expect(prepared('antigravity').developerInstructions).toBeUndefined();
+    // Every harness picks its model the same way.
+    const model = { id: 'm', model: 'm', displayName: 'M', isDefault: true };
+    for (const provider of ['codex', 'claude', 'antigravity'] as const) expect(prepared(provider).selectModel([model])).toStrictEqual({ model: 'm' });
+  });
+
+  it('asks in words for what a harness without structured output cannot be given', () => {
     const base = { prompt: 'Write it', hasMcpServers: false };
-    expect(antigravityGenerationPrompt({ ...base })).toBe('Return only the requested text. Do not call tools.\n\nWrite it');
-    expect(antigravityGenerationPrompt({ ...base, developerInstructions: 'Be brief.' })).toMatch(/^Be brief\.\n\nReturn only the requested text/);
-    expect(antigravityGenerationPrompt({ ...base, outputSchema: { type: 'object' } })).toContain('Return JSON matching this schema: {"type":"object"}');
+    expect(plainTextGenerationPrompt({ ...base })).toBe('Return only the requested text. Do not call tools.\n\nWrite it');
+    expect(plainTextGenerationPrompt({ ...base, developerInstructions: 'Be brief.' })).toMatch(/^Be brief\.\n\nReturn only the requested text/);
+    expect(plainTextGenerationPrompt({ ...base, outputSchema: { type: 'object' } })).toContain('Return JSON matching this schema: {"type":"object"}');
   });
 
   it('delegates to a worktree through a native fork, or returns null so Korus hands off instead', async () => {

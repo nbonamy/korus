@@ -20,8 +20,8 @@ End with the current objective and status, constraints, unresolved problems, pre
   maxCharacters: handoffMaxCharacters,
 };
 
-/** Antigravity has no native structured output or tool switches, so a generation says what it needs in words. */
-export function antigravityGenerationPrompt(input: { developerInstructions?: string; prompt: string; outputSchema?: unknown; hasMcpServers: boolean }): string {
+/** A harness without structured output is asked in words for what a generation needs: the text only, in the given shape. */
+export function plainTextGenerationPrompt(input: { developerInstructions?: string; prompt: string; outputSchema?: unknown; hasMcpServers: boolean }): string {
   const guidance = input.hasMcpServers ? 'Return only the requested text. The supplied MCP tools are available; workspace tools are disabled.' : 'Return only the requested text. Do not call tools.';
   return [input.developerInstructions, guidance, input.outputSchema ? `Return JSON matching this schema: ${JSON.stringify(input.outputSchema)}` : '', input.prompt].filter(Boolean).join('\n\n');
 }

@@ -13,7 +13,7 @@ import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
 import { utilityTextModel } from './agents/utility-text-model';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
-import { antigravityGenerationPrompt } from './agents/prompts';
+import { plainTextGenerationPrompt } from './agents/prompts';
 import { backendCodexHomeDir, backendHomeDir } from './state';
 import { debugMain, logMain, warnMain } from './log';
 import { resolveCodexLaunch } from './codex/codex-command';
@@ -65,8 +65,9 @@ export const reviewScope = (provider: HarnessProvider) => (url: string) => {
   return { id: url, mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...reviewTools] }] } as never;
 };
 
-const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName'>) =>
-  new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, ...policy });
+/** Every harness gets the same review scope and generation preparation; a harness adds only what is its own. */
+const driver = (provider: Agent['provider'], harness: ReturnType<typeof createHarness>, agents: AgentRegistry, policy: Omit<DriverPolicy, 'agents' | 'displayName' | 'reviewScope' | 'prepareGeneration'> = {}) =>
+  new HarnessAgentDriver(provider, harness, { agents, displayName: agentDisplayName, reviewScope: reviewScope(provider), prepareGeneration: prepareGeneration(provider), ...policy });
 
 function createCursorDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
@@ -78,9 +79,21 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
   });
   return driver('cursor', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'], refreshOnAdmission: true, enableOnSuccess: false } },
-    reviewScope: reviewScope('cursor'),
   });
 }
+
+/**
+ * A background generation, prepared the same way for every harness from what the harness can do: its own server is
+ * trusted and required where that can be expressed, and a harness without structured output is asked in words instead.
+ */
+export const prepareGeneration = (provider: HarnessProvider): NonNullable<DriverPolicy['prepareGeneration']> => (_agent, input) => {
+  const { mcpAutoApproval, mcpRequiredServers, structuredOutput } = defaultProviderCapabilities(provider);
+  const mcpServers = utilityMcpServers(input.mcpServers).map(server => ({ ...server, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}) }));
+  const selectModel = (models: readonly ProviderModelOption[]) => utilityTextModel(provider, models, input.complexity);
+  if (structuredOutput) return { ...input, mcpServers, selectModel } as never;
+  const { outputSchema, developerInstructions, ...rest } = input;
+  return { ...rest, mcpServers, selectModel, prompt: plainTextGenerationPrompt({ developerInstructions, prompt: input.prompt, outputSchema, hasMcpServers: mcpServers.length > 0 }) } as never;
+};
 
 export function createAntigravityDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const agents = new AgentRegistry();
@@ -91,12 +104,6 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
   });
   return driver('antigravity', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    reviewScope: reviewScope('antigravity'),
-    prepareGeneration: (_agent, input) => {
-      const { outputSchema, ...rest } = input;
-      const mcpServers = utilityMcpServers(input.mcpServers);
-      return { ...rest, mcpServers, prompt: antigravityGenerationPrompt({ developerInstructions: input.developerInstructions, prompt: input.prompt, outputSchema, hasMcpServers: mcpServers.length > 0 }), developerInstructions: undefined, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('antigravity', models, input.complexity) };
-    },
   });
 }
 
@@ -106,14 +113,10 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
   const harness = make('claude', { ...common(options, agents),
     client: { name: product.name, title: product.name, metadataDirectory: 'korus-sessions', entrypoint: product.slug, clientApp: 'agent-workspace' },
     ...(options.homeDir ? { home: options.homeDir } : {}),
-    generationMcpServers: value => utilityMcpServers(value as never).map(server => ({ ...server, approval: 'auto' as const })),
     claude: { launch: (command, env) => resolveClaudeLaunch(command, env), decideTool: tool => tool === 'ExitPlanMode' ? { behavior: 'deny' as const, message: `${product.name} captured the proposed plan. Wait for the user to review or request implementation.` } : undefined, disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] },
   });
   void settings;
-  return driver('claude', harness, agents, {
-    reviewScope: reviewScope('claude'),
-    prepareGeneration: (_agent, input) => ({ ...input, selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('claude', models, input.complexity) }),
-  });
+  return driver('claude', harness, agents);
 }
 
 /** The Harness options Korus runs Codex with. */
@@ -160,8 +163,6 @@ export function createCodexDriver(options: Options = {}, make: HarnessFactory = 
   const harness = make('codex', codexHarnessOptions(options, agents));
   return driver('codex', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
-    reviewScope: reviewScope('codex'),
-    prepareGeneration: (_agent, input) => ({ ...input, mcpServers: utilityMcpServers(input.mcpServers).map(server => ({ ...server, approval: 'auto' as const, required: true })), selectModel: (models: readonly ProviderModelOption[]) => utilityTextModel('codex', models, input.complexity) }),
   });
 }
 
