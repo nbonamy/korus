@@ -128,6 +128,8 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     if (change === 'opt-out') enabled = false;
     if (change === 'session') agent.providerSession = { kind: 'cursor', sessionId: 'different-session' };
     if (change === 'workspace') agent.folder = path.dirname(root);
+    // The record is re-stated to the harness by the next call made for the agent, as any real change is followed by one.
+    if (change === 'session' || change === 'workspace') host.getCapabilities(agent);
     if (change === 'release') await host.releaseConversation!(agent.id);
     if (change === 'close') await host.close();
     if (change === 'account') {

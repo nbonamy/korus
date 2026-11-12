@@ -157,13 +157,20 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   }
 
   /** The Harness session for an agent, with Korus's stored identity, folder and defaults re-stated so the provider enforces its own checks against them. */
-  private async session(agent: Agent): Promise<Session> {
+  private async session(agent: Agent): Promise<Session> { return this.peek(agent); }
+  /** The current session for an agent without reopening, for synchronous reads such as capabilities. */
+  private peek(agent: Agent): Session {
     this.policy.agents?.set(agent);
     this.latest.set(agent.id, agent);
-    return this.sessions.get(agent.id) ?? this.openFor(agent);
+    const session = this.sessions.get(agent.id);
+    if (!session) return this.openFor(agent);
+    this.restate(session, agent);
+    return session;
   }
-  /** The current session for an agent without reopening, for synchronous reads such as capabilities. */
-  private peek(agent: Agent): Session { this.policy.agents?.set(agent); this.latest.set(agent.id, agent); return this.sessions.get(agent.id) ?? this.openFor(agent); }
+  /** Tells the harness what the agent's record says now: the record is the authority on its conversation, folder, name and defaults. */
+  private restate(session: Session, agent: Agent): void {
+    this.harness.syncSession(session, { data: agent.providerSession ?? null, folder: agent.folder ?? null, name: this.nameOf(agent), defaults: defaultsOf(agent.providerDefaults) ?? {} });
+  }
   private openFor(agent: Agent): Session {
     const stored = agent.providerSession;
     if (stored && stored.kind !== this.provider) throw new Error(`${providerDisplayName(this.provider)} conversation identity mismatch: it cannot use another provider conversation.`);
@@ -171,7 +178,6 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const session = stored
       ? this.harness.restoreSession(context, { provider: this.provider, data: stored, ...(context.defaults ? { defaults: context.defaults } : {}), role: 'main' } satisfies SessionData)
       : this.harness.open(context);
-    this.harness.bindSession(session, () => { const current = this.latest.get(agent.id) ?? agent; return { data: current.providerSession ?? null, folder: current.folder ?? null, name: this.nameOf(current), defaults: defaultsOf(current.providerDefaults) ?? {} }; });
     this.owners.set(session, agent.id);
     this.sessions.set(agent.id, session);
     return session;
