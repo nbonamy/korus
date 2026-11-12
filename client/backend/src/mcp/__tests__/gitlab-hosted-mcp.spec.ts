@@ -10,7 +10,7 @@ import { GitLabWorkProviderDriver } from '../../work-integrations/gitlab-driver'
 import { GitHubWorkProviderDriver } from '../../work-integrations/github-driver';
 import { HostedMcpGateway } from '../hosted-mcp-gateway';
 import { AppBackendServer } from '../../server';
-import { buildAppThreadConfig } from '../codex-config';
+import { codexOptions } from '../../__tests__/support/codex-options';
 
 const nativeFetch = fetch;
 const managers: WorkIntegrationManager[] = [];
@@ -60,7 +60,7 @@ it('requires an explicit MCP grant upgrade, restores it and supplies only local 
   expect(await tokenStore.get('gitlab')).toMatchObject({ scope: 'api mcp' });
   const urls = gateway.enabledServerUrls('http://127.0.0.1:4321/mcp');
   expect(urls).toStrictEqual({ github: 'http://127.0.0.1:4321/mcp/providers/github', gitlab: 'http://127.0.0.1:4321/mcp/providers/gitlab' });
-  const config = buildAppThreadConfig(snapshot.agents[0]!, 'http://127.0.0.1:4321/mcp', undefined, {}, urls);
+  const config = await codexOptions({ appMcpServerUrl: 'http://127.0.0.1:4321/mcp', hostedMcpServerUrls: () => urls }).configure(snapshot.agents[0]!);
   expect(config.config).toHaveProperty('mcp_servers.gitlab.url', `http://127.0.0.1:4321/mcp/providers/gitlab?agentId=${snapshot.agents[0]!.id}`);
   expect(config.config).not.toHaveProperty('mcp_servers.gitlab.default_tools_approval_mode');
   expect(JSON.stringify([config, snapshot])).not.toMatch(/gitlab-secret|github-secret|rotated-secret|upgraded-secret|device-secret|Bearer /);

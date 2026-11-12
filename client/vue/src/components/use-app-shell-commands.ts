@@ -4,13 +4,13 @@ import { showGithubStarPromptPreview } from '../github-star-prompt';
 import type {
   Agent,
   AppCommand,
-  BackendApprovalRequest,
+  ProviderApprovalRequest,
   RemoteConnection,
   SidePanelMarkdownRequest,
   Team,
 } from '@workspace/core/contracts';
-import { getCodexNativeRendererApi, type CodexComposerState, type CodexNativeAttachment } from '@codex-app-sdk/vue';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { getNativeRendererApi, type ComposerState, type NativeAttachment } from '@korus-dev/agent-ui-sdk';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { translate } from '../i18n';
@@ -21,7 +21,7 @@ import type { RightWorkspaceTab } from './right-workspace';
 
 type DebugApproval = {
   agentId: string;
-  request: BackendApprovalRequest;
+  request: ProviderApprovalRequest;
 };
 
 type AppShellCommandOptions = {
@@ -31,7 +31,7 @@ type AppShellCommandOptions = {
     quickSwitchAgentIds: () => string[];
     agents: () => Agent[];
     attachmentsEnabled: () => boolean;
-    composerAttachments: () => readonly CodexNativeAttachment[];
+    composerAttachments: () => readonly NativeAttachment[];
     currentAgent: () => Agent | null;
     canReplaceConversation?: () => boolean;
     isAgentWorkspaceVisible: () => boolean;
@@ -83,8 +83,8 @@ type AppShellCommandOptions = {
     showDebugUserQuestions: (agentId: string) => void;
     showDebugProviderSafetyBlock?: (agentId: string) => void;
     toggleSpokenAnnouncementsMuted: () => void;
-    updateComposerAttachments: (agentId: string, attachments: readonly CodexNativeAttachment[]) => void;
-    updateComposerState: (agentId: string, state: CodexComposerState) => void;
+    updateComposerAttachments: (agentId: string, attachments: readonly NativeAttachment[]) => void;
+    updateComposerState: (agentId: string, state: ComposerState) => void;
   };
 };
 
@@ -500,7 +500,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'compress-active-session') {
       if (!isAgentWorkspaceVisible.value || !currentAgent.value) return;
-      if (options.state.canReplaceConversation?.() ?? defaultBackendCapabilities(currentAgent.value.backend).conversationReplaceWithSummary) {
+      if (options.state.canReplaceConversation?.() ?? defaultProviderCapabilities(currentAgent.value.provider).scopedExecution) {
         options.actions.replaceConversationWithSummary(currentAgent.value.id);
       }
       return;
@@ -508,7 +508,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'compact-active-session') {
       if (!isAgentWorkspaceVisible.value || !currentAgent.value) return;
-      if (currentAgent.value.status.type === 'idle' && currentAgent.value.backendSession) {
+      if (currentAgent.value.status.type === 'idle' && currentAgent.value.providerSession) {
         options.actions.compactSession(currentAgent.value.id);
       }
       return;
@@ -540,7 +540,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'fork-active-agent') {
       const agent = currentAgent.value;
-      if (isAgentWorkspaceVisible.value && agent?.status.type === 'idle' && agent.backendSession) {
+      if (isAgentWorkspaceVisible.value && agent?.status.type === 'idle' && agent.providerSession) {
         options.actions.forkAgent(agent.id);
       }
       return;
@@ -567,7 +567,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
   async function attachAppshot(command: Extract<AppCommand, { type: 'attach-appshot' }>): Promise<void> {
     const agent = currentAgent.value;
-    const nativeApi = getCodexNativeRendererApi();
+    const nativeApi = getNativeRendererApi();
     if (!agent || !nativeApi || !options.state.attachmentsEnabled()) {
       ElMessage.error(translate('surface.appShell.selectAnAgentThatSupportsImageAttachmentsBeforeTakingAnA'));
       return;

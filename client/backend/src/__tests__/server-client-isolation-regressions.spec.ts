@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import type { AppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { createTestSnapshot, createRemoteAgent, createRemoteTeamSnapshot, readyRemoteConnection } from './server-test-fixtures';
 
 describe('client isolation regressions', () => {
   it.each(['agent/quickChat/create', 'agent/create'])('resolves omitted teams from each client before routing %s locally or remotely', async (method) => {
     const remoteSnapshot = createRemoteTeamSnapshot();
-    const daemon = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: new BackendDriverRpc(new Map()) });
+    const daemon = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: new ProviderDriverRpc(new Map()) });
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
@@ -21,11 +21,11 @@ describe('client isolation regressions', () => {
       if (result && 'result' in result) return result.result;
       throw new Error(JSON.stringify(result));
     });
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map()), remoteClients: { request, close: vi.fn() } as never });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map()), remoteClients: { request, close: vi.fn() } as never });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'client/navigation/selectTeam', params: { _clientId: 'remote-client', teamId: 'pointer' } });
       await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'client/navigation/selectTeam', params: { _clientId: 'local-client', teamId: 'local-other' } });
-      const input = method === 'agent/create' ? { name: 'New', folder: '/tmp', selection: { backend: 'codex' } } : {};
+      const input = method === 'agent/create' ? { name: 'New', folder: '/tmp', selection: { provider: 'codex' } } : {};
       const results = await Promise.all(['remote-client', 'local-client'].map((_clientId) => server.handleMessage({ jsonrpc: '2.0', id: _clientId, method, params: { _clientId, input: _clientId === 'remote-client' ? { ...input, remoteConnectionId: connection.id } : input } })));
       expect(results[0]).toMatchObject({ result: { activeTeamId: 'pointer' } });
       expect(results[1]).toMatchObject({ result: { activeTeamId: 'local-other' } });
@@ -68,12 +68,12 @@ describe('client isolation regressions', () => {
     const remoteSnapshot = createRemoteTeamSnapshot([agent]);
     let emit!: (event: BackendEvent) => void;
     const handle = vi.fn(async () => {
-      emit({ type: 'agentRequest.resolved', agentId: agent.id, backend: 'codex', conversationId: 'conversation', payload: { id: '0', outcome: { kind: 'cancelled' } } });
+      emit({ type: 'agentRequest.resolved', agentId: agent.id, provider: 'codex', conversationId: 'conversation', payload: { id: '0', outcome: { kind: 'cancelled' } } });
     });
     const daemon = new AppBackendServer({ version: 'test', snapshot: remoteSnapshot, driverRpc: {
       onEvent: (listener: typeof emit) => { emit = listener; return () => undefined; }, handle, close: vi.fn(),
     } as never });
-    emit({ type: 'agentRequest.created', agentId: agent.id, backend: 'codex', payload: { request: {
+    emit({ type: 'agentRequest.created', agentId: agent.id, provider: 'codex', payload: { request: {
       id: '0', conversationId: 'conversation', kind: 'question', question: { itemId: 'item', delivery: 'async', blocking: false, questions: [] },
     } } });
     const snapshot = createTestSnapshot();
@@ -93,7 +93,7 @@ describe('client isolation regressions', () => {
         _clientId: 'A', response: { agentId: agent.id, id: '0', outcome: { kind: 'cancelled' } },
       } });
       expect(result).toHaveProperty('result');
-      expect(handle).toHaveBeenCalledWith('driver/agentRequest/respond', { backend: 'codex', response: { agentId: agent.id, id: '0', outcome: { kind: 'cancelled' } } });
+      expect(handle).toHaveBeenCalledWith('driver/agentRequest/respond', { provider: 'codex', response: { agentId: agent.id, id: '0', outcome: { kind: 'cancelled' } } });
       expect(remoteSnapshot.agentRequests?.[agent.id]).toEqual([]);
       expect(snapshot.activeTeamId).toBe('team-test');
       expect(snapshot.activeAgentId).toBeNull();

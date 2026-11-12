@@ -23,8 +23,8 @@ async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-usage-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
-  snapshot.providerConnections = ['codex', 'claude', 'antigravity', 'cursor'].map(backend => ({
-    backend, installed: true, enabled: true, connected: true, checking: false,
+  snapshot.providerConnections = ['codex', 'claude', 'antigravity', 'cursor'].map(provider => ({
+    provider: provider, installed: true, enabled: true, connected: true, checking: false,
   })) as typeof snapshot.providerConnections;
   const limits = { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null };
   const request = vi.fn(async (method: string, _params?: unknown): Promise<unknown> => {
@@ -46,22 +46,22 @@ describe('companion usage from the paired laptop', () => {
   it('reads the quota providers shipped mobile clients can display and isolates failures by provider', async () => {
     const f = await fixture();
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([
-      { backend: 'codex', limits: f.limits, failed: false }, { backend: 'claude', limits: f.limits, failed: false },
+      { provider: 'codex', limits: f.limits, failed: false }, { provider: 'claude', limits: f.limits, failed: false },
     ]);
     expect(f.request.mock.calls.filter(([method]) => method === backendMethods.providerUsageGet).map(([, params]) => params))
-      .toStrictEqual([{ backend: 'codex' }, { backend: 'claude' }]);
+      .toStrictEqual([{ provider: 'codex' }, { provider: 'claude' }]);
     f.request.mockImplementation(async (method, params) => {
       if (method === backendMethods.snapshotGet) return { snapshot: f.snapshot };
-      if ((params as { backend: string }).backend === 'claude') throw new Error('Provider unavailable');
+      if ((params as { provider: string }).provider === 'claude') throw new Error('Provider unavailable');
       return null;
     });
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([
-      { backend: 'codex', limits: null, failed: false }, { backend: 'claude', limits: null, failed: true },
+      { provider: 'codex', limits: null, failed: false }, { provider: 'claude', limits: null, failed: true },
     ]);
-    f.snapshot.providerConnections!.find(item => item.backend === 'codex')!.authentication = {
-      kind: 'codex', connected: true, state: { account: { type: 'apiKey' }, requiresOpenaiAuth: false, login: { status: 'idle', error: null } },
+    f.snapshot.providerConnections!.find(item => item.provider === 'codex')!.authentication = {
+      kind: 'codex', connected: true, state: { account: { type: 'apiKey' }, requiresOpenaiAuth: false, login: { status: 'idle', error: null } }, account: { kind: 'apiKey' },
     };
-    f.snapshot.providerConnections!.find(item => item.backend === 'claude')!.enabled = false;
+    f.snapshot.providerConnections!.find(item => item.provider === 'claude')!.enabled = false;
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([]);
   });
 

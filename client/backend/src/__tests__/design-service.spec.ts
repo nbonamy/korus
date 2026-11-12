@@ -198,7 +198,7 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
   const store = new AppStateStore(directory);
   const snapshot = createInitialSnapshot();
   const agentId = snapshot.agents[0].id;
-  snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'original' };
+  snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'original' };
   let service = new DesignService({ capture: async () => 'data:image/png;base64,YQ==', snapshot, persist: () => store.save(snapshot), publish: () => undefined });
   const run = (request: DesignRequest) => service.execute(agentId, request);
   await run({ type: 'open' });
@@ -237,14 +237,14 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
   await writeFile(path.join(directory, 'acceptance.html'), exported.html!);
   expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
   await expect(run({ type: 'create', content })).rejects.toThrow('already');
-  delete reloaded.agents[0].backendSession;
+  delete reloaded.agents[0].providerSession;
   await expect(run({ type: 'read' })).resolves.toMatchObject({ workspace: { document: { revision: 6 } } });
   const resumed = await run({ type: 'comment', expectedRevision: 6, nodeId: 'heading', text: 'Continue from my saved design.' });
   expect(resumed.workspace.conversationRef).toBeNull();
-  reloaded.agents[0].backendSession = { kind: 'codex', threadId: 'recovered-session' };
+  reloaded.agents[0].providerSession = { kind: 'codex', conversationId: 'recovered-session' };
   await run({ type: 'edit', expectedRevision: 7, edits: [{ type: 'text', nodeId: 'cta', text: 'Recovered agent edit' }] });
   expect((await run({ type: 'read' })).workspace.document!.content.artboards[0].root.children![0].text).toBe('Written by me');
-  reloaded.agents[0].backendSession = { kind: 'codex', threadId: 'different' };
+  reloaded.agents[0].providerSession = { kind: 'codex', conversationId: 'different' };
   await expect(run({ type: 'edit', expectedRevision: 7, edits: [{ type: 'text', nodeId: 'cta', text: 'Wrong conversation' }] })).rejects.toThrow('conversation');
 });
 

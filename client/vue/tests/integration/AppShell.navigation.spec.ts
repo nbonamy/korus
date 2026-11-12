@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
-  CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
+  NativeRendererApi,
+} from '@korus-dev/agent-ui-sdk';
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -41,7 +41,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 describe('AppShell navigation and teams', () => {
@@ -289,7 +289,7 @@ describe('AppShell navigation and teams', () => {
 
   it('falls back when backend runtime status is missing', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes = [];
+    snapshot.providerRuntimes = [];
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
@@ -435,7 +435,7 @@ describe('AppShell navigation and teams', () => {
       expect(wrapper.emitted('select-agent')?.at(-1)).toEqual([other.id]);
       selectAgent(snapshot, other.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
-      expect(wrapper.getComponent({ name: 'ConversationPane' }).props('agent').id).toBe(other.id);
+      expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(other.id);
       expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
       await sidebar().findAll('[data-group-kind="missions"] .agent-sidebar__agent').find(row => row.text().includes(otherMission.outcome))!.trigger('click');
       selectAgent(snapshot, worker.id);
@@ -447,7 +447,7 @@ describe('AppShell navigation and teams', () => {
       selectAgent(snapshot, other.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
       expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
-      expect(wrapper.getComponent({ name: 'ConversationPane' }).props('agent').id).toBe(other.id);
+      expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(other.id);
       await wrapper.get('.team-rail [aria-label^="Other team"]').trigger('click');
       expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('Other team');
       expect(sidebar().find('[data-activity-group]').exists()).toBe(false);
@@ -478,7 +478,7 @@ describe('AppShell navigation and teams', () => {
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{
@@ -488,7 +488,7 @@ describe('AppShell navigation and teams', () => {
         completedAt: '2026-06-09T10:01:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { backend: 'codex', threadId: 'thread-jesse' },
+        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { provider: 'codex', conversationId: 'thread-jesse' },
       }],
       createdAt: '2026-06-09T09:59:00.000Z',
       updatedAt: '2026-06-09T10:01:00.000Z',
@@ -516,7 +516,7 @@ describe('AppShell navigation and teams', () => {
     await wrapper.get('[aria-label="View conversation for automation-exec-1"]').trigger('click');
     await flushPromises();
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-jesse' }, 'agent-jesse');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-jesse' }, 'agent-jesse');
     expect(wrapper.emitted('select-agent')).toBeUndefined();
     expect(wrapper.find('.automations-view').exists()).toBe(true);
     expect(wrapper.find('.automation-execution-conversation-overlay').exists()).toBe(true);

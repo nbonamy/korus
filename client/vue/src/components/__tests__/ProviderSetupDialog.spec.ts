@@ -5,12 +5,12 @@ import ProviderSetupDialog from '../ProviderSetupDialog.vue';
 
 describe('ProviderSetupDialog', () => {
   it.each([
-    { backend: 'cursor' as const },
-    { backend: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false } } },
-  ])('honors fixed-home setup policy for $backend, including saved private contexts', async ({ backend, capabilities }) => {
+    { provider: 'cursor' as const },
+    { provider: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false } } },
+  ])('honors fixed-home setup policy for $backend, including saved private contexts', async ({ provider: backend, capabilities }) => {
     for (const isolated of [false, true]) {
       const wrapper = mount(ProviderSetupDialog, { props: {
-        setup: { backend, capabilities, installed: true, isolated, shareSkills: false, homePath: '/provider', locked: false },
+        setup: { provider: backend, capabilities, installed: true, isolated, shareSkills: false, homePath: '/provider', locked: false },
         busy: false, error: null,
       }, global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } } });
       expect(wrapper.findAll('input[type="radio"]')).toHaveLength(0);
@@ -23,7 +23,7 @@ describe('ProviderSetupDialog', () => {
   });
 
   it.each([undefined, { homeSelection: false, skillSharing: true, installation: { managed: false } }])('lets Settings change skills reuse independently of home selection (%j)', async capabilities => {
-    const setup = { backend: 'codex' as const, capabilities, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
+    const setup = { provider: 'codex' as const, capabilities, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one'] };
     const wrapper = mount(ProviderSetupDialog, {
       props: { setup, allowReset: true, busy: false, error: null },
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
@@ -37,7 +37,7 @@ describe('ProviderSetupDialog', () => {
     expect(wrapper.find('.provider-setup__acknowledgment').exists()).toBe(false);
   });
   it('requires a separate acknowledgment before removing the exact displayed roster, and Cancel makes no change', async () => {
-    const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one', 'quick-chat'] };
+    const setup = { provider: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: ['agent-one', 'quick-chat'] };
     const wrapper = mount(ProviderSetupDialog, {
       props: { setup, allowReset: true, busy: false, error: null },
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
@@ -61,7 +61,7 @@ describe('ProviderSetupDialog', () => {
   it('offers existing setup first while retaining the selected separate setup and skills when a CLI is missing', async () => {
     const wrapper = mount(ProviderSetupDialog, {
       attachTo: document.body,
-      props: { setup: { backend: 'claude', installed: false, isolated: true, shareSkills: true, homePath: '/app/claude-home', locked: false }, busy: false, error: null },
+      props: { setup: { provider: 'claude', installed: false, isolated: true, shareSkills: true, homePath: '/app/claude-home', locked: false }, busy: false, error: null },
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
     });
     expect(getComputedStyle(wrapper.getComponent(ElRadioGroup).element).flexDirection).toBe('column');

@@ -74,7 +74,7 @@ export class MissionWorkspaceService {
         agentId = handle?.id ?? createEntityId('agent');
         if (!handle) createAgentInSnapshot(this.ports.snapshot, {
           name: `Delivery · ${basename(workspace.repositoryPath)}`, teamId: execution.teamId,
-          folder: workspace.path, selection: { backend: lead.backend },
+          folder: workspace.path, selection: { provider: lead.provider },
         }, undefined, agentId, { select: false });
       }
       return { repositoryPath: workspace.repositoryPath, agentId, status: 'pending' };

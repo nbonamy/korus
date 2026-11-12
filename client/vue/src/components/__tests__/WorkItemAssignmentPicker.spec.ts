@@ -1,8 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import { describe, expect, it, vi } from 'vitest';
-import { backendModelCatalogKey } from '../backend-model-catalog';
+import { providerModelCatalogKey } from '../provider-model-catalog';
 import { ElPopover } from 'element-plus';
 import type { WorkItem } from '@workspace/core/contracts';
 import WorkItemAssignmentPicker from '../WorkItemAssignmentPicker.vue';
@@ -33,8 +33,8 @@ describe('WorkItemAssignmentPicker', () => {
       props: { item: issue, branchName: 'fix/gh-24', modelAgentId: 'agent-main' },
       slots: { default: '<p class="issue-body">Issue body</p>' },
       global: { components: { ElPopover }, provide: {
-        [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-        [backendModelCatalogKey as symbol]: { listModels },
+        [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']),
+        [providerModelCatalogKey as symbol]: { listModels },
       } },
     });
     await vi.waitFor(() => expect(listModels).toHaveBeenCalledWith('agent-main', 'codex'));
@@ -53,7 +53,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } },
+      { action: 'fix', destination: 'new', item: issue, selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } },
     ]]);
   });
 
@@ -64,7 +64,7 @@ describe('WorkItemAssignmentPicker', () => {
         branchName: 'fix/gh-24',
         sessions: [{ agentId: 'agent-main', label: 'main · main' }],
       },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
 
     const destinationButtons = wrapper.findAll('.work-item-assignment-picker__target-options button');
@@ -86,7 +86,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
+      { action: 'fix', destination: 'new', item: issue, selection: { provider: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
     await destinationButtons[1]!.trigger('click');
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
@@ -164,7 +164,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
+      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
   });
 });

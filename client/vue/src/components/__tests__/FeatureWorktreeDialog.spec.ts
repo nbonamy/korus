@@ -142,7 +142,7 @@ describe('FeatureWorktreeDialog in agent mode', () => {
       createAgent: vi.fn().mockResolvedValue({ id: 'agent-1' }),
       createWorktree: vi.fn().mockResolvedValue({ name: 'feature-login', path: '/work/feature-login' }),
       listBranches: vi.fn().mockResolvedValue(branches),
-      backendForHost: vi.fn().mockReturnValue('codex'),
+      providerForHost: vi.fn().mockReturnValue('codex'),
     };
   }
 

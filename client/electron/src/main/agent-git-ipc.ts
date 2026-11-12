@@ -1,4 +1,4 @@
-import { TypedIpcMain } from '@codex-app-sdk/electron';
+import { TypedIpcMain } from '@korus-dev/agent-ui-sdk/electron';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { requestAppBackend } from '@workspace/core/backend-protocol/rpc';
 import { ipcChannels, type AppIpcRequests } from '@workspace/core/ipc';

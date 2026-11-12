@@ -5,7 +5,7 @@ import { computed, nextTick, ref } from 'vue';
 import { computerUseLockKey } from '../computer-use-lock';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TeamRail from '../TeamRail.vue';
-import type { AccountRateLimits, AgentBackend, RemoteConnection, Team } from '@workspace/core/contracts';
+import type { AppSnapshot, HarnessProvider, RemoteConnection, Team } from '@workspace/core/contracts';
 import { setElectronTestClient } from '../../../tests/support/client';
 
 let mountedWrappers: ReturnType<typeof mount>[] = [];
@@ -388,8 +388,8 @@ describe('TeamRail', () => {
     const wrapper = mountRail({
       teams,
       activeTeamId: 'team-sk',
-      enabledBackends: ['codex'],
-      rateLimits: {
+      enabledProviders: ['codex'],
+      providerRateLimits: { codex: {
         limitId: 'codex',
         limitName: 'Codex',
         primary: {
@@ -406,7 +406,7 @@ describe('TeamRail', () => {
         individualLimit: null,
         planType: 'pro',
         rateLimitReachedType: null,
-      },
+      } },
     });
 
     expect(wrapper.find('[aria-label="5 hour"]').exists()).toBe(true);
@@ -523,8 +523,8 @@ function mountRail(props: {
   backlogActive?: boolean;
   cockpitActive?: boolean;
   automationsActive?: boolean;
-  rateLimits?: AccountRateLimits;
-  enabledBackends?: AgentBackend[];
+  providerRateLimits?: AppSnapshot['providerAccountRateLimits'];
+  enabledProviders?: HarnessProvider[];
   settingsActive?: boolean;
   agentSidebarExpanded?: boolean;
   spokenAnnouncementsEnabled?: boolean;

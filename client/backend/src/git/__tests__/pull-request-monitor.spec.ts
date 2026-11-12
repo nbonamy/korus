@@ -146,7 +146,7 @@ function trackedAgent(id: string): Agent {
     teamId: 'team-app',
     name: id,
     folder: `/src/${id}`,
-    backend: 'codex',
+    provider: 'codex',
     status: { type: 'idle' },
     pullRequest: {
       provider: 'github',

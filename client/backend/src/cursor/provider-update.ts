@@ -10,7 +10,7 @@ export class CursorUpdateAdapter implements ProviderUpdateAdapter {
   async inspect(): Promise<ProviderInstallation> {
     const runtime = cursorRuntime(this.home?.());
     const executable = this.io.resolve('agent') ?? this.io.resolve('cursor-agent');
-    if (!executable) return { status: 'unavailable', backend: 'cursor', method: 'manual', identity: 'cursor:missing' };
+    if (!executable) return { status: 'unavailable', provider: 'cursor', method: 'manual', identity: 'cursor:missing' };
     const resolved = await this.io.realpath(executable);
     const about: unknown = JSON.parse(await this.io.run(executable, ['about', '--format', 'json'], 15_000, cursorEnvironment(false, runtime)));
     if (!about || typeof about !== 'object' || !('cliVersion' in about) || !('latestStatus' in about)
@@ -22,7 +22,7 @@ export class CursorUpdateAdapter implements ProviderUpdateAdapter {
     // Native installer targets HOME/.local, independently of the running executable.
     // A private HOME would install a second CLI rather than upgrade the detected one.
     const command = latestVersion && !runtime.isolated ? { file: executable, args: ['update'] } : undefined;
-    return { status: cursorUpdateStatus(about.cliVersion, latestVersion), backend: 'cursor', executable, version: about.cliVersion, latestVersion, method: 'native',
+    return { status: cursorUpdateStatus(about.cliVersion, latestVersion), provider: 'cursor', executable, version: about.cliVersion, latestVersion, method: 'native',
       identity: JSON.stringify([resolved, about.cliVersion, about.latestStatus, latestVersion, runtime.homePath, runtime.isolated]), command };
   }
 

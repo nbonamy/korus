@@ -71,7 +71,7 @@ transcript.
 Return results with `structuredToolResult()` (stable keys such as `success`,
 `kind`, `message`). Korus does not persist arbitrary tool input and output, since
 provider payloads can contain large output, screenshots, file content or secrets.
-`client/backend/src/codex/codex-surface-adapter.ts` projects an **allowlist** of
+`client/backend/src/codex/codex-host-adapter.ts` projects an **allowlist** of
 presentation-safe keys before messages enter state. To surface a new value: use a
 small scalar or bounded object, add only that key to the projection, add a
 real-shape adapter regression proving it survives live and hydrated history, and
@@ -115,7 +115,7 @@ guaranteed: the result confirms `requested`, not `displayed`.
 One focused test per seam crossed: registration/schema/routing
 (`client/backend/src/mcp/__tests__/tools.spec.ts`), domain behavior
 (`agent-coordinator.spec.ts`), snapshot mutation, events and client effects
-(`service.spec.ts`), bounded projection (`codex-surface-adapter.spec.ts`), durable
+(`service.spec.ts`), bounded projection (`codex-host-adapter.spec.ts`), durable
 reducers (`core/src/__tests__`), titles and icons
 (`client/vue/src/__tests__/tool-title-presenter.spec.ts`, `tool-presentation.spec.ts`), and
 component or app-state tests for visible effects. Start with the smallest red test.

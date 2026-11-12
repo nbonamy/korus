@@ -144,6 +144,10 @@ export type AppBackendRequestMap = {
     params: { agent: import('../contracts').Agent };
     result: { supported: boolean };
   };
+  [backendMethods.driverConversationUnarchive]: {
+    params: { agent: import('../contracts').Agent };
+    result: { supported: boolean };
+  };
   [backendMethods.driverConversationDelete]: {
     params: { agent: import('../contracts').Agent };
     result: { supported: boolean };
@@ -210,7 +214,7 @@ export type AppBackendRequestMap = {
   };
   [backendMethods.collaborationPromptSend]: {
     params: { agentId: string; prompt: string; goal?: boolean; planMode?: boolean };
-    result: import('../backend-driver').BackendSendResult;
+    result: import('../provider-driver').ProviderSendResult;
   };
   [backendMethods.collaborationMessageSend]: {
     params: { agentId: string; messageId: string; prompt: string };

@@ -7,12 +7,12 @@ import { PromptRejectedError } from '../../agents/prompt-rejected';
 import { appRpcErrorCodes } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { Agent } from '@workspace/core/contracts';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { companionTarget } from '@workspace/core/companion-protocol';
 import { createMission } from '@workspace/core/missions';
 import { AppBackendServer } from '../../server';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { CompanionManager, type CompanionBackendPort } from '../manager';
 import type { CompanionGateway } from '../gateway';
@@ -33,26 +33,26 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
   const agent = {
-    id: 'agent-phone', teamId: 'team-test', name: 'Phone', backend: 'codex' as const,
+    id: 'agent-phone', teamId: 'team-test', name: 'Phone', provider: 'codex' as const,
     folder: '/workspace/phone', status: { type: status },
-    backendSession: { kind: 'codex' as const, threadId: 'thread-phone' },
+    providerSession: { kind: 'codex' as const, conversationId: 'thread-phone' },
     createdAt: '', updatedAt: '',
   };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
-  const result = { backendSession: agent.backendSession, turnId: 'turn-phone' };
+  const result = { providerSession: agent.providerSession, turnId: 'turn-phone' };
   const sendPrompt = vi.fn(async () => result);
   const steerPrompt = vi.fn(async () => { if (rejectSteer) throw new Error('Steering failed'); return result; });
-  const driver: AgentBackendDriver = {
-    backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-    getCapabilities: () => codexBackendCapabilities, sendPrompt, steerPrompt,
+  const driver: AgentProviderDriver = {
+    provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+    getCapabilities: () => codexProviderCapabilities, sendPrompt, steerPrompt,
     listPlugins: async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }],
     listSkills: async () => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }],
     interrupt: async () => result, respondToAgentRequest: async () => undefined,
     onEvent: () => () => undefined, close: async () => undefined,
   };
-  const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])) });
+  const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
   cleanup.push(() => server.close());
-  const backend: CompanionBackendPort = {
+  const provider: CompanionBackendPort = {
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       if ([backendMethods.agentPromptSteer, backendMethods.agentPromptSend, backendMethods.agentQueuedPromptSteer, backendMethods.agentQueuedPromptDelete].includes(method as never)) beforeDispatch?.(agent);
       const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
@@ -61,14 +61,14 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
       return response.result as Result;
     },
   };
-  const initial = new CompanionManager(directory, backend, {});
+  const initial = new CompanionManager(directory, provider, {});
   const { status: host } = await initial.control({ action: 'status' });
   await initial.stop();
   const file = path.join(directory, 'companions.json');
   const saved = JSON.parse(await readFile(file, 'utf8'));
   saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
   await writeFile(file, JSON.stringify(saved));
-  const manager = new CompanionManager(directory, backend, {});
+  const manager = new CompanionManager(directory, provider, {});
   cleanup.push(() => manager.stop());
   await manager.control({ action: 'status' });
   return { gateway: transport.gateway!, snapshot, sendPrompt, steerPrompt,
@@ -97,7 +97,7 @@ describe('mobile prompt admission', () => {
   });
 
   it.each(['steer', 'delete'] as const)('rechecks the session at the backend before a queued %s', async action => {
-    const f = await fixture('working', false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' }];
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(1);
@@ -130,7 +130,7 @@ describe('mobile prompt admission', () => {
     f.snapshot.queuedPrompts = [{ id: 'other', createdAt: '', agentId: 'another-agent', text: 'Private queue' }];
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'other' })).rejects.toThrow();
     f.snapshot.queuedPrompts!.push({ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' });
-    f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'replacement' };
+    f.snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(2);
     expect(f.steerPrompt).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe('mobile prompt admission', () => {
   it('waits for provider acceptance when Queue is chosen for an idle agent', async () => {
     const f = await fixture('idle');
     let accept!: () => void;
-    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { backendSession: { kind: 'codex', threadId: 'thread-phone' }, turnId: 'queued-idle' }; });
+    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { providerSession: { kind: 'codex', conversationId: 'thread-phone' }, turnId: 'queued-idle' }; });
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     const sending = f.gateway.request('phone', 'prompt.submit', command);
     try {
@@ -169,7 +169,7 @@ describe('mobile prompt admission', () => {
   });
 
   it('rejects a queued send if its session changes after gateway admission', async () => {
-    const f = await fixture('working', false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture('working', false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
     expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
@@ -177,7 +177,7 @@ describe('mobile prompt admission', () => {
   });
 
   it.each(['idle', 'working'] as const)('rejects a session replaced after gateway admission without dispatching (%s)', async status => {
-    const f = await fixture(status, false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    const f = await fixture(status, false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     const command = { ...f.command, attachments: [{ type: 'file', name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('note').toString('base64') }] };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
     expect(f.sendPrompt).not.toHaveBeenCalled();

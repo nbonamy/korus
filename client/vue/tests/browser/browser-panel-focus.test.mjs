@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,9 +13,9 @@ test('bookmark toolbar respects focus visibility and toggles a yellow saved star
   const server = await createServer({
     configFile: false,
     root: path.join(repository, 'client/vue/tests/browser/fixtures/browser-panel-focus'),
-    resolve: { alias: { '@workspace/core': path.join(repository, 'core/src') }, dedupe: ['vue'] },
-    plugins: [vue()],
-    server: { host: '127.0.0.1', port: 0, fs: { allow: [repository] } },
+    resolve: { alias: { '@workspace/core': path.join(repository, 'core/src') }, dedupe: ['vue', 'element-plus'] },
+    plugins: [sdkSourcePlugin, vue()],
+    server: { host: '127.0.0.1', port: 0, fs: { allow: [repository, path.dirname(repository)] } },
     logLevel: 'error',
   });
   let browser;

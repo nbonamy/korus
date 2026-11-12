@@ -53,16 +53,15 @@
     :answered-client-request-ids="answeredClientRequestIds"
     :agent-files="agentFiles"
     :load-agent-files="loadAgentFiles"
-    :backend-models="backendModels"
-    :backend-commands="activeBackendCommands"
-    :backend-plugins="backendPlugins"
-    :backend-skills="backendSkills"
-    :backend-capabilities="activeBackendCapabilities"
+    :provider-models="providerModels"
+    :provider-commands="activeProviderCommands"
+    :provider-plugins="providerPlugins"
+    :provider-skills="providerSkills"
+    :provider-capabilities="activeProviderCapabilities"
     :model-catalog-status="modelCatalogStatus"
     :skill-catalog-status="skillCatalogStatus"
     :goal="activeGoal"
-    :approvals="activeBackendApprovals"
-    :approval-preset="activeApprovalPreset"
+    :approvals="activeProviderApprovals"
     :permission-mode="activePermissionMode"
     :plan-mode="planMode"
     :selected-model-id="selectedModelId"
@@ -188,12 +187,11 @@
     @select-model="selectModel"
     @select-reasoning-effort="selectReasoningEffort"
     @select-service-tier="selectServiceTier"
-    @select-approval-preset="setApprovalPreset"
     @select-permission-mode="setPermissionMode"
-    @resolve-approval="resolveBackendApproval"
+    @resolve-approval="resolveProviderApproval"
     @update:plan-mode="setPlanMode"
     @clear-goal="clearActiveGoal"
-    @client-response="respondToClientRequest"
+    @agent-response="respondToActiveAgentRequest"
     @delete-queued-prompt="removeQueuedPrompt"
     @debug-mark-unread="markDebugAgentsUnread"
     @interrupt-agent="interruptActiveAgent"
@@ -256,10 +254,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { computed, h, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue';
+import { ElMessage, type MessageHandler } from 'element-plus';
 import { useI18n } from 'vue-i18n';
-import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
+import type { Agent, ClosedAgentRecord, DesktopUpdateStatus } from '@workspace/core/contracts';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import AppShell from './components/AppShell.vue';
 import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
 import { useGuestNavigation } from './guest-navigation';
@@ -282,8 +281,7 @@ const {
   snapshot,
   activeAgent,
   activeGoal,
-  activeBackendApprovals,
-  activeApprovalPreset,
+  activeProviderApprovals,
   activePermissionMode,
   activeQueuedPrompts,
   activeComposerState,
@@ -301,15 +299,15 @@ const {
   answeredClientRequestIds,
   agentFiles,
   loadAgentFiles,
-  backendModels,
-  activeBackendCommands,
+  providerModels,
+  activeProviderCommands,
   activeConversationPresentation,
   agentConversationFor,
   prepareAgentConversation,
-  backendPlugins,
-  activeBackendCapabilities,
+  providerPlugins,
+  activeProviderCapabilities,
   modelCatalogStatus,
-  backendSkills,
+  providerSkills,
   skillCatalogStatus,
   selectedModelId,
   selectedReasoningEffort,
@@ -337,8 +335,8 @@ const {
   missionFocusRequest,
   sourceRepositories,
   openInApplications,
-  loadBackendModels,
-  loadBackendSkills,
+  loadProviderModels,
+  loadProviderSkills,
   loadSnapshot,
   loadOlderAgentHistory,
   loadAgentTurnHistory,
@@ -393,6 +391,7 @@ const {
   reorderRepositories,
   restartAgent,
   closeAgent: closeAgentAction,
+  restoreClosedAgent,
   updateSettings,
   setCodexResourceSharing,
   listSshHosts,
@@ -431,17 +430,16 @@ const {
   loadAssignedWorkItems,
   assignWorkItemToAgent,
   removeWorkItemAssignment,
-  resolveBackendApproval,
-  resolveBackendApprovalForAgent,
-  respondToClientRequest,
+  resolveProviderApproval,
+  resolveProviderApprovalForAgent,
+  respondToActiveAgentRequest,
+  respondToAgentRequest,
   selectModel,
   selectModelForAgent,
   selectReasoningEffort,
   selectReasoningEffortForAgent,
   selectServiceTier,
   selectServiceTierForAgent,
-  setApprovalPreset,
-  setApprovalPresetForAgent,
   setPermissionMode,
   setPermissionModeForAgent,
   updateComposerState,
@@ -510,7 +508,7 @@ const agentConversationActions: AgentConversationActions = {
   prepare: prepareAgentConversation,
   loadOlder: loadOlderAgentHistory,
   loadTurn: loadAgentTurnHistory,
-  requestSkills: loadBackendSkills,
+  requestSkills: loadProviderSkills,
   send: sendPromptToAgent,
   steer: steerPromptToAgent,
   interrupt: interruptAgentById,
@@ -519,13 +517,11 @@ const agentConversationActions: AgentConversationActions = {
   forkTurn: forkAgent,
   retryTurn: retryTurnForAgent,
   continueInterruptedTurn: continueInterruptedTurnForAgent,
-  resolveApproval: resolveBackendApprovalForAgent,
-  clientResponse: respondToClientRequest,
+  respond: respondToAgentRequest,
   selectModel: selectModelForAgent,
   selectReasoningEffort: selectReasoningEffortForAgent,
   selectServiceTier: selectServiceTierForAgent,
   setPlanMode: setPlanModeForAgent,
-  setApprovalPreset: setApprovalPresetForAgent,
   setPermissionMode: setPermissionModeForAgent,
   updateComposerState,
   updateAttachments: updateComposerAttachments,
@@ -542,6 +538,7 @@ const pendingAgentClose = ref<{
 const agentCloseBusy = computed(() => pendingAgentClose.value?.running ?? false);
 const agentCloseError = computed(() => pendingAgentClose.value?.error ?? null);
 const closingAgentIds = new Set<string>();
+let closeUndoToast: MessageHandler | null = null;
 const pendingPullRequestCleanup = ref<Agent | null>(null);
 const pullRequestCleanupBusy = ref(false);
 const pullRequestCleanupError = ref<string | null>(null);
@@ -568,7 +565,63 @@ async function requestCloseAgent(agentId: string): Promise<void> {
   } catch {
     // Non-Git folders and unavailable Git hosts use the normal close behavior.
   }
+  const record = closedAgentRecord(agent);
   await closeAgentAction(agentId);
+  offerCloseUndo(record);
+}
+
+/** Notes where an agent sits, so a close can be taken back. */
+function closedAgentRecord(agent: Agent): ClosedAgentRecord | null {
+  if (!appApi?.restoreClosedAgent || agent.sessionKind === 'quickChat' || agent.remoteConnectionId) return null;
+  const teamAgentIds = snapshot.value.teams.find((team) => team.id === agent.teamId)?.agentIds ?? [];
+  const teamPosition = teamAgentIds.indexOf(agent.id);
+  return {
+    agent: structuredClone(toRaw(agent)),
+    index: snapshot.value.agents.findIndex((candidate) => candidate.id === agent.id),
+    teamPosition: Math.max(teamPosition, 0),
+    ...(teamAgentIds[teamPosition + 1] ? { nextAgentId: teamAgentIds[teamPosition + 1] } : {}),
+  };
+}
+
+/**
+ * Right after a plain close, the toast offers to bring the agent back where it was.
+ * It is the only thing holding what is needed to do so: once it goes away, so does the way back.
+ */
+function offerCloseUndo(record: ClosedAgentRecord | null): boolean {
+  if (!record) return false;
+  closeUndoToast?.close();
+  const toast = ElMessage({
+    type: 'info',
+    customClass: 'agent-close-toast',
+    duration: 5000,
+    showClose: true,
+    message: h('span', [
+      `${t('surface.agentCloseDialog.agentClosed')} `,
+      h('a', {
+        class: 'agent-close-undo',
+        role: 'button',
+        tabindex: 0,
+        onClick: () => { toast.close(); void undoAgentClose(record); },
+        onKeydown: (event: KeyboardEvent) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          toast.close();
+          void undoAgentClose(record);
+        },
+      }, t('surface.agentCloseDialog.undo')),
+    ]),
+    onClose: () => { if (closeUndoToast === toast) closeUndoToast = null; },
+  });
+  closeUndoToast = toast;
+  return true;
+}
+
+async function undoAgentClose(record: ClosedAgentRecord): Promise<void> {
+  try {
+    await restoreClosedAgent(record);
+  } catch (error) {
+    ElMessage.error(`${t('surface.agentCloseDialog.undoFailed')}: ${localizedErrorMessage(error, t)}`);
+  }
 }
 
 function cancelAgentClose(): void {
@@ -590,6 +643,7 @@ async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = f
   pending.error = null;
   pending.deleteWorktree = deleteWorktree;
   closingAgentIds.add(pending.agent.id);
+  const record = deleteWorktree ? null : closedAgentRecord(pending.agent);
   try {
     await closeAgentAction(pending.agent.id, deleteWorktree ? {
       deleteWorktree: true,
@@ -597,7 +651,9 @@ async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = f
       discardChanges,
       confirmed: true,
     } : undefined);
-    if (pending.backgrounded) {
+    if (offerCloseUndo(record)) {
+      // The toast already says the agent is closed, and offers to bring it back.
+    } else if (pending.backgrounded) {
       const title = t(deleteWorktree ? 'surface.agentCloseDialog.worktreeDeleted' : 'surface.agentCloseDialog.agentClosed');
       ElMessage.success(`${title}: ${pending.preview.branch ?? agentDisplayName(pending.agent)}`);
     }
@@ -651,8 +707,8 @@ function requestSessionCompression(agentId: string): void {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (
     !agent ||
-    agent.backend !== 'codex' ||
-    agent.backendSession?.kind !== 'codex' ||
+    !defaultProviderCapabilities(agent.provider).scopedExecution ||
+    !agent.providerSession ||
     agent.status.type !== 'idle'
   ) {
     return;
@@ -706,7 +762,7 @@ onMounted(() => {
   syncRendererWindowFocus();
   unsubscribeSystemAppearance = subscribeToSystemAppearance();
   void loadSnapshot();
-  void loadBackendModels();
+  void loadProviderModels();
   void loadOpenInApplications();
   const updateStatusPromise = appHostCapabilities.appUpdates
     ? appApi?.getUpdateStatus?.()
@@ -740,7 +796,7 @@ watch(() => snapshot.value.theme, (theme) => {
 </script>
 
 <style scoped>
-.backend-restart-overlay {
+.provider-restart-overlay {
   position: fixed;
   z-index: 10000;
   inset: 0;
@@ -751,7 +807,7 @@ watch(() => snapshot.value.theme, (theme) => {
   backdrop-filter: blur(6px);
 }
 
-.backend-restart-overlay__card {
+.provider-restart-overlay__card {
   display: flex;
   align-items: center;
   gap: var(--space-6);
@@ -763,30 +819,30 @@ watch(() => snapshot.value.theme, (theme) => {
   box-shadow: var(--shadow-lg);
 }
 
-.backend-restart-overlay__copy {
+.provider-restart-overlay__copy {
   display: grid;
   gap: var(--space-1);
   color: var(--color-text);
 }
 
-.backend-restart-overlay__copy strong {
+.provider-restart-overlay__copy strong {
   font-size: var(--font-size-16);
   line-height: var(--line-height-22);
 }
 
-.backend-restart-overlay__copy span {
+.provider-restart-overlay__copy span {
   color: var(--color-text-muted);
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
 }
 
-.backend-restart-overlay-enter-active,
-.backend-restart-overlay-leave-active {
+.provider-restart-overlay-enter-active,
+.provider-restart-overlay-leave-active {
   transition: opacity 120ms ease;
 }
 
-.backend-restart-overlay-enter-from,
-.backend-restart-overlay-leave-to {
+.provider-restart-overlay-enter-from,
+.provider-restart-overlay-leave-to {
   opacity: 0;
 }
 

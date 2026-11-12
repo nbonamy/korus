@@ -1,6 +1,6 @@
 import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
+import type { MessageImage, MessageImageContext } from '@korus-dev/agent-ui-sdk';
 import { defineComponent, h, reactive } from 'vue';
 import { DOMWrapper, flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
@@ -64,7 +64,7 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       createAgentGitPullRequest: vi.fn(),
       currentAgent,
       currentAgentGitStatus: null,
-      currentBackendRuntime: { backend: 'codex', status: 'running' },
+      currentProviderRuntime: { provider: 'codex', status: 'running' },
       forwardPrompt: vi.fn(),
       generateAgentGitMessage: vi.fn(),
       generateVisualizationSuggestion: vi.fn(),
@@ -306,7 +306,7 @@ describe('AgentWorkspace', () => {
 
   it('lets the SDK handle fullscreen images and retains independent image tabs until closed', async () => {
     const { currentAgent, openRightWorkspaceTab, workspace, wrapper } = mountWorkspace();
-    const image: CodexMessageImage = {
+    const image: MessageImage = {
       alt: 'Architecture diagram',
       kind: 'attachment',
       mimeType: 'image/png',
@@ -314,7 +314,7 @@ describe('AgentWorkspace', () => {
       path: '/repo/diagram.png',
       src: 'data:image/png;base64,aW1hZ2U=',
     };
-    const context: CodexMessageImageContext = {
+    const context: MessageImageContext = {
       intent: 'fullscreen',
       index: 2,
       message: { id: 'message-with-image', role: 'assistant', content: '' },

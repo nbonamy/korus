@@ -429,13 +429,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command("composer", "change" to json("serviceTier" to tier))
     }
     internal val canChoosePermissions get() = canManageSession && !composerDrafts.sending
-    internal fun chooseApprovalPreset(preset: String) {
-        if (!canChoosePermissions || !state.obj("permissions").strings("presets").contains(preset)) return
-        command("approvalPreset","preset" to preset); sheet = null
-    }
-    internal fun choosePermissionMode(mode: String) {
-        if (!canChoosePermissions || state.obj("permissions").items("modes").none { it.string("id") == mode }) return
-        command("permissionMode","mode" to mode); sheet = null
+    internal fun choosePermission(permission: String) {
+        if (!canChoosePermissions || state.obj("permissions").items("options").none { it.string("id") == permission }) return
+        command("permission","permission" to permission); sheet = null
     }
     internal val canRestartSession get() = canManageSession && state.obj("header").string("status") !in listOf("working","awaitingInput")
     internal fun restartSession() {

@@ -62,13 +62,13 @@ describe('useWorkItemRouting', () => {
     expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, pullRequestNumber: 12, requestRepository: selected.sourceId, confirmed: true });
   });
   it.each([
-    { host: undefined, backend: 'claude' as const, model: 'sonnet' },
-    { host: 'remote-dev', backend: 'codex' as const, model: 'gpt-test' },
-    { host: 'remote-dev', backend: 'claude' as const, model: null },
-  ])('preserves the source host $host and selection when duplicating repository work', async ({ host, backend, model }) => {
+    { host: undefined, provider: 'claude' as const, model: 'sonnet' },
+    { host: 'remote-dev', provider: 'codex' as const, model: 'gpt-test' },
+    { host: 'remote-dev', provider: 'claude' as const, model: null },
+  ])('preserves the source host $host and selection when duplicating repository work', async ({ host, provider: backend, model }) => {
     const harness = createHarness();
     harness.agent.remoteConnectionId = host;
-    const selection = { backend, model, reasoningEffort: 'high', serviceTier: 'fast' };
+    const selection = { provider: backend, model, reasoningEffort: 'high', serviceTier: 'fast' };
     await harness.routing.startRepositoryWork(harness.agent.id, { item: harness.item, action: 'fix', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'fix/gh-12' }, selection });
     expect(harness.createAgent).toHaveBeenCalledExactlyOnceWith({ name: `${harness.agent.name} #12`, folder: harness.agent.folder, teamId: harness.teamId, selection, ...(host ? { remoteConnectionId: host } : {}) });
     expect(harness.createBranch).toHaveBeenCalledExactlyOnceWith(harness.createdAgent.id, { name: 'fix/gh-12', createWorktree: true, confirmed: true });
@@ -80,12 +80,12 @@ describe('useWorkItemRouting', () => {
     harness.createWorktree.mockImplementation(() => new Promise(resolve => { prepared = () => resolve({ name: 'work', path: '/code/work' }); }));
     // One held worktree is enough to prove the operation remains running during provisioning.
     if (count === 2) harness.createWorktree.mockResolvedValueOnce({ name: 'first', path: '/code/first' });
-    const running = harness.routing.startMany({ action: 'fix', items: Array.from({ length: count }, (_, i) => ({ ...harness.item, id: `issue-${i}`, number: i + 1 })), teamId: harness.teamId, selection: { backend: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } });
+    const running = harness.routing.startMany({ action: 'fix', items: Array.from({ length: count }, (_, i) => ({ ...harness.item, id: `issue-${i}`, number: i + 1 })), teamId: harness.teamId, selection: { provider: 'claude', model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast' } });
     await vi.waitFor(() => expect(harness.createWorktree).toHaveBeenCalledTimes(count));
     expect(harness.routing.creationProgress.value).toMatchObject({ mode: count === 1 ? 'single' : 'multiple' });
     prepared();
     await running;
-    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ backend: 'claude' }, ...{ model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast', backend: 'claude' } } }));
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ provider: 'claude' }, ...{ model: 'sonnet', reasoningEffort: 'high', serviceTier: 'fast', provider: 'claude' } } }));
     const progress = harness.routing.creationProgress.value!;
     expect(progress.mode === 'single' ? progress.progress.state : progress.state).toBe('success');
     expect(harness.assign).toHaveBeenCalledTimes(count);
@@ -209,9 +209,9 @@ describe('useWorkItemRouting', () => {
   it('creates the isolated agent with the chosen model layered over provider defaults', async () => {
     const harness = createHarness();
 
-    await harness.routing.createIsolatedAgent(harness.item, harness.teamId, { selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast' } });
+    await harness.routing.createIsolatedAgent(harness.item, harness.teamId, { selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast' } });
 
-    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ backend: 'codex' }, ...{ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast', backend: 'codex' } } }));
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...{ provider: 'codex' }, ...{ model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'ultrafast', provider: 'codex' } } }));
   });
 
   it('keeps a reassigned item out of the new-agent flow when the warning is declined', async () => {

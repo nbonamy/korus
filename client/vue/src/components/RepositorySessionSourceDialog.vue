@@ -68,7 +68,7 @@
       <template v-if="selectedWorkItem">
         <p v-if="!workProviderDefinition(selectedWorkItem.provider).repositoryBacked">{{ t('backlogSource.codeRepository') }}: {{ repositoryName }}</p>
         <WorkItemAssignmentPicker
-          v-model:backend="backend"
+          v-model:provider="agentProvider"
           :item="selectedWorkItem"
           :branch-name="assignmentBranchName"
           :existing-worktree-path="assignmentExistingWorktreePath"
@@ -160,8 +160,8 @@ import { ArrowRightIcon, GitBranchIcon, GitForkIcon as RepositoryIcon } from '..
 import HostSelector from './HostSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
+import { useProviderChoices, useNewAgentProvider } from './provider-selection';
+const agentProvider = defineModel<import('@workspace/core/contracts').HarnessProvider>('provider');
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
 
 type SourceTab = 'branches' | 'pullRequests' | 'issues';
@@ -210,7 +210,7 @@ const emit = defineEmits<{
   'start-work-item': [selection: WorkItemAssignmentSelection];
 }>();
 
-useNewAgentBackend(backend, useBackendChoices(() => props.hostId), () => props.visible);
+useNewAgentProvider(agentProvider, useProviderChoices(() => props.hostId), () => props.visible);
 
 const { t } = useI18n();
 const backlog = useWorkSourceBacklog({

@@ -1,102 +1,28 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 
-const temporaryDirectories: string[] = [];
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { force: true, recursive: true });
-  }
-});
-
-describe('local SDK build', () => {
-  it('builds root-overridden SDK packages and refreshes their installed artifacts', () => {
-    const fixtureRoot = mkdtempSync(path.join(tmpdir(), 'agent-workspace-build-sdk-'));
-    temporaryDirectories.push(fixtureRoot);
-    const appRoot = path.join(fixtureRoot, 'agent-workspace');
-    const sdkRoot = path.join(fixtureRoot, 'codex-app-sdk');
-    const scriptDirectory = path.join(appRoot, 'scripts');
-    const fakeBinDirectory = path.join(fixtureRoot, 'bin');
-    mkdirSync(scriptDirectory, { recursive: true });
-    mkdirSync(fakeBinDirectory, { recursive: true });
-    mkdirSync(sdkRoot, { recursive: true });
-    writeFileSync(path.join(sdkRoot, 'package.json'), '{}', { flag: 'wx' });
-
-    const packages = [
-      ['client/backend', '@codex-app-sdk/backend'],
-      ['client/backend', '@codex-app-sdk/core'],
-      ['client/electron', '@codex-app-sdk/electron'],
-      ['client/vue', '@codex-app-sdk/vue'],
-    ] as const;
-    writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify({
-      overrides: Object.fromEntries(packages.map(([, packageName]) => {
-        const packageSlug = packageName.split('/').at(-1)!;
-        return [packageName, `file:../codex-app-sdk/packages/${packageSlug}`];
-      })),
-    }));
-    for (const [workspace, packageName] of packages) {
-      const packageSlug = packageName.split('/').at(-1)!;
-      const workspacePackagePath = path.join(appRoot, workspace, 'package.json');
-      mkdirSync(path.dirname(workspacePackagePath), { recursive: true });
-      const workspacePackage = existsSync(workspacePackagePath)
-        ? JSON.parse(readFileSync(workspacePackagePath, 'utf8')) as { dependencies?: Record<string, string> }
-        : {};
-      workspacePackage.dependencies ??= {};
-      workspacePackage.dependencies[packageName] = 'latest';
-      writeFileSync(workspacePackagePath, JSON.stringify(workspacePackage));
-
-      const sourcePackage = path.join(sdkRoot, 'packages', packageSlug);
-      mkdirSync(path.join(sourcePackage, 'dist'), { recursive: true });
-      writeFileSync(path.join(sourcePackage, 'package.json'), JSON.stringify({
-        files: ['dist', 'README.md'],
-        name: packageName,
-      }));
-      writeFileSync(path.join(sourcePackage, 'README.md'), `${packageName} fresh readme`);
-      writeFileSync(path.join(sourcePackage, 'dist', 'index.js'), `${packageName} fresh build`);
-
-      const installedPackage = path.join(appRoot, 'node_modules', '@codex-app-sdk', packageSlug);
-      mkdirSync(path.join(installedPackage, 'dist'), { recursive: true });
-      writeFileSync(path.join(installedPackage, 'package.json'), JSON.stringify({ name: packageName }));
-      writeFileSync(path.join(installedPackage, 'dist', 'index.js'), `${packageName} stale build`);
-      writeFileSync(path.join(installedPackage, 'dist', 'removed.js'), 'stale output');
+it('builds independent SDK repos in dependency order without replacing installed npm artifacts', () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'sdk-build-')));
+  try {
+    const app = path.join(root, 'app'), sdks = path.join(root, 'sdk checkouts');
+    mkdirSync(path.join(app, 'scripts'), { recursive: true });
+    writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'example-app', type: 'module' }));
+    for (const name of ['build-sdk.mjs', 'sdk-sources.mjs']) copyFileSync(path.resolve(__dirname, '../../../../../scripts', name), path.join(app, 'scripts', name));
+    const names = ['codex-sdk', 'multi-agent-sdk', 'agent-ui-sdk'];
+    for (const name of names) {
+      mkdirSync(path.join(sdks, name), { recursive: true });
+      writeFileSync(path.join(sdks, name, 'package.json'), JSON.stringify({ name: '@korus-dev/' + name, exports: {} }));
+      const installed = path.join(app, 'node_modules/@korus-dev', name);
+      mkdirSync(installed, { recursive: true }); writeFileSync(path.join(installed, 'index.js'), 'published artifact');
     }
-
-    const sourceScript = path.resolve(__dirname, '../../../../../scripts/build-sdk.mjs');
-    const fixtureScript = path.join(scriptDirectory, 'build-sdk.mjs');
-    writeFileSync(fixtureScript, readFileSync(sourceScript));
-    const npmExecutable = path.join(fakeBinDirectory, 'npm-cli.cjs');
-    writeFileSync(npmExecutable, 'process.exit(0);\n');
-
-    const result = spawnSync(process.execPath, [fixtureScript], {
-      cwd: appRoot,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        npm_execpath: npmExecutable,
-      },
-    });
-
+    const trace = path.join(root, 'trace.jsonl'), npm = path.join(root, 'npm cli.cjs');
+    writeFileSync(npm, `require('node:fs').appendFileSync(process.env.BUILD_TRACE, JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)})+'\\n');`);
+    const result = spawnSync(process.execPath, [path.join(app, 'scripts/build-sdk.mjs')], { cwd: app, encoding: 'utf8', env: { ...process.env, SDK_LOCAL_SOURCE: '1', SDK_SOURCE_ROOT: sdks, npm_execpath: npm, BUILD_TRACE: trace } });
     expect(result.status, result.stderr).toBe(0);
-    for (const [, packageName] of packages) {
-      const packageSlug = packageName.split('/').at(-1)!;
-      const installedPackage = path.join(appRoot, 'node_modules', '@codex-app-sdk', packageSlug);
-      expect(readFileSync(path.join(installedPackage, 'dist', 'index.js'), 'utf8')).toBe(
-        `${packageName} fresh build`,
-      );
-      expect(readFileSync(path.join(installedPackage, 'README.md'), 'utf8')).toBe(
-        `${packageName} fresh readme`,
-      );
-      expect(existsSync(path.join(installedPackage, 'dist', 'removed.js'))).toBe(false);
-    }
-  });
+    expect(readFileSync(trace, 'utf8').trim().split('\n').map(line => JSON.parse(line))).toStrictEqual(names.map(name => ({ cwd: path.join(sdks, name), args: ['run', 'build'] })));
+    for (const name of names) expect(readFileSync(path.join(app, 'node_modules/@korus-dev', name, 'index.js'), 'utf8')).toBe('published artifact');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

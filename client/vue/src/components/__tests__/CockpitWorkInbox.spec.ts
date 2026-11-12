@@ -1,9 +1,9 @@
-import type { BackendModelOption } from '@workspace/core/contracts';
+import type { ProviderModelOption } from '@workspace/core/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
-import { backendSnapshotKey } from '../backend-selection';
-import { backendModelCatalogKey } from '../backend-model-catalog';
+import { backendSnapshotKey } from '../provider-selection';
+import { providerModelCatalogKey } from '../provider-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent, RemoteConnection, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -14,7 +14,7 @@ describe('CockpitWorkInbox', () => {
     const selected = item(21, 'Remote work', 'repo-one');
     const start = vi.fn().mockResolvedValue(undefined);
     const connection: RemoteConnection = { id: 'remote-inbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready',
-      providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }], createdAt: '', updatedAt: '' };
+      providerConnections: [{ provider: 'claude', installed: true, connected: true, checking: false }], createdAt: '', updatedAt: '' };
     const wrapper = mountInbox([selected], {}, {}, start, undefined, [connection]);
     await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
     await flushPromises();
@@ -26,7 +26,7 @@ describe('CockpitWorkInbox', () => {
     await wrapper.get('[aria-label="Host"] select').setValue(connection.id);
     await flushPromises();
     await wrapper.get('.app-dialog__footer .app-button--primary').trigger('click');
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: connection.id, selection: expect.objectContaining({ backend: 'claude' }) }));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: connection.id, selection: expect.objectContaining({ provider: 'claude' }) }));
   });
 
   it('hides host selection when no remote connection is ready', async () => {
@@ -53,7 +53,7 @@ describe('CockpitWorkInbox', () => {
     (Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(button => button.textContent?.includes('GPT Fast'))!).click();
     await flushPromises();
     await wrapper.findAll('.app-dialog__footer button').find(button => button.text() === 'Fix')!.trigger('click');
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ items: [second], selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } }));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ items: [second], selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } }));
     expect(wrapper.find('.cockpit-inbox__start-dialog').exists()).toBe(false);
     finish();
     await flushPromises();
@@ -351,7 +351,7 @@ describe('CockpitWorkInbox', () => {
     await flushPromises();
 
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
-    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', selection: { backend: 'claude', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } });
+    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', selection: { provider: 'claude', model: 'gpt-fast', reasoningEffort: null, serviceTier: null } });
   });
 
   it('starts agents on the service tier chosen with the model', async () => {
@@ -414,19 +414,19 @@ function mountInbox(
   assignments: Record<string, WorkBacklogAssignment> = {},
   filters: { activeView?: 'all' | 'backlog' | 'wip' | 'focus'; globalScope?: 'assignedToMe' | 'all' | null; page?: number; hasNextPage?: boolean; pageLoading?: boolean; pageSize?: number; statusFilter?: 'inProgress' | 'blocked' | 'readyForReview' | null; totalItems?: number } = {},
   startWorkAction = vi.fn().mockResolvedValue(undefined),
-  models: BackendModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
+  models: ProviderModelOption[] = [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }],
   remoteConnections: RemoteConnection[] = [],
 ) {
   return mount(CockpitWorkInbox, {
     global: { provide: {
       [backendSnapshotKey as symbol]: () => ({
         ...createEmptySnapshot(),
-        providerConnections: (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false })),
+        providerConnections: (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false })),
         remoteConnections: { connections: remoteConnections },
         teams: [{ id: 'team-one', name: 'Team One', agentIds: ['agent-one'] }],
         agents: [agent('agent-one', 'Dina')],
       }),
-      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => models) },
+      [providerModelCatalogKey as symbol]: { listModels: vi.fn(async () => models) },
     } },
     props: {
       agents: [agent('agent-one', 'Dina'), agent('agent-two', 'Jesse')], assignments,
@@ -458,5 +458,5 @@ function assignment(workItem: WorkItem, agentId: string, status: WorkBacklogAssi
 }
 
 function agent(id: string, name: string): Agent {
-  return { id, teamId: 'team-one', name, avatar: name.slice(0, 2), folder: '/tmp/repo', backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '2026-08-10T00:00:00.000Z', updatedAt: '2026-08-12T00:00:00.000Z' };
+  return { id, teamId: 'team-one', name, avatar: name.slice(0, 2), folder: '/tmp/repo', provider: 'codex', providerDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '2026-08-10T00:00:00.000Z', updatedAt: '2026-08-12T00:00:00.000Z' };
 }

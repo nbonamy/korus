@@ -1,8 +1,9 @@
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import { AppController } from '../app-controller';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AddSshConnectionInput, AppSnapshot, ClientRequestResponse, CloneSourceRepositoryInput, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, Automation, AutomationLocation, MoveAgentToTeamInput, PairedDevice, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, SystemPermissionsStatus, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderConnectResult, WorkProviderKind } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, AppSnapshot, CloneSourceRepositoryInput, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, Automation, AutomationLocation, MoveAgentToTeamInput, PairedDevice, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, SystemPermissionsStatus, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderConnectResult, WorkProviderKind } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { currentSnapshot, createBackendClient, updateSettings } from './app-controller-test-harness';
 
@@ -16,15 +17,12 @@ describe('AppController', () => {
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const response: ClientRequestResponse = {
-      id: 'approval-1',
-      payload: { decision: 'allow' },
-    };
+    const response: AgentRequestResponse = { id: 'approval-1', outcome: { kind: 'decision', decision: 'allow' } };
 
     await controller.initialize();
-    await expect(respondToClientRequest(controller, response)).resolves.toBe(backendSnapshot);
+    await expect(respondToAgentRequest(controller, response)).resolves.toBe(backendSnapshot);
 
-    expect(request).toHaveBeenCalledWith('agent/request/respond', { response: { id: response.id, outcome: { kind: 'decision', decision: 'allow' } } });
+    expect(request).toHaveBeenCalledWith('agent/request/respond', { response });
     expect(currentSnapshot(controller)).toBe(backendSnapshot);
     expect(currentSnapshot(controller).agents[0]?.status).toStrictEqual({ type: 'idle' });
   });
@@ -362,7 +360,7 @@ describe('AppController', () => {
     };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
-    const createInput: CreateAgentInput = { name: 'Backend Dina', folder: '/Users/nbonamy/src/agent-workspace', teamId: 'team-app', selection: { backend: 'codex' } };
+    const createInput: CreateAgentInput = { name: 'Backend Dina', folder: '/Users/nbonamy/src/agent-workspace', teamId: 'team-app', selection: { provider: 'codex' } };
     const updateInput: UpdateAgentInput = {
       id: 'agent-dina',
       name: 'Backend Dina',
@@ -421,7 +419,7 @@ describe('AppController', () => {
   it('routes session compression through daemon and adopts the replacement snapshot', async () => {
     const snapshot = createInitialSnapshot();
     const backendSnapshot = structuredClone(snapshot);
-    backendSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-compressed' };
+    backendSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-compressed' };
     const request = vi.fn().mockResolvedValue(backendSnapshot);
     const controller = new AppController(snapshot, createBackendClient({ request }));
 
@@ -499,7 +497,7 @@ describe('AppController', () => {
 
     expect(request).toHaveBeenCalledWith('connections/sshHosts/list', undefined);
     expect(request).toHaveBeenCalledWith('connections/ssh/create', { input });
-    expect(request).toHaveBeenCalledWith('connections/runtime/sync', { connectionId: 'connection-devbox', backends: ['claude'] });
+    expect(request).toHaveBeenCalledWith('connections/runtime/sync', { connectionId: 'connection-devbox', providers: ['claude'] });
     expect(request).toHaveBeenCalledWith('connections/update', {
       connectionId: 'connection-devbox',
       input: { sourceFolderPath: '~/src' },
@@ -561,7 +559,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -600,7 +598,7 @@ describe('AppController', () => {
     const createInput: CreateAutomationInput = {
       name: 'Remote bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -624,7 +622,7 @@ function automationFixture(teamId = 'team-app'): Automation {
     id: 'automation-bugs',
     name: 'GitHub bugs',
     enabled: true,
-    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
+    prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     schedule: { intervalMinutes: 60 },
     executionLog: [],
     createdAt: '2026-06-09T12:00:00.000Z',
@@ -638,10 +636,10 @@ async function selectAgent(controller: AppController, agentId: string): Promise<
   }).selectAgent(agentId);
 }
 
-async function respondToClientRequest(controller: AppController, response: ClientRequestResponse): Promise<AppSnapshot> {
+async function respondToAgentRequest(controller: AppController, response: AgentRequestResponse): Promise<AppSnapshot> {
   return (controller as unknown as {
-    respondToClientRequest(response: ClientRequestResponse): Promise<AppSnapshot>;
-  }).respondToClientRequest(response);
+    respondToAgentRequest(response: AgentRequestResponse): Promise<AppSnapshot>;
+  }).respondToAgentRequest(response);
 }
 
 async function listSourceRepositories(controller: AppController): Promise<SourceRepository[]> {
@@ -872,10 +870,10 @@ async function addSshConnection(controller: AppController, input: AddSshConnecti
   }).addSshConnection(input);
 }
 
-async function checkRemoteConnection(controller: AppController, connectionId: string, backends: import('@workspace/core/contracts').AgentBackend[]): Promise<AppSnapshot> {
+async function checkRemoteConnection(controller: AppController, connectionId: string, providers: import('@workspace/core/contracts').HarnessProvider[]): Promise<AppSnapshot> {
   return (controller as unknown as {
-    checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: import('@workspace/core/contracts').AgentBackend[]): Promise<AppSnapshot>;
-  }).checkRemoteConnection(connectionId, false, backends);
+    checkRemoteConnection(connectionId: string, inspectOnly?: boolean, providers?: import('@workspace/core/contracts').HarnessProvider[]): Promise<AppSnapshot>;
+  }).checkRemoteConnection(connectionId, false, providers);
 }
 
 async function listSourceFolders(controller: AppController, input: { remoteConnectionId: string; path: string }) {

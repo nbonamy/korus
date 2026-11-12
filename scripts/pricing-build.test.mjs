@@ -33,7 +33,7 @@ await build({ configFile: ${JSON.stringify(config)}, logLevel: 'silent', build: 
 `);
     const run = (args, options = {}) => {
       const result = spawnSync(process.execPath, ['--import', path.join(temp, 'offline.mjs'), ...args], {
-        cwd: temp, env: { ...process.env, CODEX_APP_SDK_SOURCE: '0' }, encoding: 'utf8', timeout: 5_000, maxBuffer: 4 * 1024 * 1024, ...options,
+        cwd: temp, env: { ...process.env, SDK_LOCAL_SOURCE: '0' }, encoding: 'utf8', timeout: 5_000, maxBuffer: 4 * 1024 * 1024, ...options,
       });
       assert.equal(result.error, undefined);
       assert.equal(result.status, 0, result.stderr);
@@ -72,7 +72,7 @@ console.log(JSON.stringify(history));
       const query = () => new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['--import', path.join(temp, 'offline.mjs'), '--input-type=module', '-e', `const { main } = await import(${JSON.stringify(url)}); await main(['--stdio']);`], {
           // Usage pricing does not depend on the operator's shell, credentials or providers.
-          cwd: temp, env: { ...process.env, HOME: userHome, USERPROFILE: userHome, SHELL: path.join(temp, 'missing-shell'), APP_HOME: home, CODEX_APP_SDK_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'], signal: t.signal, killSignal: 'SIGKILL',
+          cwd: temp, env: { ...process.env, HOME: userHome, USERPROFILE: userHome, SHELL: path.join(temp, 'missing-shell'), APP_HOME: home, SDK_LOCAL_SOURCE: '0' }, stdio: ['pipe', 'pipe', 'pipe'], signal: t.signal, killSignal: 'SIGKILL',
         });
         let buffer = '', stderr = '', result, failure;
         // Includes cold bundled-daemon initialization, not just the local usage query.

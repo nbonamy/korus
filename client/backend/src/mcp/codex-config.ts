@@ -2,8 +2,7 @@ import type { Agent, AppPluginSettings } from '@workspace/core/contracts';
 import { product } from '@workspace/core/product';
 import { defaultPluginSettings } from '@workspace/core/settings';
 import { workProviderDefinition, workProviderKinds } from '@workspace/core/work-providers';
-import type { CodexThreadStartExtension } from '@codex-app-sdk/backend';
-import { appDeveloperInstructions, type AgentEffectInstructionSettings } from './agent-prompts';
+import type { HarnessConversationConfig as CodexThreadStartExtension } from '@korus-dev/multi-agent-sdk';
 
 const chatGptGitHubConnectorId = 'connector_76869538009648d5b282a4bb21c3d157';
 
@@ -23,36 +22,20 @@ export function buildAppMcpConfigOverrides(pluginSettings: AppPluginSettings = d
   ];
 }
 
-export function buildAppThreadConfig(
-  agent: Agent,
-  mcpServerUrl: string | null,
+/**
+ * The configuration keys only Codex has, for a conversation that receives Korus's instructions and MCP servers through
+ * the options every harness shares.
+ */
+export function buildAppThreadExtras(
   pluginSettings: AppPluginSettings = defaultPluginSettings,
-  effects: AgentEffectInstructionSettings = {},
   hostedMcpServerUrls: Readonly<Record<string, string>> = {},
 ): CodexThreadStartExtension {
-  if (!mcpServerUrl) {
-    return effects.developerInstructions?.trim() ? { developerInstructions: effects.developerInstructions.trim() } : {};
-  }
-
-  return {
-    config: {
-      [`mcp_servers.${product.mcpServerName}.url`]: appMcpUrlForAgent(mcpServerUrl, agent),
-      [`mcp_servers.${product.mcpServerName}.default_tools_approval_mode`]: 'approve',
-      ...Object.fromEntries(
-        Object.entries(hostedMcpServerUrls).map(([serverId, serverUrl]) => [
-          `mcp_servers.${serverId}.url`,
-          agentScopedMcpUrl(serverUrl, agent.id),
-        ]),
-      ),
-      ...(hostedMcpServerUrls.github
-        ? { [`apps.${chatGptGitHubConnectorId}.enabled`]: false }
-        : {}),
-      ...(pluginSettings.chromeEnabled
-        ? { 'mcp_servers.node_repl.enabled': true }
-        : {}),
-    },
-    developerInstructions: appDeveloperInstructions(agent, pluginSettings, effects),
+  const config = {
+    // Korus hosts GitHub itself; ChatGPT's own connector would offer the same tools twice.
+    ...(hostedMcpServerUrls.github ? { [`apps.${chatGptGitHubConnectorId}.enabled`]: false } : {}),
+    ...(pluginSettings.chromeEnabled ? { 'mcp_servers.node_repl.enabled': true } : {}),
   };
+  return Object.keys(config).length ? { config } : {};
 }
 
 export function agentScopedMcpUrl(serverUrl: string, agentId: string): string {

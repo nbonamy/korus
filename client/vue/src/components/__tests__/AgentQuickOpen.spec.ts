@@ -133,7 +133,7 @@ function agent(id: string, name: string, teamId: string): Agent {
       primaryWorktreeRoot: `/workspace/${id}`,
       updatedAt: '2026-09-15T00:00:00.000Z',
     },
-    backend: 'codex',
+    provider: 'codex',
     status: { type: 'idle' },
     createdAt: '2026-09-15T00:00:00.000Z',
     lastActivityAt: activityById[id]!,

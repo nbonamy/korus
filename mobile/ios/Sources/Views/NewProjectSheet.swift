@@ -67,7 +67,7 @@ struct NewProjectSheet: View {
     @FocusState private var focused: Bool
 
     private var busy: Bool { model.chatCreation == .creating }
-    private var selectedBackend: String { model.newChatBackend ?? "" }
+    private var selectedProvider: String { model.newChatProvider ?? "" }
     private var trimmed: String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var trimmedBranch: String { branchName.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var valid: Bool {
@@ -121,7 +121,7 @@ struct NewProjectSheet: View {
                             .font(.body.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
                     }
                     .buttonStyle(.glassProminent)
-                    .disabled(!(creatingBranch ? validBranch : valid) || !model.canStartChat || selectedBackend.isEmpty)
+                    .disabled(!(creatingBranch ? validBranch : valid) || !model.canStartChat || selectedProvider.isEmpty)
                     .appSheetFooter()
                 }
             }
@@ -290,7 +290,7 @@ struct NewProjectSheet: View {
                 Button {
                     focused = false
                     selectedBranch = branch.name
-                    model.createProject(source: source, value: repository.id, backend: selectedBackend, branch: branch.name)
+                    model.createProject(source: source, value: repository.id, provider: selectedProvider, branch: branch.name)
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
@@ -300,7 +300,7 @@ struct NewProjectSheet: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16).contentShape(Rectangle())
                 }
-                .disabled(!model.canStartChat || selectedBackend.isEmpty)
+                .disabled(!model.canStartChat || selectedProvider.isEmpty)
                 rowDivider
             }
             if branches.isEmpty {
@@ -339,13 +339,13 @@ struct NewProjectSheet: View {
     private func startBranch() {
         guard validBranch, let repository else { return }
         focused = false
-        model.createProject(source: source, value: repository.id, backend: selectedBackend,
+        model.createProject(source: source, value: repository.id, provider: selectedProvider,
                             worktree: ["branchName": trimmedBranch, "baseBranch": baseBranch])
     }
 
     private func start(_ input: String) {
         guard valid else { return }
         focused = false
-        model.createProject(source: source, value: input, backend: selectedBackend)
+        model.createProject(source: source, value: input, provider: selectedProvider)
     }
 }

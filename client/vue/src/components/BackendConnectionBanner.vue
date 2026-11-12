@@ -15,13 +15,13 @@
 </template>
 
 <script setup lang="ts">
-import type { BackendConnectionState } from '@workspace/core/contracts';
+import type { ProviderConnectionState } from '@workspace/core/contracts';
 import { computed } from 'vue';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 
 const props = defineProps<{
-  connectionState: BackendConnectionState;
+  connectionState: ProviderConnectionState;
 }>();
 
 const connectionStatusLabel = computed(() => {

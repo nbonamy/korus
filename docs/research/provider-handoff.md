@@ -66,8 +66,8 @@ The note is normal application data in the private roster and client snapshot, n
 | [AgentHandoffService](../../client/backend/src/agents/agent-handoff-service.ts) | Serialize one operation by source/operation ID, validate, persist, retire source, create target, transfer product relationships, start once |
 | [Handoff note capture](../../client/backend/src/agents/handoff-note.ts) | Observe accepted turn ID, require successful completion, read final assistant text through the provider-owned history boundary |
 | [Driver RPC](../../client/backend/src/driver-rpc.ts) | Optional driver `assertHandoffReady`, exposed as `driver/handoff/check`; unsupported implementations fail closed |
-| [Codex driver/adapter](../../client/backend/src/codex/codex-surface-adapter.ts) | SDK-owned active turn, busy, queued prompts, approvals, client requests; archive through SDK before releasing the Korus attachment |
-| [Claude host](../../client/backend/src/claude/claude-conversation-host.ts) | Active turn/pending permission readiness; live replica read preserves accepted-turn identity; await session release |
+| [Codex driver/adapter](../../client/backend/src/codex/codex-host-adapter.ts) | SDK-owned active turn, busy, queued prompts, approvals, client requests; archive through SDK before releasing the Korus attachment |
+| [Claude host](../../client/backend/src/claude/claude-host.ts) | Active turn/pending permission readiness; live replica read preserves accepted-turn identity; await session release |
 | [Claude SDK transport](../../client/backend/src/claude/agent-sdk-transport.ts) | Close only the source query, then await public iterator cleanup where exposed; no global process restart |
 | [Prompt manager](../../client/backend/src/agents/agent-prompt-manager.ts), [send hooks](../../core/src/agent-chat-service.ts), server product routing | Suspend source prompt admission/drain during handoff; internal handoff sends use a backend-only hook |
 | [Historical read allowlist](../../client/backend/src/agents/agent-conversation-service.ts) | Permit the retained source reference through the target, including cross-provider historical DTO reads |

@@ -12,7 +12,7 @@ import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state
 import { backupFile } from './backup';
 import { UnchangedWrites } from './unchanged-writes';
 import { isSupportedRosterAgent, joinPersistedState, preserveUnsupportedAgents, splitPersistedState, type RosterData, type StoreFiles, type VisualizationData } from './layout';
-import { migrateData, rosterMigrations, type Migration } from './migrations';
+import { migrateData, renameProviderFields, rosterMigrations, storeMigrations } from './migrations';
 import { parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
 import { StoreFormatError, parseStoreFile, serializeStoreFile, storeSchemaVersion, rosterSchemaVersion } from './store-format';
 
@@ -27,8 +27,9 @@ const retiredMarker = '# agent-workspace: this file was replaced by roster.json,
 
 const fileMigrations = {
   roster: rosterMigrations,
-  settings: [] as readonly Migration[],
-  visualization: [] as readonly Migration[],
+  settings: storeMigrations,
+  visualization: storeMigrations,
+  tasks: storeMigrations,
 };
 
 export type AppStateStoreOptions = {
@@ -63,7 +64,8 @@ export class AppStateStore {
     if (content === null) return [];
     this.files.remember(this.absolute('tasks.json'), content);
     const envelope = parseStoreFile('tasks.json', content);
-    return parseData('tasks.json', tasksSchema, migrateData('tasks.json', envelope.data, envelope.schemaVersion, storeSchemaVersion, [])).tasks;
+    if (envelope.schemaVersion < storeSchemaVersion) await backupFile(this.absolute('tasks.json'), this.absolute(backupsDirectory), `tasks-v${envelope.schemaVersion}`);
+    return parseData('tasks.json', tasksSchema, migrateData('tasks.json', envelope.data, envelope.schemaVersion, storeSchemaVersion, fileMigrations.tasks)).tasks;
   }
 
   saveTasks(tasks: DelegatedTask[]): Promise<void> {
@@ -123,7 +125,7 @@ export class AppStateStore {
     } catch (error) {
       throw new StoreFormatError(`${legacyFile} is not valid JSON (${error instanceof Error ? error.message : String(error)}). Restore it from a backup before starting.`);
     }
-    const snapshot = snapshotFromPersistedState(parsed);
+    const snapshot = snapshotFromPersistedState(renameProviderFields(parsed));
     // Nothing else is touched unless a verified copy of the original exists.
     const backup = await backupFile(this.absolute(legacyFile), this.absolute(backupsDirectory), 'state-v0');
     await this.archiveExistingLayout();
@@ -153,13 +155,20 @@ export class AppStateStore {
     let settingsText = await readIfExists(this.absolute(settingsFile));
     if (settingsText === null) throw new StoreFormatError(`${settingsFile} is missing. Restore it from the ${backupsDirectory} folder.`);
     const settingsEnvelope = parseStoreFile(settingsFile, settingsText);
+    const migratedSettings = migrateData(settingsFile, settingsEnvelope.data, settingsEnvelope.schemaVersion, storeSchemaVersion, fileMigrations.settings);
     const files: StoreFiles = {
       roster: parseData(rosterFile, rosterSchema, migrateData(rosterFile, rosterEnvelope.data, rosterEnvelope.schemaVersion, rosterSchemaVersion, fileMigrations.roster)),
-      settings: parseData(settingsFile, settingsSchema, migrateData(settingsFile, settingsEnvelope.data, settingsEnvelope.schemaVersion, storeSchemaVersion, fileMigrations.settings)),
+      settings: parseData(settingsFile, settingsSchema, migratedSettings),
       visualizations: [],
     };
     this.telemetrySettings = files.settings.telemetry;
-    const raw = settingsEnvelope.data as { settings: Record<string, unknown> };
+    const raw = migratedSettings as { settings: Record<string, unknown> };
+    // Keep the original bytes in a verified backup before the file is rewritten at the current schema.
+    if (settingsEnvelope.schemaVersion < storeSchemaVersion) {
+      await backupFile(this.absolute(settingsFile), this.absolute(backupsDirectory), `settings-v${settingsEnvelope.schemaVersion}`);
+      settingsText = serializeStoreFile(raw);
+      await writeFileAtomically(this.absolute(settingsFile), settingsText);
+    }
     // TODO(remove-after: 2026-11-30): Remove settings.repositoryIcons import and retirement; retain the client projection. https://github.com/nbonamy/korus/issues/74
     const legacyIcons = raw.settings.repositoryIcons as Record<string, string> | undefined;
     const icons = await this.repositories.icons(legacyIcons);

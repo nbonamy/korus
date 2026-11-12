@@ -182,11 +182,11 @@ describe('mobile update channel', () => {
       expect(f.disconnected).not.toHaveBeenCalled();
     } finally { f.stream.close(); }
   });
-  it('refuses malformed provider frames before they reach conversation replicas', async () => {
+  it('refuses malformed conversation frames before they reach the conversation cache', async () => {
     const f = fixture();
     try {
       const pending = f.stream.request('snapshot.get', {}); const rejected = expect(pending).rejects.toThrow('Disconnected');
-      await tick(); f.push({ v: 1, seq: 1, update: { type: 'conversation', frame: { type: 'codex.conversationEventReceived', payload: {} } } });
+      await tick(); f.push({ v: 1, seq: 1, update: { type: 'conversation', frame: { type: 'conversation.sessionPatch', agentId: 'agent', provider: 'codex', payload: { conversation: null, epoch: 'epoch', patch: { revision: 0, ops: [] } } } } });
       await rejected; expect(f.update).not.toHaveBeenCalled();
     } finally { f.stream.close(); }
   });

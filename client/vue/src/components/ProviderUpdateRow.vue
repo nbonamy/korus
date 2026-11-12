@@ -1,5 +1,5 @@
 <template>
-  <slot v-if="$slots.default" :summary="enabled === false || backend === 'antigravity' || (!state && loading) ? '' : versionSummary" :upgrade-available="state?.status === 'available' && state.canUpgrade" :busy="loading || pending" :upgrade="upgrade" :menu-items="updateMenuItems" :select-menu-item="selectUpdateMenuItem" />
+  <slot v-if="$slots.default" :summary="enabled === false || (!state && loading) ? '' : versionSummary" :upgrade-available="state?.status === 'available' && state.canUpgrade" :busy="loading || pending" :upgrade="upgrade" :menu-items="updateMenuItems" :select-menu-item="selectUpdateMenuItem" />
   <FormRow v-else :title="$t('providerUpdate.version')">
     <template #copy>
       <span class="provider-update__version" :class="{ 'provider-update__current': state?.status === 'current', 'provider-update__available': state?.status === 'available' || pending }" :role="errorText ? 'alert' : pending ? 'status' : undefined">
@@ -22,7 +22,7 @@
 import { computed, inject, onScopeDispose, ref, watch } from 'vue';
 import { ElIcon, ElMessageBox } from 'element-plus';
 import { useI18n } from 'vue-i18n';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { HarnessProvider } from '@workspace/core/contracts';
 import type { ProviderUpdateStatus } from '@workspace/core/contracts/provider-updates';
 import { appApi, appPlatformActions } from '../platform-api';
 import FormRow from '../shared/form/FormRow.vue';
@@ -30,7 +30,7 @@ import { RefreshIcon, SearchIcon } from '../shared/icons/app-icons';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 
-const props = withDefaults(defineProps<{ backend: AgentBackend; remoteConnectionId?: string; enabled?: boolean }>(), { enabled: true });
+const props = withDefaults(defineProps<{ provider: HarnessProvider; remoteConnectionId?: string; enabled?: boolean }>(), { enabled: true });
 const emit = defineEmits<{ activity: [active: boolean] }>();
 const preview = inject(providerUpdatePreviewKey, ref(false));
 const { t } = useI18n();
@@ -52,9 +52,9 @@ const versionSummary = computed(() => {
       : !state.value && loading.value ? t('auth.checking') : '');
   return [state.value?.installedVersion, detail].filter(Boolean).join(' · ') || '—';
 });
-const instructionsUrl = computed(() => props.backend === 'cursor' ? 'https://cursor.com/docs/cli/installation#updates' : props.backend === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
+const instructionsUrl = computed(() => props.provider === 'cursor' ? 'https://cursor.com/docs/cli/installation#updates' : props.provider === 'antigravity' ? 'https://antigravity.google/docs/getting-started?tab=cli' : props.provider === 'codex' ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started' : 'https://code.claude.com/docs/en/setup#update-claude-code');
 const updateMenuItems = computed<AppMenuItem[]>(() => {
-  if (props.enabled === false || props.backend === 'antigravity') return [];
+  if (props.enabled === false) return [];
   const items: AppMenuItem[] = [{ id: 'check-updates', type: 'action', label: t('providerUpdate.check'), icon: SearchIcon, disabled: loading.value || pending.value }];
   if (state.value?.status === 'available' && state.value.canUpgrade) items.unshift({ id: 'upgrade', type: 'action', label: t('engineConnection.update'), disabled: loading.value });
   if (state.value?.status === 'waiting') items.unshift({ id: 'cancel-update', type: 'action', label: t('common.cancel'), disabled: loading.value });
@@ -75,7 +75,7 @@ function poll() {
 }
 function resetPreview() {
   clearTimeout(previewTimer);
-  state.value = { backend: props.backend, status: 'available', installedVersion: '1.0.0', latestVersion: '1.1.0', method: 'native', canUpgrade: true, busy: false };
+  state.value = { provider: props.provider, status: 'available', installedVersion: '1.0.0', latestVersion: '1.1.0', method: 'native', canUpgrade: true, busy: false };
   loading.value = false;
   failed.value = false;
 }
@@ -94,14 +94,14 @@ function changePreview(action: 'upgrade' | 'cancel') {
   }, 2_000);
 }
 async function refresh(force = false) {
-  if (props.enabled === false || props.backend === 'antigravity') return;
+  if (props.enabled === false) return;
   if (preview.value) { resetPreview(); return; }
   const expected = revision;
   loading.value = true;
   failed.value = false;
   try {
     if (!appApi) throw new Error('Backend unavailable');
-    const result = await appApi.getProviderUpdate(props.backend, props.remoteConnectionId, force);
+    const result = await appApi.getProviderUpdate(props.provider, props.remoteConnectionId, force);
     if (revision === expected) state.value = result;
   } catch { if (revision === expected) failed.value = true; }
   finally { if (revision === expected) { loading.value = false; poll(); } }
@@ -123,12 +123,12 @@ async function change(input: import('@workspace/core/contracts/provider-updates'
   failed.value = false;
   try {
     if (!appApi) throw new Error('Backend unavailable');
-    const result = await appApi.setProviderUpdate(props.backend, input, props.remoteConnectionId);
+    const result = await appApi.setProviderUpdate(props.provider, input, props.remoteConnectionId);
     if (revision === expected) state.value = result;
   } catch { if (revision === expected) failed.value = true; }
   finally { if (revision === expected) { loading.value = false; poll(); } }
 }
-watch(() => [props.backend, props.remoteConnectionId, props.enabled, preview.value], () => {
+watch(() => [props.provider, props.remoteConnectionId, props.enabled, preview.value], () => {
   ++revision; clearTimeout(timer); clearTimeout(previewTimer); state.value = undefined; void refresh();
 }, { immediate: true, flush: 'sync' });
 onScopeDispose(() => { ++revision; clearTimeout(timer); clearTimeout(previewTimer); emit('activity', false); });

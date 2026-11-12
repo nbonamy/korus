@@ -1,3 +1,4 @@
+import '@korus-dev/agent-ui-sdk/styles.css';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -44,7 +45,7 @@ describe('MarkdownPanel', () => {
       },
     });
 
-    expect(wrapper.get('.markdown-panel__content').classes()).toContain('codex-markdown');
+    expect(wrapper.get('.markdown-panel__content').classes()).toContain('agent-ui-markdown');
     expect(wrapper.get('h1').text()).toBe('Notes');
     expect(wrapper.get('a').attributes('href')).toBe('docs/architecture.md');
     expect(wrapper.text()).toContain('const ok = true');

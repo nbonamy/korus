@@ -1,7 +1,7 @@
 <template>
   <section class="plan-review-section">
     <header class="plan-review-section__heading">
-      <div v-if="section.heading" class="codex-markdown" v-html="section.heading" />
+      <div v-if="section.heading" class="agent-ui-markdown" v-html="section.heading" />
       <span v-else>{{ section.title }}</span>
       <button
         ref="commentButton"
@@ -16,7 +16,7 @@
     </header>
     <div class="plan-review-section__body" @mouseup="selectText">
       <template v-for="(block, index) in section.blocks" :key="index">
-        <div v-if="'html' in block" class="codex-markdown" v-html="block.html" />
+        <div v-if="'html' in block" class="agent-ui-markdown" v-html="block.html" />
         <PlanChoiceGroup
           v-else-if="'choice' in block"
           :group="block.choice"

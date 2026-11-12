@@ -1,5 +1,6 @@
 import { isCanvasDocument, type CanvasDocument } from './visualize-canvas';
-import type { Agent, BackendConversationRef } from './contracts';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
+import type { Agent, ProviderConversationRef } from './contracts';
 
 export const visualizationKinds = ['mermaid', 'svg', 'excalidraw', 'image'] as const;
 
@@ -57,7 +58,7 @@ export function visualizationRepositoryRoot(agent: Agent): string | null {
 
 export type VisualizeSession = {
   id: string;
-  conversationRef: BackendConversationRef | null;
+  conversationRef: ProviderConversationRef | null;
   isOpen: boolean;
   suggestions: VisualizationSuggestion[];
   visualizations: Visualization[];
@@ -155,10 +156,8 @@ function isVisualizationContent(value: unknown): value is VisualizationContent {
     && typeof value.alt === 'string';
 }
 
-function isConversationRef(value: unknown): value is BackendConversationRef {
-  if (!record(value)) return false;
-  return (value.backend === 'codex' && typeof value.threadId === 'string')
-    || ((value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor') && (typeof value.folder === 'string' || value.folder === null) && typeof value.sessionId === 'string');
+function isConversationRef(value: unknown): value is ProviderConversationRef {
+  return isProviderConversationRef(value);
 }
 
 function record(value: unknown): value is Record<string, unknown> {

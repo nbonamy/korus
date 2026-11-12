@@ -1,4 +1,4 @@
-import { prepareOpenAISpeechSession, startAppleSpeechSession, startOpenAISpeechSession, type CodexNativeMainOptions } from '@codex-app-sdk/electron';
+import { prepareOpenAISpeechSession, startAppleSpeechSession, startOpenAISpeechSession, type NativeMainOptions } from '@korus-dev/agent-ui-sdk/electron';
 
 type Preferences = { get(): { engine: string; openaiLiveTranscription?: boolean }; apiKey(): string | undefined };
 /** Select once at start; the SDK retains the returned session for append/stop/cancel. */
@@ -19,7 +19,7 @@ export function createDictationSpeechStarter(
 export function createDictationSpeechPreparer(
   settings: Preferences,
   engines = { apple: startAppleSpeechSession, openai: prepareOpenAISpeechSession },
-): NonNullable<CodexNativeMainOptions['prepareSpeechSession']> {
+): NonNullable<NativeMainOptions['prepareSpeechSession']> {
   return async (input, onEvent, options) => {
     const current = settings.get();
     if (current.engine === 'apple') {

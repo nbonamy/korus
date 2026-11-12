@@ -4,10 +4,10 @@ import XCTest
 final class UsageStateTests: XCTestCase {
     func testDecodesEngineUsageAndDisplaysRemainingQuotaAndResetWindows() throws {
         let json = """
-        {"status":"loaded","providers":[{"backend":"codex","failed":false,"limits":{
+        {"status":"loaded","providers":[{"provider":"codex","failed":false,"limits":{
           "primary":{"usedPercent":23.4,"windowDurationMins":300,"resetsAt":10601},
           "secondary":{"usedPercent":101,"windowDurationMins":10080,"resetsAt":180000}
-        }},{"backend":"claude","limits":null,"failed":true}]}
+        }},{"provider":"claude","limits":null,"failed":true}]}
         """
         let usage = try JSONDecoder().decode(UsageState.self, from: Data(json.utf8))
         XCTAssertEqual(usage.status, .loaded)
@@ -32,7 +32,7 @@ final class UsageStateTests: XCTestCase {
         XCTAssertEqual(expired.remainingFraction, 1)
         XCTAssertEqual(expired.reset(at: .now), "0m")
         XCTAssertEqual(expired.label, "30m")
-        XCTAssertTrue(UsageState(status: .loaded, providers: [.init(backend: "codex", limits: nil, failed: false)]).visibleProviders.isEmpty)
+        XCTAssertTrue(UsageState(status: .loaded, providers: [.init(provider: "codex", limits: nil, failed: false)]).visibleProviders.isEmpty)
     }
 
     func testNonFiniteUsageDoesNotBecomeAFullOrEmptyQuota() {

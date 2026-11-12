@@ -38,8 +38,8 @@ html[data-platform='windows'] .window-edge {
   border-color: var(--color-border);
 }
 
-/* codex-app-sdk 0.1.0 incorrectly hides its dark/system theme host. */
-html[data-codex-theme] {
+/* Keep SDK theme hosts visible in the app shell. */
+html[data-theme] {
   display: block;
 }
 
@@ -70,8 +70,22 @@ button,
   user-select: none;
 }
 
-.el-overlay {
+.el-overlay,
+.el-message {
   -webkit-app-region: no-drag;
+}
+
+.el-message.agent-close-toast {
+  --el-message-bg-color: var(--color-primary-container);
+  --el-message-border-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  --el-message-text-color: var(--color-on-primary-container);
+  --el-message-close-icon-color: var(--color-on-primary-container);
+}
+
+.agent-close-undo {
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 .el-dialog {

@@ -8,15 +8,15 @@ describe('provider update ownership', () => {
     let finish!: () => void;
     const installation = { status: 'available' as 'available' | 'current', executable: '/bin/claude', version: '1.0.0', latestVersion: '1.1.0', method: 'native' as const, identity: 'claude', command: { file: '/bin/claude', args: ['update'] } };
     const upgrade = vi.fn(() => new Promise<void>(resolve => { finish = () => { installation.version = '1.1.0'; installation.status = 'current'; resolve(); }; }));
-    const updates = new ProviderUpdates({ inspect: async () => installation, upgrade, busy: () => false, withStoppedProvider: async (_backend, work) => work() });
+    const updates = new ProviderUpdates({ inspect: async () => installation, upgrade, busy: () => false, withStoppedProvider: async (_provider, work) => work() });
     const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), providerUpdates: updates });
     try {
-      const result = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/update/get', params: { backend: 'claude' } });
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/update/get', params: { provider: 'claude' } });
       expect(result).toMatchObject({ result: { status: 'available' } });
       const state = await updates.get('claude');
-      await expect(server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/update/set', params: { backend: 'claude', input: { action: 'upgrade', token: state.token } } })).rejects.toThrow('confirm');
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/update/set', params: { provider: 'claude', input: { action: 'upgrade', token: state.token } } })).rejects.toThrow('confirm');
       expect(upgrade).not.toHaveBeenCalled();
-      await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/update/set', params: { backend: 'claude', input: { action: 'upgrade', confirmed: true, token: state.token } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'provider/update/set', params: { provider: 'claude', input: { action: 'upgrade', confirmed: true, token: state.token } } });
       await expect(server.requireConnectedEngine('claude')).rejects.toThrow('upgrade');
       await vi.waitFor(() => expect(upgrade).toHaveBeenCalledOnce());
       finish();
@@ -29,7 +29,7 @@ describe('provider update ownership', () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
     snapshot.remoteConnections.connections = [connection];
-    const state = { backend: 'codex', status: 'waiting', method: 'npm', canUpgrade: true, busy: true };
+    const state = { provider: 'codex', status: 'waiting', method: 'npm', canUpgrade: true, busy: true };
     const clients = { request: vi.fn().mockResolvedValue(state), close: vi.fn() };
     const inspect = vi.fn();
     const upgrade = vi.fn();
@@ -37,8 +37,8 @@ describe('provider update ownership', () => {
     const server = new AppBackendServer({ version: 'test', snapshot, providerUpdates: updates, remoteClients: clients as never });
     try {
       const input = { action: 'upgrade', confirmed: true, token: 'remote-observation' };
-      expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/update/set', params: { backend: 'codex', input, remoteConnectionId: connection.id } })).toMatchObject({ result: state });
-      expect(clients.request).toHaveBeenCalledWith(connection, 'provider/update/set', { backend: 'codex', input, _clientId: 'remote-controller' }, expect.any(Function));
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/update/set', params: { provider: 'codex', input, remoteConnectionId: connection.id } })).toMatchObject({ result: state });
+      expect(clients.request).toHaveBeenCalledWith(connection, 'provider/update/set', { provider: 'codex', input, _clientId: 'remote-controller' }, expect.any(Function));
       expect(inspect).not.toHaveBeenCalled();
       expect(upgrade).not.toHaveBeenCalled();
     } finally { await server.close(); }

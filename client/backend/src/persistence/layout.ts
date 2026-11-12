@@ -1,30 +1,30 @@
-import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, BackendDefaults, BackendSession, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
-import { isAgentBackend } from '@workspace/core/contracts/shared';
-import { approvalBackendDefaultsWithPreset } from '@workspace/core/approval-presets';
+import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
+import { isHarnessProvider } from '@workspace/core/contracts/shared';
+import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';
 import './agent-fields';
 import { normalizeBrowserBookmarks, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
 
-type CodexDefaults = Extract<BackendDefaults, { kind: 'codex' }>;
-type ClaudeDefaults = Extract<BackendDefaults, { kind: 'claude' }>;
-type ClaudeSession = Extract<BackendSession, { kind: 'claude' }>;
+type CodexDefaults = Extract<ProviderDefaults, { kind: 'codex' }>;
+type ClaudeDefaults = Extract<ProviderDefaults, { kind: 'claude' }>;
+type ClaudeSession = Extract<ProviderSessionData, { kind: 'claude' }>;
 
 /** One provider block instead of three sibling fields that had to agree on `kind`. */
 type Engine =
-  | { kind: 'cursor'; session?: { sessionId: string }; settings?: Omit<Extract<BackendDefaults, { kind: 'cursor' }>, 'kind'> }
-  | { kind: 'antigravity'; session?: { sessionId: string }; settings?: Omit<Extract<BackendDefaults, { kind: 'antigravity' }>, 'kind'> }
-  | { kind: 'codex'; session?: { threadId: string }; settings?: Omit<CodexDefaults, 'kind'> }
+  | { kind: 'cursor'; session?: { conversationId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'cursor' }>, 'kind'> }
+  | { kind: 'antigravity'; session?: { conversationId: string }; settings?: Omit<Extract<ProviderDefaults, { kind: 'antigravity' }>, 'kind'> }
+  | { kind: 'codex'; session?: { conversationId: string }; settings?: Omit<CodexDefaults, 'kind'> }
   | { kind: 'claude'; session?: Omit<ClaudeSession, 'kind'>; settings?: Omit<ClaudeDefaults, 'kind'> };
 
-export type RosterAgent = Omit<PersistedAgent, 'teamId' | 'backend' | 'backendSession' | 'backendDefaults'> & { engine: Engine };
+export type RosterAgent = Omit<PersistedAgent, 'teamId' | 'provider' | 'providerSession' | 'providerDefaults'> & { engine: Engine };
 
 /** Provider data this build must retain without interpreting or running it. */
 export type StoredRosterAgent = RosterAgent | { id: string; engine: { kind: string; [key: string]: unknown }; [key: string]: unknown };
 
 export function isSupportedRosterAgent(agent: StoredRosterAgent): agent is RosterAgent {
-  return isAgentBackend(agent.engine.kind);
+  return isHarnessProvider(agent.engine.kind);
 }
 
 export type RosterData = {
@@ -189,7 +189,7 @@ function byPosition(left: VisualizationData, right: VisualizationData): number {
 }
 
 function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
-  const { teamId: _teamId, backend: _backend, backendSession: _session, backendDefaults: _defaults, plan, planReview, goal, ...kept } = agent;
+  const { teamId: _teamId, provider: _provider, providerSession: _session, providerDefaults: _defaults, plan, planReview, goal, ...kept } = agent;
   return {
     ...kept,
     engine: engineFrom(agent),
@@ -201,58 +201,54 @@ function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
 }
 
 function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): PersistedAgent {
-  const { engine, ...kept } = agent;
+  const { engine: stored, ...kept } = agent;
+  const engine = (stored.session ? { ...stored, session: withConversationId(stored.session) } : stored) as Engine;
   if (engine.kind === 'antigravity' || engine.kind === 'cursor') return {
-    ...kept, ...(teamId ? { teamId } : {}), backend: engine.kind,
-    ...(engine.session ? { backendSession: { kind: engine.kind, ...engine.session } } : {}),
-    ...(engine.settings ? { backendDefaults: { kind: engine.kind, ...engine.settings } } : {}),
+    ...kept, ...(teamId ? { teamId } : {}), provider: engine.kind,
+    ...(engine.session ? { providerSession: { kind: engine.kind, ...engine.session } } : {}),
+    ...(engine.settings ? { providerDefaults: { kind: engine.kind, ...engine.settings } } : {}),
   };
   const session = engine.session;
   const settings = engine.settings;
-  const backendSession: BackendSession | undefined = session
-    ? engine.kind === 'codex' ? { kind: 'codex', threadId: (session as { threadId: string }).threadId } : { kind: 'claude', ...(session as Omit<ClaudeSession, 'kind'>) }
+  const providerSession: ProviderSessionData | undefined = session
+    ? engine.kind === 'codex' ? { kind: 'codex', conversationId: session.conversationId } : { kind: 'claude', ...(session as Omit<ClaudeSession, 'kind'>) }
     : undefined;
-  const backendDefaults: BackendDefaults | undefined = settings
+  const providerDefaults: ProviderDefaults | undefined = settings
     ? engine.kind === 'codex' ? codexDefaultsFrom(settings as Omit<CodexDefaults, 'kind'>) : { kind: 'claude', ...(settings as Omit<ClaudeDefaults, 'kind'>) }
     : undefined;
   return {
     ...kept,
     ...(teamId ? { teamId } : {}),
-    backend: engine.kind,
-    ...(backendSession ? { backendSession } : {}),
-    ...(backendDefaults ? { backendDefaults } : {}),
+    provider: engine.kind,
+    ...(providerSession ? { providerSession: providerSession } : {}),
+    ...(providerDefaults ? { providerDefaults: providerDefaults } : {}),
   };
 }
 
 function engineFrom(agent: PersistedAgent): Engine {
-  const { backend, backendSession, backendDefaults } = agent;
+  const { provider: backend, providerSession: providerSession, providerDefaults: providerDefaults } = agent;
   if (backend === 'antigravity' || backend === 'cursor') return {
     kind: backend,
-    ...(backendSession?.kind === backend ? { session: withoutKind(backendSession) } : {}),
-    ...(backendDefaults?.kind === backend ? { settings: withoutKind(backendDefaults) } : {}),
+    ...(providerSession?.kind === backend ? { session: withoutKind(providerSession) } : {}),
+    ...(providerDefaults?.kind === backend ? { settings: withoutKind(providerDefaults) } : {}),
   };
   if (backend === 'claude') {
-    const session = backendSession?.kind === 'claude' ? withoutKind(backendSession) : undefined;
-    const settings = backendDefaults?.kind === 'claude' ? withoutKind(backendDefaults) : undefined;
+    const session = providerSession?.kind === 'claude' ? withoutKind(providerSession) : undefined;
+    const settings = providerDefaults?.kind === 'claude' ? withoutKind(providerDefaults) : undefined;
     return { kind: 'claude', ...(session ? { session } : {}), ...(settings ? { settings } : {}) };
   }
-  const session = backendSession?.kind === 'codex' ? { threadId: backendSession.threadId } : undefined;
-  const settings = backendDefaults?.kind === 'codex' ? codexSettingsFrom(backendDefaults) : undefined;
+  const session = providerSession?.kind === 'codex' ? { conversationId: providerSession.conversationId } : undefined;
+  const settings = providerDefaults?.kind === 'codex' ? codexSettingsFrom(providerDefaults) : undefined;
   return { kind: 'codex', ...(session ? { session } : {}), ...(settings ? { settings } : {}) };
 }
 
-/** Policy, reviewer and sandbox follow from the preset, so only the preset is stored. */
 function codexSettingsFrom(defaults: CodexDefaults): Omit<CodexDefaults, 'kind'> {
   const { kind: _kind, ...settings } = defaults;
-  if (!settings.approvalPreset) return settings;
-  const { approvalPolicy: _policy, approvalsReviewer: _reviewer, sandboxMode: _sandbox, ...rest } = settings;
-  return rest;
+  return settings;
 }
 
 function codexDefaultsFrom(settings: Omit<CodexDefaults, 'kind'>): CodexDefaults {
-  return settings.approvalPreset
-    ? approvalBackendDefaultsWithPreset({ kind: 'codex', ...settings }, settings.approvalPreset)
-    : { kind: 'codex', ...settings };
+  return { kind: 'codex', ...settings };
 }
 
 function withoutKind<T extends { kind: string }>(value: T): Omit<T, 'kind'> {

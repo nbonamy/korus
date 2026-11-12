@@ -48,7 +48,7 @@ function mountPanel(
     props: {
       activeTab,
       agent: {
-        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       },
       gitPanel: { kind: 'gitDiff', title: 'Review', diff: '', state: 'idle' },
       browserAvailable,
@@ -320,8 +320,8 @@ describe('RightWorkspacePanel', () => {
     const wrapper = mountPanel();
 
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
-    await bodyAll('.app-menu__item')[0]?.trigger('click');
+    expect(bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
+    await bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item')[0]?.trigger('click');
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview']]);
   });
@@ -625,7 +625,7 @@ describe('RightWorkspacePanel', () => {
     if (kind === 'native review') {
       await wrapper.setProps({ agent: {
         ...wrapper.props('agent'),
-        backendSession: { kind: 'codex', threadId: 'plan-thread' },
+        providerSession: { kind: 'codex', conversationId: 'plan-thread' },
         planReview: { id: 'plan-review', conversationId: 'plan-thread', turnId: 'plan-turn', markdown: '# Plan\n\nKeep Browser available.', status: 'pending' },
       } });
     }
@@ -649,7 +649,7 @@ describe('RightWorkspacePanel', () => {
       if (response.resolution === 'save') review = { ...review, draft: response.draft, draftVersion: (response.draftVersion ?? 0) + 1 };
       return review;
     });
-    await wrapper.setProps({ agent: { ...wrapper.props('agent'), backend: 'cursor', backendSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 'session' }, planReview: review }, updatePlanReview });
     expect(wrapper.get('h1').text()).toBe('Translation');
     await wrapper.findAll('input[type="radio"]')[1]!.setValue();
     await wrapper.get('button[aria-label="Comment on this section: French text"]').trigger('click');

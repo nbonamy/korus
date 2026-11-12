@@ -157,7 +157,7 @@ describe('AppBackendProcessClient', () => {
       method: backendMethods.backendEventNotify,
       params: {
         seq: 1,
-        backend: 'codex',
+        provider: 'codex',
         agentId: 'agent-dina',
         type: 'agent.statusChanged',
         payload: { type: 'working' },
@@ -167,7 +167,7 @@ describe('AppBackendProcessClient', () => {
 
     expect(listener).toHaveBeenCalledWith({
       seq: 1,
-      backend: 'codex',
+      provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -197,8 +197,8 @@ describe('AppBackendProcessClient', () => {
       },
       {
         seq: secret,
-        backend: 'codex' as const, type: 'backend.statusChanged',
-        payload: { backend: 'codex' as const, status: 'running' },
+        provider: 'codex' as const, type: 'provider.statusChanged',
+        payload: { provider: 'codex' as const, status: 'running' },
         occurredAt: '2026-06-13T00:00:00.000Z',
       },
       {
@@ -219,8 +219,8 @@ describe('AppBackendProcessClient', () => {
       method: backendMethods.backendEventNotify,
       params: {
         seq: 3,
-        backend: 'codex' as const, type: 'backend.statusChanged',
-        payload: { backend: 'codex' as const, status: 'running' },
+        provider: 'codex' as const, type: 'provider.statusChanged',
+        payload: { provider: 'codex' as const, status: 'running' },
         occurredAt: '2026-06-13T00:00:00.000Z',
       },
     })}\n`);
@@ -286,9 +286,9 @@ describe('AppBackendProcessClient', () => {
       method: backendMethods.backendEventNotify,
       params: {
         seq: 1,
-        type: 'backend.statusChanged',
-        backend: 'codex',
-        payload: { backend: 'codex', status: 'running' },
+        type: 'provider.statusChanged',
+        provider: 'codex',
+        payload: { provider: 'codex', status: 'running' },
         occurredAt: '2026-06-13T00:00:00.000Z',
       },
     })}\n`);

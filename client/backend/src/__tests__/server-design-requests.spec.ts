@@ -1,16 +1,16 @@
-import { BackendDriverRpc } from '../driver-rpc';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { ProviderDriverRpc } from '../driver-rpc';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { expect, it, vi } from 'vitest';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 
 it('routes Design edits to their owning daemon, validates requests and publishes saved state', async () => {
   const snapshot = createTestSnapshot();
-  snapshot.agents.push({ id: 'designer', teamId: snapshot.teams[0].id, backend: 'codex', folder: '/tmp', name: 'Designer', status: { type: 'idle' }, createdAt: '', updatedAt: '' });
+  snapshot.agents.push({ id: 'designer', teamId: snapshot.teams[0].id, provider: 'codex', folder: '/tmp', name: 'Designer', status: { type: 'idle' }, createdAt: '', updatedAt: '' });
   snapshot.teams[0].agentIds.push('designer');
   const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-  const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'designer-session' }, turnId: 'comment-turn' });
-  const driverRpc = new BackendDriverRpc(new Map([['codex', { backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities, sendPrompt, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn() }]]));
+  const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'designer-session' }, turnId: 'comment-turn' });
+  const driverRpc = new ProviderDriverRpc(new Map([['codex', { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities, sendPrompt, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn() }]]));
   const server = new AppBackendServer({ snapshot, version: 'test', saveSnapshot, driverRpc });
   const request = (input: unknown, agentId = 'designer') => server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'agent/design', params: { agentId, input } });
   try {

@@ -14,7 +14,7 @@
       :loading="historyLoading"
       @retry="emit('retry-history')"
     />
-    <CodexConversationPane
+    <SdkConversationPane
       v-else
       ref="surface"
       class="conversation-pane__surface"
@@ -43,11 +43,11 @@
           :annotations="annotationsForMessage(message, index).map(annotation => ({ ...annotation, number: textAnnotations.indexOf(annotation) + 1 }))"
           @edit="annotationReview?.open($event)"
         >
-          <CodexMessageBlock :block="block" :mention-groups="textCatalogs?.mentionGroups" :plugins="textCatalogs?.plugins" :skills="textCatalogs?.skills">
+          <MessageBlock :block="block" :mention-groups="textCatalogs?.mentionGroups" :plugins="textCatalogs?.plugins" :skills="textCatalogs?.skills">
             <template #mention="{ item, surface: mentionSurface }">
               <AgentMention v-if="item.value.startsWith('agent:')" :label="item.label" :surface="mentionSurface" />
             </template>
-          </CodexMessageBlock>
+          </MessageBlock>
         </ChatAnnotatedText>
       </template>
       <template #message-header="{ message }">
@@ -103,15 +103,15 @@
         <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
       </template>
       <template #composer-shelf-actions="{ disabled }">
-        <BackendSelector
+        <ProviderSelector
           v-if="showBackendSelector && agent && backendSwitch"
           class="conversation-pane__backend-selector"
-          :model-value="agent.backend"
+          :model-value="agent.provider"
           preserve-selection
           :remote-connection-id="agent.remoteConnectionId"
           size="small"
           :disabled="disabled || backendSwitch.busy.value"
-          @update:model-value="$event && selectBackend($event)"
+          @update:model-value="$event && selectProvider($event)"
         />
         <div v-if="activeThreadFlags.length > 0 || agent?.rateLimitPause" class="conversation-pane__thread-flags">
           <RateLimitResumeNotice v-if="agent?.rateLimitPause" :agent-id="agent.id" :pause="agent.rateLimitPause" />
@@ -134,7 +134,7 @@
         </div>
       </template>
       <template #before-composer>
-        <button v-if="agent && !backendChoices.includes(agent.backend)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
+        <button v-if="agent && !providerChoices.includes(agent.provider)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
           {{ t('engineConnection.required') }}
         </button>
         <div v-if="draftPickerOpen" class="conversation-pane__draft-anchor">
@@ -164,7 +164,7 @@
           @remove="removeComposerContextCard"
         />
       </template>
-    </CodexConversationPane>
+    </SdkConversationPane>
     <ChatTextSelectionAnnotation
       :conversation-key="conversationKey"
       :selection="messageTextSelection"
@@ -180,9 +180,11 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'AppConversationPane' });
 import { providerSafetyBlockPreviewKey } from './debug-provider-safety-block';
+import type { PaneMessage } from '../conversation-presentation/presentation';
 import { providerSafetyBlockDetails } from '@workspace/core/provider-safety-block';
-import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
+import { slicePromptContent, replacePromptContentRange } from '@korus-dev/multi-agent-sdk/prompt';
 import ConversationShareActivity from './ConversationShareActivity.vue';
 import TelemetryConsentNotice from './TelemetryConsentNotice.vue';
 import GithubStarPrompt from './GithubStarPrompt.vue';
@@ -194,17 +196,16 @@ import { translate } from '../i18n';
 import { computed, inject, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
-  CodexConversationPane,
-  CodexMessageBlock,
-  defaultCodexChatTranslate,
-  provideCodexChatTranslate,
-  resolveCodexConversationPaneValue,
-  type CodexComposerState,
-  type CodexChatMessage,
-  type CodexConversationPaneController,
-  type CodexNativeAttachment,
-  type SurfaceMessage,
-} from '@codex-app-sdk/vue';
+  ConversationPane as SdkConversationPane,
+  MessageBlock,
+  defaultChatTranslate,
+  provideChatTranslate,
+  resolveConversationPaneValue,
+  type ComposerState,
+  type ChatMessage,
+  type ConversationPaneController,
+  type NativeAttachment,
+} from '@korus-dev/agent-ui-sdk';
 import { AlertTriangleIcon, ChevronDown as ChevronDownIcon, ClickIcon } from '../shared/icons/app-icons';
 import { IconSitemap } from '@tabler/icons-vue';
 import type {
@@ -229,10 +230,10 @@ import type { ChatTextSelection } from './use-chat-text-annotations';
 import ChatAnnotationReview from './ChatAnnotationReview.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
 import ThreadFlagAffordance from './ThreadFlagAffordance.vue';
-import BackendSelector from './BackendSelector.vue';
+import ProviderSelector from './ProviderSelector.vue';
 import SavedPromptDraftPicker from './SavedPromptDraftPicker.vue';
-import { useBackendChoices, useBackendSwitch, useConnectEngine } from './backend-selection';
-import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { useProviderChoices, useProviderSwitch, useConnectEngine } from './provider-selection';
+import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { ElMessage } from 'element-plus';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation } from './use-visualization-annotations';
@@ -243,26 +244,27 @@ import {
   presentRendererCollaborationMessage,
   type CollaborationMessagePresentation,
 } from '../shared/collaboration-message';
-import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
-const backendSwitch = useBackendSwitch();
-const backendChoices = useBackendChoices(() => props.agent?.remoteConnectionId);
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
+const backendSwitch = useProviderSwitch();
+const providerChoices = useProviderChoices(() => props.agent?.remoteConnectionId);
 const connectEngine = useConnectEngine();
-async function selectBackend(backend: Agent['backend']): Promise<void> {
+async function selectProvider(provider: Agent['provider']): Promise<void> {
   if (!props.agent || !backendSwitch) return;
-  try { await backendSwitch.select(props.agent.id, backend); }
+  try { await backendSwitch.select(props.agent.id, provider); }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
 }
 
 const { t, te } = useI18n();
 const surface = ref<{ focusComposer(): void; $el: HTMLElement } | null>(null);
-provideCodexChatTranslate((key, params) => te(key)
+provideChatTranslate((key, params) => te(key)
   ? t(key, params ?? {})
-  : defaultCodexChatTranslate(key, params));
+  : defaultChatTranslate(key, params));
 
 const props = withDefaults(defineProps<{
-  controller: CodexConversationPaneController;
+  controller: ConversationPaneController;
   keyboardActive?: boolean;
   agent: Agent | null;
   agents?: readonly Agent[];
@@ -280,7 +282,7 @@ const props = withDefaults(defineProps<{
   emptySubhead?: string;
   threadFlagBusy?: boolean;
   savedPromptDrafts?: readonly SavedPromptDraft[];
-  savePromptDraft?: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
+  savePromptDraft?: (agentId: string, text: string, content?: readonly import('@korus-dev/multi-agent-sdk').PromptPart[]) => Promise<void>;
   removePromptDraft?: (id: string) => Promise<void>;
   readConversationContent?: (agentId: string, input: ConversationContentInput) => Promise<ConversationContentChunk>;
 }>(), {
@@ -316,15 +318,15 @@ const safetyBlock = computed(() => {
   return preview && preview.agentId === props.agent?.id ? preview.message
     : props.agent?.status.type === 'error' ? providerSafetyBlockDetails(props.agent.status.message) : null;
 });
-const displayController = computed<CodexConversationPaneController>(() => {
+const displayController = computed<ConversationPaneController>(() => {
   if (!safetyBlock.value) return props.controller;
   return {
     state: () => {
-      const state = resolveCodexConversationPaneValue(props.controller.state);
+      const state = resolveConversationPaneValue(props.controller.state);
       return { ...state, identity: { ...state.identity, disabled: true, error: null },
         policy: { ...state.policy, canDeleteTurn: false, canEditTurn: false, canForkTurn: false, canRetryTurn: false, followUpsDisabled: true } };
     },
-    actions: () => ({ ...resolveCodexConversationPaneValue(props.controller.actions),
+    actions: () => ({ ...resolveConversationPaneValue(props.controller.actions),
       submit: undefined, steer: undefined, sendFollowUp: undefined, deleteTurn: undefined, editTurn: undefined, retryTurn: undefined, forkTurn: undefined }),
   };
 });
@@ -340,7 +342,7 @@ provideAppToolPresentation(
 
 const emit = defineEmits<{
   'add-text-annotation': [payload: { selection: ChatTextSelection; comment: string }];
-  'annotate-attachment': [attachment: CodexNativeAttachment];
+  'annotate-attachment': [attachment: NativeAttachment];
   'close-plan': [];
   'edit-text-annotation': [annotationId: string, comment: string];
   'remove-text-annotation': [annotationId: string];
@@ -357,8 +359,8 @@ let loadTimingRevision = 0;
 onUnmounted(() => { loadTimingRevision += 1; });
 if (traceConversationLoad) watch([
   () => props.agent?.id,
-  () => resolveCodexConversationPaneValue(props.controller.state).history?.loading ?? props.historyLoading,
-  () => resolveCodexConversationPaneValue(props.controller.state).identity.messages.length > 0,
+  () => resolveConversationPaneValue(props.controller.state).history?.loading ?? props.historyLoading,
+  () => resolveConversationPaneValue(props.controller.state).identity.messages.length > 0,
 ], async ([agentId, loading, hasMessages]) => {
   const revision = ++loadTimingRevision;
   if (!agentId || loading || !hasMessages) return;
@@ -373,40 +375,42 @@ if (traceConversationLoad) watch([
     if (revision === loadTimingRevision && loadTimingRoot.value) mark('content.paint-opportunity');
   }));
 }, { immediate: true, flush: 'post' });
-const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
+// Messages arrive with deferred content only from harnesses that read conversation content back.
+const contentSessionId = computed(() => props.agent?.providerSession && defaultProviderCapabilities(props.agent.provider).conversationContent
+  ? sessionConversationId(props.agent.providerSession) : null);
 const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
 const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);
 const movingSuggestion = ref(false);
 const movedSuggestions = new Set<string>();
-const canMoveSuggestion = computed(() => Boolean(resolveCodexConversationPaneValue(props.controller.actions).updateComposerState && resolveCodexConversationPaneValue(props.controller.state).composer?.state));
+const canMoveSuggestion = computed(() => Boolean(resolveConversationPaneValue(props.controller.actions).updateComposerState && resolveConversationPaneValue(props.controller.state).composer?.state));
 function guestAuthor(id: string | undefined) { return guestAuthors.value.find(author => author.messageId === id)?.name ?? null; }
 const loadedContent = reactive(new Map<string, RendererMessage>());
 watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
-function deferredContent(message: CodexChatMessage | SurfaceMessage): RendererMessage['deferredContent'] {
+function deferredContent(message: ChatMessage | PaneMessage): RendererMessage['deferredContent'] {
   // The SDK header slot exposes its normalized message, so resolve app metadata by ID.
-  const original = resolveCodexConversationPaneValue(props.controller.state).identity.messages.find((candidate) => candidate.id === message.id);
+  const original = resolveConversationPaneValue(props.controller.state).identity.messages.find((candidate) => candidate.id === message.id);
   return (original as RendererMessage | undefined)?.deferredContent;
 }
-const paneConversationKey = computed(() => resolveCodexConversationPaneValue(props.controller.state).identity.conversationKey ?? conversationKey.value);
+const paneConversationKey = computed(() => resolveConversationPaneValue(props.controller.state).identity.conversationKey ?? conversationKey.value);
 const agentDrafts = computed(() => props.savedPromptDrafts.filter((draft) => draft.agentId === props.agent?.id));
 const draftPickerOpen = ref(false);
 const draftSavePending = ref(false);
 const insertionRange = ref<{ start: number; end: number } | null>(null);
 watch(paneConversationKey, () => { draftPickerOpen.value = false; insertionRange.value = null; });
 
-function composerState(): CodexComposerState | null {
-  return resolveCodexConversationPaneValue(props.controller.state).composer?.state ?? null;
+function composerState(): ComposerState | null {
+  return resolveConversationPaneValue(props.controller.state).composer?.state ?? null;
 }
 
-function updateComposerState(state: CodexComposerState): void {
-  void resolveCodexConversationPaneValue(props.controller.actions).updateComposerState?.(state);
+function updateComposerState(state: ComposerState): void {
+  void resolveConversationPaneValue(props.controller.actions).updateComposerState?.(state);
 }
 
 async function moveSuggestion(proposal: GuestProposal): Promise<void> {
   if (movingSuggestion.value || shareBusy.value) return;
   const controller = props.controller;
-  const update = resolveCodexConversationPaneValue(controller.actions).updateComposerState;
-  const state = resolveCodexConversationPaneValue(controller.state).composer?.state;
+  const update = resolveConversationPaneValue(controller.actions).updateComposerState;
+  const state = resolveConversationPaneValue(controller.state).composer?.state;
   if (!update || !state) return;
   const identity = paneConversationKey.value;
   movingSuggestion.value = true;
@@ -556,23 +560,23 @@ const composerContextCards = computed<ComposerContextCard[]>(() => [
   }] : []),
 ]);
 const showBackendSelector = computed(() => Boolean(
-  backendChoices.value.length > 1 && props.agent && backendSwitch
-  && canSelectAgentBackend(props.agent) && !props.historyLoading && !props.hasVisibleMessages,
+  providerChoices.value.length > 1 && props.agent && backendSwitch
+  && canSelectAgentProvider(props.agent) && !props.historyLoading && !props.hasVisibleMessages,
 ));
 const activeThreadFlags = computed<ThreadFlagId[]>(() => (
   (['ready_for_review', 'work_proposed'] as const)
     .filter((id) => normalizeThreadFlags(props.agent?.threadFlags ?? {})[id] === true)
 ));
-const textCatalogs = computed(() => resolveCodexConversationPaneValue(props.controller.state).catalogs);
+const textCatalogs = computed(() => resolveConversationPaneValue(props.controller.state).catalogs);
 const messageTextSelection = ref<ChatTextSelection | null>(null);
 const collaborationMessagePresentations = new Map<string, CollaborationMessagePresentation>();
-let transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
+let transformedMessageCache = new WeakMap<object, ChatMessage | PaneMessage>();
 watch(conversationKey, () => {
   annotationFocusRequest.value = null;
   annotationRenderAll.value = false;
   messageTextSelection.value = null;
   collaborationMessagePresentations.clear();
-  transformedMessageCache = new WeakMap<object, CodexChatMessage | SurfaceMessage>();
+  transformedMessageCache = new WeakMap<object, ChatMessage | PaneMessage>();
 });
 const heroHeadline = computed(() => {
   if (props.emptyHeadline?.trim()) return props.emptyHeadline.trim();
@@ -603,7 +607,7 @@ function collaborationMessageLabel(messageId: string | undefined): string | null
     : t('chat.collaboration.messagesFrom', { names });
 }
 
-function requestAttachmentAnnotation(attachment: CodexNativeAttachment | undefined): void {
+function requestAttachmentAnnotation(attachment: NativeAttachment | undefined): void {
   if (attachment?.type === 'image') emit('annotate-attachment', attachment);
 }
 
@@ -621,11 +625,11 @@ function removeComposerContextCard(itemId: string): void {
   }
 }
 
-function annotationCount(attachment: CodexNativeAttachment | undefined): number {
+function annotationCount(attachment: NativeAttachment | undefined): number {
   return attachment ? props.attachmentAnnotationCounts[attachment.reference] ?? 0 : 0;
 }
 
-function annotationActionLabel(attachment: CodexNativeAttachment | undefined): string {
+function annotationActionLabel(attachment: NativeAttachment | undefined): string {
   if (!attachment) return t('chat.attachments.annotate', { name: 'image' });
   const count = annotationCount(attachment);
   return count > 0
@@ -634,8 +638,8 @@ function annotationActionLabel(attachment: CodexNativeAttachment | undefined): s
 }
 
 function transformConversationMessage(
-  message: CodexChatMessage | SurfaceMessage,
-): CodexChatMessage | SurfaceMessage {
+  message: ChatMessage | PaneMessage,
+): ChatMessage | PaneMessage {
   const deferred = deferredContent(message);
   if (deferred && loadedContent.has(deferred.contentId)) message = loadedContent.get(deferred.contentId)!;
   const cached = transformedMessageCache.get(message);
@@ -647,7 +651,8 @@ function transformConversationMessage(
   if (message.id && result.presentation) {
     collaborationMessagePresentations.set(message.id, result.presentation);
   }
-  const transformed = withInferredWorkPhases(result.message as CodexChatMessage | SurfaceMessage);
+  // Work phases come tagged from the harness, so the pane renders them as they arrive.
+  const transformed = result.message as ChatMessage | PaneMessage;
   transformedMessageCache.set(message, transformed);
   return transformed;
 }

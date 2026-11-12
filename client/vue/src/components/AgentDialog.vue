@@ -134,7 +134,7 @@
 
     <NewSourceWorktreeDialog
       :remote-connection-id="selectedRemoteConnectionId"
-      v-model:backend="backend"
+      v-model:provider="provider"
       :choose-destination="chooseSourceWorktreeDestination"
       :create-worktree="createSourceWorktree"
       :repo="selectedSourceRepository"
@@ -153,8 +153,8 @@
       @select="selectRemoteFolder"
     />
 
-    <template v-if="!isEditing && backendChoices.length !== 1" #footer-left>
-      <BackendSelector id="agent-dialog-backend" v-model="backend" :remote-connection-id="selectedRemoteConnectionId" :disabled="submitting" />
+    <template v-if="!isEditing && providerChoices.length !== 1" #footer-left>
+      <ProviderSelector id="agent-dialog-backend" v-model="provider" :remote-connection-id="selectedRemoteConnectionId" :disabled="submitting" />
     </template>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.agentDialog.cancel') }}</button>
@@ -175,12 +175,12 @@
 import { translate } from '../i18n';
 import { computed, ref, watch } from 'vue';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import type { Agent, AgentBackend, CreateAgentInput, CreateSourceWorktreeInput, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, CreateAgentInput, CreateSourceWorktreeInput, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
-import BackendSelector from './BackendSelector.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
+import ProviderSelector from './ProviderSelector.vue';
+import { useProviderChoices, useNewAgentProvider } from './provider-selection';
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
 import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
 
@@ -233,7 +233,7 @@ const emit = defineEmits<{
 
 const name = ref('');
 const folder = ref('');
-const backend = ref<AgentBackend>();
+const provider = ref<HarnessProvider>();
 const clientNavigationSelectTeamion = ref('');
 const newTeamName = ref('');
 const errorMessage = ref<string | null>(null);
@@ -263,8 +263,8 @@ const teams = computed(() => props.teams);
 const showTeamSelector = computed(() => props.showTeamField && !isEditing.value);
 const selectedTeam = computed(() => teams.value.find((team) => team.id === clientNavigationSelectTeamion.value) ?? null);
 const selectedRemoteConnectionId = computed(() => props.remoteConnectionId?.trim() ?? '');
-const backendChoices = useBackendChoices(() => selectedRemoteConnectionId.value);
-useNewAgentBackend(backend, backendChoices, () => props.visible);
+const providerChoices = useProviderChoices(() => selectedRemoteConnectionId.value);
+useNewAgentProvider(provider, providerChoices, () => props.visible);
 const sourceRepositories = computed(() => {
   if (!selectedRemoteConnectionId.value) {
     return props.sourceRepositories ?? [];
@@ -327,7 +327,7 @@ const teamCanSave = computed(() => (
 const canSave = computed(() => (
   !submitting.value &&
   (isEditing.value || (
-    Boolean(backend.value && backendChoices.value.includes(backend.value)) &&
+    Boolean(provider.value && providerChoices.value.includes(provider.value)) &&
     folder.value.trim().length > 0 &&
     teamCanSave.value
   ))
@@ -568,7 +568,7 @@ async function submit(): Promise<void> {
       const createInput: AgentDialogCreateInput = {
         name: name.value.trim() || null,
         folder: folder.value,
-        selection: { backend: backend.value },
+        selection: { provider: provider.value },
         ...(selectedRemoteConnectionId.value ? { remoteConnectionId: selectedRemoteConnectionId.value } : {}),
       };
       if (showTeamSelector.value) {
@@ -615,7 +615,7 @@ function resetForm(): void {
 
   name.value = props.initialAgentName.trim();
   folder.value = '';
-  backend.value = backendChoices.value[0];
+  provider.value = providerChoices.value[0];
   clientNavigationSelectTeamion.value = initialTeamSelection();
   newTeamName.value = props.initialNewTeamName;
   selectedSourceRepositoryPath.value = '';

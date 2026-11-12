@@ -32,7 +32,7 @@ describe('remote team lifecycle commands', () => {
     const controller = new AppBackendServer({ version: 'test', snapshot: local, remoteClients: clients as never });
     try {
       const creating = controller.handleMessage({ jsonrpc: '2.0', id: 'create', method: backendMethods.agentQuickChatCreate,
-        params: { input: { teamId: 'team-test', remoteConnectionId: 'connection-devbox', selection: { backend: 'codex' } } } })
+        params: { input: { teamId: 'team-test', remoteConnectionId: 'connection-devbox', selection: { provider: 'codex' } } } })
         .then(result => ({ result }), error => ({ error }));
       await Promise.race([reached.promise, creating.then(outcome => { throw new Error(`Creation returned before probe gate: ${JSON.stringify(outcome, (_key, value) => value instanceof Error ? value.message : value)}`); })]);
       await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'delete', method: backendMethods.teamDelete, params: { teamId: 'team-test' } })).rejects.toThrow('creation in progress');
@@ -69,7 +69,7 @@ describe('remote team lifecycle commands', () => {
     try {
       await deleting;
       await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'create', method: backendMethods.agentQuickChatCreate,
-        params: { input: { teamId: 'team-test', remoteConnectionId: 'second-host', selection: { backend: 'codex' } } } })).rejects.toThrow('deletion in progress');
+        params: { input: { teamId: 'team-test', remoteConnectionId: 'second-host', selection: { provider: 'codex' } } } })).rejects.toThrow('deletion in progress');
       release(); await deletion;
       expect(second.teams).toHaveLength(1);
     } finally { release(); await deletion.catch(() => undefined); await controller.close(); await firstServer.close(); await secondServer.close(); }

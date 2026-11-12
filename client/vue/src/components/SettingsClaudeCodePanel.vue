@@ -3,8 +3,8 @@
     :title="$t('surface.settingsClaudeCodePanel.claudeCode')"
     title-id="settings-claude-code-title"
   >
-    <SettingsEngineConnectionRow backend="claude" :capabilities="setupCapabilities" :installed="installed" :title="$t('surface.settingsClaudeCodePanel.claudeCode')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :error="error" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')">
-      <ProviderUpdateRow v-if="installed" backend="claude" />
+    <SettingsEngineConnectionRow provider="claude" :capabilities="setupCapabilities" :installed="installed" :title="$t('surface.settingsClaudeCodePanel.claudeCode')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :error="error" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')">
+      <ProviderUpdateRow v-if="installed" provider="claude" />
       <SettingsEngineSetupRow :capabilities="setupCapabilities" :home="home" @customize="emit('customize')" />
     </SettingsEngineConnectionRow>
   </SettingsPanelFrame>

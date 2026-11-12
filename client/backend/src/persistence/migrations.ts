@@ -11,6 +11,12 @@ export const rosterMigrations: readonly Migration[] = [
   { from: 1, to: 2, up: (value: unknown) => value },
   { from: 2, to: 3, up: migrateExecutionSelections },
   { from: 3, to: 4, up: migrateRemoteTeamLinks },
+  { from: 4, to: 5, up: (value: unknown) => renameProviderFields(value) },
+];
+
+/** Settings, tasks and visualizations share one envelope version. */
+export const storeMigrations: readonly Migration[] = [
+  { from: 1, to: 2, up: (value: unknown) => renameProviderFields(value) },
 ];
 
 /**
@@ -81,4 +87,28 @@ function migrateExecutionSelections(value: unknown): unknown {
       return { ...row, handoff: { ...handoff, selection: { backend, model: model ?? null, reasoningEffort: null, serviceTier: null } } };
     }),
   };
+}
+
+const providerKinds = new Set(['codex', 'claude', 'cursor', 'antigravity']);
+const providerFieldNames: Readonly<Record<string, string>> = {
+  backendSession: 'providerSession',
+  backendDefaults: 'providerDefaults',
+  backendSessionId: 'providerSessionId',
+  backendOptions: 'providerOptions',
+};
+
+/**
+ * Schema 5 (roster) and store schema 2 (settings, tasks, visualizations): the agent provider was
+ * stored under `backend*` keys and is stored under `provider*` keys. A `backend` key is only
+ * renamed when it names a provider, and no key is ever overwritten. Applies to every stored
+ * document, at any depth, and is safe to run twice.
+ */
+export function renameProviderFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(renameProviderFields);
+  if (!record(value)) return value;
+  const target = (key: string, entry: unknown): string => {
+    const renamed = key === 'backend' && typeof entry === 'string' && providerKinds.has(entry) ? 'provider' : providerFieldNames[key];
+    return renamed !== undefined && !(renamed in value) ? renamed : key;
+  };
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [target(key, entry), renameProviderFields(entry)]));
 }

@@ -1,22 +1,22 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
 import type {
-  CodexConversationPaneActions,
-  CodexConversationPaneController,
-  CodexConversationPaneState,
-  CodexNativeAttachment,
-} from '@codex-app-sdk/vue';
-import type { CodexConversationSnapshot } from '@codex-app-sdk/core/surface';
+  ConversationPaneActions,
+  ConversationPaneController,
+  ConversationPaneState,
+  NativeAttachment,
+} from '@korus-dev/agent-ui-sdk';
+import type { AgentRequest, SessionState } from '@korus-dev/multi-agent-sdk';
 import { defineComponent, nextTick } from 'vue';
 import { expect, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import type { Agent, AgentFilePreviewResult, AgentFileSearchItem, AppSnapshot, BackendConnectionState, BackendConversationRef, BackendModelOption, ClaudeConversationSnapshot, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateTeamInput, AutomationLocation, OpenInApplication, OpenInApplicationCatalog, ReasoningEffort, RendererMessage, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput, UpdateAutomationInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
-import type { CursorConversationSnapshot } from '@workspace/core/contracts/cursor-conversation';
+import type { Agent, AgentFilePreviewResult, AgentFileSearchItem, AppSnapshot, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateTeamInput, AutomationLocation, OpenInApplication, OpenInApplicationCatalog, ReasoningEffort, RendererMessage, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput, UpdateAutomationInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import { conversationFrom } from './conversation-fixtures';
 import type { CreateMissionInput, DeleteMissionInput, Mission } from '@workspace/core/missions';
 import type { MissionExecutionInput } from '@workspace/core/mission-execution';
 
 const ConversationPaneStub = defineComponent({
-  name: 'ConversationPane',
+  name: 'AppConversationPane',
   props: ['agent', 'agents', 'attachmentAnnotationCounts', 'controller', 'historyLoadFailed', 'historyLoading', 'hasVisibleMessages', 'plan', 'planVisible', 'emptyHeadline', 'emptySubhead'],
   emits: ['annotate-attachment', 'close-plan', 'retry-history'],
   setup(_props, { expose }) {
@@ -91,7 +91,7 @@ const AgentWorkspaceStub = defineComponent({
       showDebugGitOperationProgress: vi.fn(),
     });
   },
-  template: '<section class="agent-workspace"><slot name="conversation" :header-bindings-for="() => ({ agent: null, backendRuntime: { backend: \'codex\', status: \'notConfigured\' }, isLoading: false, sidebarCollapsed: false })" /></section>',
+  template: '<section class="agent-workspace"><slot name="conversation" :header-bindings-for="() => ({ agent: null, providerRuntime: { provider: \'codex\', status: \'notConfigured\' }, isLoading: false, sidebarCollapsed: false })" /></section>',
 });
 
 const TeamRailStub = defineComponent({
@@ -118,22 +118,23 @@ export async function clickPortaledMenuItem(label: string): Promise<void> {
 
 export function mountShell(overrides: Partial<{
   snapshot: AppSnapshot;
-  connectionState: BackendConnectionState;
+  connectionState: ProviderConnectionState;
   agentFiles: AgentFileSearchItem[];
   loadAgentFiles: () => Promise<void>;
-  backendModels: BackendModelOption[];
+  providerModels: ProviderModelOption[];
   selectedModelId: string | null;
   selectedReasoningEffort: ReasoningEffort | null;
   selectedServiceTier: string | null;
   previewAgentFile: (agentId: string, path: string) => Promise<AgentFilePreviewResult>;
   unreadAgentIds: string[];
   agentCreationProgresses: import('@workspace/core/contracts').AgentCreationProgress[];
-  composerAttachments: readonly CodexNativeAttachment[];
+  composerAttachments: readonly NativeAttachment[];
   composerState: { text: string; selectionStart: number; selectionEnd: number };
   queuedPrompts: import('@workspace/core/contracts').AgentQueuedPrompt[];
-  codexConversationSnapshot: CodexConversationSnapshot | null;
-  claudeConversationSnapshot: ClaudeConversationSnapshot | null;
-  cursorConversationSnapshot: CursorConversationSnapshot | null;
+  /** The active agent's conversation as the harness reports it. */
+  conversation: SessionState | null;
+  /** Requests pending in that conversation, on top of the ones it already lists. */
+  conversationRequests: AgentRequest[];
   chooseAgentFolder: () => Promise<string | null>;
   chooseSourceFolder: () => Promise<string | null>;
   cloneSourceRepository: (input: import('@workspace/core/contracts').CloneSourceRepositoryInput) => Promise<SourceRepository>;
@@ -163,7 +164,7 @@ export function mountShell(overrides: Partial<{
   deleteAutomation: (automationId: string) => Promise<void>;
   listAgentConversations: (agentId: string, input?: import('@workspace/core/contracts').ConversationListInput) => Promise<ConversationSummary[]>;
   resumeAgentConversation: (agentId: string, target: import('@workspace/core/contracts').ConversationResumeTarget) => Promise<void>;
-  readConversationMessages: (ref: BackendConversationRef, agentId: string) => Promise<RendererMessage[]>;
+  readConversationMessages: (ref: ProviderConversationRef, agentId: string) => Promise<RendererMessage[]>;
   getAgentGitDiff: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   getAgentGitWorkflow: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   revertAgentGitChanges: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
@@ -214,7 +215,7 @@ export function mountShell(overrides: Partial<{
 }> = {}) {
   const snapshot = overrides.snapshot ?? createInitialSnapshot();
   if (snapshot.agents.length && snapshot.providerConnections === undefined) {
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   }
   return mount(AppShell, {
     props: {
@@ -225,13 +226,11 @@ export function mountShell(overrides: Partial<{
       agentCreationProgresses: overrides.agentCreationProgresses ?? [],
       agentFiles: overrides.agentFiles ?? [],
       ...(overrides.loadAgentFiles ? { loadAgentFiles: overrides.loadAgentFiles } : {}),
-      backendModels: overrides.backendModels ?? [],
+      providerModels: overrides.providerModels ?? [],
       selectedModelId: overrides.selectedModelId ?? null,
       selectedReasoningEffort: overrides.selectedReasoningEffort ?? null,
       selectedServiceTier: overrides.selectedServiceTier ?? null,
-      codexConversationSnapshot: overrides.codexConversationSnapshot ?? null,
-      claudeConversationSnapshot: overrides.claudeConversationSnapshot ?? null,
-      cursorConversationSnapshot: overrides.cursorConversationSnapshot ?? null,
+      ...activeConversation(snapshot, overrides),
       isLoading: false,
       isConversationLoadFailed: overrides.isConversationLoadFailed ?? false,
       retryAgentHistory: overrides.retryAgentHistory ?? vi.fn().mockResolvedValue(undefined),
@@ -309,7 +308,7 @@ export function mountShell(overrides: Partial<{
       stubs: {
         AgentWorkspace: overrides.stubAgentWorkspace ? AgentWorkspaceStub : false,
         AgentSidebar: overrides.realAgentSidebar ? false : AgentSidebarStub,
-        ConversationPane: overrides.realConversationPane ? false : ConversationPaneStub,
+        AppConversationPane: overrides.realConversationPane ? false : ConversationPaneStub,
         RightWorkspacePanel: overrides.stubRightWorkspacePanel ?? false,
         TeamRail: overrides.stubTeamRail ? TeamRailStub : false,
         ElDialog: {
@@ -331,8 +330,8 @@ export function mountShell(overrides: Partial<{
   });
 }
 
-export function conversationController(wrapper: VueWrapper): CodexConversationPaneController {
-  return wrapper.getComponent({ name: 'ConversationPane' }).props('controller') as CodexConversationPaneController;
+export function conversationController(wrapper: VueWrapper): ConversationPaneController {
+  return wrapper.getComponent({ name: 'AppConversationPane' }).props('controller') as ConversationPaneController;
 }
 
 /** Electron exposes the guest ID only after the renderer-hosted webview is ready. */
@@ -341,11 +340,11 @@ export function readyBrowserGuest(element: Element, id: number): void {
   element.dispatchEvent(new Event('dom-ready'));
 }
 
-export function conversationControllerState(wrapper: VueWrapper): CodexConversationPaneState {
+export function conversationControllerState(wrapper: VueWrapper): ConversationPaneState {
   return resolveConversationControllerValue(conversationController(wrapper).state);
 }
 
-export function conversationControllerActions(wrapper: VueWrapper): CodexConversationPaneActions {
+export function conversationControllerActions(wrapper: VueWrapper): ConversationPaneActions {
   return resolveConversationControllerValue(conversationController(wrapper).actions);
 }
 
@@ -383,4 +382,12 @@ export function workItemAssignment(item: WorkItem, agentId: string) {
     policy: 'review' as const,
     status: 'inProgress' as const,
   };
+}
+
+/** The active agent's conversation pane, from the session state a test supplies. */
+function activeConversation(snapshot: AppSnapshot, overrides: { conversation?: SessionState | null; conversationRequests?: AgentRequest[] }) {
+  const agent = snapshot.agents.find(candidate => candidate.id === snapshot.activeAgentId);
+  if (!agent || !overrides.conversation) return {};
+  const state = { ...overrides.conversation, requests: [...overrides.conversation.requests, ...(overrides.conversationRequests ?? [])] };
+  return { conversationPresentation: conversationFrom(agent, state) };
 }

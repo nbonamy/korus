@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import RemoteClaudeAuthentication from '../RemoteClaudeAuthentication.vue';
 
+const claude = (state: { loggedIn: boolean }) => ({ kind: 'claude' as const, connected: state.loggedIn, state });
 const connection: RemoteConnection = {
   id: 'wall-e', host: 'wall-e', name: 'wall-e', kind: 'ssh', status: 'ready', createdAt: '', updatedAt: '',
 };
@@ -18,10 +19,10 @@ describe('RemoteClaudeAuthentication', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     try {
-      const api = { getClaudeAuthentication: vi.fn().mockResolvedValue({ loggedIn: true }) };
+      const api = { authenticateProvider: vi.fn().mockResolvedValue(claude({ loggedIn: true })) };
       const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api } });
       await flushPromises();
-      expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+      expect(api.authenticateProvider).not.toHaveBeenCalled();
 
       expect(document.body.textContent).toContain('On wall-e, run one of these commands:');
       expect(document.body.textContent).toContain('Claude subscription');
@@ -40,7 +41,7 @@ describe('RemoteClaudeAuthentication', () => {
       expect(writeText).toHaveBeenCalledTimes(2);
       (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
       await flushPromises();
-      expect(api.getClaudeAuthentication).toHaveBeenCalledExactlyOnceWith('wall-e');
+      expect(api.authenticateProvider).toHaveBeenCalledExactlyOnceWith('claude', 'check', { remoteConnectionId: 'wall-e' });
       expect(wrapper.text()).toContain('Claude connected');
       expect(document.body.querySelector('.remote-claude-auth__command')).toBeNull();
     } finally {
@@ -50,7 +51,7 @@ describe('RemoteClaudeAuthentication', () => {
   });
 
   it('keeps the selected login home when an explicit status refresh fails and allows retry', async () => {
-    const api = { getClaudeAuthentication: vi.fn().mockRejectedValueOnce(new Error('SSH disconnected')).mockResolvedValue({ loggedIn: false }) };
+    const api = { authenticateProvider: vi.fn().mockRejectedValueOnce(new Error('SSH disconnected')).mockResolvedValue(claude({ loggedIn: false })) };
     const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api, authentication: { loggedIn: false, configDirectory: '/remote/claude-selected' } } });
     await flushPromises();
     (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
@@ -65,9 +66,9 @@ describe('RemoteClaudeAuthentication', () => {
 
   it('ignores a late response from another host and does not check offline connections', async () => {
     let resolveFirst!: (value: { loggedIn: boolean }) => void;
-    const api = { getClaudeAuthentication: vi.fn()
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
-      .mockResolvedValue({ loggedIn: false }) };
+    const api = { authenticateProvider: vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = state => resolve(claude(state)); }))
+      .mockResolvedValue(claude({ loggedIn: false })) };
     const wrapper = mount(RemoteClaudeAuthentication, { props: { connection, api } });
     (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
     await flushPromises();
@@ -77,10 +78,10 @@ describe('RemoteClaudeAuthentication', () => {
     await flushPromises();
     expect(document.body.textContent).toContain('Claude subscription');
     expect(wrapper.text()).not.toContain('Claude connected');
-    expect(api.getClaudeAuthentication).toHaveBeenCalledExactlyOnceWith('wall-e');
+    expect(api.authenticateProvider).toHaveBeenCalledExactlyOnceWith('claude', 'check', { remoteConnectionId: 'wall-e' });
 
     await wrapper.setProps({ connection: { ...connection, status: 'error' } });
     await flushPromises();
-    expect(api.getClaudeAuthentication).toHaveBeenCalledOnce();
+    expect(api.authenticateProvider).toHaveBeenCalledOnce();
   });
 });

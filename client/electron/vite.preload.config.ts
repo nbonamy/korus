@@ -1,15 +1,15 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
-import { sdkSourceAliases } from '../../vite.sdk-aliases';
+import { sdkSourceAliases, sdkSourcesEnabled } from '../../vite.sdk-aliases';
 
-const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
+const useSdkSources = sdkSourcesEnabled;
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-      ...(useSdkSources ? sdkSourceAliases : {}),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      ...(useSdkSources ? sdkSourceAliases : []),
+    ],
   },
   build: {
     sourcemap: true,

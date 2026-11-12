@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { Agent, AgentBackend, AppSnapshot } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AppSnapshot } from '@workspace/core/contracts';
 import type { ProviderLifecycle } from '../provider-lifecycle';
 import type { ProviderSetup } from '../provider-setup';
 import { createCodexLifecycle } from '../codex/provider-lifecycle';
@@ -24,8 +24,8 @@ const mocks = vi.hoisted(() => ({
       name: 'Dina',
       avatar: 'DI',
       folder: '/src/app',
-      backend: 'codex',
-      backendDefaults: { kind: 'codex' },
+      provider: 'codex',
+      providerDefaults: { kind: 'codex' },
       status: { type: 'idle' },
       createdAt: '2026-08-02T00:00:00.000Z',
       updatedAt: '2026-08-02T00:00:00.000Z',
@@ -81,10 +81,10 @@ const mocks = vi.hoisted(() => ({
   remoteCollaborationCall: vi.fn(),
   missionDeveloperInstructions: vi.fn(),
   collaborationAgents: vi.fn(),
-  createDefaultBackendDrivers: vi.fn(),
-  createBackendDriver: vi.fn(),
+  createDefaultProviderDrivers: vi.fn(),
+  createProviderDriver: vi.fn(),
   useRealDriverRpc: false,
-  providerLifecycles: null as ReadonlyMap<AgentBackend, ProviderLifecycle> | null,
+  providerLifecycles: null as ReadonlyMap<HarnessProvider, ProviderLifecycle> | null,
   runtimeGitHubOAuthClientId: vi.fn(),
   warnMain: vi.fn(),
 }));
@@ -153,13 +153,13 @@ vi.mock('../mcp/service', () => ({
 vi.mock('../driver-rpc', async importOriginal => {
   const actual = await importOriginal<typeof import('../driver-rpc')>();
   return {
-    BackendDriverRpc: class {
-      constructor(...args: ConstructorParameters<typeof actual.BackendDriverRpc>) {
-        if (mocks.useRealDriverRpc) return new actual.BackendDriverRpc(...args);
+    ProviderDriverRpc: class {
+      constructor(...args: ConstructorParameters<typeof actual.ProviderDriverRpc>) {
+        if (mocks.useRealDriverRpc) return new actual.ProviderDriverRpc(...args);
       }
     },
-    createDefaultBackendDrivers: mocks.createDefaultBackendDrivers,
-    createBackendDriver: mocks.createBackendDriver,
+    createDefaultProviderDrivers: mocks.createDefaultProviderDrivers,
+    createProviderDriver: mocks.createProviderDriver,
   };
 });
 
@@ -210,7 +210,7 @@ vi.mock('../server', () => ({
   AppBackendServer: class {
     initialize = vi.fn().mockResolvedValue(undefined);
     setCompanionAccessEnabled = vi.fn();
-    requireConnectedEngine = vi.fn(async (backend: string) => backend);
+    requireConnectedEngine = vi.fn(async (provider: string) => provider);
     constructor(private options: { snapshot: AppSnapshot }) { mocks.serverOptions.push(options); }
     collaborationAgents = () => mocks.collaborationAgents(this.options.snapshot);
     emitEvent = mocks.serverEmitEvent;
@@ -235,7 +235,7 @@ vi.mock('../runtime-config', () => ({
   runtimeGitHubOAuthClientId: mocks.runtimeGitHubOAuthClientId,
 }));
 
-vi.mock('../log', () => ({ warnMain: mocks.warnMain }));
+vi.mock('../log', () => ({ warnMain: mocks.warnMain, logMain: () => {} }));
 
 vi.mock('../git/agent-git-service', () => ({
   AgentGitService: class {
@@ -347,52 +347,52 @@ describe('daemon runtime', () => {
     mocks.githubConnected.mockResolvedValue(false);
     mocks.serverClose.mockResolvedValue(undefined);
     mocks.missionDeveloperInstructions.mockReturnValue('<context>\nMission contract\n</context>');
-    mocks.createDefaultBackendDrivers.mockReturnValue(mocks.drivers);
+    mocks.createDefaultProviderDrivers.mockReturnValue(mocks.drivers);
     mocks.runtimeGitHubOAuthClientId.mockReturnValue('github-client');
     requestClient.mockImplementation(async (method: string, params?: unknown) => ({ method, params }));
     mocks.automationRunAll.mockResolvedValue(undefined);
     driver.generateText.mockResolvedValue({ text: '{"workItemIds":["github:nbonamy/agent-workspace#12"]}' });
   });
 
-  it.each(['codex', 'cursor'] as const)('waits for local work, replaces only %s and reloads the same conversation', async backend => {
+  it.each(['codex', 'cursor'] as const)('waits for local work, replaces only %s and reloads the same conversation', async provider => {
     const snapshot: AppSnapshot = createTestSnapshot();
-    const agent: Agent = { ...mocks.snapshot.agents[0]!, backend, backendDefaults: { kind: backend }, status: { type: 'working' }, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'existing-thread' } : { kind: 'cursor', sessionId: 'existing-session' } };
+    const agent: Agent = { ...mocks.snapshot.agents[0]!, provider: provider, providerDefaults: { kind: provider }, status: { type: 'working' }, providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'existing-thread' } : { kind: 'cursor', conversationId: 'existing-session' } };
     snapshot.agents = [agent];
-    const reference = structuredClone(agent.backendSession);
+    const reference = structuredClone(agent.providerSession);
     snapshot.general.providerHomes = { cursor: { isolated: true, shareSkills: false, homePath: '/private/.cursor' } };
     const events: string[] = [];
     const driver = {
-      backend, onEvent: () => () => {},
+      provider: provider, onEvent: () => () => {},
       assertHandoffReady: vi.fn(async () => { events.push('ready'); }),
       close: vi.fn(async () => { events.push('closed'); }),
     };
-    const replacement = { backend, onEvent: () => () => {}, loadConversation: vi.fn(async () => { events.push('restored'); }) };
-    const claude = { backend: 'claude', onEvent: () => () => {}, close: vi.fn() };
-    const installation = { status: 'available' as 'available' | 'current', executable: '/test/codex', version: backend === 'codex' ? '1.0.0' : '2026.11.04-old', latestVersion: backend === 'codex' ? '1.1.0' : '2026.11.05-new', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
+    const replacement = { provider: provider, onEvent: () => () => {}, loadConversation: vi.fn(async () => { events.push('restored'); }) };
+    const claude = { provider: 'claude', onEvent: () => () => {}, close: vi.fn() };
+    const installation = { status: 'available' as 'available' | 'current', executable: '/test/codex', version: provider === 'codex' ? '1.0.0' : '2026.11.04-old', latestVersion: provider === 'codex' ? '1.1.0' : '2026.11.05-new', method: 'native' as const, identity: 'original', command: { file: '/test/codex', args: ['update'] } };
     const inspect = vi.spyOn(ProviderUpdateRuntime.prototype, 'inspect').mockImplementation(async () => installation);
     const upgrade = vi.spyOn(ProviderUpdateRuntime.prototype, 'upgrade').mockImplementation(async () => { events.push('upgraded'); installation.version = installation.latestVersion; installation.status = 'current'; });
     mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
     mocks.useRealDriverRpc = true;
     mocks.drivers.clear();
-    mocks.drivers.set(backend, driver);
+    mocks.drivers.set(provider, driver);
     mocks.drivers.set('claude', claude);
-    mocks.createBackendDriver.mockReturnValue(replacement);
+    mocks.createProviderDriver.mockReturnValue(replacement);
     let updates: ProviderUpdates | undefined;
     try {
       await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
       updates = (mocks.serverOptions[0] as { providerUpdates: ProviderUpdates }).providerUpdates;
-      const checked = await updates.get(backend);
-      expect(updates.request(backend, { action: 'upgrade', confirmed: true, token: checked.token })).toMatchObject({ status: 'waiting' });
+      const checked = await updates.get(provider);
+      expect(updates.request(provider, { action: 'upgrade', confirmed: true, token: checked.token })).toMatchObject({ status: 'waiting' });
       expect(driver.close).not.toHaveBeenCalled();
       agent.status = { type: 'idle' };
       const task = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'provider-updates')!;
       await task.run();
       expect(events).toEqual(['ready', 'closed', 'upgraded', 'restored']);
       expect(replacement.loadConversation).toHaveBeenCalledWith(agent);
-      expect(agent.backendSession).toEqual(reference);
-      expect(mocks.createBackendDriver).toHaveBeenCalledWith(backend, expect.objectContaining({ generalSettings: snapshot.general }));
+      expect(agent.providerSession).toEqual(reference);
+      expect(mocks.createProviderDriver).toHaveBeenCalledWith(provider, expect.objectContaining({ generalSettings: snapshot.general }));
       expect(claude.close).not.toHaveBeenCalled();
-      expect(await updates.get(backend)).toMatchObject({ status: 'current', installedVersion: installation.latestVersion });
+      expect(await updates.get(provider)).toMatchObject({ status: 'current', installedVersion: installation.latestVersion });
     } finally { await updates?.close(); inspect.mockRestore(); upgrade.mockRestore(); }
   });
 
@@ -466,7 +466,8 @@ describe('daemon runtime', () => {
       runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
       expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
       const uploadTask = (mocks.schedulerTasks as SchedulerTask[]).find(task => task.id === 'telemetry-upload')!;
-      expect(uploadTask).toMatchObject({intervalMs:60000,runOnStart:true});
+      // The first upload waits a minute, so starting up never pays for it.
+      expect(uploadTask).toMatchObject({intervalMs:60000,runOnStart:false});
       await uploadTask.run();
       expect(mocks.uploadTick).toHaveBeenCalledTimes(1);
       expect(mocks.uploadFlush).not.toHaveBeenCalled();
@@ -501,12 +502,12 @@ describe('daemon runtime', () => {
     expect(mocks.ensureBackendCodexHome).toHaveBeenCalledOnce();
     expect(mocks.mcpStart).toHaveBeenCalledOnce();
     expect(mocks.pricingStart).toHaveBeenCalledOnce();
-    expect(mocks.createDefaultBackendDrivers).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.createDefaultProviderDrivers).toHaveBeenCalledWith(expect.objectContaining({
       appMcpServerUrl: 'http://127.0.0.1:4242/mcp',
       generalSettings: mocks.snapshot.general,
       pluginSettings: expect.any(Function),
     }));
-    const liveSettingsOptions = mocks.createDefaultBackendDrivers.mock.calls[0]![0] as import('../driver-rpc').BackendDriverRegistryOptions;
+    const liveSettingsOptions = mocks.createDefaultProviderDrivers.mock.calls[0]![0] as import('../driver-rpc').ProviderDriverRegistryOptions;
     expect(liveSettingsOptions.getGeneralSettings!().cursorSteeringFallbackEnabled === true).toBe(false);
     mocks.snapshot.general = { ...mocks.snapshot.general, cursorSteeringFallbackEnabled: true };
     expect(liveSettingsOptions.getGeneralSettings!()).toBe(mocks.snapshot.general);
@@ -518,7 +519,7 @@ describe('daemon runtime', () => {
     expect(mocks.schedulerTasks).toEqual([
       expect.objectContaining({ id: 'automations', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
-      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: true }),
+      expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: false }),
       expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
       expect.objectContaining({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),
@@ -551,7 +552,7 @@ describe('daemon runtime', () => {
       backendMethods.clientSpokenAnnouncementQueue,
     ]);
 
-    const driverOptions = mocks.createDefaultBackendDrivers.mock.calls[0]?.[0] as {
+    const driverOptions = mocks.createDefaultProviderDrivers.mock.calls[0]?.[0] as {
       hostedMcpServerUrls(): Record<string, string>;
       additionalDeveloperInstructions(agent: { id: string }): string | undefined;
     };
@@ -653,7 +654,7 @@ describe('daemon runtime', () => {
     mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
     const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
     try {
-      const options = mocks.createDefaultBackendDrivers.mock.calls[0]![0] as import('../driver-rpc').BackendDriverRegistryOptions;
+      const options = mocks.createDefaultProviderDrivers.mock.calls[0]![0] as import('../driver-rpc').ProviderDriverRegistryOptions;
       const context = (agent: Agent) => {
         const instructions = options.additionalDeveloperInstructions!(agent)!;
         const data = instructions.match(/<team_context>\n(.*?)\n<\/team_context>/s)?.[1];
@@ -674,7 +675,7 @@ describe('daemon runtime', () => {
       remoteTeams.rememberSnapshot('devbox', createRemoteTeamSnapshot([
         { ...project, id: 'remote', teamId: 'team-remote', folder: '/srv/app', workspace: gitWorkspace('/srv/app', 'Remote App', 'main') },
       ]));
-      expect(context({ ...chat, backend: 'claude' }).projects).toStrictEqual([
+      expect(context({ ...chat, provider: 'claude' }).projects).toStrictEqual([
         { name: 'App', locations: [{ folder: '/src/app' }, { folder: '/src/app-fix' }] },
         { name: 'Notes', locations: [{ folder: '/src/notes' }] },
         { name: 'Remote App', locations: [{ folder: '/srv/app', remoteConnectionId: 'devbox' }] },
@@ -708,7 +709,7 @@ describe('daemon runtime', () => {
     expect(mcp.browser).toBeUndefined();
     expect(mcp.computerUseEnabled()).toBe(false);
 
-    const driverOptions = mocks.createDefaultBackendDrivers.mock.calls[0]?.[0] as {
+    const driverOptions = mocks.createDefaultProviderDrivers.mock.calls[0]?.[0] as {
       pluginSettings(): { computerUseEnabled: boolean; chromeEnabled: boolean };
     };
     expect(driverOptions.pluginSettings()).toEqual({
@@ -726,7 +727,7 @@ describe('daemon runtime', () => {
 
     await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
 
-    const driverOptions = mocks.createDefaultBackendDrivers.mock.calls[0]?.[0] as {
+    const driverOptions = mocks.createDefaultProviderDrivers.mock.calls[0]?.[0] as {
       pluginSettings(): { computerUseEnabled: boolean; chromeEnabled: boolean };
     };
     expect(driverOptions.pluginSettings()).toStrictEqual({
@@ -762,10 +763,10 @@ describe('daemon runtime', () => {
       mocks.useRealDriverRpc = true;
       const { loadPluginStatus } = await vi.importActual<typeof import('../plugin-status')>('../plugin-status');
       mocks.loadPluginStatus.mockImplementation(loadPluginStatus);
-      const host = () => ({ backend: 'codex', onEvent: () => () => {}, close: vi.fn() });
+      const host = () => ({ provider: 'codex', onEvent: () => () => {}, close: vi.fn() });
       mocks.drivers.set('codex', host());
       const launches: Array<{ home: string; chromeEnabled: boolean; configOverrides: string[] }> = [];
-      mocks.createBackendDriver.mockImplementation((_backend, options) => {
+      mocks.createProviderDriver.mockImplementation((_provider, options) => {
         const settings = options.pluginSettings();
         launches.push({
           home: options.generalSettings.providerHomes.codex.homePath,
@@ -803,11 +804,11 @@ describe('daemon runtime', () => {
     let startedPromise: Promise<void> | undefined;
     mocks.sendAgentPrompt.mockImplementation((_snapshot, _driver, _agentId, _prompt, _options, emit, hooks) => {
       emit({ agentId: 'agent-dina', type: 'agent.statusChanged', payload: { type: 'working' } });
-      titlePromise = hooks.onBackendSessionUpdated({
-        backendSession: { kind: 'codex', threadId: 'thread-42' },
+      titlePromise = hooks.onProviderSessionUpdated({
+        providerSession: { kind: 'codex', conversationId: 'thread-42' },
       }, true);
       startedPromise = hooks.onPromptStarted({
-        backendSession: { kind: 'codex', threadId: 'thread-42' },
+        providerSession: { kind: 'codex', conversationId: 'thread-42' },
       });
     });
 
@@ -818,7 +819,7 @@ describe('daemon runtime', () => {
     expect(mocks.sendAgentPrompt).not.toHaveBeenCalled();
 
     await expect(automations.sendPrompt('agent-dina', 'run tests'))
-      .resolves.toEqual({ backend: 'codex', threadId: 'thread-42' });
+      .resolves.toEqual({ provider: 'codex', conversationId: 'thread-42' });
     await titlePromise;
     await startedPromise;
     expect(mocks.sendAgentPrompt).toHaveBeenCalledWith(
@@ -844,17 +845,17 @@ describe('daemon runtime', () => {
   });
 
   it('handles lifecycle shutdown and nonfatal scheduler/title failures', async () => {
-    let hooks: { onBackendSessionUpdated(result: unknown, isNew: boolean): Promise<void> } | undefined;
+    let hooks: { onProviderSessionUpdated(result: unknown, isNew: boolean): Promise<void> } | undefined;
     mocks.sendAgentPrompt.mockImplementation((_snapshot, _driver, _agentId, _prompt, _options, _emit, value) => {
       hooks = value;
-      value.onPromptStarted({ backendSession: { kind: 'codex', threadId: 'thread' } });
+      value.onPromptStarted({ providerSession: { kind: 'codex', conversationId: 'thread' } });
     });
     driver.setConversationTitle.mockRejectedValue('rename failed');
     const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
     const automations = mocks.automationRunnerOptions[0] as AutomationRunnerOptions;
     await automations.sendPrompt('agent-dina', 'run');
-    await hooks?.onBackendSessionUpdated({ backendSession: { kind: 'codex', threadId: 'thread' } }, false);
-    await hooks?.onBackendSessionUpdated({ backendSession: { kind: 'codex', threadId: 'thread' } }, true);
+    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', conversationId: 'thread' } }, false);
+    await hooks?.onProviderSessionUpdated({ providerSession: { kind: 'codex', conversationId: 'thread' } }, true);
     expect(mocks.warnMain).toHaveBeenCalledWith('conversation-title', 'failed', {
       agentId: 'agent-dina',
       message: 'rename failed',

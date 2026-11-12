@@ -1,13 +1,13 @@
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { supportsCompanionBackend, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
-import type { ProviderConversationFrame } from '@workspace/core/contracts';
+import type { CompanionConversation, CompanionConversationFrame, CompanionTarget } from '@workspace/core/companion-protocol';
 import { ConversationCache } from '../conversation-cache';
-const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'claude', sessionId }) });
-const reset = (agentId: string, revision = 1): CompanionReset => ({ type: 'claude.conversationSnapshotChanged', agentId, backend: 'claude', seq: revision, occurredAt: 'now', payload: { revision, snapshot: {
-  agentId, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null,
-} } }) as CompanionReset;
-const delta = (agentId: string, revision: number): ProviderConversationFrame => ({ type: 'claude.conversationEventReceived', agentId, backend: 'claude', seq: revision, occurredAt: 'now', payload: { revision, event: { type: 'turn.started', agentId, backend: 'claude', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', backend: 'claude' } } } } }) as ProviderConversationFrame;
+const target = (agentId: string, sessionId = 'session'): CompanionTarget => ({ hostId: 'laptop', locationId: 'local', teamId: 'team', agentId, sessionId: JSON.stringify({ kind: 'cursor', sessionId: sessionId }) });
+const state = (extra: Record<string, unknown> = {}) => ({ messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...extra }) as CompanionConversation['payload']['snapshot']['state'];
+const reset = (agentId: string, revision = 1, epoch = 'epoch', conversation = 'session'): CompanionConversation =>
+  ({ type: 'conversation.sessionSnapshot', agentId, provider: 'cursor', payload: { conversation, epoch, snapshot: { revision, state: state() } } });
+const delta = (agentId: string, revision: number, ops: unknown[] = [{ op: 'set', key: 'activeTurnId', value: 'live-turn' }]): CompanionConversationFrame =>
+  ({ type: 'conversation.sessionPatch', agentId, provider: 'cursor', payload: { conversation: 'session', epoch: 'epoch', patch: { revision, ops: ops as never } } });
+const revision = (frame: CompanionConversation | null | undefined) => frame?.payload.snapshot.revision;
 afterEach(() => vi.useRealTimers());
 function fixture() {
   const changed = vi.fn();
@@ -16,23 +16,18 @@ function fixture() {
   return { cache, request, changed };
 }
 describe('recent mobile conversations', () => {
-  it('rehydrates an unsupported provider event without publishing an invalid snapshot or poisoning cached selection', async () => {
+  it('reloads after a patch it cannot apply without publishing an invalid state or poisoning cached selection', async () => {
     const changed = vi.fn();
-    const selected = { ...target('a'), sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-    const frame = (revision: number): CompanionReset => ({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'a', threadId: 'thread', seq: revision, occurredAt: 'now',
-      payload: { revision, snapshot: codexConversationSnapshot([codexTextMessage('answer', 'assistant', 'Authoritative answer')], { activeConversationId: 'thread' }) } });
     let reads = 0;
-    const request = vi.fn(async () => { cache.receive(frame(++reads)); });
+    const request = vi.fn(async () => { cache.receive({ ...reset('a', ++reads), payload: { ...reset('a', reads).payload, snapshot: { revision: reads, state: state({ messages: [{ id: 'answer', role: 'assistant', status: 'complete', parts: [] }] }) } } }); });
     const cache = new ConversationCache(request, changed);
     try {
-      await cache.select(selected);
-      cache.receive({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'a', threadId: 'thread', seq: 2, occurredAt: 'now', payload: {
-        revision: 2, event: { type: 'conversation.futureEvent', conversationId: 'thread', seq: 2, payload: {} },
-      } } as unknown as ProviderConversationFrame);
+      await cache.select(target('a'));
+      cache.receive(delta('a', 2, [{ op: 'futureOp' }]));
       await Promise.resolve(); await Promise.resolve();
-      expect(changed.mock.calls.every(([next]) => next.payload.snapshot?.messages?.length === 1)).toBe(true);
+      expect(changed.mock.calls.every(([next]) => next.payload.snapshot.state.messages.length === 1)).toBe(true);
       expect(request).toHaveBeenCalledTimes(2);
-      expect((await cache.select(selected))?.payload.snapshot.messages[0]?.id).toBe('answer');
+      expect((await cache.select(target('a')))?.payload.snapshot.state.messages[0]?.id).toBe('answer');
     } finally { cache.close(); }
   });
 
@@ -48,7 +43,7 @@ describe('recent mobile conversations', () => {
     await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
     for (let turn = 0; turn < 6; turn++) await Promise.resolve(); // let the failed reload settle
     offline = false;
-    expect((await f.cache.select(target('a')))?.payload.revision).toBe(1);
+    expect((await f.cache.select(target('a')))?.payload.snapshot.revision).toBe(1);
     expect(f.request.mock.calls.filter(([method]) => method === 'conversation.subscribe')).toHaveLength(3);
   });
   it('unsubscribes hidden chats after five minutes but keeps their content visible while revalidating', async () => {
@@ -57,8 +52,8 @@ describe('recent mobile conversations', () => {
       await f.cache.select(target('a')); await f.cache.select(target('b'));
       await vi.advanceTimersByTimeAsync(299_000);
       f.cache.receive(delta('a', 2));
-      expect(f.cache.peek(target('a'))?.payload.snapshot.activeTurnId).toBe('live-turn');
-      expect((await f.cache.select(target('a')))?.payload.snapshot.activeTurnId).toBe('live-turn');
+      expect(f.cache.peek(target('a'))?.payload.snapshot.state.activeTurnId).toBe('live-turn');
+      expect((await f.cache.select(target('a')))?.payload.snapshot.state.activeTurnId).toBe('live-turn');
       expect(f.request.mock.calls.filter(([method]) => method === 'conversation.subscribe')).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(2_000); // Old A expiry was canceled by viewing it.
       expect(f.cache.peek(target('a'))).toBeTruthy();
@@ -67,7 +62,7 @@ describe('recent mobile conversations', () => {
       f.cache.receive(delta('a', 3)); // Incoming events do not extend it.
       await vi.advanceTimersByTimeAsync(1);
       expect(f.request).toHaveBeenCalledWith('conversation.unsubscribe', target('a'));
-      expect(f.cache.peek(target('a'))?.payload.revision).toBe(3);
+      expect(f.cache.peek(target('a'))?.payload.snapshot.revision).toBe(3);
       await f.cache.select(target('a'));
       expect(f.request.mock.calls.filter(([method, value]) => method === 'conversation.subscribe' && value.agentId === 'a')).toHaveLength(2);
     } finally { f.cache.close(); }
@@ -121,14 +116,25 @@ describe('recent mobile conversations', () => {
       expect(f.cache.peek(target('a'))).toBeUndefined();
     } finally { f.cache.close(); }
   });
-  it('drops companion-unsupported provider frames without poisoning a subscribed chat', async () => {
+  it('drops frames of another conversation or provider without poisoning a subscribed chat', async () => {
     const f = fixture();
     try {
       await f.cache.select(target('a'));
-      expect(supportsCompanionBackend('cursor')).toBe(false);
-      f.cache.receive({ type: 'cursor.conversationSnapshotChanged', agentId: 'a', backend: 'cursor', seq: 2, occurredAt: 'now', payload: { revision: 2, snapshot: {} } } as unknown as ProviderConversationFrame);
+      f.cache.receive(reset('a', 2, 'epoch', 'another-session'));
+      f.cache.receive({ ...reset('a', 3), provider: 'codex' });
       expect(f.changed).toHaveBeenCalledTimes(1);
-      expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+      expect(revision(f.cache.peek(target('a')))).toBe(1);
+    } finally { f.cache.close(); }
+  });
+  it('takes a restarted stream at any revision and drops a late snapshot of the current one', async () => {
+    const f = fixture();
+    try {
+      await f.cache.select(target('a'));
+      f.cache.receive(delta('a', 2)); f.cache.receive(reset('a', 1));
+      expect(revision(f.cache.peek(target('a')))).toBe(2);
+      f.cache.receive(reset('a', 1, 'restarted'));
+      expect(f.cache.peek(target('a'))?.payload).toMatchObject({ epoch: 'restarted', snapshot: { revision: 1 } });
+      expect(f.changed).toHaveBeenCalledTimes(3);
     } finally { f.cache.close(); }
   });
 });
@@ -138,15 +144,15 @@ it('retains cached content while disconnected and after a failed refresh, then a
   try {
     await f.cache.select(target('a'));
     f.cache.disconnect();
-    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    expect(f.cache.peek(target('a'))?.payload.snapshot.revision).toBe(1);
     let reject!: (error: Error) => void;
     f.cache.reconnect((method, value) => method === 'conversation.subscribe' ? new Promise((_, fail) => { reject = fail; }) : Promise.resolve({}));
     const refresh = f.cache.select(target('a'));
-    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    expect(f.cache.peek(target('a'))?.payload.snapshot.revision).toBe(1);
     reject(new Error('offline'));
     await expect(refresh).rejects.toThrow('offline');
-    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    expect(f.cache.peek(target('a'))?.payload.snapshot.revision).toBe(1);
     f.cache.reconnect(async (_method, value) => { f.cache.receive(reset(value.agentId)); });
-    expect((await f.cache.select(target('a')))?.payload.revision).toBe(1);
+    expect((await f.cache.select(target('a')))?.payload.snapshot.revision).toBe(1);
   } finally { f.cache.close(); }
 });

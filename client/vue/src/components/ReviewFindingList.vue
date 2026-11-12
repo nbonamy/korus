@@ -91,7 +91,7 @@ export type ReviewFindingListItem = {
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
 import { IconChevronDown, IconMessageQuestion } from '@tabler/icons-vue';
-import { renderMarkdown } from '@codex-app-sdk/vue';
+import { renderMarkdown } from '@korus-dev/agent-ui-sdk';
 
 defineProps<{ findings: ReviewFindingListItem[]; selectable?: boolean; clarifiable?: boolean; clarifyLabel?: string; busy?: boolean }>();
 const emit = defineEmits<{ select: [findingId: string, selected: boolean]; clarify: [findingId: string]; openFile: [path: string] }>();

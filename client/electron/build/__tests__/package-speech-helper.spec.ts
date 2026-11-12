@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,23 +10,20 @@ afterEach(() => fixtures.splice(0).forEach((dir) => rmSync(dir, { recursive: tru
 describe('packaged speech helper', () => {
   // Packaging must find the owning SDK's binary with hoisted or nested installs;
   // resolving exports must not load its ESM runtime during Forge configuration.
-  it.each(['hoisted', 'workspace', 'nested'])('includes the installed binary from a %s SDK', (layout) => {
+  it.each(['hoisted', 'workspace', 'linked'])('includes the installed binary from a %s SDK', (layout) => {
     const root = mkdtempSync(path.join(tmpdir(), 'speech-resource-'));
     fixtures.push(root);
     const workspace = path.join(root, 'client/electron');
     mkdirSync(workspace, { recursive: true });
-    const electronSdk = path.join(workspace, 'node_modules/@codex-app-sdk/electron');
-    mkdirSync(electronSdk, { recursive: true });
-    writeFileSync(path.join(electronSdk, 'package.json'), JSON.stringify({
-      name: '@codex-app-sdk/electron', exports: { '.': { import: './dist/index.js' } },
-      dependencies: { '@codex-app-sdk/backend': '0.16.5' },
-    }));
-    const sdk = path.join(layout === 'nested' ? electronSdk : layout === 'workspace' ? workspace : root,
-      'node_modules/@codex-app-sdk/backend');
+    const sdk = path.join(layout === 'hoisted' ? root : layout === 'workspace' ? workspace : path.join(root, 'libraries'), 'node_modules/@korus-dev/agent-ui-sdk');
     mkdirSync(path.join(sdk, 'assets'), { recursive: true });
     writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({
-      name: '@codex-app-sdk/backend', exports: { '.': { import: './dist/index.js' } },
+      name: '@korus-dev/agent-ui-sdk', exports: { '.': { import: './dist/vue/index.js' } },
     }));
+    if (layout === 'linked') {
+      mkdirSync(path.join(root, 'node_modules/@korus-dev'), { recursive: true });
+      symlinkSync(sdk, path.join(root, 'node_modules/@korus-dev/agent-ui-sdk'), process.platform === 'win32' ? 'junction' : 'dir');
+    }
     writeFileSync(path.join(sdk, 'assets/apple-speechanalyzer-cli'), 'native speech helper');
 
     const resources = speechHelperResources(workspace, 'darwin');

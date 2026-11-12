@@ -6,7 +6,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
-import type { Agent, AppSnapshot, BackendConversationRef } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderConversationRef } from '@workspace/core/contracts';
 import type {
   Visualization,
   VisualizationAsset,
@@ -15,6 +15,7 @@ import type {
 } from '@workspace/core/visualize';
 import { cloneVisualizeSession, visualizationRepositoryRoot, visualizationSuggestionLimits } from '@workspace/core/visualize';
 import { createEntityId } from '@workspace/core/ids';
+import { sameConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 
 const MAX_VISUALIZATION_SOURCE_BYTES = 250_000;
 const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -416,7 +417,7 @@ export class VisualizeService {
 
   private ownsCurrentConversation(agent: Agent, visualize: VisualizeSession): boolean {
     const current = conversationRefFromAgent(agent);
-    return visualize.conversationRef === null || (current !== null && sameConversation(visualize.conversationRef, current));
+    return visualize.conversationRef === null || (current !== null && sameConversationRef(visualize.conversationRef, current));
   }
 
   private bindConversation(agentId: string, visualize: VisualizeSession): void {
@@ -557,16 +558,8 @@ function compactText(value: string): string {
   return value.replace(/\s+/gu, ' ').trim();
 }
 
-function cloneConversationRef(ref: BackendConversationRef | null): BackendConversationRef | null {
+function cloneConversationRef(ref: ProviderConversationRef | null): ProviderConversationRef | null {
   return ref ? { ...ref } : null;
-}
-
-function sameConversation(left: BackendConversationRef, right: BackendConversationRef): boolean {
-  return left.backend === 'codex' && right.backend === 'codex'
-    ? left.threadId === right.threadId
-    : left.backend !== 'codex' && right.backend === left.backend
-      ? left.folder === right.folder && left.sessionId === right.sessionId
-      : false;
 }
 
 function boundedText(value: string, label: string, maxBytes: number): string {

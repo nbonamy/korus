@@ -6,7 +6,7 @@ import type { ProfileRun, RunProfileCatalog } from '@workspace/core/run-profiles
 import RunProfilesControl from '../RunProfilesControl.vue';
 import { stubElectronTestWindow } from '../../../tests/support/client';
 
-const agent = { id: 'one', name: 'One', folder: '/repo/tree', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
+const agent = { id: 'one', name: 'One', folder: '/repo/tree', provider: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
 const profile = { id: 'dev', name: 'Dev', command: 'npm run dev', directory: '.', previewUrl: 'http://127.0.0.1:43210' };
 const catalog: RunProfileCatalog = { repository: '/repo', worktree: '/repo/tree', profiles: [profile], targets: { dev: { cwd: '/repo/tree' } }, runs: [] };
 const run: ProfileRun = { id: 'run', agentId: 'one', profileId: 'dev', command: profile.command, cwd: '/repo/tree', state: 'running', startedAt: '', output: 'ready', outputTruncated: false };

@@ -7,7 +7,7 @@ import { workActivityState } from '../companion-live-activity';
 
 const now = '2026-01-01T00:00:00Z';
 function agent(id: string, patch: Partial<Agent>): Agent {
-  return { id, teamId: 'team', name: null, folder: null, backend: 'codex', status: { type: 'idle' }, createdAt: now, updatedAt: now, ...patch };
+  return { id, teamId: 'team', name: null, folder: null, provider: 'codex', status: { type: 'idle' }, createdAt: now, updatedAt: now, ...patch };
 }
 function git(id: string, root: string, branch: string | null, patch: Partial<Agent> = {}, linked = false): Agent {
   return agent(id, { folder: root, workspace: { kind: 'git', folder: root, repositoryName: 'codex-app-sdk', repositoryRoot: root, primaryWorktreeRoot: '/Users/me/src/codex-app-sdk',
@@ -66,7 +66,7 @@ describe('companion workspace projection', () => {
       missions: [{ execution: { runs: [{ workerId: 'worker' }] } }] as unknown as AppSnapshot['missions'] });
     expect(projectCompanionWorkspace(workspace).agentRequests).toStrictEqual({ keep: [request] });
     expect(workActivityState(workspace)).toStrictEqual({ active: 1, running: 1, attention: 1,
-      agents: [{ id: 'keep', name: 'Mobile', backend: 'codex', status: 'approval', detail: 'Needs your approval' }], more: 0 });
+      agents: [{ id: 'keep', name: 'Mobile', provider: 'codex', status: 'approval', detail: 'Needs your approval' }], more: 0 });
   });
 
   describe('missions', () => {
@@ -212,19 +212,20 @@ describe('companion workspace projection', () => {
     expect(projectCompanionWorkspace({ teams, agents, repositoryIcons: icons })).toStrictEqual(projected);
   });
   it('shares model favorites with the workspace', () => {
-    const favorites = [{ backend: 'codex' as const, modelId: 'gpt', reasoningEffort: 'high', serviceTier: null }];
+    const favorites = [{ provider: 'codex' as const, modelId: 'gpt', reasoningEffort: 'high', serviceTier: null }];
     expect(projectCompanionWorkspace({ teams, agents: [], modelFavorites: favorites }).modelFavorites).toStrictEqual(favorites);
     expect(projectCompanionWorkspace({ teams, agents: [] }).modelFavorites).toStrictEqual([]);
   });
   it('shares the last model and permission choice but no sandbox or approval policy', () => {
-    const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { backendDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access', approvalPolicy: 'never', sandboxMode: 'danger-full-access' } })] }).agents;
-    expect(first!.backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access' });
+    const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { providerDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access' } })] }).agents;
+    // Shipped phones read the choice as `approvalPreset`, so it travels under both names.
+    expect(first!.providerDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', permission: 'full-access', approvalPreset: 'full-access' });
   });
   it('keeps only presentation fields', () => {
     const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, suggestedPrompt: 'Run the tests', mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
     expect(first).not.toHaveProperty('mcpSessionId');
     expect(first!.suggestedPrompt).toBe('Run the tests');
-    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt', 'suggestedPrompt'];
+    const allowed = ['id', 'teamId', 'name', 'avatar', 'provider', 'providerSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'providerDefaults', 'hasSubmittedPrompt', 'suggestedPrompt'];
     expect(Object.keys(first!).every((key) => allowed.includes(key))).toBe(true);
   });
 
@@ -236,14 +237,14 @@ describe('companion workspace projection', () => {
     expect(companionWorkspaceOf({ teams, agents: [agent('keep', {})], general: { repositoryIcons: {} } as unknown as AppSnapshot['general'] }).agents).toHaveLength(1);
   });
   it('lists, per team, the engines its laptop can start work with', () => {
-    const connection = (backend: string, connected = true) => ({ backend, installed: true, connected });
+    const connection = (provider: string, connected = true) => ({ provider: provider, installed: true, connected });
     const workspace = companionWorkspaceOf({
       teams: [{ id: 'local', name: 'Local', agentIds: [] }, { id: 'remote', name: 'Remote', agentIds: [] }],
       agents: [], general: { repositoryIcons: {}, modelFavorites: [] } as unknown as AppSnapshot['general'],
       providerConnections: [connection('codex'), connection('claude', false)] as unknown as AppSnapshot['providerConnections'],
       remoteConnections: { connections: [{ id: 'box', status: 'ready', providerConnections: [connection('claude')] }, { id: 'off', status: 'error' }] } as unknown as AppSnapshot['remoteConnections'],
     });
-    expect(workspace.backends).toStrictEqual({ local: ['codex'], remote: ['codex'], box: ['claude'], off: [] });
-    expect(projectCompanionWorkspace({ ...workspace, agents: [] }).backends).toStrictEqual(workspace.backends);
+    expect(workspace.providers).toStrictEqual({ local: ['codex'], remote: ['codex'], box: ['claude'], off: [] });
+    expect(projectCompanionWorkspace({ ...workspace, agents: [] }).providers).toStrictEqual(workspace.providers);
   });
 });

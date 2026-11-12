@@ -46,7 +46,7 @@ describe('native goals', () => {
         await f.engine.dispatch({ type: 'send', goalMode: true, requestId: 'invalid', target, text: 'Goal', ...extra });
         expect(f.events.at(-1)).toStrictEqual({ type: 'sendResult', requestId: 'invalid', status: 'rejected' });
       }
-      f.workspace.agents[0]!.backend = 'antigravity'; f.publish();
+      f.workspace.agents[0]!.provider = 'antigravity'; f.publish();
       await f.engine.dispatch({ type: 'clearGoal', target });
       await f.engine.dispatch({ type: 'disconnect' });
       await f.engine.dispatch({ type: 'clearGoal', target });
@@ -59,7 +59,7 @@ describe('native goals', () => {
       const target = f.engine.snapshot().composerTarget!;
       f.changeGoal.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
       const pending = f.engine.dispatch({ type: 'send', goalMode: true, requestId: 'goal', target, text: 'Finish' });
-      f.workspace.agents[0]!.backendSession = { kind: 'codex', threadId: 'new-session' }; f.publish();
+      f.workspace.agents[0]!.providerSession = { kind: 'codex', conversationId: 'new-session' }; f.publish();
       expect(f.engine.snapshot().goalBusy).toBe(true);
       await f.engine.dispatch({ type: 'clearGoal', target: f.engine.snapshot().composerTarget! });
       expect(f.changeGoal).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-import type { AgentBackend } from "./contracts";
+import type { HarnessProvider } from "./contracts";
 /** Live numeric observation only; no historical snapshots or inherited fork history. */
 export type ExecutionObservation = {
   agentId: string;
@@ -82,7 +82,7 @@ export function requestUsageModelVariant(event: RequestObservation): UsageModelV
 export type UsageFilter = {
   from?: string;
   to?: string;
-  provider?: AgentBackend;
+  provider?: HarnessProvider;
   model?: string;
   teamId?: string;
   repository?: string;

@@ -1,13 +1,13 @@
-import type { AgentBackend, AppSnapshot } from '@workspace/core/contracts';
+import type { HarnessProvider, AppSnapshot } from '@workspace/core/contracts';
 import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
 import { AppError } from '@workspace/core/app-error';
 
-export function localProviderAgents(snapshot: AppSnapshot, backend: AgentBackend) {
-  return snapshot.agents.filter(agent => agent.backend === backend && !agent.remoteConnectionId);
+export function localProviderAgents(snapshot: AppSnapshot, provider: HarnessProvider) {
+  return snapshot.agents.filter(agent => agent.provider === provider && !agent.remoteConnectionId);
 }
 
-export function validateProviderReset(snapshot: AppSnapshot, backend: AgentBackend, confirmedIds: string[] | undefined): string[] {
-  const agents = localProviderAgents(snapshot, backend);
+export function validateProviderReset(snapshot: AppSnapshot, provider: HarnessProvider, confirmedIds: string[] | undefined): string[] {
+  const agents = localProviderAgents(snapshot, provider);
   const ids = agents.map(agent => agent.id);
   if (ids.length && !confirmedIds) throw new AppError('engineSetup.confirmationRequired', 'This provider already has chats. Confirm their removal before changing its setup.');
   if (confirmedIds && (confirmedIds.length !== ids.length || new Set(confirmedIds).size !== ids.length || ids.some(id => !confirmedIds.includes(id)))) {
@@ -29,7 +29,7 @@ export function resetProviderRoster(snapshot: AppSnapshot, ids: string[]): () =>
   const before = structuredClone({
     teams: snapshot.teams, activeAgentId: snapshot.activeAgentId,
     queuedPrompts: snapshot.queuedPrompts,
-    backendApprovals: snapshot.backendApprovals, agentRequests: snapshot.agentRequests,
+    providerApprovals: snapshot.providerApprovals, agentRequests: snapshot.agentRequests,
     agentGitStatuses: snapshot.agentGitStatuses, turnGitDiffs: snapshot.turnGitDiffs,
     subagentTrees: snapshot.subagentTrees, clientPreferences: snapshot.clientPreferences,
     missions: snapshot.missions, automations: snapshot.automations, workBacklog: snapshot.workBacklog,
@@ -71,7 +71,7 @@ export function resetProviderRoster(snapshot: AppSnapshot, ids: string[]): () =>
     snapshot.agents = restoredAgents;
     // Restore only removed records; retain events from unrelated live engines.
     const restoreEntries = <T>(current: Record<string, T>, previous: Record<string, T>) => ({ ...current, ...Object.fromEntries(Object.entries(previous).filter(([id]) => removed.has(id))) });
-    snapshot.backendApprovals = restoreEntries(snapshot.backendApprovals, before.backendApprovals);
+    snapshot.providerApprovals = restoreEntries(snapshot.providerApprovals, before.providerApprovals);
     snapshot.agentRequests = restoreEntries(snapshot.agentRequests ?? {}, before.agentRequests ?? {});
     snapshot.agentGitStatuses = restoreEntries(snapshot.agentGitStatuses, before.agentGitStatuses);
     snapshot.subagentTrees = restoreEntries(snapshot.subagentTrees, before.subagentTrees);

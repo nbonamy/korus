@@ -7,7 +7,7 @@ const message = (remoteConnectionId?: string) => ({ jsonrpc: '2.0' as const, id:
 describe('banked reset owning-host reads', () => {
   it('reads from the local driver without persisting account details and rejects invalid driver payloads', async () => {
     const snapshot = createTestSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const original = structuredClone(snapshot);
     const handle = vi.fn().mockResolvedValue(result);
     const saveSnapshot = vi.fn();
@@ -25,8 +25,8 @@ describe('banked reset owning-host reads', () => {
 
   it.each([
     [undefined, 'unsupported'],
-    [{ backend: 'codex', installed: true, connected: false, checking: false }, 'signedOut'],
-    [{ backend: 'codex', installed: true, connected: true, enabled: false, checking: false }, 'unsupported'],
+    [{ provider: 'codex', installed: true, connected: false, checking: false }, 'signedOut'],
+    [{ provider: 'codex', installed: true, connected: true, enabled: false, checking: false }, 'unsupported'],
   ])('does not start a provider for unavailable local state %j', async (provider, status) => {
     const snapshot = createTestSnapshot(); snapshot.providerConnections = provider ? [provider as never] : [];
     const handle = vi.fn(); const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: { handle, onEvent: () => () => {}, close: vi.fn() } as never });
@@ -51,7 +51,7 @@ describe('banked reset owning-host reads', () => {
   });
 
   it('requires explicit confirmation before routing redemption to the local driver', async () => {
-    const snapshot = createTestSnapshot(); snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const snapshot = createTestSnapshot(); snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const handle = vi.fn().mockResolvedValue({ outcome: 'reset' }); const saveSnapshot = vi.fn();
     const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot, driverRpc: { handle, onEvent: () => () => {}, close: vi.fn() } as never });
     const input = { confirmed: true, redemptionToken: 'selection', idempotencyKey: 'attempt' };

@@ -27,6 +27,8 @@ const rich = fs.existsSync(path.join(__dirname,'rich-models'));
 if(rich) { configOptions[0].options.push(...['fixture-alpha','fixture-beta','fixture-dual','fixture-thinking'].map(value=>({value,name:value}))); configOptions[0].currentValue='fixture-alpha'; configOptions.push(...controlsFor('fixture-alpha'),...contextsFor('fixture-alpha')); }
 if(rich && fs.existsSync(path.join(__dirname,'missing-live-model-id'))) delete configOptions[0].id;
 let sessionId = 'session-' + process.pid, pending, mode, mcpServers = [];
+// Tests that need to end this process find it here.
+fs.writeFileSync(path.join(__dirname, 'pid'), String(process.pid));
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
 const update = value => send({ method: 'session/update', params: { sessionId, update: value } });
 // Diff/location shape from installed Cursor source; resource/image blocks are synthetic ACP content fixtures.
@@ -130,7 +132,7 @@ async function review(text,reply) {
     if(configOptions[0].currentValue==='fixture-dual' && fs.existsSync(path.join(__dirname,'native-thinking-change'))) {configOptions=configOptions.map(option=>option.id==='thinking'?{...option,currentValue:'true'}:option);update({sessionUpdate:'config_option_update',configOptions});}
     const saved = history(); saved[sessionId] = {cwd:process.cwd(),prompt:value.params.prompt}; fs.writeFileSync(historyFile,JSON.stringify(saved));
     pending = value.id; mode = value.params.prompt[0].text.split('\n')[0];
-    if(mcpServers.some(server=>server.env.some(item=>item.name==='KORUS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {
+    if(mcpServers.some(server=>server.env.some(item=>item.name==='HARNESS_ACP_MCP_URL'&&item.value.includes('reviewContextId=')))) {
       void review(value.params.prompt[0].text,reply).catch(error=>{fs.writeFileSync(path.join(__dirname,'fixture-error.txt'),error.message);send({id:value.id,error:{code:-32603,message:error.message}});}); return;
     }
     // session_info_update: installed CLI live evidence; subagent kinds: installed-source evidence only.

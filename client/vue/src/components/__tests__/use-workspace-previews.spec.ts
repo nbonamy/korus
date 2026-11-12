@@ -37,7 +37,7 @@ describe('workspace diff queries', () => {
   it('reads an exact historical diff on selection instead of the current git diff', async () => {
     const state = setup(vi.fn());
     const text = 'diff --git a/example b/example\nhistorical 🪴\n';
-    state.agent.backendSession = { kind: 'codex', threadId: 'thread' };
+    state.agent.providerSession = { kind: 'codex', conversationId: 'thread' };
     state.readConversationContent.mockResolvedValue({ data: Buffer.from(text).toString('base64'), totalBytes: Buffer.byteLength(text), nextOffset: null });
     expect(state.readConversationContent).not.toHaveBeenCalled();
     await state.previews.openConversationFile({ kind: 'file', href: '/repo/file.txt', path: '/repo/file.txt', action: 'create', diffContent: { sessionId: 'thread', contentId: 'a'.repeat(64), byteLength: Buffer.byteLength(text), changeKind: 'add' } });

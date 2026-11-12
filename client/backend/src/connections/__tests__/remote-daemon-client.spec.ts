@@ -125,7 +125,7 @@ describe('RemoteDaemonClientManager', () => {
     const onEvent = vi.fn();
 
     const result = manager.request(readyConnection(), 'driver/prompt/send', {
-      agent: { id: 'agent-remote', backend: 'codex' },
+      agent: { id: 'agent-remote', provider: 'codex' },
       prompt: 'go',
     }, onEvent);
     await vi.waitFor(() => expect(child.stdinOutput()).not.toBe(''));
@@ -144,10 +144,10 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
-      result: { backendSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
 
-    await expect(result).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({
       agentId: 'agent-remote',
       type: 'agent.statusChanged',
@@ -164,7 +164,7 @@ describe('RemoteDaemonClientManager', () => {
     const secret = 'secret-event-value';
 
     const result = manager.request(readyConnection(), 'driver/prompt/send', {
-      agent: { id: 'agent-remote', backend: 'codex' },
+      agent: { id: 'agent-remote', provider: 'codex' },
       prompt: 'go',
     }, onEvent);
     await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(1));
@@ -180,8 +180,8 @@ describe('RemoteDaemonClientManager', () => {
       },
       {
         seq: secret,
-        backend: 'codex' as const, type: 'backend.statusChanged',
-        payload: { backend: 'codex' as const, status: 'running' },
+        provider: 'codex' as const, type: 'provider.statusChanged',
+        payload: { provider: 'codex' as const, status: 'running' },
         occurredAt: '2026-06-14T10:00:01.000Z',
       },
       {
@@ -199,8 +199,8 @@ describe('RemoteDaemonClientManager', () => {
     }
     const validEvent = {
       seq: 3,
-      backend: 'codex' as const, type: 'backend.statusChanged',
-      payload: { backend: 'codex' as const, status: 'running' },
+      provider: 'codex' as const, type: 'provider.statusChanged',
+      payload: { provider: 'codex' as const, status: 'running' },
       occurredAt: '2026-06-14T10:00:03.000Z',
     };
     child.stdout.write(`${JSON.stringify({
@@ -211,10 +211,10 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
-      result: { backendSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
 
-    await expect(result).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(result).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
     expect(onEvent).toHaveBeenCalledOnce();
     expect(onEvent).toHaveBeenCalledWith(validEvent);
     expect(child.process.kill).not.toHaveBeenCalled();
@@ -246,7 +246,7 @@ describe('RemoteDaemonClientManager', () => {
     const onEvent = vi.fn();
 
     const streamingRequest = manager.request(readyConnection(), 'driver/prompt/send', {
-      agent: { id: 'agent-remote', backend: 'codex' },
+      agent: { id: 'agent-remote', provider: 'codex' },
       prompt: 'go',
     }, onEvent);
     await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(1));
@@ -254,12 +254,12 @@ describe('RemoteDaemonClientManager', () => {
     child.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: firstRequest.id,
-      result: { backendSession: { kind: 'codex', threadId: 'thread-remote' } },
+      result: { providerSession: { kind: 'codex', conversationId: 'thread-remote' } },
     })}\n`);
-    await expect(streamingRequest).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'thread-remote' } });
+    await expect(streamingRequest).resolves.toStrictEqual({ providerSession: { kind: 'codex', conversationId: 'thread-remote' } });
 
     const metadataRequest = manager.request(readyConnection(), 'agent/models/list', {
-      backend: 'codex',
+      provider: 'codex',
     });
     await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(2));
     const secondRequest = JSON.parse(child.stdinLines()[1]!) as { id: number };

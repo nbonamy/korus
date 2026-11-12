@@ -1,3 +1,4 @@
+import '@korus-dev/agent-ui-sdk/styles.css';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import SourcePreviewPanel from '../SourcePreviewPanel.vue';

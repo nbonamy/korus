@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { useAppState } from '../../src/app-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
-import type { AppSnapshot, BackendApprovalRequest, BackendConversationRef, AppApi, ConversationSummary, DevicePairingSession, MainToRendererEvent, RendererMessage, SourceRepository, WorkItem, WorkSource } from '@workspace/core/contracts';
+import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { AppSnapshot, ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, DevicePairingSession, MainToRendererEvent, RendererMessage, SourceRepository, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
@@ -63,7 +63,7 @@ describe('useAppState', () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0].status = { type: 'working' };
-    const backendAttachments = [
+    const providerAttachments = [
       {
         type: 'image' as const,
         path: '/tmp/screenshot.png',
@@ -81,7 +81,7 @@ describe('useAppState', () => {
 
     const queuedSnapshot = createInitialSnapshot();
     queuedSnapshot.agents[0].status = { type: 'working' };
-    queuedSnapshot.queuedPrompts = [{ id: 'prompt-files', agentId: 'agent-dina', text: 'review these files', createdAt: '2026-06-05T00:00:01.000Z', options: { attachments: backendAttachments } }];
+    queuedSnapshot.queuedPrompts = [{ id: 'prompt-files', agentId: 'agent-dina', text: 'review these files', createdAt: '2026-06-05T00:00:01.000Z', options: { attachments: providerAttachments } }];
     const sendPrompt = vi.fn().mockResolvedValue(queuedSnapshot);
     stubElectronTestWindow({
       app: {
@@ -101,7 +101,7 @@ describe('useAppState', () => {
     expect(state.activeQueuedPrompts.value).toStrictEqual([
       expect.objectContaining({
         text: 'review these files',
-        options: { attachments: backendAttachments },
+        options: { attachments: providerAttachments },
       }),
     ]);
 
@@ -238,10 +238,10 @@ describe('useAppState', () => {
 
   it('queues an unsupported steer for the targeted Claude agent without steering or consuming its queue', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.backendRuntimes.find((runtime) => runtime.backend === 'claude')!.capabilities = { ...claudeBackendCapabilities, steerPrompt: false };
+    remoteSnapshot.providerRuntimes.find((runtime) => runtime.provider === 'claude')!.capabilities = { ...claudeProviderCapabilities, steerPrompt: false };
     const agent = remoteSnapshot.agents.find(candidate => candidate.id === 'agent-jesse')!;
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
+    agent.provider = 'claude';
+    agent.providerDefaults = { kind: 'claude' };
     agent.status = { type: 'working' };
     remoteSnapshot.queuedPrompts = [{ id: 'queued-claude', agentId: agent.id, text: 'Keep queued', createdAt: '2026-10-03T00:00:00Z' }];
     const sendPrompt = vi.fn().mockResolvedValue(remoteSnapshot);
@@ -476,11 +476,11 @@ describe('useAppState', () => {
 
   it('includes prompted plan mode for Claude agents', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backend = 'claude';
-    remoteSnapshot.agents[0].backendDefaults = { kind: 'claude' };
+    remoteSnapshot.agents[0].provider = 'claude';
+    remoteSnapshot.agents[0].providerDefaults = { kind: 'claude' };
     const updatedSnapshot = createInitialSnapshot();
-    updatedSnapshot.agents[0].backend = 'claude';
-    updatedSnapshot.agents[0].backendDefaults = { kind: 'claude' };
+    updatedSnapshot.agents[0].provider = 'claude';
+    updatedSnapshot.agents[0].providerDefaults = { kind: 'claude' };
     const sendPrompt = vi.fn().mockResolvedValue(updatedSnapshot);
 
     stubElectronTestWindow({

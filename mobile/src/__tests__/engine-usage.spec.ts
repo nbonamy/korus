@@ -3,7 +3,7 @@ import { createEngine } from '../engine';
 import { createDemoConnector } from '../demo-connector';
 import type { CompanionUsage } from '@workspace/core/companion-protocol';
 
-const providers: CompanionUsage[] = [{ backend: 'codex', failed: false, limits: {
+const providers: CompanionUsage[] = [{ provider: 'codex', failed: false, limits: {
   primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null,
 } }];
 

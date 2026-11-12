@@ -1,11 +1,11 @@
-import type { CodexComposerMenuItem } from '@codex-app-sdk/vue';
+import type { ComposerMenuItem } from '@korus-dev/agent-ui-sdk';
 import { IconChecklist, IconPalette, IconSitemap } from '@tabler/icons-vue';
 import { GitBranchIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
 
 export type ConversationMenuCommand = 'design' | 'visualize' | 'delegate' | 'review' | 'mission';
 
-export function conversationCommandMenuItems(): CodexComposerMenuItem[] {
+export function conversationCommandMenuItems(): ComposerMenuItem[] {
   return [
     { id: 'app-commands', type: 'separator' },
     ...([

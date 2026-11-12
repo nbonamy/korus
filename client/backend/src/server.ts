@@ -1,4 +1,5 @@
 import { isProviderSafetyReviewTarget, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
+import { isProviderConversationRef, sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
 import { FeatureGroupService } from './features/feature-group-service';
 import type { FeatureGroupRequest, FeatureAgentRequest } from '@workspace/core/feature-groups';
@@ -10,7 +11,7 @@ import { RunProfileService } from './run-profile-service';
 import { applyExecutionSelection, defaultExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from '@workspace/core/contracts/execution';
 import { executionSelectionSchema, executionSelectionOverridesSchema } from './execution-selection-schema';
-import { normalizePromptContent } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import type { GuestJoins } from './sharing/guest-joins';
 import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
 import { companionSessionId } from '@workspace/core/companion-protocol';
@@ -30,7 +31,8 @@ import { previewAgentFolderFile } from './agent-files';
 import { backendHomeDir } from './state';
 import type { DocumentWorkspaceChange, DocumentSaveInput } from '@workspace/core/document-workspace';
 import { isWorkProviderKind } from '@workspace/core/work-providers';
-import { isAgentBackend } from '@workspace/core/contracts/shared';
+import { isHarnessProvider } from '@workspace/core/contracts/shared';
+import { withProductPermissionLabels } from './runtime-status-labels';
 import { product } from '@workspace/core/product';
 import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from '@workspace/core/delegation-context';
 import { normalizeGitSettings } from '@workspace/core/git-preferences';
@@ -39,11 +41,11 @@ import type { DurableTaskService } from './agents/durable-task-service';
 import { ProviderConnections } from './provider-connections';
 import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
-import { isProviderConnection, type ProviderAuthentication, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import { isProviderConnection, type ProviderAuthentication, type ProviderAuthenticationAction, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
 import { missionRunPromptMarker } from './mission-execution-policy';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
-import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
+import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel, missionScreenshotSnapshotEvent } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
 import { missionStageSkills } from './bundled-skills/catalog';
 import { imageGenerationSkill } from './image-generation-service';
@@ -56,40 +58,40 @@ import path from 'node:path';
 import os from 'node:os';
 import { access, mkdir, rm } from 'node:fs/promises';
 import { createEntityId } from '@workspace/core/ids';
-import { resolveAgentBackend } from '@workspace/core/agent-backends';
+import { resolveAgentProvider } from '@workspace/core/agent-providers';
 import { createAppRpcError, createAppRpcResult, appRpcErrorCodes, isAppRpcNotification, isAppRpcRequest, isAppSnapshotGetResult, type AppRpcMessage, type AppRpcResponse } from '@workspace/core/backend-protocol/rpc';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
-import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, BackendModelOption, BackendConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
-import { backendDisplayName, resolveBackendCoordinationPolicy } from '@workspace/core/backend-driver';
-import type { AgentBackendDriver, BackendApprovalPresetResult, BackendConversationForkResult, BackendConversationResumeResult, BackendEvent, BackendGoalResult, BackendPermissionModeResult, BackendSendResult, BackendConversationReplacementResult } from '@workspace/core/backend-driver';
+import { providerDisplayName, resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
+import type { AgentProviderDriver, ProviderConversationForkResult, ProviderConversationResumeResult, BackendEvent, ProviderGoalResult, ProviderPermissionModeResult, ProviderSendResult, ProviderConversationReplacementResult } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
-import { readEngineInstructions, saveEngineInstructions } from './engine-instructions';
+import { isInstructionEngine, readEngineInstructions, saveEngineInstructions } from './engine-instructions';
 import { SkillManager } from './skill-manager';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { defaultHarnessProvider, defaultProviderCapabilities, previousConversationStorage } from '@workspace/core/provider-capabilities';
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
 import { teamColors } from '@workspace/core/team-colors';
 import { sanitizeWorkItemAssignmentSource } from '@workspace/core/work-assignments';
-import { approvalBackendDefaultsWithPreset, isApprovalPreset } from '@workspace/core/approval-presets';
 import { formatConversationTitle } from '@workspace/core/conversation-title';
 import { agentFolder, requireAgentFolder } from '@workspace/core/agent-folder';
-import { BackendDriverRpc } from './driver-rpc';
+import { ProviderDriverRpc } from './driver-rpc';
 import { ClientPreferencesService } from './client-preferences-service';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
 import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
+import { installedByRemoteDaemon, installOverSsh } from './connections/remote-engines';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
-import { warnMain } from './log';
+import { logMain, warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
-import { getCodexResourceSharingStatus, setCodexResourceSharing } from './codex-resource-sharing';
+import { codexResourceSharingAccess } from './codex-resource-sharing';
 import { AgentGitService } from './git/agent-git-service';
 import { AgentGitWorkflowService, parseAgentGitRequest } from './git/agent-git-workflow-service';
 import { AgentPromptManager } from './agents/agent-prompt-manager';
@@ -102,13 +104,12 @@ import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
 import { normalizeThreadFlags, type ThreadFlagId, type ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentConversationId, planReviewFromEvent, planReviewFeedback, planReviewDelivery } from '@workspace/core/plan-review';
-import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
+import { isAgentRequestResponse, requestOutcomeToWire, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { AgentWorkspaceService } from './agents/agent-workspace-service';
 import { AgentConversationService } from './agents/agent-conversation-service';
 import { DelegatedWorkReportService, type DelegatedWorkReportPort } from './agents/delegated-work-report-service';
 import { SubagentIdentityService } from './agents/subagent-identity-service';
 import { AgentRequestRegistry } from './agent-requests/agent-request-registry';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { isCodeReviewDecisionInput, isCodeReviewDiscussionInput, isCodeReviewStartInput, type CodeReviewFinding, type CodeReviewSession } from '@workspace/core/code-review';
 import { CodeReviewService, type CodeReviewToolPort, type AutomaticReviewStartInput } from './review/code-review-service';
@@ -123,6 +124,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 import { remoteCollaborationTools, type CreateCoAgentInput, type RemoteCollaborationCall, type RemoteWorkerRequest, type RemoteWorkerResult } from '@workspace/core/remote-collaboration';
 import { CallToolResultSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { providerBinaryPathSettings } from './provider-lifecycle';
 
 export type AppBackendServerOptions = {
   collaborationTools?: {
@@ -147,7 +149,7 @@ export type AppBackendServerOptions = {
   version: string;
   pid?: number;
   snapshot?: AppSnapshot;
-  driverRpc?: BackendDriverRpc;
+  driverRpc?: ProviderDriverRpc;
   onEvent?: (event: AppBackendEvent) => void;
   onBackendEventApplied?: (event: BackendPublishedEvent) => void;
   saveSnapshot?: (snapshot: AppSnapshot) => Promise<void>;
@@ -219,17 +221,17 @@ export class AppBackendServer {
   private readonly browserExtensionPackages: BrowserExtensionPackages;
   private readonly tasks?: DurableTaskService;
 
-  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<BackendSendResult> {
+  async sendTaskPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<ProviderSendResult> {
     if (goal && planMode) throw new Error('planMode and goal cannot be enabled together.');
     if (agent.remoteConnectionId) {
       if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false) throw new Error('Agent is stopped.');
-      return this.remoteTeams.request<BackendSendResult>(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, goal, ...(typeof planMode === 'boolean' ? { planMode } : {}) });
+      return this.remoteTeams.request<ProviderSendResult>(agent.remoteConnectionId, backendMethods.collaborationPromptSend, { agentId: agent.id, prompt, goal, ...(typeof planMode === 'boolean' ? { planMode } : {}) });
     }
     agent = this.snapshot.agents.find(candidate => candidate.id === agent.id) ?? agent;
-    await this.requireConnectedEngine(agent.backend);
+    await this.requireConnectedEngine(agent.provider);
     if (!this.snapshot.agents.includes(agent)) throw new Error('Agent was removed before task prompt admission.');
     if (this.tasks?.mayStartAutomatedPrompt(agent.id) === false || agent.planReview?.status === 'pending') throw new Error('Agent is stopped or waiting for a review decision.');
-    if (planMode && this.backendDriverForAgent(agent).getCapabilities(agent).planMode === 'unsupported') throw new Error('This backend does not support Plan mode.');
+    if (planMode && this.providerDriverForAgent(agent).getCapabilities(agent).planMode === 'unsupported') throw new Error('This backend does not support Plan mode.');
     const receipt = await this.agentPrompts.sendWithReceipt(agent, prompt, typeof planMode === 'boolean' ? { planMode } : undefined, undefined, undefined, goal);
     await this.persistSnapshotOnly();
     return receipt;
@@ -458,7 +460,7 @@ export class AppBackendServer {
     const result = await this.remoteTeams.request<RemoteWorkerResult>(pointer.connectionId, backendMethods.collaborationWorkerCreate, {
       ownerId: link.collaborationOwnerId!, teamId: pointer.remoteTeamId, agentId: intendedId ?? `agent-${randomUUID()}`,
       ...(caller.remoteConnectionId === pointer.connectionId && caller.teamId === pointer.localTeamId ? { localCallerId: caller.id } : {}),
-      caller: { ...caller, backendSession: undefined }, input: { ...input, remoteConnectionId: undefined, task: undefined }, assignmentPrompt, userInstructions,
+      caller: { ...caller, providerSession: undefined }, input: { ...input, remoteConnectionId: undefined, task: undefined }, assignmentPrompt, userInstructions,
     } satisfies RemoteWorkerRequest);
     this.remoteTeams.adoptCreatedAgentSnapshot(pointer, result.snapshot);
     await this.persistAndEmitSnapshot();
@@ -568,7 +570,7 @@ export class AppBackendServer {
       let agent = this.snapshot.agents.find(agent => agent.sharedConversation?.joinId === entry.id);
       if (!agent) {
         const now = new Date().toISOString();
-        agent = { id: `shared-${entry.id}`, teamId: team.id, sessionKind: 'quickChat', sharedConversation: { joinId: entry.id }, name: entry.title, conversationTitle: entry.title, backend: 'codex', folder: null, status: { type: 'idle' }, createdAt: now, updatedAt: now };
+        agent = { id: `shared-${entry.id}`, teamId: team.id, sessionKind: 'quickChat', sharedConversation: { joinId: entry.id }, name: entry.title, conversationTitle: entry.title, provider: defaultHarnessProvider, folder: null, status: { type: 'idle' }, createdAt: now, updatedAt: now };
         this.snapshot.agents.push(agent); team.agentIds.push(agent.id); changed = true;
       }
       if (agent.name !== entry.title) { agent.name = entry.title; agent.conversationTitle = entry.title; changed = true; }
@@ -580,7 +582,7 @@ export class AppBackendServer {
     if (changed) await this.persistAndEmitSnapshot();
   }
   private companionAccessEnabled = false;
-  private readonly driverRpc?: BackendDriverRpc;
+  private readonly driverRpc?: ProviderDriverRpc;
   private readonly onEvent?: (event: AppBackendEvent) => void;
   private readonly onBackendEventApplied?: (event: BackendPublishedEvent) => void;
   private readonly saveSnapshot?: (snapshot: AppSnapshot) => Promise<void>;
@@ -637,18 +639,22 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
+      canSteer: target => {
+        const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
+        return Boolean(agent && this.providerDriverForAgent(agent).getCapabilities(agent).steerPrompt);
+      },
       canSubmit: (target, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         const steer = context.followUpBehavior === 'steer';
         if (!agent || handoffInProgress(agent)) return false;
-        if (steer && agent.status.type === 'working' && this.backendDriverForAgent(agent).getCapabilities(agent).steerPrompt) return true;
+        if (steer && agent.status.type === 'working' && this.providerDriverForAgent(agent).getCapabilities(agent).steerPrompt) return true;
         return Boolean(this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
       },
       submit: options.conversationSharing.submit ?? (async (target, text, context) => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
         if (context.followUpBehavior === 'steer' && !this.agentPrompts.canStart(agent)) {
-          const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as BackendSendResult;
+          const result = await this.withPromptSource(agent, 'guest:approved', () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt: text, expectedSessionId: companionSessionId(agent), plainText: true })) as ProviderSendResult;
           this.clearTurnHints(agent);
           await this.persistSnapshotOnly();
           return { turnId: result.turnId, messageId: result.messageId };
@@ -671,16 +677,16 @@ export class AppBackendServer {
     if (options.providerSetup) {
       this.providerConnections = new ProviderConnections({
         detect: () => options.providerSetup!.list(),
-        enabled: backend => options.requirements?.models?.[backend]?.length !== 0 && this.snapshot.general.providerEnabled?.[backend] !== false,
-        authenticate: backend => this.authenticateProvider(backend),
+        enabled: provider => options.requirements?.models?.[provider]?.length !== 0 && this.snapshot.general.providerEnabled?.[provider] !== false,
+        authenticate: provider => this.authenticateProvider(provider),
         changed: connections => {
           const reconnected = connections.filter(connection => connection.connected && connection.installed && connection.enabled !== false && !connection.checking
-            && !this.snapshot.providerConnections?.some(previous => previous.backend === connection.backend && previous.connected && previous.installed && previous.enabled !== false));
+            && !this.snapshot.providerConnections?.some(previous => previous.provider === connection.provider && previous.connected && previous.installed && previous.enabled !== false));
           this.snapshot.providerConnections = connections;
           // Publish the client projection without replacing live agents/review contexts.
           this.emitSnapshotUpdated(this.remoteTeams.clientSnapshotFromKnownRemotes());
           for (const agent of this.snapshot.agents) {
-            if (reconnected.some(connection => connection.backend === agent.backend)) this.agentPrompts?.drain(agent.id);
+            if (reconnected.some(connection => connection.provider === agent.provider)) this.agentPrompts?.drain(agent.id);
           }
         },
       });
@@ -692,8 +698,8 @@ export class AppBackendServer {
     this.agentCreation = options.agentCreation ?? new AgentCreationService(this.snapshot);
     this.projectCreation = new ProjectCreationService({
       createRepository: name => this.createLocalSourceRepository(name),
-      createAgent: async ({ repository, teamId, selection, backendDefaults }) => {
-        const input: CreateAgentInput = { name: null, folder: repository.path, sourceRepositoryName: repository.name, teamId, ...(backendDefaults ? { backendDefaults } : {}), selection };
+      createAgent: async ({ repository, teamId, selection, providerDefaults: providerDefaults }) => {
+        const input: CreateAgentInput = { name: null, folder: repository.path, sourceRepositoryName: repository.name, teamId, ...(providerDefaults ? { providerDefaults: providerDefaults } : {}), selection };
         await this.validateAgentInput(input, null);
         const agent = this.agentCreation.create(input, { select: false });
         await this.agentWorkspaces.refreshIdentity(agent.id);
@@ -715,10 +721,9 @@ export class AppBackendServer {
     this.sshConnections = options.sshConnections ?? new SshConnectionService();
     this.remoteClients = options.remoteClients ?? new RemoteDaemonClientManager();
     this.sendAgentMessage = options.sendAgentMessage;
-    this.configureCodexResourceSharing = options.configureCodexResourceSharing ?? (options.providerSetup
-      ? input => options.providerSetup!.setResourceSharing('codex', input) : setCodexResourceSharing);
-    this.inspectCodexResourceSharing = options.inspectCodexResourceSharing ?? (options.providerSetup
-      ? () => options.providerSetup!.getResourceSharingStatus('codex') : getCodexResourceSharingStatus);
+    const resourceSharing = codexResourceSharingAccess(options.providerSetup);
+    this.configureCodexResourceSharing = options.configureCodexResourceSharing ?? resourceSharing.configure;
+    this.inspectCodexResourceSharing = options.inspectCodexResourceSharing ?? resourceSharing.inspect;
     this.inspectPluginStatus = options.inspectPluginStatus ?? loadPluginStatus;
     this.agentGitService = options.agentGitService ?? new AgentGitService();
     this.agentGitService.setSettingsProvider?.(() => normalizeGitSettings(this.snapshot.general.git));
@@ -744,9 +749,9 @@ export class AppBackendServer {
       refreshWorkspaceIdentity: async (agentId) => { await this.agentWorkspaces.refreshIdentity(agentId); },
     });
     this.agentPrompts = new AgentPromptManager({
-      isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
+      isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.provider) && this.snapshot.providerConnections?.some(connection => connection.provider === agent.provider && connection.connected && connection.installed && connection.enabled !== false) === true,
       getSnapshot: () => this.snapshot,
-      driverForAgent: (agent, expectedSessionId, plainText) => this.backendDriverForAgent(agent, expectedSessionId, plainText),
+      driverForAgent: (agent, expectedSessionId, plainText) => this.providerDriverForAgent(agent, expectedSessionId, plainText),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
@@ -755,7 +760,7 @@ export class AppBackendServer {
     });
     this.autoResume = new AutoResumeService({
       snapshot: this.snapshot, isLocal: agent => !this.remoteTeams.connectionIdForAgent(agent),
-      connected: agent => !this.agentClosuresInFlight.has(agent.id) && !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
+      connected: agent => !this.agentClosuresInFlight.has(agent.id) && !this.options.providerUpdates?.isUpdating(agent.provider) && this.snapshot.providerConnections?.some(connection => connection.provider === agent.provider && connection.connected && connection.installed && connection.enabled !== false) === true,
       update: (agentId, rateLimitPause) => this.handleBackendEvent({ type: 'agent.updated', agentId, payload: { id: agentId, rateLimitPause } }),
       persist: () => this.persistSnapshotOnly(),
       resume: agent => this.agentPrompts.sendAndWaitForAcceptance(agent, 'continue', undefined, companionSessionId(agent)),
@@ -778,7 +783,7 @@ export class AppBackendServer {
     });
     this.missionArtifacts = options.missionArtifactStore ?? new FileMissionArtifactStore(ensureMissionHome);
     this.missionExecution = new MissionExecutionService({
-      listModels: agent => this.handleAgentDriverRequest(agent, backendMethods.driverModelsList, { agent }) as Promise<BackendModelOption[]>,
+      listModels: agent => this.handleAgentDriverRequest(agent, backendMethods.driverModelsList, { agent }) as Promise<ProviderModelOption[]>,
       getHead: readWorktreeHead,
       snapshot: this.snapshot,
       missions: this.missions,
@@ -827,7 +832,7 @@ export class AppBackendServer {
       },
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
       isCommitLockOwnerStopped: async agent => {
-        if (!agent.backendSession) return false;
+        if (!agent.providerSession) return false;
         const loaded = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationLoad, { agent });
         if (!loaded) return false;
         await this.handleAgentDriverRequest(agent, backendMethods.driverHandoffCheck, { agent });
@@ -847,7 +852,7 @@ export class AppBackendServer {
               };
           const answer = { agentId: agent.id, id: delivery.requestId, outcome };
           await this.agentRequests.respond(answer, async owner => {
-            await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: answer });
+            await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { provider: owner.provider, response: answer });
           });
         };
       },
@@ -897,7 +902,7 @@ export class AppBackendServer {
       }),
       retire: async agent => {
         await this.retireConversation(agent);
-        await this.requireDriverRpc().handle(backendMethods.driverConversationRelease, { backend: agent.backend, agentId: agent.id });
+        await this.requireDriverRpc().handle(backendMethods.driverConversationRelease, { provider: agent.provider, agentId: agent.id });
       },
       start: async (agent, prompt) => { await this.sendHandoffPrompt(agent, prompt); },
     });
@@ -905,10 +910,7 @@ export class AppBackendServer {
       applyEvent: (event) => this.handleBackendEvent(event, { persist: false }),
       getSnapshot: () => this.snapshot,
       loadSummary: this.driverRpc
-        ? (agent, conversationId) => this.driverRpc!.handle(backendMethods.driverConversationSummaryGet, {
-            agent,
-            ref: { backend: 'codex', threadId: conversationId },
-          }) as Promise<ConversationSummary | null>
+        ? (agent, ref) => this.driverRpc!.handle(backendMethods.driverConversationSummaryGet, { agent, ref }) as Promise<ConversationSummary | null>
         : undefined,
       persistSnapshot: () => this.persistSnapshotOnly(),
     });
@@ -948,7 +950,7 @@ export class AppBackendServer {
         progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
         provision: async (parent, input, folder, agentId) => {
           const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
-            ?? this.agentCreation.create({ name: input.branchName, folder, teamId: parent.teamId, delegatedByAgentId: parent.id, selection: { backend: parent.backend } }, { id: agentId, select: false });
+            ?? this.agentCreation.create({ name: input.branchName, folder, teamId: parent.teamId, delegatedByAgentId: parent.id, selection: { provider: parent.provider } }, { id: agentId, select: false });
           if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
           await this.agentWorkspaces.refreshIdentity(worker.id);
           await this.agentWorkspaces.refreshGitStatus(worker.id);
@@ -957,13 +959,13 @@ export class AppBackendServer {
       }),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       archiveConversation: async (agent) => {
-        if (!agent.backendSession) return;
+        if (!agent.providerSession) return;
         await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent });
       },
       delegatedWorkReports: this.delegatedWorkReports,
       driverRequest: (agent, method, params) => this.handleAgentDriverRequest(agent, method, params),
       releaseConversation: async (agent) => {
-        await this.driverRpc?.handle(backendMethods.driverConversationRelease, { backend: agent.backend, agentId: agent.id });
+        await this.driverRpc?.handle(backendMethods.driverConversationRelease, { provider: agent.provider, agentId: agent.id });
       },
       getSnapshot: () => this.snapshot,
       getWorkIntegrations: () => this.requireWorkIntegrations(),
@@ -987,7 +989,7 @@ export class AppBackendServer {
             cwd: requireAgentFolder(agent),
             reviewMcpServerUrl,
             ...(reviewerSession ? { reviewerSession } : {}),
-          }) as import('@workspace/core/backend-driver').BackendCodeReviewResult;
+          }) as import('@workspace/core/provider-driver').ProviderCodeReviewResult;
         },
         resetReviewer: async (agent) => {
           await this.disposeAndReleaseReviewConversation(agent, true);
@@ -1007,7 +1009,7 @@ export class AppBackendServer {
         reportProgress: (agent, targetAgentId, content) => { this.sendAgentMessage?.(agent.id, targetAgentId, content); },
       });
     }
-    this.unsubscribeDriverEvents = this.driverRpc?.onEvent((event) => this.handleBackendEvent(event));
+    this.unsubscribeDriverEvents = this.driverRpc?.onEvent((event) => this.handleBackendEvent(withProductPermissionLabels(event)));
     this.autoResume.sync();
   }
 
@@ -1093,14 +1095,14 @@ export class AppBackendServer {
     if (!input.selection) return undefined;
     const { model, reasoningEffort, serviceTier } = input.selection;
     if ((reasoningEffort || serviceTier) && !model) throw new Error('A reasoning effort or service tier needs a model.');
-    const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
-    const base = backend === caller.backend ? executionSelectionForAgent(caller) : this.snapshot.general.providerModelDefaults?.[backend] ?? defaultExecutionSelection(backend);
+    const provider = resolveAgentProvider(this.snapshot, input.selection?.provider ?? caller.provider);
+    const base = provider === caller.provider ? executionSelectionForAgent(caller) : this.snapshot.general.providerModelDefaults?.[provider] ?? defaultExecutionSelection(provider);
     const selection = resolveExecutionSelection(base, input.selection);
     if (!model) return selection;
-    const catalog = await this.handleAgentDriverRequest({ ...caller, backend, backendSession: undefined, backendDefaults: undefined }, backendMethods.driverModelsList, { agent: { ...caller, backend, backendSession: undefined, backendDefaults: undefined } }) as BackendModelOption[];
+    const catalog = await this.handleAgentDriverRequest({ ...caller, provider: provider, providerSession: undefined, providerDefaults: undefined }, backendMethods.driverModelsList, { agent: { ...caller, provider: provider, providerSession: undefined, providerDefaults: undefined } }) as ProviderModelOption[];
     const visible = catalog.filter(option => !option.hidden);
     const selected = visible.find(option => option.model === model);
-    if (!selected) throw new Error(`${model} is not available for ${backend}. Available models: ${visible.map(option => option.model).join(', ') || 'none'}.`);
+    if (!selected) throw new Error(`${model} is not available for ${provider}. Available models: ${visible.map(option => option.model).join(', ') || 'none'}.`);
     if (reasoningEffort && !selected.supportedReasoningEfforts?.some(option => option.reasoningEffort === reasoningEffort)) {
       const supported = selected.supportedReasoningEfforts?.map(option => option.reasoningEffort).join(', ') || 'none';
       throw new Error(`${model} does not support reasoning effort ${reasoningEffort}. Supported: ${supported}.`);
@@ -1129,7 +1131,7 @@ export class AppBackendServer {
     // The lead has no conversation yet, so its provider and model can still be set. Later stages clone it.
     const leadAgent = leadSettings ? this.snapshot.agents.find(agent => agent.id === lead) : undefined;
     if (leadAgent && leadSettings) {
-      leadAgent.backend = leadSettings.backend;
+      leadAgent.provider = leadSettings.provider;
       applyExecutionSelection(leadAgent, leadSettings);
     }
     this.agentPrompts.send(lead, input.prompt);
@@ -1149,7 +1151,7 @@ export class AppBackendServer {
       throw new Error('create-project is available only in a Quick Chat with a team.');
     }
     if (!prompt.trim()) throw new Error('A self-contained project handoff prompt is required.');
-    return this.projectCreation.create({ name, teamId: caller.teamId, backendDefaults: !selection?.backend || selection.backend === caller.backend ? caller.backendDefaults : undefined, prompt, selection: { ...selection, backend: resolveAgentBackend(this.snapshot, selection?.backend ?? caller.backend) } }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
+    return this.projectCreation.create({ name, teamId: caller.teamId, providerDefaults: !selection?.provider || selection.provider === caller.provider ? caller.providerDefaults : undefined, prompt, selection: { ...selection, provider: resolveAgentProvider(this.snapshot, selection?.provider ?? caller.provider) } }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
   }
 
   async upsertMissionTicket(agentId: string, input: import('@workspace/core/mission-execution').MissionTicketDraftInput) {
@@ -1231,9 +1233,9 @@ export class AppBackendServer {
         if (worker.status.type === 'working' || worker.status.type === 'awaitingInput') {
           await this.handleAgentDriverRequest(worker, backendMethods.driverInterrupt, { agent: worker });
         }
-        if (worker.backendSession) {
+        if (worker.providerSession) {
           await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent: worker });
-          await this.driverRpc?.handle(backendMethods.driverConversationRelease, { backend: worker.backend, agentId: worker.id });
+          await this.driverRpc?.handle(backendMethods.driverConversationRelease, { provider: worker.provider, agentId: worker.id });
         }
       }
       if (input.deleteWorktrees) {
@@ -1246,7 +1248,33 @@ export class AppBackendServer {
   }
 
   /** A quick chat has no project to come back to, so closing it deletes the provider session; everything else is archived. */
+  /** Puts a closed agent back where it was, under its own id, and takes its conversation out of the archive. */
+  private async restoreClosedAgent(record: ClosedAgentRecord): Promise<AppSnapshot> {
+    const { agent } = record;
+    if (this.snapshot.agents.some(candidate => candidate.id === agent.id)) return this.persistAndEmitSnapshot();
+    if (agent.providerSession) {
+      await this.driverRpc?.handle(backendMethods.driverConversationUnarchive, { agent }).catch(error => warnMain('agent-restore', 'Could not unarchive the conversation', { message: String(error) }));
+    }
+    const restored = structuredClone(agent);
+    this.snapshot.agents.splice(Math.min(record.index, this.snapshot.agents.length), 0, restored);
+    const team = this.snapshot.teams.find(candidate => candidate.id === restored.teamId) ?? this.snapshot.teams[0];
+    if (team) {
+      restored.teamId = team.id;
+      const next = record.nextAgentId ? team.agentIds.indexOf(record.nextAgentId) : -1;
+      team.agentIds.splice(next < 0 ? Math.min(record.teamPosition, team.agentIds.length) : next, 0, restored.id);
+      team.activeAgentId = restored.id;
+      this.snapshot.activeTeamId = team.id;
+    }
+    this.snapshot.activeAgentId = restored.id;
+    return this.persistAndEmitSnapshot();
+  }
+
   private async retireConversation(agent: Agent): Promise<void> {
+    // A conversation is put away only once its turn has stopped; archiving under a running turn, such as a review in
+    // progress, leaves the harness working on a conversation that is no longer there. A turn that already ended is fine.
+    if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
+      await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }).catch(() => undefined);
+    }
     if (agent.sessionKind === 'quickChat') {
       const deleted = await this.driverRpc?.handle(backendMethods.driverConversationDelete, { agent });
       if (isRecord(deleted) && deleted.supported === true) return;
@@ -1258,36 +1286,44 @@ export class AppBackendServer {
     if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
       await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }).catch(() => undefined);
     }
-    if (agent.backendSession && retainConversation) {
+    if (agent.providerSession && retainConversation) {
       // Archive when supported (Codex); otherwise leave native history intact (Claude).
       // Archiving is housekeeping; a provider failure must not block reset, retry or finish.
       await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent }).catch(() => undefined);
-    } else if (agent.backendSession) {
+    } else if (agent.providerSession) {
       await this.handleAgentDriverRequest(agent, backendMethods.driverCodeReviewDispose, {
         agent,
-        reviewerSession: agent.backendSession,
+        reviewerSession: agent.providerSession,
       }).catch(() => undefined);
     }
     await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
-      backend: agent.backend,
+      provider: agent.provider,
       agentId: agent.id,
     });
   }
 
   async initialize(): Promise<void> {
-    await this.remoteTeams.activateConnections();
-    await this.agentHandoffs.recover();
-    await this.providerConnections?.refresh();
-    await this.initializeSourceFolderIfNeeded();
-    if (this.snapshot.providerConnections?.some(provider => provider.backend === 'codex' && provider.connected)) await this.ensureRemoteControlStatus();
-    await this.agentWorkspaces.reconcile();
-    await this.reconcileConversationsOnce();
+    // Each step is timed, so a slow start names the step that held it.
+    const began = Date.now();
+    const step = async (name: string, run: () => unknown): Promise<void> => {
+      const started = Date.now();
+      try { await run(); }
+      finally { const ms = Date.now() - started; if (ms >= 250) logMain('startup', 'slow step', { step: name, ms, sinceStart: Date.now() - began }); }
+    };
+    await step('remote connections', () => this.remoteTeams.activateConnections());
+    await step('handoffs', () => this.agentHandoffs.recover());
+    await step('engine connections', () => this.providerConnections?.refresh());
+    await step('source folder', () => this.initializeSourceFolderIfNeeded());
+    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await step('remote control status', () => this.ensureRemoteControlStatus());
+    await step('workspaces', () => this.agentWorkspaces.reconcile());
+    await step('conversations', () => this.reconcileConversationsOnce());
     this.reconcileShares();
-    await this.subagentIdentities.backfill();
-    await this.missionExecution.refreshOwnedSkills();
-    await this.missionExecution.recoverInterruptedRuns();
-    for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent);
-    await this.resumeInterruptedWork();
+    await step('subagent identities', () => this.subagentIdentities.backfill());
+    await step('mission skills', () => this.missionExecution.refreshOwnedSkills());
+    await step('mission runs', () => this.missionExecution.recoverInterruptedRuns());
+    await step('code reviews', async () => { for (const agent of this.snapshot.agents) await this.codeReviews?.resumeInterrupted(agent); });
+    await step('interrupted work', () => this.resumeInterruptedWork());
+    logMain('startup', 'initialized', { ms: Date.now() - began });
   }
 
   private async resumeInterruptedWork(): Promise<void> {
@@ -1296,11 +1332,11 @@ export class AppBackendServer {
       if (!agent.autoResumePending || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) continue;
       if (agent.status.type !== 'idle' || this.recoveryTurns.has(agent.id)) continue;
       const conversationId = agentConversationId(agent);
-      const backend = agent.backend;
+      const backend = agent.provider;
       delete agent.autoResumePending;
       await this.persistSnapshotOnly();
       if (this.closing || this.snapshot.general.autoResumeOnStartup === false || !conversationId || !this.snapshot.agents.includes(agent)
-        || agent.backend !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle'
+        || agent.provider !== backend || agentConversationId(agent) !== conversationId || agent.status.type !== 'idle'
         || this.cancelledStartupResumes.has(agent.id)) continue;
       try { await this.agentConversations.continueInterruptedTurn(agent.id, () => !this.closing
         && !this.cancelledStartupResumes.has(agent.id) && this.snapshot.agents.includes(agent)
@@ -1316,16 +1352,15 @@ export class AppBackendServer {
   }
 
   private observeRecoveryTurn(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
-    const agent = view.agentId && this.snapshot.agents.find(candidate => candidate.id === view.agentId);
+    const agent = event.agentId && this.snapshot.agents.find(candidate => candidate.id === event.agentId);
     if (!agent || agent.sharedConversation || this.remoteTeams.connectionIdForAgent(agent)) return;
     const currentConversationId = agentConversationId(agent);
-    if (view.conversationId && currentConversationId && view.conversationId !== currentConversationId) return;
-    if (view.type === 'turn.started' && view.turnId && !this.stoppingAgents.has(agent.id)) {
-      this.recoveryTurns.set(agent.id, view.turnId);
+    if (event.conversationId && currentConversationId && event.conversationId !== currentConversationId) return;
+    if (event.type === 'turn.started' && !this.stoppingAgents.has(agent.id)) {
+      this.recoveryTurns.set(agent.id, event.turnId);
       agent.autoResumePending = true;
       void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save active work', { message: String(error) }));
-    } else if (view.type === 'turn.completed' && view.turnId && this.recoveryTurns.get(agent.id) === view.turnId) {
+    } else if (event.type === 'turn.completed' && this.recoveryTurns.get(agent.id) === event.turnId) {
       this.recoveryTurns.delete(agent.id);
       delete agent.autoResumePending;
       void this.persistSnapshotOnly().catch(error => warnMain('startup', 'could not save completed work', { message: String(error) }));
@@ -1336,38 +1371,52 @@ export class AppBackendServer {
     }
   }
 
-  async requireConnectedEngine(backend?: Agent['backend']): Promise<Agent['backend']> {
+  async requireConnectedEngine(backend?: Agent['provider']): Promise<Agent['provider']> {
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
     if (this.providerSetup?.isChanging(backend)) throw new Error('Engine setup is changing. Try again when it finishes.');
-    const rechecks = !backend ? this.snapshot.providerConnections?.filter(provider => provider.connected && this.coordinationPolicy(provider.backend).authentication.refreshOnAdmission) ?? [] : [];
-    if (backend && this.coordinationPolicy(backend).authentication.refreshOnAdmission) await this.providerConnections?.recheck(backend);
-    else {
-      await this.providerConnections?.refreshDisconnected(backend);
-      await Promise.all(rechecks.map(provider => this.providerConnections?.recheck(provider.backend)));
-    }
+    // A harness last seen signed out is checked again, so a sign-in done outside the app is noticed. One seen signed in
+    // is not: if that changed, its prompt says so.
+    await this.providerConnections?.refreshDisconnected(backend);
     if (this.options.providerUpdates?.isUpdating(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-    const selected = resolveAgentBackend(this.snapshot, backend);
+    const selected = resolveAgentProvider(this.snapshot, backend);
     return selected;
   }
 
-  private async authenticateProvider(backend: Agent['backend'], action: 'check' | 'cancel' | 'logout' | 'login' = 'check', loginId?: string): Promise<ProviderAuthentication> {
-    return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, { backend, action, ...(loginId ? { loginId } : {}) }) as ProviderAuthentication;
+  private async authenticateProvider(provider: Agent['provider'], action: ProviderAuthenticationAction['action'] = 'check', options: Omit<ProviderAuthenticationAction, 'action'> = {}): Promise<ProviderAuthentication> {
+    return await this.requireDriverRpc().handle(backendMethods.driverProviderAuthentication, {
+      provider: provider, action, ...(options.method ? { method: options.method } : {}), ...(options.loginId ? { loginId: options.loginId } : {}),
+    }) as ProviderAuthentication;
   }
 
-  private coordinationPolicy(backend: Agent['backend']) {
-    return this.driverRpc?.getCoordinationPolicy?.(backend) ?? resolveBackendCoordinationPolicy();
+  /** Harnesses with a sign-in the user started and that has not finished yet. */
+  private readonly signingIn = new Set<Agent['provider']>();
+  private coordinationPolicy(provider: Agent['provider']) {
+    return this.driverRpc?.getCoordinationPolicy?.(provider) ?? resolveProviderCoordinationPolicy();
   }
 
-  private async observeAuthentication(authentication: ProviderAuthentication): Promise<void> {
-    const { kind: backend, connected } = authentication;
-    if (connected && this.coordinationPolicy(backend).authentication.enableOnSuccess) {
-      this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [backend]: true };
+  /**
+   * Records what a sign-in action found. An engine is turned on only when a sign-in the user started succeeds, whether
+   * at once or on a later check; a check on its own never turns one on.
+   */
+  private async observeAuthentication(authentication: ProviderAuthentication, action: ProviderAuthenticationAction['action']): Promise<void> {
+    const { kind: provider, connected } = authentication;
+    if (action === 'login') this.signingIn.add(provider);
+    else if (action !== 'check') this.signingIn.delete(provider);
+    if (connected && this.signingIn.delete(provider)) {
+      this.snapshot.general.providerEnabled = { ...this.snapshot.general.providerEnabled, [provider]: true };
     }
-    this.providerConnections?.observe(backend, connected, authentication);
+    this.providerConnections?.observe(provider, connected, authentication);
     await this.persistAndEmitSnapshot();
   }
 
+  /** Answers a message, and says so when a request took long enough for someone to have waited on it. */
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
+    const started = Date.now();
+    try { return await this.answerMessage(message); }
+    finally { const ms = Date.now() - started; if (ms >= 1_000 && isAppRpcRequest(message)) logMain('rpc', 'slow request', { method: message.method, ms }); }
+  }
+
+  private async answerMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
     const params = isRecord(message.params) ? { ...message.params } : undefined;
     const clientId = typeof params?._clientId === 'string' ? params._clientId : 'desktop';
@@ -1456,8 +1505,8 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await usage.previewTelemetry(params.input as import('@workspace/core/telemetry').TelemetryPreviewInput, this.options.version, process.platform));
         }
         if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
-        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter, provider => isAgentBackend(provider)
-          ? (this.snapshot.backendRuntimes.find(runtime => runtime.backend === provider)?.capabilities?.reportsTokens ?? defaultBackendCapabilities(provider).reportsTokens) !== false
+        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter, provider => isHarnessProvider(provider)
+          ? (this.snapshot.providerRuntimes.find(runtime => runtime.provider === provider)?.capabilities?.reportsTokens ?? defaultProviderCapabilities(provider).reportsTokens) !== false
           : true));}
       } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }
     }
@@ -1517,11 +1566,11 @@ export class AppBackendServer {
       const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       const requestedSelection = isRecord(input.selection) ? input.selection : {};
-      if (!remote && (message.method !== backendMethods.agentUpdate || (requestedSelection.backend !== undefined && requestedSelection.backend !== agent?.backend))) {
+      if (!remote && (message.method !== backendMethods.agentUpdate || (requestedSelection.provider !== undefined && requestedSelection.provider !== agent?.provider))) {
         try {
           const duplicateOptions = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options : {};
-          const duplicateBackend = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.backend : undefined;
-          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(requestedSelection.backend) ? requestedSelection.backend : agent?.backend;
+          const duplicateProvider = isRecord(duplicateOptions.selection) ? duplicateOptions.selection.provider : undefined;
+          const requested = isHarnessProvider(duplicateProvider) ? duplicateProvider : isHarnessProvider(requestedSelection.provider) ? requestedSelection.provider : agent?.provider;
           if (this.providerConnections) await this.requireConnectedEngine(requested);
         } catch (error) {
           return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : String(error));
@@ -1630,7 +1679,7 @@ export class AppBackendServer {
         requireString(input.repoPath, 'repoPath');
         const caller = requireRecord(params.caller);
         requireString(caller.id, 'caller.id');
-        requireAgentBackend(caller.backend);
+        requireAgentProvider(caller.provider);
         team.collaborationOwnerId = ownerId;
         await this.persistSnapshotOnly();
         const agent = await this.options.collaborationTools.provisionWorker({
@@ -1730,7 +1779,7 @@ export class AppBackendServer {
             { step: 'Exercise the execution-plan overlay', status: 'inProgress' },
             { step: 'Remove the debug fixture', status: 'pending' },
           ],
-          threadId: agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : `debug-thread-${agentId}`,
+          threadId: agent.providerSession ? sessionConversationId(agent.providerSession) : `debug-thread-${agentId}`,
           turnId,
           updatedAt: new Date().toISOString(),
         };
@@ -1787,7 +1836,7 @@ export class AppBackendServer {
         ].join('\n');
         this.applyAndEmitBackendEvent({
           agentId,
-          backend: agent.backend,
+          provider: agent.provider,
           type: 'plan.readyForReview',
           turnId: `debug-plan-review-${Date.now()}`,
           payload: {
@@ -1925,19 +1974,20 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
         const params = requireRecord(message.params);
-        const backends = params.backends === undefined ? [] : params.backends;
-        if (!Array.isArray(backends) || !backends.every(isAgentBackend)) throw new Error('Invalid setup engines.');
+        const backends = params.providers === undefined ? [] : params.providers;
+        if (!Array.isArray(backends) || !backends.every(isHarnessProvider)) throw new Error('Invalid setup engines.');
         await this.prepareRemoteConnectionUpdate(connection);
         const progress = async (detail: string) => {
           this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? { ...candidate, detail } : candidate);
           await this.persistAndEmitSnapshot();
         };
         let checked = await this.sshConnections.checkConnection(connection, backends, progress);
-        if (checked.status === 'ready' && backends.includes('antigravity')) {
-          await progress('Installing Antigravity…');
+        for (const provider of backends.filter(installedByRemoteDaemon)) {
+          if (checked.status !== 'ready') break;
+          await progress(`Installing ${providerDisplayName(provider)}…`);
           try {
-            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { backend: 'antigravity', _clientId: 'remote-controller' });
-            if (!installed.installed) throw new Error('Antigravity installation could not be verified.');
+            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { provider, _clientId: 'remote-controller' });
+            if (!installed.installed) throw new Error(`${providerDisplayName(provider)} installation could not be verified.`);
           }
           catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
         }
@@ -1992,8 +2042,8 @@ export class AppBackendServer {
         await this.agentRequests.respond(targetedResponse, async (owner) => { await this.requestInLocation(
           this.locationFromRemoteConnectionId(owner.remoteConnectionId),
           backendMethods.driverAgentRequestRespond,
-          { backend: owner.backend, response: targetedResponse },
-          () => this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { backend: owner.backend, response: targetedResponse }),
+          { provider: owner.provider, response: targetedResponse },
+          () => this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, { provider: owner.provider, response: targetedResponse }),
         ); });
         return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
       }
@@ -2047,7 +2097,7 @@ export class AppBackendServer {
         }
         const team = this.snapshot.teams.find(candidate => candidate.id === input.teamId);
         if (!team) throw new Error(`Team not found: ${input.teamId}`);
-        const created = await this.projectCreation.create({ ...input, teamId: team.id, selection: { ...input.selection, backend: resolveAgentBackend(this.snapshot, input.selection?.backend) } });
+        const created = await this.projectCreation.create({ ...input, teamId: team.id, selection: { ...input.selection, provider: resolveAgentProvider(this.snapshot, input.selection?.provider) } });
         onCreated(created.agent.id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -2154,7 +2204,7 @@ export class AppBackendServer {
           if (!agent) {
             throw new Error(`Agent not found: ${input.id}`);
           }
-          const shouldSyncConversationTitle = agent.name !== previousName && Boolean(agent.backendSession);
+          const shouldSyncConversationTitle = agent.name !== previousName && Boolean(agent.providerSession);
           if (shouldSyncConversationTitle) {
             agent.conversationTitle = formatConversationTitle(agent);
           }
@@ -2192,7 +2242,7 @@ export class AppBackendServer {
           if (agent.status.type !== 'idle') {
             throw new Error('Agent must be idle before forking.');
           }
-          if (!agent.backendSession) {
+          if (!agent.providerSession) {
             throw new Error('Agent must have a conversation before forking.');
           }
           const targetAgent = createForkedAgentDraft(this.snapshot, agentId);
@@ -2203,12 +2253,12 @@ export class AppBackendServer {
             agent,
             targetAgent,
             ...(turnId === undefined ? {} : { turnId }),
-          }) as BackendConversationForkResult;
+          }) as ProviderConversationForkResult;
           const forked = attachForkedAgentInSnapshot(
             this.snapshot,
             agentId,
             targetAgent,
-            result.backendSession,
+            result.providerSession,
             { select: false },
           );
           if (!forked) {
@@ -2306,9 +2356,9 @@ export class AppBackendServer {
               if (target.status.type === 'working' || target.status.type === 'awaitingInput') {
                 await this.handleAgentDriverRequest(target, backendMethods.driverInterrupt, { agent: target });
               }
-              if (target.backendSession) {
+              if (target.providerSession) {
                 await this.retireConversation(target);
-                await this.driverRpc?.handle(backendMethods.driverConversationRelease, { backend: target.backend, agentId: id });
+                await this.driverRpc?.handle(backendMethods.driverConversationRelease, { provider: target.provider, agentId: id });
               }
             }
             const current = await previewRepositoryDeletion(this.snapshot, agent, this.agentGitService);
@@ -2324,6 +2374,9 @@ export class AppBackendServer {
             return this.persistAndEmitSnapshot();
           } finally { this.repositoryDeletionsInFlight.delete(preview.repositoryPath); }
         });
+      }
+      case backendMethods.agentRestore: {
+        return createAppRpcResult(message.id, await this.restoreClosedAgent(requireClosedAgentRecord(message.params)));
       }
       case backendMethods.agentDelete: {
         const { agentId, input } = requireAgentCloseRequest(message.params);
@@ -2372,10 +2425,10 @@ export class AppBackendServer {
               }
             }
             await this.runProfiles.stopAgent(agentId);
-            if (existingAgent.backendSession) {
+            if (existingAgent.providerSession) {
               await this.retireConversation(existingAgent);
               await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
-                backend: existingAgent.backend,
+                provider: existingAgent.provider,
                 agentId,
               });
             }
@@ -2588,20 +2641,20 @@ export class AppBackendServer {
       }
       case backendMethods.agentModelsList: {
         const params = requireRecord(message.params);
-        const backend = params.backend;
-        if (backend !== undefined && !isAgentBackend(backend)) throw new Error('Invalid model provider.');
+        const provider = params.provider;
+        if (provider !== undefined && !isHarnessProvider(provider)) throw new Error('Invalid model provider.');
         if (params.agentId === undefined) {
           // A host catalog needs no agent: a machine without agents yet can still offer its models.
-          if (!isAgentBackend(backend)) throw new Error('A model provider is required without an agent.');
+          if (!isHarnessProvider(provider)) throw new Error('A model provider is required without an agent.');
           const connectionId = optionalTrimmedString(params.remoteConnectionId);
-          if (connectionId) return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.agentModelsList, { backend }));
+          if (connectionId) return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.agentModelsList, { provider: provider }));
           const now = new Date().toISOString();
-          const catalogAgent: Agent = { id: 'host-model-catalog', name: null, folder: null, backend: resolveAgentBackend(this.snapshot, backend), status: { type: 'idle' }, createdAt: now, updatedAt: now };
+          const catalogAgent: Agent = { id: 'host-model-catalog', name: null, folder: null, provider: resolveAgentProvider(this.snapshot, provider), status: { type: 'idle' }, createdAt: now, updatedAt: now };
           return createAppRpcResult(message.id, await this.handleAgentDriverRequest(catalogAgent, backendMethods.driverModelsList, { agent: catalogAgent }));
         }
         const agentId = requireAgentId(message.params);
-        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentModelsList, { agentId, ...(backend ? { backend } : {}) }, (agent) => {
-          const modelAgent = backend ? { ...agent, backend: resolveAgentBackend(this.snapshot, backend), backendSession: undefined, backendDefaults: undefined } : agent;
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentModelsList, { agentId, ...(provider ? { provider: provider } : {}) }, (agent) => {
+          const modelAgent = provider ? { ...agent, provider: resolveAgentProvider(this.snapshot, provider), providerSession: undefined, providerDefaults: undefined } : agent;
           return this.handleAgentDriverRequest(modelAgent, backendMethods.driverModelsList, { agent: modelAgent });
         });
       }
@@ -2612,7 +2665,7 @@ export class AppBackendServer {
       case backendMethods.agentSkillsList: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentSkillsList, { agentId }, async (agent) => {
-          const skills = await this.handleAgentDriverRequest(agent, backendMethods.driverSkillsList, { agent }) as import('@workspace/core/contracts').BackendSkillSummary[];
+          const skills = await this.handleAgentDriverRequest(agent, backendMethods.driverSkillsList, { agent }) as import('@workspace/core/contracts').ProviderSkillSummary[];
           const bridge = imageGenerationSkill(this.snapshot, agent.id);
           return bridge && !skills.some(skill => skill.name === bridge.name) ? [...skills, bridge] : skills;
         });
@@ -2712,7 +2765,7 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const ref = params.ref;
-        if (!isBackendConversationRef(ref)) {
+        if (!isProviderConversationRef(ref)) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Invalid conversation reference.');
         }
         const remoteConnectionId = automationLocationRemoteConnectionId(params);
@@ -2776,10 +2829,10 @@ export class AppBackendServer {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationReset, { agentId }, async (agent) => {
           if (!canChangeAgentConversation(agent)) throw new Error('Agent must be idle before restarting.');
-          if (agent.backendSession) {
+          if (agent.providerSession) {
             await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent });
           }
-          await this.driverRpc?.handle(backendMethods.driverConversationRelease, { backend: agent.backend, agentId });
+          await this.driverRpc?.handle(backendMethods.driverConversationRelease, { provider: agent.provider, agentId });
           restartAgentConversation(this.snapshot, agentId);
           this.agentRequests.clearAgent(agentId);
           return this.persistAndEmitSnapshot();
@@ -2795,17 +2848,17 @@ export class AppBackendServer {
         if (requireRecord(message.params).omitSnapshot === true && (await this.locationForAgentId(agentId))?.kind === 'local') {
           return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationLoad, { ...loadParams, omitSnapshot: true }, async (agent) => {
             if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
-            const boundSession = JSON.stringify(agent.backendSession ?? null);
+            const boundSession = JSON.stringify(agent.providerSession ?? null);
             await this.agentConversations.hydrate(agentId, reportFailure);
             // A rebound session reference is only delivered by the snapshot, and
             // provider frames carrying the new identity would not match without it.
-            return JSON.stringify(this.localAgentForId(agentId)?.backendSession ?? null) === boundSession ? null : this.snapshot;
+            return JSON.stringify(this.localAgentForId(agentId)?.providerSession ?? null) === boundSession ? null : this.snapshot;
           });
         }
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, loadParams, async () => {
           const fixture = missionScreenshotConversation(this.snapshot, agentId);
           if (fixture) {
-            this.applyAndEmitBackendEvent({ agentId, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: fixture } });
+            this.applyAndEmitBackendEvent(missionScreenshotSnapshotEvent(agentId, this.localAgentForId(agentId), fixture));
             return this.snapshot;
           }
           await this.agentConversations.hydrateAndRefresh(agentId, reportFailure);
@@ -2838,12 +2891,12 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const target = params.target as ConversationResumeTarget | undefined;
         const ref = target?.ref;
-        if (!target || !isBackendConversationRef(ref) || (target.storageState !== 'active' && target.storageState !== 'archived')) {
+        if (!target || !isProviderConversationRef(ref) || (target.storageState !== 'active' && target.storageState !== 'archived')) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Invalid conversation reference.');
         }
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationResume, { agentId, target }, async (agent) => {
           await this.reconcileConversationsOnce();
-          if (ref.backend !== agent.backend) {
+          if (ref.provider !== agent.provider) {
             throw new Error('Conversation backend does not match the agent backend.');
           }
           if (agent.status.type !== 'idle') {
@@ -2851,8 +2904,8 @@ export class AppBackendServer {
           }
           const previousAgent = structuredClone(agent);
           const previousRef = conversationRefFromAgent(previousAgent);
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationResume, { agent, target }) as BackendConversationResumeResult;
-          const resumedAgent = resumeAgentConversationInSnapshot(this.snapshot, agentId, result.backendSession);
+          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverConversationResume, { agent, target }) as ProviderConversationResumeResult;
+          const resumedAgent = resumeAgentConversationInSnapshot(this.snapshot, agentId, result.providerSession);
           if (!resumedAgent) {
             throw new Error(`Agent not found: ${agentId}`);
           }
@@ -2865,7 +2918,7 @@ export class AppBackendServer {
               if (previousRef) {
                 await this.handleAgentDriverRequest(switchedAgent, backendMethods.driverConversationResume, {
                   agent: switchedAgent,
-                  target: { ref: previousRef, storageState: this.coordinationPolicy(previousRef.backend).rollbackStorageState },
+                  target: { ref: previousRef, storageState: previousConversationStorage(previousRef.provider) },
                 }).catch((rollbackError) => warnMain('sessions', 'conversation switch rollback failed', {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
@@ -2876,7 +2929,7 @@ export class AppBackendServer {
                   detail: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
                 }));
                 await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
-                  backend: switchedAgent.backend,
+                  provider: switchedAgent.provider,
                   agentId,
                 });
               }
@@ -2890,8 +2943,8 @@ export class AppBackendServer {
       case backendMethods.agentConversationReplaceWithSummary: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationReplaceWithSummary, { agentId }, async (agent) => {
-          if (agent.backend !== 'codex' || agent.backendSession?.kind !== 'codex') {
-            throw new Error('Only an existing Codex session can be compressed.');
+          if (!agent.providerSession || !defaultProviderCapabilities(agent.provider).scopedExecution) {
+            throw new Error('Only an existing session on a harness that supports compression can be compressed.');
           }
           if (agent.status.type !== 'idle') {
             throw new Error('Agent must be idle before compressing its session.');
@@ -2900,8 +2953,8 @@ export class AppBackendServer {
             agent,
             backendMethods.driverConversationReplaceWithSummary,
             { agent },
-          ) as BackendConversationReplacementResult;
-          const compressedAgent = resumeAgentConversationInSnapshot(this.snapshot, agentId, result.backendSession);
+          ) as ProviderConversationReplacementResult;
+          const compressedAgent = resumeAgentConversationInSnapshot(this.snapshot, agentId, result.providerSession);
           if (!compressedAgent) throw new Error(`Agent not found: ${agentId}`);
           this.agentConversations.setTitle(compressedAgent.id);
           return this.persistAndEmitSnapshot();
@@ -2915,15 +2968,15 @@ export class AppBackendServer {
           if (!objective) {
             return this.snapshot;
           }
-          const wasNewSession = !agent.backendSession;
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverGoalUpdate, { agent, objective }) as BackendGoalResult;
-          agent.backendSession = result.backendSession;
+          const wasNewSession = !agent.providerSession;
+          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverGoalUpdate, { agent, objective }) as ProviderGoalResult;
+          agent.providerSession = result.providerSession;
           this.agentConversations.setNewTitle(agentId, wasNewSession);
           if (result.goal) {
             agent.goal = result.goal;
             this.handleBackendEvent({
               agentId,
-              threadId: result.goal.threadId,
+              conversationId: result.goal.threadId,
               type: 'conversation.goalUpdated',
               payload: { goal: result.goal },
             }, { persist: false });
@@ -2934,38 +2987,19 @@ export class AppBackendServer {
       case backendMethods.agentGoalClear: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentGoalClear, { agentId }, async (agent) => {
-          const wasNewSession = !agent.backendSession;
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverGoalClear, { agent }) as BackendGoalResult;
-          agent.backendSession = result.backendSession;
+          const wasNewSession = !agent.providerSession;
+          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverGoalClear, { agent }) as ProviderGoalResult;
+          agent.providerSession = result.providerSession;
           this.agentConversations.setNewTitle(agentId, wasNewSession);
           if (result.cleared) {
             delete agent.goal;
             this.handleBackendEvent({
               agentId,
-              threadId: result.backendSession.kind === 'codex' ? result.backendSession.threadId : undefined,
+              conversationId: sessionConversationId(result.providerSession),
               type: 'conversation.goalCleared',
               payload: {},
             }, { persist: false });
           }
-          return this.persistAndEmitSnapshot();
-        });
-      }
-      case backendMethods.agentApprovalPresetUpdate: {
-        const params = requireRecord(message.params);
-        const agentId = requireString(params.agentId, 'agentId');
-        const preset = params.preset;
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentApprovalPresetUpdate, { agentId, preset }, async (agent) => {
-          if (!isApprovalPreset(preset)) {
-            return this.snapshot;
-          }
-          const wasNewSession = !agent.backendSession;
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverApprovalPresetUpdate, { agent, preset }) as BackendApprovalPresetResult;
-          agent.backendSession = result.backendSession;
-          this.agentConversations.setNewTitle(agentId, wasNewSession);
-          agent.backendDefaults = approvalBackendDefaultsWithPreset(agent.backendDefaults, result.approvalPreset);
-          this.snapshot.general.providerApprovalDefaults = {
-            ...this.snapshot.general.providerApprovalDefaults, codex: result.approvalPreset,
-          };
           return this.persistAndEmitSnapshot();
         });
       }
@@ -2974,10 +3008,12 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const mode = requireString(params.mode, 'mode');
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPermissionModeUpdate, { agentId, mode }, async (agent) => {
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as BackendPermissionModeResult;
-          agent.backendDefaults = result.backendDefaults;
-          if (this.coordinationPolicy(agent.backend).permissionModeScope === 'provider') this.snapshot.general.providerApprovalDefaults = {
-            ...this.snapshot.general.providerApprovalDefaults, [agent.backend]: mode,
+          const wasNewSession = !agent.providerSession;
+          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPermissionModeUpdate, { agent, mode }) as ProviderPermissionModeResult;
+          agent.providerDefaults = result.providerDefaults;
+          if (result.providerSession) { agent.providerSession = result.providerSession; this.agentConversations.setNewTitle(agentId, wasNewSession); }
+          this.snapshot.general.providerApprovalDefaults = {
+            ...this.snapshot.general.providerApprovalDefaults, [agent.provider]: mode,
           };
           return this.persistAndEmitSnapshot();
         });
@@ -3084,15 +3120,15 @@ export class AppBackendServer {
           }
           const previousControls = agent.userDelegationOverrides;
           const controls = options?.delegation !== undefined ? captureUserDelegationOverrides(agent, options.delegation) : previousControls;
-          let result: BackendSendResult;
+          let result: ProviderSendResult;
           try {
-            result = await this.withPromptSource(agent, clientId, () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation })) as BackendSendResult;
+            result = await this.withPromptSource(agent, clientId, () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation })) as ProviderSendResult;
             if (options?.delegation !== undefined) bindUserDelegationOverrides(agent, controls, result);
           } catch (error) {
             if (options?.delegation !== undefined && agent.userDelegationOverrides === controls) agent.userDelegationOverrides = previousControls;
             throw error;
           }
-          agent.backendSession = result.backendSession;
+          agent.providerSession = result.providerSession;
           await this.missionExecution.resumeAgent(agent.id);
           this.clearTurnHints(agent);
           await this.persistSnapshotOnly();
@@ -3158,8 +3194,8 @@ export class AppBackendServer {
             prompt,
             options: promptOptions,
             ...expectation,
-          }) as BackendSendResult;
-          agent.backendSession = result.backendSession;
+          }) as ProviderSendResult;
+          agent.providerSession = result.providerSession;
           this.agentPrompts.dequeue(agentId, promptId);
           return this.snapshot;
         });
@@ -3186,14 +3222,14 @@ export class AppBackendServer {
             // The inspection can settle before the provider acknowledges interruption.
             const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
             try {
-              const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
-              agent.backendSession = result.backendSession;
+              const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as ProviderSendResult;
+              agent.providerSession = result.providerSession;
               const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
               if (!reviewChanged) await this.persistSnapshotOnly();
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error);
               this.applyAndEmitBackendEvent({ agentId, type: 'agent.statusChanged',
-                payload: { type: 'error', message: `Failed to interrupt ${backendDisplayName(agent.backend)}: ${errorMessage}` } });
+                payload: { type: 'error', message: `Failed to interrupt ${providerDisplayName(agent.provider)}: ${errorMessage}` } });
             }
             return this.snapshot;
           } finally {
@@ -3301,13 +3337,13 @@ export class AppBackendServer {
             }
             const agents = existingTeam.agentIds
               .map((agentId) => this.snapshot.agents.find((candidate) => candidate.id === agentId))
-              .filter((agent): agent is Agent => agent !== undefined && agent.backendSession !== undefined);
+              .filter((agent): agent is Agent => agent !== undefined && agent.providerSession !== undefined);
             for (const agent of agents) {
               await this.retireConversation(agent);
             }
             for (const agent of agents) {
               await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
-                backend: agent.backend,
+                provider: agent.provider,
                 agentId: agent.id,
               });
             }
@@ -3335,25 +3371,26 @@ export class AppBackendServer {
         if (Object.keys(preferences).length) throw new Error('Presentation settings must use client/preferences/update.');
         updateSettingsInSnapshot(this.snapshot, policy);
         if (policy.general && this.driverRpc) {
-          const runtimes = new Map(this.snapshot.backendRuntimes.map(runtime => [runtime.backend, runtime]));
+          const runtimes = new Map(this.snapshot.providerRuntimes.map(runtime => [runtime.provider, runtime]));
           for (const agent of this.snapshot.agents) {
-            if (this.remoteTeams.connectionIdForAgent(agent) || runtimes.has(agent.backend)) continue;
-            runtimes.set(agent.backend, { backend: agent.backend, status: 'notConfigured' });
+            if (this.remoteTeams.connectionIdForAgent(agent) || runtimes.has(agent.provider)) continue;
+            runtimes.set(agent.provider, { provider: agent.provider, status: 'notConfigured' });
           }
           for (const runtime of runtimes.values()) {
-            const agent = this.snapshot.agents.find(agent => agent.backend === runtime.backend && !this.remoteTeams.connectionIdForAgent(agent));
+            const agent = this.snapshot.agents.find(agent => agent.provider === runtime.provider && !this.remoteTeams.connectionIdForAgent(agent));
             if (!agent) continue;
             const capabilities = this.driverRpc.getCapabilities(agent);
-            if (!isDeepStrictEqual(runtime.capabilities, capabilities)) this.applyAndEmitBackendEvent({ type: 'backend.statusChanged', backend: runtime.backend,
+            if (!isDeepStrictEqual(runtime.capabilities, capabilities)) this.applyAndEmitBackendEvent({ type: 'provider.statusChanged', provider: runtime.provider,
               payload: { ...runtime, capabilities } });
           }
         }
         if (policy.general?.providerEnabled) this.providerConnections?.updateEnabled();
-        if (policy.general?.codexBinaryPath !== undefined) {
-          this.providerSetup?.invalidateInstallation('codex');
-          this.providerConnections?.invalidate('codex');
-          await this.providerConnections?.refresh();
+        const relocated = providerBinaryPathSettings.filter(([, setting]) => policy.general?.[setting] !== undefined).map(([provider]) => provider);
+        for (const provider of relocated) {
+          this.providerSetup?.invalidateInstallation(provider);
+          this.providerConnections?.invalidate(provider);
         }
+        if (relocated.length) await this.providerConnections?.refresh();
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.skillsManage: {
@@ -3362,12 +3399,12 @@ export class AppBackendServer {
         if (['install', 'sync', 'remove'].includes(String(requireRecord(input).action)) && this.driverRpc) {
           const seen = new Set<string>();
           for (const agent of this.snapshot.agents) {
-            const key = JSON.stringify([agent.backend, agent.folder]);
+            const key = JSON.stringify([agent.provider, agent.folder]);
             if (this.remoteTeams.connectionIdForAgent(agent) || isMissionScreenshotAgent(agent) || seen.has(key)) continue;
             seen.add(key);
             try {
-              const skills = await this.driverRpc.handle(backendMethods.driverSkillsList, { agent, forceReload: true }) as import('@workspace/core/contracts').BackendSkillSummary[];
-              this.handleBackendEvent({ type: 'skills.changed', backend: agent.backend, payload: { cwd: agent.folder, status: 'loaded', skills } });
+              const skills = await this.driverRpc.handle(backendMethods.driverSkillsList, { agent, forceReload: true }) as import('@workspace/core/contracts').ProviderSkillSummary[];
+              this.handleBackendEvent({ type: 'skills.changed', provider: agent.provider, payload: { cwd: agent.folder, status: 'loaded', skills } });
             } catch (error) { state.issues.push(`${agent.name}: skill discovery failed. ${error instanceof Error ? error.message : String(error)}`); }
           }
         }
@@ -3375,12 +3412,12 @@ export class AppBackendServer {
       }
       case backendMethods.engineInstructionsRead: {
         const { engine } = requireRecord(message.params);
-        if (engine !== 'codex' && engine !== 'claude') throw new Error('Unknown instruction engine.');
+        if (!isInstructionEngine(engine)) throw new Error('Unknown instruction engine.');
         return createAppRpcResult(message.id, await readEngineInstructions(engine, this.snapshot.general.providerHomes));
       }
       case backendMethods.engineInstructionsSave: {
         const input = requireRecord(requireRecord(message.params).input);
-        if (input.engine !== 'codex' && input.engine !== 'claude') throw new Error('Unknown instruction engine.');
+        if (!isInstructionEngine(input.engine)) throw new Error('Unknown instruction engine.');
         if (typeof input.text !== 'string') throw new Error('Invalid instruction text.');
         await saveEngineInstructions({ engine: input.engine, text: input.text, all: input.all as boolean | undefined, confirmed: input.confirmed === true }, this.snapshot.general.providerHomes);
         return createAppRpcResult(message.id, null);
@@ -3411,49 +3448,66 @@ export class AppBackendServer {
       }
       case backendMethods.providerAuthenticate: {
         const params = requireRecord(message.params);
-        const backend = requireAgentBackend(params.backend);
-        if (!this.coordinationPolicy(backend).authentication.actions.includes('login') || (params.action !== 'login' && params.action !== 'cancel')) throw new Error('Unsupported native authentication action.');
-        const authentication = await this.authenticateProvider(backend, params.action);
-        this.providerConnections?.observe(backend, authentication.connected, authentication);
-        await this.persistAndEmitSnapshot();
-        return createAppRpcResult(message.id, authentication);
+        const provider = requireAgentProvider(params.provider);
+        const { action, method, loginId } = params;
+        if (action !== 'check' && action !== 'login' && action !== 'cancel' && action !== 'logout') throw new Error('Unsupported native authentication action.');
+        if (method !== undefined && method !== 'browser' && method !== 'deviceCode') throw new Error('Unsupported authentication method.');
+        if (params.remoteConnectionId !== undefined && (typeof params.remoteConnectionId !== 'string' || !params.remoteConnectionId.trim())) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'remoteConnectionId must be a non-empty string.');
+        }
+        if (loginId !== undefined && (typeof loginId !== 'string' || !loginId.trim())) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'loginId must be a non-empty string.');
+        }
+        const remoteConnectionId = requireOptionalConnectionId(params);
+        if (remoteConnectionId && action === 'cancel' && !loginId) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Remote cancellation requires a loginId.');
+        }
+        if (!remoteConnectionId && !this.coordinationPolicy(provider).authentication.actions.includes(action)) throw new Error('Unsupported native authentication action.');
+        const options: Omit<ProviderAuthenticationAction, 'action'> = { ...(method ? { method } : {}), ...(typeof loginId === 'string' ? { loginId } : {}) };
+        return this.respondInLocation(message.id,
+          this.locationFromRemoteConnectionId(remoteConnectionId), message.method, { provider: provider, action, ...options },
+          async () => {
+            const authentication = await this.authenticateProvider(provider, action, options);
+            await this.observeAuthentication(authentication, action);
+            return authentication;
+          });
       }
       case backendMethods.providerUpdateGet:
       case backendMethods.providerUpdateSet: {
         const params = requireRecord(message.params);
-        const backend = requireAgentBackend(params.backend);
+        const provider = requireAgentProvider(params.provider);
         const connectionId = requireOptionalConnectionId(params);
         if (connectionId) return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, {
-          backend, ...(params.input === undefined ? {} : { input: params.input }), ...(params.refresh === undefined ? {} : { refresh: params.refresh }),
+          provider: provider, ...(params.input === undefined ? {} : { input: params.input }), ...(params.refresh === undefined ? {} : { refresh: params.refresh }),
         }));
         const updates = this.options.providerUpdates;
         if (!updates) throw new Error('Provider updates are unavailable.');
         if (message.method === backendMethods.providerUpdateGet) {
           if (params.refresh !== undefined && typeof params.refresh !== 'boolean') throw new Error('Invalid refresh option.');
-          return createAppRpcResult(message.id, await updates.get(backend, params.refresh === true));
+          return createAppRpcResult(message.id, await updates.get(provider, params.refresh === true));
         }
         const input = requireRecord(params.input);
         if (input.action !== 'cancel' && input.action !== 'upgrade') throw new Error('Invalid provider update action.');
-        return createAppRpcResult(message.id, updates.request(backend, input.action === 'cancel' ? { action: 'cancel' } : {
+        return createAppRpcResult(message.id, updates.request(provider, input.action === 'cancel' ? { action: 'cancel' } : {
           action: 'upgrade', confirmed: input.confirmed === true, token: typeof input.token === 'string' ? input.token : undefined,
         }));
       }
       case backendMethods.providerDisconnect: {
-        const backend = requireAgentBackend(requireRecord(message.params).backend);
+        const provider = requireAgentProvider(requireRecord(message.params).provider);
         return this.respondInLocation(message.id,
-          this.locationFromRemoteConnectionId(requireOptionalConnectionId(message.params)), message.method, { backend },
+          this.locationFromRemoteConnectionId(requireOptionalConnectionId(message.params)), message.method, { provider: provider },
           async () => {
-            const authentication = await this.authenticateProvider(backend, 'logout');
-            await this.observeAuthentication(authentication);
+            const authentication = await this.authenticateProvider(provider, 'logout');
+            await this.observeAuthentication(authentication, 'logout');
             return authentication;
           });
       }
       case backendMethods.providerEnabledSet: {
         const input = requireRecord(message.params);
-        if ((!isAgentBackend(input.backend)) || typeof input.enabled !== 'boolean') throw new Error('Invalid engine availability setting.');
+        if ((!isHarnessProvider(input.provider)) || typeof input.enabled !== 'boolean') throw new Error('Invalid engine availability setting.');
         const connectionId = requireOptionalConnectionId(message.params);
         if (connectionId) {
-          const providers = await this.remoteTeams.request(connectionId, message.method, { backend: input.backend, enabled: input.enabled });
+          const providers = await this.remoteTeams.request(connectionId, message.method, { provider: input.provider, enabled: input.enabled });
           if (!Array.isArray(providers) || !providers.every(isProviderConnection)) throw new Error('Remote engine connections are unavailable. Update the remote runtime.');
           const connection = this.snapshot.remoteConnections.connections.find(item => item.id === connectionId);
           if (connection) connection.providerConnections = providers;
@@ -3461,7 +3515,7 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, providers);
         }
         if (!this.providerConnections) throw new Error('Engine connections are unavailable. Update the backend runtime.');
-        updateSettingsInSnapshot(this.snapshot, { general: { providerEnabled: { ...this.snapshot.general.providerEnabled, [input.backend]: input.enabled } } });
+        updateSettingsInSnapshot(this.snapshot, { general: { providerEnabled: { ...this.snapshot.general.providerEnabled, [input.provider]: input.enabled } } });
         this.providerConnections.updateEnabled();
         await this.persistAndEmitSnapshot();
         return createAppRpcResult(message.id, this.providerConnections.list());
@@ -3473,7 +3527,7 @@ export class AppBackendServer {
           if (!isBankedResets(result)) throw new Error('Could not read banked resets. Update the remote runtime.');
           return createAppRpcResult(message.id, result);
         }
-        const provider = this.snapshot.providerConnections?.find(item => item.backend === 'codex');
+        const provider = this.snapshot.providerConnections?.find(item => defaultProviderCapabilities(item.provider).bankedResets);
         if (!provider?.installed || provider.enabled === false) return createAppRpcResult(message.id, { status: 'unsupported' });
         if (!provider.connected) return createAppRpcResult(message.id, { status: 'signedOut' });
         const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetsGet, {});
@@ -3489,23 +3543,23 @@ export class AppBackendServer {
           if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
           return createAppRpcResult(message.id, result);
         }
-        const provider = this.snapshot.providerConnections?.find(item => item.backend === 'codex');
+        const provider = this.snapshot.providerConnections?.find(item => defaultProviderCapabilities(item.provider).bankedResets);
         if (!provider?.installed || provider.enabled === false || !provider.connected) throw new Error('Codex account is unavailable');
         const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetUse, { input });
         if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
         return createAppRpcResult(message.id, result);
       }
       case backendMethods.providerUsageGet: {
-        const backend = requireRecord(message.params).backend;
-        if (!isAgentBackend(backend)) throw new Error('Unknown provider.');
-        const provider = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
-        if (!provider) return createAppRpcResult(message.id, null);
-        const authentication = JSON.stringify(provider.authentication);
-        const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { backend }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
-        const current = this.snapshot.providerConnections?.find(item => item.backend === backend && item.installed && item.connected && item.enabled !== false);
+        const provider = requireRecord(message.params).provider;
+        if (!isHarnessProvider(provider)) throw new Error('Unknown provider.');
+        const connection = this.snapshot.providerConnections?.find(item => item.provider === provider && item.installed && item.connected && item.enabled !== false);
+        if (!connection) return createAppRpcResult(message.id, null);
+        const authentication = JSON.stringify(connection.authentication);
+        const result = await this.requireDriverRpc().handle(backendMethods.driverAccountRateLimitsGet, { provider }) as { supported: boolean; rateLimits?: import('@workspace/core/contracts').AccountRateLimits | null };
+        const current = this.snapshot.providerConnections?.find(item => item.provider === provider && item.installed && item.connected && item.enabled !== false);
         if (!current || JSON.stringify(current.authentication) !== authentication) return createAppRpcResult(message.id, null);
-        const limits = result.supported ? result.rateLimits ?? null : this.snapshot.backendAccountRateLimits?.[backend] ?? (backend === 'codex' ? this.snapshot.accountRateLimits : undefined) ?? null;
-        if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', backend, payload: { rateLimits: limits } });
+        const limits = result.supported ? result.rateLimits ?? null : this.snapshot.providerAccountRateLimits?.[provider] ?? null;
+        if (limits) this.applyAndEmitBackendEvent({ type: 'account.rateLimitsUpdated', provider, payload: { rateLimits: limits } });
         return createAppRpcResult(message.id, limits);
       }
       case backendMethods.providerConnectionsGet: {
@@ -3529,91 +3583,37 @@ export class AppBackendServer {
         const connectionId = requireOptionalConnectionId(message.params);
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
-          if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
-          if (message.method === backendMethods.providerInstall && input.backend !== 'antigravity') {
+          if (!isHarnessProvider(input.provider)) throw new Error('Unknown provider.');
+          if (message.method === backendMethods.providerInstall && !installedByRemoteDaemon(input.provider)) {
             const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
             if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
-            if (input.backend === 'codex') await this.sshConnections.ensureRemoteCodexInstalled(connection.host);
-            else await this.sshConnections.ensureRemoteClaudeInstalled(connection.host);
-            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { backend: input.backend }));
+            await installOverSsh(this.sshConnections, connection.host, input.provider);
+            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { provider: input.provider }));
           }
-          return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
+          return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { provider: input.provider }));
         }
         if (!this.providerSetup) throw new Error('Provider setup is unavailable.');
         if (this.options.providerUpdates?.isUpdating()) throw new Error('Wait for the provider upgrade to finish.');
         const input = requireRecord(message.params);
-        if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
+        if (!isHarnessProvider(input.provider)) throw new Error('Unknown provider.');
         let result;
-        if (message.method === backendMethods.providerRefresh) result = await this.providerSetup.refresh(input.backend);
-        else if (message.method === backendMethods.providerInstall) result = await this.providerSetup.install(input.backend);
+        if (message.method === backendMethods.providerRefresh) result = await this.providerSetup.refresh(input.provider);
+        else if (message.method === backendMethods.providerInstall) result = await this.providerSetup.install(input.provider);
         else {
           if (connectionId) throw new Error('Change remote engine setup on its owning host.');
           const choice = requireRecord(input.choice);
           if (typeof choice.isolated !== 'boolean' || typeof choice.shareSkills !== 'boolean') throw new Error('Invalid provider setup.');
           if (choice.removeAgentIds !== undefined && (!Array.isArray(choice.removeAgentIds) || !choice.removeAgentIds.every(id => typeof id === 'string'))) throw new Error('Invalid provider reset confirmation.');
           const previousIds = this.snapshot.agents.map(agent => agent.id);
-          result = await this.providerSetup.configure(input.backend, { isolated: choice.isolated, shareSkills: choice.shareSkills, ...(choice.removeAgentIds === undefined ? {} : { removeAgentIds: choice.removeAgentIds as string[] }) });
+          result = await this.providerSetup.configure(input.provider, { isolated: choice.isolated, shareSkills: choice.shareSkills, ...(choice.removeAgentIds === undefined ? {} : { removeAgentIds: choice.removeAgentIds as string[] }) });
           for (const agentId of previousIds) {
             if (!this.snapshot.agents.some(agent => agent.id === agentId)) this.agentRequests.clearAgent(agentId);
           }
         }
-        this.providerConnections?.invalidate(input.backend);
+        this.providerConnections?.invalidate(input.provider);
         await this.providerConnections?.refresh();
         await this.persistAndEmitSnapshot();
         return createAppRpcResult(message.id, result);
-      }
-      case backendMethods.claudeAuthenticationGet: {
-        if (!isRecord(message.params) || message.params.connectionId === undefined) {
-          const auth = await this.authenticateProvider('claude');
-          await this.observeAuthentication(auth);
-          return createAppRpcResult(message.id, auth.state);
-        }
-        const connectionId = requireConnectionId(message.params);
-        const connection = this.snapshot.remoteConnections.connections.find((candidate) => candidate.id === connectionId);
-        if (!connection) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection not found: ${connectionId}`);
-        }
-        if (connection.status !== 'ready') {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Remote connection is not ready: ${connection.name}`);
-        }
-        return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.claudeAuthenticationGet));
-      }
-      case backendMethods.codexAuthenticationGet:
-      case backendMethods.codexLoginCancel:
-      case backendMethods.codexChatGptDeviceCodeLoginStart: {
-        if (isRecord(message.params) && message.params.remoteConnectionId !== undefined
-          && (typeof message.params.remoteConnectionId !== 'string' || !message.params.remoteConnectionId.trim())) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'remoteConnectionId must be a non-empty string.');
-        }
-        const remoteConnectionId = requireOptionalConnectionId(message.params);
-        const loginId = isRecord(message.params) ? message.params.loginId : undefined;
-        if (loginId !== undefined && (typeof loginId !== 'string' || !loginId.trim())) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'loginId must be a non-empty string.');
-        }
-        if (remoteConnectionId && message.method === backendMethods.codexLoginCancel && !loginId) {
-          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Remote cancellation requires a loginId.');
-        }
-        const params = loginId ? { loginId } : undefined;
-        return this.respondInLocation(message.id,
-          this.locationFromRemoteConnectionId(remoteConnectionId), message.method, params,
-          async () => {
-            if (message.method === backendMethods.codexChatGptDeviceCodeLoginStart) {
-              return this.requireDriverRpc().handle(backendMethods.driverCodexChatGptDeviceCodeLoginStart, params);
-            }
-            const auth = await this.authenticateProvider('codex', message.method === backendMethods.codexLoginCancel ? 'cancel' : 'check', loginId as string | undefined);
-            await this.observeAuthentication(auth);
-            return auth.state;
-          });
-      }
-      case backendMethods.codexChatGptLoginStart:
-        return createAppRpcResult(
-          message.id,
-          await this.requireDriverRpc().handle(backendMethods.driverCodexChatGptLoginStart, undefined),
-        );
-      case backendMethods.codexLogout: {
-        const auth = await this.authenticateProvider('codex', 'logout');
-        await this.observeAuthentication(auth);
-        return createAppRpcResult(message.id, auth.state);
       }
       case backendMethods.sourceRepositoriesList: {
         return this.respondInLocation(
@@ -4012,7 +4012,7 @@ export class AppBackendServer {
     return this.automationRunner;
   }
 
-  private requireDriverRpc(): BackendDriverRpc {
+  private requireDriverRpc(): ProviderDriverRpc {
     if (!this.driverRpc) {
       throw new Error('Backend driver RPC is not configured.');
     }
@@ -4035,9 +4035,9 @@ export class AppBackendServer {
       .request(method, params, () => this.requireDriverRpc().handle(method, params));
   }
 
-  private sendHandoffPrompt(agent: Agent, prompt: string): Promise<BackendSendResult> {
+  private sendHandoffPrompt(agent: Agent, prompt: string): Promise<ProviderSendResult> {
     return new Promise((resolve, reject) => {
-      sendAgentPrompt(this.snapshot, this.backendDriverForAgent(agent), agent.id, prompt, undefined,
+      sendAgentPrompt(this.snapshot, this.providerDriverForAgent(agent), agent.id, prompt, undefined,
         event => this.applyAndEmitBackendEvent(event), {
           handoff: true,
           onPromptStarted: resolve,
@@ -4179,7 +4179,7 @@ export class AppBackendServer {
     if (!event.agentId && (event.type === 'models.changed' || event.type === 'skills.changed')) {
       const projected = this.remoteTeams.clientSnapshotFromKnownRemotes();
       for (const agent of projected.agents) {
-        if (agent.remoteConnectionId === connectionId && agent.backend === event.backend) {
+        if (agent.remoteConnectionId === connectionId && agent.provider === event.provider) {
           if (event.type === 'skills.changed' && event.payload.cwd && event.payload.cwd !== agent.folder) continue;
           this.forwardRemoteBackendEvent(connectionId, { ...event, agentId: agent.id });
         }
@@ -4249,30 +4249,30 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(event);
   }
 
-  private backendDriverForAgent(agent: Agent, expectedSessionId?: string | null, plainText = false): AgentBackendDriver {
+  private providerDriverForAgent(agent: Agent, expectedSessionId?: string | null, plainText = false): AgentProviderDriver {
     return {
-      backend: agent.backend,
-      getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
-      getCapabilities: () => defaultBackendCapabilities(agent.backend),
-      setGoal: async (currentAgent, objective) => this.handleAgentDriverRequest(currentAgent, backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<BackendGoalResult>,
+      provider: agent.provider,
+      getRuntimeStatus: () => ({ provider: agent.provider, status: 'running' }),
+      getCapabilities: () => defaultProviderCapabilities(agent.provider),
+      setGoal: async (currentAgent, objective) => this.handleAgentDriverRequest(currentAgent, backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<ProviderGoalResult>,
       tryHandlePromptCommand: (currentAgent, prompt) => (
         this.remoteTeams.connectionIdForAgent(currentAgent) ? null : this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
       preparePromptOptions: (_currentAgent, options) => options,
       sendPrompt: async (currentAgent, prompt, options) => {
-        const instructions = !plainText && !currentAgent.backendSession && this.missionExecution.contextForAgent(currentAgent.id)?.stage === 'requirements'
+        const instructions = !plainText && !currentAgent.providerSession && this.missionExecution.contextForAgent(currentAgent.id)?.stage === 'requirements'
           ? this.snapshot.general.missionInstructions?.trim() : undefined;
         if (instructions) {
           const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
           prompt += `\n\n<context>\nUser's custom Mission instructions:\n${context}\n</context>`;
         }
-        return await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult;
+        return await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as ProviderSendResult;
       },
       interrupt: async (currentAgent) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult
+        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as ProviderSendResult
       ),
       respondToAgentRequest: async (response) => {
-        await this.handleAgentDriverRequest(agent, backendMethods.driverAgentRequestRespond, { backend: agent.backend, response });
+        await this.handleAgentDriverRequest(agent, backendMethods.driverAgentRequestRespond, { provider: agent.provider, response });
       },
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -4311,12 +4311,13 @@ export class AppBackendServer {
     if (!this.driverRpc) return;
     if (this.conversationsReconciliation) return this.conversationsReconciliation;
     const reconciliation = (async () => {
-      const localCodexAgents = this.snapshot.agents.filter((agent) => agent.backend === 'codex' && !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
+      // Every connected harness archives the conversations no local agent owns, even when it has no agents at all.
+      const local = this.snapshot.agents.filter((agent) => !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
       try {
-        await this.agentConversations.reconcile(localCodexAgents, async () => { await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, {
-          backend: 'codex',
-          agents: localCodexAgents,
-        }); });
+        for (const provider of this.driverRpc!.providers()) {
+          const agents = local.filter(agent => agent.provider === provider);
+          await this.agentConversations.reconcile(agents, async () => { await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, { provider, agents }); });
+        }
       } catch (error) {
         this.conversationsReconciliation = undefined;
         warnMain('sessions', 'conversation archive reconciliation failed', {
@@ -4411,13 +4412,12 @@ export class AppBackendServer {
   }
 
   private clearTurnSuggestionsOnStart(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
-    if (view.type !== 'turn.started' || !event.agentId || !view.turnId) return;
+    if (event.type !== 'turn.started') return;
     const agent = this.snapshot.agents.find(candidate => candidate.id === event.agentId);
     if (!agent) return;
     const sessionId = agentConversationId(agent);
-    if (sessionId && view.conversationId && sessionId !== view.conversationId) return;
-    const key = JSON.stringify([view.conversationId ?? sessionId, view.turnId]);
+    if (sessionId && event.conversationId && sessionId !== event.conversationId) return;
+    const key = JSON.stringify([event.conversationId ?? sessionId, event.turnId]);
     const seen = this.flagResetTurns.get(agent) ?? new Set<string>();
     if (seen.has(key)) return;
     seen.add(key);
@@ -4427,17 +4427,20 @@ export class AppBackendServer {
   }
 
   private conversationSafetyBlock(event: BackendPublishedEvent): string | null {
-    const view = providerConversationEventView(event);
-    if (!event.agentId || !['error', 'turn.error', 'turn.completed'].includes(view.type)) return null;
-    const payload = view.payload as { error?: unknown; message?: unknown; turn?: { error?: unknown } } | undefined;
-    const blocked = providerSafetyBlockMessage(payload?.error ?? payload?.turn?.error ?? payload?.message);
+    if (event.type !== 'session.error' && event.type !== 'turn.completed') return null;
+    const blocked = providerSafetyBlockMessage(event.payload.error);
     const agent = this.snapshot.agents.find(agent => agent.id === event.agentId);
-    if (!blocked || !agent || view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
+    if (!blocked || !agent || event.conversationId && event.conversationId !== agentConversationId(agent)) return null;
     delete agent.autoResumePending;
     return blocked;
   }
 
   private handleBackendEvent(event: BackendEvent, options: { persist?: boolean } = {}): void {
+    if (event.type === 'plan.readyForReview') {
+      // A provider can report the same proposed plan more than once; the review it opened stays as it is.
+      const agent = this.snapshot.agents.find(candidate => candidate.id === event.agentId);
+      if (agent?.planReview && agent.planReview.id === planReviewFromEvent(agent, { ...event, seq: 0, occurredAt: '' }).id) return;
+    }
     if (event.type === 'provider.authenticationChanged') {
       const authentication = event.payload;
       this.providerConnections?.observe(authentication.kind, authentication.connected, authentication);
@@ -4457,18 +4460,13 @@ export class AppBackendServer {
     this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
-    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.started') {
-      const turnId = providerConversationEventView(fullEvent).turnId;
-      if (turnId) this.missionExecution.agentStarted(fullEvent.agentId, turnId);
-    }
-    if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
-      const view = providerConversationEventView(fullEvent);
-      const payload = view.payload as { status?: string; willRetry?: boolean; turn?: { status?: string } } | undefined;
-      const status = payload?.status ?? payload?.turn?.status;
+    if (fullEvent.type === 'turn.started') this.missionExecution.agentStarted(fullEvent.agentId, fullEvent.turnId);
+    if (fullEvent.type === 'turn.completed') {
+      const { status, willRetry } = fullEvent.payload;
       const agent = this.snapshot.agents.find(agent => agent.id === fullEvent.agentId);
       const blocked = agent?.status.type === 'error' && providerSafetyBlockMessage(agent.status.message);
-      const recover = (status === 'completed' || status === 'failed') && !payload?.willRetry && !blocked && !safetyBlock;
-      if (!payload?.willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, view.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
+      const recover = (status === 'completed' || status === 'failed') && !willRetry && !blocked && !safetyBlock;
+      if (!willRetry) void this.missionExecution.agentFinished(fullEvent.agentId, fullEvent.turnId, recover).catch(error => warnMain('missions', 'failed to record mission completion', { message: String(error) }));
     }
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
@@ -4481,7 +4479,7 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(fullEvent);
     if (
       event.agentId && (
-        providerConversationEventView(fullEvent).type === 'turn.completed' ||
+        fullEvent.type === 'turn.completed' ||
         (event.type === 'agent.statusChanged' && event.payload.type === 'idle')
       )
     ) {
@@ -4503,7 +4501,7 @@ export class AppBackendServer {
     }
     const commandFinished = this.trackCommandItems(fullEvent);
     if (event.agentId && (commandFinished || shouldRefreshGitStatusForEvent(fullEvent))) {
-      if (providerConversationEventView(fullEvent).type === 'turn.completed') {
+      if (fullEvent.type === 'turn.completed') {
         void this.agentWorkspaces.refreshGitStatus(event.agentId);
       } else {
         this.agentWorkspaces.scheduleGitStatusRefresh(event.agentId);
@@ -4519,33 +4517,28 @@ export class AppBackendServer {
    * finish only means "a command ended" if the start was seen. True when this event is such a finish.
    */
   private trackCommandItems(event: BackendPublishedEvent): boolean {
-    const agentId = event.agentId;
-    const view = providerConversationEventView(event);
-    if (!agentId) return false;
-    if (view.type === 'turn.completed') {
-      this.runningCommandItems.delete(agentId);
+    if (event.type === 'turn.completed') {
+      this.runningCommandItems.delete(event.agentId);
       return false;
     }
-    if (!isRecord(view.payload)) return false;
-    if (view.type === 'item.started' && isRecord(view.payload.toolPart)) {
-      const { id, kind } = view.payload.toolPart;
-      if (typeof id !== 'string' || (kind !== 'command' && kind !== 'fileChange')) return false;
-      const ids = this.runningCommandItems.get(agentId) ?? new Set<string>();
+    if (event.type !== 'tool.updated') return false;
+    const { id, kind, status } = event.payload.tool;
+    if (status === 'running') {
+      if (kind !== 'command' && kind !== 'fileChange') return false;
+      const ids = this.runningCommandItems.get(event.agentId) ?? new Set<string>();
       ids.add(id);
       // A tool that never reports back must not accumulate forever.
       while (ids.size > 256) ids.delete(ids.values().next().value!);
-      this.runningCommandItems.set(agentId, ids);
+      this.runningCommandItems.set(event.agentId, ids);
       return false;
     }
-    if (view.type === 'item.updated' && typeof view.payload.itemId === 'string' && (view.payload.status === 'completed' || view.payload.status === 'failed')) {
-      return this.runningCommandItems.get(agentId)?.delete(view.payload.itemId) ?? false;
-    }
-    return false;
+    return this.runningCommandItems.get(event.agentId)?.delete(id) ?? false;
   }
 
   private nextMainEvent(event: BackendEvent): BackendPublishedEvent {
+    if (event.type === 'agentRequest.resolved') event = { ...event, payload: { ...event.payload, outcome: requestOutcomeToWire(event.payload.outcome) } };
     const agent = event.agentId ? this.snapshot.agents.find((candidate) => candidate.id === event.agentId) : undefined;
-    const conversationId = event.conversationId ?? event.threadId ?? event.backendSessionId ?? (agent ? agentConversationId(agent) : null);
+    const conversationId = event.conversationId ?? (agent ? agentConversationId(agent) : null);
     return {
       ...event,
       ...(conversationId ? { conversationId } : {}),
@@ -4628,55 +4621,13 @@ export class AppBackendServer {
   }
 
   private emitDerivedDomainEvents(event: BackendPublishedEvent): void {
-    this.emitPlanReadyForReview(event);
-    const type = providerConversationEventView(event).type;
-    if (!event.agentId || !['turn.completed', 'approval.requested', 'agentRequest.created', 'toolInput.requested', 'error'].includes(type)) return;
+    if (!event.agentId || !['turn.completed', 'agentRequest.created', 'session.error'].includes(event.type)) return;
     const agent = this.snapshot.agents.find((agent) => agent.id === event.agentId);
     if (!agent) return;
     const previous = agent.readState ?? { revision: 0, readRevision: 0 };
     this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId: agent.id,
       payload: { id: agent.id, readState: { revision: previous.revision + 1, readRevision: previous.readRevision } } });
     void this.persistSnapshotOnly().catch(error => warnMain('state', 'failed to persist read state', { message: String(error) }));
-  }
-
-  private emitPlanReadyForReview(event: BackendPublishedEvent): void {
-    const conversationEvent = providerConversationEventView(event);
-    const payload = conversationEvent.payload;
-    if (
-      conversationEvent.type !== 'turn.proposedPlanCompleted'
-      && conversationEvent.type !== 'plan.completed'
-      || !conversationEvent.agentId
-      || !conversationEvent.turnId
-      || typeof payload !== 'object'
-      || payload === null
-      || !('markdown' in payload)
-      || typeof payload.markdown !== 'string'
-      || !payload.markdown.trim()
-    ) {
-      return;
-    }
-
-    const agent = this.snapshot.agents.find((candidate) => candidate.id === conversationEvent.agentId);
-    if (!agent) return;
-    const currentConversationId = agentConversationId(agent);
-    if (currentConversationId && event.conversationId && currentConversationId !== event.conversationId) return;
-    const ready: Extract<BackendPublishedEvent, { type: 'plan.readyForReview' }> = {
-      seq: event.seq,
-      occurredAt: event.occurredAt,
-      agentId: conversationEvent.agentId,
-      backend: event.backend,
-      ...(event.conversationId ? { conversationId: event.conversationId } : {}),
-      ...(event.threadId ? { threadId: event.threadId } : {}),
-      turnId: conversationEvent.turnId,
-      type: 'plan.readyForReview',
-      payload: {
-        markdown: payload.markdown,
-        ...('itemId' in payload && typeof payload.itemId === 'string' ? { itemId: payload.itemId } : {}),
-      },
-    };
-    const review = planReviewFromEvent(agent, ready);
-    if (agent.planReview?.id === review.id) return;
-    this.applyAndEmitBackendEvent(ready);
   }
 
 }
@@ -4760,7 +4711,7 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
 }
 
 function requireExecutionSelection(input: Record<string, unknown>): ExecutionSelectionOverrides | undefined {
-  if ('backend' in input || 'modelSelection' in input) throw new Error('Invalid backend selection. Use selection instead of backend or modelSelection.');
+  if ('provider' in input || 'modelSelection' in input) throw new Error('Invalid backend selection. Use selection instead of backend or modelSelection.');
   return input.selection === undefined ? undefined : executionSelectionOverridesSchema.parse(input.selection);
 }
 
@@ -4794,8 +4745,8 @@ function requireQuickChatCreateInput(params: unknown): CreateQuickChatInput {
   };
 }
 
-function requireAgentBackend(value: unknown): Agent['backend'] {
-  if (!isAgentBackend(value)) throw new Error('Invalid agent backend.');
+function requireAgentProvider(value: unknown): Agent['provider'] {
+  if (!isHarnessProvider(value)) throw new Error('Invalid agent backend.');
   return value;
 }
 
@@ -4815,7 +4766,7 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
       ? null
       : requireAgentGitDiffTarget(input.gitDiffTarget);
   }
-  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection?.backend === undefined && result.selection === undefined) {
+  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection?.provider === undefined && result.selection === undefined) {
     throw new Error('Agent update must include a name, backend, model selection, or Git diff target.');
   }
   return result;
@@ -4905,6 +4856,16 @@ function requireTeamId(params: unknown): string {
 function requireAgentId(params: unknown): string {
   const record = requireRecord(params);
   return requireString(record.agentId, 'agentId');
+}
+
+function requireClosedAgentRecord(params: unknown): ClosedAgentRecord {
+  const record = requireRecord(requireRecord(params).record);
+  const agent = requireRecord(record.agent) as unknown as Agent;
+  requireString(agent.id, 'agent.id');
+  if (!Number.isInteger(record.index) || (record.index as number) < 0) throw new Error('index must be a position.');
+  if (!Number.isInteger(record.teamPosition) || (record.teamPosition as number) < 0) throw new Error('teamPosition must be a position.');
+  if (record.nextAgentId !== undefined && typeof record.nextAgentId !== 'string') throw new Error('nextAgentId must be a string.');
+  return record as unknown as ClosedAgentRecord;
 }
 
 function requireAgentCloseRequest(params: unknown): {
@@ -5149,7 +5110,7 @@ function createDebugCodeReviewSession(agent: Agent, scenario: DebugCodeReviewSce
           : scenario === 'fixing'
             ? 'submitted'
             : 'completed',
-      ...(agent.backendSession ? { reviewerSession: structuredClone(agent.backendSession) } : {}),
+      ...(agent.providerSession ? { reviewerSession: structuredClone(agent.providerSession) } : {}),
       findings,
       startedAt: now,
       ...(scenario === 'readyToFinish' ? { completedAt: now } : {}),
@@ -5305,23 +5266,6 @@ function unsupportedSystemPermissionsStatus(): SystemPermissionsStatus {
   };
 }
 
-function isBackendConversationRef(value: unknown): value is BackendConversationRef {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  if (candidate.backend === 'codex') {
-    return typeof candidate.threadId === 'string' && candidate.threadId.trim().length > 0;
-  }
-
-  return (candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor') &&
-    (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
-    typeof candidate.sessionId === 'string' &&
-    candidate.sessionId.trim().length > 0 &&
-    (candidate.backend !== 'claude' || candidate.subagentId === undefined || typeof candidate.subagentId === 'string' && candidate.subagentId.trim().length > 0);
-}
-
 function requireStringParam(params: unknown, key: string): string {
   if (!isRecord(params) || typeof params[key] !== 'string' || !params[key].trim()) {
     throw new Error(`Invalid ${key}.`);
@@ -5353,7 +5297,6 @@ function conversationListInput(value: unknown): ConversationListInput | undefine
 }
 
 function shouldPersistSnapshotForEvent(event: BackendPublishedEvent): boolean {
-  const conversationEventType = providerConversationEventView(event).type;
   return event.type === 'agent.updated' ||
     event.type === 'plan.readyForReview' ||
     event.type === 'plan.reviewResolved' ||
@@ -5367,21 +5310,18 @@ function shouldPersistSnapshotForEvent(event: BackendPublishedEvent): boolean {
     event.type === 'subagent.statusChanged' ||
     // Token usage and plan updates are high-frequency during a turn. The
     // completed event persists their latest state in one durable write.
-    conversationEventType === 'turn.completed' ||
-    conversationEventType === 'turn.proposedPlanCompleted';
+    event.type === 'turn.completed';
 }
 
 function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
-  const view = providerConversationEventView(event);
-  if (view.type === 'turn.completed' || view.type === 'conversation.turnDiffUpdated' || view.type === 'conversation.diffUpdated') return true;
-  if (!isRecord(view.payload)) return false;
-  if ((view.type === 'workspace.fileActivityDetected' || view.type === 'file.activity')) {
-    return view.payload.status === 'completed' &&
-      (view.payload.action === 'edit' || view.payload.action === 'create' || view.payload.action === 'delete');
+  if (event.type === 'turn.completed' || event.type === 'conversation.turnDiffUpdated' || event.type === 'diff.updated') return true;
+  if (event.type === 'workspace.fileActivityDetected' || event.type === 'file.activity') {
+    return event.payload.status === 'completed' &&
+      (event.payload.action === 'edit' || event.payload.action === 'create' || event.payload.action === 'delete');
   }
   // Shell commands can mutate files without publishing structured file activity.
-  return view.type === 'tool.completed' && isRecord(view.payload.toolPart) &&
-    (view.payload.toolPart.kind === 'command' || view.payload.toolPart.kind === 'fileChange');
+  return event.type === 'tool.updated' && event.payload.tool.status === 'completed' &&
+    (event.payload.tool.kind === 'command' || event.payload.tool.kind === 'fileChange');
 }
 
 function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {

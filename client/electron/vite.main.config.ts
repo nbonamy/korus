@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite';
 import dotenv from 'dotenv';
 import path from 'node:path';
-import { sdkSourceAliases } from '../../vite.sdk-aliases';
+import { sdkSourceAliases, sdkSourcesEnabled } from '../../vite.sdk-aliases';
 import { build as buildPreload } from 'esbuild';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
-const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
+const useSdkSources = sdkSourcesEnabled;
 
 export default defineConfig({
   plugins: [{ name: 'browser-extension-preload', async generateBundle() {
@@ -13,10 +13,10 @@ export default defineConfig({
     this.emitFile({ type: 'asset', fileName: 'browser-extensions-preload.cjs', source: result.outputFiles[0].text });
   } }],
   resolve: {
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-      ...(useSdkSources ? sdkSourceAliases : {}),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      ...(useSdkSources ? sdkSourceAliases : []),
+    ],
   },
   build: {
     sourcemap: true,

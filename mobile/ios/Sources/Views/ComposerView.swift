@@ -180,11 +180,11 @@ struct ComposerView: View {
                 }
                 Toggle("Plan mode", systemImage: "list.bullet.rectangle", isOn: Binding(get: { model.planMode }, set: { model.setPlanMode($0) }))
                     .disabled(model.composerDrafts.sending || model.goalBusy)
-                if !model.approvalPresets.isEmpty {
+                if !model.permissionOptions.isEmpty {
                     Menu("Permissions", systemImage: "shield") {
-                        ForEach(model.approvalPresets, id: \.self) { preset in
-                            Button { model.setApprovalPreset(preset) } label: {
-                                Label(preset.replacingOccurrences(of: "-", with: " ").capitalized, systemImage: preset == model.approvalPreset ? "checkmark" : "")
+                        ForEach(model.permissionOptions, id: \.id) { option in
+                            Button(role: option.dangerous ? .destructive : nil) { model.setPermission(option.id) } label: {
+                                Label(option.label, systemImage: option.id == model.permission ? "checkmark" : option.dangerous ? "exclamationmark.triangle" : "")
                             }
                         }
                     }

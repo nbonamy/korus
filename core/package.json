@@ -19,7 +19,8 @@
     "test:watch": "vitest watch"
   },
   "devDependencies": {
-    "@codex-app-sdk/core": "0.23.0",
+    "@korus-dev/agent-ui-sdk": "0.27.0",
+    "@korus-dev/multi-agent-sdk": "0.27.0",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",

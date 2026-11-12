@@ -313,7 +313,7 @@ describe('stdio JSON-RPC transport', () => {
     try {
       peer.notify('backend/event/notify', { type: 'agent.statusChanged' });
       peer.notify('backend/event/notify', {
-        type: 'codex.conversationSnapshotChanged',
+        type: 'conversation.sessionSnapshot',
         snapshot: 'x'.repeat(64 * 1024 * 1024),
       });
 
@@ -342,11 +342,11 @@ describe('stdio JSON-RPC transport', () => {
     });
     peer.start();
 
-    peer.notify('backend/event/notify', { type: 'codex.conversationSnapshotChanged', value: 'x'.repeat(200) });
+    peer.notify('backend/event/notify', { type: 'conversation.sessionSnapshot', value: 'x'.repeat(200) });
 
     expect(onOutputOverflow).toHaveBeenCalledWith({
       bufferedBytes: 0,
-      eventType: 'codex.conversationSnapshotChanged',
+      eventType: 'conversation.sessionSnapshot',
       frameBytes: expect.any(Number),
       kind: 'notification',
       method: 'backend/event/notify',
@@ -359,7 +359,7 @@ describe('stdio JSON-RPC transport', () => {
     const output = new PassThrough({ highWaterMark: 1 });
     const received: string[] = [];
     const onMessage = vi.fn(() => {
-      peer.notify('backend/event/notify', { seq: 3, type: 'claude.conversationSnapshotChanged', payload: { transcript: 'retained' } });
+      peer.notify('backend/event/notify', { seq: 3, type: 'conversation.sessionSnapshot', payload: { transcript: 'retained' } });
       return { jsonrpc: '2.0' as const, id: 'repair', result: null };
     });
     const peer = new StdioRpcPeer({ input, output, maxBufferedOutputBytes: 100, onMessage });

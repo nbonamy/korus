@@ -17,7 +17,7 @@ describe('composer catalog locations', () => {
       supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: 'Medium' }, { reasoningEffort: 'high', description: 'High' }],
     });
     stubElectronTestWindow({ app: {
-      listBackendModels: vi.fn(async () => [model('shared-default'), model('guest-high'), { ...model('guest-other'), serviceTiers: [{ id: 'other', name: 'Other', description: '' }], defaultServiceTier: 'other' }]),
+      listProviderModels: vi.fn(async () => [model('shared-default'), model('guest-high'), { ...model('guest-other'), serviceTiers: [{ id: 'other', name: 'Other', description: '' }], defaultServiceTier: 'other' }]),
     } });
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     await composer.loadModels(hostId);
@@ -48,18 +48,18 @@ describe('composer catalog locations', () => {
     let finishCodex!: (models: ReturnType<typeof model>[]) => void;
     const oldModels = new Promise<ReturnType<typeof model>[]>(resolve => { finishCodex = resolve; });
     stubElectronTestWindow({ app: {
-      listBackendModels: vi.fn(() => agent.backend === 'codex' ? oldModels : Promise.resolve([model('sonnet')])),
+      listProviderModels: vi.fn(() => agent.provider === 'codex' ? oldModels : Promise.resolve([model('sonnet')])),
     } });
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     const oldLoad = composer.loadModels(agent.id);
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
+    agent.provider = 'claude';
+    agent.providerDefaults = { kind: 'claude' };
     composer.synchronizeAgentSelection(agent.id);
     await composer.loadModels(agent.id);
     expect(composer.selectedModelId.value).toBe('sonnet');
     finishCodex([model('codex-model')]);
     await oldLoad;
-    expect(composer.backendModels.value.map(item => item.id)).toStrictEqual(['sonnet']);
+    expect(composer.providerModels.value.map(item => item.id)).toStrictEqual(['sonnet']);
     expect(composer.resolvePromptOptions(agent.id, 'hello')?.selection?.model).toBe('sonnet');
   });
   it('keeps local and SSH models separate, including pushed catalog updates', async () => {
@@ -71,19 +71,19 @@ describe('composer catalog locations', () => {
     remote.remoteConnectionId = 'ssh-devbox';
     snapshot.teams.push({ id: remote.teamId, name: 'Remote', agentIds: [remote.id] });
     const model = (id: string) => ({ id, model: id, displayName: id, isDefault: true });
-    const listBackendModels = vi.fn(async (id: string) => [model(id === local.id ? 'local-model' : 'remote-model')]);
-    stubElectronTestWindow({ app: { listBackendModels } });
+    const listProviderModels = vi.fn(async (id: string) => [model(id === local.id ? 'local-model' : 'remote-model')]);
+    stubElectronTestWindow({ app: { listProviderModels } });
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     snapshot.activeAgentId = local.id;
     await composer.loadModels(local.id);
     snapshot.activeAgentId = remote.id;
     await composer.loadModels(remote.id);
-    expect(listBackendModels).toHaveBeenCalledTimes(2);
+    expect(listProviderModels).toHaveBeenCalledTimes(2);
     expect(composer.resolvePromptOptions(remote.id, 'hello')?.selection?.model).toBe('remote-model');
 
-    composer.handleMainEvent({ type: 'models.changed', backend: 'codex', seq: 1, occurredAt: '', payload: { models: [model('local-updated')] } });
+    composer.handleMainEvent({ type: 'models.changed', provider: 'codex', seq: 1, occurredAt: '', payload: { models: [model('local-updated')] } });
     expect(composer.selectedModelId.value).toBe('remote-model');
-    composer.handleMainEvent({ type: 'models.changed', backend: 'codex', agentId: remote.id, seq: 2, occurredAt: '', payload: { models: [model('remote-updated')] } });
+    composer.handleMainEvent({ type: 'models.changed', provider: 'codex', agentId: remote.id, seq: 2, occurredAt: '', payload: { models: [model('remote-updated')] } });
     expect(composer.selectedModelId.value).toBe('remote-updated');
     snapshot.activeAgentId = local.id;
     expect(composer.selectedModelId.value).toBe('local-updated');

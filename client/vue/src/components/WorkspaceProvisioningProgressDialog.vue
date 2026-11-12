@@ -45,7 +45,7 @@ import type { AgentCreationProgress } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import StagedOperationProgress, { type StagedOperationStep } from './StagedOperationProgress.vue';
 import { missionRepositoryName } from './mission-implementation-model';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 
 export type WorkspaceProvisioningOperation =
   | { mode: 'branchMove'; progress: BranchWorkProgress }
@@ -197,7 +197,7 @@ const steps = computed<StagedOperationStep[]>(() => {
     {
       title: t('repositoryBacklog.startAgentSession'),
       detail: t('agentCreationProgress.newSession', {
-        backend: backendDisplayName(current.backend),
+        provider: providerDisplayName(current.provider),
       }),
     },
     {

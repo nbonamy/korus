@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import path from 'node:path';
-import type { Agent, AppSnapshot, BackendConversationRef, RendererMessage, SourceWorktree, SystemPermissionsStatus, ThreadGoal, WorkItem } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderConversationRef, RendererMessage, SourceWorktree, SystemPermissionsStatus, ThreadGoal, WorkItem } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 
 export function createTestSnapshot(): AppSnapshot {
@@ -14,14 +14,14 @@ export function createTestSnapshot(): AppSnapshot {
     automations: [],
     activeTeamId: 'team-test',
     activeAgentId: null,
-    backendApprovals: {},
+    providerApprovals: {},
     agentGitStatuses: {},
     turnGitDiffs: {},
     subagentTrees: {},
-    backendRuntimes: [],
+    providerRuntimes: [],
     providerConnections: [
-      { backend: 'codex', installed: true, connected: true, checking: false },
-      { backend: 'claude', installed: true, connected: true, checking: false },
+      { provider: 'codex', installed: true, connected: true, checking: false },
+      { provider: 'claude', installed: true, connected: true, checking: false },
     ],
     workBacklog: {
       connections: [],
@@ -106,7 +106,7 @@ export function createRemoteAgent(): AppSnapshot['agents'][number] {
     teamId: 'team-remote',
     name: 'Dina',
     folder: '/home/mnmt/src/agent-workspace',
-    backend: 'codex',
+    provider: 'codex',
     status: { type: 'idle' },
     createdAt: '2026-06-14T10:00:00.000Z',
     updatedAt: '2026-06-14T10:00:00.000Z',

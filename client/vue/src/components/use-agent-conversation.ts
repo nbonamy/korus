@@ -1,18 +1,21 @@
+import type { AgentRequestResponse } from '@korus-dev/multi-agent-sdk';
+import { approvalAgentRequest } from '@korus-dev/multi-agent-sdk/contracts';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { conversationForView, conversationKeyForAgent, pendingConversationPrompts } from '../provider-conversation-bindings';
 import { ref } from 'vue';
-import { createCodexConversationPaneController, type CodexConversationPaneActions, type CodexConversationPaneState, type CodexRendererSendMessageOptions, type CodexComposerMenuItem } from '@codex-app-sdk/vue';
-import type { AppGeneralSettings, BackendApprovalDecision, BackendApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
+import { createConversationPaneController, type ConversationPaneActions, type ConversationPaneState, type ComposerMenuItem, type PermissionOption, type ConversationSubmissionResult } from '@korus-dev/agent-ui-sdk';
+import type { AppGeneralSettings, ProviderApprovalDecision, ProviderApprovalScope, ClientRequestResponse, ReasoningEffort, RendererSendPromptOptions, ApprovalPreset } from '@workspace/core/contracts';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
-import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentConversationView } from '../app-state';
+import { catalogModelId } from '../agent-composer-state';
 import { useImageAnnotation } from './use-image-annotation';
 import { useChatTextAnnotations } from './use-chat-text-annotations';
 import { useVisualizationAnnotations } from './use-visualization-annotations';
 import { useCodeAnnotations } from './use-code-annotations';
 import { conversationCommandMenuItems } from './conversation-command-menu';
-import { conversationPermissionMenuItems } from './conversation-permission-menu';
 import { translate } from '../i18n';
+import { localizedText } from '../i18n/errors';
 
 export type AgentConversationActions = {
   planReview: (agentId: string, resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => void | Promise<void>;
@@ -31,13 +34,12 @@ export type AgentConversationActions = {
   forkTurn: (agentId: string, turnId: string) => void | Promise<void>;
   retryTurn: (agentId: string, turnId: string) => void | Promise<void>;
   continueInterruptedTurn: (agentId: string) => void | Promise<void>;
-  resolveApproval: (agentId: string, approvalId: string, decision: BackendApprovalDecision, scope: BackendApprovalScope) => void | Promise<void>;
-  clientResponse: (response: ClientRequestResponse) => void | Promise<void>;
+  /** Answers a pending request (approval, question or tool confirmation) in the harness's own shape. */
+  respond: (agentId: string, response: AgentRequestResponse) => void | Promise<void>;
   selectModel: (agentId: string, modelId: string) => void;
   selectReasoningEffort: (agentId: string, effort: ReasoningEffort) => void;
   selectServiceTier: (agentId: string, tier: string | null) => void;
   setPlanMode: (agentId: string, enabled: boolean) => void;
-  setApprovalPreset: (agentId: string, preset: ApprovalPreset) => void | Promise<void>;
   setPermissionMode: (agentId: string, mode: string) => void | Promise<void>;
   updateComposerState: (agentId: string, state: AgentConversationView['composerState']) => void;
   updateAttachments: (agentId: string, attachments: AgentConversationView['attachments']) => void;
@@ -61,12 +63,12 @@ function stableSet() {
 
 export function agentConversationState(view: () => AgentConversationView, extensions: {
   followUpBehavior?: () => AppGeneralSettings['followUpBehavior'];
-  mentionGroups?: () => NonNullable<CodexConversationPaneState['catalogs']>['mentionGroups'];
-  modelMenuItems?: () => CodexComposerMenuItem[];
+  mentionGroups?: () => NonNullable<ConversationPaneState['catalogs']>['mentionGroups'];
+  modelMenuItems?: () => ComposerMenuItem[];
   placeholder?: () => string | undefined;
-  previewMessage?: () => import('@codex-app-sdk/core/surface').SurfaceMessage | undefined;
-  previewApproval?: () => import('@workspace/core/contracts').BackendApprovalRequest | undefined;
-} = {}): CodexConversationPaneState {
+  previewMessage?: () => import('../conversation-presentation/presentation').PaneMessage | undefined;
+  previewApproval?: () => import('@workspace/core/contracts').ProviderApprovalRequest | undefined;
+} = {}): ConversationPaneState {
   const provider = () => conversationForView(view());
   const pendingMessages = (): import('@workspace/core/contracts').RendererMessage[] =>
     pendingConversationPrompts(view().agent.pendingPrompts ?? [], provider()?.messages ?? [])
@@ -74,10 +76,19 @@ export function agentConversationState(view: () => AgentConversationView, extens
         parts: [{ type: 'text', text: prompt.text }] }));
   // Every message block receives this set as a prop; a fresh Set per read would re-render all of them on every event.
   const answeredIds = stableSet();
-  const approvalPreset = () => {
-    const allowed = view().capabilities.approvalPresets ?? [];
-    const stored = approvalPresetFromDefaults(view().agent.backendDefaults);
-    return view().capabilities.approvals ? (allowed.includes(stored) ? stored : allowed[0] ?? null) : null;
+  /**
+   * What the conversation is running with, once the harness names a model. A conversation restored after a restart has
+   * not run yet and names none; the composer then shows the agent's saved choice, as it does while an edit is pending.
+   */
+  const reportedSelection = () => {
+    const selection = view().composer.pendingSelection ? undefined : provider()?.selection;
+    return selection?.model ? selection : undefined;
+  };
+  /** The permission in effect: what the session reports, else what the agent's stored defaults select. */
+  const permission = (): string | null => {
+    const offered = permissionOptions(view());
+    const chosen = provider()?.permission ?? view().agent.providerDefaults?.permission;
+    return chosen && offered.some(option => option.id === chosen) ? chosen : offered[0]?.id ?? null;
   };
   return {
     identity: {
@@ -96,12 +107,15 @@ export function agentConversationState(view: () => AgentConversationView, extens
     },
     history: {
       get hasOlder() { return provider()?.historyState?.hasOlder ?? view().history.hasOlder; },
-      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.backendSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
+      get loading() { return pendingMessages().length === 0 && Boolean(view().agent.providerSession) && !(provider()?.messages.length) && Boolean(provider()?.historyLoading || view().history.hydrating); },
       get loadingOlder() { return Boolean(provider()?.historyState?.loadingOlder || view().history.loadingOlder); },
     },
     thread: {
-      get approvals() { const approvals = provider()?.approvals ?? view().approvals; const preview = extensions.previewApproval?.(); return preview ? [...approvals, preview] : approvals; },
-      get clientRequests() { return provider()?.clientRequests ?? []; },
+      get requests() {
+        const preview = extensions.previewApproval?.();
+        const requests = provider()?.requests ?? view().approvals.map(approval => approvalAgentRequest(approval as never));
+        return preview ? [...requests, approvalAgentRequest(preview as never)] : requests;
+      },
       get answeredClientRequestIds() { return answeredIds.current(provider()?.answeredClientRequestIds ?? view().answeredClientRequestIds); },
       get goal() { return provider()?.goal ?? view().agent.goal ?? null; },
       get queuedPrompts() { return view().queuedPrompts; },
@@ -113,19 +127,29 @@ export function agentConversationState(view: () => AgentConversationView, extens
       get attachments() { return view().attachments; },
       get placeholder() { return extensions.placeholder?.() ?? translate('surface.appShell.askForFollowUpChanges'); },
       get suggestedPrompt() { return view().agent.suggestedPrompt ?? undefined; },
-      get approvalPreset() { return approvalPreset(); },
-      get leadingMenuItems() { return [...permissionMenuItems(view()), ...conversationCommandMenuItems()]; },
+      get permission() { return permission(); },
+      get leadingMenuItems() { return conversationCommandMenuItems(); },
       get modelMenuItems() { return extensions.modelMenuItems?.(); },
       get planMode() { return view().composer.planMode; },
-      get selectedModelId() { return view().composer.selectedModelId; },
-      get selectedReasoningEffort() { return view().composer.selectedReasoningEffort; },
-      get selectedServiceTier() { return view().composer.selectedServiceTier; },
+      get selectedModelId() {
+        const selection = reportedSelection();
+        if (!selection) return view().composer.selectedModelId;
+        return catalogModelId(view().composer.models ?? [], selection.model!, view().composer.selectedModelId);
+      },
+      get selectedReasoningEffort() {
+        const selection = reportedSelection();
+        return selection ? selection.reasoningEffort ?? null : view().composer.selectedReasoningEffort;
+      },
+      get selectedServiceTier() {
+        const selection = reportedSelection();
+        return selection ? selection.serviceTier ?? null : view().composer.selectedServiceTier;
+      },
     },
     catalogs: {
       get files() { return view().composer.files; },
       get models() { return view().composer.models; },
       get mentionGroups() { return extensions.mentionGroups?.(); },
-      get commands() { return defaultBackendCommands(view().agent.backend); },
+      get commands() { return defaultProviderCommands(view().agent.provider); },
       get plugins() { return view().composer.plugins; },
       get skills() { return view().composer.skills; },
       get modelCatalogStatus() { return view().composer.modelStatus; },
@@ -139,7 +163,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
         goals: capabilities.goals, steerPrompt: capabilities.steerPrompt, interrupt: capabilities.interrupt,
         history: capabilities.history, deleteTurn: capabilities.deleteTurn, editTurn: capabilities.editTurn,
         retryTurn: capabilities.retryTurn, approvals: capabilities.approvals,
-        approvalPresets: capabilities.approvalPresets ?? [],
+        permissions: permissionOptions(view()),
       };
     },
     policy: {
@@ -155,14 +179,14 @@ export function agentConversationState(view: () => AgentConversationView, extens
 
 export function useAgentConversation(options: {
   agentId: () => string | undefined;
-  state: CodexConversationPaneState;
+  state: ConversationPaneState;
   actions: AgentConversationActions;
-  openLink: NonNullable<CodexConversationPaneActions['openLink']>;
-  openImage: NonNullable<CodexConversationPaneActions['openImage']>;
-  openVisualization: NonNullable<CodexConversationPaneActions['openVisualization']>;
-  overrides?: CodexConversationPaneActions;
+  openLink: NonNullable<ConversationPaneActions['openLink']>;
+  openImage: NonNullable<ConversationPaneActions['openImage']>;
+  openVisualization: NonNullable<ConversationPaneActions['openVisualization']>;
+  overrides?: ConversationPaneActions;
   beforeSubmit?: () => Promise<void>;
-  onMenuSelect?: NonNullable<CodexConversationPaneActions['menuSelect']>;
+  onMenuSelect?: NonNullable<ConversationPaneActions['menuSelect']>;
   onThreadFlag?: (agentId: string, response: ThreadFlagResponse) => void;
   debugFallbackImageSource: string;
   notifyError: (message: string) => void;
@@ -194,38 +218,37 @@ export function useAgentConversation(options: {
       threadFlagBusy.value = false;
     }
   }
-  async function forward(prompt: string, sendOptions: CodexRendererSendMessageOptions | undefined, send: AgentConversationActions['send']): Promise<void> {
+  /** Sends the prompt with whatever annotations decorate it, and reports the text actually sent when it differs from what was typed. */
+  async function forward(prompt: string, sendOptions: ReferenceSendPromptOptions | undefined, send: AgentConversationActions['send']): Promise<ConversationSubmissionResult> {
     const id = agentId();
     if (!id) return;
     const capturedImages = imageAnnotation.capture();
     await options.beforeSubmit?.();
+    let sent: string | undefined;
     await visualizationAnnotation.forward(prompt, sendOptions, (text, visualOptions) =>
       codeAnnotation.forward(text, visualOptions, (codeText, codeOptions) =>
         chatTextAnnotation.forward(codeText, codeOptions, (annotatedText, textOptions) =>
-          imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => send(id, finalText, finalOptions), capturedImages))));
+          imageAnnotation.forward(annotatedText, textOptions, (finalText, finalOptions) => { sent = finalText; return send(id, finalText, finalOptions); }, capturedImages))));
+    // The pane recognizes the message it is waiting for by the text actually sent.
+    return sent !== undefined && sent !== prompt ? { sentPrompt: sent } : undefined;
   }
-  const actions: CodexConversationPaneActions = {
+  const actions: ConversationPaneActions = {
     clearGoal: () => options.actions.clearGoal(agentId()),
     openLink: options.openLink,
     openImage: options.openImage,
     openVisualization: options.openVisualization,
-    menuSelect: (item) => {
-      const payload = item.payload as { kind?: string; mode?: string } | undefined;
-      if (payload?.kind === 'permission-mode' && payload.mode) return options.actions.setPermissionMode(agentId(), payload.mode);
-      return options.onMenuSelect?.(item);
-    },
+    menuSelect: (item) => options.onMenuSelect?.(item),
     cancel: () => options.actions.interrupt(agentId()),
     interrupt: () => options.actions.interrupt(agentId()),
     continueInterruptedTurn: () => options.actions.continueInterruptedTurn(agentId()),
-    clientResponse: (response) => options.actions.clientResponse({ ...response, agentId: agentId() }),
+    respond: (response) => options.actions.respond(agentId(), response),
     deleteTurn: (turnId) => options.actions.deleteTurn(agentId(), turnId),
     editTurn: (payload) => options.actions.editTurn(agentId(), payload),
     forkTurn: (turnId) => options.actions.forkTurn(agentId(), turnId),
     retryTurn: (turnId) => options.actions.retryTurn(agentId(), turnId),
-    resolveApproval: (id, decision, scope) => options.actions.resolveApproval(agentId(), id, decision, scope),
-    sendFollowUp: (prompt) => forward(prompt, undefined, options.actions.send),
+    sendFollowUp: async (prompt) => { await forward(prompt, undefined, options.actions.send); },
     submit: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.send),
-    steer: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.steer),
+    steer: async (prompt, sendOptions) => { await forward(prompt, sendOptions, options.actions.steer); },
     loadOlderHistory: () => options.actions.loadOlder(agentId()),
     loadTurnHistory: (turnId) => options.actions.loadTurn?.(agentId(), turnId),
     requestSkills: () => options.actions.requestSkills?.(agentId()),
@@ -234,22 +257,23 @@ export function useAgentConversation(options: {
     steerQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.steerQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.steerQueuedPrompt(agentId(), promptId, prompt),
     updateAttachments: (attachments) => { imageAnnotation.prune(agentId(), attachments); options.actions.updateAttachments(agentId(), attachments); },
     updateComposerState: (composerState) => options.actions.updateComposerState(agentId(), composerState),
-    updateSettings: (settings) => {
+    updateSettings: (defaults) => {
       const id = agentId();
-      if (settings.modelId !== undefined) options.actions.selectModel(id, settings.modelId);
-      if (settings.reasoningEffort !== undefined) options.actions.selectReasoningEffort(id, settings.reasoningEffort);
-      if (settings.serviceTier !== undefined) options.actions.selectServiceTier(id, settings.serviceTier);
-      if (settings.planMode !== undefined) options.actions.setPlanMode(id, settings.planMode);
-      if (settings.approvalPreset !== undefined) return options.actions.setApprovalPreset(id, settings.approvalPreset);
+      if (defaults.model !== undefined) options.actions.selectModel(id, defaults.model);
+      if (defaults.reasoningEffort != null) options.actions.selectReasoningEffort(id, defaults.reasoningEffort);
+      if (defaults.serviceTier !== undefined) options.actions.selectServiceTier(id, defaults.serviceTier);
+      if (defaults.permission === undefined) return;
+      return options.actions.setPermissionMode(id, defaults.permission);
     },
+    setPlanMode: (planMode) => options.actions.setPlanMode(agentId(), planMode),
     ...options.overrides,
   };
-  const controller = createCodexConversationPaneController({ state: options.state, actions });
+  const controller = createConversationPaneController({ state: options.state, actions });
   return { controller, imageAnnotation, chatTextAnnotation, visualizationAnnotation, codeAnnotation, threadFlagBusy, respondToThreadFlag };
 }
 
-function permissionMenuItems(view: AgentConversationView): CodexComposerMenuItem[] {
-  const defaults = view.agent.backendDefaults;
-  const selected = defaults && 'permissionMode' in defaults ? defaults.permissionMode : undefined;
-  return conversationPermissionMenuItems(view.capabilities.permissionModes ?? [], selected);
+/** The permissions the agent's harness offers, in Korus's words: one list whichever harness it is. */
+function permissionOptions(view: AgentConversationView): PermissionOption[] {
+  return (view.capabilities.permissionModes ?? []).map(mode => ({ id: mode.id, label: localizedText(mode.label, translate) ?? mode.id,
+    ...(localizedText(mode.description, translate) ? { description: localizedText(mode.description, translate)! } : {}), ...(mode.dangerous ? { dangerous: true } : {}) }));
 }

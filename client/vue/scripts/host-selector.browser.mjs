@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,7 @@ test('small host selector matches dropdown text to its field without changing th
   const server = await createServer({
     configFile: false, root: fileURLToPath(new URL('../../..', import.meta.url)), logLevel: 'error',
     server: { host: '127.0.0.1', port: 0 }, resolve: { dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'host-selector-fixture',
       configureServer(server) {
         server.middlewares.use('/host-selector', (_req, res) => {

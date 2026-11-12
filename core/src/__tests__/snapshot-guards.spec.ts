@@ -72,12 +72,12 @@ describe('snapshot guards', () => {
         const workspace = snapshot.agents[0]!.workspace;
         if (workspace?.kind === 'git') workspace.isLinkedWorktree = 'yes' as never;
       } },
-      { name: 'agent backend session', mutate: (snapshot) => { snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 42 as never }; } },
-      { name: 'agent backend defaults', mutate: (snapshot) => { snapshot.agents[0]!.backendDefaults = { kind: 'codex', approvalPreset: 'later' as never }; } },
-      { name: 'handoff provider selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { backend: 'other' as never, model: null, reasoningEffort: null, serviceTier: null }; } },
+      { name: 'agent backend session', mutate: (snapshot) => { snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 42 as never }; } },
+      { name: 'agent backend defaults', mutate: (snapshot) => { snapshot.agents[0]!.providerDefaults = { kind: 'codex', permission: 7 as never }; } },
+      { name: 'handoff provider selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { provider: 'other' as never, model: null, reasoningEffort: null, serviceTier: null }; } },
       { name: 'missing handoff selection', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = null as never; } },
-      { name: 'handoff service tier', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { backend: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 42 as never }; } },
-      { name: 'handoff source identity', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.sourceRef = { backend: 'codex', threadId: 42 as never }; } },
+      { name: 'handoff service tier', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.selection = { provider: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 42 as never }; } },
+      { name: 'handoff source identity', mutate: (snapshot) => { snapshot.agents[0]!.handoff!.sourceRef = { provider: 'codex', conversationId: 42 as never }; } },
       { name: 'agent application', mutate: (snapshot) => { snapshot.agents[0]!.openInApplication = 'emacs' as never; } },
       { name: 'agent context', mutate: (snapshot) => { snapshot.agents[0]!.contextUsage!.inputTokens = 'many' as never; } },
       { name: 'agent plan', mutate: (snapshot) => { snapshot.agents[0]!.plan!.steps[0]!.status = 'working' as never; } },
@@ -86,13 +86,13 @@ describe('snapshot guards', () => {
       { name: 'automation target', mutate: (snapshot) => { snapshot.automations[0]!.target = { kind: 'unknown' } as never; } },
       { name: 'automation schedule', mutate: (snapshot) => { snapshot.automations[0]!.schedule = { intervalMinutes: 'hourly' as never }; } },
       { name: 'automation log', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.status = 'pending' as never; } },
-      { name: 'automation created agent', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.conversationRef = { backend: 'codex', threadId: 42 as never }; } },
-      { name: 'backend runtime', mutate: (snapshot) => { snapshot.backendRuntimes[0]!.status = 'stopped' as never; } },
-      { name: 'backend capabilities', mutate: (snapshot) => { snapshot.backendRuntimes[0]!.capabilities!.planMode = 'automatic' as never; } },
-      { name: 'approval presets', mutate: (snapshot) => { snapshot.backendRuntimes[0]!.capabilities!.approvalPresets = ['later' as never]; } },
-      { name: 'permission descriptors', mutate: (snapshot) => { snapshot.backendRuntimes[0]!.capabilities!.permissionModes![0]!.label = { key: 42 as never }; } },
-      { name: 'backend approvals collection', mutate: (snapshot) => { snapshot.backendApprovals.agent = {} as never; } },
-      { name: 'backend requested permissions', mutate: (snapshot) => { snapshot.backendApprovals.agent![0]!.requestedPermissions![0] = { kind: 'filesystem', access: 'execute' as never, path: '/repo' }; } },
+      { name: 'automation created agent', mutate: (snapshot) => { snapshot.automations[0]!.executionLog[0]!.conversationRef = { provider: 'codex', conversationId: 42 as never }; } },
+      { name: 'backend runtime', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.status = 'stopped' as never; } },
+      { name: 'backend capabilities', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.capabilities!.planMode = 'automatic' as never; } },
+      { name: 'approval presets', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.capabilities!.approvalPresets = [7 as never]; } },
+      { name: 'permission descriptors', mutate: (snapshot) => { snapshot.providerRuntimes[0]!.capabilities!.permissionModes![0]!.label = { key: 42 as never }; } },
+      { name: 'backend approvals collection', mutate: (snapshot) => { snapshot.providerApprovals.agent = {} as never; } },
+      { name: 'backend requested permissions', mutate: (snapshot) => { snapshot.providerApprovals.agent![0]!.requestedPermissions![0] = { kind: 'filesystem', access: 'execute' as never, path: '/repo' }; } },
       { name: 'subagent tree', mutate: (snapshot) => { snapshot.subagentTrees.root!.rootConversationId = 42 as never; } },
       { name: 'subagent node', mutate: (snapshot) => { snapshot.subagentTrees.root!.nodes.child!.status = 'waiting' as never; } },
       { name: 'subagent identity', mutate: (snapshot) => { snapshot.subagentTrees.root!.nodes.child!.agentNickname = 42 as never; } },
@@ -122,7 +122,7 @@ describe('snapshot guards', () => {
       { name: 'delegation override instructions', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'handoff', instructions: 42 as never }; } },
       { name: 'agent git status', mutate: (snapshot) => { snapshot.agentGitStatuses.agent!.branch = null as never; } },
       { name: 'turn git diff', mutate: (snapshot) => { snapshot.turnGitDiffs.turn!.addedLines = 'one' as never; } },
-      { name: 'account rate limits', mutate: (snapshot) => { snapshot.accountRateLimits!.primary!.usedPercent = 'half' as never; } },
+      { name: 'account rate limits', mutate: (snapshot) => { snapshot.providerAccountRateLimits!.codex!.primary!.usedPercent = 'half' as never; } },
       { name: 'Cursor permission defaults', mutate: (snapshot) => { snapshot.general.providerApprovalDefaults = { cursor: 42 as never }; } },
       { name: 'active ids', mutate: (snapshot) => { snapshot.activeAgentId = 42 as never; } },
     ];
@@ -175,8 +175,8 @@ function completeSnapshot(): AppSnapshot {
   const codexAgent = snapshot.agents[0]!;
   codexAgent.handoff = {
     operationId: 'handoff-1', sourceAgentId: codexAgent.id, sourceTitle: 'Implement ticket',
-    sourceRef: { backend: 'codex', threadId: 'thread-codex' }, targetAgentId: 'agent-claude', phase: 'complete',
-    selection: { backend: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' },
+    sourceRef: { provider: 'codex', conversationId: 'thread-codex' }, targetAgentId: 'agent-claude', phase: 'complete',
+    selection: { provider: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' },
     instructions: 'Keep the existing tests', note: 'Continue from the current checkout',
   };
   Object.assign(codexAgent, {
@@ -206,14 +206,11 @@ function completeSnapshot(): AppSnapshot {
       originUrl: 'git@github.com:openai/agent-workspace.git',
       updatedAt: '2026-09-04T00:00:00.000Z',
     },
-    backendSession: { kind: 'codex', threadId: 'thread-codex' },
-    backendDefaults: {
+    providerSession: { kind: 'codex', conversationId: 'thread-codex' },
+    providerDefaults: {
       kind: 'codex',
       model: 'gpt-5',
-      approvalPreset: 'ask-for-approval',
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'user',
-      sandboxMode: 'workspace-write',
+      permission: 'ask-for-approval',
       reasoningEffort: 'high',
       serviceTier: null,
     },
@@ -259,21 +256,20 @@ function completeSnapshot(): AppSnapshot {
     sessionKind: 'quickChat',
     name: null,
     folder: null,
-    backend: 'claude',
-    backendSession: {
-      kind: 'claude',
-      sessionId: 'session-claude',
+    provider: 'claude',
+    providerSession: { kind: 'claude',
+      conversationId: 'session-claude',
       transport: 'websocket',
-      transcriptSessionId: 'transcript-claude',
+      transcriptConversationId: 'transcript-claude',
       serverUrl: 'ws://localhost',
       model: 'claude-opus',
       reasoningEffort: 'high',
     },
-    backendDefaults: {
+    providerDefaults: {
       kind: 'claude',
       model: 'claude-opus',
       reasoningEffort: 'high',
-      permissionMode: 'default',
+      permission: 'default',
       thinking: { type: 'enabled', budgetTokens: 4_096 },
     },
     status: { type: 'error', message: 'Stopped' },
@@ -288,7 +284,7 @@ function completeSnapshot(): AppSnapshot {
     id: 'automation-1',
     name: 'Backlog',
     enabled: true,
-    prompt: 'Implement it', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+    prompt: 'Implement it', target: { kind: 'newQuickChat' as const, teamId: snapshot.teams[0]!.id, selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
 
 
@@ -300,7 +296,7 @@ function completeSnapshot(): AppSnapshot {
       completedAt: '2026-09-04T00:01:00.000Z',
       status: 'completed',
 
-      agentId: codexAgent.id, agentName: 'Dina', conversationRef: { backend: 'codex', threadId: 'thread-codex' },
+      agentId: codexAgent.id, agentName: 'Dina', conversationRef: { provider: 'codex', conversationId: 'thread-codex' },
     }],
     createdAt: '2026-09-04T00:00:00.000Z',
     updatedAt: '2026-09-04T00:01:00.000Z',
@@ -319,15 +315,15 @@ function completeSnapshot(): AppSnapshot {
     options: { delegation: { startingContext: 'conversation', instructions: 'Task instructions' }, attachments: [
         { type: 'image', path: '/tmp/image.png', detail: 'high', name: 'image.png', mimeType: 'image/png', previewUrl: 'data:image/png;base64,AA==' },
         { type: 'file', path: '/tmp/plan.md', name: 'plan.md', mimeType: 'text/markdown' },
-      ], planMode: true, skills: [{ name: 'review', path: '/skills/review' }], inputMethod: 'typed', backendOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
+      ], planMode: true, skills: [{ name: 'review', path: '/skills/review' }], inputMethod: 'typed', providerOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
   }, {
     id: 'prompt-2',
     agentId: claudeAgent.id,
     text: 'Continue',
     createdAt: '2026-09-04T00:00:00.000Z',
-    options: { backendOptions: { kind: 'claude', thinkingBudgetTokens: 4_096, permissionMode: null } },
+    options: { providerOptions: { kind: 'claude', thinkingBudgetTokens: 4_096, permissionMode: null } },
   }];
-  snapshot.backendApprovals = {
+  snapshot.providerApprovals = {
     agent: [{
       id: 'approval-1',
       kind: 'permissions',
@@ -420,8 +416,8 @@ function completeSnapshot(): AppSnapshot {
       },
     },
   };
-  snapshot.backendRuntimes = [{
-    backend: 'codex',
+  snapshot.providerRuntimes = [{
+    provider: 'codex',
     status: 'running',
     detail: { key: 'backend.running' },
     capabilities: {
@@ -445,10 +441,10 @@ function completeSnapshot(): AppSnapshot {
       permissionModes: [{ id: 'default', label: 'Default', description: { key: 'permission.default' }, dangerous: false }],
     },
   }, {
-    backend: 'claude',
+    provider: 'claude',
     status: 'starting',
   }];
-  snapshot.accountRateLimits = {
+  snapshot.providerAccountRateLimits = { codex: {
     limitId: 'primary',
     limitName: 'Primary',
     primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 1_000 },
@@ -457,7 +453,7 @@ function completeSnapshot(): AppSnapshot {
     individualLimit: null,
     planType: 'team',
     rateLimitReachedType: null,
-  };
+  } };
   snapshot.workBacklog = {
     connections: [{
       provider: 'github',

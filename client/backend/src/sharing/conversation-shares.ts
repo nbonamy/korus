@@ -5,23 +5,26 @@ import { z } from 'zod';
 import type { GuestParticipant } from '@workspace/core/guest-conversation';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { conversationShareTarget, decodeConversationInvitation, encodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
+import { conversationRefId } from '@korus-dev/multi-agent-sdk/contracts';
+import { withConversationId } from '@workspace/core/legacy-fields';
 
 const bounded = z.string().min(1).max(4096);
-const conversation = z.discriminatedUnion('backend', [
-  z.object({ backend: z.literal('codex'), threadId: bounded }).strict(),
-  z.object({ backend: z.literal('claude'), sessionId: bounded, folder: bounded.nullable() }).strict(),
-  z.object({ backend: z.literal('antigravity'), sessionId: bounded, folder: bounded.nullable() }).strict(),
-]);
-const targetSchema = z.object({ agentId: bounded, backend: z.enum(['codex', 'claude', 'antigravity']), sessionId: bounded, conversation }).strict();
+// Shares saved before conversations were named `conversationId` still load.
+const conversation = z.preprocess(withConversationId, z.discriminatedUnion('provider', [
+  z.object({ provider: z.literal('codex'), conversationId: bounded }).strict(),
+  z.object({ provider: z.literal('claude'), conversationId: bounded, folder: bounded.nullable() }).strict(),
+  z.object({ provider: z.literal('antigravity'), conversationId: bounded, folder: bounded.nullable() }).strict(),
+]));
+const targetSchema = z.object({ agentId: bounded, provider: z.enum(['codex', 'claude', 'antigravity']), sessionId: bounded, conversation }).strict();
 const handleSchema = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
 const recordSchema = z.object({ v: z.literal(2), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,
   handle: handleSchema, credential: z.string().regex(shareInvitationPattern), target: targetSchema, createdAt: z.string(), revokedAt: z.string().optional() }).strict();
 const proposalSchema = z.object({ id: z.string().uuid(), handle: handleSchema, identity: bounded, name: z.string().min(1).max(80), discriminator: z.string().length(8), text: z.string().max(100_000), followUpBehavior: z.enum(['queue', 'steer']).optional(), accessId: z.string().uuid().optional(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), status: z.enum(['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved']), createdAt: z.string(), messageId: bounded.optional(), turnId: bounded.optional() }).strict();
 // Accept only the known historical receipt leak; all other unknown fields stay invalid.
-const storedProposalSchema = proposalSchema.extend({ backendSession: z.unknown().optional() });
+const storedProposalSchema = proposalSchema.extend({ providerSession: z.unknown().optional() });
 const storeSchema = z.object({ v: z.literal(2), links: z.array(recordSchema), proposals: z.array(storedProposalSchema).optional() }).strict();
 const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status'), target: targetSchema }).strict(),
@@ -42,14 +45,16 @@ const pendingStatuses = ['pending', 'queued', 'dispatching'];
 const compactProposal = (record: StoredProposal): StoredProposal => ['dismissed', 'submitted', 'rejected'].includes(record.status) ? { ...record, fingerprint: record.fingerprint ?? fingerprint(record.text), text: '' } : record;
 export type ConversationSharingOptions = { directory: string; endpoint(): Promise<{ ownerId: string; relay: ShareRelay } | null>;
   canSubmit?(target: ConversationShareTarget, context: SubmissionContext): boolean;
+  /** Whether the harness running the shared conversation can steer a running turn now. */
+  canSteer?(target: ConversationShareTarget): boolean;
   submit?(target: ConversationShareTarget, text: string, context: SubmissionContext): Promise<{ turnId?: string; messageId?: string }>;
   routing?: {
     update(routes: ConversationShareRoute[]): Promise<ShareRoutingStatus>;
     subscribe(listener: (status: ShareRoutingStatus) => void): () => void;
   };
 };
-const conversationKey = (target: ConversationShareTarget) => JSON.stringify([target.backend, target.sessionId,
-  target.conversation.backend === 'codex' ? target.conversation.threadId : [target.conversation.folder, target.conversation.sessionId]]);
+const conversationKey = ({ provider, sessionId, conversation }: ConversationShareTarget) =>
+  JSON.stringify([provider, sessionId, conversationRefId(conversation), 'folder' in conversation ? conversation.folder : null]);
 const sameTarget = (a: ConversationShareTarget, b: ConversationShareTarget) => a.agentId === b.agentId && conversationKey(a) === conversationKey(b);
 
 /** Daemon-owned, serialized durable authority. No phone grants, renderer minting or expiry. */
@@ -102,7 +107,9 @@ export class ConversationShares {
     return this.serial(async () => {
       await this.load();
       const records = (this.saved!.proposals ?? []).filter(record => record.handle === handle);
-      return structuredClone({ writeAccess: Boolean(this.writeAccess.get(handle)?.has(identity)), proposals: records.filter(record => record.identity === identity).map(publicProposal), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
+      const target = this.saved!.links.find(link => link.handle === handle)?.target;
+      const writeAccess = Boolean(this.writeAccess.get(handle)?.has(identity));
+      return structuredClone({ writeAccess, ...(writeAccess ? { steer: Boolean(target && this.options.canSteer?.(target)) } : {}), proposals: records.filter(record => record.identity === identity).map(publicProposal), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
     });
   }
   withdraw(handle: string, identity: string, proposalId: string): Promise<void> {
@@ -210,7 +217,7 @@ export class ConversationShares {
   }
   control(input: ConversationShareControl): Promise<ConversationShareResult> {
     return this.serial(async () => {
-      if (input?.target && defaultBackendCapabilities(input.target.backend).conversationShare === false) throw new Error('Conversation sharing is unavailable for this provider.');
+      if (input?.target && defaultProviderCapabilities(input.target.provider).conversationShare === false) throw new Error('Conversation sharing is unavailable for this provider.');
       const parsed = controlSchema.safeParse(input);
       if (!parsed.success) throw new Error('Invalid share operation.');
       const action = parsed.data;
@@ -331,8 +338,8 @@ export class ConversationShares {
         // Big-bang switch: withdraw all legacy grants rather than accepting old invitations.
         if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1) { await this.write({ v: 2, links: [] }); return; }
         const decoded = storeSchema.parse(raw);
-        const needsRepair = decoded.proposals?.some(record => Object.hasOwn(record, 'backendSession'));
-        const saved: Store = { ...decoded, proposals: decoded.proposals?.map(({ backendSession: _legacySession, ...record }) => record) };
+        const needsRepair = decoded.proposals?.some(record => Object.hasOwn(record, 'providerSession'));
+        const saved: Store = { ...decoded, proposals: decoded.proposals?.map(({ providerSession: _legacySession, ...record }) => record) };
         const handles = new Set<string>(); const active = new Set<string>();
         for (const link of saved.links) {
           encodeConversationShareLink(link);

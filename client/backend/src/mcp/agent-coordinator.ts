@@ -4,7 +4,7 @@ import { executionSelectionOverridesSchema } from '../execution-selection-schema
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentWorkspaceIdentity, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
+import type { Agent, AgentWorkspaceIdentity, HarnessProvider, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
@@ -572,7 +572,7 @@ export class AppMcpAgentCoordinator {
       const { selection, ...settings } = { ...defaults, ...target };
       // A different provider uses its own defaults; never leak the shared model across providers.
       const sharedSelection = defaults.selection;
-      const mergedSelection = target.selection?.backend && target.selection.backend !== (sharedSelection?.backend ?? caller.backend)
+      const mergedSelection = target.selection?.provider && target.selection.provider !== (sharedSelection?.provider ?? caller.provider)
         ? target.selection : { ...sharedSelection, ...selection };
       try {
         const result = await this.createAgentTarget(agentId, { ...settings, selection: mergedSelection });
@@ -618,7 +618,7 @@ export class AppMcpAgentCoordinator {
       name: input.name?.trim(),
       prompt: input.prompt?.trim() || undefined,
       instructions: input.instructions?.trim() || undefined,
-      selection: executionSelectionOverridesSchema.parse({ ...input.selection, backend: input.selection?.backend ?? agent.backend }),
+      selection: executionSelectionOverridesSchema.parse({ ...input.selection, provider: input.selection?.provider ?? agent.provider }),
       repoPath: input.repoPath.trim(),
       createWorktree: input.createWorktree,
       startingContext: input.startingContext,

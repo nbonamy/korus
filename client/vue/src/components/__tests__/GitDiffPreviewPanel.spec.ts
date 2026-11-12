@@ -1,8 +1,21 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import GitDiffPreviewPanel from '../GitDiffPreviewPanel.vue';
 
 describe('GitDiffPreviewPanel', () => {
+  it('keeps treemap mode in Korus and opens a selected overview file in the shared diff', async () => {
+    const wrapper = mount(GitDiffPreviewPanel, { props: {
+      diff: 'diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755', view: 'map',
+      'onUpdate:view': view => { void wrapper.setProps({ view }); },
+    } });
+    expect(wrapper.find('.diff-treemap').exists()).toBe(true);
+    await wrapper.get('.diff-treemap__without-lines button').trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('update:view')).toContainEqual(['diff']);
+    expect(wrapper.find('.diff-treemap').exists()).toBe(false);
+    expect(wrapper.get('.git-diff-preview-panel__file-title').text()).toContain('a.ts');
+  });
+
   it('renders multiple files, hunks, line numbers, and line states', () => {
     const wrapper = mount(GitDiffPreviewPanel, {
       props: {

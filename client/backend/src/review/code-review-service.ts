@@ -17,8 +17,8 @@ import {
   type CodeReviewSession,
   type CodeReviewStartInput,
 } from '@workspace/core/code-review';
-import type { BackendCodeReviewResult } from '@workspace/core/backend-driver';
-import type { Agent, AppSnapshot, BackendSession, CreateAgentInput } from '@workspace/core/contracts';
+import type { ProviderCodeReviewResult } from '@workspace/core/provider-driver';
+import type { Agent, AppSnapshot, ProviderSessionData, CreateAgentInput } from '@workspace/core/contracts';
 import type { AgentCreationOptions } from '../agents/agent-creation-service';
 import type { ReviewToolHandlers } from './review-tool-registry';
 import { ReviewGit, type ReviewGitPort } from './review-git';
@@ -39,8 +39,8 @@ export type CodeReviewServiceOptions = {
     agent: Agent,
     prompt: string,
     reviewMcpServerUrl: string,
-    reviewerSession?: BackendSession,
-  ): Promise<BackendCodeReviewResult>;
+    reviewerSession?: ProviderSessionData,
+  ): Promise<ProviderCodeReviewResult>;
   resetReviewer(agent: Agent): Promise<void>;
   deleteReviewer(agent: Agent, handoff?: { targetAgentId: string; content: string }, retainConversation?: boolean): Promise<void>;
   saveReport(agent: Agent, session: CodeReviewSession): Promise<string>;
@@ -76,8 +76,8 @@ export class CodeReviewService {
   }
 
   private runReview(
-    agent: Agent, prompt: string, url: string, reviewerSession?: BackendSession,
-  ): Promise<BackendCodeReviewResult> {
+    agent: Agent, prompt: string, url: string, reviewerSession?: ProviderSessionData,
+  ): Promise<ProviderCodeReviewResult> {
     const general = this.options.snapshot.general;
     const instructions = general.codeReviewInstructions?.trim();
     if (instructions) {
@@ -96,13 +96,13 @@ export class CodeReviewService {
         maxPriority: input.maxPriority ?? saved?.maxPriority ?? 'p2',
         maxRounds: input.maxRounds ?? saved?.maxRounds ?? 3,
         autoCommit: input.autoCommit ?? false,
-      }, selection: { ...input.selection, backend: input.selection?.backend ?? agent.backend } }, { rememberSettings: false });
+      }, selection: { ...input.selection, provider: input.selection?.provider ?? agent.provider } }, { rememberSettings: false });
   }
 
   start(agent: Agent, input: CodeReviewStartInput, options: { rememberSettings?: boolean } = {}): CodeReviewSession {
     if (!isCodeReviewStartInput(input)) throw new Error('Invalid code review settings.');
     if (!agent.folder) throw new Error('Code review requires an agent workspace.');
-    if (input.threadMode === 'current' && !agent.backendSession) {
+    if (input.threadMode === 'current' && !agent.providerSession) {
       throw new Error('The current thread is not available for review.');
     }
     if (input.scope.type === 'branch' && !input.scope.baseRef.trim()) {
@@ -128,13 +128,13 @@ export class CodeReviewService {
 
     const reviewer = input.threadMode === 'current'
       ? agent
-      : this.createIndependentReviewer(agent, input.selection?.backend ?? agent.backend);
+      : this.createIndependentReviewer(agent, input.selection?.provider ?? agent.provider);
     this.applySelection(reviewer, input);
     if (options.rememberSettings !== false) this.rememberSettings(reviewer, input);
     if (current?.status === 'failed') this.closeReviewToolContext(current);
     const session = this.newSession(agent, reviewer, input);
     const firstRound = activeCodeReviewRound(session);
-    if (input.threadMode === 'current') firstRound.reviewerSession = agent.backendSession;
+    if (input.threadMode === 'current') firstRound.reviewerSession = agent.providerSession;
     reviewer.codeReview = session;
     void this.options.changed();
     void this.executeRound(
@@ -151,7 +151,7 @@ export class CodeReviewService {
     reviewer: Agent,
     input: CodeReviewStartInput,
   ): CodeReviewSession {
-    if (input.selection?.backend && input.selection?.backend !== reviewer.backend) {
+    if (input.selection?.provider && input.selection?.provider !== reviewer.provider) {
       throw new Error('Start a new review to change the backend of an existing reviewer.');
     }
     const previous = reviewer.codeReview;
@@ -313,7 +313,7 @@ export class CodeReviewService {
       const context = this.reviewToolContext(agent, session);
       const result = await this.runReview(agent, commitPrompt(), context.url, requiredReviewerSession(round));
       if (agent.codeReview !== session) return;
-      agent.backendSession = result.reviewerSession;
+      agent.providerSession = result.reviewerSession;
       round.reviewerSession = result.reviewerSession;
       const after = await this.git.inspect(folder);
       if (after.head === before.head) throw new Error('The review agent did not create a commit. The review is unchanged.');
@@ -517,7 +517,7 @@ export class CodeReviewService {
     agent: Agent,
     session: CodeReviewSession,
     round: CodeReviewRound,
-    initialReviewerSession?: BackendSession,
+    initialReviewerSession?: ProviderSessionData,
   ): Promise<void> {
     const wasAutomatic = session.automation?.state === 'running';
     this.activeRoundTurns.add(round.id);
@@ -537,7 +537,7 @@ export class CodeReviewService {
       if (agent.codeReview !== session || round.status !== 'reviewing') {
         return;
       }
-      agent.backendSession = result.reviewerSession;
+      agent.providerSession = result.reviewerSession;
       round.reviewerSession = result.reviewerSession;
       round.summary = result.text;
       if (wasAutomatic && session.automation?.state === 'paused') return;
@@ -549,7 +549,7 @@ export class CodeReviewService {
       if (session.threadMode === 'independent' && this.options.snapshot.general.codeReviewDiscussWithOriginalThread && round.findings.length) {
         const discussed = await this.runReview(agent, originalDiscussionPrompt(session, round), context.url, round.reviewerSession);
         if (agent.codeReview !== session || round.status !== 'reviewing') return;
-        agent.backendSession = round.reviewerSession = discussed.reviewerSession;
+        agent.providerSession = round.reviewerSession = discussed.reviewerSession;
         round.summary = discussed.text;
         if (session.automation?.state === 'running') await this.assertReviewWorkspace(agent, session, true);
       }
@@ -590,7 +590,7 @@ export class CodeReviewService {
         context.url,
         requiredReviewerSession(round),
       );
-      agent.backendSession = result.reviewerSession;
+      agent.providerSession = result.reviewerSession;
       round.reviewerSession = result.reviewerSession;
       const body = result.text.trim();
       if (!body) throw new Error('Reviewer did not answer the finding discussion.');
@@ -636,7 +636,7 @@ export class CodeReviewService {
           requiredReviewerSession(round),
         );
         if (agent.codeReview !== session || session.status !== 'fixing') return;
-        agent.backendSession = result.reviewerSession;
+        agent.providerSession = result.reviewerSession;
         round.reviewerSession = result.reviewerSession;
         const incomplete = findings.filter((finding) => {
           const current = this.findFindingInSession(session, finding.id);
@@ -768,9 +768,9 @@ export class CodeReviewService {
     if (input.threadMode === 'current') return;
     const previous = this.options.snapshot.general.codeReviewDefaults;
     this.options.snapshot.general.codeReviewDefaults = {
-      backend: reviewer.backend,
+      provider: reviewer.provider,
       automation: input.automation ?? { enabled: false, maxPriority: previous?.automation.maxPriority ?? 'p2', maxRounds: previous?.automation.maxRounds ?? 3, ...(previous?.automation.autoCommit !== undefined ? { autoCommit: previous.automation.autoCommit } : {}) },
-      providers: { ...previous?.providers, [reviewer.backend]: executionSelectionForAgent(reviewer) },
+      providers: { ...previous?.providers, [reviewer.provider]: executionSelectionForAgent(reviewer) },
     };
   }
 
@@ -947,16 +947,16 @@ export class CodeReviewService {
     };
   }
 
-  private createIndependentReviewer(target: Agent, backend: Agent['backend']): Agent {
-    const sourceDefaults = target.backendDefaults?.kind === backend
-      ? target.backendDefaults
+  private createIndependentReviewer(target: Agent, provider: Agent['provider']): Agent {
+    const sourceDefaults = target.providerDefaults?.kind === provider
+      ? target.providerDefaults
       : undefined;
     const name = target.name?.trim()
       || (target.workspace?.kind === 'git' ? target.workspace.branch : undefined)
       || this.options.snapshot.agentGitStatuses[target.id]?.branch;
-    const reviewer = this.options.createAgent({ name: name ? `👀 ${name}` : 'Review', folder: target.folder ?? '', avatar: target.avatar, teamId: target.teamId, selection: { backend } }, { select: false, afterAgentId: target.id });
+    const reviewer = this.options.createAgent({ name: name ? `👀 ${name}` : 'Review', folder: target.folder ?? '', avatar: target.avatar, teamId: target.teamId, selection: { provider: provider } }, { select: false, afterAgentId: target.id });
     // Start from the selected provider's saved defaults, then inherit compatible source overrides.
-    if (sourceDefaults) reviewer.backendDefaults = { ...reviewer.backendDefaults, ...sourceDefaults };
+    if (sourceDefaults) reviewer.providerDefaults = { ...reviewer.providerDefaults, ...sourceDefaults };
     if (target.workspace) reviewer.workspace = structuredClone(target.workspace);
     if (target.openInApplication) reviewer.openInApplication = target.openInApplication;
     const gitStatus = this.options.snapshot.agentGitStatuses[target.id];
@@ -1168,7 +1168,7 @@ Load korus-reviewer through read-skill for finding discussion, then answer this 
 ${question}`;
 }
 
-function requiredReviewerSession(round: CodeReviewRound): BackendSession {
+function requiredReviewerSession(round: CodeReviewRound): ProviderSessionData {
   if (!round.reviewerSession) throw new Error('Review conversation is not available.');
   return round.reviewerSession;
 }

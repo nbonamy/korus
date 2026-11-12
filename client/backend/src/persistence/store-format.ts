@@ -1,9 +1,10 @@
 import { product } from '@workspace/core/product';
 import backendPackage from '../../package.json';
 
-export const storeSchemaVersion = 1;
+// Schema 2: agent provider fields are stored as `provider*` instead of `backend*`.
+export const storeSchemaVersion = 2;
 // Mixed-host teams require a reader that retains remote links and collaboration authority.
-export const rosterSchemaVersion = 4;
+export const rosterSchemaVersion = 5;
 const storeWrittenBy = `daemon ${backendPackage.version}`;
 
 export class StoreFormatError extends Error {

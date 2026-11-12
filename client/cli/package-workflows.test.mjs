@@ -40,7 +40,7 @@ test('installed package command and recovery workflows', { timeout: 30_000 }, as
   const directory = await mkdtemp(path.join(os.tmpdir(), 'cli-workflows-'));
   const home = path.join(directory, 'state'), userHome = path.join(directory, 'user'), bin = path.join(directory, 'bin');
   const env = { ...process.env, HOME: userHome, USERPROFILE: userHome, APP_HOME: home, KORUS_HOME: '', APP_BACKEND_SOCKET: '',
-    PATH: bin, CODEX_HOME: '', CLAUDE_CONFIG_DIR: '', GEMINI_HOME: '', KORUS_APP_PATH: path.join(directory, 'NoApp.app'), NO_COLOR: '1' };
+    PATH: bin, CODEX_HOME: '', CLAUDE_CONFIG_DIR: '', KORUS_APP_PATH: path.join(directory, 'NoApp.app'), NO_COLOR: '1' };
   const children = new Set();
   let disposing;
   const dispose = () => disposing ??= (async () => {
@@ -147,7 +147,7 @@ if(args[0]==='--version'){console.log('test 1.2.3');process.exit(0)}
 if(args[0]==='auth'){console.log(JSON.stringify({loggedIn:signed,email:'PRIVATE_ACCOUNT'}));process.exit(signed?0:1)}
 if(args[0]==='login'){console.error(signed?'Logged in using ChatGPT':'Not logged in');process.exit(signed?0:1)}
 if(args[0]==='models'){if(signed)console.log('gemini-test\\tTest');process.exit(signed?0:1)}
-fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:process.pid,home:process.env.${id === 'claude' ? 'CLAUDE_CONFIG_DIR' : id === 'codex' ? 'CODEX_HOME' : 'GEMINI_HOME'}}));if(process.env.TEST_LONG){console.log('CLIENT_RUNNING');setInterval(()=>{},1000)}else process.exit(7);\n`;
+fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:process.pid,home:${id === 'antigravity' ? 'null' : `process.env.${id === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME'}`}}));if(process.env.TEST_LONG){console.log('CLIENT_RUNNING');setInterval(()=>{},1000)}else process.exit(7);\n`;
         await writeFile(path.join(bin, name), code); await chmod(path.join(bin, name), 0o755);
       }
       const homes = Object.fromEntries(['claude', 'codex', 'antigravity'].map(id => [id, { homePath: path.join(home, `${id}-home`), isolated: true }]));
@@ -158,9 +158,9 @@ fs.writeFileSync(process.env.TEST_CAPTURE,JSON.stringify({id:'${id}',args,pid:pr
       });
       const capture = path.join(directory, 'provider.json');
       for (const [selected, auth] of [['claude', {}], ['codex', { TEST_AUTH_claude: 'no' }], ['antigravity', { TEST_AUTH_claude: 'no', TEST_AUTH_codex: 'no' }]]) {
-        await t.test(`triage selects ${selected}, its isolated home and the provider exit code`, { timeout: 2_500 }, async () => {
+        await t.test(`triage selects ${selected}, its home and the provider exit code`, { timeout: 2_500 }, async () => {
           assert.equal((await run(['triage', 'test problem', '--model', 'model with spaces'], { TEST_CAPTURE: capture, ...auth })).code, 7);
-          const launched = JSON.parse(await readFile(capture, 'utf8')); assert.equal(launched.id, selected); assert.equal(launched.home, homes[selected].homePath); assert.ok(launched.args.includes('model with spaces'));
+          const launched = JSON.parse(await readFile(capture, 'utf8')); assert.equal(launched.id, selected); assert.equal(launched.home, selected === 'antigravity' ? null : homes[selected].homePath); assert.ok(launched.args.includes('model with spaces'));
         });
       }
       await t.test('bounds hung authentication discovery', { timeout: 2_500 }, async () => {

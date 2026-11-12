@@ -13,7 +13,7 @@
           {{ t('chat.subagents.retryConversation') }}
         </button>
       </div>
-      <CodexMessageList
+      <MessageList
         v-else
         :messages="messages"
         :tool-visibility="isAppToolVisible"
@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { CodexMessageList, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { MessageList, type ConversationLink } from '@korus-dev/agent-ui-sdk';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentSubagentTree, RendererMessage } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  'open-link': [link: CodexConversationLink];
+  'open-link': [link: ConversationLink];
 }>();
 
 const { t } = useI18n();
@@ -147,7 +147,7 @@ function cancelPoll(): void {
   flex-direction: column;
 }
 
-.subagent-panel__conversation :deep(.codex-message-list) {
+.subagent-panel__conversation :deep(.agent-ui-message-list) {
   min-height: 0;
   flex: 1 1 auto;
 }

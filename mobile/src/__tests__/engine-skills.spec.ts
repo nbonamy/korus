@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEngine } from '../engine';
 import { createDemoConnector } from '../demo-connector';
-import type { BackendSkillSummary } from '@workspace/core/contracts';
+import type { ProviderSkillSummary } from '@workspace/core/contracts';
 
-const skills: BackendSkillSummary[] = [
+const skills: ProviderSkillSummary[] = [
   { name: 'Commit-Push (cp)', path: '/skills/commit-push/SKILL.md', shortDescription: 'Commit and push changes', enabled: true },
   { name: 'hidden', path: '/skills/hidden/SKILL.md', enabled: false },
 ];
@@ -36,8 +36,8 @@ describe('mobile skill catalog', () => {
   });
 
   it('discards a late catalog after changing chats and lets a failed lookup be retried', async () => {
-    let resolve!: (value: BackendSkillSummary[]) => void;
-    const list = vi.fn(async (_id: string): Promise<BackendSkillSummary[]> => skills)
+    let resolve!: (value: ProviderSkillSummary[]) => void;
+    const list = vi.fn(async (_id: string): Promise<ProviderSkillSummary[]> => skills)
       .mockImplementationOnce(() => new Promise((done) => { resolve = done; }))
       .mockRejectedValueOnce(new Error('Offline'));
     const f = fixture(list);

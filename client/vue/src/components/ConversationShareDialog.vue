@@ -60,7 +60,7 @@ function shareError(cause: unknown): string {
   if (message.includes('Companion identity cannot be loaded.')) return t('sharing.identityUnavailable');
   if (message.includes('Conversation is unavailable for sharing.') || message.includes('Conversation changed.') || message.includes('Share link has changed.')) return t('sharing.conversationChanged');
   if (message.includes('does not support conversation sharing')) return t('sharing.unsupported');
-  if (message.includes('conversationShareControl') || message.includes('No handler registered') || message.includes('Unknown backend method')) return t('sharing.restartRequired');
+  if (message.includes('conversationShareControl') || message.includes('No handler registered') || message.includes('Unknown provider method')) return t('sharing.restartRequired');
   return t('sharing.failed');
 }
 async function load() {

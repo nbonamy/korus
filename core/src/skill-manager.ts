@@ -1,14 +1,14 @@
-import type { AgentBackend } from './contracts';
+import type { HarnessProvider } from './contracts';
 
-export type SkillManagerInput = { action: 'list' } | { action: 'sync'; name?: string } | { action: 'install'; source: string; backends?: AgentBackend[]; refresh?: boolean } | { action: 'view'; name: string } | { action: 'remove'; name: string; confirmed: true } | { action: 'remove'; names: string[]; confirmed: true };
-export type SkillProviderLocation = { backend: AgentBackend; directory: string; discoveryOnly?: boolean };
+export type SkillManagerInput = { action: 'list' } | { action: 'sync'; name?: string } | { action: 'install'; source: string; providers?: HarnessProvider[]; refresh?: boolean } | { action: 'view'; name: string } | { action: 'remove'; name: string; confirmed: true } | { action: 'remove'; names: string[]; confirmed: true };
+export type SkillProviderLocation = { provider: HarnessProvider; directory: string; discoveryOnly?: boolean };
 export type InstalledSkill = {
   name: string; description: string; managed: boolean; builtIn?: boolean; origin?: 'synced'; source?: string; revision?: string;
   collection?: string; collectionSize?: number;
-  providers: { backend: AgentBackend; path: string; status: 'installed' | 'missing' | 'conflict'; error?: string }[];
+  providers: { provider: HarnessProvider; path: string; status: 'installed' | 'missing' | 'conflict'; error?: string }[];
 };
-export type SkillDocument = { name: string; files: { providers: AgentBackend[]; content: string }[] };
-export type SkillManagerState = { document?: SkillDocument; skills: InstalledSkill[]; providers: AgentBackend[]; curated: typeof curatedSkills; issues: string[]; /** Skills each curated pack installed through Korus, by pack name. */ installs?: Record<string, string[]> };
+export type SkillDocument = { name: string; files: { providers: HarnessProvider[]; content: string }[] };
+export type SkillManagerState = { document?: SkillDocument; skills: InstalledSkill[]; providers: HarnessProvider[]; curated: typeof curatedSkills; issues: string[]; /** Skills each curated pack installed through Korus, by pack name. */ installs?: Record<string, string[]> };
 
 export type CuratedSkill = { name: string; title: string; author: string; description: string; source: string; kind?: 'pack' };
 export const curatedSkills: readonly CuratedSkill[] = [

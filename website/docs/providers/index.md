@@ -11,11 +11,11 @@ Korus can run different coding engines in the same team. Each engine has its own
 | [Codex](./codex) | Uses an installed CLI, or ChatGPT's runtime on macOS; browser sign-in from Korus |
 | [Claude Code](./claude-code) | Uses an installed CLI or Korus's bundled runtime; sign-in through a command copied from Korus |
 | [Cursor](#cursor) | Uses the installed Cursor CLI and its existing setup; sign in from Korus |
-| [Antigravity](#antigravity) | Install its runtime from Korus; native Google sign-in |
+| [Antigravity](#antigravity) | Uses the installed Antigravity CLI; native Google sign-in |
 
 ## Choose where each engine keeps its setup
 
-Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex, Claude Code, and Cursor, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected. For Codex, Claude Code, and Antigravity, use **Customize** to choose a separate setup, either beneath the engine during connection or beside **Location** in Settings. Cursor uses its existing setup.
+Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens the engine's own installation instructions. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected. For Codex, Claude Code, and Antigravity, use **Customize** to choose a separate setup, either beneath the engine during connection or beside **Location** in Settings. Cursor uses its existing setup.
 
 There are two choices under **Conversations**:
 
@@ -82,17 +82,23 @@ Cursor's Settings page shows account billing and quota information when availabl
 
 ## Antigravity
 
-Select **Install** in Welcome or **Settings → Antigravity**. Korus downloads the appropriate runtime directly from Google, verifies it, and enables **Connect** when it is ready. A spinner appears during installation. No terminal commands or PATH changes are needed. Installation supports Apple Silicon and Intel Macs, and Linux and Windows on x64 and ARM64.
+Antigravity runs on the Antigravity CLI (`agy`), version 1.5.1 or later, with every model on your account. If it is missing, Welcome and **Settings → Antigravity** show the install command and a link to Google's instructions:
 
-Antigravity uses Google's ACP runtime, independently of the editor and the `agy` CLI. If you prefer to install it yourself, the [ACP registry entry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json) lists platform downloads. Extract the runtime and its companion executable together into a directory on PATH (`agy_acp_server.par` and `localharness_external` on macOS/Linux, or their `.exe` versions on Windows). Make both executable on macOS/Linux, then select the refresh icon in Korus.
+```sh
+curl -fsSL https://antigravity.google/cli/install.sh | bash
+```
+
+Select the refresh icon once it is installed. Keep it current with `agy update`.
 
 Once detected:
 
-1. Select **Customize** to choose separate Korus chats or your existing setup. Antigravity's existing setup uses `GEMINI_HOME` when configured, otherwise `~/.gemini`.
+1. Select **Customize** to choose separate Korus chats or your existing setup. Antigravity's existing setup is `~/.gemini`. The Google sign-in is shared by both.
 2. Select **Connect Antigravity** in Welcome, or **Connect** in its Settings page, and complete the native Google sign-in flow. Credentials stay with Antigravity; do not paste them into chat.
 3. Wait for **Connected**, enable the engine, and select it when creating an agent. Verify with a small read-only repository task.
 
-Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Model choices come from the ACP runtime and may differ from the editor's catalog; available effort variants appear in the model choices.
+Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Each model appears once, and models that offer thinking levels let you pick one beside the model.
+
+Use the composer's **Permissions** menu to choose **Ask for approval**, **Allow file edits**, or **Auto**. These govern file edits and commands. Antigravity runs the tools of connected MCP servers without asking in every mode, so connect only servers you trust.
 
 Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for SSH-hosted agents and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 

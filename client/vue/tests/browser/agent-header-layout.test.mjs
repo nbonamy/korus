@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -13,7 +14,7 @@ test('conversation headers preserve agent identity before branch and status cont
     configFile: false,
     root: `${repository}/client/vue/tests/browser/fixtures/agent-header`,
     resolve: { alias: { '@workspace/core': `${repository}/core/src` }, dedupe: ['vue'] },
-    plugins: [vue()],
+    plugins: [sdkSourcePlugin, vue()],
     server: { host: '127.0.0.1', port: 0, fs: { allow: [repository] } },
     logLevel: 'error',
   });

@@ -1,6 +1,6 @@
 import * as z from 'zod/v4';
 import os from 'node:os';
-import type { Agent, BackendCapabilities } from '@workspace/core/contracts';
+import type { Agent, ProviderCapabilities } from '@workspace/core/contracts';
 import type { MonitorManager } from '../monitors/manager';
 import {
   loggedToolResult,
@@ -8,7 +8,7 @@ import {
 } from './tool-modules';
 export function createMonitorToolModuleProvider(options: {
   agents: () => Agent[];
-  capabilities: (agent: Agent) => BackendCapabilities;
+  capabilities: (agent: Agent) => ProviderCapabilities;
   monitors: MonitorManager;
 }): AppMcpToolModuleProvider {
   return {

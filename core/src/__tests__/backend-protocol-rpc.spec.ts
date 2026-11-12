@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
-  AgentBackend,
+  HarnessProvider,
   AgentFileActivity,
   AgentGitStatus,
   AppSnapshot, BrowserAnnotation,
@@ -44,7 +44,7 @@ describe('backend protocol guards', () => {
 
   it('rejects snapshot/get results with malformed nested snapshot state', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes[0]!.capabilities = {
+    snapshot.providerRuntimes[0]!.capabilities = {
       planMode: 'automatic',
     } as never;
 
@@ -82,35 +82,35 @@ describe('backend protocol guards', () => {
       .toEqualTypeOf<never>();
     type SnapshotUpdatedEvent = Extract<AppBackendEvent, { type: 'snapshot.updated' }>;
     expectTypeOf<SnapshotUpdatedEvent['payload']>().toEqualTypeOf<AppSnapshot>();
-    expectTypeOf<Pick<SnapshotUpdatedEvent, 'agentId' | 'backend' | 'threadId' | 'turnId'>>()
+    expectTypeOf<Pick<SnapshotUpdatedEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
       .toEqualTypeOf<{
         agentId?: string;
-        backend?: AgentBackend;
-        threadId?: string;
+        provider?: HarnessProvider;
+        conversationId?: string;
         turnId?: string;
       }>();
     expectTypeOf<SnapshotUpdatedEvent['snapshot']>().toEqualTypeOf<AppSnapshot | undefined>();
     expectTypeOf<AnnotationEvent['payload']>().toEqualTypeOf<BrowserAnnotation>();
     type SubagentStatusEvent = Extract<AppBackendEvent, { type: 'subagent.statusChanged' }>;
     expectTypeOf<SubagentStatusEvent['payload']>().toEqualTypeOf<SubagentStatusChange>();
-    expectTypeOf<Pick<SubagentStatusEvent, 'agentId' | 'backend' | 'threadId' | 'turnId'>>()
+    expectTypeOf<Pick<SubagentStatusEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
       .toEqualTypeOf<{
         agentId: string;
-      backend: 'codex' | 'claude' | 'antigravity' | 'cursor';
-        threadId?: string;
+      provider: 'codex' | 'claude' | 'antigravity' | 'cursor';
+        conversationId?: string;
         turnId?: string;
       }>();
     type DiffUpdatedEvent = Extract<AppBackendEvent, { type: 'conversation.turnDiffUpdated' }>;
     expectTypeOf<DiffUpdatedEvent['payload']>()
       .toEqualTypeOf<Omit<TurnGitDiff, 'agentId' | 'turnId' | 'updatedAt'>>();
-    expectTypeOf<Pick<DiffUpdatedEvent, 'agentId' | 'backend' | 'threadId' | 'turnId'>>()
-      .toEqualTypeOf<{ agentId: string; backend: AgentBackend; threadId?: string; turnId: string }>();
+    expectTypeOf<Pick<DiffUpdatedEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider: HarnessProvider; conversationId?: string; turnId: string }>();
     expectTypeOf<Extract<AppBackendEvent, { type: 'workspace.fileActivityDetected' }>['payload']>()
       .toEqualTypeOf<Omit<AgentFileActivity, 'agentId' | 'turnId' | 'occurredAt'>>();
     type GitStatusUpdatedEvent = Extract<AppBackendEvent, { type: 'git.statusUpdated' }>;
     expectTypeOf<GitStatusUpdatedEvent['payload']>().toEqualTypeOf<AgentGitStatus>();
-    expectTypeOf<Pick<GitStatusUpdatedEvent, 'agentId' | 'backend' | 'threadId' | 'turnId'>>()
-      .toEqualTypeOf<{ agentId: string; backend?: AgentBackend; threadId?: string; turnId?: string }>();
+    expectTypeOf<Pick<GitStatusUpdatedEvent, 'agentId' | 'provider' | 'conversationId' | 'turnId'>>()
+      .toEqualTypeOf<{ agentId: string; provider?: HarnessProvider; conversationId?: string; turnId?: string }>();
     expectTypeOf<Extract<AppBackendEvent, { type: 'agentRequest.created' }>['payload']>()
       .toEqualTypeOf<{ request: import('../agent-request').AgentRequest }>();
     expectTypeOf<Extract<AppBackendEvent, { type: 'agentRequest.resolved' }>['payload']>()

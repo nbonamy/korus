@@ -329,14 +329,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                 DropdownMenuItem(text = { Text("Permissions") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null) }, onClick = { addPage = "root" })
                 HorizontalDivider()
                 val permissions = state.obj("permissions")
-                permissions.strings("presets").forEach { preset ->
-                    DropdownMenuItem(text = { Text(preset.replace('-', ' ').split(' ').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }) }, trailingIcon = { MenuCheck(preset == permissions.string("approvalPreset")) },
-                        enabled = model.canChoosePermissions, onClick = { addMenu = false; model.chooseApprovalPreset(preset) })
-                }
-                if (permissions.strings("presets").isNotEmpty() && permissions.items("modes").isNotEmpty()) HorizontalDivider()
-                permissions.items("modes").forEach { mode ->
-                    DropdownMenuItem(text = { Text(mode.string("label")) }, trailingIcon = { MenuCheck(mode.string("id") == permissions.string("permissionMode")) },
-                        enabled = model.canChoosePermissions, onClick = { addMenu = false; model.choosePermissionMode(mode.string("id")) })
+                permissions.items("options").forEach { option ->
+                    val dangerous = option.optBoolean("dangerous")
+                    DropdownMenuItem(text = { Text(option.string("label"), color = if (dangerous) MaterialTheme.colorScheme.error else Color.Unspecified) },
+                        trailingIcon = { MenuCheck(option.string("id") == permissions.string("current")) },
+                        enabled = model.canChoosePermissions, onClick = { addMenu = false; model.choosePermission(option.string("id")) })
                 }
             }
             DropdownMenu(expanded = addMenu && addPage == "root", onDismissRequest = { addMenu = false }) {
@@ -346,7 +343,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                 if (state.obj("capabilities").optBoolean("goals")) DropdownMenuItem(text = { Text("Goal mode") }, leadingIcon = { Icon(Icons.Outlined.TrackChanges, null) }, trailingIcon = { if (drafts.goalMode) Icon(Icons.Outlined.Check, null) },
                     enabled = state.optBoolean("canSend") && !drafts.sending && !drafts.importing && !dictation.active && drafts.items.isEmpty(), onClick = { addMenu = false; model.setGoalMode(!drafts.goalMode) })
                 if (state.obj("capabilities").optBoolean("planMode")) DropdownMenuItem(text = { Text("Plan mode") }, leadingIcon = { Icon(Icons.Outlined.ListAlt, null) }, trailingIcon = { if (composer.optBoolean("planMode")) Icon(Icons.Outlined.Check, null) }, enabled = model.canTogglePlanMode, onClick = { addMenu = false; model.setPlanMode(!composer.optBoolean("planMode")) })
-                if (state.obj("permissions").strings("presets").isNotEmpty() || state.obj("permissions").items("modes").isNotEmpty()) DropdownMenuItem(text = { Text("Permissions") }, leadingIcon={ Icon(Icons.Outlined.Security,null) },trailingIcon={ Icon(Icons.Outlined.ChevronRight,null) },enabled=model.canChoosePermissions,onClick={ addPage="permissions" })
+                if (state.obj("permissions").items("options").isNotEmpty()) DropdownMenuItem(text = { Text("Permissions") }, leadingIcon={ Icon(Icons.Outlined.Security,null) },trailingIcon={ Icon(Icons.Outlined.ChevronRight,null) },enabled=model.canChoosePermissions,onClick={ addPage="permissions" })
                 HorizontalDivider()
                 DropdownMenuItem(text = { Text("Review") }, leadingIcon = { Icon(Icons.Outlined.Checklist, null) }, enabled = model.canManageSession,
                     onClick = { addMenu = false; focus.clearFocus(); keyboard?.hide(); model.openReview() })

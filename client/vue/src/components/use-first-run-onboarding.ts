@@ -1,11 +1,14 @@
-import type { AgentBackend, ClaudeAuthentication, CodexAuthentication, AppApi } from '@workspace/core/contracts';
-import type { ProviderConnection, ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
+import type { HarnessProvider, ClaudeAuthentication, CodexAuthentication, AppApi } from '@workspace/core/contracts';
+import { providerAuthenticationState, type ProviderAuthenticationAction, type ProviderConnection, type ProviderSetupChange, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
 import { clearFirstRunOnboardingStage, getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
+
+/** What each provider's connection control shows while it signs in, keyed by provider. */
+export type ProviderConnectionActivity = Partial<Record<HarnessProvider, { busy: boolean; error: string | null | undefined }>>;
 
 type FirstRunOnboardingOptions = {
   getApi: () => AppApi | undefined;
@@ -15,8 +18,8 @@ type FirstRunOnboardingOptions = {
 
 export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const authentication = ref<CodexAuthentication | null>(null);
-  watch(() => JSON.stringify(options.getConnections().find(provider => provider.backend === 'codex')?.authentication), () => {
-    const cached = options.getConnections().find(provider => provider.backend === 'codex')?.authentication;
+  watch(() => JSON.stringify(options.getConnections().find(provider => provider.provider === 'codex')?.authentication), () => {
+    const cached = options.getConnections().find(provider => provider.provider === 'codex')?.authentication;
     if (cached?.kind === 'codex') authentication.value = cached.state;
   }, { immediate: true });
   const authenticationLoading = ref(!options.hasExistingWorkspace());
@@ -38,19 +41,31 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const completeVisible = ref(false);
   const discovering = ref(!options.hasExistingWorkspace());
   const providerSetup = ref<ProviderSetupStatus[]>([]);
-  const customizingProvider = ref<AgentBackend | null>(null);
-  const updatingProvider = ref<AgentBackend | null>(null);
+  const customizingProvider = ref<HarnessProvider | null>(null);
+  const updatingProvider = ref<HarnessProvider | null>(null);
   const setupBusy = computed(() => updatingProvider.value !== null);
   const setupError = ref<string | null>(null);
-  const customizedSetup = computed(() => providerSetup.value.find(setup => setup.backend === customizingProvider.value) ?? null);
+  const customizedSetup = computed(() => providerSetup.value.find(setup => setup.provider === customizingProvider.value) ?? null);
   let disposed = false;
   let authenticationPoll: ReturnType<typeof setTimeout> | null = null;
   let pollRevision = 0;
 
-  const codexConnected = computed(() => options.getConnections().some(provider => provider.backend === 'codex' && provider.connected));
-  const claudeConnected = computed(() => options.getConnections().some(provider => provider.backend === 'claude' && provider.connected));
-  const cursorConnected = computed(() => options.getConnections().some(provider => provider.backend === 'cursor' && provider.connected));
-  const antigravityConnected = computed(() => options.getConnections().some(provider => provider.backend === 'antigravity' && provider.connected));
+  const codexConnected = computed(() => options.getConnections().some(provider => provider.provider === 'codex' && provider.connected));
+  const claudeConnected = computed(() => options.getConnections().some(provider => provider.provider === 'claude' && provider.connected));
+  const cursorConnected = computed(() => options.getConnections().some(provider => provider.provider === 'cursor' && provider.connected));
+  const antigravityConnected = computed(() => options.getConnections().some(provider => provider.provider === 'antigravity' && provider.connected));
+  const connection = (provider: HarnessProvider) => options.getConnections().find(candidate => candidate.provider === provider);
+  const checking = (provider: HarnessProvider) => connection(provider)?.checking === true;
+  const cursorConnectionError = computed(() => {
+    const authentication = connection('cursor')?.authentication;
+    return cursorError.value ?? (authentication?.kind === 'cursor' ? authentication.state.error : undefined) ?? connection('cursor')?.error;
+  });
+  const connectionActivity = computed<ProviderConnectionActivity>(() => ({
+    codex: { busy: authenticationLoading.value || checking('codex'), error: authenticationError.value ?? authentication.value?.login.error ?? connection('codex')?.error },
+    claude: { busy: claudeLoading.value || checking('claude'), error: claudeError.value ?? connection('claude')?.error },
+    cursor: { busy: cursorLoading.value || checking('cursor'), error: cursorConnectionError.value },
+    antigravity: { busy: antigravityLoading.value || checking('antigravity'), error: antigravityError.value ?? connection('antigravity')?.error },
+  }));
   const canContinue = computed(() => options.getConnections().some(provider => provider.connected && provider.installed && provider.enabled !== false));
   const initialAuthenticationLoading = computed(() => discovering.value);
   const showLogin = computed(() => discovering.value || providersVisible.value);
@@ -80,7 +95,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
 
   async function refreshCodex(): Promise<void> {
     try {
-      const next = await requireApi().getCodexAuthentication();
+      const next = await codexAuthentication('check');
       if (!disposed) authentication.value = next;
     } catch (error) {
       if (!disposed) authenticationError.value = errorMessage(error);
@@ -98,7 +113,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationLoading.value = true;
     authenticationError.value = null;
     try {
-      await requireApi().startCodexChatGptLogin();
+      await requireApi().authenticateProvider('codex', 'login', { method: 'browser' });
       if (disposed) return;
       authentication.value = { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } };
       startPolling();
@@ -113,10 +128,13 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     claudeLoading.value = true;
     claudeError.value = null;
     try {
-      const next = await requireApi().getClaudeAuthentication();
+      const connecting = claudeDialogVisible.value;
+      const next = providerAuthenticationState(await requireApi().authenticateProvider('claude', 'check'), 'claude');
       if (disposed) return;
       claudeAuthentication.value = next;
       if (next.loggedIn) claudeDialogVisible.value = false;
+      // Claude signs in outside the app: the dialog is the user connecting it, so a check on its own turns nothing on.
+      if (next.loggedIn && connecting) await requireApi().setProviderEnabled('claude', true);
     } catch (error) {
       if (!disposed) {
         claudeAuthentication.value = null;
@@ -134,23 +152,23 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     await refreshClaude();
   }
 
-  async function enableConnectedEngine(backend: AgentBackend): Promise<void> {
-    const busy = backend === 'cursor' ? cursorLoading : backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
-    const error = backend === 'cursor' ? cursorError : backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
+  async function enableConnectedEngine(provider: HarnessProvider): Promise<void> {
+    const busy = provider === 'cursor' ? cursorLoading : provider === 'antigravity' ? antigravityLoading : provider === 'codex' ? authenticationLoading : claudeLoading;
+    const error = provider === 'cursor' ? cursorError : provider === 'antigravity' ? antigravityError : provider === 'codex' ? authenticationError : claudeError;
     busy.value = true;
     error.value = null;
-    try { await requireApi().setProviderEnabled(backend, true); }
+    try { await requireApi().setProviderEnabled(provider, true); }
     catch (cause) { if (!disposed) error.value = errorMessage(cause); }
     finally { if (!disposed) busy.value = false; }
   }
 
-  async function disconnectProvider(backend: AgentBackend): Promise<void> {
-    const busy = backend === 'cursor' ? cursorLoading : backend === 'antigravity' ? antigravityLoading : backend === 'codex' ? authenticationLoading : claudeLoading;
-    const error = backend === 'cursor' ? cursorError : backend === 'antigravity' ? antigravityError : backend === 'codex' ? authenticationError : claudeError;
+  async function disconnectProvider(provider: HarnessProvider): Promise<void> {
+    const busy = provider === 'cursor' ? cursorLoading : provider === 'antigravity' ? antigravityLoading : provider === 'codex' ? authenticationLoading : claudeLoading;
+    const error = provider === 'cursor' ? cursorError : provider === 'antigravity' ? antigravityError : provider === 'codex' ? authenticationError : claudeError;
     busy.value = true;
     error.value = null;
     try {
-      const result = await requireApi().disconnectProvider(backend);
+      const result = await requireApi().disconnectProvider(provider);
       if (disposed) return;
       if (result.kind === 'codex') {
         stopPolling();
@@ -164,27 +182,27 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     } finally { if (!disposed) busy.value = false; }
   }
 
-  function isInstalled(backend: AgentBackend): boolean {
-    return providerSetup.value.some(setup => setup.backend === backend && setup.installed);
+  function isInstalled(provider: HarnessProvider): boolean {
+    return providerSetup.value.some(setup => setup.provider === provider && setup.installed);
   }
 
-  const nativeState = (backend: 'antigravity' | 'cursor') => backend === 'cursor'
+  const nativeState = (provider: 'antigravity' | 'cursor') => provider === 'cursor'
     ? { pending: cursorPending, error: cursorError, connected: cursorConnected }
     : { pending: antigravityPending, error: antigravityError, connected: antigravityConnected };
 
-  async function connectNativeProvider(backend: 'antigravity' | 'cursor'): Promise<void> {
-    if (!isInstalled(backend)) return;
-    const state = nativeState(backend);
-    if (state.connected.value) { await enableConnectedEngine(backend); return; }
+  async function connectNativeProvider(provider: 'antigravity' | 'cursor'): Promise<void> {
+    if (!isInstalled(provider)) return;
+    const state = nativeState(provider);
+    if (state.connected.value) { await enableConnectedEngine(provider); return; }
     state.pending.value = true; state.error.value = null;
-    try { await requireApi().authenticateProvider(backend, 'login'); }
+    try { await requireApi().authenticateProvider(provider, 'login'); }
     catch (error) { if (!disposed && state.pending.value) state.error.value = errorMessage(error); }
     finally { state.pending.value = false; }
   }
-  async function cancelNativeLogin(backend: 'antigravity' | 'cursor'): Promise<void> {
-    const state = nativeState(backend);
+  async function cancelNativeLogin(provider: 'antigravity' | 'cursor'): Promise<void> {
+    const state = nativeState(provider);
     state.pending.value = false;
-    try { await requireApi().authenticateProvider(backend, 'cancel'); }
+    try { await requireApi().authenticateProvider(provider, 'cancel'); }
     catch (error) { if (!disposed) state.error.value = errorMessage(error); }
   }
   const connectAntigravity = () => connectNativeProvider('antigravity');
@@ -192,31 +210,31 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const connectCursor = () => connectNativeProvider('cursor');
   const cancelCursorLogin = () => cancelNativeLogin('cursor');
 
-  async function customizeProvider(backend: AgentBackend): Promise<void> {
+  async function customizeProvider(provider: HarnessProvider): Promise<void> {
     setupError.value = null;
     try { providerSetup.value = await requireApi().getProviderSetup(); }
     catch (error) { setupError.value = errorMessage(error); return; }
     if (disposed) return;
-    customizingProvider.value = backend;
+    customizingProvider.value = provider;
   }
 
-  async function installProvider(backend: AgentBackend): Promise<void> {
-    await updateProvider(backend, () => requireApi().installProvider(backend));
+  async function installProvider(provider: HarnessProvider): Promise<void> {
+    await updateProvider(provider, () => requireApi().installProvider(provider));
   }
 
-  async function refreshProvider(backend: AgentBackend): Promise<void> {
-    if (backend === 'cursor') cursorError.value = null;
-    await updateProvider(backend, () => requireApi().refreshProvider(backend));
+  async function refreshProvider(provider: HarnessProvider): Promise<void> {
+    if (provider === 'cursor') cursorError.value = null;
+    await updateProvider(provider, () => requireApi().refreshProvider(provider));
   }
 
-  async function updateProvider(backend: AgentBackend, action: () => Promise<ProviderSetupStatus>): Promise<void> {
+  async function updateProvider(provider: HarnessProvider, action: () => Promise<ProviderSetupStatus>): Promise<void> {
     if (setupBusy.value) return;
-    updatingProvider.value = backend;
+    updatingProvider.value = provider;
     setupError.value = null;
     try {
       const next = await action();
       if (disposed) return;
-      providerSetup.value = [...providerSetup.value.filter(setup => setup.backend !== backend), next];
+      providerSetup.value = [...providerSetup.value.filter(setup => setup.provider !== provider), next];
     } catch (error) {
       if (!disposed) setupError.value = errorMessage(error);
     } finally { if (!disposed) updatingProvider.value = null; }
@@ -230,15 +248,15 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     try {
       if (backend === 'codex') {
         stopPolling();
-        if (authentication.value?.login.status === 'pending') await requireApi().cancelCodexChatGptLogin();
+        if (authentication.value?.login.status === 'pending') await requireApi().authenticateProvider('codex', 'cancel');
       }
-      const current = providerSetup.value.find(setup => setup.backend === backend);
+      const current = providerSetup.value.find(setup => setup.provider === backend);
       const unchangedLockedSetup = current?.locked && !choice.removeAgentIds
         && current.isolated === choice.isolated && current.shareSkills === choice.shareSkills;
       const next = unchangedLockedSetup ? current : await requireApi().configureProviderSetup(backend, choice);
       if (backend === 'codex') authentication.value = null;
       else if (backend === 'claude') claudeAuthentication.value = null;
-      providerSetup.value = providerSetup.value.map(setup => setup.backend === backend ? next : setup);
+      providerSetup.value = providerSetup.value.map(setup => setup.provider === backend ? next : setup);
       customizingProvider.value = null;
       if (!next.installed) return;
       if (backend === 'codex') await refreshCodex();
@@ -256,12 +274,12 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationError.value = null;
     try {
       const unsignedSeparateSetups = providerSetup.value.filter(setup => setup.isolated && setup.installed
-        && !options.getConnections().some(connection => connection.backend === setup.backend && connection.connected));
+        && !options.getConnections().some(connection => connection.provider === setup.provider && connection.connected));
       if (unsignedSeparateSetups.length) {
         try {
           await ElMessageBox.confirm(
             translate('auth.separateSignInWarning', {
-              providers: unsignedSeparateSetups.map(setup => backendDisplayName(setup.backend)).join(', '),
+              providers: unsignedSeparateSetups.map(setup => providerDisplayName(setup.provider)).join(', '),
               count: unsignedSeparateSetups.length,
             }),
             translate('auth.separateSignInTitle'),
@@ -310,7 +328,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationError.value = null;
     stopPolling();
     try {
-      const next = await requireApi().cancelCodexChatGptLogin();
+      const next = await codexAuthentication('cancel');
       if (!disposed) authentication.value = next;
     } catch (error) {
       if (!disposed) authenticationError.value = errorMessage(error);
@@ -346,7 +364,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     const revision = pollRevision;
     const poll = async () => {
       try {
-        const next = await requireApi().getCodexAuthentication();
+        const next = await codexAuthentication('check');
         if (disposed || revision !== pollRevision) return;
         authentication.value = next;
         if (next.account || next.login.status === 'error' || next.login.status === 'cancelled') return;
@@ -364,6 +382,10 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     authenticationPoll = null;
   }
 
+  async function codexAuthentication(action: ProviderAuthenticationAction['action']): Promise<CodexAuthentication> {
+    return providerAuthenticationState(await requireApi().authenticateProvider('codex', action), 'codex');
+  }
+
   function requireApi(): AppApi {
     const api = options.getApi();
     if (!api) throw new Error(translate('surface.appShell.appAPIIsUnavailable'));
@@ -375,7 +397,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   return {
     authentication, authenticationCancelling, authenticationError, authenticationLoading,
     claudeAuthentication, claudeLoading, claudeError, claudeDialogVisible,
-    cursorConnected, cursorLoading, cursorPending, cursorError, connectCursor, cancelCursorLogin,
+    cursorConnected, cursorLoading, cursorPending, cursorError, cursorConnectionError, connectCursor, cancelCursorLogin,
+    connectionActivity,
     antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
     codexConnected, claudeConnected, canContinue, continuing,
     completeVisible, gated, repositoriesVisible, initialAuthenticationLoading, showLogin,

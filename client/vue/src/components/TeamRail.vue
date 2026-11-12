@@ -130,9 +130,8 @@
           v-if="!phoneScope"
           :active="settingsActive"
           :account="account"
-          :rate-limits="rateLimits"
-          :enabled-backends="enabledBackends"
-          :backend-rate-limits="backendRateLimits"
+          :enabled-providers="enabledProviders"
+          :provider-rate-limits="providerRateLimits"
           :provider-connections="providerConnections"
           @open-settings="emit('open-settings')"
           @open-analytics="emit('open-analytics')"
@@ -159,7 +158,7 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, ReorderTeamsInput, Team } from '@workspace/core/contracts';
+import type { AccountRateLimits, HarnessProvider, AppSnapshot, CodexAccount, ReorderTeamsInput, Team } from '@workspace/core/contracts';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { product } from '@workspace/core/product';
 import { teamInitials } from '@workspace/core/team-manager';
@@ -176,9 +175,8 @@ const props = defineProps<{
   backlogActive?: boolean;
   cockpitActive?: boolean;
   automationsActive?: boolean;
-  rateLimits?: AccountRateLimits;
-  enabledBackends?: AgentBackend[];
-  backendRateLimits?: AppSnapshot['backendAccountRateLimits'];
+  enabledProviders?: HarnessProvider[];
+  providerRateLimits?: AppSnapshot['providerAccountRateLimits'];
   providerConnections?: AppSnapshot['providerConnections'];
   account?: CodexAccount | null;
   settingsActive?: boolean;

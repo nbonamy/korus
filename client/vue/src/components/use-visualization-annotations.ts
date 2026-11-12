@@ -1,6 +1,6 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@codex-app-sdk/core/surface';
-import type { CodexRendererSendMessageOptions } from '@codex-app-sdk/vue';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { computed, reactive } from 'vue';
 
 export type VisualizationAnnotationElement = {
@@ -53,8 +53,8 @@ export function useVisualizationAnnotations(options: {
 
   async function forward(
     prompt: string,
-    sendOptions: CodexRendererSendMessageOptions | undefined,
-    send: (nextPrompt: string, nextOptions?: CodexRendererSendMessageOptions) => void | Promise<void>,
+    sendOptions: ReferenceSendPromptOptions | undefined,
+    send: (nextPrompt: string, nextOptions?: ReferenceSendPromptOptions) => void | Promise<void>,
   ): Promise<void> {
     const agentId = options.currentAgentId();
     const annotations = agentId

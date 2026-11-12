@@ -1,5 +1,5 @@
 import { PRIMARY_BROWSER_ID } from '@workspace/core/contracts';
-import type { CodexConversationVisualization } from '@codex-app-sdk/vue';
+import type { ConversationVisualization } from '@korus-dev/agent-ui-sdk';
 import { computed, onScopeDispose, reactive, watch, watchEffect } from 'vue';
 import { useCollapsiblePaneResize } from '../shared/use-collapsible-pane-resize';
 import type { SidePanelGitDiffState, SidePanelImageState, SidePanelMarkdownState } from './side-panel';
@@ -24,7 +24,7 @@ export type AgentRightWorkspaceState = {
   browserId: string;
   browserInitialUrl: string;
   browserOpenRequestId: number;
-  browserVisualization: CodexConversationVisualization | null;
+  browserVisualization: ConversationVisualization | null;
   browserPanels: Partial<Record<RightWorkspaceBrowserTab, RightWorkspaceBrowserPanel>>;
   filePanels: Partial<Record<RightWorkspaceFileTab, RightWorkspaceFilePanel>>;
   filesPaneOpen: boolean;

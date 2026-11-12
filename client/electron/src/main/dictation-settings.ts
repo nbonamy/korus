@@ -4,7 +4,7 @@ import type { DictationSettings, DictationSettingsInput } from '@workspace/core/
 
 type SecureStorage = {
   isEncryptionAvailable(): boolean;
-  getSelectedStorageBackend?(): string;
+  getSelectedStorageProvider?(): string;
   encryptString(value: string): Buffer;
   decryptString(value: Buffer): string;
 };
@@ -13,7 +13,7 @@ export class DictationSettingsStore {
   constructor(private readonly directory: string, private readonly storage: SecureStorage, private readonly platform: string) {}
   private file(name: string): string { return path.join(this.directory, name); }
   private secure(): boolean {
-    return this.storage.isEncryptionAvailable() && !(this.platform === 'linux' && this.storage.getSelectedStorageBackend?.() === 'basic_text');
+    return this.storage.isEncryptionAvailable() && !(this.platform === 'linux' && this.storage.getSelectedStorageProvider?.() === 'basic_text');
   }
   get(): DictationSettings {
     let engine: DictationSettings['engine'] = this.platform === 'darwin' ? 'apple' : 'openai';

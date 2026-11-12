@@ -25,7 +25,7 @@
       <div v-if="showEngine && modelsLoading" class="remote-target-dialog__loading" role="status" aria-busy="true">
         {{ t('remoteTarget.loadingModels') }}
       </div>
-      <BackendModelSelector
+      <ProviderModelSelector
         v-if="showEngine && selectedId"
         v-show="!modelsLoading"
         v-model:selection="selection"
@@ -68,7 +68,7 @@ import type { RemoteConnection } from '@workspace/core/contracts';
 import type { ExecutionSelection } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import { NetworkIcon } from '../shared/icons/app-icons';
-import BackendModelSelector from './BackendModelSelector.vue';
+import ProviderModelSelector from './ProviderModelSelector.vue';
 import HostSelector from './HostSelector.vue';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import type { RemoteCheckout } from './use-remote-target';

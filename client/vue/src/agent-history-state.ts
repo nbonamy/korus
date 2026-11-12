@@ -11,6 +11,8 @@ export function createAgentHistoryState(options: {
   getSnapshot: () => AppSnapshot;
   synchronizeComposerSelection: (agentId: string) => void;
   hasHistory: (agentId: string) => boolean;
+  /** Whether the agent's session reports older history than it shows. */
+  sessionHasOlder: (agentId: string) => boolean;
 }) {
   const hydratingAgentIds = ref(new Set<string>());
   const failedAgentIds = ref(new Set<string>());
@@ -28,8 +30,8 @@ export function createAgentHistoryState(options: {
   const activeHistoryHasOlder = computed(() => {
     const snapshot = options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
-    if (!agent || agent.backend !== 'codex') return false;
-    return hasOlderByAgentId.value[agent.id] ?? true;
+    if (!agent) return false;
+    return hasOlderByAgentId.value[agent.id] ?? options.sessionHasOlder(agent.id);
   });
   const isLoadingOlderHistory = computed(() => {
     const agentId = options.getSnapshot().activeAgentId;
@@ -44,7 +46,7 @@ export function createAgentHistoryState(options: {
 
   async function hydrate(agentId: string): Promise<void> {
     const agent = options.getSnapshot().agents.find((candidate) => candidate.id === agentId);
-    if (!agent?.backendSession || !appApi?.loadConversationHistory || hydratingAgentIds.value.has(agent.id)) {
+    if (!agent?.providerSession || !appApi?.loadConversationHistory || hydratingAgentIds.value.has(agent.id)) {
       return;
     }
     markHydrating(agent.id, true);
@@ -56,9 +58,10 @@ export function createAgentHistoryState(options: {
       options.adoptSnapshot(await appApi.loadConversationHistory(agent.id));
       timing('history.response-adopted');
       options.synchronizeComposerSelection(agent.id);
-    } catch (error) {
+    } catch {
       failedAgentIds.value = new Set(failedAgentIds.value).add(agent.id);
-      throw error;
+      // The conversation pane owns hydration errors, including writer locks.
+      // Rejecting here also sends the same failure to generic action toasts.
     } finally {
       markHydrating(agent.id, false);
       timing(failedAgentIds.value.has(agent.id) ? 'history.failed' : 'history.settled');
@@ -67,7 +70,7 @@ export function createAgentHistoryState(options: {
 
   function statusFor(agentId: string): { failed: boolean; hasOlder: boolean; hydrating: boolean; loadingOlder: boolean } {
     const failed = failedAgentIds.value.has(agentId);
-    const pending = Boolean(options.getSnapshot().agents.find(agent => agent.id === agentId)?.backendSession) && !options.hasHistory(agentId);
+    const pending = Boolean(options.getSnapshot().agents.find(agent => agent.id === agentId)?.providerSession) && !options.hasHistory(agentId);
     return {
       failed,
       hasOlder: hasOlderByAgentId.value[agentId] ?? true,

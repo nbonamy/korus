@@ -24,11 +24,11 @@ export class ConversationImageCache {
   private readonly pending = new Map<string, Promise<CompanionImage>>();
   constructor(private readonly store: ImageCacheStore) {}
 
-  async read(host: string, backend: string, session: string | null, reference: string, load: () => Promise<CompanionImage>): Promise<CompanionImage> {
+  async read(host: string, provider: string, session: string | null, reference: string, load: () => Promise<CompanionImage>): Promise<CompanionImage> {
     const image = conversationImageInput(reference);
     if (!image || image.sessionId !== session) return load();
     const epoch = this.epochs.get(host) ?? 0;
-    const scope = await digest(host); const key = await digest(JSON.stringify([backend, session, reference]));
+    const scope = await digest(host); const key = await digest(JSON.stringify([provider, session, reference]));
     const identity = JSON.stringify([host, epoch, key]);
     let work = this.pending.get(identity);
     if (!work) {

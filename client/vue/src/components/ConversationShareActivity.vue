@@ -1,6 +1,6 @@
 <template>
-  <CodexComposerDrawer v-if="proposals.length" class="conversation-share-activity" :aria-label="t('guest.suggestions')">
-    <CodexComposerDrawerRow v-for="proposal in proposals" :key="proposal.id">
+  <ComposerDrawer v-if="proposals.length" class="conversation-share-activity" :aria-label="t('guest.suggestions')">
+    <ComposerDrawerRow v-for="proposal in proposals" :key="proposal.id">
       <template #leading>
         <ShareIcon class="conversation-share-activity__icon" aria-hidden="true" />
         <strong v-if="owner" class="conversation-share-activity__author" :title="proposal.name">{{ proposal.name }}</strong>
@@ -9,17 +9,17 @@
       <template #actions>
         <span v-if="proposal.status !== 'pending'" class="conversation-share-activity__status" role="status">{{ t(`guest.${proposal.status}`) }}</span>
         <template v-else>
-          <CodexIconButton v-if="owner" :label="t('guest.moveSuggestion')" :disabled="disabled || editDisabled" @click="emit('edit', proposal)"><PencilIcon aria-hidden="true" /></CodexIconButton>
-          <CodexIconButton :label="t('guest.deleteSuggestion')" :disabled="disabled" @click="emit('delete', proposal.id)"><Trash2Icon aria-hidden="true" /></CodexIconButton>
+          <IconButton v-if="owner" :label="t('guest.moveSuggestion')" :disabled="disabled || editDisabled" @click="emit('edit', proposal)"><PencilIcon aria-hidden="true" /></IconButton>
+          <IconButton :label="t('guest.deleteSuggestion')" :disabled="disabled" @click="emit('delete', proposal.id)"><Trash2Icon aria-hidden="true" /></IconButton>
         </template>
       </template>
-    </CodexComposerDrawerRow>
+    </ComposerDrawerRow>
     <p v-if="failed" role="alert">{{ t('sharing.failed') }}</p>
-  </CodexComposerDrawer>
+  </ComposerDrawer>
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { CodexComposerDrawer, CodexComposerDrawerRow, CodexIconButton } from '@codex-app-sdk/vue';
+import { ComposerDrawer, ComposerDrawerRow, IconButton } from '@korus-dev/agent-ui-sdk';
 import type { GuestProposal } from '@workspace/core/conversation-sharing';
 import { PencilIcon, ShareIcon, Trash2Icon } from '../shared/icons/app-icons';
 defineProps<{ proposals: readonly GuestProposal[]; owner?: boolean; disabled?: boolean; editDisabled?: boolean; failed?: boolean }>();

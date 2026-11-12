@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { sdkSources } from './sdk-sources.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const backendBundle = path.join(rootDir, 'client/backend/dist/daemon.mjs');
@@ -11,7 +12,7 @@ const children = new Set();
 let shuttingDown = false;
 
 // Published SDK packages are the default. Opt in to sibling source development
-// explicitly with CODEX_APP_SDK_SOURCE=1.
+// explicitly with SDK_LOCAL_SOURCE=1.
 
 if (process.argv.includes('--help')) {
   console.log('Usage: npm run dev');
@@ -21,6 +22,7 @@ if (process.argv.includes('--help')) {
 
 dotenv.config({ path: path.join(rootDir, '.env'), quiet: true });
 const sdkAssets = sdkAssetsPath();
+if (sdkSources(rootDir).enabled) await run('npm', ['run', 'build:sdk']);
 
 await run('npm', ['run', 'build:computer-use']);
 await run('npm', ['run', 'build:tts']);
@@ -49,14 +51,15 @@ const electronDev = start('npm', ['run', 'start:electron'], {
 });
 
 function sdkAssetsPath() {
-  if (process.env.CODEX_APP_SDK_SOURCE === '1') {
+  const selected = sdkSources(rootDir);
+  if (selected.enabled) {
     // Match the selected checkout used by vite.sdk-aliases.ts.
-    return path.resolve(rootDir, process.env.CODEX_APP_SDK_SOURCE_ROOT || '../codex-app-sdk', 'packages/backend/assets');
+    return path.join(selected.root, 'agent-ui-sdk/assets');
   }
   // SDK exports do not expose assets/package.json. Follow the backend
   // workspace's Node search order, supporting both nested and hoisted installs.
-  const require = createRequire(path.join(rootDir, 'client/backend/package.json'));
-  const packageName = '@codex-app-sdk/backend';
+  const require = createRequire(path.join(rootDir, 'client/electron/package.json'));
+  const packageName = '@korus-dev/agent-ui-sdk';
   const packageRoot = (require.resolve.paths(packageName) ?? [])
     .map((directory) => path.join(directory, packageName))
     .find((directory) => existsSync(path.join(directory, 'package.json')));

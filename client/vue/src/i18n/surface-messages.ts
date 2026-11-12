@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 // Component-scoped renderer copy. Keep keys stable when editing messages.
-export const surfaceMessages = {
+export const conversationMessages = {
   settingsWorkflowsPanel: {
     introTitle: 'Shape how your agents work',
     introDescription: 'Choose how agents plan before they build and how they hand work to other agents.',
@@ -147,6 +147,8 @@ export const surfaceMessages = {
     "closingAgent": "Closing agent",
     "worktreeDeleted": "Worktree deleted",
     "agentClosed": "Agent closed",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the agent",
     "worktreeDeletionFailed": "Worktree deletion failed",
     "agentCloseFailed": "Agent close failed"
   },

@@ -1,4 +1,4 @@
-import type { UtilityMcpServer } from '@workspace/core/backend-driver';
+import type { UtilityMcpServer } from '@workspace/core/provider-driver';
 
 /** Utility callers may supply only the private loopback icon capability. */
 export function utilityMcpServers(value: unknown): UtilityMcpServer[] {

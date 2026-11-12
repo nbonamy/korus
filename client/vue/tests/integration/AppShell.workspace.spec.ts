@@ -1,9 +1,10 @@
 import { product } from '@workspace/core/product';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { conversationFrom, sessionState, textMessage } from '../support/conversation-fixtures';
 import type {
-  CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
-import type { SurfaceMessage } from '@codex-app-sdk/core/surface';
+  NativeRendererApi,
+} from '@korus-dev/agent-ui-sdk';
+import type { Message } from '@korus-dev/multi-agent-sdk';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -12,7 +13,6 @@ import type { AppCommand, AppApi } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemComposerPrompt } from '@workspace/core/work-item-prompts';
 import { setElectronTestClient } from '../support/client';
 import { useAppState } from '../../src/app-state';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 
 import {
@@ -48,7 +48,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 it('opens branch history from the first Git menu action in the real shell and closes its workspace tab', async () => {
@@ -74,7 +74,7 @@ describe('AppShell workspace and plans', () => {
     const snapshot = createInitialSnapshot();
     const shared = snapshot.agents[0]!;
     shared.sharedConversation = { joinId: 'saved-shared-chat' };
-    delete shared.backendSession;
+    delete shared.providerSession;
     const local = snapshot.agents[1]!;
     const saved = { tabs: [{ id: 'file:markdown:saved', title: 'Local notes', documentId: 'saved' }], activeTab: 'file:markdown:saved', open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
     const update = vi.fn().mockResolvedValue({ tabs: [] });
@@ -329,7 +329,7 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mountShell({
       realConversationPane: true,
       previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('video', 'assistant', '[Film](film.mp4)')]),
+      conversation: sessionState({ messages: [textMessage('video', 'assistant', '[Film](film.mp4)')] }),
     });
     const link = wrapper.get('a[href="film.mp4"]');
     await link.trigger('click');
@@ -363,9 +363,9 @@ describe('AppShell workspace and plans', () => {
         snapshot,
         realConversationPane: true,
         previewAgentFile: vi.fn().mockResolvedValue({ path: 'film.mp4', kind: 'binary', size: 2 }),
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('video', 'assistant', '[Film](film.mp4)'),
-        ]),
+        conversation: sessionState({ messages: [
+          textMessage('video', 'assistant', '[Film](film.mp4)'),
+        ] }),
       });
       await wrapper.get('a[href="film.mp4"]').trigger('click');
       await flushPromises();
@@ -393,9 +393,9 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mountShell({
       realConversationPane: true,
       previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[First](docs/first.md) [Second](docs/second.md:12)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[First](docs/first.md) [Second](docs/second.md:12)'),
+      ] }),
     });
     const transfer = { effectAllowed: 'all', dropEffect: 'none' };
     await wrapper.get('a[href="docs/first.md"]').trigger('dragstart', { dataTransfer: transfer });
@@ -426,9 +426,9 @@ describe('AppShell workspace and plans', () => {
     const externalOpen = vi.spyOn(window, 'open');
     const wrapper = mountShell({
       realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[Example](https://example.com/docs) [Other](https://example.org/)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[Example](https://example.com/docs) [Other](https://example.org/)'),
+      ] }),
     });
     await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text().includes('Browser'))!.trigger('click');
@@ -456,9 +456,9 @@ describe('AppShell workspace and plans', () => {
     const previewAgentFile = vi.fn();
     const wrapper = mountShell({
       realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('links', 'assistant', '[File](docs/first.md) [Email](mailto:hello@example.com)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('links', 'assistant', '[File](docs/first.md) [Email](mailto:hello@example.com)'),
+      ] }),
     });
     await wrapper.get('a[href="docs/first.md"]').trigger('dragstart', { dataTransfer: {} });
     expect(wrapper.find('[aria-label="Drop link to open in sidebar"]').exists()).toBe(true);
@@ -477,9 +477,9 @@ describe('AppShell workspace and plans', () => {
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path: 'README.md', content: '# Dina project', size: 14 });
     const wrapper = mountShell({
       snapshot, realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('link', 'assistant', '[Readme](README.md)'),
-      ]),
+      conversation: sessionState({ messages: [
+        textMessage('link', 'assistant', '[Readme](README.md)'),
+      ] }),
     });
     await wrapper.get('a[href="README.md"]').trigger('dragstart', { dataTransfer: {} });
     await wrapper.setProps({ activeAgent: snapshot.agents[1] });
@@ -661,14 +661,14 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
   });
 
-  it.each(['codex', 'claude'] as const)('opens each selected %s header subagent in an independent right-workspace tab', async (backend) => {
+  it.each(['codex', 'claude'] as const)('opens each selected %s header subagent in an independent right-workspace tab', async (provider) => {
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.agents[0].backend = backend;
-    snapshot.agents[0].backendDefaults = { kind: backend };
-    snapshot.agents[0].backendSession = backend === 'codex'
-      ? { kind: 'codex', threadId: 'thread-root' }
-      : { kind: 'claude', sessionId: 'thread-root', transport: 'stdio' };
+    snapshot.agents[0].provider = provider;
+    snapshot.agents[0].providerDefaults = { kind: provider };
+    snapshot.agents[0].providerSession = provider === 'codex'
+      ? { kind: 'codex', conversationId: 'thread-root' }
+      : { kind: 'claude', conversationId: 'thread-root', transport: 'stdio' };
     snapshot.subagentTrees[snapshot.agents[0].id] = {
       rootConversationId: 'thread-root',
       nodes: {
@@ -707,13 +707,13 @@ describe('AppShell workspace and plans', () => {
     ]);
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['scout', 'reviewer']);
     expect(readConversationMessages).toHaveBeenCalledWith(
-      backend === 'codex' ? { backend, threadId: 'thread-scout' }
-        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-scout' },
+      provider === 'codex' ? { provider: provider, conversationId: 'thread-scout' }
+        : { provider: provider, folder: snapshot.agents[0].folder, conversationId: 'thread-root', subagentId: 'thread-scout' },
       snapshot.agents[0].id,
     );
     expect(readConversationMessages).toHaveBeenCalledWith(
-      backend === 'codex' ? { backend, threadId: 'thread-reviewer' }
-        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-reviewer' },
+      provider === 'codex' ? { provider: provider, conversationId: 'thread-reviewer' }
+        : { provider: provider, folder: snapshot.agents[0].folder, conversationId: 'thread-root', subagentId: 'thread-reviewer' },
       snapshot.agents[0].id,
     );
   });
@@ -746,14 +746,14 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
 
     expect(browserClose).not.toHaveBeenCalled();
-    expect(wrapper.findAllComponents({ name: 'BrowserPanel' })).toHaveLength(1);
+    expect(wrapper.findAll('webview')).toHaveLength(1);
     await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.isVisible() && button.text().includes('Browser'))?.trigger('click');
     readyBrowserGuest(wrapper.findAll('webview')[1]!.element, 43);
     await flushPromises();
 
     expect(browserOpen).toHaveBeenCalledWith('agent-jesse', 'primary', '', 43);
-    expect(wrapper.findAllComponents({ name: 'BrowserPanel' })).toHaveLength(2);
+    expect(wrapper.findAll('webview')).toHaveLength(2);
     await wrapper.setProps({ activeAgent: snapshot.agents.find((agent) => agent.id === 'agent-dina') } as Record<string, unknown>);
     await flushPromises();
 
@@ -1108,9 +1108,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
-        ]),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md) or [secret](../secret.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1166,9 +1166,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-source-link', 'assistant', 'Open [main](src/main.ts).'),
-        ]),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-source-link', 'assistant', 'Open [main](src/main.ts).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1336,14 +1336,14 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-preview-links', 'assistant', [
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-preview-links', 'assistant', [
             'Open [relative](README.md:40),',
             '[line URL](file:///Users/nbonamy/src/id8/README.md:40:2),',
             '[encoded URL](file:///Users/nbonamy/src/id8/src/file%20name.ts),',
             'and [external](file:///Users/nbonamy/dotfiles/.agents/skills/writing-for-agents/SKILL.md).',
           ].join(' ')),
-        ]),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1390,9 +1390,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1424,9 +1424,9 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
-        ]),
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({ messages: [
+          textMessage('message-doc-link', 'assistant', 'Open [architecture](docs/architecture.md).'),
+        ] })),
         isLoading: false,
         isSending: false,
         previewAgentFile,
@@ -1544,8 +1544,8 @@ describe('AppShell workspace and plans', () => {
   it.each(['codex', 'cursor'] as const)('opens %s Markdown plans, reopens revised proposals, and keeps approval separate from feedback', async backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'planning' } : { kind: 'cursor', sessionId: 'planning' };
+    agent.provider = backend;
+    agent.providerSession = backend === 'codex' ? { kind: 'codex', conversationId: 'planning' } : { kind: 'cursor', conversationId: 'planning' };
     agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
     const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'accept' });
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, updatePlanReview } });
@@ -1633,8 +1633,9 @@ describe('AppShell workspace and plans', () => {
   it('locks plan review actions while a plan progress tool is running', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Previous Plan', status: 'pending' };
-    const planProgressMessage: SurfaceMessage = {
+    const planProgressMessage: Message = {
       id: 'assistant-turn-plan',
+      agentId: snapshot.agents[0]!.id,
       role: 'assistant',
       status: 'streaming',
       turnId: 'turn-plan',
@@ -1654,11 +1655,11 @@ describe('AppShell workspace and plans', () => {
       props: {
         snapshot,
         activeAgent: snapshot.agents[0],
-        codexConversationSnapshot: codexConversationSnapshot([planProgressMessage], {
+        conversationPresentation: conversationFrom(snapshot.agents[0]!, sessionState({
+          messages: [planProgressMessage],
           activeTurnId: 'turn-plan',
-          turnIds: ['turn-plan'],
           busy: true,
-        }),
+        })),
         isLoading: false,
         isSending: true,
         planMode: true,

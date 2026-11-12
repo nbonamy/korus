@@ -1,12 +1,12 @@
 import { onScopeDispose, ref } from 'vue';
-import { codexConversationLinkFromHref, type CodexConversationLink } from '@codex-app-sdk/vue';
+import { conversationLinkFromHref, type ConversationLink } from '@korus-dev/agent-ui-sdk';
 
 /** Captures the raw chat href and source agent before the browser resolves relative file links. */
 export function useWorkspaceLinkDrag(options: {
   browserAvailable: boolean;
-  open: (agentId: string, link: CodexConversationLink) => void;
+  open: (agentId: string, link: ConversationLink) => void;
 }) {
-  const draggedLink = ref<{ agentId: string; link: CodexConversationLink } | null>(null);
+  const draggedLink = ref<{ agentId: string; link: ConversationLink } | null>(null);
   const clear = () => { draggedLink.value = null; };
   window.addEventListener('dragend', clear);
   window.addEventListener('drop', clear);
@@ -23,7 +23,7 @@ export function useWorkspaceLinkDrag(options: {
     const agentId = anchor?.closest('[data-conversation-agent-id]')?.getAttribute('data-conversation-agent-id');
     const href = anchor?.getAttribute('href');
     if (!agentId || !href || !event.dataTransfer || href.startsWith('#')) return;
-    const link = codexConversationLinkFromHref(href);
+    const link = conversationLinkFromHref(href);
     if (!link || (link.kind === 'external' && (!options.browserAvailable || !/^https?:\/\//i.test(link.href)))) return;
     draggedLink.value = { agentId, link };
     event.dataTransfer.effectAllowed = 'copy';

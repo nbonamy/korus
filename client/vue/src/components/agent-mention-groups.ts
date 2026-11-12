@@ -1,4 +1,4 @@
-import type { CodexComposerMentionGroup, CodexComposerMentionItem } from '@codex-app-sdk/vue';
+import type { ComposerMentionGroup, ComposerMentionItem } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { missionAgentIds, missionLeadAgentId } from '@workspace/core/mission-attention';
 import { missionRunTicketIndex } from '@workspace/core/mission-execution';
@@ -15,10 +15,10 @@ export function agentMentionGroups(input: {
   quickChatsLabel: string;
   leadLabel: string;
   builderLabel: string;
-}): CodexComposerMentionGroup[] {
+}): ComposerMentionGroup[] {
   const available = new Map(input.agents.map(agent => [agent.id, agent]));
   const owned = new Set(input.missions.flatMap(missionAgentIds));
-  const groups: CodexComposerMentionGroup[] = [];
+  const groups: ComposerMentionGroup[] = [];
   const ordinary = projectAgentMentionLabels(input.agents.filter(agent => !owned.has(agent.id)), input.quickChatsLabel);
   if (ordinary.length) groups.push({
     id: 'agents', label: input.agentsLabel, placement: 'before',
@@ -35,7 +35,7 @@ export function agentMentionGroups(input: {
     if (legacyWorker && available.has(legacyWorker) && !workers.has(legacyWorker)) {
       workers.set(legacyWorker, undefined);
     }
-    const items: CodexComposerMentionItem[] = [];
+    const items: ComposerMentionItem[] = [];
     if (lead && available.has(lead)) items.push(mention(lead, input.leadLabel, mission.outcome));
     const repositoryWorkers = [...workers].filter(([id]) => id !== lead).map(([id, run]) => {
       const agent = available.get(id)!;
@@ -58,6 +58,6 @@ export function agentMentionGroups(input: {
   return groups;
 }
 
-function mention(agentId: string, label: string, description?: string): CodexComposerMentionItem {
+function mention(agentId: string, label: string, description?: string): ComposerMentionItem {
   return { id: agentId, value: `agent:${agentId}`, label, ...(description ? { description } : {}), payload: { agentId } };
 }

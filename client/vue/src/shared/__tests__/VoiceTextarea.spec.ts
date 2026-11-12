@@ -16,20 +16,20 @@ const sdk = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
-vi.mock('@codex-app-sdk/vue', async (importOriginal) => {
+vi.mock('@korus-dev/agent-ui-sdk', async (importOriginal) => {
   const vue = await import('vue');
-  const actual = await importOriginal<typeof import('@codex-app-sdk/vue')>();
+  const actual = await importOriginal<typeof import('@korus-dev/agent-ui-sdk')>();
   return {
-    CodexComposerVoiceButton: defineComponent({
-      name: 'CodexComposerVoiceButton',
+    ComposerVoiceButton: defineComponent({
+      name: 'ComposerVoiceButton',
       emits: ['toggle'],
       setup(_props, { emit }) {
         return () => h('button', { class: 'voice-button', onClick: () => emit('toggle') }, 'Mic');
       },
     }),
-    CodexComposerVoiceField: actual.CodexComposerVoiceField,
-    getCodexNativeRendererApi: () => sdk.available ? { capabilities: { transcription: true } } : undefined,
-    useCodexComposerVoice: (options: { onTranscript: (value: string) => void }) => {
+    ComposerVoiceField: actual.ComposerVoiceField,
+    getNativeRendererApi: () => sdk.available ? { capabilities: { transcription: true } } : undefined,
+    useComposerVoice: (options: { onTranscript: (value: string) => void }) => {
       sdk.onTranscript = options.onTranscript;
       sdk.recording = vue.ref(false);
       sdk.transcribing = vue.ref(false);

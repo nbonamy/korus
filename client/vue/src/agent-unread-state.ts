@@ -1,5 +1,4 @@
 import type { Agent, AppSnapshot, MainToRendererEvent } from '@workspace/core/contracts';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { computed, ref } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { navigationUnreadAgentIds } from '@workspace/core/mission-attention';
@@ -38,8 +37,7 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
       syncDockBadge();
       return;
     }
-    const conversationEvent = providerConversationEventView(event);
-    if (!event.agentId || !isUnreadWorthyEvent(conversationEvent.type)) return;
+    if (!event.agentId || !isUnreadWorthyEvent(event.type)) return;
     const snapshot = options.getSnapshot();
     const agent = snapshot.agents.find((agent) => agent.id === event.agentId);
     if (!agent || agent.readState) return;
@@ -128,12 +126,9 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   };
 }
 
+/** Agents the daemon has not given a read state yet: a request waiting on the person makes them unread. */
 function isUnreadWorthyEvent(type: string): boolean {
-  return type === 'turn.completed' ||
-    type === 'approval.requested' ||
-    type === 'agentRequest.created' ||
-    type === 'toolInput.requested' ||
-    type === 'error';
+  return type === 'agentRequest.created';
 }
 
 function randomItem<T>(items: readonly T[]): T | undefined {

@@ -14,8 +14,8 @@
     :error="authenticationError ?? authentication?.login.error"
     :codex-connected="codexConnected"
     :claude-connected="claudeConnected"
-    :codex-enabled="snapshot.providerConnections?.find(engine => engine.backend === 'codex')?.enabled !== false"
-    :claude-enabled="snapshot.providerConnections?.find(engine => engine.backend === 'claude')?.enabled !== false"
+    :codex-enabled="snapshot.providerConnections?.find(engine => engine.provider === 'codex')?.enabled !== false"
+    :claude-enabled="snapshot.providerConnections?.find(engine => engine.provider === 'claude')?.enabled !== false"
     :claude-loading="claudeLoading"
     :claude-error="claudeError"
     :continuing="continuing"
@@ -24,14 +24,14 @@
     :cursor-loading="cursorLoading"
     :cursor-pending="cursorPending"
     :cursor-error="cursorError"
-    :cursor-enabled="snapshot.providerConnections?.find(engine => engine.backend === 'cursor')?.enabled !== false"
+    :cursor-enabled="snapshot.providerConnections?.find(engine => engine.provider === 'cursor')?.enabled !== false"
     @connect-cursor="emit('connect-cursor')"
     @cancel-cursor="emit('cancel-cursor')"
     :antigravity-connected="antigravityConnected"
     :antigravity-loading="antigravityLoading"
     :antigravity-pending="antigravityPending"
     :antigravity-error="antigravityError"
-    :antigravity-enabled="snapshot.providerConnections?.find(engine => engine.backend === 'antigravity')?.enabled !== false"
+    :antigravity-enabled="snapshot.providerConnections?.find(engine => engine.provider === 'antigravity')?.enabled !== false"
     @connect-antigravity="emit('connect-antigravity')"
     @cancel-antigravity="emit('cancel-antigravity')"
     @continue="emit('continue')"
@@ -56,7 +56,7 @@
   <LocalClaudeAuthenticationDialog
     :model-value="claudeDialogVisible"
     :executable-path="claudeAuthentication?.executablePath"
-    :config-directory="claudeAuthentication?.configDirectory !== undefined ? claudeAuthentication.configDirectory : providerSetup?.find(setup => setup.backend === 'claude')?.homePath"
+    :config-directory="claudeAuthentication?.configDirectory !== undefined ? claudeAuthentication.configDirectory : providerSetup?.find(setup => setup.provider === 'claude')?.homePath"
     :loading="claudeLoading"
     :error="claudeError"
     @update:model-value="emit('update:claudeDialogVisible', $event)"
@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderConnectOptions, WorkProviderKind } from '@workspace/core/contracts';
+import type { HarnessProvider, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderConnectOptions, WorkProviderKind } from '@workspace/core/contracts';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import ProviderSetupDialog from './ProviderSetupDialog.vue';
 import { toRefs } from 'vue';
@@ -80,7 +80,7 @@ const props = defineProps<{
   allowSetupReset?: boolean;
   customizedSetup?: ProviderSetupStatus | null;
   setupBusy?: boolean;
-  updatingProvider?: AgentBackend | null;
+  updatingProvider?: HarnessProvider | null;
   setupError?: string | null;
   authentication: CodexAuthentication | null;
   claudeAuthentication?: ClaudeAuthentication | null;
@@ -114,9 +114,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  customize: [backend: AgentBackend];
-  'refresh-provider': [backend: AgentBackend];
-  'install-provider': [backend: AgentBackend];
+  customize: [provider: HarnessProvider];
+  'refresh-provider': [provider: HarnessProvider];
+  'install-provider': [provider: HarnessProvider];
   'close-setup': [];
   'save-setup': [choice: ProviderSetupChange];
   cancel: [];

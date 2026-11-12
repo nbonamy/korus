@@ -102,7 +102,7 @@ export async function runCli(args: string[], overrides: Partial<CliContext> = {}
     if (command === 'agents') {
       if ((action ?? 'list') !== 'list') throw new CliError('Use agents list.', 2);
       const state = await loadState(options);
-      print(context, options, { source: state.source, agents: state.agents }, `Agents\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.backend}\t${agent.status}`).join('\n') || 'No agents found.'}`); return 0;
+      print(context, options, { source: state.source, agents: state.agents }, `Agents\n${state.agents.map(agent => `${agent.id}\t${agent.name}\t${agent.provider}\t${agent.status}`).join('\n') || 'No agents found.'}`); return 0;
     }
     if (command === 'missions' && ['list', 'show'].includes(action ?? 'list')) {
       const state = await loadState(options);

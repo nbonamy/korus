@@ -14,7 +14,7 @@ export function createClaudeLifecycle(): ProviderLifecycle {
     skillDirectories: home => [path.join(home.homePath, 'skills')],
     home(snapshot, choice) {
       if (choice) return { ...choice, homePath: choice.isolated ? paths.isolated : paths.existing };
-      const preserve = snapshot.general.claudeCodeEnabled || snapshot.agents.some(agent => agent.backend === 'claude');
+      const preserve = snapshot.general.claudeCodeEnabled || snapshot.agents.some(agent => agent.provider === 'claude');
       const homePath = preserve ? path.resolve(configured || paths.existing) : paths.existing;
       return { homePath, isolated: homePath === paths.isolated, shareSkills: !preserve };
     },

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BackendPluginSummary } from '@workspace/core/contracts';
+import type { ProviderPluginSummary } from '@workspace/core/contracts';
 import { createEngine } from '../engine';
 import { createDemoConnector } from '../demo-connector';
 
-const plugins: BackendPluginSummary[] = [
+const plugins: ProviderPluginSummary[] = [
   { id: 'github@bundled', name: 'github', displayName: 'GitHub', shortDescription: 'Work with repositories', enabled: true },
   { id: 'hidden', name: 'hidden', displayName: 'Hidden', enabled: false },
 ];
-function fixture(listPlugins = vi.fn(async (_id: string): Promise<BackendPluginSummary[]> => plugins)) {
+function fixture(listPlugins = vi.fn(async (_id: string): Promise<ProviderPluginSummary[]> => plugins)) {
   const connector = createDemoConnector(); const connect = connector.connect;
   const sendPrompt = vi.fn(async () => {});
   connector.connect = async (id) => ({ ...await connect(id), listPlugins, sendPrompt });
@@ -42,8 +42,8 @@ describe('mobile agent and plugin mentions', () => {
   });
 
   it('discards late plugins after switching chats and keeps agents available on failure and retry', async () => {
-    let resolve!: (items: BackendPluginSummary[]) => void;
-    const list = vi.fn(async (_id: string): Promise<BackendPluginSummary[]> => plugins)
+    let resolve!: (items: ProviderPluginSummary[]) => void;
+    const list = vi.fn(async (_id: string): Promise<ProviderPluginSummary[]> => plugins)
       .mockImplementationOnce(() => new Promise(done => { resolve = done; }))
       .mockRejectedValueOnce(new Error('offline'));
     const f = fixture(list);

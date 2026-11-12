@@ -16,7 +16,7 @@ export function createCodexLifecycle(): ProviderLifecycle {
     skillDiscoveryDirectories: () => [path.join(homedir(), '.agents', 'skills')],
     home(snapshot, choice) {
       // Older installations without a saved choice already own isolated threads.
-      const selected = choice ?? { isolated: snapshot.agents.some(agent => agent.backend === 'codex') || snapshot.general.providerOnboardingComplete === true, shareSkills: true };
+      const selected = choice ?? { isolated: snapshot.agents.some(agent => agent.provider === 'codex') || snapshot.general.providerOnboardingComplete === true, shareSkills: true };
       return { ...selected, homePath: selected.isolated ? paths.isolated : paths.existing };
     },
     installed: snapshot => Boolean(resolveCodexExecutable(snapshot.general.codexBinaryPath)),

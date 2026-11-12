@@ -133,7 +133,7 @@ function activeAgentSnapshot() {
     teamId: snapshot.teams[0].id,
     name: 'Dina',
     folder: '/Users/nicolas/src/id8',
-    backend: 'codex',
+    provider: 'codex',
     status: { type: 'working' },
     createdAt: '2026-06-14T10:00:00.000Z',
     updatedAt: '2026-06-14T10:00:00.000Z',
@@ -148,7 +148,7 @@ function activeAutomationSnapshot() {
     id: 'automation-bugs',
     name: 'Bugs',
     enabled: true,
-    prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+    prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
     schedule: { intervalMinutes: 60 },
     executionLog: [{

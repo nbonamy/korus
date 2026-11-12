@@ -1,6 +1,6 @@
 <template>
   <div class="voice-textarea" :style="fieldStyle" @keydown.esc="cancelDictation">
-    <CodexComposerVoiceField
+    <ComposerVoiceField
       v-if="voiceVisible && busy"
       class="voice-textarea__voice-field"
       :recording="voiceRecording"
@@ -24,7 +24,7 @@
       @keyup="rememberSelection"
       @select="rememberSelection"
     />
-    <CodexComposerVoiceButton
+    <ComposerVoiceButton
       v-if="voiceVisible"
       class="voice-textarea__voice-button"
       :disabled="voiceButtonDisabled"
@@ -38,11 +38,11 @@
 
 <script setup lang="ts">
 import {
-  CodexComposerVoiceButton,
-  CodexComposerVoiceField,
-  getCodexNativeRendererApi,
-  useCodexComposerVoice,
-} from '@codex-app-sdk/vue';
+  ComposerVoiceButton,
+  ComposerVoiceField,
+  getNativeRendererApi,
+  useComposerVoice,
+} from '@korus-dev/agent-ui-sdk';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = withDefaults(defineProps<{
@@ -67,8 +67,8 @@ const emit = defineEmits<{
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const selectionStart = ref(props.modelValue.length);
 const selectionEnd = ref(props.modelValue.length);
-const voiceVisible = computed(() => getCodexNativeRendererApi()?.capabilities.transcription === true);
-const voiceController = useCodexComposerVoice({
+const voiceVisible = computed(() => getNativeRendererApi()?.capabilities.transcription === true);
+const voiceController = useComposerVoice({
   isDisabled: () => props.disabled,
   isSending: () => false,
   onTranscript: insertTranscript,

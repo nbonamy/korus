@@ -1,20 +1,20 @@
 import { applyExecutionSelection, executionSelectionForAgent, resolveExecutionSelection } from '@workspace/core/execution-selection';
-import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, BackendConversationRef, MainToRendererEvent } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, ProviderConversationRef, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { automationExecutionIsActive, canTargetAutomationAgent, failAutomationExecution, failOrphanedAutomationExecutionsInSnapshot, recordAutomationExecutionInSnapshot } from '@workspace/core/automation-manager';
 import { createEntityId } from '@workspace/core/ids';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { warnMain } from '../log';
 import { nextAutomationRunAt } from '@workspace/core/automation-schedule';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export type AutomationRunnerOptions = {
   getSnapshot: () => AppSnapshot;
   notifySnapshotUpdated: () => void;
   saveSnapshot: () => Promise<void>;
-  sendPrompt: (agentId: string, prompt: string) => Promise<BackendConversationRef>;
+  sendPrompt: (agentId: string, prompt: string) => Promise<ProviderConversationRef>;
   now?: () => Date;
-  requireConnectedEngine?: (backend: Agent['backend']) => Promise<unknown>;
+  requireConnectedEngine?: (provider: Agent['provider']) => Promise<unknown>;
 };
 
 export class AutomationRunner {
@@ -58,7 +58,7 @@ export class AutomationRunner {
       if (target.kind !== 'newQuickChat' && (!existing || !canTargetAutomationAgent(snapshot, existing)
         || (target.kind === 'quickChat') !== (existing.sessionKind === 'quickChat'))) throw new Error('The automation target is no longer available.');
       if (target.kind === 'newQuickChat' && !snapshot.teams.some(team => team.id === target.teamId)) throw new Error('The automation team is no longer available.');
-      await this.options.requireConnectedEngine?.(existing?.backend ?? (target.kind === 'newQuickChat' ? target.selection.backend : 'codex'));
+      await this.options.requireConnectedEngine?.(existing?.provider ?? (target.kind === 'newQuickChat' ? target.selection.provider : defaultHarnessProvider));
       if (!snapshot.automations.includes(automation) || !automation.enabled) {
         this.fail(automation, run, 'Automation was disabled or deleted before dispatch.');
         await this.publish();
@@ -67,7 +67,7 @@ export class AutomationRunner {
       let agent = existing;
       if (target.kind === 'newQuickChat') {
         const id = createEntityId('agent');
-        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, selection: { backend: target.selection.backend } }, run.startedAt, id, { select: false });
+        createQuickChatInSnapshot(snapshot, { teamId: target.teamId, selection: { provider: target.selection.provider } }, run.startedAt, id, { select: false });
         agent = snapshot.agents.find(item => item.id === id)!;
         agent.name = automation.name;
         applyExecutionSelection(agent, resolveExecutionSelection(executionSelectionForAgent(agent), target.selection));
@@ -90,17 +90,15 @@ export class AutomationRunner {
     }
   }
 
-  handleEvent(event: MainToRendererEvent): void {
+  handleEvent(event: BackendPublishedEvent): void {
     if (!event.agentId) return;
-    const view = providerConversationEventView(event);
     for (const automation of this.options.getSnapshot().automations) {
       const run = automation.executionLog.find(item => item.agentId === event.agentId && automationExecutionIsActive(item));
       if (!run) continue;
-      if (view.type === 'turn.completed') {
-        const payload = view.payload as { status?: string; turn?: { status?: string; error?: { message?: string } }; error?: { message?: string } } | null;
-        const status = payload?.turn?.status ?? payload?.status;
-        if (status === 'failed' || status === 'interrupted' || payload?.error || payload?.turn?.error) {
-          this.fail(automation, run, payload?.turn?.error?.message ?? payload?.error?.message ?? `Turn ${status ?? 'failed'}.`);
+      if (event.type === 'turn.completed') {
+        const { status, error } = event.payload;
+        if (status === 'failed' || status === 'interrupted' || error) {
+          this.fail(automation, run, error?.message ?? `Turn ${status}.`);
         } else {
           run.status = 'completed';
           run.completedAt = this.now().toISOString();

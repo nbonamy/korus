@@ -9,17 +9,15 @@ it("times Cursor assistant upserts without counting the submitted user message o
   const local = new UsageLedger(":memory:");
   const usage = new UsageService(local, () => undefined, new TurnClock(() => now), () => now);
   const event = { provider: 'cursor' as const, agentId: 'a', sessionId: 's', turnId: 't', model: null, at: Date.now() };
-  const message = (role: string, parts: unknown[]) => usage.observeEvent({
-    agentId: 'a', type: 'cursor.conversationEventReceived',
-    payload: { event: { type: 'message.upsert', payload: { message: { role, parts } } } },
-  } as never);
+  const output = () => usage.observeEvent({ agentId: 'a', provider: 'cursor', type: 'turn.output', seq: 0, occurredAt: '', payload: {} });
+  const tool = (status: 'running' | 'completed') => usage.observeEvent({ agentId: 'a', provider: 'cursor', type: 'tool.updated', seq: 0, occurredAt: '', payload: { tool: { id: 'tool', status } } });
   try {
     await local.load();
     usage.observe({ ...event, phase: 'started' });
-    now = 100; message('user', [{ type: 'text', text: 'hello' }]);
-    now = 300; message('assistant', [{ type: 'reasoning', summary: 'Thinking' }]);
-    now = 400; message('assistant', [{ type: 'tool', id: 'tool', status: 'running' }]);
-    now = 900; message('assistant', [{ type: 'tool', id: 'tool', status: 'completed' }]);
+    // A user message is not output; reasoning and a tool call are.
+    now = 300; output();
+    now = 400; tool('running'); output();
+    now = 900; tool('completed'); output();
     now = 1200; usage.observe({ ...event, phase: 'completed' });
     await usage.drain();
     expect(local.query().rows[0]).toMatchObject({
@@ -55,11 +53,7 @@ it("ignores a previous turn's duplicate completion while timing the next turn", 
     now = 300;
     usage.observe({ ...event, turnId: "old", phase: "completed" });
     now = 400;
-    usage.observeEvent({
-      agentId: "a",
-      type: "claude.conversationEventReceived",
-      payload: { event: { type: "message.delta", payload: {} } },
-    } as never);
+    usage.observeEvent({ agentId: "a", provider: "claude", type: "turn.output", seq: 0, occurredAt: "", payload: {} });
     now = 500;
     usage.observe({
       ...event,
@@ -114,11 +108,7 @@ it("preserves the latest prompt timing when an earlier submission fails", async 
     agent.status = { type: "working" };
     expect(usage.beginPrompt("a")).toBeNull();
     now = 5000;
-    usage.observeEvent({
-      agentId: "a",
-      type: "claude.conversationEventReceived",
-      payload: { event: { type: "message.delta", payload: {} } },
-    } as never);
+    usage.observeEvent({ agentId: "a", provider: "claude", type: "turn.output", seq: 0, occurredAt: "", payload: {} });
     now = 7000;
     usage.observe({
       ...event,

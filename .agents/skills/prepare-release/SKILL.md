@@ -31,44 +31,61 @@ continue during preparation. Coordinate real server compatibility dependencies
 when a desktop change needs them; unrelated dirty server files alone are not a
 deployment dependency. Builds use the pushed commit, never the local dirty files.
 
-## Publish and consume the SDK first
+## Publish and consume the SDK chain first
+
+The release dependency chain is:
+
+`@korus-dev/codex-sdk` → `@korus-dev/multi-agent-sdk` →
+`@korus-dev/agent-ui-sdk` → Korus.
+
+A release at any SDK stage requires new releases of every downstream SDK before
+Korus consumes the result. For example, a Codex SDK change requires a Codex SDK
+release, a Multi SDK release pinned to that version, a UI SDK release pinned to
+that Multi version, and a Korus release consuming those versions. A UI-only change
+starts at the UI SDK; it does not require releases of unchanged upstream SDKs.
+Each repository has its own version; do not assume SDK versions match.
 
 1. Apply the desktop release scope above. Record unrelated changes and warn;
    resolve uncommitted desktop inputs before preparing release metadata.
-2. Identify the latest completed `codex-app-sdk` changes intended for this release.
-   Compare their source commit with npm's published version and `gitHead`; the
-   currently locked version or a working local SDK build is not proof they ship.
-   Resolve unfinished or ambiguous SDK scope with Nicolas before proceeding.
-3. If those changes are unpublished, release a new SDK version through the SDK
-   repository's release workflow and required gates. Coordinate with its active
-   owner rather than running a competing release. Obtain SDK publication approval
-   if it has not already been given; pause Korus preparation until publication
-   is verified. Reuse an existing published version only if it includes all the
-   intended changes. Never republish an existing version.
-4. Verify every consumed `@codex-app-sdk/*` package is available from npm at the
-   selected version, with registry provenance covering the intended SDK commit.
-   Install the selected version with normal `npm install --save-exact` commands
-   in each consuming workspace, preserving dependencies versus devDependencies.
-   For example, `npm install --save-exact @codex-app-sdk/backend@<version>
-   @codex-app-sdk/core@<version> -w backend`; use `--save-dev` for core's SDK
-   devDependency. Derive the other package/workspace pairs from the manifests.
-   Let npm update both manifests and `package-lock.json`; never manually edit,
-   delete entries from, or reconstruct the lockfile. Do not substitute manifest
-   edits followed by `--package-lock-only` for these dependency installs.
-   Use the installed npm directly. If an install fails or leaves old pins,
-   diagnose that command instead of patching the lockfile or repeatedly trying
-   equivalent installs. Verify the resulting declarations and lock entries once.
-   Preserve the local-development opt-in; release dependencies
-   must resolve to npm tarballs, not sibling paths, source aliases, or local
-   overrides.
-5. Record this dependency-only diff for the changelog audit. Keep it uncommitted
-   until the Korus version/channel is confirmed; include it in release prep.
+2. Identify the intended changes in `codex-sdk`, `multi-agent-sdk` and
+   `agent-ui-sdk`. Compare each source commit with npm's published version and
+   `gitHead`; the locked version or a working local build is not proof it ships.
+   Find the earliest changed SDK in the chain and include every downstream stage,
+   even when its only change is the upstream dependency pin. Resolve unfinished
+   or ambiguous SDK scope with Nicolas before proceeding.
+3. Obtain approval for any SDK publication not already authorized. Coordinate
+   with each repository's active owner rather than running competing releases.
+   Release in dependency order using each repository's required gates. At each
+   downstream stage, install the newly published upstream version with an exact
+   normal npm dependency, validate against that installed package, then publish a
+   new version. Verify publication and commit provenance before moving to the next
+   stage. Never reuse an existing downstream release that still pins the old
+   upstream version, and never republish an existing version.
+4. Verify all three selected `@korus-dev` SDK versions are available from npm,
+   cover the intended commits, and declare the expected upstream versions.
+   Install the selected versions in every consuming Korus workspace using normal
+   `npm install --save-exact` commands, preserving dependencies versus
+   devDependencies (`--save-dev` for core's SDK devDependencies). Derive the
+   package/workspace pairs from the manifests. Let npm update both manifests and
+   `package-lock.json`; never manually edit, delete entries from, or reconstruct
+   the lockfile. Do not substitute manifest edits followed by
+   `--package-lock-only` for these dependency installs. If an install fails or
+   leaves old pins, diagnose that command rather than patching the lockfile or
+   repeatedly trying equivalent installs.
+5. Verify the installed dependency tree and lock entries, including transitive
+   Codex SDK resolution, once. Release inputs must resolve to published npm
+   tarballs, never sibling paths, local tarball candidates, source aliases or
+   overrides. Preserve the local-development opt-in separately. Record each SDK
+   version and Git provenance and the dependency-only diff for the changelog
+   audit. Keep the Korus diff uncommitted until its version/channel is confirmed.
 
 ## Audit and confirm version and channel
 
 1. Read and execute `../update-changelog/SKILL.md`, passing the recorded SDK
-   dependency refresh and the unrelated paths excluded by the desktop scope. Require audited
-   user-visible outcomes, app/SDK baselines, the locked SDK release's Git provenance,
+   dependency refresh, release commits and npm provenance for all three SDK
+   repositories, and the unrelated paths excluded by the desktop scope. Audit
+   the independent SDK repositories, not the legacy monorepo. Require audited
+   user-visible outcomes, app/SDK baselines, the locked SDK releases' Git provenance,
    and an exact semantic-version recommendation. Stop if the audit recommends no release.
 2. Present the evidence and recommendation before Korus version edits. An explicit
    user-supplied version can be used after checking it against the audit.
@@ -119,7 +136,7 @@ explicitly requests local validation. Keep the release test gate enabled;
 a failing release test blocks builds and publication.
 
 Use `korus-dod` and review the staged diff, then commit with
-`chore: release prep`. Report the audited SDK version and Git
+`chore: release prep`. Report the audited SDK versions and Git
 provenance from the exact npm package, not the sibling HEAD.
 Tag creation belongs to the release command, not preparation.
 
@@ -163,7 +180,7 @@ report outstanding native checks honestly.
 
 Distinguish prepared, committed, pushed, built, draft-staged, native-tested,
 published prerelease, and published stable.
-At launch, report version/channel, commit/tag, SDK version/provenance, local
+At launch, report version/channel, commit/tag, SDK versions/provenance, local
 metadata checks, and the Actions run URL; clearly state that CI quality checks,
 builds, and publication are pending.
 After a requested completion check, include the release URL and outstanding native

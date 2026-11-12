@@ -41,7 +41,7 @@ enum EngineState {
         presentedRequest = try! JSONDecoder().decode(PendingRequest.self, from: Data(value.utf8))
     }
     var laptopID = "first-host"
-    let newChatBackend: String? = "codex"
+    let newChatProvider: String? = "codex"
     let productName = "Korus"
     var canStartChat: Bool { true }
     func dismissChatFailure() { chatCreation = .idle }
@@ -90,7 +90,7 @@ enum EngineState {
         } else if type == "dismissProjectBranches" { projectBranches = .init() }
         else if type == "dismissProjectRepositories" { catalogGeneration += 1; projectRepositories = .init(); projectBranches = .init() }
     }
-    func createProject(source: NewProjectSource, value: String, backend: String, branch: String? = nil, worktree: [String: String]? = nil) {
+    func createProject(source: NewProjectSource, value: String, provider: String, branch: String? = nil, worktree: [String: String]? = nil) {
         createAttempts += 1
         if scenario == "--clone-retry" && createAttempts == 1 { chatCreation = .failed; return }
         if source.rawValue == "gitlab" {

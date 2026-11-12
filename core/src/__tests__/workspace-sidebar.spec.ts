@@ -262,7 +262,7 @@ describe('workspace sidebar projection', () => {
         { id: secondFolder.id, title: 'Fix tests' },
       ]);
     const owner = { ...first, name: 'Sharing', conversationTitle: 'Sharing' };
-    const collaborator: Agent = { ...owner, id: 'shared-copy', sessionKind: 'quickChat', folder: null, workspace: undefined, backendSession: undefined, sharedConversation: { joinId: 'shared-join' } };
+    const collaborator: Agent = { ...owner, id: 'shared-copy', sessionKind: 'quickChat', folder: null, workspace: undefined, providerSession: undefined, sharedConversation: { joinId: 'shared-join' } };
     expect(projectSidebar({ agents: [owner, collaborator], activeAgentId: owner.id })
       .flatMap(group => group.sessions.map(session => ({ id: session.agentId, title: session.displayTitle }))))
       .toStrictEqual([{ id: owner.id, title: 'Sharing' }, { id: collaborator.id, title: 'Sharing' }]);
@@ -369,7 +369,7 @@ function baseAgent(id: string, name: string | null, folder: string): Agent {
     teamId: 'team-test',
     name,
     folder,
-    backend: 'codex',
+    provider: 'codex',
     status: { type: 'idle' },
     createdAt: '2026-08-27T12:00:00.000Z',
     updatedAt: '2026-08-27T12:00:00.000Z',

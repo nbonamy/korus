@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { agentResponseFromClientResponse, approvalAgentRequest, approvalOutcome, clientResponseFromAgentResponse, isAgentRequestResponse, requestFromClientRequest } from '../agent-request';
-import type { BackendApprovalRequest, ClientRequest, ClientRequestResponse } from '../contracts';
+import type { ProviderApprovalRequest, ClientRequest, ClientRequestResponse } from '../contracts';
 
 describe('normalized agent input contracts', () => {
   it.each([
@@ -40,7 +40,7 @@ describe('normalized agent input contracts', () => {
   });
 
   it('projects approvals without sharing mutable permission lists', () => {
-    const approval: BackendApprovalRequest = { id: 'approval', itemId: 'item', kind: 'command', conversationId: 'conversation', title: 'Run tests', allowedScopes: ['once'], requestedPermissions: [{ kind: 'network', enabled: true }] };
+    const approval: ProviderApprovalRequest = { id: 'approval', itemId: 'item', kind: 'command', conversationId: 'conversation', title: 'Run tests', allowedScopes: ['once'], requestedPermissions: [{ kind: 'network', enabled: true }] };
     const request = approvalAgentRequest(approval);
     expect(request).toMatchObject({ id: approval.id, conversationId: approval.conversationId, kind: 'approval', approval });
     if (request.kind !== 'approval') throw new Error('Expected approval');

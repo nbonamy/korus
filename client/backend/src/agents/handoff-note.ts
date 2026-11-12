@@ -1,15 +1,14 @@
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
-import type { BackendSendResult } from '@workspace/core/backend-driver';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
+import type { ProviderSendResult } from '@workspace/core/provider-driver';
 
 /** Observe a single accepted turn, then read its final text through the provider's history boundary. */
 export async function requestHandoffNote(agent: Agent, prompt: string, port: {
   subscribe(listener: (event: BackendPublishedEvent) => void): () => void;
-  send(agent: Agent, prompt: string): Promise<BackendSendResult>;
+  send(agent: Agent, prompt: string): Promise<ProviderSendResult>;
   read(agent: Agent): Promise<RendererMessage[]>;
   timeoutMs?: number;
 }): Promise<string> {
-  let accepted: BackendSendResult | undefined;
+  let accepted: ProviderSendResult | undefined;
   const completions = new Map<string, string>();
   let resolve!: () => void;
   let reject!: (error: Error) => void;
@@ -23,11 +22,9 @@ export async function requestHandoffNote(agent: Agent, prompt: string, port: {
   };
   const unsubscribe = port.subscribe(event => {
     if (event.agentId !== agent.id) return;
-    const view = providerConversationEventView(event);
-    if (view.type === 'error') reject(new Error('The source could not prepare a handoff note.'));
-    if (view.type === 'turn.completed' && view.turnId) {
-      const payload = view.payload as { status?: string; turn?: { status?: string } };
-      completions.set(view.turnId, payload.status ?? payload.turn?.status ?? '');
+    if (event.type === 'session.error') reject(new Error('The source could not prepare a handoff note.'));
+    if (event.type === 'turn.completed') {
+      completions.set(event.turnId, event.payload.status);
       check();
     }
   });

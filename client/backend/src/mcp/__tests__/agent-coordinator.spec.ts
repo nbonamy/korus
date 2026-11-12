@@ -370,12 +370,12 @@ describe('AppMcpAgentCoordinator', () => {
     });
 
     await coordinator.createAgent('agent-dina', { repoPath: ' /src/app ', name: ' New Agent ', createWorktree: true, branchName: ' coverage ', destinationPath: ' /src/app-coverage ', prompt: ' Fix the flaky test. ', selection: { model: ' gpt-5.6-sol ', reasoningEffort: ' high ', serviceTier: ' fast ' } });
-    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), { repoPath: '/src/app', name: 'New Agent', createWorktree: true, branchName: 'coverage', destinationPath: '/src/app-coverage', prompt: 'Fix the flaky test.', teamId: 'team-app', selection: { backend: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', serviceTier: 'fast' } });
-    agents[0]!.backend = 'claude';
+    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), { repoPath: '/src/app', name: 'New Agent', createWorktree: true, branchName: 'coverage', destinationPath: '/src/app-coverage', prompt: 'Fix the flaky test.', teamId: 'team-app', selection: { provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', serviceTier: 'fast' } });
+    agents[0]!.provider = 'claude';
     await coordinator.createAgent('agent-dina', { repoPath: '/src/app' });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'claude' } }));
-    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', selection: { backend: 'codex' } });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'codex' } }));
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { provider: 'claude' } }));
+    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', selection: { provider: 'codex' } });
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { provider: 'codex' } }));
   });
 
   it('reports unavailable agent creation', async () => {
@@ -474,8 +474,8 @@ function agent(overrides: Partial<Agent> & Pick<Agent, 'id' | 'name' | 'folder'>
     name,
     avatar: 'AG',
     folder,
-    backend: 'codex',
-    backendDefaults: { kind: 'codex' },
+    provider: 'codex',
+    providerDefaults: { kind: 'codex' },
     status: { type: 'idle' },
     createdAt: '2026-08-02T00:00:00.000Z',
     updatedAt: '2026-08-02T00:00:00.000Z',

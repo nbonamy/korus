@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import { describe, expect, it, vi } from 'vitest';
 import { AppController, requiresSingleInstanceLock, shouldBlockDisplaySleep } from '../app-controller';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AppSnapshot, CodexAuthentication, CodexChatGptLogin, SetCodexResourceSharingInput, UpdateSettingsInput } from '@workspace/core/contracts';
+import type { AppSnapshot, SetCodexResourceSharingInput, UpdateSettingsInput } from '@workspace/core/contracts';
+import type { ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { OpenInProvider } from '../open-in';
 import { createOpenInProvider } from '../open-in';
@@ -229,19 +230,11 @@ describe('AppController', () => {
     expect(appLifecycle.exit).not.toHaveBeenCalled();
   });
 
-  it('routes isolated Codex authentication and opens the ChatGPT login URL', async () => {
-    const authentication: CodexAuthentication = {
-      account: null,
-      requiresOpenaiAuth: true,
-      login: { status: 'idle', error: null },
-    };
-    const login: CodexChatGptLogin = {
-      loginId: 'login-1',
-      authUrl: 'https://auth.openai.com/login',
-    };
-    const request = vi.fn(async (method: string) => (
-      method === backendMethods.codexChatGptLoginStart ? login : authentication
-    ));
+  it('routes local authentication and opens the browser login URL', async () => {
+    const state = { account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } } as const;
+    const authentication: ProviderAuthentication = { kind: 'codex', connected: false, state };
+    const login: ProviderAuthentication = { ...authentication, state: { ...state, login: { status: 'pending', error: null } }, login: { method: 'browser', id: 'login-1', url: 'https://auth.openai.com/login' } };
+    const request = vi.fn(async (_method: string, params: { action: string }) => (params.action === 'login' ? login : authentication));
     const openExternal = vi.fn().mockResolvedValue(undefined);
     const controller = new AppController(
       createInitialSnapshot(),
@@ -250,56 +243,65 @@ describe('AppController', () => {
       async () => undefined,
       openExternal,
     );
+    const auth = controller as unknown as { authenticateProvider(provider: string, action: string, options?: object): Promise<ProviderAuthentication> };
+    const authenticate = (action: string, options?: object) => auth.authenticateProvider('codex', action, options);
 
-    await expect(callPrivate<CodexAuthentication>(controller, 'getCodexAuthentication'))
-      .resolves.toStrictEqual(authentication);
-    await expect(callPrivate<CodexChatGptLogin>(controller, 'startCodexChatGptLogin'))
-      .resolves.toStrictEqual(login);
-    await expect(callPrivate<CodexAuthentication>(controller, 'cancelCodexChatGptLogin'))
-      .resolves.toStrictEqual(authentication);
-    await expect(callPrivate<CodexAuthentication>(controller, 'logoutCodex'))
-      .resolves.toStrictEqual(authentication);
+    await expect(authenticate('check')).resolves.toStrictEqual(authentication);
+    await expect(authenticate('login', { method: 'browser' })).resolves.toStrictEqual(login);
+    await expect(authenticate('cancel')).resolves.toStrictEqual(authentication);
+    await expect(authenticate('logout')).resolves.toStrictEqual(authentication);
 
-    expect(request).toHaveBeenCalledWith(backendMethods.codexAuthenticationGet, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.codexChatGptLoginStart, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.codexLoginCancel, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.codexLogout, undefined);
-    expect(openExternal).toHaveBeenCalledWith(login.authUrl);
+    expect(request.mock.calls).toEqual([
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'check' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'login', method: 'browser' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'cancel' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'logout' }],
+    ]);
+    expect(openExternal).toHaveBeenCalledExactlyOnceWith('https://auth.openai.com/login');
   });
 
   it('keeps remote device-code authentication targeted and does not auto-open a browser', async () => {
-    const request = vi.fn().mockResolvedValue({ loginId: 'device-login', verificationUrl: 'https://auth.openai.com/codex/device', userCode: 'ABCD' });
+    const request = vi.fn().mockResolvedValue({ kind: 'codex', connected: false, state: { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } }, login: { method: 'deviceCode', id: 'device-login', url: 'https://auth.openai.com/codex/device', code: 'ABCD' } });
     const openExternal = vi.fn();
     const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle(), async () => undefined, openExternal);
-    const auth = controller as unknown as {
-      getCodexAuthentication(id: string): Promise<unknown>;
-      startCodexChatGptDeviceCodeLogin(id: string): Promise<unknown>;
-      cancelCodexChatGptLogin(id: string, loginId: string): Promise<unknown>;
-    };
-    await auth.getCodexAuthentication('wall-e');
-    await auth.startCodexChatGptDeviceCodeLogin('wall-e');
-    await auth.cancelCodexChatGptLogin('wall-e', 'device-login');
+    const auth = controller as unknown as { authenticateProvider(provider: string, action: string, options?: object): Promise<unknown> };
+    await auth.authenticateProvider('codex', 'check', { remoteConnectionId: 'wall-e' });
+    await auth.authenticateProvider('codex', 'login', { method: 'deviceCode', remoteConnectionId: 'wall-e' });
+    await auth.authenticateProvider('codex', 'cancel', { remoteConnectionId: 'wall-e', loginId: 'device-login' });
     expect(request.mock.calls).toEqual([
-      [backendMethods.codexAuthenticationGet, { remoteConnectionId: 'wall-e' }],
-      [backendMethods.codexChatGptDeviceCodeLoginStart, { remoteConnectionId: 'wall-e' }],
-      [backendMethods.codexLoginCancel, { remoteConnectionId: 'wall-e', loginId: 'device-login' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'check', remoteConnectionId: 'wall-e' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'login', method: 'deviceCode', remoteConnectionId: 'wall-e' }],
+      [backendMethods.providerAuthenticate, { provider: 'codex', action: 'cancel', loginId: 'device-login', remoteConnectionId: 'wall-e' }],
     ]);
     expect(openExternal).not.toHaveBeenCalled();
-    expect(() => auth.startCodexChatGptDeviceCodeLogin('')).toThrow('remote connection');
+    await expect(auth.authenticateProvider('codex', 'login', { method: 'deviceCode', remoteConnectionId: '' })).rejects.toThrow('remote connection');
+  });
+
+  it('never opens a browser for a remote browser login or a login without a URL', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ kind: 'codex', connected: false, state: { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } }, login: { method: 'browser', id: 'remote-login', url: 'https://auth.openai.com/login' } })
+      .mockResolvedValueOnce({ kind: 'antigravity', connected: true, state: { loggedIn: true, homePath: '/synthetic/antigravity' } });
+    const openExternal = vi.fn();
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle(), async () => undefined, openExternal);
+    const auth = controller as unknown as { authenticateProvider(provider: string, action: string, options?: object): Promise<unknown> };
+    await auth.authenticateProvider('codex', 'login', { method: 'browser', remoteConnectionId: 'wall-e' });
+    await auth.authenticateProvider('antigravity', 'login');
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it('routes Claude auth status to the selected connection without opening a browser', async () => {
-    const request = vi.fn().mockResolvedValue({ loggedIn: false });
+    const result = { kind: 'claude', connected: false, state: { loggedIn: false } };
+    const request = vi.fn().mockResolvedValue(result);
     const openExternal = vi.fn();
     const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle(), async () => undefined, openExternal);
-    const auth = controller as unknown as { getClaudeAuthentication(id?: string): Promise<unknown> };
+    const auth = controller as unknown as { authenticateProvider(provider: string, action: string, options?: object): Promise<unknown> };
 
-    await expect(auth.getClaudeAuthentication('wall-e')).resolves.toStrictEqual({ loggedIn: false });
-    expect(request).toHaveBeenCalledWith(backendMethods.claudeAuthenticationGet, { connectionId: 'wall-e' });
-    await expect(auth.getClaudeAuthentication()).resolves.toStrictEqual({ loggedIn: false });
-    expect(request).toHaveBeenLastCalledWith(backendMethods.claudeAuthenticationGet, undefined);
+    await expect(auth.authenticateProvider('claude', 'check', { remoteConnectionId: 'wall-e' })).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledWith(backendMethods.providerAuthenticate, { provider: 'claude', action: 'check', remoteConnectionId: 'wall-e' });
+    await expect(auth.authenticateProvider('claude', 'check')).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenLastCalledWith(backendMethods.providerAuthenticate, { provider: 'claude', action: 'check' });
     expect(openExternal).not.toHaveBeenCalled();
-    expect(() => auth.getClaudeAuthentication('')).toThrow('remote connection');
+    await expect(auth.authenticateProvider('claude', 'check', { remoteConnectionId: '' })).rejects.toThrow('remote connection');
   });
 
   it('restarts the app when the Codex executable setting changes', async () => {

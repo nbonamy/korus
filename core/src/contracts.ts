@@ -1,6 +1,11 @@
+import type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
+export type { BrowserBounds, BrowserViewportBounds, BrowserAnnotation, BrowserState } from './browser-contracts';
+export { PRIMARY_BROWSER_ID } from '@korus-dev/agent-ui-sdk/browser';
+import type { ProviderApprovalRequest } from '@korus-dev/multi-agent-sdk';
+export type { ProviderApprovalDecision, ProviderApprovalScope, ProviderRequestedPermission, ProviderApprovalRequest } from '@korus-dev/multi-agent-sdk';
 import type { ExecutionSelection, ExecutionSelectionOverrides } from './contracts/execution';
 import type {
-  AgentBackend,
+  HarnessProvider,
   AppText,
   ApprovalPreset,
   ReasoningEffort,
@@ -54,7 +59,6 @@ import type {
 } from './contracts/workspace';
 import type {
   AddSshConnectionInput,
-  ClaudeAuthentication,
   DevicePairingSession,
   DevicePairingStatus,
   PairedDevice,
@@ -64,22 +68,19 @@ import type {
 } from './contracts/connections';
 import type {
   AccountRateLimits,
-  BackendConnectionState,
-  BackendDefaults,
-  BackendModelOption,
-  BackendPluginSummary,
-  BackendRuntimeStatus,
-  BackendSession,
-  BackendSkillSummary,
-  CodexAuthentication,
-  CodexChatGptLogin,
-  CodexChatGptDeviceCodeLogin
-} from './contracts/backend';
+  ProviderConnectionState,
+  ProviderDefaults,
+  ProviderModelOption,
+  ProviderPluginSummary,
+  ProviderRuntimeStatus,
+  ProviderSessionData,
+  ProviderSkillSummary,
+} from './contracts/provider';
 import type {
   AgentHistoryLoadResult,
   AgentContextUsage,
   AgentQueuedPrompt,
-  AgentSubagentTree, BackendConversationRef, ClientRequestResponse, ConversationListInput,
+  AgentSubagentTree, ProviderConversationRef, ClientRequestResponse, ConversationListInput,
   ConversationResumeTarget,
   ConversationSummary, RendererMessage, RendererSendPromptOptions, PromptContentOptions, ThreadGoal,
   ThreadPlan
@@ -102,10 +103,9 @@ import type {
 import type { MainToRendererEvent } from './contracts/events';
 
 export type {
-  AgentBackend,
+  HarnessProvider,
   AppText,
   AppTextDescriptor,
-  ApprovalPreset,
   ReasoningEffort,
 } from './contracts/shared';
 export type {
@@ -178,27 +178,22 @@ export type {
 export type {
   AccountRateLimitWindow,
   AccountRateLimits,
-  BackendCapabilities,
-  BackendCommandSummary,
-  BackendConnectionState,
-  BackendDefaults,
-  BackendModelOption,
-  BackendPermissionModeOption,
-  BackendPlanModeSupport,
-  BackendPluginSummary,
-  BackendReasoningEffortOption,
-  BackendRuntimeStatus,
-  BackendServiceTier,
-  BackendSession,
-  BackendSkillSummary,
-  CodexAccount,
-  CodexApprovalPreset,
-  CodexApprovalsReviewer,
-  CodexAuthentication,
-  CodexChatGptLogin,
-  CodexChatGptDeviceCodeLogin,
-  CodexThreadSettings,
-} from './contracts/backend';
+  ProviderCapabilities,
+  ProviderCommandSummary,
+  ProviderConnectionState,
+  ProviderDefaults,
+  ProviderModelOption,
+  ProviderPermissionModeOption,
+  ProviderPlanModeSupport,
+  ProviderPluginSummary,
+  ProviderReasoningEffortOption,
+  ProviderRuntimeStatus,
+  ProviderServiceTier,
+  ProviderSessionData,
+  ProviderSkillSummary,
+  ApprovalPreset,
+} from './contracts/provider';
+export type { CodexAccount, CodexAuthentication } from './contracts/provider-setup';
 export {
   subagentActivityKinds,
   subagentOperationKinds,
@@ -206,11 +201,6 @@ export {
   subagentOperationStatuses,
   subagentStatuses,
 } from './contracts/conversation';
-export type {
-  ClaudeConversationEvent,
-  ClaudeConversationSnapshot,
-  ClaudeConversationTurn,
-} from './contracts/claude-conversation';
 export type {
   AgentFileActivity,
   AgentHistoryLoadResult,
@@ -221,8 +211,8 @@ export type {
   AskUserQuestion,
   AskUserQuestionOption,
   AskUserRequest,
-  BackendConversationRef,
-  BackendPromptOptions,
+  ProviderConversationRef,
+  ProviderPromptOptions,
   ClientRequest,
   ClientRequestResponse,
   ConfirmToolRequest,
@@ -331,35 +321,6 @@ export type RemoteTeamLink = {
   remoteTeamId: string;
 };
 
-export type BackendApprovalDecision = 'approve' | 'deny';
-export type BackendApprovalScope = 'once' | 'session';
-export type BackendRequestedPermission =
-  | {
-    kind: 'filesystem';
-    access: 'read' | 'write' | 'deny';
-    path: string;
-  }
-  | {
-    kind: 'network';
-    enabled: boolean;
-    host?: string;
-    protocol?: string;
-  };
-export type BackendApprovalRequest = {
-  id: string;
-  kind: 'command' | 'file-change' | 'permissions';
-  conversationId: string;
-  turnId?: string;
-  itemId: string;
-  title: string;
-  description?: string;
-  command?: string;
-  cwd?: string;
-  requestedPermissions?: BackendRequestedPermission[];
-  allowedScopes?: BackendApprovalScope[];
-  canDeny?: boolean;
-};
-
 export type OpenInApplication =
   | 'vscode'
   | 'finder'
@@ -379,6 +340,17 @@ export type OpenInApplicationOption = {
 export type OpenInApplicationCatalog = {
   defaultApplication: OpenInApplication;
   applications: OpenInApplicationOption[];
+};
+
+/** What it takes to bring a closed agent back under its own id and in the place it held. */
+export type ClosedAgentRecord = {
+  agent: Agent;
+  /** Position in the roster. */
+  index: number;
+  /** Position within its team, used when the agent that followed it is gone. */
+  teamPosition: number;
+  /** The agent that followed it in its team. */
+  nextAgentId?: string;
 };
 
 export type Agent = {
@@ -404,12 +376,12 @@ export type Agent = {
   avatar?: string;
   folder: string | null;
   workspace?: AgentWorkspaceIdentity;
-  backend: AgentBackend;
-  backendSession?: BackendSession;
+  provider: HarnessProvider;
+  providerSession?: ProviderSessionData;
   /** Locks provider choice as soon as the first prompt is admitted. */
   hasSubmittedPrompt?: boolean;
   readState?: import('./agent-read-state').AgentReadState;
-  backendDefaults?: BackendDefaults;
+  providerDefaults?: ProviderDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: AgentGitDiffTarget;
   contextUsage?: AgentContextUsage;
@@ -541,20 +513,21 @@ export type AppGeneralSettings = {
   /** Undefined preserves Codex for existing installations. */
   codexEnabled?: boolean;
   providerOnboardingComplete?: boolean;
-  providerHomes?: Partial<Record<AgentBackend, import('./contracts/provider-setup').ProviderHomeSettings>>;
-  providerEnabled?: Partial<Record<AgentBackend, boolean>>;
+  providerHomes?: Partial<Record<HarnessProvider, import('./contracts/provider-setup').ProviderHomeSettings>>;
+  providerEnabled?: Partial<Record<HarnessProvider, boolean>>;
   /** Last model selection made in a chat, per provider; seeds new agents. */
-  providerModelDefaults?: Partial<Record<AgentBackend, ExecutionSelection>>;
+  providerModelDefaults?: Partial<Record<HarnessProvider, ExecutionSelection>>;
   /** Durable client preferences; absence allows legacy renderer migration. */
   githubStarPrompt?: { sentPrompts: number; dismissed: boolean };
-  preferredProviders?: Record<string, AgentBackend>;
+  preferredProviders?: Record<string, HarnessProvider>;
   gitMergeCleanup?: { deleteWorktree: boolean; deleteBranch: boolean };
   codeReviewInstructions?: string;
   codeReviewDiscussWithOriginalThread?: boolean;
   missionInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
-  providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string; cursor?: string };
+  /** The permission each harness starts new agents with, as one of the ids it offers. */
+  providerApprovalDefaults?: Partial<Record<HarnessProvider, string>>;
   agentListCompact: boolean;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
@@ -620,39 +593,6 @@ export type SidePanelGitDiffRequest = {
 
 export type SidePanelRequest = SidePanelMarkdownRequest | SidePanelGitDiffRequest;
 
-export type BrowserBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-export type BrowserViewportBounds = BrowserBounds & {
-  /** Guest viewport pixels hidden above or to the left of the visible bounds. */
-  contentOffset?: { x: number; y: number };
-};
-
-export const PRIMARY_BROWSER_ID = 'primary';
-
-export type BrowserAnnotation = {
-  id: string;
-  agentId: string;
-  browserId: string;
-  url: string;
-  kind: 'element' | 'area';
-  selector?: string;
-  label?: string;
-  comment?: string;
-  rect: { x: number; y: number; width: number; height: number };
-};
-
-export type BrowserState = {
-  url: string;
-  title: string;
-  canGoBack: boolean;
-  canGoForward: boolean;
-};
-
 export type SystemPermissionsStatus = {
   platform: string;
   accessibility: {
@@ -711,15 +651,14 @@ export type AppSnapshot = {
   activeTeamId: string | null;
   activeAgentId: string | null;
   queuedPrompts?: AgentQueuedPrompt[];
-  backendApprovals: Record<string, BackendApprovalRequest[]>;
+  providerApprovals: Record<string, ProviderApprovalRequest[]>;
   agentRequests?: Record<string, import('./agent-request').AgentRequest[]>;
   agentGitStatuses: Record<string, AgentGitStatus>;
   turnGitDiffs: Record<string, TurnGitDiff>;
   subagentTrees: Record<string, AgentSubagentTree>;
-  backendRuntimes: BackendRuntimeStatus[];
-  accountRateLimits?: AccountRateLimits;
+  providerRuntimes: ProviderRuntimeStatus[];
   /** Live account quotas, kept separate for each local engine. */
-  backendAccountRateLimits?: Partial<Record<AgentBackend, AccountRateLimits>>;
+  providerAccountRateLimits?: Partial<Record<HarnessProvider, AccountRateLimits>>;
   workBacklog: WorkBacklogState;
   remoteConnections: RemoteConnectionsState;
   general: AppGeneralSettings;
@@ -730,17 +669,17 @@ export type AppSnapshot = {
 export type RendererSnapshotState = {
   snapshot: AppSnapshot;
   lastBackendEventSeq: number;
-  connection: BackendConnectionState;
+  connection: ProviderConnectionState;
 };
 
-export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ProviderConversationFrame, ClientEffectEvent, ClientTransportEvent } from './contracts/events';
+export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ConversationActivityEvent, ClientEffectEvent, ClientTransportEvent } from './contracts/events';
 
 export type CelebrationKind = 'confetti' | 'stars' | 'shapes' | 'schoolPride';
 
 export type AgentCreationProgress = {
   id: string;
   state: 'running' | 'success' | 'error';
-  backend: AgentBackend;
+  provider: HarnessProvider;
   repositoryName: string;
   createWorktree: boolean;
   createProject?: boolean;
@@ -818,8 +757,8 @@ export type CreateAgentInput = {
     worktree?: Omit<CreateSourceWorktreeInput, 'repoPath' | 'remoteConnectionId'>;
   };
   avatar?: string;
-  backendDefaults?: BackendDefaults;
-  /** A model chosen at creation, layered over the provider defaults (unlike `backendDefaults`, which replaces them). */
+  providerDefaults?: ProviderDefaults;
+  /** A model chosen at creation, layered over the provider defaults (unlike `providerDefaults`, which replaces them). */
   selection?: ExecutionSelectionOverrides;
   delegatedByAgentId?: string;
   sourceRepositoryName?: string;
@@ -930,7 +869,7 @@ export type AppApi = {
   getSnapshotState(): Promise<RendererSnapshotState>;
   listSshHosts(): Promise<SshHostCandidate[]>;
   addSshConnection(input: AddSshConnectionInput): Promise<AppSnapshot>;
-  checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]): Promise<AppSnapshot>;
+  checkRemoteConnection(connectionId: string, inspectOnly?: boolean, providers?: HarnessProvider[]): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
   guestConversationControl(input: import('./guest-navigation').GuestJoinControl): Promise<import('./guest-navigation').GuestJoinState>;
@@ -954,9 +893,9 @@ export type AppApi = {
   listAssignedWorkItems?(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkItem[]>;
   listWorkItems(provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery): Promise<WorkItem[]>;
   /** Without an agent, lists a provider's catalog on one host (local when no connection is given). */
-  listBackendModels(agentId: string | null, backend?: AgentBackend, remoteConnectionId?: string): Promise<BackendModelOption[]>;
-  listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]>;
-  listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
+  listProviderModels(agentId: string | null, provider?: HarnessProvider, remoteConnectionId?: string): Promise<ProviderModelOption[]>;
+  listProviderPlugins(agentId: string): Promise<ProviderPluginSummary[]>;
+  listProviderSkills(agentId: string): Promise<ProviderSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;
   getRunProfiles(agentId: string): Promise<import('./run-profiles').RunProfileCatalog>;
   getRunProfileActions(agentId: string, directory: string): Promise<import('./run-profiles').RunProfileDiscovery>;
@@ -1029,7 +968,7 @@ export type AppApi = {
   deleteAutomation(automationId: string, location?: AutomationLocation): Promise<AppSnapshot>;
   listAgentConversations(agentId: string, input?: ConversationListInput): Promise<ConversationSummary[]>;
   resumeAgentConversation(agentId: string, target: ConversationResumeTarget): Promise<AppSnapshot>;
-  readConversationMessages(ref: BackendConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]>;
+  readConversationMessages(ref: ProviderConversationRef, agentId: string, location?: AutomationLocation): Promise<RendererMessage[]>;
   createAgent(input: CreateAgentInput): Promise<AppSnapshot>;
   executeMission(input: import('./mission-execution').MissionExecutionInput): Promise<AppSnapshot>;
   createMission(input: import('./missions').CreateMissionInput): Promise<AppSnapshot>;
@@ -1054,12 +993,14 @@ export type AppApi = {
   loadAgentTurnHistory(agentId: string, turnId: string): Promise<void>;
   readConversationContent(agentId: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   closeAgent(agentId: string, input?: AgentCloseInput): Promise<AppSnapshot>;
+  /** Brings back a closed agent in its former place, with its conversation. */
+  restoreClosedAgent?(record: ClosedAgentRecord): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
   markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
-  readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
+  readEngineInstructions(engine: HarnessProvider): Promise<{ text: string; path: string }>;
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
-  saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
+  saveEngineInstructions(input: { engine: HarnessProvider; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
   getDictationSettings?(): Promise<import('./dictation').DictationSettings>;
   /** Explicit desktop-only credential reveal; never part of settings or shared snapshots. */
   getDictationApiKey?(): Promise<string | null>;
@@ -1068,25 +1009,19 @@ export type AppApi = {
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;
   setCodexResourceSharing(input: SetCodexResourceSharingInput): Promise<AppSnapshot>;
   getPluginStatus(): Promise<AppPluginStatus>;
-  getCodexAuthentication(remoteConnectionId?: string): Promise<CodexAuthentication>;
-  getClaudeAuthentication(remoteConnectionId?: string): Promise<ClaudeAuthentication>;
   getProviderSetup(remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus[]>;
-  getProviderUpdate(backend: AgentBackend, remoteConnectionId?: string, refresh?: boolean): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
-  setProviderUpdate(backend: AgentBackend, input: import('./contracts/provider-updates').ProviderUpdateInput, remoteConnectionId?: string): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
+  getProviderUpdate(provider: HarnessProvider, remoteConnectionId?: string, refresh?: boolean): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
+  setProviderUpdate(provider: HarnessProvider, input: import('./contracts/provider-updates').ProviderUpdateInput, remoteConnectionId?: string): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
   getProviderConnections(remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
-  getProviderUsage(backend: AgentBackend): Promise<AccountRateLimits | null>;
+  getProviderUsage(provider: HarnessProvider): Promise<AccountRateLimits | null>;
   getBankedResets(remoteConnectionId?: string): Promise<import('./contracts/banked-resets').BankedResets>;
   useBankedReset(input: import('./contracts/banked-resets').UseBankedResetInput, remoteConnectionId?: string): Promise<import('./contracts/banked-resets').BankedResetResult>;
-  setProviderEnabled(backend: AgentBackend, enabled: boolean, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
-  disconnectProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
-  authenticateProvider(backend: AgentBackend, action: 'login' | 'cancel'): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
-  configureProviderSetup(backend: AgentBackend, choice: import('./contracts/provider-setup').ProviderSetupChange): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
-  installProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
-  refreshProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
-  cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication>;
-  startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<CodexChatGptDeviceCodeLogin>;
-  startCodexChatGptLogin(): Promise<CodexChatGptLogin>;
-  logoutCodex(): Promise<CodexAuthentication>;
+  setProviderEnabled(provider: HarnessProvider, enabled: boolean, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
+  disconnectProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
+  authenticateProvider(provider: HarnessProvider, action: import('./contracts/provider-setup').ProviderAuthenticationAction['action'], options?: import('./contracts/provider-setup').ProviderAuthenticationOptions): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
+  configureProviderSetup(provider: HarnessProvider, choice: import('./contracts/provider-setup').ProviderSetupChange): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
+  installProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
+  refreshProvider(provider: HarnessProvider, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   getUpdateStatus(): Promise<DesktopUpdateStatus>;
   installUpdate(): Promise<void>;
   setDockBadgeCount(count: number): Promise<void>;
@@ -1114,7 +1049,6 @@ export type AppApi = {
   syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;
   setAgentGoal(agentId: string, objective: string): Promise<AppSnapshot>;
   clearAgentGoal(agentId: string): Promise<AppSnapshot>;
-  setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot>;
   setAgentPermissionMode(agentId: string, mode: string): Promise<AppSnapshot>;
   sendPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   steerPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
@@ -1146,7 +1080,8 @@ export type AppApi = {
   browserResolveAnnotation(token: string, comment: string | null): Promise<void>;
   browserClearAnnotations(agentId: string, browserId: string): Promise<void>;
   browserClose(agentId: string, browserId: string): Promise<void>;
-  respondToClientRequest(response: ClientRequestResponse): Promise<AppSnapshot>;
+  /** Answers a pending agent request in the shape the harness takes. */
+  respondToAgentRequest(response: import('./agent-request').AgentRequestResponse): Promise<AppSnapshot>;
   onEvent(listener: (event: MainToRendererEvent) => void): () => void;
   onAppCommand(listener: (command: AppCommand) => void): () => void;
   onUpdateStatusChanged(listener: (status: DesktopUpdateStatus) => void): () => void;

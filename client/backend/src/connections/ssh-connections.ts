@@ -6,7 +6,7 @@ import { constants as fsConstants } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { AgentBackend, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
@@ -58,7 +58,7 @@ export class SshConnectionService {
     return base;
   }
 
-  async checkConnection(connection: RemoteConnection, backends: AgentBackend[] = [], progress: (detail: string) => Promise<void> = async () => {}): Promise<RemoteConnection> {
+  async checkConnection(connection: RemoteConnection, providers: HarnessProvider[] = [], progress: (detail: string) => Promise<void> = async () => {}): Promise<RemoteConnection> {
     const checkedAt = this.nowIso();
     let next: RemoteConnection = {
       ...connection,
@@ -78,11 +78,11 @@ export class SshConnectionService {
         this.remoteCodexVersion(next.host).catch(() => undefined),
         this.remoteClaudeVersion(next.host).catch(() => undefined),
       ]);
-      if (backends.includes('codex') && !codexVersion) {
+      if (providers.includes('codex') && !codexVersion) {
         await progress('Installing Codex…');
         codexVersion = await this.ensureRemoteCodexInstalled(next.host);
       }
-      if (backends.includes('claude') && !claudeVersion) {
+      if (providers.includes('claude') && !claudeVersion) {
         await progress('Installing Claude Code…');
         claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
       }

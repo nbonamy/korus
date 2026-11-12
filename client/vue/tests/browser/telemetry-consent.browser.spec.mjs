@@ -1,3 +1,4 @@
+import { sdkSourcePlugin, sdkSourcesEnabled } from '../../../../vite.sdk-aliases.ts';
 // Real Vue/Element Plus DOM evidence with a synthetic desktop API. Backend
 // persistence/delivery delegation is exercised by server-usage.spec.ts.
 import { createServer } from "vite";
@@ -19,8 +20,8 @@ const output =
 await mkdir(output, { recursive: true });
 const entry = `
 import {createApp,h,provide,ref} from 'vue';
-import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
-import '@codex-app-sdk/vue/styles.css';
+import {createConversationPaneController} from '@korus-dev/agent-ui-sdk';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '/src/styles/variables.css';
@@ -45,7 +46,7 @@ configureAppClient({platform:'desktop',api:{
   changeTelemetryConsent:async action=>{window.fixture.actions.push(action);if(window.fixture.failNext){window.fixture.failNext=false;throw Error('Save failed')}state={enabled:action==='enable'};sessionStorage.setItem('consent',JSON.stringify(state));return {...state}},
 }});
 const settings=ref(false);
-const controller=createCodexConversationPaneController({state:()=>({identity:{conversationKey:'consent-fixture',messages:[]}})});
+const controller=createConversationPaneController({state:()=>({identity:{conversationKey:'consent-fixture',messages:[]}})});
 createApp({setup:()=>{
   provide(telemetryNoticeReadyKey,ready);
   return ()=>h('main',{style:'padding:24px;max-width:1200px;margin:auto'},[
@@ -59,7 +60,7 @@ const server = await createServer({
   configFile: false,
   cacheDir: path.join(output, "vite-cache"),
   root: path.join(root, "client/vue"),
-  plugins: [
+  plugins: [sdkSourcePlugin,
     vue(),
     {
       name: "telemetry-consent-dom-fixture",
@@ -82,7 +83,16 @@ const server = await createServer({
       },
     },
   ],
-  resolve: { alias: { "@workspace/core": path.join(root, "core/src") } },
+  // The virtual entry is invisible to Vite's HTML dependency scan. Prebundle
+  // dependencies up front so optimization cannot invalidate requests while the
+  // controlled-clock fixture has HMR disabled; SDK source stays in the graph.
+  optimizeDeps: {
+    noDiscovery: sdkSourcesEnabled,
+    include: ['vue', 'element-plus', 'vue-i18n', ...(sdkSourcesEnabled
+      ? ['fix-webm-duration', 'katex', 'marked-katex-extension', 'parse-git-diff', 'elkjs/lib/elk.bundled.js']
+      : ['@korus-dev/agent-ui-sdk', '@korus-dev/multi-agent-sdk/contracts', '@korus-dev/multi-agent-sdk/prompt'])],
+  },
+  resolve: { alias: { "@workspace/core": path.join(root, "core/src") }, dedupe: ['vue'] },
   // This fixed fixture must not reload while the browser clock advances.
   server: { host: "127.0.0.1", port: 0, hmr: false, ws: false },
 });
@@ -90,7 +100,12 @@ let browser;
 try {
   await server.listen();
   const address = server.httpServer.address();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    // Keep remote font requests local to the fixture without disabling HTTP
+    // caching for every module across the persistence reloads.
+    args: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'],
+  });
   const context = await browser.newContext({
     viewport: { width: 1000, height: 900 },
   });
@@ -102,17 +117,28 @@ try {
   await page.clock.pauseAt(new Date('2026-11-01T12:00:01Z'));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const consoleErrors = [];
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   const outbound = [];
-  await page.route("**/*", (route) => {
-    if (new URL(route.request().url()).hostname !== "127.0.0.1") {
-      outbound.push(route.request().resourceType());
-      return route.abort();
-    }
-    return route.continue();
+  page.on('request', request => {
+    if (new URL(request.url()).hostname !== '127.0.0.1') outbound.push(request.resourceType());
   });
-  await page.goto(`http://127.0.0.1:${address.port}/consent-dom`);
-  await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
-  await page.clock.runFor(90_000);
+  const pending = new Set();
+  page.on('request', request => pending.add(request.url()));
+  page.on('requestfinished', request => pending.delete(request.url()));
+  page.on('requestfailed', request => pending.delete(request.url()));
+  try {
+    await page.goto(`http://127.0.0.1:${address.port}/consent-dom`);
+  } catch (error) {
+    throw new Error(`Navigation failed: ${[...errors, ...consoleErrors].join('; ')} Pending: ${[...pending].join('; ')}`, { cause: error });
+  }
+  try {
+    await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
+  } catch (error) {
+    throw new Error(`Consent fixture failed to load: ${[...errors, ...consoleErrors].join('; ')}`, { cause: error });
+  }
+  // Only one-shot consent deadlines matter; skip unrelated animation frames.
+  await page.clock.fastForward(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   const notice = page.locator('.telemetry-notice');
   assert.equal(await notice.count(),0);
@@ -170,33 +196,33 @@ try {
   }
   const unchangedCopy = `Help improve ${product.name} with anonymous usage and performance data. No conversation content is shared.`;
   assert.equal(await notice.locator('p').textContent(), unchangedCopy);
-  await page.clock.runFor(30_000);
+  await page.clock.fastForward(30_000);
   await page.evaluate(() => window.fixture.active(false));
   await notice.waitFor({state:'hidden'});
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   await page.evaluate(() => window.fixture.active(true));
   await notice.waitFor();
   await page.evaluate(() => window.fixture.foreground(false,false));
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   await page.evaluate(() => window.fixture.foreground(true,false));
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   await page.evaluate(() => window.fixture.foreground(true,true));
-  await page.clock.runFor(29_999);
+  await page.clock.fastForward(29_999);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   await page.clock.runFor(1);
   await page.waitForFunction(() => window.fixture.actions.length === 1);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['enable']);
   assert.equal(await notice.isVisible(),true);
   assert.equal(await notice.locator('p').textContent(), unchangedCopy);
-  await page.clock.runFor(120_000);
+  await page.clock.fastForward(120_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['enable']);
   await notice.screenshot({path:path.join(output,'notice-after-timeout.png')});
   await page.reload();
   await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.evaluate(() => window.fixture.ready(true));
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   assert.equal(await notice.count(),0);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   await page.evaluate(() => sessionStorage.removeItem('consent'));
@@ -205,9 +231,9 @@ try {
   await page.evaluate(() => window.fixture.ready(true));
   await notice.waitFor();
   await page.evaluate(() => {window.fixture.failNext=true});
-  await page.clock.runFor(60_000);
+  await page.clock.fastForward(60_000);
   await notice.getByRole('alert').waitFor();
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['enable']);
   await notice.getByRole('button', {name:'Close',exact:true}).click();
   await notice.waitFor({state:'hidden'});
@@ -222,10 +248,10 @@ try {
   await page.reload();
   await page.waitForFunction(() => Boolean(window.fixture), undefined, { timeout: 15_000 });
   await page.evaluate(() => window.fixture.ready(true));
-  await page.clock.runFor(59_999);
+  await page.clock.fastForward(59_999);
   await notice.getByRole('button', {name:'Cancel',exact:true}).click();
   await notice.waitFor({state:'hidden'});
-  await page.clock.runFor(90_000);
+  await page.clock.fastForward(90_000);
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['disable']);
   await page.getByRole('button', {name:'Settings',exact:true}).click();
   const advanced = page.locator('section[aria-labelledby="settings-general-advanced-title"]');

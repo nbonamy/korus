@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createCodexConversationPaneController } from '@codex-app-sdk/vue';
+import { createConversationPaneController } from '@korus-dev/agent-ui-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { product } from '@workspace/core/product';
@@ -25,7 +25,7 @@ describe('GitHub star composer prompt', () => {
     await state.loadSnapshot();
     const global = { provide: { [generalPreferencesKey as symbol]: createGeneralPreferences(() => state.snapshot.value.general, general => state.updateSettings({ general })) } };
     const props = {
-      controller: createCodexConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
+      controller: createConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
       agent: snapshot.agents[0]!,
     };
     const pane = mount(ConversationPane, { props, global });
@@ -71,7 +71,7 @@ describe('GitHub star composer prompt', () => {
     await state.loadSnapshot();
     const global = { provide: { [generalPreferencesKey as symbol]: createGeneralPreferences(() => state.snapshot.value.general, general => state.updateSettings({ general })) } };
     const props = {
-      controller: createCodexConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
+      controller: createConversationPaneController({ state: { identity: { conversationKey: 'star', messages: [] } }, actions: {} }),
       agent: snapshot.agents[0]!,
     };
     const pane = mount(ConversationPane, { props, global });

@@ -1,7 +1,8 @@
-import { normalizePromptContent, promptContentDispatchText, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent, promptContentDispatchText } from '@korus-dev/multi-agent-sdk/prompt';
+import { type PromptPart } from '@korus-dev/multi-agent-sdk';
 
 /** Stable targets selected by the person, independent of current catalogs. */
-export function promptWithSelectedReferences(prompt: string, content: readonly CodexPromptPart[] | undefined, nativeMentions = false): string {
+export function promptWithSelectedReferences(prompt: string, content: readonly PromptPart[] | undefined, nativeMentions = false): string {
   if (content === undefined) return prompt;
   const parts = normalizePromptContent(content);
   const dispatched = promptContentDispatchText(parts, prompt);

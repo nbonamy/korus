@@ -23,7 +23,7 @@ describe('MissionService', () => {
     const snapshot = createEmptySnapshot();
     snapshot.teams = [{ id: 'team-1', name: 'Team', agentIds: ['worker-1'], color: '#000000' }];
     snapshot.agents = [{
-      id: 'worker-1', teamId: 'team-1', name: 'Mission worker', folder: '/repo', backend: 'codex',
+      id: 'worker-1', teamId: 'team-1', name: 'Mission worker', folder: '/repo', provider: 'codex',
       status: { type: 'idle' }, createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z',
     }];
     const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: 'team-1', orchestratorMemberId: 'worker-1' });

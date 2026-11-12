@@ -103,16 +103,16 @@ describe('AppBackendSocketClient', () => {
       method: 'backend/event/notify',
       params: {
         seq: 1,
-        backend: 'codex' as const, type: 'backend.statusChanged',
-        payload: { backend: 'codex' as const, status: 'running' },
+        provider: 'codex' as const, type: 'provider.statusChanged',
+        payload: { provider: 'codex' as const, status: 'running' },
         occurredAt: '2026-06-14T00:00:00.000Z',
       },
     })}\n`);
 
     expect(listener).toHaveBeenCalledWith({
       seq: 1,
-      backend: 'codex' as const, type: 'backend.statusChanged',
-      payload: { backend: 'codex' as const, status: 'running' },
+      provider: 'codex' as const, type: 'provider.statusChanged',
+      payload: { provider: 'codex' as const, status: 'running' },
       occurredAt: '2026-06-14T00:00:00.000Z',
     });
   });

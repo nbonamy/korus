@@ -1,4 +1,4 @@
-import type { CodexChatMessage } from '@codex-app-sdk/vue';
+import type { ChatMessage } from '@korus-dev/agent-ui-sdk';
 import type { RendererMessage } from '@workspace/core/contracts';
 import { parseCollaborationMessageEnvelope } from '@workspace/core/collaboration-message-envelope';
 import { product } from '@workspace/core/product';
@@ -9,8 +9,8 @@ export type CollaborationMessagePresentation = {
   senderNames: string[];
 };
 
-export function presentCollaborationMessage(message: CodexChatMessage): {
-  message: CodexChatMessage;
+export function presentCollaborationMessage(message: ChatMessage): {
+  message: ChatMessage;
   presentation: CollaborationMessagePresentation | null;
 } {
   const presentation = message.role === 'user'

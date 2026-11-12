@@ -15,7 +15,7 @@ import {
   VolumeIcon,
   WorldIcon,
 } from "../shared/icons/app-icons";
-import type { AgentBackend } from "@workspace/core/contracts";
+import type { HarnessProvider } from "@workspace/core/contracts";
 
 export type SettingsTab =
   | "usage"
@@ -41,7 +41,7 @@ type SettingsDestination = {
   labelKey: string;
   group: "app" | "agents" | "workspace";
   icon?: Component;
-  backend?: AgentBackend;
+  provider?: HarnessProvider;
   aliases: string;
 };
 
@@ -97,22 +97,22 @@ const settingsDestinations: readonly SettingsDestination[] = [
     id: "codex",
     labelKey: "surface.settingsSidebar.codex",
     group: "agents",
-    backend: "codex",
+    provider: "codex",
     aliases: "openai engine provider login authentication",
   },
   {
     id: "claude-code",
     labelKey: "surface.settingsSidebar.claudeCode",
     group: "agents",
-    backend: "claude",
+    provider: "claude",
     aliases: "anthropic engine provider login authentication",
   },
-  { id: "cursor", labelKey: "cursor.name", group: "agents", backend: "cursor", aliases: "engine provider login authentication" },
+  { id: "cursor", labelKey: "cursor.name", group: "agents", provider: "cursor", aliases: "engine provider login authentication" },
   {
     id: "antigravity",
     labelKey: "antigravity.name",
     group: "agents",
-    backend: "antigravity",
+    provider: "antigravity",
     aliases: "google engine provider login authentication",
   },
   {
@@ -161,14 +161,14 @@ const settingsDestinations: readonly SettingsDestination[] = [
 export function availableSettingsDestinations(context: {
   embeddedBrowser?: boolean;
   appshots: boolean;
-  availableBackends: readonly AgentBackend[];
+  availableProviders: readonly HarnessProvider[];
 }): SettingsDestination[] {
   return settingsDestinations.filter(
     (destination) =>
       (destination.id !== "browser" || context.embeddedBrowser === true) &&
       (destination.id !== "appshots" || context.appshots) &&
-      (destination.id !== "cursor" || context.availableBackends.includes("cursor")) &&
+      (destination.id !== "cursor" || context.availableProviders.includes("cursor")) &&
       (destination.id !== "antigravity" ||
-        context.availableBackends.includes("antigravity")),
+        context.availableProviders.includes("antigravity")),
   );
 }

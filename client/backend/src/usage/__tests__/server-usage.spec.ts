@@ -9,15 +9,12 @@ import { openTelemetryConsent } from "../../telemetry/__tests__/settings-fixture
 import { UsageService } from "../usage-service";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
-import type { AgentBackendDriver, BackendEvent } from "@workspace/core/backend-driver";
-import { defaultBackendCapabilities } from "@workspace/core/backend-capabilities";
-import { BackendDriverRpc } from "../../driver-rpc";
+import type { AgentProviderDriver, BackendEvent } from "@workspace/core/provider-driver";
+import { defaultProviderCapabilities } from "@workspace/core/provider-capabilities";
+import { ProviderDriverRpc } from "../../driver-rpc";
 import { requestAppBackend } from "@workspace/core/backend-protocol/rpc";
 import { backendMethods } from "@workspace/core/backend-protocol/methods";
-import { ClaudeAgentSdkTransport } from "../../claude/agent-sdk-transport";
 import { createQueryHarness } from "../../claude/__tests__/sdk-query-fixture";
-import { codexExecutionConsumption } from "../../codex/execution-usage";
-import { validConsumption } from "@workspace/core/usage";
 
 // The owning RPC workflow persists and projects measured provider usage.
 it("previews exact local UTF-8 telemetry from persisted provider measurements without leaking local dimensions", async () => {
@@ -40,33 +37,16 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
     at: midnight - 1000,
   };
   const harness = createQueryHarness();
-  const transport = new ClaudeAgentSdkTransport({
-    createQuery: harness.createQuery,
-  });
+  const driver = harness.driver();
+  const claudeAgent = { id: base.agentId, name: "Canary", avatar: "C", folder: dir, provider: "claude" as const, status: { type: "idle" as const }, createdAt: "2026-10-16T00:00:00Z", updatedAt: "2026-10-16T00:00:00Z" };
+  const observed: ExecutionObservation[] = [];
+  driver.onUsage((observation) => observed.push(observation));
   try {
     let completed: Promise<boolean> | undefined;
-    const turn = transport.startTurn(
-      { cwd: dir, prompt: canary },
-      (message) => {
-        if (message.type === "result") {
-          if (!validConsumption(message.executionConsumption))
-            throw new Error("Missing normalized Claude consumption.");
-          // The transport owns exclusive Claude raw input normalization.
-          completed = local.observe(
-            {
-              ...base,
-              phase: "completed",
-              at: midnight + 1000,
-              model: "claude-sonnet-4-6",
-              tokens: message.executionConsumption,
-              requestCoverage: "complete",
-            },
-            attribution,
-          );
-        }
-      },
-    );
+    const sending = driver.sendPrompt(claudeAgent, canary);
     await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+    harness.emit({ type: "system", subtype: "init", session_id: "s" });
+    await sending;
     await local.observe(
       {
         ...base,
@@ -88,7 +68,13 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
         output_tokens: 1000,
       },
     });
-    await turn.done;
+    await vi.waitFor(() => expect(observed.some((observation) => observation.phase === "completed")).toBe(true));
+    const normalizedClaude = observed.find((observation) => observation.phase === "completed")!.tokens;
+    if (!normalizedClaude) throw new Error("Missing normalized Claude consumption.");
+    completed = local.observe(
+      { ...base, phase: "completed", at: midnight + 1000, model: "claude-sonnet-4-6", tokens: normalizedClaude, requestCoverage: "complete" },
+      attribution,
+    );
     expect(await completed).toBe(true);
     // Request costs belong to the request day/model, independently of turn tokens.
     await local.observeRequest({
@@ -122,23 +108,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
       turnId: "codex",
       model: "gpt-6-sol",
     };
-    const normalized = codexExecutionConsumption({
-      type: "conversation.executionUsageChanged",
-      payload: {
-        usage: {
-          observedStart: true,
-          model: "gpt-6-sol",
-          execution: {
-            inputTokens: 10000,
-            cachedInputTokens: 8000,
-            cacheWriteInputTokens: null,
-            outputTokens: 1200,
-            reasoningOutputTokens: 200,
-            totalTokens: 11200,
-          },
-        },
-      },
-    })!;
+    const normalized = { tokens: { total: 11200, input: 10000, output: 1200, cacheRead: 8000, cacheWrite: null, reasoning: 200 } };
     await local.observe({ ...codex, phase: "started" }, attribution);
     await local.observe(
       {
@@ -275,7 +245,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
       await server.close();
     }
   } finally {
-    await transport.close();
+    await driver.close();
     await local.close();
     await rm(dir, { recursive: true, force: true });
   }
@@ -346,7 +316,7 @@ it("queries provider observations through the app contract and unsubscribes on s
     onEvent: () => () => undefined,
     handle: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
-  } as unknown as BackendDriverRpc;
+  } as unknown as ProviderDriverRpc;
   const snapshot = createTestSnapshot();
   const server = new AppBackendServer({ version: "test", snapshot, usage, driverRpc: driver });
   const call = (method: string, params: unknown = {}) => server.handleMessage({ jsonrpc: "2.0", id: 1, method, params });
@@ -383,7 +353,7 @@ it("queries provider observations through the app contract and unsubscribes on s
       ],
       daily: [{ groups: [{ label: 'Unknown' }, { label: 'gpt-6.1-sol', started: 2 }] }],
     } });
-    snapshot.backendRuntimes = [{ backend: 'codex', status: 'running', capabilities: { reportsTokens: false } }];
+    snapshot.providerRuntimes = [{ provider: 'codex', status: 'running', capabilities: { reportsTokens: false } }];
     expect(await call('usage/get', { filter: { group: 'model' } })).toMatchObject({ result: {
       rows: [{ reportsTokens: false, tokens: null }, { reportsTokens: false, tokens: null }, { reportsTokens: false, tokens: null }],
       daily: [{ groups: [{ reportsTokens: false }, { reportsTokens: false }, { reportsTokens: false }] }],
@@ -416,14 +386,14 @@ it.each([false, true])('persists shutdown observations before closing the ledger
   const local = new UsageLedger(file, () => at); await local.load();
   const usage = new UsageService(local, () => undefined), published = vi.fn();
   const closingError = new Error('Synthetic driver shutdown failure');
-  const makeDriver = (backend: 'codex' | 'claude') => {
+  const makeDriver = (provider: 'codex' | 'claude') => {
     const observations = new Set<(event: ExecutionObservation) => void>();
     const requests = new Set<(event: RequestObservation) => void>();
     const events = new Set<(event: BackendEvent) => void>();
     let release!: () => void, entered!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     const closing = new Promise<void>(resolve => { entered = resolve; });
-    const observation = { provider: backend, agentId: backend, sessionId: backend, turnId: 'running', model: 'gpt-6-sol', at };
+    const observation = { provider: provider, agentId: provider, sessionId: provider, turnId: 'running', model: 'gpt-6-sol', at };
     const request: RequestObservation = {
       ...observation, requestId: 'final-request', revision: 1, status: 'final', apiProvider: 'openai', modality: 'text', cacheMode: 'implicit',
       tokens: { input: 1000, output: 100, cacheRead: 0, cacheWrite: {}, reasoning: 10, inputIncludesCacheRead: true, inputIncludesCacheWrite: true, outputIncludesReasoning: true },
@@ -431,19 +401,19 @@ it.each([false, true])('persists shutdown observations before closing the ledger
     };
     const emit = (phase: ExecutionObservation['phase'], turnId = observation.turnId) => observations.forEach(listener => listener({ ...observation, turnId, phase, requestCoverage: 'complete' }));
     const emitRequest = (value = request) => requests.forEach(listener => listener(value));
-    const emitEvent = () => events.forEach(listener => listener({ agentId: backend, type: 'agent.statusChanged', payload: { type: 'idle' } }));
-    const driver: AgentBackendDriver = {
-      backend, getRuntimeStatus: () => ({ backend, status: 'running' }), getCapabilities: () => defaultBackendCapabilities(backend),
+    const emitEvent = () => events.forEach(listener => listener({ agentId: provider, type: 'agent.statusChanged', payload: { type: 'idle' } }));
+    const driver: AgentProviderDriver = {
+      provider: provider, getRuntimeStatus: () => ({ provider: provider, status: 'running' }), getCapabilities: () => defaultProviderCapabilities(provider),
       sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
       onUsage: listener => { observations.add(listener); return () => { observations.delete(listener); }; },
       onRequestUsage: listener => { requests.add(listener); return () => { requests.delete(listener); }; },
       onEvent: listener => { events.add(listener); return () => { events.delete(listener); }; },
-      close: async () => { entered(); await gate; emit('interrupted'); if (backend === 'codex') emitRequest(); emitEvent(); if (failFirst && backend === 'codex') throw closingError; },
+      close: async () => { entered(); await gate; emit('interrupted'); if (provider === 'codex') emitRequest(); emitEvent(); if (failFirst && provider === 'codex') throw closingError; },
     };
     return { driver, release, closing, emit, emitRequest, emitEvent, request };
   };
   const first = makeDriver('codex'), last = makeDriver('claude');
-  const rpc = new BackendDriverRpc(new Map([['codex', first.driver], ['claude', last.driver]]));
+  const rpc = new ProviderDriverRpc(new Map([['codex', first.driver], ['claude', last.driver]]));
   const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), driverRpc: rpc, usage, onEvent: published });
   let shutdown: Promise<unknown> | undefined;
   try {
@@ -491,7 +461,7 @@ it('routes request observations through usage/get with cost coverage and clears 
     onUsage: (listener: typeof observe) => { observe = listener; return () => undefined; },
     onRequestUsage: (listener: typeof request) => { request = listener; return unsub; },
     onEvent: () => () => undefined, close: async () => undefined,
-  } as unknown as BackendDriverRpc;
+  } as unknown as ProviderDriverRpc;
   const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), usage, driverRpc: driver });
   const call = (method: string) => server.handleMessage({ jsonrpc: '2.0', id: 1, method, params: {} });
   const event = { provider: 'codex' as const, agentId: 'a', sessionId: 's', turnId: 't', model: 'gpt-6-sol', at: Date.now() };
@@ -530,9 +500,9 @@ it("owns private consent across upgrade, restart, opt-out and reset while delega
       telemetryConsent: consent,
       onEvent: events,
     });
-  let backend = server();
+  let provider = server();
   const request = (method: string, params?: unknown) =>
-    backend.handleMessage({ jsonrpc: "2.0", id: 1, method, params } as any);
+    provider.handleMessage({ jsonrpc: "2.0", id: 1, method, params } as any);
   try {
     const first = await consent.current();
     expect(first.enabled).toBeUndefined();
@@ -571,7 +541,7 @@ it("owns private consent across upgrade, restart, opt-out and reset while delega
           sealedReport: async () => null,
         },
       });
-      backend = server();
+      provider = server();
       expect(await consent.current()).toStrictEqual({
         ...first,
         enabled: false,
@@ -601,7 +571,7 @@ it("owns private consent across upgrade, restart, opt-out and reset while delega
           sealedReport: async () => null,
         },
       });
-      backend = server();
+      provider = server();
       expect(await consent.current()).toStrictEqual(enabled);
       await request("telemetry/consent/change", { action: "disable" });
       expect(transitions).toHaveBeenLastCalledWith({
@@ -625,7 +595,7 @@ it("owns private consent across upgrade, restart, opt-out and reset while delega
         current: reset,
       });
       consent = await openTelemetryConsent(dir);
-      backend = server();
+      provider = server();
       expect(await consent.current()).toStrictEqual(reset);
       expect(events).not.toHaveBeenCalled();
       expect(fetch).not.toHaveBeenCalled();

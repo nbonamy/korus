@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -8,7 +9,7 @@ import vue from '@vitejs/plugin-vue';
 test('Activity sidebar actions share one row at supported sidebar widths', async () => {
   const repository = fileURLToPath(new URL('../../../../', import.meta.url));
   const server = await createServer({ configFile: false, root: `${repository}/client/vue/tests/browser/fixtures/agent-sidebar`,
-    resolve: { alias: { '@workspace/core': `${repository}/core/src` }, dedupe: ['vue'] }, plugins: [vue()],
+    resolve: { alias: { '@workspace/core': `${repository}/core/src` }, dedupe: ['vue'] }, plugins: [sdkSourcePlugin, vue()],
     server: { host: '127.0.0.1', port: 0, fs: { allow: [repository] } }, logLevel: 'error' });
   let browser;
   try {

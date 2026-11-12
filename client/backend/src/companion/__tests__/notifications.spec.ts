@@ -3,15 +3,16 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { CompanionNotifications } from '../notifications';
 
-const workspace: CompanionWorkspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', name: 'Builder', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, folder: '/private', createdAt: '', updatedAt: '', status: { type: 'idle' } }] };
-const completed = (status = 'completed'): AppBackendEvent => ({ type: 'codex.conversationEventReceived', agentId: 'agent', backend: 'codex', threadId: 'thread', payload: { revision: 1, event: { type: 'turn.completed', conversationId: 'thread', turnId: 'turn', payload: { status } } } }) as AppBackendEvent;
+const workspace: CompanionWorkspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', name: 'Builder', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' }, folder: '/private', createdAt: '', updatedAt: '', status: { type: 'idle' } }] };
+const completed = (status = 'completed', conversationId = 'thread'): AppBackendEvent =>
+  ({ type: 'turn.completed', agentId: 'agent', provider: 'codex', conversationId, turnId: 'turn', seq: 1, occurredAt: '', payload: { status, error: null, willRetry: false } }) as AppBackendEvent;
 
 describe('companion attention events', () => {
   it('announces a completed turn once and never announces hydration, failed or stale turns', () => {
     const source = new CompanionNotifications('host');
     expect(source.create(completed('interrupted'), workspace)).toBeNull();
     expect(source.create(completed('failed'), workspace)).toBeNull();
-    expect(source.create(completed(), { ...workspace, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: 'new' } }] })).toBeNull();
+    expect(source.create(completed(), { ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'new' } }] })).toBeNull();
     expect(source.create(completed(), { teams: [], agents: [] })).toBeNull();
     const result = source.create(completed(), workspace)!;
     expect(result).toStrictEqual({ id: expect.stringMatching(/^[a-f0-9]{64}$/), name: 'Builder', kind: 'completed', createdAt: expect.any(Number),
@@ -27,29 +28,36 @@ describe('companion attention events', () => {
   });
   it('uses normalized requests for approval/question identity and handles Claude completion', () => {
     const source = new CompanionNotifications('host');
-    const asyncQuestion = { type: 'agentRequest.created', agentId: 'agent', backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: 'async', conversationId: 'thread', kind: 'question', question: { itemId: 'async', delivery: 'async', blocking: false, questions: [] } } } } as AppBackendEvent;
+    const asyncQuestion = { type: 'agentRequest.created', agentId: 'agent', provider: 'codex', seq: 1, occurredAt: '', payload: { request: { id: 'async', conversationId: 'thread', kind: 'question', question: { itemId: 'async', delivery: 'async', blocking: false, questions: [] } } } } as AppBackendEvent;
     expect(source.accepts(asyncQuestion)).toBe(false);
     expect(source.create(asyncQuestion, workspace)).toBeNull();
     for (const kind of ['question', 'approval', 'toolConfirmation']) {
-      const event = { type: 'agentRequest.created', agentId: 'agent', backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: kind, conversationId: 'thread', kind, question: { itemId: kind, delivery: 'tool', blocking: true, questions: [] } } } } as AppBackendEvent;
+      const event = { type: 'agentRequest.created', agentId: 'agent', provider: 'codex', seq: 1, occurredAt: '', payload: { request: { id: kind, conversationId: 'thread', kind, question: { itemId: kind, delivery: 'tool', blocking: true, questions: [] } } } } as AppBackendEvent;
       expect(source.accepts(event)).toBe(true);
       expect(source.create(event, workspace)?.kind).toBe(kind === 'question' ? 'question' : 'approval');
       expect(source.create(event, workspace)).toBeNull();
     }
-    const claude = { ...workspace, agents: [{ ...workspace.agents[0]!, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } }] };
-    const event = { type: 'claude.conversationEventReceived', agentId: 'agent', backend: 'claude', backendSessionId: 'session', payload: { revision: 1, event: { type: 'turn.completed', turnId: 'turn', payload: { turn: { id: 'turn', status: 'completed' } } } } } as AppBackendEvent;
-    expect(source.create(event, claude)?.kind).toBe('completed');
+    const claude = { ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } }] };
+    expect(source.create(completed('completed', 'session'), claude)?.kind).toBe('completed');
   });
+  it('pairs a finished turn with the read revision it caused, for local and remote agents alike', () => {
+    const source = new CompanionNotifications('host');
+    expect(source.capture(completed())).toStrictEqual([]);
+    const [found] = source.capture({ type: 'agent.updated', agentId: 'agent', seq: 2, occurredAt: '', payload: { id: 'agent', readState: { revision: 3, readRevision: 2 } } } as AppBackendEvent);
+    expect(found).toStrictEqual({ event: completed(), revision: 3 });
+    expect(source.create(found!.event, workspace, found!.revision)?.kind).toBe('completed');
+  });
+
   describe('mission agents', () => {
     const base = workspace.agents[0]!;
-    const worker = { ...base, id: 'worker', name: 'api', backendSession: { kind: 'codex' as const, threadId: 'worker-thread' } };
+    const worker = { ...base, id: 'worker', name: 'api', providerSession: { kind: 'codex' as const, conversationId: 'worker-thread' } };
     const missionWorkspace: CompanionWorkspace = {
       ...workspace,
       missionAgents: [worker],
       missionProgress: [{ id: 'mission', teamId: 'team', outcome: 'Billing', stage: 'implementation', status: 'active', startedAt: '', updatedAt: '', revision: 1, leadAgentId: 'agent', tickets: [{ number: 1, title: 'api', state: 'running', agentId: 'worker' }] }],
     };
-    const request = (agentId: string, conversationId: string): AppBackendEvent => ({ type: 'agentRequest.created', agentId, backend: 'codex', seq: 1, occurredAt: '', payload: { request: { id: `${agentId}-q`, conversationId, kind: 'question', question: { itemId: `${agentId}-q`, delivery: 'tool', blocking: true, questions: [] } } } }) as AppBackendEvent;
-    const completedFor = (agentId: string, threadId: string): AppBackendEvent => ({ type: 'codex.conversationEventReceived', agentId, backend: 'codex', threadId, payload: { revision: 1, event: { type: 'turn.completed', conversationId: threadId, turnId: 'turn', payload: { status: 'completed' } } } }) as AppBackendEvent;
+    const request = (agentId: string, conversationId: string): AppBackendEvent => ({ type: 'agentRequest.created', agentId, provider: 'codex', seq: 1, occurredAt: '', payload: { request: { id: `${agentId}-q`, conversationId, kind: 'question', question: { itemId: `${agentId}-q`, delivery: 'tool', blocking: true, questions: [] } } } }) as AppBackendEvent;
+    const completedFor = (agentId: string, threadId: string): AppBackendEvent => ({ ...completed(), agentId, conversationId: threadId }) as AppBackendEvent;
 
     it('asks the phone to step in when a repository worker or the lead needs input', () => {
       const source = new CompanionNotifications('host');

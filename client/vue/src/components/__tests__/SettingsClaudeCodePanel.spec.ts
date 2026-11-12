@@ -11,7 +11,7 @@ describe('SettingsClaudeCodePanel', () => {
     expect(wrapper.findAll('.engine-hero__details .form-row__copy strong').map(row => row.text())).toEqual(['Version', 'Location', 'Enable Claude Code']);
     await wrapper.get('button').trigger('click');
     expect(wrapper.emitted('connect')).toHaveLength(1);
-    await wrapper.setProps({ connected: true, authentication: { kind: 'claude', connected: true, state: { loggedIn: true, account: { type: 'subscription', email: 'user@example.com', subscription: 'max' } } } });
+    await wrapper.setProps({ connected: true, authentication: { kind: 'claude', connected: true, state: { loggedIn: true, account: { type: 'subscription', email: 'user@example.com', subscription: 'max' } }, account: { kind: 'subscription', email: 'user@example.com', plan: 'max' } } });
     expect(wrapper.get('.engine-hero__summary').text()).toContain('user@example.com · max');
     expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true');
     await wrapper.get('[role="switch"]').trigger('click');

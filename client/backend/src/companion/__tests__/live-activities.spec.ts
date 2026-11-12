@@ -7,7 +7,7 @@ import type { LiveActivityRegistration, LiveActivityPush } from '@workspace/core
 // change, the daemon restarts, and work finishes. No transcript or phone runtime fake.
 function fixture() {
   let now = 1_800_000_000_000; let allowed = true;
-  const agent = (id: string, teamId: string) => ({ id, teamId, name: id, folder: null, backend: 'codex' as const, status: { type: 'working' as const }, createdAt: '', updatedAt: '' });
+  const agent = (id: string, teamId: string) => ({ id, teamId, name: id, folder: null, provider: 'codex' as const, status: { type: 'working' as const }, createdAt: '', updatedAt: '' });
   const workspace: CompanionWorkspace = { teams: [{ id: 'one', name: 'One', agentIds: ['a', 'm'] }, { id: 'two', name: 'Two', agentIds: ['b'] }], agents: [agent('a', 'one'), agent('b', 'two')], missionAgents: [agent('a', 'one'), agent('m', 'one')],
     agentRequests: { a: [{ id: 'q', kind: 'toolConfirmation', conversationId: 's', confirmation: {} } as never] } };
   const push = vi.fn(async (_peer: string, _registration: LiveActivityRegistration, _activity: LiveActivityPush) => 'sent' as const);
@@ -21,19 +21,19 @@ describe('aggregate Live Activity daemon lifecycle', () => {
   it('keeps one activity across all teams and a daemon restart, updates rotated tokens, then ends at idle', async () => {
     const f = fixture(); let service = f.create();
     await service.register('phone', f.start);
-    expect(f.push).toHaveBeenCalledExactlyOnceWith('phone', f.start, { event: 'start', hostId: 'host', instanceId: expect.any(String), timestamp: 1_800_000_000, startedAt: 1_800_000_000_000, state: { hostName: 'Laptop', active: 3, running: 3, attention: 1, agents: [{ id: 'a', name: 'a', backend: 'codex', startedAt: 1_800_000_000_000, status: 'approval', detail: 'Needs your approval' }, { id: 'b', name: 'b', backend: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }], more: 1 } });
+    expect(f.push).toHaveBeenCalledExactlyOnceWith('phone', f.start, { event: 'start', hostId: 'host', instanceId: expect.any(String), timestamp: 1_800_000_000, startedAt: 1_800_000_000_000, state: { hostName: 'Laptop', active: 3, running: 3, attention: 1, agents: [{ id: 'a', name: 'a', provider: 'codex', startedAt: 1_800_000_000_000, status: 'approval', detail: 'Needs your approval' }, { id: 'b', name: 'b', provider: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }], more: 1 } });
     const instanceId = f.push.mock.calls[0]![2].instanceId;
     await service.refresh(); await service.refresh();
     expect(f.push).toHaveBeenCalledTimes(1);
     const update: LiveActivityRegistration = { ...f.start, kind: 'update', instanceId, token: 'cd'.repeat(32) };
     await service.register('phone', update);
-    expect(f.push).toHaveBeenLastCalledWith('phone', update, expect.objectContaining({ event: 'update', state: { hostName: 'Laptop', active: 3, running: 3, attention: 1, agents: [{ id: 'a', name: 'a', backend: 'codex', startedAt: 1_800_000_000_000, status: 'approval', detail: 'Needs your approval' }, { id: 'b', name: 'b', backend: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }], more: 1 } }));
+    expect(f.push).toHaveBeenLastCalledWith('phone', update, expect.objectContaining({ event: 'update', state: { hostName: 'Laptop', active: 3, running: 3, attention: 1, agents: [{ id: 'a', name: 'a', provider: 'codex', startedAt: 1_800_000_000_000, status: 'approval', detail: 'Needs your approval' }, { id: 'b', name: 'b', provider: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }], more: 1 } }));
     service = f.create(); f.advance();
     await service.refresh();
     expect(f.push).toHaveBeenCalledTimes(2);
     f.workspace.agents[0]!.status = { type: 'idle' } as never; f.workspace.missionAgents = []; f.workspace.agentRequests = {};
     f.advance(); await service.refresh();
-    expect(f.push).toHaveBeenLastCalledWith('phone', update, expect.objectContaining({ event: 'update', state: { hostName: 'Laptop', active: 1, running: 1, attention: 0, agents: [{ id: 'b', name: 'b', backend: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }, { id: 'a', name: 'a', backend: 'codex', status: 'idle', detail: 'Idle' }], more: 0 } }));
+    expect(f.push).toHaveBeenLastCalledWith('phone', update, expect.objectContaining({ event: 'update', state: { hostName: 'Laptop', active: 1, running: 1, attention: 0, agents: [{ id: 'b', name: 'b', provider: 'codex', startedAt: 1_800_000_000_000, status: 'working', detail: 'Working' }, { id: 'a', name: 'a', provider: 'codex', status: 'idle', detail: 'Idle' }], more: 0 } }));
     let rotated = { ...update, token: 'ef'.repeat(32) };
     f.advance(); await service.register('phone', rotated);
     expect(f.push).toHaveBeenLastCalledWith('phone', rotated, expect.objectContaining({ event: 'update' }));
@@ -95,12 +95,12 @@ describe('aggregate Live Activity daemon lifecycle', () => {
 it('keeps mixed-provider Live Activity pushes valid for the released relay schema', async () => {
   const {liveActivityPushSchema} = await import('../live-activity-schema');
   const f = fixture();
-  f.workspace.agents.push({...f.workspace.agents[0]!,id:'0cursor',backend:'cursor'});
+  f.workspace.agents.push({...f.workspace.agents[0]!,id:'0cursor',provider:'cursor'});
   f.workspace.teams[0]!.agentIds.push('0cursor');
   await f.create().register('phone',f.start);
   expect(f.push).toHaveBeenCalledTimes(1);
   const activity = f.push.mock.calls[0]![2];
   expect(liveActivityPushSchema.safeParse(activity).success).toBe(true);
-  expect(activity.state.running).toBe(3);
-  expect(activity.state.agents.every(agent=>['codex','claude','antigravity'].includes(agent.backend ?? ''))).toBe(true);
+  expect(activity.state.running).toBe(4);
+  expect(activity.state.agents.find(agent=>agent.id === '0cursor')).not.toHaveProperty('provider');
 });

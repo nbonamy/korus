@@ -387,7 +387,7 @@ describe('RepositoryBacklogPanel', () => {
 
     await wrapper.get('.repository-backlog__start-work .app-button--primary').trigger('click');
 
-    expect(startWorkAction).toHaveBeenCalledWith({ action: 'fix', isCurrent: expect.any(Function), item: expect.objectContaining({ id: 'nbonamy/agent-workspace#12' }), target: 'duplicate', workspace: { branchName: 'fix/gh-12', kind: 'worktree' }, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
+    expect(startWorkAction).toHaveBeenCalledWith({ action: 'fix', isCurrent: expect.any(Function), item: expect.objectContaining({ id: 'nbonamy/agent-workspace#12' }), target: 'duplicate', workspace: { branchName: 'fix/gh-12', kind: 'worktree' }, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } });
     await nextTick();
     expect(wrapper.text()).toContain('Work started');
   });
@@ -557,8 +557,8 @@ const agent: Agent = {
   name: 'Dina',
   avatar: 'DI',
   folder: '/Users/nbonamy/src/agent-workspace',
-  backend: 'codex',
-  backendDefaults: { kind: 'codex' },
+  provider: 'codex',
+  providerDefaults: { kind: 'codex' },
   status: { type: 'idle' },
   createdAt: '2026-08-12T00:00:00.000Z',
   updatedAt: '2026-08-12T00:00:00.000Z',

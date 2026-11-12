@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import type { CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionConversation, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { CompanionSubscription } from '../subscription';
 const target: CompanionTarget = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
-const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] }) as CompanionWorkspace;
-const frame = (revision: number, reset = false) => ({ type: reset ? 'codex.conversationSnapshotChanged' : 'codex.conversationEventReceived', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: revision, occurredAt: 'now', payload: { revision, ...(reset ? { snapshot: {} } : { event: { type: 'test' } }) } }) as AppBackendEvent;
+const workspace = (): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' } }] }) as CompanionWorkspace;
+const frame = (revision: number, reset = false, epoch = 'epoch', conversation = 'thread') => ({ type: reset ? 'conversation.sessionSnapshot' : 'conversation.sessionPatch', provider: 'codex', agentId: 'agent', seq: revision, occurredAt: 'now',
+  payload: { conversation, epoch, ...(reset ? { snapshot: { revision, state: {} } } : { patch: { revision, ops: [] } }) } }) as unknown as AppBackendEvent;
+type Sent = { frame: { payload: { snapshot?: { revision: number }; patch?: { revision: number } } } };
+const revisionOf = (value: Sent) => value.frame.payload.snapshot?.revision ?? value.frame.payload.patch!.revision;
 afterEach(() => vi.useRealTimers());
 function fixture() {
   let listener: ((event: AppBackendEvent) => void) | undefined;
@@ -21,7 +24,7 @@ describe('companion event subscriptions', () => {
     try {
       await f.subscription.request('snapshot.get', {});
       for (let index = 0; index < 20; index++) {
-        f.event({ type: 'conversation.contextUsageUpdated', agentId: 'agent', backend: 'codex', payload: { contextUsage: {} } } as AppBackendEvent);
+        f.event({ type: 'conversation.contextUsageUpdated', agentId: 'agent', provider: 'codex', payload: { contextUsage: {} } } as AppBackendEvent);
         f.event({ type: 'conversation.turnDiffUpdated', agentId: 'agent', turnId: 'turn', payload: { addedLines: 1, removedLines: 0 } } as AppBackendEvent);
         f.event({ type: 'workspace.fileActivityDetected', agentId: 'agent', turnId: 'turn', payload: {} } as AppBackendEvent);
         await vi.advanceTimersByTimeAsync(60);
@@ -41,12 +44,12 @@ describe('companion event subscriptions', () => {
     const f = fixture();
     try {
       await f.subscription.request('snapshot.get', {});
-      let resolve!: (frame: CompanionReset) => void;
+      let resolve!: (frame: CompanionConversation) => void;
       f.request.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
       const loading = f.subscription.request('conversation.subscribe', target);
       f.event(frame(1)); f.event({ ...frame(2), clientState: { secret: true }, snapshot: { secret: true } } as unknown as AppBackendEvent);
-      resolve({ ...frame(1, true), snapshot: { private: true }, clientState: { private: true } } as unknown as CompanionReset); await loading;
-      expect(f.emit.mock.calls.map(([value]) => value.type === 'conversation' ? value.frame.payload.revision : value.type)).toStrictEqual(['workspace', 1, 2]);
+      resolve({ ...frame(1, true), snapshot: { private: true }, clientState: { private: true } } as unknown as CompanionConversation); await loading;
+      expect(f.emit.mock.calls.map(([value]) => value.type === 'conversation' ? revisionOf(value) : value.type)).toStrictEqual(['workspace', 1, 2]);
       expect(f.emit.mock.calls[1]![0].frame).not.toHaveProperty('clientState');
       expect(f.emit.mock.calls[1]![0].frame).not.toHaveProperty('snapshot');
       expect(f.emit.mock.calls[2]![0].frame).not.toHaveProperty('clientState');
@@ -97,7 +100,22 @@ it('joins checkpoint catch-up to the live stream without replaying snapshots or 
     f.event(frame(2)); f.event(frame(3));
     resolve({ checkpoint: { epoch: 'epoch', revision: 2 }, frames: [frame(2)] });
     expect(await pending).toStrictEqual({ checkpoint: { epoch: 'epoch', revision: 2 } });
-    expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => v.frame.payload.revision)).toStrictEqual([2, 3]);
+    expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => revisionOf(v))).toStrictEqual([2, 3]);
+  } finally { f.subscription.close(); }
+});
+
+it('sends a restarted stream at any revision, drops late frames of the current one, and waits for the workspace to name another conversation', async () => {
+  vi.useFakeTimers(); const f = fixture();
+  try {
+    await f.subscription.request('snapshot.get', {});
+    f.request.mockImplementationOnce(async () => frame(5, true));
+    await f.subscription.request('conversation.subscribe', target);
+    f.event(frame(4, true)); f.event(frame(5));
+    f.event(frame(1, true, 'restarted')); f.event(frame(2, false, 'restarted'));
+    f.event(frame(1, true, 'epoch', 'another-thread'));
+    expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => [revisionOf(v), v.frame.payload.epoch])).toStrictEqual([[5, 'epoch'], [1, 'restarted'], [2, 'restarted']]);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(f.request).toHaveBeenLastCalledWith('snapshot.get', expect.anything());
   } finally { f.subscription.close(); }
 });
 
@@ -106,9 +124,9 @@ it('emits each catch-up frame only after the previous one was accepted', async (
   try {
     await f.subscription.request('snapshot.get', {});
     const accepted: number[] = []; const gates: (() => void)[] = [];
-    f.emit.mockImplementation((update: { type: string; frame?: { payload: { revision: number } } }) => {
+    f.emit.mockImplementation((update: { type: string } & Partial<Sent>) => {
       if (update.type !== 'conversation') return;
-      accepted.push(update.frame!.payload.revision);
+      accepted.push(revisionOf(update as Sent));
       return new Promise<void>((resolve) => { gates.push(resolve); });
     });
     f.request.mockImplementationOnce(async () => ({ checkpoint: { epoch: 'epoch', revision: 4 }, frames: [frame(2), frame(3), frame(4)] }));

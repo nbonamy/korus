@@ -1,8 +1,8 @@
-import type { BackendModelOption, ModelFavorite } from '@workspace/core/contracts';
+import type { ProviderModelOption, ModelFavorite } from '@workspace/core/contracts';
 
 export function copyModelFavorite(favorite: ModelFavorite): ModelFavorite {
   return {
-    backend: favorite.backend,
+    provider: favorite.provider,
     modelId: favorite.modelId,
     reasoningEffort: favorite.reasoningEffort,
     serviceTier: favorite.serviceTier === 'default' ? null : favorite.serviceTier,
@@ -11,7 +11,7 @@ export function copyModelFavorite(favorite: ModelFavorite): ModelFavorite {
 
 export function modelFavoriteKey(favorite: ModelFavorite): string {
   return encodeURIComponent(JSON.stringify([
-    favorite.backend,
+    favorite.provider,
     favorite.modelId,
     favorite.reasoningEffort,
     favorite.serviceTier,
@@ -24,14 +24,14 @@ export function sameModelFavorite(left: ModelFavorite, right: ModelFavorite): bo
 
 export function modelFavoriteModelLabel(
   favorite: ModelFavorite,
-  models: readonly BackendModelOption[],
+  models: readonly ProviderModelOption[],
 ): string {
   return models.find((model) => model.id === favorite.modelId)?.displayName ?? favorite.modelId;
 }
 
 export function modelFavoriteSettingsLabel(
   favorite: ModelFavorite,
-  models: readonly BackendModelOption[],
+  models: readonly ProviderModelOption[],
   standardSpeedLabel: string,
 ): string {
   const effort = favorite.reasoningEffort ? formatModelSettingLabel(favorite.reasoningEffort) : '';
@@ -47,7 +47,7 @@ export function modelFavoriteEffortLabel(favorite: ModelFavorite): string {
 
 export function modelFavoriteServiceTierLabel(
   favorite: ModelFavorite,
-  models: readonly BackendModelOption[],
+  models: readonly ProviderModelOption[],
 ): string {
   if (!favorite.serviceTier) return '';
   return models
@@ -58,7 +58,7 @@ export function modelFavoriteServiceTierLabel(
 
 export function modelFavoriteFastTierLabel(
   favorite: ModelFavorite,
-  models: readonly BackendModelOption[],
+  models: readonly ProviderModelOption[],
 ): string {
   if (!favorite.serviceTier || favorite.serviceTier === 'default') return '';
   return models

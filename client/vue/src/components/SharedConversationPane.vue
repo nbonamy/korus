@@ -6,7 +6,7 @@
     <p v-if="closeFailed" role="alert">{{ t('guest.storageFailed') }}</p>
     <button type="button" class="app-button app-button--secondary" :disabled="busy || closing" @click="close">{{ t('common.close') }}</button>
   </div>
-  <CodexConversationPane
+  <ConversationPane
     v-else
     :key="view.id"
     v-model="draft"
@@ -27,7 +27,7 @@
     :can-retry-turn="false"
     follow-ups-disabled
     :history-loading="view.status === 'connecting'"
-    :messages="snapshot?.messages ?? []"
+    :messages="messages"
     :turns="snapshot?.turns"
     :active-turn-id="snapshot?.activeTurnId"
 
@@ -59,14 +59,14 @@
       <p v-if="failed" role="alert">{{ t('guest.proposalFailed') }}</p>
       <p v-if="withdrawFailed" role="alert">{{ t('guest.deleteSuggestionFailed') }}</p>
     </template>
-  </CodexConversationPane>
+  </ConversationPane>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
+import type { PaneMessage } from '../conversation-presentation/presentation';
 import { useI18n } from 'vue-i18n';
-import { CodexConversationPane, provideCodexHostCapabilities, useCodexHostCapabilities, type CodexChatMessage, type SurfaceMessage, type CodexConversationLink } from '@codex-app-sdk/vue';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { ConversationPane, provideHostCapabilities, useHostCapabilities, type ChatMessage, type ConversationLink } from '@korus-dev/agent-ui-sdk';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import type { GuestJoinControl, GuestJoinView } from '@workspace/core/guest-navigation';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -95,7 +95,8 @@ async function withdraw(proposalId: string) {
   finally { withdrawing.value = false; }
 }
 let pending: { text: string; proposalId: string; followUpBehavior?: 'queue' | 'steer' } | undefined;
-const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && defaultBackendCapabilities(props.view.target?.backend ?? props.view.frame?.backend ?? 'codex').steerPrompt) }));
+// The owner's harness says whether steering is available; a guest never guesses it from the harness's name.
+const capabilities = computed(() => ({ ...guestConversationCapabilities, planMode: false, steerPrompt: Boolean(props.view.proposalState?.writeAccess && props.view.proposalState.steer) }));
 function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
 async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
   if (!text.trim() || props.view.status !== 'ready') return;
@@ -105,9 +106,9 @@ async function propose(text: string, followUpBehavior: 'queue' | 'steer') {
 }
 const { t } = useI18n();
 provideAppToolPresentation((key, params) => t(key, params ?? {}));
-const host = useCodexHostCapabilities();
+const host = useHostCapabilities();
 // This subtree must never resolve an owner's file path through the local/native attachment host.
-provideCodexHostCapabilities({
+provideHostCapabilities({
   capabilities: { attachments: false, clipboard: Boolean(host?.capabilities.clipboard), externalLinks: Boolean(host?.capabilities.externalLinks), transcription: false },
   copyToClipboard: content => host ? host.copyToClipboard(content) : Promise.resolve(),
   ingestAttachments: async () => [], pickAttachments: async () => [], transcribeAudio: async () => ({ text: '', error: 'Unavailable' }),
@@ -117,20 +118,21 @@ provideCodexHostCapabilities({
     try { return (await appApi.guestConversationImage(props.view.id, reference)).dataUrl; } catch { return null; }
   },
 }, { imagePreviewBudgetBytes: 64 * 1024 * 1024, viewportImageLoading: true });
-const snapshot = computed(() => props.view.frame?.payload.snapshot);
+const snapshot = computed(() => props.view.session?.snapshot.state);
+const messages = computed<PaneMessage[]>(() => snapshot.value?.messages ?? []);
 // Guests can submit follow-ups, but cannot stop the owner's active turn.
 const writerBusy = computed(() => Boolean(props.view.status === 'ready' && props.view.proposalState?.writeAccess && snapshot.value?.busy));
 const loaded = reactive(new Map<string, RendererMessage>());
-watch(() => [props.view.id, props.view.status === 'rejected', props.view.frame === null], () => loaded.clear());
-function deferred(id: string | undefined) { const message = snapshot.value?.messages.find(message => message.id === id); return (message as RendererMessage | undefined)?.deferredContent; }
-function transform(message: CodexChatMessage | SurfaceMessage) {
+watch(() => [props.view.id, props.view.status === 'rejected', props.view.session === null], () => loaded.clear());
+function deferred(id: string | undefined) { return snapshot.value?.messages.find(message => message.id === id)?.deferredContent; }
+function transform(message: ChatMessage | PaneMessage) {
   const content = deferred(message.id); return content && loaded.has(content.contentId) ? loaded.get(content.contentId)! : message;
 }
 const readContent = (_agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => {
   if (!appApi || props.view.status !== 'ready') return Promise.reject(new Error('Guest unavailable.'));
   return appApi.guestConversationContent(props.view.id, input);
 };
-function openLink(link: CodexConversationLink) {
+function openLink(link: ConversationLink) {
   if (link.kind === 'external' && /^https?:\/\//i.test(link.href)) void host?.openExternal(link.href);
 }
 </script>

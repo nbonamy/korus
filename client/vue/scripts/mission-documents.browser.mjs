@@ -13,7 +13,7 @@ test('Mission documents use a request drawer and centered viewer without replaci
   const require = createRequire(new URL('../package.json', import.meta.url));
   const artifacts = process.env.MISSION_DOCUMENT_ARTIFACTS ?? path.join(root, '.app-dev/mission-documents');
   const server = await createServer({ configFile:false, root, cacheDir:path.join(artifacts,'vite-cache'), server:{host:'127.0.0.1',port:0,watch:null},
-    resolve:{alias:{'@workspace/core':path.join(root,'core/src'),'@codex-app-sdk/vue/styles.css':require.resolve('@codex-app-sdk/vue/styles.css')},dedupe:['vue']},
+    resolve:{alias:{'@workspace/core':path.join(root,'core/src'),'@korus-dev/agent-ui-sdk/styles.css':require.resolve('@korus-dev/agent-ui-sdk/styles.css')},dedupe:['vue']},
     plugins:[vue(), {
       name:'mission-documents-fixture',
       configureServer(server) {
@@ -28,9 +28,9 @@ test('Mission documents use a request drawer and centered viewer without replaci
         return `
           import {createApp,h,Fragment,ref,reactive} from 'vue';
           import ElementPlus from 'element-plus';
-          import {createCodexConversationPaneController} from '@codex-app-sdk/vue';
+          import {createConversationPaneController} from '@korus-dev/agent-ui-sdk';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import '@korus-dev/agent-ui-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';
@@ -63,7 +63,7 @@ test('Mission documents use a request drawer and centered viewer without replaci
             }
             const documents = useMissionDocuments({missions:()=>[mission],agents:()=>snapshot.agents,activeMissionId:()=>mission.id,currentAgentId:()=>activeAgentId.value,open:openDocument});
             window.requestDocument = (title,content) => documents.request({kind:'markdown',agentId:snapshot.agents[1].id,title,content});
-            const controller = createCodexConversationPaneController({state:()=>({identity:{conversationKey:activeAgentId.value,messages:[codexTextMessage('links','assistant','Open [the document](notes.md) or [Evidence](/tmp/telemetry-merge3-evidence.json).')]}}),actions:{openLink:link=>openFile(link.path)}});
+            const controller = createConversationPaneController({state:()=>({identity:{conversationKey:activeAgentId.value,messages:[codexTextMessage('links','assistant','Open [the document](notes.md) or [Evidence](/tmp/telemetry-merge3-evidence.json).')]}}),actions:{openLink:link=>openFile(link.path)}});
             return () => h(Fragment,[
               h(MissionWorkspace,{mission,agents:snapshot.agents,onOpenConversation:id=>activeAgentId.value=id},{conversation:({agentId})=>h(ConversationPane,{controller,agent:snapshot.agents.find(agent=>agent.id===agentId),agents:snapshot.agents},{'composer-drawers':()=>documents.pending.value?h(MissionDocumentRequest,{request:documents.pending.value,onOpen:documents.confirm,onDismiss:documents.dismiss}):null})}),
               h(WorkspacePreviewHost,{dialog:true,open:preview.open,title:preview.panels[preview.activeTab]?.title,onClose:()=>preview.open=false},{default:()=>h(RightWorkspacePanel,{agent:snapshot.agents.find(agent=>agent.id===preview.agentId),agents:snapshot.agents,contentOnly:true,activeTab:preview.activeTab,tabs:preview.tabs,filePanels:preview.panels,visible:preview.open,gitPanel:{kind:'gitDiff',title:'Changes',diff:'',state:'idle',error:null},style:'flex:1;min-width:0',onSelectTab:tab=>preview.activeTab=tab})}),
@@ -105,7 +105,7 @@ test('Mission documents use a request drawer and centered viewer without replaci
         await page.emulateMedia({colorScheme:dark?'dark':'light'});
         await page.evaluate(dark=>{
           document.documentElement.classList.toggle('dark',dark);
-          document.documentElement.dataset.codexTheme = dark ? 'dark' : 'light';
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         },dark);
         await page.screenshot({path:path.join(artifacts,`${width}-${dark?'dark':'light'}.png`),animations:'disabled'});
         const bounds=await dialog.boundingBox();

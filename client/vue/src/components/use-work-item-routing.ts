@@ -26,6 +26,7 @@ import { computed, ref } from 'vue';
 import { translate } from '../i18n';
 import type { RepositoryWorkStartInput } from './right-workspace';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export type StartWorkItemsInput = {
   action: WorkItemAssignmentAction;
@@ -109,7 +110,7 @@ export function useWorkItemRouting(options: {
     ensureCurrent(input.isCurrent);
 
     const targetAgent = input.target === 'duplicate'
-      ? input.selection?.model || (input.selection?.backend && input.selection?.backend !== sourceAgent.backend)
+      ? input.selection?.model || (input.selection?.provider && input.selection?.provider !== sourceAgent.provider)
         ? await options.actions.createAgent({ name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '', teamId: sourceAgent.teamId, ...(sourceAgent.remoteConnectionId ? { remoteConnectionId: sourceAgent.remoteConnectionId } : {}), ...(input.selection ? { selection: { ...input.selection } } : {}) })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
@@ -184,7 +185,7 @@ export function useWorkItemRouting(options: {
     const id = crypto.randomUUID();
     const progress = input.items.length === 1
       ? { mode: 'single' as const, progress: {
-          id, state: 'running' as const, backend: input.selection?.backend ?? 'codex',
+          id, state: 'running' as const, provider: input.selection?.provider ?? defaultHarnessProvider,
           repositoryName: input.repository?.name ?? workItemRepositoryName(input.items[0]!),
           createWorktree: true, branchName: workItemBranchName(input.items[0]!), hasPrompt: true, phase: 'creatingWorktree' as const,
         } }

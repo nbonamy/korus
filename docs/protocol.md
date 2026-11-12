@@ -73,6 +73,9 @@ producer or dependency is a mobile API change when it changes that wire contract
   protocol version bump, app restart or forced mobile update does not preserve
   compatibility. Do not remove legacy handling merely because the current mobile
   source uses the replacement.
+- Codex approval/request resolutions retain `surface` and
+  `surface_disconnected` on the published wire. The daemon translates SDK host
+  reasons before publication; current replicas translate them back on receipt.
 - Prove compatibility through the owning runtime with released-client regression
   cases as specified in [testing.md](testing.md#mobile-compatibility-evidence).
   Passing checks against shared current types alone do not establish compatibility.

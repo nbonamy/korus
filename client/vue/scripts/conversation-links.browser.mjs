@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -17,9 +18,9 @@ test('Mission message links reveal a usable document beside the conversation', a
     server: { host: '127.0.0.1', port: 0 },
     resolve: { alias: {
       '@workspace/core': path.join(root, 'core/src'),
-      '@codex-app-sdk/vue/styles.css': require.resolve('@codex-app-sdk/vue/styles.css'),
+      '@korus-dev/agent-ui-sdk/styles.css': require.resolve('@korus-dev/agent-ui-sdk/styles.css'),
     }, dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'conversation-links-fixture',
       configureServer(server) {
         server.middlewares.use('/conversation-links', (_req, res) => {
@@ -34,7 +35,7 @@ test('Mission message links reveal a usable document beside the conversation', a
           import { createApp, h, reactive } from 'vue';
           import ElementPlus from 'element-plus';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import '@korus-dev/agent-ui-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';
@@ -44,7 +45,7 @@ test('Mission message links reveal a usable document beside the conversation', a
           import { codexConversationSnapshot, codexTextMessage } from '/client/vue/tests/support/codex-conversation-fixtures.ts';
           import AppShell from '/client/vue/src/components/AppShell.vue';
           const snapshot = createInitialSnapshot();
-          snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+          snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
           const agent = snapshot.agents[0];
           agent.folder = ${JSON.stringify(root)};
           const mission = createMission(snapshot, { outcome: 'Read linked documents', workflowType: 'shapeAndShipFeature', teamId: agent.teamId, orchestratorMemberId: agent.id });

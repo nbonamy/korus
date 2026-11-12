@@ -1,9 +1,10 @@
 import { createApp } from 'vue';
+import { customBlocksKey } from '@korus-dev/agent-ui-sdk';
 import InlineExcalidrawBlock from './components/InlineExcalidrawBlock.vue';
 import type { AppClient } from '@workspace/core/client';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import '@codex-app-sdk/vue/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import './styles/variables.css';
 import './styles/theme.css';
 import './styles/base.css';
@@ -34,7 +35,7 @@ export function mountAppVueApp(options: MountAppVueAppOptions) {
 
   return createApp(rootComponent)
     // Public SDK extension key; older SDKs leave the fenced source as ordinary code.
-    .provide(Symbol.for('codex.custom-blocks'), { excalidraw: InlineExcalidrawBlock })
+    .provide(customBlocksKey, { excalidraw: InlineExcalidrawBlock })
     .use(ElementPlus)
     .use(i18n)
     .mount(options.target ?? '#app');

@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import { createServer } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { chromium } from "playwright";
@@ -46,7 +47,7 @@ if (reportMode) {
 const server = await createServer({
   root,
   configFile: false,
-  plugins: [vue()],
+  plugins: [sdkSourcePlugin, vue()],
   optimizeDeps: {
     noDiscovery: true,
     include: reportMode ? ["element-plus", "vue-router"] : [],

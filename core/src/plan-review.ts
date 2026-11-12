@@ -1,4 +1,5 @@
 import type { Agent, MainToRendererEvent } from './contracts';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type PlanReviewResolution = 'accept' | 'revise' | 'cancel';
 export type PlanReviewDraft = {
@@ -48,8 +49,8 @@ export function planReviewDelivery(review: Pick<PlanReview, 'requestId'>): PlanR
 }
 
 export function agentConversationId(agent: Agent): string | null {
-  const session = agent.backendSession;
-  return session?.kind === 'codex' ? session.threadId : (session?.sessionId ?? null);
+  const session = agent.providerSession;
+  return session ? sessionConversationId(session) : null;
 }
 
 export function planReviewFromEvent(

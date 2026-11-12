@@ -29,7 +29,7 @@ describe('native attachment submission', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const original = await session.getWorkspace();
-      const workspace = { ...original, agents: original.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      const workspace = { ...original, agents: original.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
       return { ...session,
         getWorkspace: async () => workspace,
         onUpdate(listener) { update = listener; return () => {}; },
@@ -51,7 +51,7 @@ describe('native attachment submission', () => {
       sending = engine.dispatch({ type: 'send', requestId: 'accepted', target: engine.snapshot().composerTarget!, text: 'Hello' });
       await vi.waitFor(() => expect(refreshing).toBe(true));
       await vi.waitFor(() => expect(events.filter(event => event.type === 'conversation').at(-1)).toMatchObject({
-        frame: { payload: { snapshot: { messages: expect.arrayContaining([expect.objectContaining({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] })]) } } },
+        frame: { payload: { snapshot: { state: { messages: expect.arrayContaining([expect.objectContaining({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] })]) } } } },
       }));
       expect(events.filter(event => event.type === 'sendResult')).toStrictEqual([{ type: 'sendResult', requestId: 'accepted', status: 'accepted' }]);
       release(); await sending;

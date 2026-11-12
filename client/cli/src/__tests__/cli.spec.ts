@@ -100,14 +100,13 @@ describe('standalone CLI', () => {
     for (const id of ['codex', 'claude', 'agy']) { await writeFile(path.join(bin, id), '#!/bin/sh\n'); await chmod(path.join(bin, id), 0o755); }
     f.context.env.CODEX_HOME = path.join(f.directory, 'custom-codex');
     f.context.env.CLAUDE_CONFIG_DIR = path.join(f.directory, 'custom-claude');
-    f.context.env.GEMINI_HOME = path.join(f.directory, 'custom-gemini');
     f.exec.mockImplementation(async (_file: string, args: string[]) => ({ stdout: args[0] === 'auth' ? '{"loggedIn":false,"email":"PRIVATE_ACCOUNT"}' : args[0] === 'models' ? 'gemini-test\tGemini Test' : args[0] === 'login' ? '' : 'provider 1.2.3', stderr: args[0] === 'login' ? 'Logged in using ChatGPT' : '' }));
     expect(await f.command(['doctor', '--json', '--timeout', '20'])).toBe(0);
     const json = f.out.pop()!;
     expect(JSON.parse(json).providers).toMatchObject([
       { id: 'codex', home: f.context.env.CODEX_HOME, auth: 'authenticated' },
       { id: 'claude', home: f.context.env.CLAUDE_CONFIG_DIR, auth: 'signed-out' },
-      { id: 'antigravity', home: f.context.env.GEMINI_HOME, auth: 'authenticated' },
+      { id: 'antigravity', home: path.join(f.directory, '.gemini'), auth: 'authenticated' },
     ]);
     expect(json).not.toContain('PRIVATE_ACCOUNT');
     const homes = Object.fromEntries(['codex', 'claude', 'antigravity'].map(id => [id, { homePath: path.join(f.home, `${id}-home`), isolated: true, shareSkills: false }]));
@@ -118,7 +117,8 @@ describe('standalone CLI', () => {
     expect(JSON.parse(configured).providers.map((provider: { home: string }) => provider.home)).toStrictEqual(['codex', 'claude', 'antigravity'].map(id => homes[id]!.homePath));
     expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'codex'), ['login', 'status'], expect.objectContaining({ env: expect.objectContaining({ CODEX_HOME: homes.codex!.homePath }) }));
     expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'claude'), ['auth', 'status', '--json'], expect.objectContaining({ env: expect.objectContaining({ CLAUDE_CONFIG_DIR: homes.claude!.homePath }) }));
-    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'agy'), ['models'], expect.objectContaining({ env: expect.objectContaining({ GEMINI_HOME: homes.antigravity!.homePath }) }));
+    // Antigravity's CLI reads no home variable: its sign-in is the machine's.
+    expect(f.exec).toHaveBeenCalledWith(path.join(bin, 'agy'), ['models'], expect.objectContaining({ env: expect.not.objectContaining({ GEMINI_HOME: expect.anything() }) }));
     expect(configured).not.toMatch(/PRIVATE_ACCOUNT|PRIVATE_SETTINGS/);
 
     f.exec.mockImplementation(async (_file: string, args: string[]) => {
@@ -191,7 +191,7 @@ describe('standalone CLI', () => {
   it('inspects agents and Missions without source labels or private provider data', async () => {
     const f = await fixture(); await f.seed();
     expect(await f.command(['agents', 'list', '--offline', '--json'])).toBe(0);
-    expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', agents: [{ id: 'agent-one', backend: 'codex' }] });
+    expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', agents: [{ id: 'agent-one', provider: 'codex' }] });
     expect(await f.command(['agents', 'list', '--offline'])).toBe(0);
     expect(f.out.pop()).toBe('Agents\nagent-one\tBuilder\tcodex\tworking');
     expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).toBe(0);
@@ -208,7 +208,7 @@ describe('standalone CLI', () => {
     const f = await fixture(); const seeded = await f.seed();
     const requests = await daemon(path.join(f.home, 'daemon.sock'), method => method === backendMethods.backendHealthGet
       ? { ok: true, version: '0.50.6', pid: 123, name: product.daemonName }
-      : method === backendMethods.snapshotGet ? { snapshot: { agents: seeded.agents.map(({ engine, ...agent }) => ({ ...agent, backend: engine.kind })), missions: seeded.missions } } : {});
+      : method === backendMethods.snapshotGet ? { snapshot: { agents: seeded.agents.map(({ engine, ...agent }) => ({ ...agent, provider: engine.kind })), missions: seeded.missions } } : {});
     expect(await f.command(['agents', 'send', 'agent:agent-one', 'Continue carefully', '--json'])).toBe(2);
     expect(await f.command(['agents', 'stop', 'id:agent-one', '--json'])).toBe(2);
     expect(requests).toStrictEqual([]);
@@ -414,10 +414,10 @@ describe('standalone CLI', () => {
   });
   it('lists live agent and Mission metadata without changing backend state', async () => {
     const f = await fixture(); await f.seed();
-    const agent = { name: 'Builder', backend: 'codex', status: { type: 'idle' } };
+    const agent = { name: 'Builder', provider: 'codex', status: { type: 'idle' } };
     await daemon(path.join(f.home, 'daemon.sock'), () => ({ snapshot: { agents: [{ ...agent, id: 'one' }, { ...agent, id: 'two' }], missions: [] } }));
     expect(await f.command(['agents', 'list', '--json'])).toBe(0);
-    expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: ['one', 'two'].map(id => ({ id, name: 'Builder', backend: 'codex', status: 'idle' })) });
+    expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: ['one', 'two'].map(id => ({ id, name: 'Builder', provider: 'codex', status: 'idle' })) });
     expect(await f.command(['missions', 'list', '--json'])).toBe(0);
     expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', missions: [] });
     expect(await f.command(['missions', 'list'])).toBe(0);
