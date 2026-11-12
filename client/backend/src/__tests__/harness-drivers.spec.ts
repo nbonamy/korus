@@ -85,6 +85,15 @@ describe('Korus provider drivers over the SDK Harness', () => {
     await expect(other.getRemoteControlStatus!()).rejects.toThrow('claude does not support remote control.');
   });
 
+  it('offers the permissions the harness offers, in Korus words, with the harness deciding which are dangerous', () => {
+    const { driver } = scriptedDriver('cursor', { capabilities: { permissionModes: [{ id: 'default' }, { id: 'yolo', dangerous: true }] } });
+    const { label, description } = defaultProviderCapabilities('cursor').permissionModes!.find(mode => mode.id === 'default')!;
+    expect(driver.getRuntimeStatus().capabilities!.permissionModes).toStrictEqual([
+      { id: 'default', label, ...(description ? { description } : {}) },
+      { id: 'yolo', label: 'yolo', dangerous: true },
+    ]);
+  });
+
   it('follows what the running harness reports, not what the table says for its name', async () => {
     const { driver, script } = scriptedDriver('cursor', { capabilities: { mcpAutoApproval: true, mcpRequiredServers: true, structuredOutput: true, remoteControl: true, accountUsage: false } });
     const capabilities = driver.getRuntimeStatus().capabilities!;

@@ -212,8 +212,18 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     const detail = runtimeStatusDetail(this.provider, runtime.status, runtime.detail);
     return { ...runtime, ...(detail === undefined ? {} : { detail }), capabilities: { ...defaultProviderCapabilities(this.provider), ...this.liveCapabilities(this.harness.getProviderCapabilities()) } } as ProviderRuntimeStatus;
   }
-  /** What the harness reports, as Korus records it: only the permission list has a shape of its own, which Korus describes with its own labels. */
-  private liveCapabilities({ permissions: _permissions, ...rest }: ReturnType<Harness['getProviderCapabilities']>) { return rest; }
+  /**
+   * What the harness reports, as Korus records it. The permissions are the ones the harness offers, with their danger;
+   * Korus only puts its own words on them, and an id it has no words for shows as itself.
+   */
+  private liveCapabilities({ permissions, ...rest }: ReturnType<Harness['getProviderCapabilities']>) {
+    if (!permissions) return rest;
+    const described = new Map((defaultProviderCapabilities(this.provider).permissionModes ?? []).map(mode => [mode.id, mode]));
+    return { ...rest, permissionModes: permissions.map(({ id, dangerous }) => {
+      const words = described.get(id);
+      return { id, label: words?.label ?? id, ...(words?.description ? { description: words.description } : {}), ...(dangerous ? { dangerous: true } : {}) };
+    }) };
+  }
   authenticate(request: Parameters<NonNullable<AgentProviderDriver['authenticate']>>[0]) { return this.harness.authenticate(request).then(result => result.native as never); }
   getAccountRateLimits() { return this.harness.getAccountRateLimits(); }
   /**
