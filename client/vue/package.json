@@ -32,8 +32,8 @@
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
     "@excalidraw/mermaid-to-excalidraw": "2.2.2",
-    "@korus-dev/agent-ui-sdk": "0.25.0",
-    "@korus-dev/multi-agent-sdk": "0.26.0",
+    "@korus-dev/agent-ui-sdk": "0.27.0",
+    "@korus-dev/multi-agent-sdk": "0.27.0",
     "@tabler/icons-vue": "^3.44.0",
     "@workspace/core": "0.56.0",
     "beautiful-mermaid": "^1.1.3",
