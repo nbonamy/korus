@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, open, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -242,6 +242,26 @@ describe('file and checkout boundaries', { timeout: 30_000 }, () => {
     expect(await f.git('diff', '--cached', '--name-only')).toBe('');
     expect(await readFile(join(f.source, 'other'), 'utf8')).toBe('original\n');
   }, 5_000);
+
+  it('keeps each changed path\'s own index state when paths share a directory prefix', async () => {
+    const f = await fixture();
+    await mkdir(join(f.source, 'pkg', 'sub'), { recursive: true });
+    await writeFile(join(f.source, 'pkg', 'a'), 'staged a\n');
+    await writeFile(join(f.source, 'pkg', 'ab'), 'untracked ab\n');
+    await writeFile(join(f.source, 'pkg', 'sub', 'a'), 'staged sub\n');
+    await f.git('add', 'pkg/a', 'pkg/sub/a');
+    await writeFile(join(f.source, 'pkg', 'sub', 'a'), 'edited sub\n');
+    const staged = await f.git('diff', '--cached', '--binary');
+    const unstaged = await f.git('diff', '--binary');
+    const preview = await f.service.preview(f.source);
+    const result = await f.service.execute(f.agent, { ...f.input, snapshotId: preview.snapshotId });
+    expect(result.state, result.detail).toBe('completed');
+    expect(await readFile(join(result.folder, 'pkg', 'ab'), 'utf8')).toBe('untracked ab\n');
+    expect(await readFile(join(result.folder, 'pkg', 'sub', 'a'), 'utf8')).toBe('edited sub\n');
+    expect((await exec('git', ['diff', '--cached', '--binary'], { cwd: result.folder })).stdout.trim()).toBe(staged);
+    expect((await exec('git', ['diff', '--binary'], { cwd: result.folder })).stdout.trim()).toBe(unstaged);
+    expect(await f.git('status', '--porcelain')).toBe('');
+  });
 
   it('preserves intent-to-add and exact file bytes under checkout filters', async () => {
     const f = await fixture();

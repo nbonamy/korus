@@ -104,6 +104,7 @@ export class BranchCurrentWorkService {
         if (paths.length) await git(source, ['add', '-A', '--', ...paths], index);
         tree = await git(source, ['write-tree'], index);
         await mkdir(capturedFolder, { recursive: true, mode: 0o700 });
+        // One read for every path: an index change during the copy is caught by the final capture comparison below.
         const copiedEntries = await indexEntries(source, paths);
         for (const selected of paths) {
           const file = path.join(source, selected);
