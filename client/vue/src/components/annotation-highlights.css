@@ -1,0 +1,9 @@
+/* Painted by the registry in chat-text-anchor.ts for every annotation surface. */
+::highlight(chat-annotations) {
+  background-color: var(--color-annotation-background);
+}
+
+::highlight(chat-annotation-focus) {
+  background-color: var(--color-annotation-focus);
+  color: var(--color-on-annotation-focus);
+}

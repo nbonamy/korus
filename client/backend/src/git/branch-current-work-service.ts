@@ -104,6 +104,8 @@ export class BranchCurrentWorkService {
         if (paths.length) await git(source, ['add', '-A', '--', ...paths], index);
         tree = await git(source, ['write-tree'], index);
         await mkdir(capturedFolder, { recursive: true, mode: 0o700 });
+        // One read for every path: an index change during the copy is caught by the final capture comparison below.
+        const copiedEntries = await indexEntries(source, paths);
         for (const selected of paths) {
           const file = path.join(source, selected);
           const copy = path.join(capturedFolder, selected);
@@ -111,7 +113,7 @@ export class BranchCurrentWorkService {
             await mkdir(path.dirname(copy), { recursive: true, mode: 0o700 });
             await copyEntry(file, copy);
           }
-          if (await this.fingerprint(source, selected, copy) !== captured.fingerprints[selected]) throw new Error('The checkout changed while copying. Refresh before branching.');
+          if (await this.fingerprint(source, selected, copy, copiedEntries.get(selected)) !== captured.fingerprints[selected]) throw new Error('The checkout changed while copying. Refresh before branching.');
         }
         if ((await this.capture(source)).snapshotId !== captured.snapshotId) throw new Error('The checkout changed while capturing. Refresh before branching.');
       } catch (error) { await rm(capturedFolder, { recursive: true, force: true }); throw error; }
@@ -162,13 +164,19 @@ export class BranchCurrentWorkService {
       progress('resettingSource');
       if (await git(source, ['rev-parse', 'HEAD']) !== record.head) throw new Error('Source HEAD changed. Keep the source changes and inspect the new worktree.');
       await this.assertIdleRepository(source);
+      const pending = record.paths.filter(selected => !record.cleaned.includes(selected));
+      // The index location and the HEAD entries are fixed for this transfer; read them once for every path.
+      const cleanup = pending.length ? {
+        indexPath: await git(source, ['rev-parse', '--path-format=absolute', '--git-path', 'index']),
+        headEntries: await headEntries(source, record.head, pending),
+      } : undefined;
       for (const selected of record.paths) {
         if (record.cleaned.includes(selected)) continue;
         await this.safePath(source, selected);
         if (await this.fingerprint(source, selected) !== record.fingerprints[selected]) continue;
         record.result.sourceBackupFolder ??= `${journalPath}.source-backups`;
         await saveJournal(journalPath, record);
-        if (!await this.cleanPath(record, selected)) continue;
+        if (!await this.cleanPath(record, selected, cleanup!.indexPath, cleanup!.headEntries.get(selected) ?? '')) continue;
         record.cleaned.push(selected);
         await saveJournal(journalPath, record);
       }
@@ -206,17 +214,17 @@ export class BranchCurrentWorkService {
     const folder = record.result.folder;
     await this.assertIdleRepository(folder);
     if (await git(folder, ['write-tree']) !== record.indexTree) throw new Error('Destination staging changed. Source work was retained.');
+    for (const selected of record.paths) await this.safePath(folder, selected);
+    const entries = await indexEntries(folder, record.paths);
     for (const selected of record.paths) {
-      await this.safePath(folder, selected);
-      if (await this.fingerprint(folder, selected) !== record.fingerprints[selected]) throw new Error('Destination changes differ from the saved move. Source work was retained.');
+      if (await this.fingerprint(folder, selected, undefined, entries.get(selected)) !== record.fingerprints[selected]) throw new Error('Destination changes differ from the saved move. Source work was retained.');
     }
     const untracked = (await git(folder, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
     if (untracked.some(file => !record.paths.includes(file)) || await git(folder, ['diff', '--name-only', '-z']).then(value => value.split('\0').filter(Boolean).some(file => !record.paths.includes(file)))) throw new Error('Destination has additional changes. Source work was retained.');
   }
 
-  private async cleanPath(record: Journal, selected: string): Promise<boolean> {
+  private async cleanPath(record: Journal, selected: string, indexPath: string, inHead: string): Promise<boolean> {
     const source = record.source;
-    const indexPath = await git(source, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
     const lock = `${indexPath}.lock`;
     const handle = await acquireIndexLock(lock, this.options.lockWaitMs ?? 10_000);
     const temporary = `${lock}.${randomUUID()}`;
@@ -228,7 +236,6 @@ export class BranchCurrentWorkService {
       if (await this.fingerprint(source, selected) !== record.fingerprints[selected]) return false;
       await mkdir(record.result.sourceBackupFolder!, { recursive: true, mode: 0o700 });
       await copyFile(indexPath, temporary);
-      const inHead = await git(source, ['ls-tree', '-z', record.head, '--', selected]);
       if (inHead) {
         const [mode, , object] = inHead.split('\t')[0]!.split(' ');
         // Recreate this entry without reusing the old working-file stat cache.
@@ -272,8 +279,10 @@ export class BranchCurrentWorkService {
   private async assertIdleRepository(folder: string): Promise<void> {
     const unmerged = await git(folder, ['ls-files', '--unmerged']);
     if (unmerged) throw new Error('Resolve conflicts before branching.');
-    for (const marker of ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG', 'index.lock']) {
-      const location = await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', marker]);
+    const markers = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG', 'index.lock'];
+    // One rev-parse resolves every marker: each Git subprocess costs a fixed spawn, and transfers check repeatedly.
+    const locations = (await git(folder, ['rev-parse', '--path-format=absolute', ...markers.flatMap(marker => ['--git-path', marker])])).split('\n');
+    for (const location of locations) {
       if (await exists(location)) throw new Error('Finish the active Git operation before branching.');
     }
   }
@@ -285,10 +294,9 @@ export class BranchCurrentWorkService {
     const output = await git(folder, ['-c', 'status.renames=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
     const files = output.split('\0').filter(Boolean).map(entry => ({ path: entry.slice(3), indexStatus: entry[0]!, worktreeStatus: entry[1]! }));
     const fingerprints: Record<string, string> = {};
-    for (const file of files) {
-      await this.safePath(folder, file.path);
-      fingerprints[file.path] = await this.fingerprint(folder, file.path);
-    }
+    for (const file of files) await this.safePath(folder, file.path);
+    const entries = await indexEntries(folder, files.map(file => file.path));
+    for (const file of files) fingerprints[file.path] = await this.fingerprint(folder, file.path, undefined, entries.get(file.path));
     return { folder, head, files, fingerprints, snapshotId: hash(JSON.stringify({ folder, head, files, fingerprints })) };
   }
   private async safePath(root: string, selected: string): Promise<void> {
@@ -301,8 +309,8 @@ export class BranchCurrentWorkService {
     const stat = await lstat(path.join(root, selected.split('/').at(-1)!)).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
     if (stat && !stat.isFile() && !stat.isSymbolicLink()) throw new Error('Directories and submodule changes cannot be transferred. Use a regular checkout.');
   }
-  private async fingerprint(folder: string, selected: string, contentPath?: string): Promise<string> {
-    const index = await git(folder, ['ls-files', '--stage', '-z', '--', selected]);
+  private async fingerprint(folder: string, selected: string, contentPath?: string, entries?: string): Promise<string> {
+    const index = entries ?? (await indexEntries(folder, [selected])).get(selected)!;
     const file = contentPath ?? path.join(folder, selected);
     const stat = await lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
     const contents = stat?.isSymbolicLink() ? hash(await readlink(file)) : stat ? hash(await readFile(file)) : 'deleted';
@@ -313,6 +321,31 @@ export class BranchCurrentWorkService {
 async function git(folder: string, args: string[], index?: string): Promise<string> {
   const { stdout } = await exec('git', ['--literal-pathspecs', ...args], { cwd: folder, env: { ...process.env, ...(index ? { GIT_INDEX_FILE: index } : {}) }, maxBuffer: 20 * 1024 * 1024 });
   return stdout.replace(/\n$/, '');
+}
+/**
+ * Index entries for each path, exactly as `git ls-files --stage -z -- <path>` prints them,
+ * read with one subprocess for all paths. A literal pathspec also matches entries below it.
+ */
+async function indexEntries(folder: string, paths: string[]): Promise<Map<string, string>> {
+  const entries = new Map(paths.map(selected => [selected, '']));
+  if (!paths.length) return entries;
+  const output = await git(folder, ['ls-files', '--stage', '-z', '--', ...paths]);
+  for (const entry of output.split('\0').filter(Boolean)) {
+    const parts = entry.slice(entry.indexOf('\t') + 1).split('/');
+    for (let length = 1; length <= parts.length; length++) {
+      const selected = parts.slice(0, length).join('/');
+      if (entries.has(selected)) entries.set(selected, entries.get(selected)! + entry + '\0');
+    }
+  }
+  return entries;
+}
+/** Each path's entry in a commit, as `git ls-tree -z <commit> -- <path>` prints it, read with one subprocess. */
+async function headEntries(folder: string, commit: string, paths: string[]): Promise<Map<string, string>> {
+  const entries = new Map<string, string>();
+  for (const entry of (await git(folder, ['ls-tree', '-z', commit, '--', ...paths])).split('\0').filter(Boolean)) {
+    entries.set(entry.slice(entry.indexOf('\t') + 1), `${entry}\0`);
+  }
+  return entries;
 }
 /** Status refreshes and other agents take the index lock for moments; wait for it rather than abandoning the transfer. */
 async function acquireIndexLock(lock: string, waitMs: number): Promise<FileHandle> {
