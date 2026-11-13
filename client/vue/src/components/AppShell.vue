@@ -135,7 +135,7 @@
       @handoff-agent="openHandoff"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
       @new-team="openNewTeam"
-      @open-automations="openAutomations"
+      @open-automations="toggleAutomations"
       @open-backlog="openBacklog"
       @open-cockpit="openCockpit"
       @open-in="openAgentIn($event.agentId, $event.application)"
@@ -1224,6 +1224,7 @@ let pendingMissionRestoreId = rememberedMissionId();
 const activeHost = ref<AppSurface>('agent');
 const cockpitScope = ref(false);
 const settingsReturnMissionId = ref<string | null>(null);
+const automationsReturnHost = ref<Exclude<AppSurface, 'automations'>>('agent');
 const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
@@ -2969,7 +2970,17 @@ async function openBacklog(): Promise<void> {
 }
 
 function openAutomations(): void {
+  if (activeHost.value !== 'automations') automationsReturnHost.value = activeHost.value;
   activeHost.value = 'automations';
+}
+
+function toggleAutomations(): void {
+  if (!automationsVisible.value) {
+    openAutomations();
+    return;
+  }
+  const returnHost = automationsReturnHost.value;
+  activeHost.value = returnHost === 'mission' && !selectedMission.value ? 'agent' : returnHost;
 }
 
 function openSettings(tab?: SettingsTab): void {

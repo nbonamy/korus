@@ -472,6 +472,34 @@ describe('AppShell navigation and teams', () => {
     expect(wrapper.find('.automation-welcome__button').exists()).toBe(true);
   });
 
+  it('returns to the previous team page when the rail automations button is clicked again', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Automations"]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get(`[aria-label="${product.defaultTeamName}"]`).attributes('aria-pressed')).toBe('true');
+  });
+
+  it('returns to the backlog when automations is toggled off after opening it from the backlog', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+
+    await wrapper.get('[aria-label="Backlog"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'BacklogView' }).exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Backlog"]').attributes('aria-pressed')).toBe('true');
+  });
+
   it('opens a automation execution conversation from the logs view', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.automations = [{
