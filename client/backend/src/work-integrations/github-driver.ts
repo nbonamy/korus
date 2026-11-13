@@ -567,6 +567,8 @@ function githubPullRequest(value: unknown): AgentGitPullRequest | null {
     typeof value.head.sha !== 'string'
   ) return null;
   const mergedAt = typeof value.merged_at === 'string' ? value.merged_at : undefined;
+  const headRepository = isRecord(value.head.repo) && typeof value.head.repo.full_name === 'string'
+    ? parseRepositoryId(value.head.repo.full_name) : null;
   return {
     number: value.number as number,
     title: value.title,
@@ -575,6 +577,8 @@ function githubPullRequest(value: unknown): AgentGitPullRequest | null {
     headSha: value.head.sha,
     state: mergedAt ? 'merged' : value.state === 'closed' ? 'closed' : 'open',
     ...(mergedAt ? { mergedAt } : {}),
+    ...(headRepository && typeof value.head.ref === 'string' && value.head.ref
+      ? { head: { repository: `github.com/${headRepository.owner}/${headRepository.name}`, branch: value.head.ref } } : {}),
   };
 }
 

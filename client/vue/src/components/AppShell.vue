@@ -2492,7 +2492,8 @@ function compactAgentSession(agentId: string): void {
 const showAgentDialogTeamSelector = computed(() => agentDialogMode.value === 'create' && pendingNewAgentWorkItem.value !== null);
 const pendingNewAgentName = '';
 const pendingNewAgentWorktreeBranchName = computed(() => (
-  pendingNewAgentWorkItem.value ? pendingWorkItemBranchName.value : agentDialogSourceBranchName.value
+  pendingNewAgentWorkItem.value?.kind === 'pullRequest' ? ''
+    : pendingNewAgentWorkItem.value ? pendingWorkItemBranchName.value : agentDialogSourceBranchName.value
 ));
 const isAgentEmpty = computed(() => activeTeamAgents.value.length === 0);
 const cockpitVisible = computed(() => cockpitScope.value && (activeHost.value === 'agent' || activeHost.value === 'mission'));
@@ -2940,7 +2941,7 @@ async function createAgentFromDialog(input: CreateAgentInput & { newTeamName?: s
     ? await resolveSelectedTeam(input.teamId ?? agentDialogTeamId.value, newTeamName)
     : null;
   const agent = await props.createAgent(targetTeamId ? { ...agentInput, teamId: targetTeamId } : agentInput);
-  assignPendingWorkItemToCreatedAgent(agent);
+  await assignPendingWorkItemToCreatedAgent(agent);
 }
 
 async function resolveSelectedTeam(teamId: string | null | undefined, newTeamName?: string): Promise<string | null> {

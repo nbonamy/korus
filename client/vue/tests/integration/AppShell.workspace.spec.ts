@@ -1020,6 +1020,7 @@ describe('AppShell workspace and plans', () => {
       name: 'feature/pull-request-42',
       createWorktree: true,
       pullRequestNumber: 42,
+      requestRepository: 'nbonamy/agent-workspace',
       confirmed: true,
     });
     expect(assignWorkItemAction).toHaveBeenCalledWith({

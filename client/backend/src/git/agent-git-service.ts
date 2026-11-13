@@ -350,7 +350,7 @@ export class AgentGitService {
     };
   }
 
-  async workflow(folder: string): Promise<Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>> {
+  async workflow(folder: string, request?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>> {
     const [root, branch, upstream, remote, status, branchStatusResult, stagedNumstat, unstagedNumstat, worktreeList, head] = await Promise.all([
       this.runGit(folder, ['rev-parse', '--show-toplevel']),
       this.runGit(folder, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => ({ stdout: '' })),
@@ -388,7 +388,15 @@ export class AgentGitService {
         ? this.runGit(baseWorktree.path, ['status', '--porcelain=v1', '-z']).then((result) => Boolean(result.stdout))
         : undefined,
     ]);
-    const identity = remoteUrl ? canonicalGitRemoteIdentity(remoteUrl) : undefined;
+    let identity = remoteUrl ? canonicalGitRemoteIdentity(remoteUrl) : undefined;
+    // Tracking a contributor's branch changes the push remote, not the PR's base repository.
+    if (request?.branch === currentBranch) {
+      const baseIdentity = request.provider === 'github' ? `github.com/${request.repository}` : request.repository;
+      for (const name of remotes) {
+        const url = name === remoteName ? remoteUrl : (await this.runGit(folder, ['remote', 'get-url', name])).stdout;
+        if (url && canonicalGitRemoteIdentity(url) === baseIdentity) { identity = baseIdentity; break; }
+      }
+    }
     const repositoryProvider = identity?.startsWith('gitlab.com/') ? 'gitlab' : identity?.startsWith('github.com/') ? 'github' : undefined;
     const repository = repositoryProvider === 'gitlab' ? identity! : repositoryProvider === 'github' ? identity!.slice(11) : fileName(repositoryFolder);
     return {
@@ -447,6 +455,24 @@ export class AgentGitService {
     await this.runGit(folder, setUpstream
       ? ['push', '--set-upstream', remote, branch]
       : ['push', remote, branch]);
+  }
+
+  async pushToBranch(folder: string, url: string, branch: string, targetBranch: string, remoteName: string): Promise<void> {
+    await this.runGit(folder, ['check-ref-format', '--branch', targetBranch]);
+    const remotes = (await this.runGit(folder, ['remote'])).stdout.trim().split(/\r?\n/).filter(Boolean);
+    const identity = canonicalGitRemoteIdentity(url);
+    let remote: string | undefined;
+    for (const name of remotes) {
+      const fetchUrls = (await this.runGit(folder, ['config', '--get-all', `remote.${name}.url`])).stdout.trim();
+      const pushUrls = (await this.runGit(folder, ['config', '--get-all', `remote.${name}.pushurl`]).catch(() => ({ stdout: fetchUrls }))).stdout.trim();
+      if ([...fetchUrls.split(/\r?\n/), ...pushUrls.split(/\r?\n/)].every(value => value === url || identity && canonicalGitRemoteIdentity(value) === identity)) { remote = name; break; }
+    }
+    if (!remote) {
+      remote = remoteName;
+      for (let suffix = 2; remotes.includes(remote); suffix++) remote = `${remoteName}-${suffix}`;
+      await this.runGit(folder, ['remote', 'add', remote, url]);
+    }
+    await this.runGit(folder, ['push', '--set-upstream', remote, `${branch}:refs/heads/${targetBranch}`]);
   }
 
   async createBranch(folder: string, name: string, createWorktree = false, pullRequestNumber?: number, expectedHeadSha?: string): Promise<string> {
@@ -535,7 +561,7 @@ export class AgentGitService {
     current: Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>;
     target: { path: string; branch?: string };
   }> {
-    const current = await this.workflow(folder);
+    const current = await this.workflow(folder, expectedIdentity);
     if (!current.isLinkedWorktree) throw new Error('The current folder is not a linked worktree.');
     if (!current.branch || current.detached) throw new Error('The linked worktree does not have a local branch to delete.');
     if (expectedBranch && current.branch !== expectedBranch) throw new Error('The worktree branch changed. Reopen the deletion confirmation.');

@@ -81,6 +81,8 @@ export type AgentGitPullRequest = {
   headSha: string;
   state: 'open' | 'merged' | 'closed';
   mergedAt?: string;
+  /** Source repository and branch, which can belong to a contributor's fork. */
+  head?: { repository: string; branch: string };
 };
 
 export type AgentPullRequestTracking = AgentGitPullRequest & {

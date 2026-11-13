@@ -706,12 +706,21 @@ clears or changes it, Korus never re-detects.
   unsupported or refused forks start a fresh handoff with persisted
   context metadata. Korus never replays a transcript to imitate a fork.
   Independent code reviewers always start fresh.
-- Korus-created GitHub pull requests and GitLab merge requests are tracked on
-  their agent with provider, repository, branch and head identity. The runtime
+- GitHub pull requests and GitLab merge requests created or checked out in Korus
+  are tracked on their agent with provider, repository, request number, local branch
+  and head identity. Git workflow refreshes use the recorded request number while
+  the repository and local branch match, even when local commits differ from the
+  request head. Backlog and repository-picker creation share work-item routing
+  and the backend request checkout; a branch name alone is not a request identity. The runtime
   scheduler reads each request through its owning connection; authentication or
   read failures leave other requests eligible for updates. Closed requests remain
   eligible for reopening; merged requests are terminal. Late reads cannot replace
   retargeted or removed agent tracking.
+  Push resolves the request's source repository and branch through its code host,
+  including forks, and establishes upstream tracking there without changing the
+  recorded base repository. An unavailable source never falls back to pushing a
+  same-named branch to the base repository. Existing remotes are reused only when
+  their fetch and push destinations match the request source.
   A merged or closed request raises an explicit cleanup alert. Cleanup requires an
   idle agent whose unshared, clean linked worktree still matches the recorded
   provider, repository, branch and head. Closed requests keep their remote branch;

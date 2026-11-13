@@ -175,7 +175,7 @@
       class="git-workflow-control__push-summary"
     >
       <strong class="git-workflow-control__push-count">
-        {{ pendingPushCount }} {{ pendingPushCount === 1 ? 'commit' : 'commits' }}
+        {{ pendingPushCount === null ? workflow?.branch : `${pendingPushCount} ${pendingPushCount === 1 ? 'commit' : 'commits'}` }}
       </strong>
       <div class="git-workflow-control__push-destination">
         <ArrowRightIcon class="git-workflow-control__push-arrow" aria-hidden="true" />
@@ -556,11 +556,13 @@ const commitOperationTitle = computed(() => {
   return '';
 });
 const commitOperationDetail = computed(() => commitOperation.value.status === 'error' ? commitOperation.value.message : commitOperation.value.status === 'pushing' || (commitOperation.value.status === 'success' && commitOperation.value.pushed) ? pushDestination.value : committedMessage.value);
-const pendingPushCount = computed(() => workflow.value?.ahead ?? props.gitStatus?.ahead ?? 0);
-const pushDestination = computed(() => workflow.value?.upstream ?? [workflow.value?.remote, workflow.value?.branch].filter(Boolean).join('/'));
+const pendingPushCount = computed(() => workflow.value && !workflow.value.upstream ? null : workflow.value?.ahead ?? props.gitStatus?.ahead ?? 0);
+const pushDestination = computed(() => workflow.value?.existingPullRequest?.head
+  ? `${workflow.value.existingPullRequest.head.repository}:${workflow.value.existingPullRequest.head.branch}`
+  : workflow.value?.existingPullRequest?.url ?? workflow.value?.upstream ?? [workflow.value?.remote, workflow.value?.branch].filter(Boolean).join('/'));
 const pushOperationRunning = computed(() => pushOperation.value.status === 'pushing');
 const pushFeedbackStatus = computed<'running' | 'success' | 'error'>(() => pushOperation.value.status === 'success' ? 'success' : pushOperation.value.status === 'error' ? 'error' : 'running');
-const pushOperationTitle = computed(() => pushOperation.value.status === 'pushing' ? `Pushing ${pendingPushCount.value} ${pendingPushCount.value === 1 ? 'commit' : 'commits'}` : pushOperation.value.status === 'success' ? translate('surface.gitWorkflowControl.pushComplete') : translate('surface.gitWorkflowControl.pushFailed'));
+const pushOperationTitle = computed(() => pushOperation.value.status === 'pushing' ? pendingPushCount.value === null ? 'Pushing branch' : `Pushing ${pendingPushCount.value} ${pendingPushCount.value === 1 ? 'commit' : 'commits'}` : pushOperation.value.status === 'success' ? translate('surface.gitWorkflowControl.pushComplete') : translate('surface.gitWorkflowControl.pushFailed'));
 const pushOperationDetail = computed(() => pushOperation.value.status === 'error' ? pushOperation.value.message : pushDestination.value);
 const pullRequestOperationRunning = computed(() => pullRequestOperation.value.status === 'creating');
 const pullRequestFeedbackStatus = computed<'running' | 'success' | 'error'>(() => pullRequestOperation.value.status === 'success' ? 'success' : pullRequestOperation.value.status === 'error' ? 'error' : 'running');
@@ -655,7 +657,8 @@ const updateOperationDetail = computed(() => updateOperation.value.status === 'c
 const commitEnabled = computed(() => workflow.value === null
   ? !workflowError.value && (props.gitStatus?.changedFiles ?? 0) > 0
   : Boolean(workflow.value.files.length));
-const pushEnabled = computed(() => Boolean(workflow.value?.branch && workflow.value?.remote && (workflow.value?.ahead ?? props.gitStatus?.ahead ?? 0) > 0));
+const pushEnabled = computed(() => Boolean(workflow.value?.branch && !workflow.value.detached && workflow.value.remote
+  && (!workflow.value.upstream || (workflow.value.ahead ?? props.gitStatus?.ahead ?? 0) > 0)));
 const pushCapable = computed(() => Boolean(workflow.value?.branch && workflow.value?.remote && props.pushBranch));
 const currentBranchAvailable = computed(() => Boolean(workflow.value?.branch && !workflow.value?.detached));
 const integrationBranch = computed(() => ['main', 'master', 'develop', 'development', 'trunk'].includes(workflow.value?.branch ?? ''));
@@ -826,6 +829,24 @@ async function revertChanges(): Promise<void> {
   }
 }
 function runFirstEnabled(): void { if (firstEnabledAction.value) selectAction(firstEnabledAction.value); }
+async function refreshPullRequestWorkflow(onError: (message: string) => void): Promise<void> {
+  if (!props.getWorkflow) return;
+  busy.value = true;
+  const agentId = props.agent.id;
+  requestLookupPending = true;
+  const requestId = ++workflowLoadRequestId;
+  try {
+    const current = await props.getWorkflow(agentId, { includePullRequest: true });
+    if (props.agent.id !== agentId || requestId !== workflowLoadRequestId) return;
+    workflow.value = current;
+    if (current.codeHostError || current.githubError) throw new Error(current.codeHostError ?? current.githubError);
+  } catch (error) {
+    if (props.agent.id === agentId && requestId === workflowLoadRequestId) onError(localizedErrorMessage(error, translate));
+  } finally {
+    if (props.agent.id === agentId && requestId === workflowLoadRequestId) { requestLookupPending = false; busy.value = false; }
+  }
+}
+
 async function selectAction(action: string): Promise<void> {
   if (busy.value) return;
   menuOpen.value = false;
@@ -848,26 +869,14 @@ async function selectAction(action: string): Promise<void> {
   else if (action === 'push' && pushEnabled.value) {
     resetPushOperation();
     pushDialogOpen.value = true;
+    await refreshPullRequestWorkflow(message => { pushOperation.value = { status: 'error', message }; });
   }
   else if (action === 'create-pr' && prEnabled.value) {
     resetPullRequestOperation();
     pullRequestTitle.value = '';
     pullRequestBody.value = '';
     pullRequestDialogOpen.value = true;
-    if (props.getWorkflow) {
-      busy.value = true;
-      const agentId = props.agent.id;
-      requestLookupPending = true;
-      const requestId = ++workflowLoadRequestId;
-      try {
-        const current = await props.getWorkflow(agentId, { includePullRequest: true });
-        if (props.agent.id !== agentId || requestId !== workflowLoadRequestId) return;
-        workflow.value = current;
-        if (current.codeHostError || current.githubError) throw new Error(current.codeHostError ?? current.githubError);
-      } catch (error) {
-        if (props.agent.id === agentId && requestId === workflowLoadRequestId) pullRequestOperation.value = { status: 'error', message: localizedErrorMessage(error, translate) };
-      } finally { if (props.agent.id === agentId && requestId === workflowLoadRequestId) { requestLookupPending = false; busy.value = false; } }
-    }
+    await refreshPullRequestWorkflow(message => { pullRequestOperation.value = { status: 'error', message }; });
   }
   else if (action === 'merge' && mergeEnabled.value && !mergeUnavailable.value) {
     busy.value = true;

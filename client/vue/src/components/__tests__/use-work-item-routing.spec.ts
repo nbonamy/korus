@@ -111,9 +111,9 @@ describe('useWorkItemRouting', () => {
     expect(harness.routing.creationProgress.value).toBeNull();
   });
 
-  it('keeps provisioning failures visible without starting a prompt', async () => {
-    const harness = createHarness();
-    harness.createWorktree.mockRejectedValueOnce(new Error('Worktree preparation failed'));
+  it.each(['issue', 'pullRequest'] as const)('keeps $0 provisioning failures visible without starting a prompt', async kind => {
+    const harness = createHarness({ item: item({ kind, ...(kind === 'pullRequest' ? { branchName: 'topic' } : {}) }) });
+    (kind === 'pullRequest' ? harness.createBranch : harness.createWorktree).mockRejectedValueOnce(new Error('Worktree preparation failed'));
     await expect(harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId })).rejects.toThrow('Worktree preparation failed');
     expect(harness.routing.creationProgress.value).toMatchObject({ mode: 'single', progress: { state: 'error', error: 'Worktree preparation failed' } });
     expect(harness.assign).not.toHaveBeenCalled();
@@ -168,30 +168,38 @@ describe('useWorkItemRouting', () => {
     }));
   });
 
-  it('resolves a pull-request branch and creates an isolated agent in the team environment', async () => {
+  it.each(['repository picker', 'backlog', 'agent dialog'] as const)('checks out the original pull request through the shared service from $0', async entry => {
     const listedItem = item({ kind: 'pullRequest', branchName: undefined });
     const resolvedItem = { ...listedItem, branchName: 'feature/fix-routing' };
     const harness = createHarness({ item: listedItem, loadItemsResult: [resolvedItem], remoteConnectionId: 'remote-dev' });
 
-    const result = await harness.routing.createIsolatedAgent(listedItem, harness.teamId, { remoteConnectionId: 'remote-dev' });
+    if (entry === 'backlog') {
+      await harness.routing.startMany({ action: 'review', items: [listedItem], teamId: harness.teamId,
+        repository: { name: 'agent-workspace', path: '/workspace/agent-workspace', worktrees: [] }, remoteConnectionId: 'remote-dev' });
+    } else if (entry === 'agent dialog') {
+      await harness.routing.openNewAgent({ item: resolvedItem });
+      await harness.routing.assignCreatedAgent(harness.createdAgent);
+    } else {
+      expect(await harness.routing.createIsolatedAgent(listedItem, harness.teamId, { remoteConnectionId: 'remote-dev' }))
+        .toStrictEqual({ agent: harness.createdAgent, item: resolvedItem });
+    }
 
-    expect(harness.loadItems).toHaveBeenCalledWith('github', listedItem.sourceId, {
+    if (entry !== 'agent dialog') expect(harness.loadItems).toHaveBeenCalledWith('github', listedItem.sourceId, {
       kind: 'pullRequest',
       state: 'all',
     });
-    expect(harness.createWorktree).toHaveBeenCalledWith({
-      repoPath: '/workspace/agent-workspace',
-      branchName: 'feature/fix-routing',
-      remoteConnectionId: 'remote-dev',
-    });
-    expect(harness.createAgent).toHaveBeenCalledWith({
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    if (entry !== 'agent dialog') expect(harness.createAgent).toHaveBeenCalledWith({
       name: null,
-      folder: '/workspace/agent-workspace-feature',
+      folder: '/workspace/agent-workspace',
       sourceRepositoryName: 'agent-workspace',
       teamId: harness.teamId,
       remoteConnectionId: 'remote-dev',
     });
-    expect(result).toStrictEqual({ agent: harness.createdAgent, item: resolvedItem });
+    expect(harness.createBranch).toHaveBeenCalledExactlyOnceWith(harness.createdAgent.id, {
+      name: 'feature/fix-routing', createWorktree: true, pullRequestNumber: listedItem.number,
+      requestRepository: listedItem.sourceId, confirmed: true,
+    });
   });
 
   it('passes an explicit existing-worktree decision to creation', async () => {

@@ -47,3 +47,20 @@ it.each([403, 404, 429, 'invalid'])('fails closed on a %s lookup and leaves GitH
     expect(await manager.findPullRequest('owner/repo', 'feature/demo')).toBeNull();
   } finally { manager.close(); }
 });
+
+it('resolves a fork merge request to its source project and branch for pushing', async () => {
+  const requests: string[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+    const url = String(input); requests.push(url);
+    if (url.endsWith('/merge_requests/7')) return Response.json({ ...mr, source_project_id: 99 });
+    if (url.endsWith('/projects/99')) return Response.json({ path_with_namespace: 'contributor/repo' });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  const manager = await fixture();
+  try {
+    expect(await manager.getPullRequest(repository, 7)).toMatchObject({
+      head: { repository: 'gitlab.com/contributor/repo', branch: 'feature/demo' },
+    });
+    expect(requests).toHaveLength(2);
+  } finally { manager.close(); }
+});

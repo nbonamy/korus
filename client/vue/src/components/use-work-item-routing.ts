@@ -131,12 +131,7 @@ export function useWorkItemRouting(options: {
       }
       const checkoutBranch = pullRequestBranch ?? (input.workspace.kind === 'worktree' ? input.workspace.branchName : undefined);
       if (checkoutBranch) {
-        await options.actions.createBranch(targetAgent.id, {
-          name: checkoutBranch,
-          createWorktree: true,
-          ...(item.kind === 'pullRequest' && (item.provider === 'github' || item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/')) ? { pullRequestNumber: item.number, ...(item.provider === 'gitlab' ? { requestRepository: item.sourceId } : {}) } : {}),
-          confirmed: true,
-        });
+        await checkoutWorkItemBranch(targetAgent.id, item, checkoutBranch);
       }
     }
     ensureCurrent(input.isCurrent);
@@ -168,9 +163,12 @@ export function useWorkItemRouting(options: {
     pendingNewAgentItem.value = null;
   }
 
-  function assignCreatedAgent(agent: Agent | null | void): void {
+  async function assignCreatedAgent(agent: Agent | null | void): Promise<void> {
     const item = pendingNewAgentItem.value;
-    if (agent && item) options.actions.assignFromUi({ agentId: agent.id, item });
+    if (agent && item) {
+      if (item.kind === 'pullRequest') await checkoutWorkItemBranch(agent.id, item, workItemBranchName(item));
+      options.actions.assignFromUi({ agentId: agent.id, item });
+    }
     clearNewAgent();
   }
 
@@ -282,7 +280,9 @@ export function useWorkItemRouting(options: {
     if (!await confirmAssignedOverride(item, 'a new agent')) throw new Error(translate('surface.appShell.assignmentCancelled'));
     ensureCurrent(creationOptions.isCurrent);
 
-    const worktree = await options.actions.createWorktree({
+    // A PR's branch can exist only in its author's fork. Checkout by request id;
+    // creating a worktree by branch name alone would silently start from main.
+    const worktree = item.kind === 'pullRequest' ? undefined : await options.actions.createWorktree({
       repoPath: repository.path,
       branchName: workItemBranchName(item),
       ...(creationOptions.reuseExisting ? { reuseExisting: true } : {}),
@@ -292,14 +292,26 @@ export function useWorkItemRouting(options: {
     creationOptions.onPhase?.('creatingAgent');
     const agent = await options.actions.createAgent({
       name: null,
-      folder: worktree.path,
+      folder: worktree?.path ?? repository.path,
       ...(creationOptions.selection ? { selection: { ...creationOptions.selection } } : {}),
       sourceRepositoryName: repository.name,
       teamId: team.id,
       ...(creationOptions.remoteConnectionId ? { remoteConnectionId: creationOptions.remoteConnectionId } : {}),
     });
     if (!agent) throw new Error(`Could not create an agent for ${item.sourceName} ${workItemDisplayIdentifier(item)}.`);
+    if (item.kind === 'pullRequest') {
+      await checkoutWorkItemBranch(agent.id, item, workItemBranchName(item));
+      ensureCurrent(creationOptions.isCurrent);
+    }
     return { agent, item };
+  }
+
+  async function checkoutWorkItemBranch(agentId: string, item: WorkItem, branchName: string): Promise<void> {
+    await options.actions.createBranch(agentId, {
+      name: branchName, createWorktree: true,
+      ...(item.kind === 'pullRequest' ? { pullRequestNumber: item.number, requestRepository: item.sourceId } : {}),
+      confirmed: true,
+    });
   }
 
   async function startInExistingSession(
