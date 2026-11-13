@@ -36,7 +36,6 @@ prepareNativePrebuilds(
 const skipMacSigning = Boolean(process.env.TEST) || process.env.APP_SKIP_SIGNING === '1';
 const extraResource = [
   path.resolve(__dirname, 'assets/icon.png'),
-  path.resolve(__dirname, 'assets/computer-use-cursor.png'),
   path.resolve(__dirname, 'assets/viz'),
   ...speechHelperResources(__dirname, process.platform),
   'resources/daemon',
