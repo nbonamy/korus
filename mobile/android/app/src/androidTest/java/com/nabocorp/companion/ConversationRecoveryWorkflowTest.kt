@@ -27,9 +27,9 @@ class ConversationRecoveryWorkflowTest {
         "laptopId" to "host","teamId" to "team","agentId" to agent,"composerTarget" to target(agent).toJson(),"canSend" to (connection == "connected"),
         "teams" to JSONArray().put(json("id" to "team","name" to "Team")),"laptops" to JSONArray().put(json("id" to "host","name" to "Computer")),"header" to json("title" to "Agent"),"capabilities" to json())
     private fun frame(agent: String = "agent", generation: Int = 7, revision: Int = 3, text: String = "Recovered conversation") = json(
-        "agentId" to agent,"agent" to json("id" to agent,"teamId" to "team","name" to "Agent","backend" to "codex","status" to json("type" to "idle"),"readState" to json("revision" to revision,"readRevision" to 0)),
+        "agentId" to agent,"agent" to json("id" to agent,"teamId" to "team","name" to "Agent","provider" to "codex","status" to json("type" to "idle"),"readState" to json("revision" to revision,"readRevision" to 0)),
         "generation" to generation,"ready" to true,"peers" to JSONArray(),"history" to json("hasOlder" to false,"loadingOlder" to false,"failed" to false),
-        "frame" to json("agentId" to agent,"backend" to "codex","payload" to json("snapshot" to json("messages" to JSONArray().put(json("id" to "message","role" to "assistant","status" to "complete","parts" to JSONArray().put(json("type" to "text","text" to text)))),"turns" to JSONArray(),"activeTurnId" to null,"busy" to false))))
+        "frame" to json("agentId" to agent,"provider" to "codex","payload" to json("snapshot" to json("messages" to JSONArray().put(json("id" to "message","role" to "assistant","status" to "complete","parts" to JSONArray().put(json("type" to "text","text" to text)))),"turns" to JSONArray(),"activeTurnId" to null,"busy" to false))))
     private fun mount(e: NativeEngineFixture) { app.activityRule.scenario.onActivity { a -> a.setContent { MaterialTheme { CompanionApp(e.model,{},{},{},{},{},{}) } } }; app.runOnIdle { e.model.activity(true) } }
     private fun page(e: NativeEngineFixture, script: String): Any? {
         val done=CountDownLatch(1);val result=AtomicReference<Any?>()

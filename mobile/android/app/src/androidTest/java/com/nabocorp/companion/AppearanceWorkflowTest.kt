@@ -53,8 +53,8 @@ class AppearanceWorkflowTest {
                 val snapshot = json("messages" to JSONArray().put(json("id" to "message", "role" to "assistant", "status" to "complete",
                     "parts" to JSONArray().put(json("type" to "text", "text" to "Conversation through appearance changes")))), "turns" to JSONArray(), "activeTurnId" to null, "busy" to false)
                 engine.event("conversation", json("agentId" to "agent", "generation" to 7, "ready" to true,
-                    "agent" to json("id" to "agent", "teamId" to "team", "name" to "Agent", "backend" to "codex", "status" to json("type" to "idle")),
-                    "peers" to JSONArray(), "history" to json("hasOlder" to false), "frame" to json("agentId" to "agent", "backend" to "codex", "payload" to json("snapshot" to snapshot))))
+                    "agent" to json("id" to "agent", "teamId" to "team", "name" to "Agent", "provider" to "codex", "status" to json("type" to "idle")),
+                    "peers" to JSONArray(), "history" to json("hasOlder" to false), "frame" to json("agentId" to "agent", "provider" to "codex", "payload" to json("snapshot" to snapshot))))
                 app.waitUntil(15_000) { engine.model.renderedAgent == "agent" }
                 app.onNodeWithTag("composer").performTextInput("Keep this draft through appearance changes")
                 for (dark in listOf(true, false)) {

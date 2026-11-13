@@ -28,7 +28,7 @@ class SidebarWorkflowTest {
         val alpha = session("alpha", "Alpha agent", "error")
         val zebra = session("zebra", "Zebra agent")
         return json("startup" to "ready", "connection" to "connected", "laptopId" to host, "teamId" to team, "agentId" to "worker", "canSend" to true,
-            "composerTarget" to ConversationTarget(host,"local",team,"worker","session").toJson(), "laptops" to JSONArray().put(json("id" to host)), "backends" to JSONArray(listOf("codex")),
+            "composerTarget" to ConversationTarget(host,"local",team,"worker","session").toJson(), "laptops" to JSONArray().put(json("id" to host)), "providers" to JSONArray(listOf("codex")),
             "teams" to JSONArray().put(json("id" to "one", "name" to "Team one")).put(json("id" to "two", "name" to "Team two", "isUnread" to true)),
             "groups" to JSONArray().put(group("repo", "Repository group", worker, alpha, zebra)),
             "activityGroups" to JSONArray().put(group("empty", "Empty header", activity = "attention"))
@@ -139,7 +139,7 @@ class SidebarWorkflowTest {
             assertCommand(engine, json("type" to "selectAgent", "id" to "branch"))
             app.onNodeWithContentDescription("Open workspace").performClick()
             app.onNodeWithContentDescription("New chat").performClick()
-            assertCommand(engine, json("type" to "newQuickChat", "backend" to "codex"))
+            assertCommand(engine, json("type" to "newQuickChat", "provider" to "codex"))
             app.onNodeWithText("Starting your chat").assertIsDisplayed()
         }
     }

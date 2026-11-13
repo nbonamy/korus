@@ -23,7 +23,7 @@ class ReviewWorkflowTest {
     private fun setup(host: String = "host", backend: String = "codex", current: Boolean = true, active: Boolean = false, changes: Boolean = true) = json(
         "target" to target(host).toJson(), "branch" to "feature/native", "baseRef" to "main", "uncommitted" to changes,
         "branchChanges" to changes, "currentThread" to current, "activeReview" to active, "reviewerAgentId" to if (active) "reviewer" else null,
-        "agentBackend" to "codex", "backend" to backend, "backends" to JSONArray(listOf("codex", "claude")),
+        "agentProvider" to "codex", "provider" to backend, "providers" to JSONArray(listOf("codex", "claude")),
         "models" to JSONArray().put(json("id" to "$backend-review", "name" to "Review model", "efforts" to JSONArray(listOf("high", "low")), "tiers" to JSONArray().put(json("id" to "fast", "name" to "Fast")))),
         "preferences" to json("providers" to json(backend to json("model" to "$backend-review", "reasoningEffort" to "high"))))
     private fun state(status: String = "ready", setup: JSONObject? = setup(), host: String = "host", connected: Boolean = true) = json(
@@ -143,7 +143,7 @@ class ReviewWorkflowTest {
             reveal(hasContentDescription("Increase maximum rounds")).performClick()
             app.onNodeWithText("Start Review").performClick()
             assertEquals(tree(json("type" to "review", "target" to target().toJson(), "input" to json(
-                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "selection" to json("backend" to "codex", "model" to "codex-review", "reasoningEffort" to "high", "serviceTier" to "fast"), "instructions" to "Check retries",
+                "scope" to json("type" to "branch", "baseRef" to "main"), "threadMode" to "independent", "selection" to json("provider" to "codex", "model" to "codex-review", "reasoningEffort" to "high", "serviceTier" to "fast"), "instructions" to "Check retries",
                 "automation" to json("enabled" to true, "maxPriority" to "p1", "maxRounds" to 4, "autoCommit" to true)))),
                 tree(engine.commands().single { it.string("type") == "review" }))
             engine.state(state("starting"))
@@ -189,7 +189,7 @@ class ReviewWorkflowTest {
             hideKeyboard()
             reveal(hasContentDescription("Reviewer engine")).performClick()
             app.onNodeWithText("Claude").performClick()
-            assertEquals(tree(json("type" to "loadReview", "backend" to "claude")), tree(engine.commands().last()))
+            assertEquals(tree(json("type" to "loadReview", "provider" to "claude")), tree(engine.commands().last()))
             app.onNodeWithText("Start Review").assertIsNotEnabled()
             engine.state(state(setup = setup(backend = "claude")))
             reveal(hasTestTag("review-instructions")).assertTextContains("Keep focus")
@@ -207,7 +207,7 @@ class ReviewWorkflowTest {
             engine.state(state("unknown", setup(backend = "claude")))
             app.onNodeWithText("Start Review").assertIsNotEnabled()
             reveal(hasText("Refresh")).performClick()
-            assertEquals(tree(json("type" to "loadReview", "backend" to "claude")), tree(engine.commands().last()))
+            assertEquals(tree(json("type" to "loadReview", "provider" to "claude")), tree(engine.commands().last()))
             engine.state(state("loading", setup(backend = "claude")))
             reveal(hasTestTag("review-instructions")).assertIsNotEnabled()
             engine.state(state(host = "another-host", setup = setup(host = "another-host")))

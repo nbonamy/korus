@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
                 val providers = usage.items("providers").filter { provider -> provider.optBoolean("failed") || listOf("primary", "secondary").any { provider.obj("limits").optJSONObject(it) != null } }
                 if (providers.isEmpty()) Text("No usage limits available.", Modifier.padding(horizontal = 32.dp, vertical = 24.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 providers.forEach { provider ->
-                    val backend = provider.string("backend")
+                    val backend = provider.string("provider")
                     ProviderHeader(backend, when (backend) { "codex" -> "Codex"; "claude" -> "Claude"; else -> backend.replaceFirstChar(Char::uppercase) })
                     AppSection(header = null, modifier = Modifier.padding(top = 0.dp)) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -62,6 +62,8 @@ import kotlin.math.roundToInt
         when (backend) {
             "codex" -> Icon(painterResource(R.drawable.provider_codex), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
             "claude" -> Image(painterResource(R.drawable.provider_claude), null, Modifier.size(24.dp))
+            "cursor" -> Icon(painterResource(R.drawable.provider_cursor), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+            "antigravity" -> Icon(painterResource(R.drawable.provider_antigravity), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
         }
         Text(name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     }
@@ -69,7 +71,8 @@ import kotlin.math.roundToInt
 
 @Composable private fun UsageWindow(window: JSONObject, fallback: String, now: Long) {
     val minutes = window.optInt("windowDurationMins")
-    val label = when { minutes == 10080 -> "Weekly"; minutes <= 0 -> fallback; minutes % 60 == 0 -> "${minutes / 60}h"; else -> "${minutes}m" }
+    val name = if (window.isNull("label")) null else window.optString("label").trim().takeIf { it.isNotEmpty() }
+    val label = when { name != null -> name; minutes == 10080 -> "Weekly"; minutes <= 0 -> fallback; minutes % 60 == 0 -> "${minutes / 60}h"; else -> "${minutes}m" }
     val used = (window.opt("usedPercent") as? Number)?.toDouble()?.takeIf { it.isFinite() }
     val remaining = used?.let { ((100 - it) / 100).coerceIn(0.0, 1.0).toFloat() }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

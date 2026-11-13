@@ -113,7 +113,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
     internal val canStartCreation get() = canStartCreationFor()
     internal fun canStartCreationFor(repositoryId: String? = null) = creationReady && state.creationBackends(repositoryId).isNotEmpty()
-    private val conversationBackends get() = if (state.has("conversationBackends")) state.strings("conversationBackends") else state.strings("backends")
+    private val conversationBackends get() = if (state.has("conversationProviders")) state.strings("conversationProviders") else state.strings("providers")
     internal val canDuplicateAgent get() = canManageSession && creationReady && conversationBackends.isNotEmpty()
     val canManageSession get() = composerDrafts.target != null && state.connection.isConnected && state.string("sessionAction").isBlank()
     val composerDrafts = ComposerDrafts()
@@ -391,9 +391,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     private fun updateReviewChoices(review: JSONObject) {
         val setup = review.optJSONObject("setup") ?: return
-        if (review.string("status") == "ready" && (reviewLoadedBackend == null || reviewLoadedBackend != setup.string("backend"))) {
+        if (review.string("status") == "ready" && (reviewLoadedBackend == null || reviewLoadedBackend != setup.string("provider"))) {
             reviewChoices = reviewChoices.load(setup, reviewLoadedBackend == null)
-            reviewLoadedBackend = setup.string("backend")
+            reviewLoadedBackend = setup.string("provider")
         }
     }
     fun dismissReview() {
@@ -461,11 +461,11 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun duplicateAgent() {
         if (!canDuplicateAgent) return
         val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
-        val backend = state.string("backend").takeIf { conversationBackends.contains(it) } ?: preferredBackend(conversationBackends)
+        val backend = state.string("provider").takeIf { conversationBackends.contains(it) } ?: preferredBackend(conversationBackends)
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         dictation.cancel(); sheet = null
         duplicateFailed = false; duplicateTarget = target
-        command("duplicateAgent", "target" to target.toJson(), "backend" to backend)
+        command("duplicateAgent", "target" to target.toJson(), "provider" to backend)
     }
     private fun projectCatalogCommand(type: String, flow: CreationFlow, repositoryId: String? = null) {
         val fields = mutableListOf<Pair<String, Any?>>()
@@ -691,7 +691,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
                 "readConversationImage", "readConversationContent", "readFilePreview", "loadTurnHistory" -> dispatch(body)
                 "filePreviewVisibility" -> { filePreviewOpen = body.optBoolean("open"); if (filePreviewOpen) dictation.cancel(); acknowledge() }
-                "backend" -> { chooseCreationBackend(body.string("backend")); dispatch(body) }
+                "provider" -> { chooseCreationBackend(body.string("provider")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))
                 "openImage" -> if (foreground && screenUnlocked && !fatalError && !engineRecovering && state.string("agentId").isNotBlank()
                     && body.string("agentId") == state.string("agentId") && !drawerVisible && sheet == null && !reviewOpen && !changesOpen && creation == null && presentedRequest == null) {
