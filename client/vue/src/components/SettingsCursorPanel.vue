@@ -1,9 +1,9 @@
 <template>
   <SettingsPanelFrame :title="$t('cursor.name')" title-id="settings-cursor-title">
     <SettingsEngineConnectionRow provider="cursor" :capabilities="setupCapabilities" :installed="installed" :title="$t('cursor.name')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :pending="pending" :error="error || nativeState?.error" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
+      <ProviderUpdateRow provider="cursor" :enabled="installed" :remote-connection-id="remoteConnectionId" />
       <FormRow :title="$t('engineSetup.title')" :description="nativeState?.homePath || $t('cursor.existingHome')" />
       <FormRow v-if="nativeState?.team" :title="$t('cursor.team')" :description="nativeState.team" />
-      <ProviderUpdateRow provider="cursor" :enabled="installed" :remote-connection-id="remoteConnectionId" />
     </SettingsEngineConnectionRow>
     <FormSection v-if="connected && enabled !== false && !remoteConnectionId" :title="$t('cursor.billing')" title-id="settings-cursor-billing-title">
       <template #actions>
