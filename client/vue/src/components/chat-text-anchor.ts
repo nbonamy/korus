@@ -1,6 +1,14 @@
 import type { ChatTextSelection } from './use-chat-text-annotations';
 import './annotation-highlights.css';
 
+/** Where `range` begins in the text of `content`, skipping the whitespace the selection starts with. */
+export function textStartIn(content: HTMLElement, range: Range): number {
+  const prefix = document.createRange();
+  prefix.selectNodeContents(content);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  return prefix.toString().length + (range.toString().length - range.toString().trimStart().length);
+}
+
 // The text slot is owned by Korus; SDK markup and message DOM are not inspected.
 export function captureChatTextAnchor(selection: ChatTextSelection | null): ChatTextSelection | null {
   const current = window.getSelection();
@@ -10,14 +18,11 @@ export function captureChatTextAnchor(selection: ChatTextSelection | null): Chat
   const content = element?.closest<HTMLElement>('[data-chat-annotation-content]');
   const block = content?.parentElement;
   if (!content || !block || !content.contains(range.endContainer)) return null;
-  const prefix = document.createRange();
-  prefix.selectNodeContents(content);
-  prefix.setEnd(range.startContainer, range.startOffset);
   const blocks = [...(block.closest('.conversation-pane')?.querySelectorAll<HTMLElement>('[data-chat-annotation-message]') ?? [])]
     .filter(candidate => candidate.dataset.chatAnnotationMessage === block.dataset.chatAnnotationMessage);
   return {
     ...selection,
-    textStart: prefix.toString().length + (range.toString().length - range.toString().trimStart().length),
+    textStart: textStartIn(content, range),
     textBlockIndex: blocks.indexOf(block),
   };
 }

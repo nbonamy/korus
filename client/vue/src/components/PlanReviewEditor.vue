@@ -15,6 +15,7 @@
       :disabled="locked || busy || Boolean(save.error.value) || !respond"
       :has-feedback="hasFeedback"
       :can-approve="review.canApprove !== false"
+      :cancellable="cancellable"
       @approve="decide('accept')"
       @cancel="decide('cancel')"
       @revise="decide('revise')"
@@ -31,6 +32,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
+import { confirmDiscardAnnotations } from './confirm-discard-annotations';
 import { useI18n } from 'vue-i18n';
 import {
   isPlanReviewDraft,
@@ -49,9 +51,10 @@ const props = withDefaults(
     review: PlanReview;
     interactive?: boolean;
     planUpdating?: boolean;
+    cancellable?: boolean;
     respond?: (response: PlanReviewResponse) => Promise<PlanReview>;
   }>(),
-  { interactive: true },
+  { interactive: true, cancellable: true },
 );
 const { t } = useI18n();
 const reviewId = props.review.id;
@@ -119,6 +122,7 @@ async function decide(resolution: PlanReviewResolution) {
     (resolution === 'accept' && props.review.canApprove === false)
   )
     return;
+  if (resolution === 'accept' && draft.value.comments.length && !(await confirmDiscardAnnotations(draft.value.comments.length, t))) return;
   busy.value = true;
   actionError.value = '';
   try {

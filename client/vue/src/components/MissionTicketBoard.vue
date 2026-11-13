@@ -99,6 +99,7 @@
 import {
   computed,
   nextTick,
+  onBeforeUnmount,
   ref,
   watch,
   type ComponentPublicInstance,
@@ -117,7 +118,7 @@ const props = withDefaults(defineProps<{
   tickets: readonly MissionTicket[];
   visibleTicketIndexes?: readonly number[];
 }>(), { annotatable: false, disabled: false, resetKey: 0 });
-const emit = defineEmits<{ sendComments: [comments: MissionTicketComment[]] }>();
+const emit = defineEmits<{ sendComments: [comments: MissionTicketComment[]]; commentsChange: [count: number] }>();
 const { t } = useI18n();
 const selectedKey = ref("");
 const cardRefs = new Map<string, HTMLButtonElement>();
@@ -151,6 +152,9 @@ watch(
 watch(() => props.resetKey, () => {
   comments.value = [];
 });
+// The workspace needs the count to warn before an approval drops unsent comments.
+watch(() => comments.value.length, count => emit("commentsChange", count));
+onBeforeUnmount(() => emit("commentsChange", 0));
 
 function ticketKey(ticket: MissionTicket, index: number): string {
   return ticket.id ?? `ticket-${index}`;

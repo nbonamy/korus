@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentConversationId, isPlanReview, isPlanReviewDraft, planReviewDelivery, planReviewFromEvent } from '../plan-review';
+import { agentConversationId, isPlanReview, isPlanReviewDraft, planReviewDelivery, planReviewFeedback, planReviewFeedbackSummary, planReviewFromEvent } from '../plan-review';
 import { createInitialSnapshot } from '../snapshot';
 
 describe('plan review identity', () => {
@@ -31,4 +31,37 @@ it('validates persisted feedback bounds and rejects ambiguous duplicate identiti
   expect(isPlanReviewDraft({ comments: [comment], choices: [choice] })).toBe(true);
   expect(isPlanReviewDraft({ comments: [], choices: [{ ...choice, selected: [] }] })).toBe(true);
   for (const draft of [null, {}, { comments: [comment, comment], choices: [] }, { comments: [], choices: [choice, choice] }, { comments: [{ ...comment, quote: '' }], choices: [] }, { comments: [], choices: [{ ...choice, selected: [42] }] }, { comments: [], choices: [{ ...choice, confirmed: 'yes' }] }, { comments: Array.from({ length: 101 }, (_, i) => ({ ...comment, id: String(i) })), choices: [] }, { comments: Array.from({ length: 20 }, (_, i) => ({ ...comment, id: String(i), body: 'x'.repeat(4000) })), choices: [] }]) expect(isPlanReviewDraft(draft)).toBe(false);
+});
+
+it('accepts the text anchor of a selection comment but keeps it out of the feedback sent to the agent', () => {
+  const comment = { id: 'c1', sectionId: 's0', quote: 'selected context', body: 'Retain this.', textStart: 12 };
+  expect(isPlanReviewDraft({ comments: [comment], choices: [] })).toBe(true);
+  expect(isPlanReviewDraft({ comments: [{ ...comment, textStart: -1 }], choices: [] })).toBe(false);
+  const feedback = planReviewFeedback({ id: 'r1', conversationId: null, turnId: 't1', markdown: '# Plan', status: 'pending', draft: { comments: [comment], choices: [] } });
+  expect(feedback).toContain('Retain this.');
+  expect(feedback).not.toContain('textStart');
+});
+
+it('summarizes feedback as a readable numbered list that matches the comment numbers shown beside the text', () => {
+  const draft = {
+    comments: [
+      { id: 'c1', sectionId: 's0', quote: 'let users export reports', body: 'Which formats?', textStart: 4 },
+      { id: 'c2', sectionId: 's1', quote: 'Diagram 1: Flow\n\ngraph TD; A-->B', body: 'Add the failure path.' },
+    ],
+    choices: [
+      { id: 'q1', quote: 'Platforms', selected: ['macOS', 'Linux'], confirmed: true },
+      { id: 'q2', quote: 'Billing', selected: ['Monthly'] },
+    ],
+  };
+  expect(planReviewFeedbackSummary(draft)).toBe([
+    '1. “let users export reports” — Which formats?',
+    '2. “Diagram 1: Flow” — Add the failure path.',
+    '   ```',
+    '   graph TD; A-->B',
+    '   ```',
+    '',
+    'Decisions:',
+    '- Platforms: macOS, Linux',
+  ].join('\n'));
+  expect(planReviewFeedbackSummary(undefined)).toBe('');
 });

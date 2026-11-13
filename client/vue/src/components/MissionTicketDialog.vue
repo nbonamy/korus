@@ -4,7 +4,7 @@
     :model-value="modelValue"
     :show-close="false"
     :close-on-click-modal="false"
-    :close-on-press-escape="!activeTarget"
+    :close-on-press-escape="!target"
     append-to-body
     destroy-on-close
     width="min(720px, calc(100vw - 48px))"
@@ -35,23 +35,16 @@
       :aria-label="t('missions.ticketDetails')"
     >
       <div class="mission-ticket-dialog__document" @mouseup="captureSelection">
-        <MarkdownPanel
-          :content="ticket.body?.trim() || t('missions.noTicketDescription')"
-        />
-        <AnnotationPopup
-          v-if="activeTarget"
-          :anchor="activeTarget.anchor"
-          :description="activeTarget.quote"
-          :initial-value="activeTarget.initialValue"
-          :label="t('missions.ticketCommentLabel')"
-          :placement="activeTarget.placement"
-          :placeholder="t('missions.ticketCommentPlaceholder')"
-          strategy="fixed"
-          :submit-label="t('missions.saveTicketComment')"
-          :width="activeTarget.width"
-          @cancel="cancelComment"
-          @submit="saveComment"
-        />
+        <ChatAnnotatedText
+          :message-key="ticketKey"
+          :annotations="anchored"
+          :focus-request="focusRequest"
+          @edit="editById"
+        >
+          <MarkdownPanel
+            :content="ticket.body?.trim() || t('missions.noTicketDescription')"
+          />
+        </ChatAnnotatedText>
       </div>
 
       <div
@@ -81,34 +74,27 @@
       <slot />
 
       <section
-        v-if="comments.length"
+        v-if="shownComments.length"
         class="mission-ticket-dialog__comments"
         :aria-label="t('missions.ticketComments')"
       >
-        <article
-          v-for="comment in comments"
+        <AnnotationComment
+          v-for="comment in shownComments"
           :key="comment.id"
-          class="mission-ticket-dialog__comment"
-        >
-          <button
-            type="button"
-            :aria-label="t('missions.editTicketComment')"
-            :disabled="disabled"
-            @click="editComment(comment)"
-          >
-            <span>{{ oneLine(comment.quote) }}</span>
-            <small>{{ oneLine(comment.body) }}</small>
-          </button>
-          <button
-            type="button"
-            class="mission-ticket-dialog__comment-remove"
-            :aria-label="t('missions.removeTicketComment')"
-            :disabled="disabled"
-            @click="removeComment(comment.id)"
-          >
-            <Trash2Icon aria-hidden="true" />
-          </button>
-        </article>
+          :comment="comment"
+          :quote="oneLine(comment.quote)"
+          :show-quote="true"
+          :number="numberOf(comment)"
+          :editor-id="`${editorId}-${comment.id}`"
+          :open="target?.id === comment.id"
+          :disabled="disabled"
+          :placeholder="t('missions.ticketCommentPlaceholder')"
+          @reveal="reveal(comment)"
+          @edit="editComment(comment)"
+          @close="cancelComment"
+          @remove="removeComment(comment.id)"
+          @update="update(comment, $event)"
+        />
       </section>
     </article>
 
@@ -131,14 +117,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useSlots, watch } from "vue";
+import { computed, onBeforeUnmount, ref, useId, useSlots, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { MissionTicket } from "@workspace/core/missions";
-import { ExternalLinkIcon, Trash2Icon, X } from "../shared/icons/app-icons";
-import AnnotationPopup, {
-  type AnnotationPopupAnchor,
-} from "./AnnotationPopup.vue";
+import { ExternalLinkIcon, X } from "../shared/icons/app-icons";
+import AnnotationComment from "./AnnotationComment.vue";
 import AnnotationSendButton from "./AnnotationSendButton.vue";
+import ChatAnnotatedText from "./ChatAnnotatedText.vue";
+import { textStartIn } from "./chat-text-anchor";
 import MarkdownPanel from "./MarkdownPanel.vue";
 import { usePendingAnnotationHighlight } from "./use-pending-annotation-highlight";
 
@@ -146,6 +132,9 @@ export type MissionTicketComment = {
   body: string;
   id: string;
   quote: string;
+  /** The selected passage and where it starts in the ticket, so it can be marked again. */
+  text?: string;
+  textStart?: number;
   ticketKey: string;
   ticketNumber: string;
   ticketTitle: string;
@@ -182,18 +171,41 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const slots = useSlots();
-const activeTarget = ref<{
-  anchor: AnnotationPopupAnchor;
-  initialValue: string;
-  placement: "above" | "below";
-  quote: string;
-  width?: number;
-} | null>(null);
-const editingId = ref<string | null>(null);
+const editorId = useId();
+// The comment being written or edited; like a requirement comment it is saved as the user types.
+const target = ref<MissionTicketComment | null>(null);
 let commentId = 0;
 const pendingHighlight = usePendingAnnotationHighlight();
 
 watch(() => [props.modelValue, props.ticketKey], cancelComment);
+
+// Saved comments are marked in the text with their number, like chat annotations and requirement comments.
+const anchored = computed(() => props.comments.flatMap((comment, index) => comment.text && comment.textStart !== undefined
+  ? [{ id: comment.id, text: comment.text, comment: comment.body, number: index + 1, textStart: comment.textStart }]
+  : []));
+const focusRequest = ref<{ id: string } | null>(null);
+function numberOf(comment: MissionTicketComment): number | undefined {
+  return anchored.value.find(candidate => candidate.id === comment.id)?.number;
+}
+function reveal(comment: MissionTicketComment): void {
+  focusRequest.value = { id: comment.id };
+}
+function editById(id: string): void {
+  const comment = props.comments.find(candidate => candidate.id === id);
+  if (comment) editComment(comment);
+}
+
+// Clicking anywhere but the open comment and the markers that open one deselects it.
+function dismissOutside(event: PointerEvent): void {
+  if (!target.value) return;
+  const keep = "[data-annotation-id], [data-annotation-comment]";
+  if (!event.composedPath().some(node => node instanceof Element && node.matches(keep))) cancelComment();
+}
+watch(target, (open, was) => {
+  if (open && !was) document.addEventListener("pointerdown", dismissOutside, true);
+  else if (!open) document.removeEventListener("pointerdown", dismissOutside, true);
+});
+onBeforeUnmount(() => document.removeEventListener("pointerdown", dismissOutside, true));
 
 function closeDetails(): void {
   cancelComment();
@@ -217,74 +229,49 @@ function captureSelection(event: MouseEvent): void {
   const documentElement =
     event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   if (!documentElement?.contains(range.commonAncestorContainer)) return;
-  const rangeRect = range.getBoundingClientRect();
-  pendingHighlight.hold(range);
-  activeTarget.value = {
-    quote: quote.length > 180 ? `${quote.slice(0, 177)}...` : quote,
-    initialValue: "",
-    placement: "below",
-    anchor: {
-      x: Math.min(
-        Math.max(12, rangeRect.left),
-        Math.max(12, window.innerWidth - 332),
-      ),
-      y: Math.max(12, rangeRect.top),
-      width: rangeRect.width,
-      height: rangeRect.height,
-    },
-  };
-}
-
-function saveComment(body: string): void {
-  const target = activeTarget.value;
-  if (!target || !props.ticket) return;
+  const content = documentElement.querySelector<HTMLElement>("[data-chat-annotation-content]");
   commentId += 1;
-  emit("saveComment", {
-    id: editingId.value ?? `ticket-comment-${commentId}`,
-    body,
-    quote: target.quote,
+  pendingHighlight.hold(range);
+  target.value = {
+    id: `ticket-comment-${commentId}`,
+    body: "",
+    quote: quote.length > 180 ? `${quote.slice(0, 177)}...` : quote,
+    ...(content?.contains(range.startContainer)
+      ? { text: quote.slice(0, 2000), textStart: textStartIn(content, range) }
+      : {}),
     ticketKey: props.ticketKey,
     ticketNumber: props.ticketNumber,
     ticketTitle: props.ticket.title,
-  });
-  cancelComment();
-  window.getSelection?.()?.removeAllRanges();
+  };
+  selection.removeAllRanges();
+}
+
+// Saved comments plus the one being written, which is saved on its first words.
+const shownComments = computed(() => target.value && !props.comments.some(comment => comment.id === target.value!.id)
+  ? [...props.comments, target.value]
+  : props.comments);
+
+function update(comment: MissionTicketComment, body: string): void {
+  target.value = { ...comment, body };
+  if (body.trim()) emit("saveComment", { ...comment, body });
+  else if (props.comments.some(saved => saved.id === comment.id)) emit("removeComment", comment.id);
 }
 
 function editComment(comment: MissionTicketComment): void {
   if (props.disabled) return;
   pendingHighlight.release();
-  const dialog = document.querySelector<HTMLElement>(
-    ".mission-ticket-dialog .el-dialog__footer",
-  );
-  const dialogRect = dialog?.getBoundingClientRect();
-  editingId.value = comment.id;
-  activeTarget.value = {
-    quote: comment.quote,
-    initialValue: comment.body,
-    placement: "above",
-    ...(dialogRect && dialogRect.width > 24
-      ? { width: dialogRect.width - 24 }
-      : {}),
-    anchor: {
-      x: (dialogRect?.left ?? 0) + 12,
-      y: dialogRect?.top ?? 72,
-      width: 0,
-      height: 0,
-    },
-  };
+  target.value = comment;
 }
 
 function removeComment(id: string): void {
   if (props.disabled) return;
   emit("removeComment", id);
-  if (editingId.value === id) cancelComment();
+  if (target.value?.id === id) cancelComment();
 }
 
 function cancelComment(): void {
   pendingHighlight.release();
-  activeTarget.value = null;
-  editingId.value = null;
+  target.value = null;
 }
 
 function oneLine(value: string): string {
@@ -374,7 +361,9 @@ function oneLine(value: string): string {
 }
 
 .mission-ticket-dialog__body {
-  min-height: 0;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 .mission-ticket-dialog__document :deep(.markdown-panel) {
@@ -412,77 +401,6 @@ function oneLine(value: string): string {
   height: var(--icon-sm);
 }
 
-.mission-ticket-dialog__comments {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-6) var(--space-8);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-low);
-}
-
-.mission-ticket-dialog__comment {
-  display: flex;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid
-    color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
-  border-radius: var(--radius-md);
-  background: var(--color-surface-lowest);
-}
-
-.mission-ticket-dialog__comment > button:first-child {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 1px;
-  padding: var(--space-3) var(--space-4);
-  overflow: hidden;
-  border: 0;
-  color: var(--color-text);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mission-ticket-dialog__comment span,
-.mission-ticket-dialog__comment small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mission-ticket-dialog__comment span {
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-semibold);
-}
-
-.mission-ticket-dialog__comment small {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-11);
-}
-
-.mission-ticket-dialog__comment-remove {
-  display: grid;
-  width: 34px;
-  flex: 0 0 34px;
-  place-items: center;
-  border: 0;
-  border-left: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.mission-ticket-dialog__comment-remove svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-}
-
-.mission-ticket-dialog__comment button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .mission-ticket-dialog__close {
   display: grid;
   width: 32px;
@@ -505,4 +423,16 @@ function oneLine(value: string): string {
   width: var(--icon-md);
   height: var(--icon-md);
 }
+
+/* The list stays at the bottom of the dialog while the ticket scrolls. */
+.mission-ticket-dialog__comments {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  margin-top: auto;
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-low);
+}
+
 </style>

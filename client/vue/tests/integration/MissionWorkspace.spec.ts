@@ -1,7 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from '../support/provisioning-host';
 import { computed } from 'vue';
-import { ElDialog, ElPopover, ElSelect, ElTabs, ElTabPane } from 'element-plus';
+import { ElDialog, ElMessageBox, ElPopover, ElSelect, ElTabs, ElTabPane } from 'element-plus';
 import { providerChoicesKey } from '../../src/components/provider-selection';
 import { providerModelCatalogKey } from '../../src/components/provider-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
@@ -317,6 +317,28 @@ describe('MissionWorkspace', () => {
     wrapper.unmount();
   });
 
+  it('asks before approving tickets that still have unsent comments, and goes ahead once confirmed', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets';
+    mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValue('confirm' as never);
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, models: [] });
+    try {
+      await flushPromises();
+      wrapper.findComponent(MissionTicketBoard).vm.$emit('commentsChange', 2);
+      const approve = wrapper.get('.mission-workspace__stage-header .app-button--primary');
+      const dialog = () => wrapper.find('[role="dialog"][aria-label="Start implementation"]');
+
+      await approve.trigger('click'); await flushPromises();
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('2 annotations'), expect.any(String), expect.objectContaining({ type: 'warning' }));
+      expect(dialog().exists()).toBe(false);
+
+      await approve.trigger('click'); await flushPromises();
+      expect(dialog().exists()).toBe(true);
+    } finally { confirm.mockRestore(); wrapper.unmount(); }
+  });
+
   it('selects the implementation model in a cancellable approval dialog without changing the lead', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.stage = 'tickets';
@@ -528,7 +550,7 @@ describe('MissionWorkspace', () => {
 
     expect(wrapper.get('[aria-label="Artifact ready for review"]').text()).toContain('Teams need one bill');
     expect(wrapper.find('.mission-workspace__stage-header').exists()).toBe(false);
-    expect(wrapper.get('.plan-review-footer .app-button--primary').text()).toBe('Approve');
+    expect(wrapper.findAll('.plan-review-footer button').map(button => button.text())).toStrictEqual(['Revise', 'Approve']);
     expect(wrapper.find('.mission-workspace__artifact-toolbar').exists()).toBe(false);
     expect(wrapper.get('.plan-review-panel').text()).toContain('Teams need one bill');
     expect(wrapper.find('.conversation-slot').exists()).toBe(true);
@@ -555,6 +577,7 @@ describe('MissionWorkspace', () => {
       await wrapper.get('.plan-review-footer .app-button--secondary').trigger('click');
       await flushPromises();
       expect(sendMissionPrompt).toHaveBeenCalledOnce();
+      expect(sendMissionPrompt).toHaveBeenCalledWith('<context>\n1. “Problem and scope” — Please double-check this scope.\n</context>\nRevise the mission requirements using my feedback.');
       expect(wrapper.get('.plan-review-footer .app-button--primary').attributes('disabled')).toBeDefined();
       mission.execution!.runs[0]!.finishedAt = '2026-09-19T00:03:00.000Z';
       await wrapper.setProps({ mission: structuredClone(mission) });
@@ -650,7 +673,8 @@ describe('MissionWorkspace', () => {
       const feedback = sendMissionPrompt.mock.calls[1]![0];
       expect(feedback).toContain('Include the cancellation path.');
       expect(feedback).toContain('flowchart LR');
-      expect(feedback).toContain('"selected": [\n        "Owner",\n        "Member"\n      ]');
+      expect(feedback).toContain('Decisions:\n- ');
+      expect(feedback).toContain(': Owner, Member');
       expect(executeMission).not.toHaveBeenCalled();
       expect(revise.attributes('disabled')).toBeDefined();
     } finally { wrapper.unmount(); }
@@ -1033,6 +1057,31 @@ describe('MissionWorkspace', () => {
     expect(executeMission).toHaveBeenLastCalledWith({
       id: mission.id, revision: mission.revision, action: 'cancel', runId: 'run-checkout',
     });
+  });
+
+  it('lets a simulated ticket review take comments like a simulated requirements review and resolves them locally', async () => {
+    const mission = missionWithRun('accepted', true);
+    mission.artifacts = structuredClone(mission.execution!.runs[0]!.proposal!);
+    mission.stage = 'tickets';
+    mission.execution!.debugFixture = true;
+    mission.execution!.runs.push({
+      id: 'run-tickets', stage: 'tickets', memberId: 'agent-dina', workerId: 'agent-dina', status: 'awaitingReview',
+      skills: [], feedback: '', startedAt: '2026-09-19T00:01:00.000Z',
+      draftTickets: [{ id: 'mission-ticket-foundation', title: 'Create billing account', body: 'Deliver the account with integration coverage.', done: false }],
+      proposal: { ...structuredClone(mission.artifacts), tickets: [{ id: 'mission-ticket-foundation', title: 'Create billing account', body: 'Deliver the account with integration coverage.', done: false }] },
+    });
+    const sendMissionPrompt = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { sendMissionPrompt });
+    const board = wrapper.findComponent(MissionTicketBoard);
+    expect(board.props()).toMatchObject({ annotatable: true, disabled: false });
+
+    board.vm.$emit('sendComments', [{
+      id: 'comment-1', ticketKey: 'mission-ticket-foundation', ticketNumber: '01',
+      ticketTitle: 'Create billing account', quote: 'integration coverage', body: 'Name the boundary.',
+    }] satisfies MissionTicketComment[]);
+    await flushPromises();
+
+    expect(board.props('resetKey')).toBe(1);
   });
 
   it('keeps simulated implementation fixtures visual and non-interactive', async () => {

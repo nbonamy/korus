@@ -6,6 +6,7 @@ import type {
 } from '@korus-dev/agent-ui-sdk';
 import type { Message } from '@korus-dev/multi-agent-sdk';
 import { nextTick } from 'vue';
+import { ElMessageBox } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
@@ -1574,6 +1575,7 @@ describe('AppShell workspace and plans', () => {
     const agent = snapshot.agents[0]!;
     agent.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Plan', status: 'pending', draftVersion: 1, draft: { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Split the work.' }], choices: [] } };
     const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: resolution });
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, planMode: true, updatePlanReview } });
     try {
       const label = { accept: 'Approve', cancel: 'Cancel' }[resolution];
@@ -1582,7 +1584,7 @@ describe('AppShell workspace and plans', () => {
       expect(updatePlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId: 'native', resolution, draftVersion: 1 });
       expect(wrapper.emitted('update:planMode')).toStrictEqual([[false]]);
       expect(wrapper.findAll('[role="tab"]').map(t => t.text())).not.toContain('Plan');
-    } finally { wrapper.unmount(); }
+    } finally { confirm.mockRestore(); wrapper.unmount(); }
   });
 
   it('keeps the submitted plan visible through revision, reload and replacement', async () => {
@@ -1600,7 +1602,7 @@ describe('AppShell workspace and plans', () => {
       waiting.agents[0]!.planReview!.status = 'revise';
       await wrapper.setProps({ snapshot: waiting, activeAgent: waiting.agents[0]! });
       expect(wrapper.get('article[aria-label="Original plan"]').isVisible()).toBe(true);
-      expect(wrapper.get('.comment-preview').text()).toContain('Split the work.');
+      expect(wrapper.get('.annotation-comment__body').text()).toContain('Split the work.');
       expect(wrapper.get('.plan-review-footer').findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true);
       wrapper.unmount();
       wrapper = mount(AppShell, { props: { snapshot: waiting, activeAgent: waiting.agents[0]!, isLoading: false, isSending: false, updatePlanReview } });

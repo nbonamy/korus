@@ -15,6 +15,7 @@
       </button>
     </header>
     <div class="plan-review-section__body" @mouseup="selectText">
+      <ChatAnnotatedText :message-key="section.id" :annotations="anchored" :focus-request="focusRequest" @edit="editSaved">
       <template v-for="(block, index) in section.blocks" :key="index">
         <div v-if="'html' in block" class="agent-ui-markdown" v-html="block.html" />
         <PlanChoiceGroup
@@ -38,28 +39,35 @@
           ><MessageIcon aria-hidden="true" /></button>
         </figure>
       </template>
+      </ChatAnnotatedText>
     </div>
-    <div v-for="comment in comments" :key="comment.id" :title="comment.quote">
-      <p v-if="comment.id !== section.id" class="plan-comment-quote">{{ commentLabel(comment) }}</p>
-      <PlanCommentEditor
-        :id="`${editorId}-${comment.id}`"
-        :model-value="comment.body"
-        :open="target?.id === comment.id"
-        :disabled="disabled"
-        @edit="editComment(comment)"
-        @close="close"
-        @update:model-value="emit('comment', { ...comment, body: $event })"
-      />
-    </div>
+    <AnnotationComment
+      v-for="comment in comments"
+      :key="comment.id"
+      :comment="comment"
+      :quote="commentLabel(comment)"
+      :show-quote="comment.id !== section.id"
+      :number="numberOf(comment)"
+      :editor-id="`${editorId}-${comment.id}`"
+      :open="target?.id === comment.id"
+      :disabled="disabled"
+      @reveal="reveal(comment)"
+      @edit="editComment(comment)"
+      @close="close"
+      @remove="remove(comment)"
+      @update="emit('comment', { ...comment, body: $event })"
+    />
   </section>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, ref, useId } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { PlanReviewDraft } from '@workspace/core/plan-review';
 import type { PlanMarkdownSection, PlanMarkdownDiagram } from './plan-markdown';
 import { MessageIcon } from '../shared/icons/app-icons';
-import PlanCommentEditor from './PlanCommentEditor.vue';
+import ChatAnnotatedText from './ChatAnnotatedText.vue';
+import AnnotationComment from './AnnotationComment.vue';
+import { textStartIn } from './chat-text-anchor';
 import PlanChoiceGroup from './PlanChoiceGroup.vue';
 import { usePendingAnnotationHighlight } from './use-pending-annotation-highlight';
 import VisualizationView from './VisualizationView.vue';
@@ -84,6 +92,26 @@ const comments = computed(() => {
     ? [...saved, target.value]
     : saved;
 });
+// A selection comment carries where its passage starts; saved ones are marked in the text like chat annotations.
+const anchored = computed(() => props.draft.comments
+  .map((comment, index) => ({ comment, number: index + 1 }))
+  .filter(({ comment }) => comment.sectionId === props.section.id && comment.textStart !== undefined)
+  .map(({ comment, number }) => ({ id: comment.id, text: comment.quote, comment: comment.body, number, textStart: comment.textStart })));
+const focusRequest = ref<{ id: string } | null>(null);
+function numberOf(comment: PlanReviewDraft['comments'][number]): number | undefined {
+  return anchored.value.find(candidate => candidate.id === comment.id)?.number;
+}
+function reveal(comment: PlanReviewDraft['comments'][number]) {
+  focusRequest.value = { id: comment.id };
+}
+function remove(comment: PlanReviewDraft['comments'][number]) {
+  emit('comment', { ...comment, body: '' });
+  if (target.value?.id === comment.id) void close(false);
+}
+function editSaved(id: string) {
+  const comment = props.draft.comments.find(candidate => candidate.id === id);
+  if (comment && !props.disabled) editComment(comment);
+}
 function diagramLabel(diagram: PlanMarkdownDiagram) {
   return t('planFeedback.diagram', { number: diagram.number, title: props.section.title });
 }
@@ -116,12 +144,15 @@ function selectText(event: MouseEvent) {
     !(event.currentTarget as Element).contains(selection.getRangeAt(0).commonAncestorContainer)
   )
     return;
-  pendingHighlight.hold(selection.getRangeAt(0));
+  const range = selection.getRangeAt(0);
+  const content = (event.currentTarget as Element).querySelector<HTMLElement>('[data-chat-annotation-content]');
+  pendingHighlight.hold(range);
   target.value = {
     id: crypto.randomUUID(),
     sectionId: props.section.id,
     quote: quote.slice(0, 2000),
     body: '',
+    ...(content?.contains(range.startContainer) ? { textStart: textStartIn(content, range) } : {}),
   };
   selection.removeAllRanges();
 }
@@ -129,12 +160,25 @@ function editComment(comment: PlanReviewDraft['comments'][number]) {
   pendingHighlight.release();
   target.value = comment;
 }
-async function close() {
+async function close(restoreFocus = true) {
   pendingHighlight.release();
   target.value = null;
   await nextTick();
-  (activeCommentButton ?? commentButton.value)?.focus();
+  if (restoreFocus) (activeCommentButton ?? commentButton.value)?.focus();
 }
+// Clicking anywhere but the open comment and the controls that open one deselects it.
+function dismissOutside(event: PointerEvent) {
+  const open = target.value;
+  if (!open) return;
+  const keep = '[data-annotation-id], .plan-review-section__heading button, .plan-diagram > button';
+  const inside = event.composedPath().some(node => node instanceof Element && (node.matches(keep) || node.getAttribute('data-annotation-comment') === open.id));
+  if (!inside) void close(false);
+}
+watch(target, (open, was) => {
+  if (open && !was) document.addEventListener('pointerdown', dismissOutside, true);
+  else if (!open) document.removeEventListener('pointerdown', dismissOutside, true);
+});
+onBeforeUnmount(() => document.removeEventListener('pointerdown', dismissOutside, true));
 </script>
 <style scoped>
 .plan-review-section {
@@ -169,6 +213,11 @@ async function close() {
   color: var(--color-text-muted);
   cursor: pointer;
 }
+.plan-review-section__heading button:focus-visible {
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
 .plan-review-section__heading button:hover {
   background: var(--color-surface);
   color: var(--color-text);
@@ -176,12 +225,6 @@ async function close() {
 .plan-review-section__heading svg {
   width: 18px;
   height: 18px;
-}
-.plan-comment-quote {
-  margin: 12px 0 4px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  white-space: pre-wrap;
 }
 .plan-diagram {
   position: relative;
@@ -199,6 +242,10 @@ async function close() {
   right: var(--space-8);
   padding: var(--space-4);
   background: var(--color-overlay);
+}
+.plan-diagram > button:focus-visible {
+  outline: none;
+  background: var(--color-surface);
 }
 .plan-diagram > button svg {
   width: 18px;

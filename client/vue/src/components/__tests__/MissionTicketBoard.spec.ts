@@ -137,9 +137,8 @@ async function annotateSelectedTicket(quote: string, body: string): Promise<void
   } as unknown as Selection);
   getDocumentElement<HTMLElement>('.mission-ticket-dialog__document').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   await flushPromises();
-  const input = getDocumentElement<HTMLInputElement>('.annotation-popup__input');
+  const input = getDocumentElement<HTMLTextAreaElement>('.mission-ticket-dialog__comments textarea');
   input.value = body;
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  getDocumentElement<HTMLFormElement>('form.annotation-popup').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await flushPromises();
 }
