@@ -9,8 +9,10 @@ import {
   projectNarrativeFromDraft,
   projectOverviewMergedBranch,
   type ProjectFlowUnit,
+  type ProjectLookback,
   type ProjectNarrativeState,
   type ProjectOverview,
+  type ProjectOverviewOuterSource,
   type ProjectOverviewSourceStatus,
 } from '@workspace/core/project-overview';
 import type { WorkProviderKind } from '@workspace/core/work-providers';
@@ -62,15 +64,46 @@ async function settle<T>(read: () => Promise<T | null> | T | null, absent: Proje
   }
 }
 
-/** Everything read for one repository at one moment, before the narrative is attached. */
+/** A source being read, and what it answered once it has. */
+type Part<T> = { promise: Promise<Settled<T>>; settled: Settled<T> | null };
+function track<T>(read: Promise<Settled<T>>): Part<T> {
+  const part: Part<T> = { promise: read, settled: null };
+  part.promise = read.then(settled => { part.settled = settled; return settled; });
+  return part;
+}
+
+type BacklogRead = WorkProviderBacklogActivity & { provider: WorkProviderKind };
+type PipelineRead = { provider: WorkProviderKind; runs: WorkProviderPipelineRun[] };
+
+/** One read of a repository: the repository itself at once, and each outer source as it answers. */
 type Reading = {
   now: number;
   repository: string;
   teammates: readonly Agent[];
+  git: Settled<ProjectOverviewGitFacts>;
+  lookback: ProjectLookback;
+  base: Omit<ProjectOverview, 'narrative' | 'flow' | 'sources'>;
+  parts: { backlog: Part<BacklogRead>; pullRequests: Part<WorkProviderPullRequestActivity>; pipelines: Part<PipelineRead> };
+  /** Composed once, after every source has answered. */
+  complete: Composition | null;
+};
+
+/** What was known when a reading was composed, before the narrative is attached. */
+type Composition = {
+  reading: Reading;
   overview: Omit<ProjectOverview, 'narrative' | 'flow'>;
   flow: Omit<Parameters<typeof buildProjectFlow>[0], 'workstreams'>;
+  /** Only once every source has answered: evidence from part of the project would misjudge the narrative. */
   evidence: ProjectEvidence | null;
+  complete: boolean;
 };
+
+export type ProjectOverviewGetOptions = {
+  /** The sources to wait for before answering; every source when omitted. The rest answer as loading until they land. */
+  wait?: readonly ProjectOverviewOuterSource[];
+};
+
+const outerSources = ['backlog', 'pullRequests', 'pipelines'] as const;
 
 function replyOf(generated: unknown): unknown {
   const text = typeof generated === 'string' ? generated : generated && typeof generated === 'object' && typeof (generated as { text?: unknown }).text === 'string' ? (generated as { text: string }).text : '';
@@ -92,28 +125,33 @@ export class ProjectOverviewService {
     this.now = options.now ?? Date.now;
   }
 
-  async get(agent: Agent): Promise<ProjectOverview> {
-    return this.present(await this.read(agent));
+  async get(agent: Agent, options: ProjectOverviewGetOptions = {}): Promise<ProjectOverview> {
+    const reading = await this.read(agent);
+    await Promise.all((options.wait ?? outerSources).map(source => reading.parts[source].promise));
+    return this.present(this.compose(reading));
   }
 
   /** Rewrites the narrative when the project has moved since it was written, at most once per interval per repository. */
   async refreshNarrative(agent: Agent, generate: ProjectOverviewGenerate): Promise<ProjectOverview> {
-    const reading = await this.read(agent);
+    const read = await this.read(agent);
+    await Promise.all(outerSources.map(source => read.parts[source].promise));
+    const reading = this.compose(read);
     const evidence = reading.evidence;
     if (evidence && !evidence.quiet) {
-      const stored = await this.options.narratives.get(reading.repository);
-      const attempt = this.attempts.get(reading.repository);
-      const due = stored?.evidenceKey !== evidence.key && (!attempt || reading.now - attempt.at >= rewriteInterval);
-      const running = this.writing.get(reading.repository) ?? (due ? this.write(agent, reading, evidence, generate) : undefined);
+      const { repository, now } = read;
+      const stored = await this.options.narratives.get(repository);
+      const attempt = this.attempts.get(repository);
+      const due = stored?.evidenceKey !== evidence.key && (!attempt || now - attempt.at >= rewriteInterval);
+      const running = this.writing.get(repository) ?? (due ? this.write(agent, reading, evidence, generate) : undefined);
       if (running) {
-        this.writing.set(reading.repository, running);
-        try { await running; } finally { if (this.writing.get(reading.repository) === running) this.writing.delete(reading.repository); }
+        this.writing.set(repository, running);
+        try { await running; } finally { if (this.writing.get(repository) === running) this.writing.delete(repository); }
       }
     }
     return this.present(reading);
   }
 
-  private async write(agent: Agent, reading: Reading, evidence: ProjectEvidence, generate: ProjectOverviewGenerate): Promise<void> {
+  private async write(agent: Agent, { reading, overview }: Composition, evidence: ProjectEvidence, generate: ProjectOverviewGenerate): Promise<void> {
     const record = (failure: 'noEngine' | 'failed' | null) => { this.attempts.set(reading.repository, { at: reading.now, evidenceKey: evidence.key, failure }); };
     // The requesting agent's engine first, then one teammate on another engine, for engines that cannot generate.
     const engines = [agent, ...reading.teammates.filter(mate => mate.id !== agent.id && mate.folder)]
@@ -126,7 +164,7 @@ export class ProjectOverviewService {
         try {
           generated = await generate(candidate, {
             cwd: candidate.folder!,
-            prompt: projectNarrativePrompt(reading.overview.repository.name, evidence, problems),
+            prompt: projectNarrativePrompt(overview.repository.name, evidence, problems),
             developerInstructions: projectNarrativeInstructions,
             outputSchema: projectNarrativeSchema,
             complexity: 'normal',
@@ -157,16 +195,18 @@ export class ProjectOverviewService {
     record('noEngine');
   }
 
-  private async present(reading: Reading): Promise<ProjectOverview> {
+  private async present(composition: Composition): Promise<ProjectOverview> {
+    const { reading, evidence } = composition;
     const stored = await this.options.narratives.get(reading.repository);
     const attempt = this.attempts.get(reading.repository);
-    const evidence = reading.evidence;
-    const narrative: ProjectNarrativeState = stored
-      ? { status: evidence && stored.evidenceKey === evidence.key ? 'fresh' : 'stale', narrative: stored.narrative }
-      : !evidence || evidence.quiet ? { status: 'unavailable', reason: 'quiet' }
-        : attempt?.failure && attempt.evidenceKey === evidence.key ? { status: 'unavailable', reason: attempt.failure }
-          : { status: 'missing' };
-    return { ...reading.overview, narrative, flow: buildProjectFlow({ ...reading.flow, workstreams: stored?.workstreams ?? [] }) };
+    const narrative: ProjectNarrativeState = !composition.complete
+      ? stored ? { status: 'stale', narrative: stored.narrative } : { status: 'missing' }
+      : stored
+        ? { status: evidence && stored.evidenceKey === evidence.key ? 'fresh' : 'stale', narrative: stored.narrative }
+        : !evidence || evidence.quiet ? { status: 'unavailable', reason: 'quiet' }
+          : attempt?.failure && attempt.evidenceKey === evidence.key ? { status: 'unavailable', reason: attempt.failure }
+            : { status: 'missing' };
+    return { ...composition.overview, narrative, flow: buildProjectFlow({ ...composition.flow, workstreams: stored?.workstreams ?? [] }) };
   }
 
   private read(agent: Agent): Promise<Reading> {
@@ -181,18 +221,17 @@ export class ProjectOverviewService {
     return result;
   }
 
+  /** Reads the repository, which decides how far back to look, then starts every outer source without waiting for it. */
   private async collect(agent: Agent, folder: string, now: number): Promise<Reading> {
     const repository = repositoryIdentityOf(agent) ?? folder;
     const teammates = this.options.agents().filter(candidate => repositoryIdentityOf(candidate) === repository);
     const workspace = agent.workspace?.kind === 'git' ? agent.workspace : undefined;
     const repositoryId = workspace?.originUrl ? canonicalGitRemoteIdentity(workspace.originUrl) : undefined;
     const outerLoop = repositoryId ? this.options.outerLoop : undefined;
-    const branchOf = (mate: Agent) => mate.workspace?.kind === 'git' ? mate.workspace.branch : null;
     const keepBranches = [...new Set(teammates.flatMap(mate => branchOf(mate) ?? []))];
 
-    // The repository decides how far back to look, so it is read before the sources that take a period.
     const git = await settle(() => this.options.git.read(folder, { now, defaultBranch: workspace?.defaultBranch ?? null, keepBranches }), 'unavailable');
-    const facts: ProjectOverviewGitFacts | null = git.value;
+    const facts = git.value;
     const lookback = chooseProjectLookback({
       now,
       commits: (facts?.commits ?? []).filter(commit => !commit.merge).map(commit => commit.at),
@@ -200,15 +239,46 @@ export class ProjectOverviewService {
       branches: facts?.branchActivity ?? [],
     });
     const since = lookback.since;
+    const parts: Reading['parts'] = {
+      backlog: track(settle(() => outerLoop ? outerLoop.backlog(repositoryId!, since) : null, 'notConnected')),
+      pullRequests: track(settle(() => outerLoop ? outerLoop.pullRequests(repositoryId!) : null, 'notConnected')),
+      pipelines: track(settle(() => outerLoop ? outerLoop.pipelines(repositoryId!, since) : null, 'notConnected')),
+    };
     const toolRoot = facts ? workspace?.primaryWorktreeRoot || workspace?.repositoryRoot || folder : null;
-    const [toolLinks, backlog, requests, pipelines] = await Promise.all([
-      toolRoot && this.options.tools
-        ? this.options.tools.load(toolRoot, () => ({ links: inferProjectToolLinks(repositoryId), proposals: proposeProjectTools(facts!.messages) })).catch(() => ({}))
-        : {},
-      settle(() => outerLoop ? outerLoop.backlog(repositoryId!, since) : null, 'notConnected'),
-      settle(() => outerLoop ? outerLoop.pullRequests(repositoryId!) : null, 'notConnected'),
-      settle(() => outerLoop ? outerLoop.pipelines(repositoryId!, since) : null, 'notConnected'),
-    ]);
+    const toolLinks = toolRoot && this.options.tools
+      ? await this.options.tools.load(toolRoot, () => ({ links: inferProjectToolLinks(repositoryId), proposals: proposeProjectTools(facts!.messages) })).catch(() => ({}))
+      : {};
+    return {
+      now,
+      repository,
+      teammates,
+      git,
+      lookback,
+      base: {
+        generatedAt: new Date(now).toISOString(),
+        lookback: { days: lookback.days, since: new Date(lookback.since).toISOString() },
+        toolLinks,
+        repository: {
+          name: facts?.name ?? workspace?.repositoryName ?? (agent.workspace?.kind === 'folder' ? agent.workspace.label : basename(folder)),
+          branch: facts ? facts.branch : workspace?.branch ?? null,
+          baseBranch: facts?.baseBranch ?? null,
+        },
+      },
+      parts,
+      complete: null,
+    };
+  }
+
+  /** Composes what a reading knows now; a source that has not answered is loading. */
+  private compose(reading: Reading): Composition {
+    if (reading.complete) return reading.complete;
+    const { now, teammates, git, lookback, parts } = reading;
+    const facts = git.value;
+    const answer = <T>(part: Part<T>): Settled<T> => part.settled ?? { status: 'loading', value: null };
+    const backlog = answer(parts.backlog);
+    const requests = answer(parts.pullRequests);
+    const pipelines = answer(parts.pipelines);
+    const complete = outerSources.every(source => parts[source].settled);
     const runs = [...(pipelines.value?.runs ?? [])].sort((a, b) => a.at.localeCompare(b.at));
     const units = (facts?.branches ?? []).filter(branch => branch.name !== facts!.baseBranch && branch.ahead > 0).map(branch => {
       const request = requests.value?.open.find(candidate => candidate.branch === branch.name);
@@ -228,7 +298,7 @@ export class ProjectOverviewService {
       } satisfies ProjectFlowUnit & Record<string, unknown>;
     });
     const merges = (facts?.commits ?? []).filter(commit => commit.merge && now - commit.at <= 7 * day);
-    const flow: Reading['flow'] = {
+    const flow: Composition['flow'] = {
       now,
       sources: { git: git.status, backlog: backlog.status, pullRequests: requests.status, pipelines: pipelines.status },
       backlog: backlog.value ? { open: backlog.value.open, arrived: backlog.value.items.filter(item => now - Date.parse(item.createdAt) <= 7 * day).length } : null,
@@ -240,27 +310,23 @@ export class ProjectOverviewService {
       medianMergeMs: projectMedianDuration(requests.value?.mergeTimesMs ?? []),
       units,
     };
-    return {
-      now,
-      repository,
-      teammates,
-      overview: {
-        generatedAt: new Date(now).toISOString(),
-        lookback: { days: lookback.days, since: new Date(lookback.since).toISOString() },
-        toolLinks,
-        repository: {
-          name: facts?.name ?? workspace?.repositoryName ?? (agent.workspace?.kind === 'folder' ? agent.workspace.label : basename(folder)),
-          branch: facts ? facts.branch : workspace?.branch ?? null,
-          baseBranch: facts?.baseBranch ?? null,
-        },
-        sources: flow.sources,
-      },
+    const since = lookback.since;
+    const composition: Composition = {
+      reading,
+      overview: { ...reading.base, sources: flow.sources },
       flow,
-      evidence: facts ? buildProjectEvidence({
+      evidence: complete && facts ? buildProjectEvidence({
         now,
         lookback,
         git: { ...facts, commits: facts.commits.filter(commit => commit.at >= since), tags: facts.tags.filter(tag => tag.at >= since) },
-        units, backlog: backlog.value, sessions: this.options.sessions(repository, since), flow: buildProjectFlow({ ...flow, workstreams: [] }) }) : null,
+        units, backlog: backlog.value, sessions: this.options.sessions(reading.repository, since), flow: buildProjectFlow({ ...flow, workstreams: [] }) }) : null,
+      complete,
     };
+    if (complete) reading.complete = composition;
+    return composition;
   }
+}
+
+function branchOf(agent: Agent): string | null {
+  return agent.workspace?.kind === 'git' ? agent.workspace.branch : null;
 }

@@ -4,8 +4,10 @@
  * from evidence computed by code; the flow is computed by the policy here, with no model involved.
  */
 export type ProjectOverviewSource = 'git' | 'backlog' | 'pullRequests' | 'pipelines';
-/** notConnected: no provider serves this repository. unavailable: nothing to read. failed: the read itself failed. */
-export type ProjectOverviewSourceStatus = 'available' | 'notConnected' | 'unavailable' | 'failed';
+/** The sources read from connected tools, after the repository. */
+export type ProjectOverviewOuterSource = Exclude<ProjectOverviewSource, 'git'>;
+/** loading: still being read. notConnected: no provider serves this repository. unavailable: nothing to read. failed: the read itself failed. */
+export type ProjectOverviewSourceStatus = 'available' | 'loading' | 'notConnected' | 'unavailable' | 'failed';
 export type ProjectOverviewSources = Record<ProjectOverviewSource, ProjectOverviewSourceStatus>;
 
 export const projectWorkstreamStates = ['starting', 'moving', 'settling', 'recurring', 'waiting', 'stalled'] as const;
@@ -209,7 +211,7 @@ export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
   const workstreamOf = (branch: string) => input.workstreams.find(workstream => workstream.branches.includes(branch))?.id ?? null;
   const rank = (id: string | null) => id === null ? order.length : order.indexOf(id);
 
-  const placed = (gitReady ? input.units : []).map(unit => {
+  const placed = (gitReady && input.sources.pullRequests !== 'loading' ? input.units : []).map(unit => {
     const station = requestsReady ? projectFlowStation(unit) : 'building';
     const arrivedAt = station === 'building' ? unit.firstCommitAt : station === 'review' ? unit.pullRequest!.openedAt : unit.latestPipeline?.at ?? unit.pullRequest!.openedAt;
     const waitMs = station === 'building' ? (unit.agentWorking ? 0 : Math.max(0, input.now - unit.lastCommitAt)) : Math.max(0, input.now - arrivedAt);
@@ -233,7 +235,14 @@ export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
       : unit.agentId ? { kind: 'agent', agentId: unit.agentId } : request?.url ? { kind: 'url', url: request.url } : null;
     return [{ branch: unit.branch, reason, target }];
   });
-  const statusOf = (station: ProjectFlowWorkStation): ProjectOverviewSourceStatus => !gitReady ? input.sources.git : station === 'building' ? 'available' : input.sources.pullRequests;
+  // A unit is placed by its request, and an unapproved request by its pipeline, so a station waits for both.
+  const statusOf = (station: ProjectFlowWorkStation): ProjectOverviewSourceStatus => {
+    if (!gitReady) return input.sources.git;
+    const requests = input.sources.pullRequests;
+    if (requests === 'loading') return 'loading';
+    if (station === 'building') return 'available';
+    return requests === 'available' && input.sources.pipelines === 'loading' ? 'loading' : requests;
+  };
   const work = (station: ProjectFlowWorkStation, note: () => number | null): ProjectFlowStation => {
     const status = statusOf(station);
     return status === 'available'
@@ -277,6 +286,40 @@ export function buildProjectFlow(input: ProjectFlowInput): ProjectFlow {
       { to: 'shipped', tokens: gitReady && input.shipped ? input.shipped.recentBranches.slice(0, maxTokens).map(workstreamOf) : [] },
     ],
     constraint,
+  };
+}
+
+const flowSources: Record<ProjectFlowStationKind, readonly ProjectOverviewSource[]> = {
+  backlog: ['backlog'], building: ['git', 'pullRequests'], review: ['git', 'pullRequests', 'pipelines'],
+  ci: ['git', 'pullRequests', 'pipelines'], shipped: ['git'],
+};
+
+/** A flow whose every station is still being read, drawn before anything has answered. */
+export function projectFlowReading(): ProjectFlow {
+  return {
+    stations: projectFlowStationKinds.map(kind => ({ kind, status: 'loading', count: null, note: null, marks: [], stuck: [] })),
+    links: (['building', 'review', 'ci', 'shipped'] as const).map(to => ({ to, tokens: [] })),
+    constraint: null,
+  };
+}
+
+/** How many sources are still being read. */
+export function projectOverviewSourcesReading(sources: ProjectOverviewSources): number {
+  return Object.values(sources).filter(status => status === 'loading').length;
+}
+
+/** Ends a source that never answered: its stations that were still waiting on it show it failed, the others keep what they have. */
+export function projectOverviewSourceFailed(overview: ProjectOverview, source: ProjectOverviewSource): ProjectOverview {
+  if (overview.sources[source] !== 'loading') return overview;
+  return {
+    ...overview,
+    sources: { ...overview.sources, [source]: 'failed' },
+    flow: {
+      ...overview.flow,
+      stations: overview.flow.stations.map(station => station.status === 'loading' && flowSources[station.kind].includes(source)
+        ? { ...station, status: 'failed', count: null, note: null, marks: [], stuck: [] }
+        : station),
+    },
   };
 }
 

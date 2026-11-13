@@ -29,7 +29,12 @@
         <div class="project-flow__stop">
           <div
             class="project-flow__station"
-            :class="{ 'project-flow__station--stuck': station.stuck.length, 'project-flow__station--absent': station.status !== 'available' }"
+            :class="{
+              'project-flow__station--stuck': station.stuck.length,
+              'project-flow__station--loading': station.status === 'loading',
+              'project-flow__station--absent': station.status !== 'available' && station.status !== 'loading',
+            }"
+            :aria-busy="station.status === 'loading'"
             :data-station="station.kind"
           >
             <template v-if="station.stuck.length">
@@ -63,8 +68,10 @@
             >
               <component :is="toolIcons[toolLinks[station.kind]!.tool]" class="project-flow__icon" aria-hidden="true" />
             </a>
+            <LoaderIcon v-if="station.status === 'loading'" class="project-flow__icon project-flow__loader" aria-hidden="true" />
             <span class="project-flow__name">{{ t(stationKeys[station.kind]) }}</span>
-            <strong class="project-flow__count">{{ station.count ?? t('projectOverview.flow.noCount') }}</strong>
+            <strong v-if="station.status === 'loading'" class="project-flow__count project-flow__count--loading" aria-hidden="true" />
+            <strong v-else class="project-flow__count">{{ station.count ?? t('projectOverview.flow.noCount') }}</strong>
             <span class="project-flow__marks" aria-hidden="true">
               <template v-for="mark in station.marks" :key="mark.workstreamId ?? 'other'">
                 <span v-for="unit in Math.min(mark.units, maxMarks)" :key="unit" :class="projectMarkClass(mark.workstreamId, narrative)" />
@@ -90,13 +97,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ProjectFlow, ProjectFlowStation, ProjectFlowStuck, ProjectNarrative, ProjectToolKind, ProjectToolLinks } from '@workspace/core/project-overview';
-import { AlertTriangleIcon, BrandJiraIcon, ExternalLinkIcon, GitHubIcon, GitLabIcon, LinearIcon } from '../shared/icons/app-icons';
+import type { ProjectFlow, ProjectFlowStation, ProjectFlowStuck, ProjectNarrative, ProjectOverviewSources, ProjectToolKind, ProjectToolLinks } from '@workspace/core/project-overview';
+import { AlertTriangleIcon, BrandJiraIcon, ExternalLinkIcon, GitHubIcon, GitLabIcon, LinearIcon, LoaderIcon } from '../shared/icons/app-icons';
 import { flowLegend, projectMarkClass, compactDuration } from './project-overview-presentation';
 
-const props = defineProps<{ flow: ProjectFlow; narrative: ProjectNarrative | null; toolLinks: ProjectToolLinks }>();
+const props = defineProps<{
+  flow: ProjectFlow;
+  narrative: ProjectNarrative | null;
+  toolLinks: ProjectToolLinks;
+  /** What each source has answered; null while the repository itself is still being read. */
+  sources: ProjectOverviewSources | null;
+}>();
 const emit = defineEmits<{ 'select-agent': [agentId: string] }>();
 const toolIcons: Record<ProjectToolKind, unknown> = { github: GitHubIcon, gitlab: GitLabIcon, jira: BrandJiraIcon, linear: LinearIcon, link: ExternalLinkIcon };
+const toolNames: Partial<Record<ProjectToolKind, string>> = { github: 'GitHub', gitlab: 'GitLab', jira: 'Jira', linear: 'Linear' };
 const { t } = useI18n();
 const maxMarks = 8;
 const openStation = ref<ProjectFlowStation['kind'] | null>(null);
@@ -126,7 +140,29 @@ function openStuck(station: ProjectFlowStation): void {
   openStation.value = openStation.value === station.kind ? null : station.kind;
 }
 
+/** The tool a station's work is asked of, by name, when the project's links say which it is. */
+function toolName(kinds: readonly ProjectFlowStation['kind'][], codeHost: boolean): string | null {
+  for (const kind of kinds) {
+    const link = props.toolLinks[kind];
+    if (!link || (codeHost && link.tool !== 'github' && link.tool !== 'gitlab')) continue;
+    return toolNames[link.tool] ?? link.label;
+  }
+  return null;
+}
+
+/** Says which tool a loading station is waiting on: the repository first, then issues, reviews or pipelines. */
+function loadingNote(station: ProjectFlowStation): string {
+  const sources = props.sources;
+  if (!sources || sources.git === 'loading') return t('projectOverview.flow.loading.git');
+  const what = station.kind === 'backlog' ? 'issues' : sources.pullRequests === 'loading' ? 'reviews' : 'pipelines';
+  const tool = station.kind === 'backlog'
+    ? toolName(['backlog'], false)
+    : toolName([station.kind, 'building', 'review', 'ci', 'shipped'], true);
+  return tool ? t(`projectOverview.flow.loading.asking.${what}`, { tool }) : t(`projectOverview.flow.loading.reading.${what}`);
+}
+
 function note(station: ProjectFlowStation): string {
+  if (station.status === 'loading') return loadingNote(station);
   if (station.status === 'notConnected') return t('projectOverview.flow.notConnected');
   if (station.status !== 'available') return t('projectOverview.flow.unavailable');
   if (station.kind === 'backlog') return t('projectOverview.flow.arrived', { count: station.note ?? 0 });
@@ -246,6 +282,26 @@ function note(station: ProjectFlowStation): string {
 .project-flow__station--absent {
   border-style: dashed;
   background: var(--color-surface);
+}
+
+.project-flow__station--loading {
+  border-color: var(--color-outline-subtle);
+}
+
+/* Where the stuck icon sits once the station has answered. */
+.project-flow__loader {
+  position: absolute;
+  top: var(--space-8);
+  left: var(--space-8);
+  color: var(--color-primary);
+}
+
+/* Holds the count's place while it is read, so the card does not jump when it lands. */
+.project-flow__count--loading {
+  width: 36px;
+  height: 35px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-base);
 }
 
 .project-flow__tool,
@@ -402,10 +458,24 @@ function note(station: ProjectFlowStation): string {
     animation: project-flow-token 2.8s linear infinite;
   }
 
+  .project-flow__loader {
+    animation: app-spin 800ms linear infinite;
+  }
+
+  .project-flow__count--loading {
+    animation: project-flow-pulse 1.4s ease-in-out infinite;
+  }
+
   @container project-flow (max-width: 600px) {
     .project-flow__token {
       animation-name: project-flow-token-down;
     }
+  }
+}
+
+@keyframes project-flow-pulse {
+  50% {
+    opacity: 0.4;
   }
 }
 

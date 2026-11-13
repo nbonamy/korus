@@ -22,17 +22,24 @@ it('answers a project overview from the local service for the requesting agent w
   try {
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id } }))
       .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'overview', result: overview });
-    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id, folder: '/work/korus' }));
+    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id, folder: '/work/korus' }), {});
     expect(snapshot.activeAgentId).toBeNull();
+
+    // A caller can ask for the repository first and for each source as it lands; unknown sources are refused.
+    await server.handleMessage({ jsonrpc: '2.0', id: 'staged', method: backendMethods.projectOverviewGet, params: { agentId: agent.id, wait: ['pipelines'] } });
+    expect(get).toHaveBeenLastCalledWith(expect.objectContaining({ id: agent.id }), { wait: ['pipelines'] });
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad', method: backendMethods.projectOverviewGet, params: { agentId: agent.id, wait: ['git'] } } as AppRpcRequest))
+      .rejects.toThrow('wait must list backlog, pullRequests or pipelines.');
+    get.mockClear();
 
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'rewrite', method: backendMethods.projectNarrativeRefresh, params: { agentId: agent.id } }))
       .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'rewrite', result: overview });
     expect(refreshNarrative).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }), expect.any(Function));
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
 
     const unknown = await server.handleMessage({ jsonrpc: '2.0', id: 'missing', method: backendMethods.projectOverviewGet, params: { agentId: 'nobody' } });
     expect(unknown).toMatchObject({ id: 'missing', error: { message: 'Agent not found: nobody' } });
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
   } finally { await server.close(); }
 });
 
@@ -52,9 +59,10 @@ it('routes a project overview to the host that owns a remote agent and never rea
   });
   const controller = new AppBackendServer({ version: 'test', snapshot, projectOverview: { get: localGet, refreshNarrative: localGet }, remoteClients: { request, close: vi.fn() } as never });
   try {
-    await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id } }))
+    await expect(controller.handleMessage({ jsonrpc: '2.0', id: 'overview', method: backendMethods.projectOverviewGet, params: { agentId: agent.id, wait: ['backlog'] } }))
       .resolves.toStrictEqual({ jsonrpc: '2.0', id: 'overview', result: overview });
-    expect(remoteGet).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }));
+    // The owning host decides what to wait for, so a staged read keeps its sources across the hop.
+    expect(remoteGet).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }), { wait: ['backlog'] });
     expect(localGet).not.toHaveBeenCalled();
   } finally { await controller.close(); await daemon.close(); }
 });

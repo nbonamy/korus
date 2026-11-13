@@ -117,7 +117,7 @@ describe('AppShell navigation and teams', () => {
     await overviewEntry().trigger('click');
     await flushPromises();
 
-    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith(agent.id);
+    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith(agent.id, []);
     expect(wrapper.get('.project-overview h1').text()).toBe('korus');
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
     // The pinned entry is the selection while the overview is open, not the agent it was opened from.

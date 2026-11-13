@@ -139,6 +139,11 @@ export const messages = {
         arrived: '{count} arrived this week', agentsWorking: '{count} agents working', oldestWaiting: 'oldest waiting {age}',
         nothingWaiting: 'nothing waiting', failing: '{count} failing', mergedThisWeek: 'merged this week',
         notConnected: 'not connected', unavailable: 'unavailable', openTool: 'Open {tool}',
+        loading: {
+          git: 'Reading git history…',
+          asking: { issues: 'Asking {tool} for issues…', reviews: 'Asking {tool} for reviews…', pipelines: 'Asking {tool} for pipelines…' },
+          reading: { issues: 'Reading issues…', reviews: 'Reading reviews…', pipelines: 'Reading pipelines…' },
+        },
         stuck: {
           summary: '{count} need attention', conflicts: 'Merge conflicts', failing: 'CI failing',
           needsInput: 'Waiting for input', overdue: 'Open longer than usual',

@@ -1606,7 +1606,7 @@ export class AppBackendServer {
         return this.routeAgentResultRequest(message.id, requireString(params.agentId, 'agentId'), message.method, params, (agent) => {
           const overview = this.options.projectOverview;
           if (!overview) throw new Error('The project overview is unavailable on this host.');
-          return message.method === backendMethods.projectOverviewGet ? overview.get(agent) : overview.refreshNarrative(agent, (engine, request) => (
+          return message.method === backendMethods.projectOverviewGet ? overview.get(agent, projectOverviewGetOptions(params.wait)) : overview.refreshNarrative(agent, (engine, request) => (
             this.handleAgentDriverRequest(engine, backendMethods.driverTextGenerate, { agent: engine, ...request })
           ));
         });
@@ -5428,4 +5428,14 @@ function remoteControlStatusFromUnknown(value: unknown): DevicePairingStatus | n
   if (typeof record.installationId === 'string') status.installationId = record.installationId;
   if (record.environmentId === null || typeof record.environmentId === 'string') status.environmentId = record.environmentId;
   return status;
+}
+
+const projectOverviewWaitSources = new Set(['backlog', 'pullRequests', 'pipelines']);
+/** The outer sources a staged overview read waits for; every source when none are named. */
+function projectOverviewGetOptions(wait: unknown): import('./project-overview/project-overview-service').ProjectOverviewGetOptions {
+  if (wait === undefined) return {};
+  if (!Array.isArray(wait) || !wait.every(source => typeof source === 'string' && projectOverviewWaitSources.has(source))) {
+    throw new Error('wait must list backlog, pullRequests or pipelines.');
+  }
+  return { wait: wait as ('backlog' | 'pullRequests' | 'pipelines')[] };
 }

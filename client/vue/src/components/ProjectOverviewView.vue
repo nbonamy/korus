@@ -11,11 +11,14 @@
     </WorkspaceHeader>
     <div class="project-overview__body">
       <p v-if="failed" class="project-overview__state" role="alert">{{ t('projectOverview.failed') }}</p>
-      <ProjectOverviewProgress v-else-if="!overview" :read="null" />
+      <template v-else-if="!overview">
+        <ProjectOverviewProgress :read="null" />
+        <ProjectOverviewFlow :flow="reading" :narrative="null" :tool-links="{}" :sources="null" />
+      </template>
       <p v-else-if="overview.sources.git === 'unavailable'" class="project-overview__state">{{ t('projectOverview.noRepository') }}</p>
       <template v-else>
         <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :sources="overview.sources" :now="now" />
-        <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" @select-agent="emit('select-agent', $event)" />
+        <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" :sources="overview.sources" @select-agent="emit('select-agent', $event)" />
       </template>
     </div>
   </section>
@@ -24,6 +27,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { projectFlowReading } from '@workspace/core/project-overview';
 import { formatCompactAge } from '../shared/compact-age';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -44,6 +48,7 @@ const emit = defineEmits<{ 'expand-sidebar': []; 'select-agent': [agentId: strin
 const { t } = useI18n();
 const { overview, failed, writing, now } = useProjectOverview(() => props.agentId, () => props.activityKey);
 
+const reading = projectFlowReading();
 const narrative = computed(() => {
   const state = overview.value?.narrative;
   return state && (state.status === 'fresh' || state.status === 'stale') ? state.narrative : null;

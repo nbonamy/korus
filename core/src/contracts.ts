@@ -976,8 +976,11 @@ export type AppApi = {
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
   previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
   branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
-  /** A read-only picture of the repository an agent works in. Routed to the host that owns the agent. */
-  getProjectOverview(agentId: string): Promise<import('./project-overview').ProjectOverview>;
+  /**
+   * A read-only picture of the repository an agent works in. Routed to the host that owns the agent.
+   * `wait` answers once those sources land, the rest as loading; every source when omitted.
+   */
+  getProjectOverview(agentId: string, wait?: import('./project-overview').ProjectOverviewOuterSource[]): Promise<import('./project-overview').ProjectOverview>;
   /** Rewrites the narrative when the project has moved since it was written; answers the overview either way. */
   refreshProjectNarrative(agentId: string): Promise<import('./project-overview').ProjectOverview>;
   getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;

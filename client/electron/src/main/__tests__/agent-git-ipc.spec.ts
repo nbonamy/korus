@@ -42,6 +42,15 @@ describe('agent Git IPC', () => {
     expect(request).toHaveBeenCalledExactlyOnceWith(method, { agentId: 'agent' });
   });
 
+  it('forwards the sources a staged overview read waits for', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = { handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler) } as never;
+    const request = vi.fn(async () => ({}));
+    registerAgentGitIpcHandlers(ipc, () => ({ request }) as never);
+    await handlers.get(ipcChannels.getProjectOverview)!({}, 'agent', ['backlog']);
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.projectOverviewGet, { agentId: 'agent', wait: ['backlog'] });
+  });
+
   it('opts into request discovery only for the selected agent', async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const ipc = { handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler) } as never;

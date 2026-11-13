@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildProjectFlow,
   chooseProjectLookback,
+  projectFlowReading,
+  projectOverviewSourceFailed,
+  projectOverviewSourcesReading,
+  type ProjectOverview,
   projectFlowStation,
   projectMedianDuration,
   projectNarrativeFromDraft,
@@ -181,6 +185,45 @@ describe('project flow', () => {
       ['backlog', 'notConnected', null], ['building', 'available', 6], ['review', 'notConnected', null], ['ci', 'notConnected', null], ['shipped', 'available', 31],
     ]);
     expect(flow.links.map(link => link.tokens.length)).toStrictEqual([1, 0, 0, 2]);
+  });
+
+  it('marks each station loading only while the sources it is placed by are still being read', () => {
+    const status = (flow: ReturnType<typeof buildProjectFlow>) => flow.stations.map(station => [station.kind, station.status, station.count]);
+    // Git alone places nothing past Building until the code host answers, so Building waits for reviews too.
+    expect(status(buildProjectFlow(input({ sources: { git: 'available', backlog: 'loading', pullRequests: 'loading', pipelines: 'loading' }, backlog: null })))).toStrictEqual([
+      ['backlog', 'loading', null], ['building', 'loading', null], ['review', 'loading', null], ['ci', 'loading', null], ['shipped', 'available', 31],
+    ]);
+    // Reviews answered: Building is known; Review and CI still wait on pipelines to place unapproved requests.
+    const pipelinesLeft = buildProjectFlow(input({ sources: { ...connected, pipelines: 'loading' } }));
+    expect(status(pipelinesLeft)).toStrictEqual([
+      ['backlog', 'available', 47], ['building', 'available', 2], ['review', 'loading', null], ['ci', 'loading', null], ['shipped', 'available', 31],
+    ]);
+    expect(pipelinesLeft.links.map(link => link.tokens.length)).toStrictEqual([1, 0, 0, 2]);
+    // Without a code host, pipelines do not matter and Building holds every unit.
+    expect(status(buildProjectFlow(input({ sources: { git: 'available', backlog: 'loading', pullRequests: 'notConnected', pipelines: 'loading' }, backlog: null })))).toStrictEqual([
+      ['backlog', 'loading', null], ['building', 'available', 6], ['review', 'notConnected', null], ['ci', 'notConnected', null], ['shipped', 'available', 31],
+    ]);
+  });
+
+  it('draws a flow that is still being read, and ends one source that never answered on its own stations only', () => {
+    const reading = projectFlowReading();
+    expect(reading.stations.map(station => [station.kind, station.status, station.count])).toStrictEqual(
+      ['backlog', 'building', 'review', 'ci', 'shipped'].map(kind => [kind, 'loading', null]),
+    );
+    expect(reading.links.every(link => link.tokens.length === 0)).toBe(true);
+    expect(reading.constraint).toBeNull();
+
+    const sources = { git: 'available', backlog: 'loading', pullRequests: 'loading', pipelines: 'loading' } as const;
+    expect(projectOverviewSourcesReading(sources)).toBe(3);
+    expect(projectOverviewSourcesReading(connected)).toBe(0);
+    const partial = { sources, flow: buildProjectFlow(input({ sources, backlog: null })) } as Pick<ProjectOverview, 'sources' | 'flow'> as ProjectOverview;
+    const backlogLost = projectOverviewSourceFailed(partial, 'backlog');
+    expect(backlogLost.sources).toStrictEqual({ ...sources, backlog: 'failed' });
+    expect(backlogLost.flow.stations.map(station => station.status)).toStrictEqual(['failed', 'loading', 'loading', 'loading', 'available']);
+    const requestsLost = projectOverviewSourceFailed(backlogLost, 'pullRequests');
+    expect(requestsLost.flow.stations.map(station => station.status)).toStrictEqual(['failed', 'failed', 'failed', 'failed', 'available']);
+    // A source that already answered is not undone by a late failure.
+    expect(projectOverviewSourceFailed({ ...partial, sources: { ...sources, backlog: 'available' } }, 'backlog').sources.backlog).toBe('available');
   });
 
   it('shows nothing from a repository that could not be read', () => {

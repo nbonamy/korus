@@ -77,16 +77,18 @@ describe('project overview page', () => {
     expect(wrapper.get('[aria-label="Flow"]').attributes('aria-busy')).toBe('true');
     expect(progress(wrapper)).toStrictEqual([
       ['active', 'Reading the git history'],
-      ['active', 'Connecting to issues, reviews and CI'],
-      ['active', 'Mapping where the work is'],
+      ['pending', 'Connecting to issues, reviews and CI'],
+      ['pending', 'Mapping where the work is'],
       ['pending', 'Writing the narrative'],
     ]);
     expect(wrapper.find('.project-progress__conveyor').exists()).toBe(true);
     await flushPromises();
     expect(wrapper.get('[aria-label="Flow"]').attributes('aria-busy')).toBe('false');
     expect(wrapper.find('.project-progress').exists()).toBe(false);
+    expect(wrapper.find('.project-flow__station--loading').exists()).toBe(false);
 
-    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith('agent-1');
+    // The repository answered with every source, so there is nothing more to wait for.
+    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith('agent-1', []);
     expect(refreshProjectNarrative).not.toHaveBeenCalled();
     expect(wrapper.get('h1').text()).toBe('korus');
     expect(wrapper.get('.project-overview__live').text()).toBe('Live · updated 2m ago');
@@ -170,6 +172,72 @@ describe('project overview page', () => {
     expect(wrapper.get('[aria-label="Narrative"]').text()).toBe(message);
     expect(refreshProjectNarrative).not.toHaveBeenCalled();
     expect(wrapper.findAll('.project-flow__station')).toHaveLength(5);
+    wrapper.unmount();
+  });
+
+  it('loads each station on its own as its tool answers, ends a tool that never answers on its own stations, and never reloads on refresh', async () => {
+    const base = overview();
+    const waitsOn = { backlog: ['backlog'], building: ['pullRequests'], review: ['pullRequests', 'pipelines'], ci: ['pullRequests', 'pipelines'], shipped: [] } as const;
+    const partial = (sources: ProjectOverview['sources']) => overview({
+      sources,
+      narrative: { status: 'missing' },
+      flow: { ...base.flow, constraint: null, stations: base.flow.stations.map(entry => waitsOn[entry.kind].some(source => sources[source] === 'loading') ? { ...entry, status: 'loading' as const, count: null, note: null, marks: [], stuck: [] } : entry) },
+    });
+    const repository = deferred<ProjectOverview>();
+    const answers = { backlog: deferred<ProjectOverview>(), pullRequests: deferred<ProjectOverview>(), pipelines: deferred<ProjectOverview>() };
+    const refresh = deferred<ProjectOverview>();
+    const getProjectOverview = vi.fn((_agentId: string, wait?: (keyof typeof answers)[]) => wait === undefined ? refresh.promise : wait.length === 0 ? repository.promise : answers[wait[0]!].promise);
+    const refreshProjectNarrative = vi.fn(() => new Promise<ProjectOverview>(() => {}));
+    setElectronTestClient({ getProjectOverview, refreshProjectNarrative });
+    const wrapper = mountView();
+    const notes = () => wrapper.findAll('.project-flow__note').map(item => item.text());
+    const loading = () => wrapper.findAll('.project-flow__station--loading').map(item => item.attributes('data-station'));
+
+    // Before anything answers, the whole flow is drawn and says the repository is being read.
+    expect(loading()).toStrictEqual(['backlog', 'building', 'review', 'ci', 'shipped']);
+    expect(notes()).toStrictEqual(Array(5).fill('Reading git history…'));
+
+    repository.resolve(partial({ git: 'available', backlog: 'loading', pullRequests: 'loading', pipelines: 'loading' }));
+    await flushPromises();
+    expect(getProjectOverview.mock.calls).toStrictEqual([['agent-1', []], ['agent-1', ['backlog']], ['agent-1', ['pullRequests']], ['agent-1', ['pipelines']]]);
+    expect(loading()).toStrictEqual(['backlog', 'building', 'review', 'ci']);
+    expect(notes()).toStrictEqual(['Asking GitLab for issues…', 'Asking GitLab for reviews…', 'Asking GitLab for reviews…', 'Asking GitLab for reviews…', 'merged this week']);
+    expect(progress(wrapper).map(([state]) => state)).toStrictEqual(['done', 'active', 'active', 'pending']);
+
+    // Reviews land first: Building is placed; Review and CI now wait on pipelines alone.
+    answers.pullRequests.resolve(partial({ git: 'available', backlog: 'loading', pullRequests: 'available', pipelines: 'loading' }));
+    await flushPromises();
+    expect(loading()).toStrictEqual(['backlog', 'review', 'ci']);
+    expect(notes()).toStrictEqual(['Asking GitLab for issues…', '4 agents working', 'Asking GitLab for pipelines…', 'Asking GitLab for pipelines…', 'merged this week']);
+
+    // Issues never answer: only Backlog gives up.
+    answers.backlog.reject(new Error('request timed out'));
+    await flushPromises();
+    expect(loading()).toStrictEqual(['review', 'ci']);
+    expect(station(wrapper, 'backlog').text()).toBe('Backlog–');
+    expect(notes()[0]).toBe('unavailable');
+
+    // Pipelines land after; the daemon had not heard from issues yet, which does not bring Backlog back to loading.
+    answers.pipelines.resolve(partial({ git: 'available', backlog: 'loading', pullRequests: 'available', pipelines: 'available' }));
+    await flushPromises();
+    expect(loading()).toStrictEqual([]);
+    expect(notes()).toStrictEqual(['unavailable', '4 agents working', 'oldest waiting 3d', '1 failing', 'merged this week']);
+    expect(progress(wrapper)).toStrictEqual([
+      ['done', 'Read the last 90 days of history'],
+      ['done', 'Connected to reviews and CI'],
+      ['done', 'Mapped where the work is'],
+      ['active', 'Writing the narrative'],
+    ]);
+    // The narrative is asked for only once every source has answered or given up.
+    expect(refreshProjectNarrative).toHaveBeenCalledExactlyOnceWith('agent-1');
+
+    // A refresh reads everything at once and keeps what is shown until it answers: no station goes back to loading.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getProjectOverview).toHaveBeenLastCalledWith('agent-1');
+    expect(loading()).toStrictEqual([]);
+    refresh.resolve(overview());
+    await flushPromises();
+    expect(notes()[0]).toBe('9 arrived this week');
     wrapper.unmount();
   });
 

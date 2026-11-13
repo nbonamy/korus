@@ -146,6 +146,43 @@ describe('project overview flow', () => {
     expect(read).toHaveBeenCalledTimes(2);
   });
 
+  it('answers from the repository first and from each source as it lands, reading every source once', async () => {
+    const gate = <T>() => { let open!: (value: T) => void; const promise = new Promise<T>(resolve => { open = resolve; }); return { promise, open }; };
+    const loop = connected();
+    const backlog = gate<Awaited<ReturnType<ProjectOverviewOuterLoop['backlog']>>>();
+    const requests = gate<Awaited<ReturnType<ProjectOverviewOuterLoop['pullRequests']>>>();
+    const pipelines = gate<Awaited<ReturnType<ProjectOverviewOuterLoop['pipelines']>>>();
+    const answers = { backlog: await loop.backlog('', 0), requests: await loop.pullRequests(''), pipelines: await loop.pipelines('', 0) };
+    const outerLoop: ProjectOverviewOuterLoop = { backlog: vi.fn(() => backlog.promise), pullRequests: vi.fn(() => requests.promise), pipelines: vi.fn(() => pipelines.promise) };
+    const { service, requester, read } = setup({ outerLoop });
+    const statuses = (overview: Awaited<ReturnType<typeof service.get>>) => overview.flow.stations.map(station => station.status);
+
+    // The repository alone: Shipped is known, the rest wait on their sources.
+    const first = await service.get(requester, { wait: [] });
+    expect(first.sources).toStrictEqual({ git: 'available', backlog: 'loading', pullRequests: 'loading', pipelines: 'loading' });
+    expect(statuses(first)).toStrictEqual(['loading', 'loading', 'loading', 'loading', 'available']);
+    expect(first.toolLinks.ci).toStrictEqual({ label: 'GitHub Actions', url: 'https://github.com/acme/korus/actions', tool: 'github' });
+    // Until every source answers, a narrative cannot be judged fresh, so none is asked for yet.
+    expect(first.narrative).toStrictEqual({ status: 'missing' });
+
+    const waitingForPipelines = service.get(requester, { wait: ['pipelines'] });
+    const waitingForRequests = service.get(requester, { wait: ['pullRequests'] });
+    requests.open(answers.requests);
+    const afterRequests = await waitingForRequests;
+    expect(afterRequests.sources).toStrictEqual({ git: 'available', backlog: 'loading', pullRequests: 'available', pipelines: 'loading' });
+    expect(statuses(afterRequests)).toStrictEqual(['loading', 'available', 'loading', 'loading', 'available']);
+
+    backlog.open(answers.backlog);
+    pipelines.open(answers.pipelines);
+    const complete = await waitingForPipelines;
+    expect(complete.sources).toStrictEqual({ git: 'available', backlog: 'available', pullRequests: 'available', pipelines: 'available' });
+    expect(complete).toStrictEqual(await service.get(requester));
+    expect(read).toHaveBeenCalledOnce();
+    expect(outerLoop.backlog).toHaveBeenCalledOnce();
+    expect(outerLoop.pullRequests).toHaveBeenCalledOnce();
+    expect(outerLoop.pipelines).toHaveBeenCalledOnce();
+  });
+
   it('keeps every unit in building from the repository alone, and isolates a failing provider read', async () => {
     const alone = await setup().service.get(agent('a1', 'feat/cursor-steering'));
     expect(alone.sources).toStrictEqual({ git: 'available', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' });

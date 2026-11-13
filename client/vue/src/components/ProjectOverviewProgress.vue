@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ProjectOverviewLookback, ProjectOverviewSources } from '@workspace/core/project-overview';
+import { projectOverviewSourcesReading, type ProjectOverviewLookback, type ProjectOverviewSources } from '@workspace/core/project-overview';
 import { CircleCheckIcon, LoaderIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{
@@ -43,19 +43,21 @@ const connected = computed(() => {
 
 const steps = computed<{ id: string; state: StepState; text: string }[]>(() => {
   const read = props.read;
+  // The repository is read first; it sets the period the tools are asked about. The narrative waits for every tool.
   if (!read) {
     return [
       { id: 'history', state: 'active', text: t('projectOverview.progress.history') },
-      { id: 'sources', state: 'active', text: t('projectOverview.progress.sourcesActive') },
-      { id: 'flow', state: 'active', text: t('projectOverview.progress.flow') },
+      { id: 'sources', state: 'pending', text: t('projectOverview.progress.sourcesActive') },
+      { id: 'flow', state: 'pending', text: t('projectOverview.progress.flow') },
       { id: 'narrative', state: 'pending', text: t('projectOverview.progress.narrative') },
     ];
   }
+  const asking = projectOverviewSourcesReading(read.sources) > 0;
   return [
     { id: 'history', state: 'done', text: read.lookback.days === null ? t('projectOverview.progress.historyAll') : t('projectOverview.progress.historyDays', { days: read.lookback.days }) },
-    { id: 'sources', state: 'done', text: connected.value },
-    { id: 'flow', state: 'done', text: t('projectOverview.progress.flowDone') },
-    { id: 'narrative', state: 'active', text: t('projectOverview.progress.narrative') },
+    asking ? { id: 'sources', state: 'active', text: t('projectOverview.progress.sourcesActive') } : { id: 'sources', state: 'done', text: connected.value },
+    { id: 'flow', state: asking ? 'active' : 'done', text: t(asking ? 'projectOverview.progress.flow' : 'projectOverview.progress.flowDone') },
+    { id: 'narrative', state: asking ? 'pending' : 'active', text: t('projectOverview.progress.narrative') },
   ];
 });
 </script>
