@@ -5,6 +5,7 @@ import {
   type ProjectOverview,
   type ProjectOverviewOuterSource,
 } from '@workspace/core/project-overview';
+import type { AppApi } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 
 const refreshInterval = 60_000;
@@ -19,7 +20,11 @@ const outerSources: readonly ProjectOverviewOuterSource[] = ['backlog', 'pullReq
  * The narrative is rewritten on request only when it is missing or stale, after every tool has answered;
  * the daemon decides whether that spends anything.
  */
-export function useProjectOverview(agentId: () => string, activityKey: () => string) {
+/** The two reads the page makes; a debug preview supplies scripted ones. */
+export type ProjectOverviewReads = Pick<AppApi, 'getProjectOverview' | 'refreshProjectNarrative'>;
+
+export function useProjectOverview(agentId: () => string, activityKey: () => string, reads?: ProjectOverviewReads) {
+  const api = () => reads ?? appApi!;
   const overview = ref<ProjectOverview | null>(null);
   const failed = ref(false);
   const writing = ref(false);
@@ -34,7 +39,7 @@ export function useProjectOverview(agentId: () => string, activityKey: () => str
   /** Reads the repository, then asks for each tool separately; every answer is the daemon's latest picture. */
   async function stagedRead(id: string, current: number): Promise<ProjectOverview | null> {
     const stale = () => disposed || current !== generation;
-    let latest = await appApi!.getProjectOverview(id, []);
+    let latest = await api().getProjectOverview(id, []);
     if (stale()) return null;
     const lost = new Set<ProjectOverviewOuterSource>();
     const show = () => {
@@ -44,7 +49,7 @@ export function useProjectOverview(agentId: () => string, activityKey: () => str
     show();
     failed.value = false;
     const waiting = outerSources.filter(source => latest.sources[source] === 'loading');
-    await Promise.all(waiting.map(source => appApi!.getProjectOverview(id, [source]).then(
+    await Promise.all(waiting.map(source => api().getProjectOverview(id, [source]).then(
       answer => {
         // The daemon's answers only ever add sources; one that knows less arrived out of order.
         if (stale() || projectOverviewSourcesReading(answer.sources) > projectOverviewSourcesReading(latest.sources)) return;
@@ -69,7 +74,7 @@ export function useProjectOverview(agentId: () => string, activityKey: () => str
         result = await stagedRead(id, current);
         if (!result) return;
       } else {
-        result = await appApi!.getProjectOverview(id);
+        result = await api().getProjectOverview(id);
         if (disposed || current !== generation) return;
         overview.value = result;
         failed.value = false;
@@ -78,7 +83,7 @@ export function useProjectOverview(agentId: () => string, activityKey: () => str
       if ((result.narrative.status === 'stale' || result.narrative.status === 'missing') && !writing.value) {
         writing.value = true;
         try {
-          const written = await appApi!.refreshProjectNarrative(id);
+          const written = await api().refreshProjectNarrative(id);
           if (!disposed && current === generation) overview.value = written;
         } catch {
           // The flow stays; the narrative is asked for again on a later load.

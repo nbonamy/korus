@@ -385,6 +385,10 @@ function buildDebugUiPreviews(callbacks: AppMenuCallbacks): MenuItemConstructorO
       click: () => callbacks.sendAppCommand({ type: 'debug-operation-progress', kind: 'worktreeIndicator' }),
     },
     {
+      label: 'Flow Initialization',
+      click: () => callbacks.sendAppCommand({ type: 'debug-operation-progress', kind: 'flowInitialization' }),
+    },
+    {
       label: 'Pull Request Progress',
       click: () => callbacks.sendAppCommand({
         type: 'debug-operation-progress',

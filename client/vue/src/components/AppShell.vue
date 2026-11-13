@@ -285,6 +285,8 @@
       />
       <ProjectOverviewView
         v-else-if="overviewVisible && overviewAgentId"
+        :key="overviewPreview?.id ?? overviewAgentId"
+        :reads="overviewPreview?.reads"
         :agent-id="overviewAgentId"
         :activity-key="overviewActivityKey"
         :sidebar-collapsed="agentSidebarCollapsed || compactViewport"
@@ -717,6 +719,8 @@ import { preferredBackendChoices, provideBackendChoices, provideBackendSwitch } 
 import { createGeneralPreferences, generalPreferencesKey } from '../general-preferences';
 import BacklogView from './BacklogView.vue';
 import ProjectOverviewView from './ProjectOverviewView.vue';
+import { debugProjectOverviewReads } from './debug-project-overview';
+import type { ProjectOverviewReads } from './use-project-overview';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
@@ -2655,11 +2659,22 @@ const backlogVisible = computed(() => activeSurface.value === 'backlog');
 const overviewAgentId = ref<string | null>(null);
 const overviewVisible = computed(() => activeSurface.value === 'overview');
 const overviewActivityKey = computed(() => props.snapshot.agents.map(agent => `${agent.id}:${agent.status.type}`).join('|'));
+// Debug → UI Previews → Flow Initialization: the page on scripted reads, so every loading state can be seen.
+const overviewPreview = shallowRef<{ id: string; reads: ProjectOverviewReads } | null>(null);
 function openProjectOverview(agentId: string): void {
+  overviewPreview.value = null;
   overviewAgentId.value = agentId;
   activeSurface.value = 'overview';
 }
-watch(() => overviewVisible.value && !props.snapshot.agents.some(agent => agent.id === overviewAgentId.value), (gone) => {
+function previewFlowInitialization(): void {
+  const agent = currentAgent.value;
+  const name = agent?.workspace?.kind === 'git' ? agent.workspace.repositoryName : null;
+  overviewPreview.value = { id: `flow-preview-${Date.now()}`, reads: debugProjectOverviewReads(name || 'agent-workspace') };
+  overviewAgentId.value = agent?.id ?? 'flow-preview';
+  activeSurface.value = 'overview';
+}
+watch(overviewVisible, (visible) => { if (!visible) overviewPreview.value = null; });
+watch(() => overviewVisible.value && !overviewPreview.value && !props.snapshot.agents.some(agent => agent.id === overviewAgentId.value), (gone) => {
   if (gone) activeSurface.value = 'agent';
 });
 const automationsVisible = computed(() => activeSurface.value === 'automations');
@@ -2895,6 +2910,10 @@ function openDebugOperationProgress(
 ): void {
   if (kind === 'worktreeIndicator') {
     previewWorktreeInitialization(currentAgent.value);
+    return;
+  }
+  if (kind === 'flowInitialization') {
+    previewFlowInitialization();
     return;
   }
   if (kind === 'worktreeInitialization') {

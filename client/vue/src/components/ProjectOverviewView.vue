@@ -34,7 +34,7 @@ import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import ProjectOverviewFlow from './ProjectOverviewFlow.vue';
 import ProjectOverviewNarrative from './ProjectOverviewNarrative.vue';
 import ProjectOverviewProgress from './ProjectOverviewProgress.vue';
-import { useProjectOverview } from './use-project-overview';
+import { useProjectOverview, type ProjectOverviewReads } from './use-project-overview';
 import './project-overview-marks.css';
 
 const props = defineProps<{
@@ -43,10 +43,12 @@ const props = defineProps<{
   /** Changes when agents of the workspace change status, to refresh the flow soon after. */
   activityKey: string;
   sidebarCollapsed?: boolean;
+  /** Scripted reads for a debug preview; the project is read through the app otherwise. */
+  reads?: ProjectOverviewReads;
 }>();
 const emit = defineEmits<{ 'expand-sidebar': []; 'select-agent': [agentId: string] }>();
 const { t } = useI18n();
-const { overview, failed, writing, now } = useProjectOverview(() => props.agentId, () => props.activityKey);
+const { overview, failed, writing, now } = useProjectOverview(() => props.agentId, () => props.activityKey, props.reads);
 
 const reading = projectFlowReading();
 const narrative = computed(() => {
