@@ -442,6 +442,19 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (!canManageSession) return
         dictation.cancel(); command("closeSession"); sheet = null
     }
+    /** An empty chat can still take another engine; false once a prompt was sent. */
+    val canSelectProvider get() = state.optBoolean("canSelectProvider") && conversationBackends.size > 1
+    internal val conversationEngines get() = conversationBackends
+    /** The engine an empty chat is switching to, shown chosen while the laptop catches up. */
+    val switchingProvider get() = state.string("switchingProvider")
+    /** The model menu has nothing to show yet: it is loading, not empty. */
+    val modelsLoading get() = state.optBoolean("modelsLoading")
+    /** The empty chat takes another engine, and later new chats start with the one chosen last. */
+    internal fun chooseProvider(provider: String) {
+        if (!canSelectProvider || !conversationBackends.contains(provider)) return
+        preferredNewBackend = provider; preferences.edit().putString("newChat.backend", provider).apply()
+        command("provider", "provider" to provider)
+    }
     internal fun chooseCreationBackend(backend: String) {
         if (!(creation?.backends(state) ?: state.creationBackends()).contains(backend) || creation?.submitted == true) return
         preferredNewBackend = backend; preferences.edit().putString("newChat.backend", backend).apply()
@@ -691,7 +704,6 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
                 "readConversationImage", "readConversationContent", "readFilePreview", "loadTurnHistory" -> dispatch(body)
                 "filePreviewVisibility" -> { filePreviewOpen = body.optBoolean("open"); if (filePreviewOpen) dictation.cancel(); acknowledge() }
-                "provider" -> { chooseCreationBackend(body.string("provider")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))
                 "openImage" -> if (foreground && screenUnlocked && !fatalError && !engineRecovering && state.string("agentId").isNotBlank()
                     && body.string("agentId") == state.string("agentId") && !drawerVisible && sheet == null && !reviewOpen && !changesOpen && creation == null && presentedRequest == null) {

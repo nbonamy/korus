@@ -87,6 +87,10 @@ export type EngineState = {
   /** The engine of the open chat, and whether it may still be changed: only before the first prompt. */
   provider: string | null;
   canSelectProvider: boolean;
+  /** The engine an empty chat is switching to: show it chosen while the laptop catches up. */
+  switchingProvider: string | null;
+  /** The model menu has nothing to show yet: it is loading, not empty. */
+  modelsLoading: boolean;
   draft: string;
   suggestedPrompt: string | null;
   mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; value: string; description: string }[] };
@@ -124,8 +128,6 @@ export type TranscriptContext = {
   imageCacheScope?: string | null;
   generation: number;
   ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
-  /** An empty chat's engine and the ones it may switch to. */
-  engines: { current: string; choices: string[] } | null;
 };
 
 export type EngineCommand =
@@ -373,7 +375,7 @@ export function createEngine(port: EnginePort) {
         return [[group.repositoryRoot, providerChoices(group.remoteConnectionId ?? repositoryTeam(group.repositoryRoot))]];
       })), branches: state.branches.value,
       provider: agent?.provider ?? null,
-      canSelectProvider: engines() !== null,
+      canSelectProvider: engines() !== null, switchingProvider: state.switchingProvider.value, modelsLoading: state.modelsLoading.value || state.switchingProvider.value !== null,
       models: pickableModels(state.models.value).map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
       permissions: { current: state.permission.value, options: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id,
@@ -421,7 +423,7 @@ export function createEngine(port: EnginePort) {
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
   const contextNow = (): TranscriptContext => ({ engineInstance, imageCacheScope: state.status.value === 'connected' ? JSON.stringify([engineInstance, state.laptopId.value]) : null,
-    generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+    generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value });
 
   // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
   // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.

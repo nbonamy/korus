@@ -117,6 +117,12 @@ final class AppModel {
     var conversationProviders: [String] = []
     var repositoryProviders: [String: [String]] = [:]
     var provider: String?
+    /// An empty chat can still take another engine; false once a prompt was sent.
+    var canSelectProvider = false
+    /// The engine an empty chat is switching to, shown chosen while the laptop catches up.
+    var switchingProvider: String?
+    /// The model menu has nothing to show yet: it is loading, not empty.
+    var modelsLoading = false
     private var duplicateTarget: ComposerTarget?
     var duplicatingAgent: Bool { duplicateTarget != nil }
     var duplicateFailed = false
@@ -222,7 +228,6 @@ final class AppModel {
             self?.filePreviewOpen = open
             if open { self?.dictation.cancel() }
         }
-        transcript.onChooseProvider = { [weak self] provider in self?.chooseProvider(provider) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onLifecycle = { [weak self] stage in self?.engine.recordLifecycle("app.transcript", stage: stage) }
         transcript.onRenderFailed = { [weak self] in
@@ -343,6 +348,9 @@ final class AppModel {
         set(\.conversationProviders, state.conversationProviders ?? state.providers)
         set(\.repositoryProviders, state.repositoryProviders ?? [:])
         set(\.provider, state.provider)
+        set(\.canSelectProvider, state.canSelectProvider ?? false)
+        set(\.switchingProvider, state.switchingProvider)
+        set(\.modelsLoading, state.modelsLoading ?? false)
         if let source = duplicateTarget {
             if source != state.composerTarget || created { duplicateTarget = nil }
             else if state.chatCreation == .failed { duplicateTarget = nil; duplicateFailed = true }

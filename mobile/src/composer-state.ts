@@ -17,6 +17,8 @@ export function createComposerState(deps: {
   applyWorkspace(next: CompanionWorkspace): void;
 }) {
   const catalog = shallowRef<Record<string, ProviderModelOption[]>>({});
+  /** Model lists being asked for, by chat and engine: the model menu shows it is loading instead of staying empty. */
+  const asking = shallowRef<ReadonlySet<string>>(new Set());
   const choices = reactive<Record<string, ComposerChoice>>({});
   const permissionChoices = reactive<Record<string, string>>({});
   const permissionRequests = new Map<string, symbol>();
@@ -35,13 +37,18 @@ export function createComposerState(deps: {
   async function loadModels(id: string, capturedSession: CompanionSession) {
     const backendOf = () => companionAgents(deps.workspace()).find((candidate) => candidate.id === id)?.provider;
     const requested = backendOf(); const key = modelKey(id, requested);
-    if (!capturedSession.listModels || catalog.value[key]) return;
+    if (!capturedSession.listModels || catalog.value[key] || asking.value.has(key)) return;
+    asking.value = new Set(asking.value).add(key);
     try {
       const list = await capturedSession.listModels(id);
       // A list asked for under another engine is not this engine's list.
       if (deps.session() === capturedSession && backendOf() === requested) catalog.value = { ...catalog.value, [key]: list };
     } catch { /* Without a catalog the model menu simply stays hidden. */ }
+    finally { const next = new Set(asking.value); next.delete(key); asking.value = next; }
   }
+  /** A list fetched alongside an engine switch: it lands with the engine, so the menu never shows the old one's models. */
+  function seedModels(id: string, provider: string, list: ProviderModelOption[]) { catalog.value = { ...catalog.value, [modelKey(id, provider)]: list }; }
+  const modelsLoading = computed(() => asking.value.has(currentKey()));
 
   function currentChoice(): ComposerChoice {
     const settings = composerSettings.value;
@@ -77,7 +84,7 @@ export function createComposerState(deps: {
   }
 
   return {
-    models, composerSettings, modelFavorites, permission, loadModels, updateSettings, setPermission,
+    models, composerSettings, modelFavorites, permission, loadModels, seedModels, modelsLoading, updateSettings, setPermission,
     /** The laptop reported this chat's policy itself: a pending local choice no longer applies. */
     forgetPermission(id: string) { permissionRequests.delete(id); delete permissionChoices[id]; },
     /** The connection ended: no pending local choice survives it. */

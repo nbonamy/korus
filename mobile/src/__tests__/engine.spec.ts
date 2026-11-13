@@ -1024,8 +1024,7 @@ describe('companion engine', () => {
         expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', provider: 'claude' });
         expect(latest()).toMatchObject({ agentId: 'new-chat', chatCreation: 'idle', loading: false, canSend: true });
         // Context-only updates cannot acknowledge painting to the native loading overlay.
-        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: true, frame: null,
-          engines: { current: 'claude', choices: ['codex', 'claude'] } });
+        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: true, frame: null });
       } finally { engine.dispose(); }
     });
     it('uses the default checkout without a branch, reports a failure and lets it be dismissed', async () => {
@@ -1063,7 +1062,7 @@ describe('companion engine', () => {
       expect(latest()).toMatchObject({ provider: 'claude', agentId: 'demo-agent' });
       // The old engine's models must not stay selectable for the new one.
       await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
-      expect(shown(events)).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
+      expect(latest()).toMatchObject({ canSelectProvider: true, provider: 'claude', conversationProviders: ['codex', 'claude'] });
       engine.dispose();
     });
     it('swaps the engine in one step: the chat never reads as loading or unready on the way', async () => {
@@ -1079,6 +1078,22 @@ describe('companion engine', () => {
       // Nothing shows the new engine before the transcript for it is ready, and the old one is never shown again.
       const providers = during.map(state => state.provider);
       expect(providers.slice(providers.indexOf('claude')).every(provider => provider === 'claude')).toBe(true);
+      engine.dispose();
+    });
+    it('shows the choice at once, says the models are loading, and lands with the new engine\'s models in one step', async () => {
+      let release = () => {};
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const { engine, latest, states } = open(withProviders(async () => { await gate; }));
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await vi.waitFor(() => expect(latest().models.map(model => model.id)).toEqual(['codex-model']));
+      const switching = engine.dispatch({ type: 'provider', provider: 'claude' });
+      // The laptop has not answered yet: the phone already shows the choice and a loading model menu.
+      expect(latest()).toMatchObject({ provider: 'codex', switchingProvider: 'claude', modelsLoading: true });
+      release(); await switching;
+      expect(latest()).toMatchObject({ provider: 'claude', switchingProvider: null, modelsLoading: false });
+      expect(latest().models.map(model => model.id)).toEqual(['claude-model']);
+      // The new engine and its models arrive together, never one without the other.
+      expect(states().filter(state => state.provider === 'claude').every(state => state.models.map(model => model.id).join() === 'claude-model')).toBe(true);
       engine.dispose();
     });
     it('ignores a model list that arrives late from the engine it replaced', async () => {

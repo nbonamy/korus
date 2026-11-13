@@ -85,6 +85,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
   let providerSwitch: { held: CompanionWorkspace | null } | null = null;
+  let switchToken = 0;
+  /** The engine an empty chat is switching to while the laptop and its models catch up. */
+  const switchingProvider = shallowRef<HarnessProvider | null>(null);
   let reconnectWanted = false;
   let workspaceLoaded = false;
   let isForeground = true;
@@ -284,7 +287,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
   const composer = createComposerState({ session: () => session, agent: () => agent.value, agentId: () => agentId.value, workspace: () => workspace.value, applyWorkspace: (next) => { applyWorkspace(next); } });
-  const { models, composerSettings, modelFavorites, loadModels } = composer;
+  const { models, composerSettings, modelFavorites, loadModels, modelsLoading } = composer;
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
@@ -727,17 +730,21 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!workspace.value.providers?.[current.locationId !== 'local' ? current.locationId : current.teamId]?.includes(provider)) throw new Error('That engine is not available.');
     return active.duplicateAgent?.(target, provider);
   });
-  /** The engine of a chat that has not started: changed on the laptop, then swapped in with its own transcript in one step so the screen never blanks. */
+  /**
+   * The engine of a chat that has not started. The choice shows at once; the laptop switches, then its workspace,
+   * the chat's transcript and the engine's models are read together and swapped in as one step so the screen never blanks.
+   */
   async function selectProvider(provider: HarnessProvider) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
-    if (!id || !active?.setProvider || status.value !== 'connected' || agent.value?.provider === provider) return;
+    if (!id || !active?.setProvider || status.value !== 'connected' || agent.value?.provider === provider || switchingProvider.value === provider) return;
+    const token = ++switchToken;
+    switchingProvider.value = provider;
     // Workspace updates that arrive meanwhile would show the new engine on the old transcript; they wait for the swap.
     providerSwitch = { held: null };
     try {
       await active.setProvider(id, provider);
-      const next = await active.getWorkspace();
-      const frame = await active.loadConversation(id);
-      if (active !== session || epoch !== selectionEpoch) return;
+      const [next, frame, list] = await Promise.all([active.getWorkspace(), active.loadConversation(id), active.listModels ? active.listModels(id).catch(() => null) : null]);
+      if (token !== switchToken || active !== session || epoch !== selectionEpoch) return;
       reconcileNotificationReads(next);
       workspace.value = reconcileWorkspace(workspace.value, next);
       if (agentId.value !== id) return;
@@ -745,12 +752,15 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       composer.forgetPermission(id);
       selectedConversationKey = conversationIdentity();
       conversation.value = frame; historyFailed.value = false; hasOlder.value = null;
+      if (list) composer.seedModels(id, provider, list); else void loadModels(id, active);
       ++conversationGeneration.value; conversationReady.value = true;
-      void loadModels(id, active);
-    } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
+    } catch { if (token === switchToken && active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
     finally {
-      const held = providerSwitch?.held; providerSwitch = null;
-      if (held && active === session) applyWorkspace(held);
+      if (token === switchToken) {
+        switchingProvider.value = null;
+        const held = providerSwitch?.held; providerSwitch = null;
+        if (held && active === session) applyWorkspace(held);
+      }
     }
   }
   const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
@@ -801,7 +811,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
     // The composer: the draft, sending it, and what was sent along with it.
-    draft, updateDraft, submit, canSend, deliveryUnknown, models, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
+    draft, updateDraft, submit, canSend, deliveryUnknown, models, modelsLoading, switchingProvider, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
     permission: composer.permission, setPermission: composer.setPermission,
     skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
     // Goals and questions the agent asks.

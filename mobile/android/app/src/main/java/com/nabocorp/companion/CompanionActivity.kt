@@ -213,6 +213,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                             },
                             bottomBar = { if (!model.filePreviewOpen && !model.providerBlocked && state.string("agentId").isNotBlank()) Column {
                                 RequestBanner(model)
+                                if (model.canSelectProvider) EngineChoiceList(model.conversationEngines, model.switchingProvider.ifBlank { state.string("provider") }) { model.chooseProvider(it) }
                                 Composer(model, pickAttachment, toggleDictation)
                             } },
                             modifier = Modifier.imePadding(),
@@ -445,10 +446,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                 modifier = Modifier.size(48.dp).semantics { contentDescription = "Fast mode"; stateDescription = if (fast) "On" else "Off" }) { Icon(if (fast) Icons.Filled.Bolt else Icons.Outlined.Bolt, null) }
                         }
                         Box(Modifier.weight(1f)) {
-                            TextButton(onClick = { modelMenu = true }, enabled = model.canChooseModel, modifier = Modifier.semantics { contentDescription = "Choose model and reasoning" }) {
+                            TextButton(onClick = { modelMenu = true }, enabled = model.canChooseModel && !model.modelsLoading, modifier = Modifier.semantics { contentDescription = "Choose model and reasoning" }) {
                                 Text(selected?.string("name") ?: "Model", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                                 composer.string("effort").takeIf { it.isNotBlank() }?.let { Text(" " + it.replaceFirstChar(Char::uppercase), maxLines = 1, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                                Icon(Icons.Outlined.UnfoldMore, null, Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (model.modelsLoading) CircularProgressIndicator(Modifier.padding(start = 6.dp).size(12.dp), strokeWidth = 1.5.dp)
+                                else Icon(Icons.Outlined.UnfoldMore, null, Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
                                 state.items("models").forEach { option ->

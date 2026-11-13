@@ -10,7 +10,6 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     var onFilePreviewVisibility: ((Bool) -> Void)?
     var onLoadOlder: ((String) -> Void)?
     var onReadContent: (([String: Any]) -> Void)?
-    var onChooseProvider: ((String) -> Void)?
     var onRendered: ((String, Int, Int) -> Void)?
     var onTransferApplied: ((String, [String: Any]) -> Void)?
     var onNeedsReset: ((String) -> Void)?
@@ -192,10 +191,6 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         }
         if ["readConversationContent", "readConversationImage", "readFilePreview", "loadTurnHistory"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
             onReadContent?(event)
-            return
-        }
-        if event["type"] as? String == "provider", let provider = event["provider"] as? String {
-            onChooseProvider?(provider)
             return
         }
         guard event["type"] as? String == "ready" else { return }

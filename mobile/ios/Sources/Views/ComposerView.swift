@@ -259,7 +259,8 @@ struct ComposerView: View {
             HStack(spacing: 4) {
                 Text(model.selectedModel?.name ?? "Model")
                 if let effort = model.selectedEffort { Text(effort.capitalized).foregroundStyle(.secondary) }
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                if model.modelsLoading { ProgressView().controlSize(.mini) }
+                else { Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary) }
             }
             .font(.footnote.weight(.medium))
             .foregroundStyle(.primary)
@@ -268,6 +269,7 @@ struct ComposerView: View {
             .contentShape(Capsule())
         }
         .tint(.primary)
+        .disabled(model.modelsLoading)
     }
 
     private var micButton: some View {

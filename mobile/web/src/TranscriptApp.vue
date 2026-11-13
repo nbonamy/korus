@@ -17,13 +17,6 @@
       :empty-headline="repository ? `Chat in ${repository.repositoryName}` : undefined"
       :empty-subhead="repository?.branch ?? ''"
     >
-      <template v-if="engines" #empty-actions>
-        <div class="engine-picker" role="radiogroup" aria-label="Engine">
-          <button v-for="choice in engines.choices" :key="choice" type="button" role="radio" class="engine-picker__option"
-            :class="{ 'engine-picker__option--selected': choice === engines.current }" :aria-checked="choice === engines.current"
-            @click="chooseEngine(choice)">{{ engineName(choice) }}</button>
-        </div>
-      </template>
     </ConversationPane>
     </ImagePreviewScope>
   </div>
@@ -36,7 +29,6 @@ import { computed, defineComponent, nextTick, provide, reactive, shallowRef } fr
 import { createConversationPaneController, provideHostCapabilities, type ConversationPaneState } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
-import { engineName } from '../../src/engine-name';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { providerChoicesKey } from '@workspace/vue/components/provider-selection';
@@ -56,7 +48,6 @@ const ready = shallowRef(false);
 const files = createTranscriptFiles({ readContent: readConversationContent, agentId: () => agent.value?.id,
   revision: () => JSON.stringify([agent.value?.readState?.revision, agent.value?.updatedAt]),
   post: event => { void handler('transcript').postMessage(JSON.stringify(event)); } });
-const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
 const insets = reactive({ top: 0, bottom: 0, leading: 0, trailing: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(providerChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.provider))]));
@@ -175,9 +166,6 @@ const controller = createConversationPaneController({
   },
 });
 
-function chooseEngine(provider: string) {
-  if (provider !== engines.value?.current) void handler('transcript').postMessage(JSON.stringify({ type: 'provider', provider }));
-}
 
 function loadOlder() {
   if (!agent.value || history.value.loadingOlder || !history.value.hasOlder) return;
@@ -185,7 +173,7 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
-type Context = { engineInstance?: string; imageCacheScope?: string | null; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+type Context = { engineInstance?: string; imageCacheScope?: string | null; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState };
 // The pane only needs the names of the agents a message may mention.
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
@@ -195,7 +183,7 @@ function applyContext(message: Context) {
   fileGeneration = message.generation;
   if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.providerSession) !== JSON.stringify(message.agent?.providerSession)) { ++imageOpenEpoch; imageLoading.value = false; }
   agent.value = message.agent; agents.value = peerAgents(message.peers);
-  ready.value = message.ready ?? false; engines.value = message.engines ?? null;
+  ready.value = message.ready ?? false;
   history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
 }
 
@@ -310,12 +298,6 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
 .transcript .agent-ui-markdown.chat-user-text { padding-block: 10px; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */
 .transcript .agent-ui-conversation-pane__messages { --agent-ui-scroll-to-bottom-offset: var(--space-12); }
-/* The shared empty state frames its actions as a card; the engine control stands on its own. */
-.transcript .conversation-pane__empty-actions { width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
 .transcript .conversation-pane__empty h1 { margin: 0; line-height: 1.15; overflow-wrap: anywhere; }
 .transcript .conversation-pane__empty p { margin: 0; line-height: 1.4; overflow-wrap: anywhere; color: var(--color-text-muted); }
-/* A segmented control under the empty chat's title: the selected engine is raised, the others recede. */
-.engine-picker { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--color-surface-base); }
-.engine-picker__option { appearance: none; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 15px; font-weight: 500; padding: 8px 16px; border-radius: 999px; transition: background 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
-.engine-picker__option--selected { background: var(--color-surface-lowest); color: var(--color-text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14); }
 </style>

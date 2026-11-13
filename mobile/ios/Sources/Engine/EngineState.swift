@@ -121,6 +121,9 @@ struct EngineState: Decodable {
     let teamCreation: ChatCreation?
     let branches: RepositoryBranches?
     let provider: String?
+    let canSelectProvider: Bool?
+    let switchingProvider: String?
+    let modelsLoading: Bool?
     let providers: [String]
     let conversationProviders: [String]?
     let repositoryProviders: [String: [String]]?
