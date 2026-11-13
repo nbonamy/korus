@@ -84,6 +84,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let selectionEpoch = 0;
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
+  let providerSwitch: { held: CompanionWorkspace | null } | null = null;
   let reconnectWanted = false;
   let workspaceLoaded = false;
   let isForeground = true;
@@ -337,6 +338,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     }
   }
   function applyWorkspace(next: CompanionWorkspace): boolean {
+    if (providerSwitch) { providerSwitch.held = next; return false; }
     reconcileNotificationReads(next);
     workspace.value = reconcileWorkspace(workspace.value, next);
     if ((!agentId.value && agents.value.length) || (agentId.value && selectedConversationKey !== conversationIdentity())) {
@@ -725,14 +727,31 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!workspace.value.providers?.[current.locationId !== 'local' ? current.locationId : current.teamId]?.includes(provider)) throw new Error('That engine is not available.');
     return active.duplicateAgent?.(target, provider);
   });
-  /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
+  /** The engine of a chat that has not started: changed on the laptop, then swapped in with its own transcript in one step so the screen never blanks. */
   async function selectProvider(provider: HarnessProvider) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
     if (!id || !active?.setProvider || status.value !== 'connected' || agent.value?.provider === provider) return;
+    // Workspace updates that arrive meanwhile would show the new engine on the old transcript; they wait for the swap.
+    providerSwitch = { held: null };
     try {
       await active.setProvider(id, provider);
-      if (await refreshWorkspace(active) && epoch === selectionEpoch) await selectAgent(id);
+      const next = await active.getWorkspace();
+      const frame = await active.loadConversation(id);
+      if (active !== session || epoch !== selectionEpoch) return;
+      reconcileNotificationReads(next);
+      workspace.value = reconcileWorkspace(workspace.value, next);
+      if (agentId.value !== id) return;
+      if (frame && (frame.agentId !== id || frame.provider !== agent.value?.provider)) throw new Error('Conversation identity mismatch.');
+      composer.forgetPermission(id);
+      selectedConversationKey = conversationIdentity();
+      conversation.value = frame; historyFailed.value = false; hasOlder.value = null;
+      ++conversationGeneration.value; conversationReady.value = true;
+      void loadModels(id, active);
     } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
+    finally {
+      const held = providerSwitch?.held; providerSwitch = null;
+      if (held && active === session) applyWorkspace(held);
+    }
   }
   const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
   function disconnect() { reconnectWanted = false; closeSession(); status.value = 'disconnected'; }

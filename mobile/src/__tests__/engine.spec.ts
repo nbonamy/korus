@@ -1066,6 +1066,21 @@ describe('companion engine', () => {
       expect(shown(events)).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
       engine.dispose();
     });
+    it('swaps the engine in one step: the chat never reads as loading or unready on the way', async () => {
+      const { engine, latest, states } = open(withProviders(async () => {}));
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await vi.waitFor(() => expect(latest().conversationReady).toBe(true));
+      const before = states().length;
+      await engine.dispatch({ type: 'provider', provider: 'claude' });
+      const during = states().slice(before);
+      expect(during.length).toBeGreaterThan(0);
+      expect(during.every(state => state.conversationReady && !state.loading && !state.refreshing)).toBe(true);
+      expect(during.at(-1)).toMatchObject({ provider: 'claude' });
+      // Nothing shows the new engine before the transcript for it is ready, and the old one is never shown again.
+      const providers = during.map(state => state.provider);
+      expect(providers.slice(providers.indexOf('claude')).every(provider => provider === 'claude')).toBe(true);
+      engine.dispose();
+    });
     it('ignores a model list that arrives late from the engine it replaced', async () => {
       const connector = createDemoConnector(); const original = connector.connect; let backend = 'codex'; let release = () => {};
       connector.connect = async (id) => {
