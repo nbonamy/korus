@@ -657,6 +657,7 @@ import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { forgetDesignHistory, pruneDesignHistory } from './design-history';
+import { designIdOfTab, designTabId, isDesignTab } from '@workspace/core/design';
 import { computerUseLockKey } from './computer-use-lock';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
@@ -2233,8 +2234,8 @@ async function openCodeReviewForAgent(agentId: string, instructions?: string): P
 
 async function startDesignForAgent(agentId: string, prompt?: string, attachments?: RendererSendPromptOptions['attachments']): Promise<void> {
   if (!appApi) throw new Error('Design is unavailable.');
-  await appApi.design(agentId, { type: 'open', ...(prompt ? { prompt } : {}), ...(attachments?.length ? { attachments } : {}) });
-  openRightWorkspaceTab('design', agentId);
+  const { workspace } = await appApi.design(agentId, { type: 'open', ...(prompt ? { prompt } : {}), ...(attachments?.length ? { attachments } : {}) });
+  openRightWorkspaceTab(designTabId(workspace) as RightWorkspaceTab, agentId);
 }
 
 async function startVisualizeForAgent(agentId: string, input?: import('@workspace/core/visualize').StartVisualizeInput): Promise<void> {
@@ -2248,7 +2249,21 @@ async function startVisualizeForAgent(agentId: string, input?: import('@workspac
   }
 }
 
+async function deleteDesignAfterConfirm(agentId: string, designId: string): Promise<void> {
+  try {
+    await ElMessageBox.confirm(translate('design.deleteConfirm'), translate('design.deleteTitle'), {
+      confirmButtonText: translate('design.deleteAction'), cancelButtonText: translate('common.cancel'), type: 'warning',
+    });
+  } catch { return; }
+  closeRightWorkspaceTabLocal(agentId, `design:${designId}`);
+  forgetDesignHistory(agentId, designId);
+  try { await appApi?.design(agentId, { type: 'delete', designId }); }
+  catch (error) { openRightWorkspaceTabLocal(`design:${designId}`, agentId); ElMessage.error(localizedErrorMessage(error, t)); }
+}
+
 function closeRightWorkspaceTab(agentId: string, tab: RightWorkspaceTab): void {
+  const designId = designIdOfTab(tab);
+  if (designId) { void deleteDesignAfterConfirm(agentId, designId); return; }
   documentWorkspaces.recordClose(agentId, tab);
   closeRightWorkspaceTabLocal(agentId, tab);
   if (tab === 'design') void appApi?.design(agentId, { type: 'close' }).catch(error => { openRightWorkspaceTabLocal('design', agentId); ElMessage.error(localizedErrorMessage(error, t)); });
@@ -2262,12 +2277,15 @@ function closeRightWorkspaceTab(agentId: string, tab: RightWorkspaceTab): void {
 }
 
 watch(
-  () => props.snapshot.agents.map(agent => ({ agentId: agent.id, design: agent.designWorkspace })),
+  () => props.snapshot.agents.map(agent => ({ agentId: agent.id, designs: agent.designWorkspaces })),
   entries => {
-    for (const { agentId, design } of entries) {
+    // Each open design is a tab; a design that is gone or hidden loses its tab, and a new one gains it.
+    for (const { agentId, designs } of entries) {
+      if (!designs) continue;
       const workspace = rightWorkspaceFor(agentId);
-      if (design?.isOpen && !workspace.tabs.includes('design')) openRightWorkspaceTabLocal('design', agentId);
-      else if (design && !design.isOpen && workspace.tabs.includes('design')) closeRightWorkspaceTabLocal(agentId, 'design');
+      const wanted = designs.filter(design => design.isOpen).map(designTabId);
+      for (const tab of wanted) if (!workspace.tabs.includes(tab as RightWorkspaceTab)) openRightWorkspaceTabLocal(tab as RightWorkspaceTab, agentId);
+      for (const tab of workspace.tabs.filter(isDesignTab)) if (!wanted.includes(tab)) closeRightWorkspaceTabLocal(agentId, tab);
     }
   }, { immediate: true, flush: 'sync' },
 );

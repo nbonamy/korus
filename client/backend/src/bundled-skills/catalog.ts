@@ -16,13 +16,17 @@ import automations from './korus-automations/SKILL.md?raw';
 import browser from './korus-browser/SKILL.md?raw';
 import simulator from './korus-simulator/SKILL.md?raw';
 import imagegen from './korus-imagegen/SKILL.md?raw';
+import design from './korus-design/SKILL.md?raw';
+import { designAttributes, designSvgAttributes, designSvgTags, designTags } from '@workspace/core/design';
 
 type SkillContext = { computerUseEnabled?: boolean; missionStage?: MissionStage; toolModules?: readonly string[] };
 type Skill = { name: string; description: string; markdown: string };
 
 // Bundled, authored frontmatter uses single-line unquoted name/description fields.
 function skill(source: string): Skill {
-  const markdown = source.replaceAll('\r\n', '\n').replaceAll('{{productName}}', product.name).replaceAll('{{mcpServerName}}', product.mcpServerName);
+  const markdown = source.replaceAll('\r\n', '\n').replaceAll('{{productName}}', product.name).replaceAll('{{mcpServerName}}', product.mcpServerName)
+    .replaceAll('{{designTags}}', designTags.join(', ')).replaceAll('{{designAttributes}}', designAttributes.join(', '))
+    .replaceAll('{{designSvgTags}}', designSvgTags.join(', ')).replaceAll('{{designSvgAttributes}}', designSvgAttributes.join(', '));
   const header = /^---\n([\s\S]*?)\n---\n/.exec(markdown)?.[1];
   const name = header && /^name: (.+)$/m.exec(header)?.[1];
   const description = header && /^description: (.+)$/m.exec(header)?.[1];
@@ -30,7 +34,7 @@ function skill(source: string): Skill {
   return { name, description, markdown };
 }
 
-const generalSkills = [skill(html), skill(visualize), skill(stackDiagram), skill(delegation)];
+const generalSkills = [skill(html), skill(visualize), skill(stackDiagram), skill(delegation), skill(design)];
 const computerUseSkill = skill(computerUse);
 const moduleSkills = [
   ['image-generation', skill(imagegen)],

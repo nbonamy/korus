@@ -373,7 +373,7 @@ it('undoes and redoes from the client\'s own history, including agent edits, by 
     await redo().trigger('click');
     await flushPromises();
     expect(execute).toHaveBeenLastCalledWith({ type: 'replace', expectedRevision: 3, content: second.document!.content });
-    expect(JSON.parse(localStorage.getItem('design-history:designer')!)).toMatchObject({ documentId: 'design-a', revision: 4, redo: [] });
+    expect(JSON.parse(localStorage.getItem('design-history:designer/design-a')!)).toMatchObject({ documentId: 'design-a', revision: 4, redo: [] });
   } finally { wrapper.unmount(); localStorage.clear(); }
 });
 
@@ -399,7 +399,7 @@ it('records one undo step for a text field edited across several autosaves', asy
       await flushPromises();
     }
     expect(execute.mock.calls.filter(([request]) => request.type === 'edit')).toHaveLength(3);
-    expect(JSON.parse(localStorage.getItem('design-history:designer')!).undo).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem('design-history:designer/design-a')!).undo).toHaveLength(1);
     await wrapper.get('button[aria-label="Undo"]').trigger('click');
     await flushPromises();
     expect(execute).toHaveBeenLastCalledWith({ type: 'replace', expectedRevision: 4, content: original.document!.content });
@@ -432,6 +432,6 @@ it('records separate undo steps for a text edit followed by a color edit', async
     await flushPromises();
     const edits = execute.mock.calls.filter(([request]) => request.type === 'edit').map(([request]) => (request as { edits: Array<{ type: string }> }).edits.map(edit => edit.type));
     expect(edits).toEqual([['text'], ['style']]);
-    expect(JSON.parse(localStorage.getItem('design-history:designer')!).undo).toHaveLength(2);
+    expect(JSON.parse(localStorage.getItem('design-history:designer/design-a')!).undo).toHaveLength(2);
   } finally { wrapper.unmount(); vi.useRealTimers(); localStorage.clear(); }
 });

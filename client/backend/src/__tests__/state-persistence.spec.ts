@@ -455,32 +455,32 @@ describe('state persistence', () => {
     });
     it('never writes history carried by an older workspace', () => {
       const snapshot = createInitialSnapshot();
-      snapshot.agents[0]!.designWorkspace = workspace();
-      const persisted = persistedStateFromSnapshot(snapshot).agents[0]!.designWorkspace!;
+      snapshot.agents[0]!.designWorkspaces = [workspace()];
+      const persisted = persistedStateFromSnapshot(snapshot).agents[0]!.designWorkspaces![0]!;
       expect(persisted.undo).toEqual([]);
       expect(persisted).not.toHaveProperty('redo');
-      expect(persisted.document).toStrictEqual(snapshot.agents[0]!.designWorkspace.document);
+      expect(persisted.document).toStrictEqual(snapshot.agents[0]!.designWorkspaces![0]!.document);
       expect(persisted.checkpoints).toHaveLength(1);
-      expect(snapshot.agents[0]!.designWorkspace.undo).toHaveLength(2);
-      expect((snapshot.agents[0]!.designWorkspace as { redo?: unknown[] }).redo).toHaveLength(1);
+      expect(snapshot.agents[0]!.designWorkspaces![0]!.undo).toHaveLength(2);
+      expect((snapshot.agents[0]!.designWorkspaces![0] as { redo?: unknown[] }).redo).toHaveLength(1);
     });
     it('is dropped from files saved by earlier versions, which are rewritten without it', async () => {
       const home = await tempHome();
       const snapshot = createInitialSnapshot();
-      snapshot.agents[0]!.designWorkspace = workspace();
+      snapshot.agents[0]!.designWorkspaces = [workspace()];
       const store = new AppStateStore(home);
       await store.save(snapshot);
       const roster = path.join(home, 'roster.json');
       const legacy = JSON.parse(await readFile(roster, 'utf8'));
-      Object.assign(legacy.data.agents[0].designWorkspace, { undo: [content, content], redo: [content] });
+      Object.assign(legacy.data.agents[0].designWorkspaces[0], { undo: [content, content], redo: [content] });
       await writeFile(roster, JSON.stringify(legacy));
       const reloadedStore = new AppStateStore(home);
       const reloaded = await reloadedStore.load();
-      expect(reloaded.agents[0]!.designWorkspace).toMatchObject({ undo: [], document: { revision: 3 } });
-      expect(reloaded.agents[0]!.designWorkspace).not.toHaveProperty('redo');
+      expect(reloaded.agents[0]!.designWorkspaces![0]).toMatchObject({ undo: [], document: { revision: 3 } });
+      expect(reloaded.agents[0]!.designWorkspaces![0]).not.toHaveProperty('redo');
       await reloadedStore.save(reloaded);
       expect(await readFile(roster, 'utf8')).not.toContain('"redo"');
-      expect(JSON.parse(await readFile(roster, 'utf8')).data.agents[0].designWorkspace.undo).toEqual([]);
+      expect(JSON.parse(await readFile(roster, 'utf8')).data.agents[0].designWorkspaces![0]!.undo).toEqual([]);
     });
   });
 

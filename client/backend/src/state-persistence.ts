@@ -87,7 +87,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   autoResumePending?: boolean;
   status?: Extract<Agent['status'], { type: 'error' }>;
   goal?: ThreadGoal;
-  designWorkspace?: DesignWorkspace;
+  designWorkspaces?: DesignWorkspace[];
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
   lastActivityAt?: string;
@@ -186,7 +186,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
     ...(agent.goal ? { goal: { ...agent.goal } } : {}),
-    ...(agent.designWorkspace ? { designWorkspace: persistedDesignWorkspace(agent.designWorkspace) } : {}),
+    ...(agent.designWorkspaces?.length ? { designWorkspaces: agent.designWorkspaces.map(persistedDesignWorkspace) } : {}),
     ...(persistedVisualize ? { visualize: persistedVisualize } : {}),
     statusText: agent.statusText,
     createdAt: agent.createdAt,
@@ -411,6 +411,11 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const pullRequest = sanitizeAgentPullRequest(value.pullRequest);
   const repositoryRoot = workspace?.kind === 'git' && workspace.folder === folder ? workspace.primaryWorktreeRoot : null;
   const visualize = sanitizeVisualizeSession(value.visualize ?? value.design, repositoryRoot ? libraries[repositoryRoot] : undefined);
+  // Unversioned legacy state kept one design workspace in `designWorkspace`.
+  const designWorkspaces = (Array.isArray(value.designWorkspaces) ? value.designWorkspaces : value.designWorkspace ? [value.designWorkspace] : [])
+    .filter(isDesignWorkspace)
+    .slice(0, 20)
+    .map(workspace => persistedDesignWorkspace({ ...structuredClone(workspace), conversationRef: withConversationId(workspace.conversationRef) as DesignWorkspace['conversationRef'] }));
   return {
     id: value.id,
     ...(readPersistedAgentHandoff(value.handoff) ? { handoff: readPersistedAgentHandoff(value.handoff) } : {}),
@@ -452,7 +457,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
       ? { codeReview: cloneCodeReviewSession(codeReview) }
       : {}),
     ...(goal ? { goal } : {}),
-    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace({ ...structuredClone(value.designWorkspace), conversationRef: withConversationId(value.designWorkspace.conversationRef) as DesignWorkspace['conversationRef'] }) } : {}),
+    ...(designWorkspaces.length ? { designWorkspaces } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
     status: providerSafetyBlockMessage(isRecord(value.status) && value.status.type === 'error' ? value.status.message : null)

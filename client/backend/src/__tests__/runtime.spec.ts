@@ -632,7 +632,7 @@ describe('daemon runtime', () => {
         await design.execute(local.id, { type });
         expect(client.agents.map(agent => agent.id)).toStrictEqual([local.id, 'remote']);
         expect(client.teams[0]!.agentIds).toStrictEqual([local.id, 'remote']);
-        expect(client.agents[0]!.designWorkspace?.isOpen).toBe(type === 'open');
+        expect(client.agents[0]!.designWorkspaces?.[0]?.isOpen).toBe(type === 'open');
         expect(snapshot.agents.map(agent => agent.id)).toStrictEqual([local.id]);
       }
     } finally { await runtime.stop(); }

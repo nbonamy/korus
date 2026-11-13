@@ -49,10 +49,16 @@ export type DesignEdit =
   | { type: 'artboard-remove'; artboardId: string }
   | { type: 'artboard-move'; artboardId: string; index: number }
   | { type: 'choose-artboard'; artboardId: string | null };
-export type DesignRequest<Attachment = RendererPromptAttachment> =
+export type DesignRequest<Attachment = RendererPromptAttachment> = DesignRequestBody<Attachment> & {
+  /** Which of the agent's designs the request is for; optional while the agent has one. */
+  designId?: string;
+};
+type DesignRequestBody<Attachment> =
   | { type: 'read' }
   | { type: 'open'; prompt?: string; attachments?: readonly Attachment[] }
   | { type: 'close' }
+  /** Removes the design and everything saved with it, after the person confirmed. Not offered to agents. */
+  | { type: 'delete' }
   | { type: 'export'; artboardId?: string }
   | { type: 'capture'; expectedRevision: number; artboardId?: string }
   | { type: 'create'; content: DesignContent }
@@ -65,14 +71,57 @@ export type DesignRequest<Attachment = RendererPromptAttachment> =
   /** Replaces the whole content, for a client restoring an earlier version from its own history. Not offered to agents. */
   | { type: 'replace'; expectedRevision: number; content: DesignContent };
 export type DesignCaptureInput = { html: string; width: number; height: number };
-export type DesignResult = { workspace: DesignWorkspace; html?: string; handoff?: string; screenshot?: string };
+/** `workspace` is the design the request was for; `designs` lists all of the agent's designs. */
+export type DesignResult = { workspace: DesignWorkspace; designs?: { id: string; title: string; revision: number }[]; html?: string; handoff?: string; screenshot?: string };
 
-const tags = new Set('main section article header footer nav aside div span h1 h2 h3 h4 h5 h6 p a button img ul ol li strong em small label input textarea select option form details summary table thead tbody tr th td br hr pre code blockquote figure figcaption'.split(' '));
-const attributes = new Set('class title alt type placeholder value name role aria-label aria-hidden aria-expanded checked disabled hidden open colspan rowspan href src'.split(' '));
+/** An agent's designs sit beside each other as tabs; one that has no document yet is the empty `design` tab. */
+export function designTabId(workspace: DesignWorkspace): string {
+  return workspace.document ? `design:${workspace.document.id}` : 'design';
+}
+export function isDesignTab(tab: string): boolean {
+  return tab === 'design' || tab.startsWith('design:');
+}
+export function designIdOfTab(tab: string): string | undefined {
+  return tab.startsWith('design:') ? tab.slice('design:'.length) : undefined;
+}
+
+export const designTags = 'main section article header footer nav aside div span h1 h2 h3 h4 h5 h6 p a button img ul ol li strong em small label input textarea select option form details summary table thead tbody tr th td br hr pre code blockquote figure figcaption'.split(' ');
+/** Vector graphics are authored inline, so icons and logos keep their shape and take their color from CSS. */
+export const designSvgTags = 'svg g path circle rect line polyline polygon ellipse defs linearGradient radialGradient stop clipPath mask use title'.split(' ');
+export const designAttributes = 'class title alt type placeholder value name role aria-label aria-hidden aria-expanded checked disabled hidden open colspan rowspan href src width height'.split(' ');
+const number = /^-?(\d+\.?\d*|\.\d+)(e-?\d+)?(%|px|em|rem)?$/i;
+const paint = /^(none|currentColor|transparent|#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla)\([\d\s.,%/-]+\)|[a-z]+|url\(#[\w-]+\))$/i;
+const reference = /^url\(#[\w-]+\)$/;
+const numbers = /^[\d\s.,+\-eE%]*$/;
+const choice = (...values: string[]) => new RegExp(`^(${values.join('|')})$`);
+/** SVG attributes and the values each accepts; nothing outside these reaches the document. */
+const svgAttributePatterns: Record<string, RegExp> = {
+  viewBox: /^-?[\d.]+[\s,]+-?[\d.]+[\s,]+[\d.]+[\s,]+[\d.]+$/, preserveAspectRatio: /^[A-Za-z\s]+$/,
+  d: /^[MmLlHhVvCcSsQqTtAaZz\d\s.,+\-eE]*$/, points: numbers, transform: /^[A-Za-z\d\s.,+\-()]*$/, gradientTransform: /^[A-Za-z\d\s.,+\-()]*$/,
+  fill: paint, stroke: paint, 'stop-color': paint, 'clip-path': reference, mask: reference,
+  'fill-rule': choice('nonzero', 'evenodd'), 'clip-rule': choice('nonzero', 'evenodd'),
+  'stroke-linecap': choice('butt', 'round', 'square'), 'stroke-linejoin': choice('miter', 'round', 'bevel', 'arcs'),
+  gradientUnits: choice('userSpaceOnUse', 'objectBoundingBox'),
+  'shape-rendering': choice('auto', 'optimizeSpeed', 'crispEdges', 'geometricPrecision'),
+  'text-rendering': choice('auto', 'optimizeSpeed', 'optimizeLegibility', 'geometricPrecision'),
+  'image-rendering': choice('auto', 'optimizeSpeed', 'optimizeQuality'),
+  'stroke-dasharray': numbers, 'stroke-dashoffset': number, 'stroke-width': number, 'stroke-miterlimit': number,
+  opacity: number, 'fill-opacity': number, 'stroke-opacity': number, 'stop-opacity': number, offset: number,
+  cx: number, cy: number, r: number, rx: number, ry: number, x: number, y: number, x1: number, y1: number, x2: number, y2: number, fx: number, fy: number,
+};
+export const designSvgAttributes = Object.keys(svgAttributePatterns);
+const tags = new Set([...designTags, ...designSvgTags]);
+const attributes = new Set([...designAttributes, ...designSvgAttributes]);
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const string = (value: unknown, max = 20_000): value is string => typeof value === 'string' && value.length <= max;
 const identifier = (value: unknown): value is string => string(value, 100) && /^[a-zA-Z][\w-]*$/.test(value);
-const safeCss = (value: unknown): value is string => string(value, 50_000) && !/url\s*\(|@import|expression\s*\(|\\|</i.test(value);
+const imageSource = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+const cssRules: [RegExp, string][] = [[/url\s*\(/i, 'url() is not allowed; use an <img> with a raster data:image URI'], [/@import/i, '@import is not allowed'], [/expression\s*\(/i, 'expression() is not allowed'], [/\\/, 'backslash escapes are not allowed'], [/</, '"<" is not allowed']];
+/** Why a stylesheet or style value is rejected, or null when it is accepted. */
+function cssIssue(value: unknown): string | null {
+  if (!string(value, 50_000)) return 'must be a string of at most 50000 characters';
+  return cssRules.find(([pattern]) => pattern.test(value))?.[1] ?? null;
+}
 
 export function designNodes(content: DesignContent): DesignNode[] {
   const nodes: DesignNode[] = [];
@@ -92,47 +141,103 @@ export function designArtboardPositions(artboards: DesignArtboard[]): Map<string
 }
 
 export function isDesignContent(value: unknown): value is DesignContent {
-  if (!record(value) || !string(value.title, 200) || !value.title.trim() || !safeCss(value.css)
-    || !Array.isArray(value.artboards) || value.artboards.length < 1 || value.artboards.length > 12
-    || !Array.isArray(value.comments) || value.comments.length > 200) return false;
+  return designContentIssue(value) === null;
+}
+
+/** The first reason a design is rejected, with where it is, or null when the design is valid. */
+export function designContentIssue(value: unknown): string | null {
+  if (!record(value)) return 'content must be an object';
+  if (!string(value.title, 200) || !value.title.trim()) return 'title must be a non-empty string of at most 200 characters';
+  const rootCss = cssIssue(value.css);
+  if (rootCss) return `css: ${rootCss}`;
+  if (!Array.isArray(value.artboards) || value.artboards.length < 1 || value.artboards.length > 12) return 'artboards must hold 1 to 12 artboards';
+  if (!Array.isArray(value.comments) || value.comments.length > 200) return 'comments must be an array of at most 200 comments';
   const ids = new Set<string>();
   let count = 0;
-  const node = (item: unknown, depth: number): boolean => {
-    if (!record(item) || depth > 30 || ++count > 2000 || !identifier(item.id) || ids.has(item.id)
-      || typeof item.tag !== 'string' || !tags.has(item.tag)) return false;
+  const node = (item: unknown, depth: number, path: string): string | null => {
+    if (!record(item)) return `${path}: must be an object`;
+    const label = `${path}${typeof item.id === 'string' ? ` (${item.id})` : ''}`;
+    if (depth > 30) return `${label}: nesting is deeper than 30 levels`;
+    if (++count > 2000) return `${label}: the design has more than 2000 nodes`;
+    if (!identifier(item.id)) return `${label}: id must start with a letter and use only letters, digits, _ and -`;
+    if (ids.has(item.id)) return `${label}: id is used more than once`;
+    if (typeof item.tag !== 'string' || !tags.has(item.tag)) return `${label}: tag ${JSON.stringify(item.tag)} is not allowed; allowed tags: ${[...designTags, ...designSvgTags].join(', ')}`;
     ids.add(item.id);
-    if (item.text !== undefined && !string(item.text)) return false;
-    if (item.children !== undefined && (!Array.isArray(item.children) || item.children.length > 200 || !item.children.every(child => node(child, depth + 1)))) return false;
-    if (item.text !== undefined && Array.isArray(item.children) && item.children.length) return false;
-    if (['img', 'input', 'br', 'hr'].includes(item.tag) && (item.text !== undefined || (Array.isArray(item.children) && item.children.length))) return false;
-    if (item.styles !== undefined && (!record(item.styles) || !Object.entries(item.styles).every(([key, val]) => /^(--[\w-]+|[a-z][a-z-]*)$/.test(key) && safeCss(val)))) return false;
-    if (item.attributes !== undefined && (!record(item.attributes) || !Object.entries(item.attributes).every(([key, val]) => attributes.has(key) && string(val, 100_000)
-      && (key !== 'src' || /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(val))
-      && (key !== 'href' || /^#[\w-]*$/.test(val))))) return false;
-    if (item.toggleTargetId !== undefined && !identifier(item.toggleTargetId)) return false;
+    if (item.text !== undefined && !string(item.text)) return `${label}.text: must be a string of at most 20000 characters`;
+    if (item.children !== undefined) {
+      if (!Array.isArray(item.children) || item.children.length > 200) return `${label}.children: must be an array of at most 200 nodes`;
+      for (const [index, child] of item.children.entries()) {
+        const issue = node(child, depth + 1, `${path}.children[${index}]`);
+        if (issue) return issue;
+      }
+    }
+    if (item.text !== undefined && Array.isArray(item.children) && item.children.length) return `${label}: a node holds either text or children, not both`;
+    if (['img', 'input', 'br', 'hr'].includes(item.tag) && (item.text !== undefined || (Array.isArray(item.children) && item.children.length))) return `${label}: ${item.tag} cannot hold text or children`;
+    if (item.styles !== undefined) {
+      if (!record(item.styles)) return `${label}.styles: must be an object of CSS properties`;
+      for (const [key, val] of Object.entries(item.styles)) {
+        if (!/^(--[\w-]+|[a-z][a-z-]*)$/.test(key)) return `${label}.styles.${key}: property names are lowercase kebab-case or --custom`;
+        const issue = cssIssue(val);
+        if (issue) return `${label}.styles.${key}: ${issue}`;
+      }
+    }
+    if (item.attributes !== undefined) {
+      if (!record(item.attributes)) return `${label}.attributes: must be an object`;
+      for (const [key, val] of Object.entries(item.attributes)) {
+        if (!attributes.has(key)) return `${label}.attributes.${key}: attribute is not allowed; allowed attributes: ${[...designAttributes, ...designSvgAttributes].join(', ')}`;
+        if (!string(val, 100_000)) return `${label}.attributes.${key}: must be a string of at most 100000 characters`;
+        if (key === 'src' && !imageSource.test(val)) return `${label}.attributes.src: only raster data URIs are allowed (data:image/png|jpeg|webp|gif;base64,...)`;
+        if (key === 'href' && !/^#[\w-]*$/.test(val)) return `${label}.attributes.href: only in-document anchors such as "#node-id" are allowed`;
+        if ((key === 'width' || key === 'height') && !number.test(val)) return `${label}.attributes.${key}: must be a number, optionally with px or %`;
+        const pattern = svgAttributePatterns[key];
+        if (pattern && !pattern.test(val)) return `${label}.attributes.${key}: ${JSON.stringify(val.slice(0, 40))} is not an accepted value for this SVG attribute`;
+      }
+    }
+    if (item.toggleTargetId !== undefined && !identifier(item.toggleTargetId)) return `${label}.toggleTargetId: must be a node id`;
     const action = item.interaction;
-    return action === undefined || record(action) && (action.type === 'back'
+    if (action === undefined) return null;
+    const valid = record(action) && (action.type === 'back'
       || action.type === 'navigate' && identifier(action.artboardId)
       || ['toggle', 'show', 'hide', 'scroll'].includes(String(action.type)) && identifier(action.nodeId));
+    return valid ? null : `${label}.interaction: must be back, navigate with an artboardId, or toggle/show/hide/scroll with a nodeId`;
   };
   const boards = new Set<string>();
-  if (!value.artboards.every(board => record(board) && identifier(board.id) && !boards.has(board.id) && !!boards.add(board.id)
-    && string(board.title, 200) && !!board.title.trim() && typeof board.width === 'number' && Number.isInteger(board.width) && board.width >= 240 && board.width <= 3840
-    && typeof board.height === 'number' && Number.isInteger(board.height) && board.height >= 160 && board.height <= 3840
-    && (board.position === undefined || record(board.position) && [board.position.x, board.position.y].every(value => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 100000))
-    && (board.css === undefined || safeCss(board.css)) && (board.notes === undefined || string(board.notes, 4000)) && node(board.root, 0))) return false;
-  if (value.chosenArtboardId !== undefined && !boards.has(String(value.chosenArtboardId))) return false;
-  if (!value.comments.every(comment => record(comment) && identifier(comment.id) && ids.has(String(comment.nodeId)) && string(comment.text, 4000)
-    && Number.isInteger(comment.revision) && Number(comment.revision) > 0)) return false;
-  if (JSON.stringify(value).length > 500_000) return false;
-  if (value.tweaks !== undefined && !isDesignTweaks(value.tweaks, designNodes(value as DesignContent))) return false;
-  return (value as DesignContent).artboards.every(board => {
+  for (const [index, board] of value.artboards.entries()) {
+    const at = `artboards[${index}]`;
+    if (!record(board)) return `${at}: must be an object`;
+    if (!identifier(board.id)) return `${at}.id: must start with a letter and use only letters, digits, _ and -`;
+    if (boards.has(board.id)) return `${at}.id: id is used more than once`;
+    boards.add(board.id);
+    if (!string(board.title, 200) || !board.title.trim()) return `${at}.title: must be a non-empty string of at most 200 characters`;
+    if (typeof board.width !== 'number' || !Number.isInteger(board.width) || board.width < 240 || board.width > 3840) return `${at}.width: must be an integer from 240 to 3840`;
+    if (typeof board.height !== 'number' || !Number.isInteger(board.height) || board.height < 160 || board.height > 3840) return `${at}.height: must be an integer from 160 to 3840`;
+    if (board.position !== undefined && !(record(board.position) && [board.position.x, board.position.y].every(item => typeof item === 'number' && Number.isFinite(item) && Math.abs(item) <= 100000))) return `${at}.position: x and y must be numbers within 100000`;
+    if (board.css !== undefined) {
+      const issue = cssIssue(board.css);
+      if (issue) return `${at}.css: ${issue}`;
+    }
+    if (board.notes !== undefined && !string(board.notes, 4000)) return `${at}.notes: must be a string of at most 4000 characters`;
+    const issue = node(board.root, 0, `${at}.root`);
+    if (issue) return issue;
+  }
+  if (value.chosenArtboardId !== undefined && !boards.has(String(value.chosenArtboardId))) return 'chosenArtboardId: must name an artboard';
+  for (const [index, comment] of value.comments.entries()) {
+    if (!(record(comment) && identifier(comment.id) && ids.has(String(comment.nodeId)) && string(comment.text, 4000)
+      && Number.isInteger(comment.revision) && Number(comment.revision) > 0)) return `comments[${index}]: must have an id, an existing nodeId, text and a positive revision`;
+  }
+  if (JSON.stringify(value).length > 500_000) return 'the design is larger than 500000 characters; reuse shared css and smaller images';
+  if (value.tweaks !== undefined && !isDesignTweaks(value.tweaks, designNodes(value as DesignContent))) return 'tweaks: each tweak needs a unique id, a label and an existing nodeId and property';
+  for (const board of (value as DesignContent).artboards) {
     const nodes = designNodes({ ...(value as DesignContent), artboards: [board] });
     const localIds = new Set(nodes.map(item => item.id));
-    return nodes.every(item => (!item.toggleTargetId || localIds.has(item.toggleTargetId)) && (!item.interaction
-      || item.interaction.type === 'back'
-      || (item.interaction.type === 'navigate' ? boards.has(item.interaction.artboardId) : localIds.has(item.interaction.nodeId))));
-  });
+    for (const item of nodes) {
+      if (item.toggleTargetId && !localIds.has(item.toggleTargetId)) return `node ${item.id}: toggleTargetId must name a node in the same artboard`;
+      const action = item.interaction;
+      if (!action || action.type === 'back') continue;
+      if (action.type === 'navigate' ? !boards.has(action.artboardId) : !localIds.has(action.nodeId)) return `node ${item.id}: interaction targets ${action.type === 'navigate' ? 'an artboard' : 'a node in the same artboard'} that does not exist`;
+    }
+  }
+  return null;
 }
 
 export function isDesignWorkspace(value: unknown): value is DesignWorkspace {

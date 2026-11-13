@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, config, flushPromises, mount } from '@vue/test-utils';
 import { ElTooltip } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
@@ -73,6 +73,19 @@ function mountPanel(
 }
 
 describe('RightWorkspacePanel', () => {
+  it('shows each design as its own tab titled by the design', async () => {
+    const stubs = config.global.stubs;
+    config.global.stubs = { ...stubs, DesignPanel: true };
+    const wrapper = mountPanel(['review'], 'review');
+    const design = (id: string, title: string) => ({ conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: null, undo: [], checkpoints: [],
+      document: { id, revision: 1, content: { title, css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'root', tag: 'main', text: 'Hi' } }] } } });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), designWorkspaces: [design('d1', 'Launch'), design('d2', 'Second')] }, tabs: ['design:d1', 'design:d2'], activeTab: 'design:d2' });
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.attributes('aria-label'))).toStrictEqual(['Launch', 'Second']);
+    expect(wrapper.findAllComponents({ name: 'DesignPanel' })).toHaveLength(2);
+    wrapper.unmount();
+    config.global.stubs = stubs;
+  });
+
   it('offers a collapsed outline for a full Markdown document tab', async () => {
     const tab = rightWorkspaceFileTab('readme.md');
     const wrapper = mountPanel([tab], tab, {

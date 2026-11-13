@@ -12,6 +12,7 @@ export const rosterMigrations: readonly Migration[] = [
   { from: 2, to: 3, up: migrateExecutionSelections },
   { from: 3, to: 4, up: migrateRemoteTeamLinks },
   { from: 4, to: 5, up: (value: unknown) => renameProviderFields(value) },
+  { from: 5, to: 6, up: (value: unknown) => migrateDesignWorkspaces(value) },
 ];
 
 /** Settings, tasks and visualizations share one envelope version. */
@@ -62,6 +63,15 @@ export function migrateRemoteTeamLinks(value: unknown): unknown {
     const { remoteConnectionId, remoteTeamId, ...rest } = team;
     if (Array.isArray(rest.remoteLinks) || typeof remoteConnectionId !== 'string' || typeof remoteTeamId !== 'string') return rest;
     return { ...rest, remoteLinks: [{ connectionId: remoteConnectionId, remoteTeamId }] };
+  }) };
+}
+/** Frozen schema-5 agents: the one design workspace becomes the first of a list. */
+function migrateDesignWorkspaces(value: unknown): unknown {
+  if (!record(value) || !Array.isArray(value.agents)) return value;
+  return { ...value, agents: value.agents.map(agent => {
+    if (!record(agent) || !('designWorkspace' in agent)) return agent;
+    const { designWorkspace, ...rest } = agent;
+    return designWorkspace === undefined || designWorkspace === null ? rest : { ...rest, designWorkspaces: [designWorkspace] };
   }) };
 }
 function migrateExecutionSelections(value: unknown): unknown {

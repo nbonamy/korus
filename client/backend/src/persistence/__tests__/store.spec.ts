@@ -161,7 +161,7 @@ describe('AppStateStore', () => {
     expect(restored.teams.find(team => team.id === 'remote-pointer')?.remoteLinks).toStrictEqual([{ connectionId: 'connection-devbox', remoteTeamId: 'team-app' }]);
     expect(restored.agents.map(agent => agent.id)).toStrictEqual(snapshot.agents.map(agent => agent.id));
     expect(restored.activeTeamId).toBe('remote-pointer');
-    expect((await readJson('roster.json')).schemaVersion).toBe(5);
+    expect((await readJson('roster.json')).schemaVersion).toBe(6);
     expect((await readdir(file('backups'))).some(name => name.includes('roster-v3'))).toBe(true);
     await new AppStateStore(home).save(restored);
     expect((await new AppStateStore(home).load()).teams).toStrictEqual(restored.teams);

@@ -7,6 +7,8 @@ import { AgentGitService } from '../../git/agent-git-service';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
 import { product } from '@workspace/core/product';
+import { createDesignToolModuleProvider } from '../design-tools';
+import { DesignService } from '../../design-service';
 import { createMobileSimulatorToolModuleProvider } from '../mobile-simulator-tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
@@ -134,6 +136,17 @@ describe('AppMcpService', () => {
     expect(events.some(event => event.type === 'client.celebrationRequested')).toBe(false);
     const invalid = await callFinish(url, 'agent-dina', { celebration: { kind: 'stars' } });
     expect(invalid.result.isError).toBe(true);
+  });
+
+  it('offers the design skill with the allowed subset to agents that have the design tools', async () => {
+    const snapshot = createInitialSnapshot();
+    const designs = new DesignService({ snapshot, persist: async () => undefined, publish: () => undefined });
+    service = new AppMcpService({ snapshot, toolModuleProviders: [createDesignToolModuleProvider(designs)] });
+    const url = await service.start();
+    const result = (await callTool(url, snapshot.agents[0]!.id, 'read-skill', { name: 'korus-design' })).result;
+    expect(result).toMatchObject({ isError: false, structuredContent: { name: 'korus-design', loaded: true } });
+    expect(result.content[0].text).toContain('HTML tags: main, section');
+    expect(result.content[0].text).not.toMatch(/\{\{[a-zA-Z]+\}\}/);
   });
 
   it('loads bundled skills over authenticated MCP without filesystem access and rechecks feature enablement', async () => {

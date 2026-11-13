@@ -172,7 +172,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     readHistory: agent => server.readTaskHistory(agent),
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
   });
-  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: agent => server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspace: agent.designWorkspace } }) });
+  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: agent => server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspaces: agent.designWorkspaces } }) });
   const visualizeService = new VisualizeService({
     snapshot,
     generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'),

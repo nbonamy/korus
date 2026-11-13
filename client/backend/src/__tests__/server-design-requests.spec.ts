@@ -37,7 +37,7 @@ it('routes Design edits to their owning daemon, validates requests and publishes
     expect(sendPrompt).toHaveBeenCalledOnce();
     const implemented = await request({ type: 'implement', expectedRevision: 3, artboardId: 'desktop' });
     expect(implemented).toMatchObject({ result: { workspace: { selectedArtboardId: 'desktop', document: { revision: 4 } } } });
-    expect(snapshot.agents.find(agent => agent.id === 'designer')!.designWorkspace!.document!.content.chosenArtboardId).toBeUndefined();
+    expect(snapshot.agents.find(agent => agent.id === 'designer')!.designWorkspaces![0]!.document!.content.chosenArtboardId).toBeUndefined();
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
     const implementation = sendPrompt.mock.calls[1][1] as string;
     expect(implementation).toContain('Implement the selected design');

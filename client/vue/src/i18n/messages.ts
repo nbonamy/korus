@@ -27,7 +27,7 @@ export const messages = {
     design: {
       buildThis: 'Build this', sendForCoding: 'Send for coding', sentForCoding: 'Sent for coding', reviewComment: 'Comment on this proposal', buildHelp: 'Your agent will implement this direction and its linked screens using the saved design and your comments.',
       proposalComment: 'Proposal comment', commentOn: 'Comment on {title}', commentPlaceholder: 'What would you like to change?', commentAction: 'Comment',
-      title: 'Design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
+      title: 'Design', deleteTitle: 'Delete this design?', deleteConfirm: 'Its artboards, edits, comments and checkpoints will be permanently deleted. Your agent can start a new design afterwards.', deleteAction: 'Delete design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
       discardReload: 'Discard draft and reload', emptyTitle: 'Explore design ideas', emptyHelp: 'Use /design in the chat to explore ideas for a website, app, or interface. Your agent will create visual proposals here for you to compare and refine.',
       artboard: 'Artboard', zoom: 'Zoom', fit: 'Fit', undo: 'Undo', element: 'Element', text: 'Text', color: 'Text color', fill: 'Fill',
       onClick: 'On click', noInteraction: 'None', interactionTarget: 'Interaction target', action_navigate: 'Go to artboard', action_back: 'Go back', action_toggle: 'Toggle visibility', action_show: 'Show element', action_hide: 'Hide element', action_scroll: 'Scroll to element',

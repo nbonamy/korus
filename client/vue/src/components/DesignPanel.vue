@@ -143,7 +143,7 @@ import { createDesignHistory } from './design-history';
 const props = defineProps<{ agentId: string; workspace: DesignWorkspace; execute: (request: DesignRequest) => Promise<DesignResult> }>();
 const current = ref(props.workspace);
 // Undo and redo are the client's: the daemon only ever receives the content to restore.
-const history = createDesignHistory(props.agentId);
+const history = createDesignHistory(`${props.agentId}/${props.workspace.document?.id ?? 'draft'}`);
 const savedDocument = () => {
   const document = current.value.document;
   return document ? { id: document.id, revision: document.revision, content: toRaw(document.content) } : null;

@@ -766,7 +766,7 @@ export class AppBackendServer {
       resume: agent => this.agentPrompts.sendAndWaitForAcceptance(agent, 'continue', undefined, companionSessionId(agent)),
       onError: error => warnMain('auto-resume', 'could not resume conversation', { message: String(error) }),
     });
-    this.design = options.designService ?? new DesignService({ snapshot: this.snapshot, persist: async () => { await this.persistSnapshotOnly(); }, publish: agent => this.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspace: agent.designWorkspace } }) });
+    this.design = options.designService ?? new DesignService({ snapshot: this.snapshot, persist: async () => { await this.persistSnapshotOnly(); }, publish: agent => this.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspaces: agent.designWorkspaces } }) });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
       generatedImagesRoot: path.join(os.tmpdir(), 'agent-workspace-generated-images'),

@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(import.meta.url)('jsdom');
 import { createInitialSnapshot } from '../snapshot';
 import { isAppSnapshot } from '../snapshot-guards';
-import { exportDesign, isDesignContent, type DesignContent } from '../design';
+import { designContentIssue, exportDesign, isDesignContent, type DesignContent } from '../design';
 import { designTweakCss, readDesignTweak, type DesignTweak } from '../design-tweaks';
 
 // Hydration is distinct from edits: corrupted control metadata must not enter a
@@ -20,7 +20,7 @@ it('hydrates generated controls and exports their values while retaining custom 
   const values = [40, '#336699', '700', true];
   tweaks.forEach((tweak, index) => { root.styles![tweak.property] = designTweakCss(tweak, values[index]); });
   const snapshot = createInitialSnapshot();
-  snapshot.agents[0].designWorkspace = { conversationRef: null, isOpen: true, document: { id: 'design-tweaks', revision: 1, content }, selectedNodeId: null, selectedArtboardId: 'desktop', undo: [], checkpoints: [] };
+  snapshot.agents[0].designWorkspaces = [{ conversationRef: null, isOpen: true, document: { id: 'design-tweaks', revision: 1, content }, selectedNodeId: null, selectedArtboardId: 'desktop', undo: [], checkpoints: [] }];
   expect(isAppSnapshot(JSON.parse(JSON.stringify(snapshot)))).toBe(true);
   expect(tweaks.map(tweak => readDesignTweak(tweak, root))).toStrictEqual(values);
   const browser = new JSDOM(exportDesign(content));
@@ -65,7 +65,7 @@ it('hydrates an authored design and exports an isolated, interactive HTML docume
     ] },
   }] };
   const snapshot = createInitialSnapshot();
-  snapshot.agents[0].designWorkspace = { conversationRef: null, isOpen: true, document: { id: 'design-a', revision: 1, content }, selectedNodeId: 'heading', selectedArtboardId: 'desktop', undo: [content], checkpoints: [{ id: 'checkpoint-a', title: 'Safe', revision: 1, content }] };
+  snapshot.agents[0].designWorkspaces = [{ conversationRef: null, isOpen: true, document: { id: 'design-a', revision: 1, content }, selectedNodeId: 'heading', selectedArtboardId: 'desktop', undo: [content], checkpoints: [{ id: 'checkpoint-a', title: 'Safe', revision: 1, content }] }];
   expect(isAppSnapshot(JSON.parse(JSON.stringify(snapshot)))).toBe(true);
   const browser = new JSDOM(exportDesign(content), { runScripts: 'dangerously' });
   try {
@@ -99,7 +99,7 @@ it('hydrates an authored design and exports an isolated, interactive HTML docume
   ];
   for (const candidate of invalid) {
     expect(isDesignContent(candidate)).toBe(false);
-    snapshot.agents[0].designWorkspace.document!.content = candidate;
+    snapshot.agents[0].designWorkspaces![0]!.document!.content = candidate;
     expect(isAppSnapshot(snapshot)).toBe(false);
   }
 });
@@ -123,3 +123,45 @@ it('exports alternatives with independent styling and no preferred-direction lab
   } finally { page.window.close(); }
   expect(isDesignContent({ ...content, chosenArtboardId: 'missing' })).toBe(false);
 });
+
+it('renders inline SVG icons as vector elements that take their color from CSS', () => {
+  const content: DesignContent = { title: 'Icons', css: '.chip { color: #336699; }', comments: [], artboards: [{ id: 'phone', title: 'Phone', width: 390, height: 844, root: { id: 'root', tag: 'main', children: [
+    { id: 'chip', tag: 'span', attributes: { class: 'chip' }, children: [
+      { id: 'icon', tag: 'svg', attributes: { viewBox: '0 0 24 24', width: '24', height: '24', fill: 'currentColor' }, children: [
+        { id: 'shape', tag: 'path', attributes: { d: 'M12 2L22 22H2Z', 'fill-rule': 'evenodd' } },
+        { id: 'ring', tag: 'circle', attributes: { cx: '12', cy: '12', r: '4', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' } },
+      ] },
+    ] },
+    { id: 'logo', tag: 'img', attributes: { width: '32', height: '32', alt: 'Logo', src: 'data:image/png;base64,YQ==' } },
+  ] } }] };
+  expect(designContentIssue(content)).toBeNull();
+  const browser = new JSDOM(exportDesign(content));
+  try {
+    const icon = browser.window.document.querySelector('svg')!;
+    expect(icon.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(icon.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(icon.querySelector('path')!.getAttribute('d')).toBe('M12 2L22 22H2Z');
+    expect(browser.window.document.querySelector('img')!.getAttribute('width')).toBe('32');
+  } finally { browser.window.close(); }
+});
+
+// The message is the feature: it tells an agent which node broke which rule.
+const board = (root: object, extra: object = {}) => ({ title: 'T', css: '', comments: [], artboards: [{ id: 'a', title: 'A', width: 390, height: 844, root, ...extra }] });
+it.each([
+  [board({ id: 'r', tag: 'main' }, { width: 100 }), 'artboards[0].width: must be an integer from 240 to 3840'],
+  [board({ id: 'r', tag: 'main', styles: { fontSize: '12px' } }), 'artboards[0].root (r).styles.fontSize: property names are lowercase kebab-case'],
+  [board({ id: 'r', tag: 'main', styles: { color: 'url(x)' } }), 'artboards[0].root (r).styles.color: url() is not allowed'],
+  [board({ id: 'r', tag: 'main', attributes: { onclick: 'x' } }), 'artboards[0].root (r).attributes.onclick: attribute is not allowed'],
+  [board({ id: 'r', tag: 'main', attributes: { href: 'https://example.com' } }), 'attributes.href: only in-document anchors'],
+  [board({ id: 'r', tag: 'main', children: [{ id: 'p', tag: 'path', attributes: { d: 'M0 0 <script>' } }] }), 'artboards[0].root.children[0] (p).attributes.d: "M0 0 <script>" is not an accepted value'],
+  [board({ id: 'r', tag: 'main', attributes: { width: 'wide' } }), 'attributes.width: must be a number'],
+  [board({ id: 'r', tag: 'main', text: 'x', children: [{ id: 'c', tag: 'span' }] }), 'a node holds either text or children, not both'],
+  [board({ id: 'r', tag: 'img', text: 'x' }), 'img cannot hold text or children'],
+  [board({ id: 'r', tag: 'main', children: [{ id: 'r', tag: 'span' }] }), 'artboards[0].root.children[0] (r): id is used more than once'],
+  [board({ id: 'r', tag: 'main', interaction: { type: 'navigate', artboardId: 'missing' } }), 'interaction targets an artboard that does not exist'],
+  [{ ...board({ id: 'r', tag: 'main' }), comments: [{ id: 'c', nodeId: 'nope', text: 'x', revision: 1 }] }, 'comments[0]: must have an id, an existing nodeId'],
+  [{ ...board({ id: 'r', tag: 'main' }), artboards: [] }, 'artboards must hold 1 to 12 artboards'],
+])('explains why a design is rejected: %#', (content, expected) => {
+  expect(designContentIssue(content)).toContain(expected);
+});
+

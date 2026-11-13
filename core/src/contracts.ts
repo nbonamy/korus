@@ -397,7 +397,8 @@ export type Agent = {
   autoResumePending?: boolean;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
-  designWorkspace?: import('./design').DesignWorkspace;
+  /** One entry per design; an entry without a document is a design pane opened and not yet started. */
+  designWorkspaces?: import('./design').DesignWorkspace[];
   isRegistered?: boolean;
   mcpSessionId?: string;
   statusText?: string;

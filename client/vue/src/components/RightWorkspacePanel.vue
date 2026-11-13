@@ -40,7 +40,7 @@
                 >
                   <BacklogIcon v-if="tab === 'backlog'" aria-hidden="true" />
                   <IconChecklist v-if="tab === 'codeReview'" aria-hidden="true" />
-                  <IconPalette v-else-if="tab === 'design'" aria-hidden="true" />
+                  <IconPalette v-else-if="isDesignTab(tab)" aria-hidden="true" />
                   <IconSitemap v-else-if="tab === 'visualize'" aria-hidden="true" />
                   <ClockHour8Icon v-else-if="tab === 'gitLog'" aria-hidden="true" />
                   <FileDiffIcon v-else-if="tab === 'review'" aria-hidden="true" />
@@ -208,7 +208,7 @@
       @open-file="emit('previewFile', $event)"
     />
 
-    <DesignPanel v-if="tabs.includes('design')" v-show="activeTab === 'design'" :key="agent.id" :agent-id="agent.id" :workspace="agent.designWorkspace ?? emptyDesign" :execute="input => executeDesign(agent.id, input)" />
+    <DesignPanel v-for="tab in tabs.filter(isDesignTab)" :key="`${agent.id}:${tab}`" v-show="activeTab === tab" :agent-id="agent.id" :workspace="designWorkspaceFor(tab)" :execute="input => executeDesign(agent.id, input, designIdOfTab(tab))" />
     <VisualizePanel
       v-if="presentedTabs.includes('visualize') && agent.visualize"
       v-show="activeTab === 'visualize'"
@@ -436,12 +436,13 @@ import { externalBrowserUrl, openInExternalBrowser } from './browser-external';
 import CodeReviewPanel from './CodeReviewPanel.vue';
 import VisualizePanel from './VisualizePanel.vue';
 import DesignPanel from './DesignPanel.vue';
-import type { DesignRequest, DesignWorkspace } from '@workspace/core/design';
+import { designIdOfTab, designTabId, isDesignTab, type DesignRequest, type DesignWorkspace } from '@workspace/core/design';
 const emptyDesign: DesignWorkspace = { conversationRef: null, isOpen: true, document: null, selectedArtboardId: null, selectedNodeId: null, undo: [], checkpoints: [] };
-async function executeDesign(agentId: string, input: DesignRequest) {
+async function executeDesign(agentId: string, input: DesignRequest, designId?: string) {
   if (!appApi) throw new Error('Design is unavailable.');
-  return appApi.design(agentId, input);
+  return appApi.design(agentId, designId ? { ...input, designId } : input);
 }
+const designWorkspaceFor = (tab: string): DesignWorkspace => props.agent.designWorkspaces?.find(workspace => designTabId(workspace) === tab) ?? emptyDesign;
 import FileExplorerPanel from './FileExplorerPanel.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
@@ -748,7 +749,7 @@ function tabLabel(tab: RightWorkspaceTab): string {
   if (tab === 'simulator') return translate('surface.mobileSimulator.tab');
   if (tab === 'backlog') return translate('surface.rightWorkspacePanel.backlog');
   if (tab === 'codeReview') return translate('surface.rightWorkspacePanel.review');
-  if (tab === 'design') return translate('design.title');
+  if (isDesignTab(tab)) return designWorkspaceFor(tab).document?.content.title ?? translate('design.title');
   if (tab === 'visualize') return translate('surface.rightWorkspacePanel.visualize');
   if (tab === 'review') return translate('surface.rightWorkspacePanel.changes');
   if (tab === 'browser') return props.browserVisualization?.title || 'Browser';

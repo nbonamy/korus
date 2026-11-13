@@ -32,8 +32,10 @@ function readStored(agentId: string): Stored | undefined {
   } catch { return undefined; }
 }
 
+const historyKey = (agentId: string, designId?: string) => designId ? `${prefix}${agentId}/${designId}` : `${prefix}${agentId}`;
+
 /**
- * Undo and redo history of one agent's design. The daemon never sees it: it lives here and in one localStorage entry,
+ * Undo and redo history of one of an agent's designs. The daemon never sees it: it lives here and in one localStorage entry,
  * and it is dropped whenever the stored revision no longer matches the design.
  */
 export function createDesignHistory(agentId: string): DesignHistory {
@@ -112,8 +114,12 @@ export function createDesignHistory(agentId: string): DesignHistory {
 }
 
 /** Forget one design's history, for a design that no longer exists. */
-export function forgetDesignHistory(agentId: string): void {
-  try { storage()?.removeItem(prefix + agentId); } catch { /* storage unavailable */ }
+export function forgetDesignHistory(agentId: string, designId?: string): void {
+  const store = storage();
+  if (!store) return;
+  try {
+    for (const key of Object.keys(store)) if (key === historyKey(agentId, designId) || (designId === undefined && key.startsWith(`${prefix}${agentId}`))) store.removeItem(key);
+  } catch { /* storage unavailable */ }
 }
 
 /** Drop the history of every agent not in `liveAgentIds`, including ones removed while the app was closed. */
@@ -121,6 +127,6 @@ export function pruneDesignHistory(liveAgentIds: ReadonlySet<string>): void {
   const store = storage();
   if (!store) return;
   try {
-    for (const key of Object.keys(store)) if (key.startsWith(prefix) && !liveAgentIds.has(key.slice(prefix.length))) store.removeItem(key);
+    for (const key of Object.keys(store)) if (key.startsWith(prefix) && !liveAgentIds.has(key.slice(prefix.length).split('/')[0]!)) store.removeItem(key);
   } catch { /* storage unavailable */ }
 }
