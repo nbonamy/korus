@@ -1221,7 +1221,10 @@ describe('AppShell dialogs and commands', () => {
       expect(loading()).toStrictEqual([]);
       expect(wrapper.findAll('.project-progress__step').map(step => step.attributes('data-state'))).toStrictEqual(['done', 'done', 'done', 'active']);
       expect(wrapper.find('.project-narrative__lead').exists()).toBe(false);
+      // Until the narrative names its workstreams, all work is other work.
+      expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Other work']);
       await vi.advanceTimersByTimeAsync(4_000);
+      expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Search engine', 'Export pipeline', 'Other work']);
       expect(wrapper.get('.project-narrative__lead strong').text()).toBe('agent-workspace');
       expect(wrapper.find('.project-progress').exists()).toBe(false);
     } finally { wrapper.unmount(); vi.useRealTimers(); }

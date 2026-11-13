@@ -50,15 +50,18 @@ function sample(name: string, now: number): ProjectOverview {
 function at(full: ProjectOverview, elapsed: number, narrativeWritten: boolean): ProjectOverview {
   const sources: ProjectOverviewSources = { ...full.sources };
   for (const source of outer) if (elapsed < lands[source]) sources[source] = 'loading';
+  // Work is tied to workstreams only once a narrative names them, as the daemon does.
+  const unnamed = (marks: ProjectFlowStation['marks']) => marks.length ? [{ workstreamId: null, units: marks.reduce((sum, mark) => sum + mark.units, 0) }] : [];
   return {
     ...full,
     sources,
     narrative: narrativeWritten ? full.narrative : { status: 'missing' },
     flow: {
       ...full.flow,
+      links: narrativeWritten ? full.flow.links : full.flow.links.map(link => ({ ...link, tokens: link.tokens.map(() => null) })),
       stations: full.flow.stations.map(station => waitsOn[station.kind].some(source => sources[source] === 'loading')
         ? { ...station, status: 'loading', count: null, note: null, marks: [], stuck: [] }
-        : station),
+        : narrativeWritten ? station : { ...station, marks: unnamed(station.marks) }),
     },
   };
 }
