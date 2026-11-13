@@ -5,15 +5,17 @@ import type { AgentGitLogCommit, AgentGitLogCommitInput, AgentGitLogDetails, Age
 
 const exec = promisify(execFile);
 const format = '%H%x00%s%x00%an%x00%aI';
+// A list record starts at a marker byte so the shortstat text that follows it stays with its commit.
+const listFormat = '%x01%H%x00%s%x00%an%x00%aI%x00';
 const shaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const maxFiles = 500;
 
 /** Read-only history, pinned to the owning worktree's HEAD. Git output and time are bounded. */
 export class AgentGitHistoryService {
-  private async git(folder: string, args: string[]): Promise<string> {
+  private async git(folder: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<string> {
     const { stdout } = await exec('git', ['--no-pager', ...args], {
       cwd: folder, encoding: 'utf8', timeout: 15_000, maxBuffer: 2 * 1024 * 1024,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1' },
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1', ...env },
     });
     return stdout;
   }
@@ -38,14 +40,21 @@ export class AgentGitHistoryService {
       this.requireSha(input.cursor.head);
     }
     if (!scope.head) return { ...scope, commits: [] };
-    const raw = await this.git(folder, ['log', '--no-show-signature', '--date-order', `--max-count=${limit + 1}`, `--skip=${offset}`, `--format=${format}`, '-z',
-      ...(search ? ['--fixed-strings', '--regexp-ignore-case', `--grep=${search}`] : []), scope.head, '--']);
-    const fields = raw.split('\0');
+    const grep = search ? ['--fixed-strings', '--regexp-ignore-case', `--grep=${search}`] : [];
+    const log = (withStats: boolean) => this.git(folder, ['log', '--no-show-signature', '--date-order', `--max-count=${limit + 1}`, `--skip=${offset}`, ...(withStats ? ['--shortstat'] : []), `--format=${listFormat}`, ...grep, scope.head!, '--'],
+      // The shortstat summary is English text, so the locale is pinned.
+      withStats ? { LC_ALL: 'C', LANGUAGE: 'C' } : {});
+    // Line counts ride on the same git call as the list; if counting fails, the list is still returned without them.
+    const raw = await log(true).catch(() => log(false));
     const commits: AgentGitLogCommit[] = [];
-    for (let index = 0; index + 3 < fields.length; index += 4) {
-      commits.push({ sha: fields[index]!, subject: fields[index + 1]!, author: fields[index + 2]!, date: fields[index + 3]! });
+    for (const record of raw.split('\u0001').slice(1)) {
+      const [sha, subject, author, date, tail = ''] = record.split('\0');
+      const summary = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/u.exec(tail);
+      commits.push({ sha: sha!, subject: subject!, author: author!, date: date!,
+        ...(summary ? { stats: { files: Number(summary[1]), additions: Number(summary[2] ?? 0), deletions: Number(summary[3] ?? 0) } } : {}) });
     }
-    return { ...scope, commits: commits.slice(0, limit), ...(commits.length > limit ? { nextCursor: { head: scope.head, offset: offset + limit, search } } : {}) };
+    const page = commits.slice(0, limit);
+    return { ...scope, commits: page, ...(commits.length > limit ? { nextCursor: { head: scope.head, offset: offset + limit, search } } : {}) };
   }
 
   private requireSha(sha: unknown): asserts sha is string {

@@ -195,11 +195,14 @@ export type AgentGitLogInput = {
   limit?: number;
   cursor?: { head: string; offset: number; search: string };
 };
+/** What a commit changed, for its line in the history. Absent when git reports no diff (merges) or could not be asked. */
+export type AgentGitLogStats = { files: number; additions: number; deletions: number };
 export type AgentGitLogCommit = {
   sha: string;
   subject: string;
   author: string;
   date: string;
+  stats?: AgentGitLogStats;
 };
 export type AgentGitLogPage = {
   repository: string;

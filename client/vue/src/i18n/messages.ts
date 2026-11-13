@@ -152,7 +152,7 @@ export const messages = {
       fileError: 'Unable to load this file diff. The branch may have changed or the diff may be too large.',
       retry: 'Retry', copy: 'Copy commit hash', copied: 'Copied', copyError: 'Unable to copy the commit hash.',
       files: 'Changed files', noFiles: 'No changed files.', binary: 'Binary', viewFile: 'View changes in {path}',
-      filesTruncated: 'Showing the first 500 changed files.',
+      filesTruncated: 'Showing the first 500 changed files.', filesChanged: '{count} file changed | {count} files changed',
     },
     planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with choices and section comments before approving implementation.' },
     planFeedback: { diagram: 'Diagram {number}: {title}', commentDiagram: 'Comment on diagram {number}: {title}', deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', discardTitle: 'Discard your annotations?', discardMessage: '{count} annotation has not been sent for revision. Approving now discards it. | {count} annotations have not been sent for revision. Approving now discards them.', approveAnyway: 'Approve anyway', goBack: 'Go back', edit: 'Edit comment', remove: 'Remove comment', proposed: 'proposed', clear: 'Reset', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
