@@ -57,3 +57,6 @@ server/backend/dist/
 client/cli/dist/
 
 .sdk-typecheck-*/
+
+# Claude Code local settings
+.claude/settings.local.json
