@@ -226,7 +226,7 @@
         </header>
 
         <div class="agent-sidebar__group-rows">
-          <div v-if="group.kind === 'repository' && !phoneScope && !featureOnly" class="agent-sidebar__agent-row">
+          <div v-if="group.kind === 'repository' && projectFlowEnabled && !phoneScope && !featureOnly" class="agent-sidebar__agent-row">
             <button
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__overview-entry"
@@ -387,6 +387,7 @@ const {
   quickChatGroup,
   phoneScope,
   featureOnly,
+  projectFlowEnabled,
   missions,
   missionCreationPending,
   missionCreationError,

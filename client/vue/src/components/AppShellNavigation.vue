@@ -45,6 +45,7 @@
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
       :active-agent-id="activeMissionId || activeOverviewAgentId ? null : currentAgent?.id ?? null"
       :active-overview-agent-id="activeOverviewAgentId ?? null"
+      :project-flow-enabled="projectFlowEnabled"
       :missions="teamMissions"
       :active-mission-id="activeMissionId"
       :mission-creation-error="missionCreationError"
@@ -147,6 +148,7 @@ type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: st
 const props = defineProps<{
   activeMissionId?: string | null;
   activeOverviewAgentId?: string | null;
+  projectFlowEnabled?: boolean;
   missionCreationError?: string;
   missionCreationPending?: boolean;
   phoneScope?: boolean;

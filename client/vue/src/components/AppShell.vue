@@ -76,6 +76,7 @@
       ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
       :active-overview-agent-id="overviewVisible ? overviewAgentId : null"
+      :project-flow-enabled="projectFlowEnabled"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
@@ -2662,6 +2663,7 @@ const overviewActivityKey = computed(() => props.snapshot.agents.map(agent => `$
 // Debug → UI Previews → Flow Initialization: the page on scripted reads, so every loading state can be seen.
 const overviewPreview = shallowRef<{ id: string; reads: ProjectOverviewReads } | null>(null);
 function openProjectOverview(agentId: string): void {
+  if (!projectFlowEnabled.value) return;
   overviewPreview.value = null;
   overviewAgentId.value = agentId;
   activeSurface.value = 'overview';
@@ -2674,6 +2676,9 @@ function previewFlowInitialization(): void {
   activeSurface.value = 'overview';
 }
 watch(overviewVisible, (visible) => { if (!visible) overviewPreview.value = null; });
+// Switching Flow off closes a Flow page that is open; the Debug preview reads nothing and stays available.
+const projectFlowEnabled = computed(() => props.snapshot.general.projectFlowEnabled === true);
+watch(projectFlowEnabled, (enabled) => { if (!enabled && overviewVisible.value && !overviewPreview.value) activeSurface.value = 'agent'; });
 watch(() => overviewVisible.value && !overviewPreview.value && !props.snapshot.agents.some(agent => agent.id === overviewAgentId.value), (gone) => {
   if (gone) activeSurface.value = 'agent';
 });

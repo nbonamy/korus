@@ -86,6 +86,25 @@ describe('SettingsView', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('offers Flow as a Projects setting that is off until switched on, and saves both directions', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'projects', settings: defaultThemeSettings, generalSettings: { ...defaultGeneralSettings, projectFlowEnabled: undefined }, updateSettings,
+    }, global: { components: { ElSwitch } } });
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Projects');
+    const toggle = () => wrapper.get('[role="switch"][aria-label="Flow"]');
+    expect(toggle().attributes('aria-checked')).toBe('false');
+    expect(wrapper.text()).toContain('Add a Flow page to each project in the sidebar');
+    await toggle().trigger('click'); await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { projectFlowEnabled: true } });
+    await wrapper.setProps({ generalSettings: { ...defaultGeneralSettings, projectFlowEnabled: true } });
+    expect(toggle().attributes('aria-checked')).toBe('true');
+    await toggle().trigger('click'); await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith({ general: { projectFlowEnabled: false } });
+    wrapper.unmount();
+  });
+
   it('keeps Cursor steering fallback off by default and saves both toggle directions', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsView, { props: {
@@ -494,6 +513,7 @@ describe('SettingsView', () => {
       'Claude Code',
       'Skills',
       'Plugins',
+      'Projects',
       'Git',
       'Workflows',
       'Integrations',
@@ -506,6 +526,7 @@ describe('SettingsView', () => {
     const menuItems = wrapper.findAll('.el-menu-item');
     expect(menuItems.find(item => item.text() === 'Dictation')!.find('.tabler-icon-microphone').exists()).toBe(true);
     expect(menuItems.find(item => item.text() === 'Voice')!.find('.tabler-icon-volume').exists()).toBe(true);
+    expect(menuItems.find(item => item.text() === 'Projects')!.find('.tabler-icon-folders').exists()).toBe(true);
     for (const label of ['Codex', 'Claude Code']) {
       const item = menuItems.find((item) => item.text() === label)!;
       const icon = item.get('.backend-icon');

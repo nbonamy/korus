@@ -54,6 +54,7 @@ describe('AppShell on a compact viewport', () => {
 
   it('keeps an open project overview in a narrow window instead of returning to a conversation', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.general.projectFlowEnabled = true;
     const agent = snapshot.agents[0]!;
     agent.folder = '/work/korus';
     agent.workspace = { kind: 'git', folder: '/work/korus', repositoryName: 'korus', repositoryRoot: '/work/korus', primaryWorktreeRoot: '/work/korus', branch: 'main', isLinkedWorktree: false, updatedAt: '2026-11-11T00:00:00Z' };

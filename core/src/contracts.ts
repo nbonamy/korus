@@ -521,6 +521,8 @@ export type SavedPromptDraft = {
 
 export type AppGeneralSettings = {
   excludeLockfilesFromDiffs?: boolean;
+  /** Shows a Flow page for each project; off unless switched on. */
+  projectFlowEnabled?: boolean;
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
   pullRequestInstructions: string;

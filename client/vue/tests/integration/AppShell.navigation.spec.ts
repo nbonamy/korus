@@ -90,6 +90,7 @@ describe('AppShell navigation and teams', () => {
 
   it('opens the project overview from its pinned repository entry beside the sidebar and leaves it when an agent is selected', async () => {
     const snapshot = createInitialSnapshot();
+    snapshot.general.projectFlowEnabled = true;
     const agent = snapshot.agents[0]!;
     agent.folder = '/work/korus';
     agent.workspace = { kind: 'git', folder: '/work/korus', repositoryName: 'korus', repositoryRoot: '/work/korus', primaryWorktreeRoot: '/work/korus', branch: 'main', isLinkedWorktree: false, updatedAt: '2026-11-11T00:00:00Z' };
@@ -126,6 +127,15 @@ describe('AppShell navigation and teams', () => {
 
     await wrapper.get('[data-group-kind="repository"] .agent-sidebar__repository-agent').trigger('click');
     expect(wrapper.find('.project-overview').exists()).toBe(false);
+
+    // Switching Flow off removes its entries and closes an open Flow page.
+    await overviewEntry().trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.project-overview').exists()).toBe(true);
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, projectFlowEnabled: false } } });
+    await flushPromises();
+    expect(wrapper.find('.project-overview').exists()).toBe(false);
+    expect(wrapper.find('[data-entry="project-overview"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

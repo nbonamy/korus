@@ -1044,6 +1044,9 @@ it('offers repository deletion, and only that, from the repository header contex
 it('pins a project overview entry first in each repository, above its branches, and marks it while open', async () => {
   const wrapper = mount(AgentSidebar, { props: { agents: [agents[0]!], activeAgentId: agents[0]!.id, teamName: 'Team' } });
   const group = () => wrapper.get('[data-group-kind="repository"]');
+  // Flow is off until it is switched on in Settings.
+  expect(group().find('[data-entry="project-overview"]').exists()).toBe(false);
+  await wrapper.setProps({ projectFlowEnabled: true });
   const entry = () => group().get('[data-entry="project-overview"]');
   const agentRow = () => group().get('.agent-sidebar__agent');
   // First in the repository's rows, before its branches.

@@ -1176,6 +1176,7 @@ export const surfaceMessages = {
     "plugins": "Plugins",
     "integrations": "Integrations",
     "connections": "Connections",
+    "projects": "Projects",
     "voice": "Voice",
     "groupApp": "App",
     "groupAgents": "Agents",
@@ -1187,6 +1188,12 @@ export const surfaceMessages = {
     "browser": "Browser", "extensions": "Extensions",
     "profileHint": "All agents share the same browser accounts, extensions and preferences. Official extension updates may temporarily break compatibility.",
     "disabled": "Disabled", "notInstalled": "Not installed", "install": "Install", "update": "Update", "enable": "Enable", "disable": "Disable", "remove": "Remove", "reinstall": "Reinstall", "installing": "Installing…"
+  },
+  "settingsProjectsPanel": {
+    "introTitle": "See where each project is going",
+    "introDescription": "Settings for the projects in your sidebar.",
+    "flow": "Flow",
+    "flowDescription": "Add a Flow page to each project in the sidebar: a short narrative of its workstreams and where its work sits, from Backlog to Shipped. It reads the repository and connected tools, and an agent's engine writes the narrative."
   },
   "settingsVoicePanel": {
     "whenToSpeak": "When to speak",

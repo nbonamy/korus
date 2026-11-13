@@ -10,6 +10,8 @@ export interface AgentSidebarProps {
   activeAgentId: string | null;
   /** The agent a project overview was opened from, while that overview is showing. */
   activeOverviewAgentId?: string | null;
+  /** Each repository shows its Flow entry only when Flow is switched on in Settings. */
+  projectFlowEnabled?: boolean;
   unreadAgentIds?: string[];
   forkableAgentIds?: string[];
   summaryReplacementAgentIds?: string[];

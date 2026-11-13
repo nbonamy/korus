@@ -35,6 +35,18 @@ describe('settings contracts', () => {
     expect(invalid.preferredProviders).toBeUndefined();
     expect(invalid.gitMergeCleanup).toBeUndefined();
   });
+  it('keeps Flow off unless it is switched on, and keeps the choice across a save', () => {
+    expect(defaultGeneralSettings.projectFlowEnabled).toBe(false);
+    for (const value of [undefined, 'true', 1, {}, null]) {
+      expect(normalizeGeneralSettings({ projectFlowEnabled: value }).projectFlowEnabled).toBe(false);
+    }
+    const snapshot = createEmptySnapshot();
+    for (const enabled of [true, false]) {
+      updateSettingsInSnapshot(snapshot, { general: { projectFlowEnabled: enabled } });
+      expect(normalizeGeneralSettings(JSON.parse(JSON.stringify(snapshot.general))).projectFlowEnabled).toBe(enabled);
+    }
+  });
+
   it('keeps Cursor steering fallback off unless explicitly enabled and preserves the normalized setting roundtrip', () => {
     expect(defaultGeneralSettings.cursorSteeringFallbackEnabled).toBe(false);
     for (const value of [undefined, 'true', 1, {}, null]) {
@@ -135,6 +147,7 @@ describe('settings contracts', () => {
     })).toStrictEqual({
       git: { pull: 'git-config', update: 'merge' },
       excludeLockfilesFromDiffs: false,
+      projectFlowEnabled: false,
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
@@ -247,6 +260,7 @@ describe('settings contracts', () => {
     expect(snapshot.general).toStrictEqual({
       git: { pull: 'git-config', update: 'merge' },
       excludeLockfilesFromDiffs: false,
+      projectFlowEnabled: false,
       commitMessageInstructions: '',
       pullRequestInstructions: '',
       codeReviewInstructions: '',
