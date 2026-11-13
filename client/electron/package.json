@@ -1,6 +1,6 @@
 {
   "name": "@workspace/electron",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "private": true,
   "description": "Native Codex team desktop app.",
   "main": ".vite/build/main.js",
@@ -28,9 +28,9 @@
   "dependencies": {
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
-    "@korus-dev/agent-ui-sdk": "0.27.1",
-    "@workspace/core": "0.56.0",
-    "@workspace/vue": "0.56.0",
+    "@korus-dev/agent-ui-sdk": "0.27.2",
+    "@workspace/core": "0.57.0",
+    "@workspace/vue": "0.57.0",
     "autolib": "github:nbonamy/witsy-autolib#v1.2.4",
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",
