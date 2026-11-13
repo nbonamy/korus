@@ -2,7 +2,9 @@ import { product } from '@workspace/core/product';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { AgentDesktopBackend, createAgentDesktopRunner } from './agent-desktop-backend';
 
 const helperAppName = `${product.name} Computer Use.app`;
 const helperExecutableName = 'computer-use-pilot';
@@ -70,12 +72,27 @@ export type ComputerUseOptions = {
 };
 
 let livePilot: PersistentPilot | null = null;
+let liveAgentDesktop: { binary: string; backend: AgentDesktopBackend } | null = null;
 
 export async function getComputerUseStatus(options: ComputerUseOptions): Promise<ComputerUseStatus> {
   if (options.platform !== 'darwin') {
     return unavailableStatus(options, 'Computer Use is currently available only on macOS.');
   }
 
+  const agentDesktop = resolveAgentDesktopPath(options);
+  if (agentDesktop) {
+    const response = await executeComputerUseCommand({ command: 'status', arguments: {}, options });
+    if (!response.ok) return unavailableStatus(options, response.error, undefined, agentDesktop);
+    const result = record(response.result);
+    return {
+      accessibilityTrusted: result?.accessibilityTrusted === true,
+      screenCaptureTrusted: result?.screenCaptureTrusted === true,
+      available: true,
+      helperPath: agentDesktop,
+      ...(typeof result?.version === 'string' ? { helperVersion: result.version } : {}),
+      platform: options.platform,
+    };
+  }
   const helperPath = resolveComputerUsePilotPath(options);
   if (!helperPath) {
     return unavailableStatus(options, 'Computer Use helper is not built. Run npm run build:computer-use.', resolveComputerUseHelperAppPath(options));
@@ -125,6 +142,9 @@ export async function executeComputerUseCommand(input: {
     return failure('tool_unavailable', 'Computer Use is currently available only on macOS.');
   }
 
+  const agentDesktop = resolveAgentDesktopPath(input.options);
+  if (agentDesktop) return agentDesktopBackend(agentDesktop, resolveCursorImagePath(input.options)).execute(input.command, input.arguments);
+
   const pilotPath = resolveComputerUsePilotPath(input.options);
   if (!pilotPath) {
     return failure('tool_unavailable', 'Computer Use helper is not built. Run npm run build:computer-use.');
@@ -145,6 +165,38 @@ export async function executeComputerUseCommand(input: {
 export function stopComputerUseHelper(): void {
   livePilot?.stop();
   livePilot = null;
+  void liveAgentDesktop?.backend.stop();
+  liveAgentDesktop = null;
+}
+
+function agentDesktopBackend(binary: string, cursorImage?: string): AgentDesktopBackend {
+  if (!liveAgentDesktop || liveAgentDesktop.binary !== binary) {
+    liveAgentDesktop = { binary, backend: new AgentDesktopBackend(createAgentDesktopRunner(binary, path.join(os.homedir(), `.${product.slug}`, 'agent-desktop')), undefined, cursorImage) };
+  }
+  return liveAgentDesktop.backend;
+}
+
+function resolveCursorImagePath(options: ComputerUseOptions): string | undefined {
+  const name = 'computer-use-cursor.png';
+  return [
+    options.isPackaged ? path.join(options.resourcesPath, name) : undefined,
+    path.resolve(options.appPath, 'assets', name),
+    path.resolve(process.cwd(), 'assets', name),
+    path.resolve(process.cwd(), 'electron', 'assets', name),
+  ].find((candidate): candidate is string => candidate !== undefined && fs.existsSync(candidate));
+}
+
+/** agent-desktop wins whenever it is installed, so removing the binary reverts to the pilot. */
+export function resolveAgentDesktopPath(options: ComputerUseOptions): string | null {
+  if (options.platform !== 'darwin' || options.pilotPath) return null;
+  const candidates = [
+    process.env.APP_AGENT_DESKTOP_PATH,
+    options.isPackaged ? path.join(options.resourcesPath, 'agent-desktop', 'agent-desktop') : undefined,
+    path.resolve(options.appPath, '.computer-use', 'agent-desktop', 'agent-desktop'),
+    path.resolve(process.cwd(), '.computer-use', 'agent-desktop', 'agent-desktop'),
+    path.resolve(process.cwd(), 'electron', '.computer-use', 'agent-desktop', 'agent-desktop'),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  return candidates.find(isExecutable) ?? null;
 }
 
 export function isComputerUseCommand(value: unknown): value is ComputerUseCommand {
