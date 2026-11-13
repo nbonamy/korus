@@ -15,7 +15,7 @@ for (const scenario of ['missing providers', 'wrong version', 'invalid provider 
         require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
           const { id } = JSON.parse(line);
           const result = id === 1 ? { ok: true, version: ${JSON.stringify(scenario === 'wrong version' ? 'old' : '1.2.3')} }
-            : ${scenario === 'invalid provider status' ? '{}' : JSON.stringify(['codex', 'claude'].map(backend => ({ backend, installed: scenario === 'bundled Claude available' && backend === 'claude' })))};
+            : ${scenario === 'invalid provider status' ? '{}' : JSON.stringify(['codex', 'claude'].map(provider => ({ provider, installed: scenario === 'bundled Claude available' && provider === 'claude' })))};
           process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
         });
       `);

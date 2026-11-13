@@ -40,10 +40,10 @@ export function checkPackagedDaemon(node, daemon, env, version, { requireClaude 
             throw new Error('Incorrect packaged daemon health/version.');
           }
           if (reply.id === 2 && (!Array.isArray(reply.result)
-            || !['codex', 'claude'].every(backend => reply.result.some(provider => provider.backend === backend && typeof provider.installed === 'boolean')))) {
+            || !['codex', 'claude'].every(id => reply.result.some(provider => provider.provider === id && typeof provider.installed === 'boolean')))) {
             throw new Error('Packaged daemon did not return provider detection status.');
           }
-          if (reply.id === 2 && requireClaude && !reply.result.some(provider => provider.backend === 'claude' && provider.installed === true)) {
+          if (reply.id === 2 && requireClaude && !reply.result.some(provider => provider.provider === 'claude' && provider.installed === true)) {
             throw new Error('Packaged Claude runtime was not detected.');
           }
           pending.delete(reply.id);
