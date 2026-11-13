@@ -155,7 +155,7 @@ await writeFile(
           "A harness orchestrator for Codex, Claude Code, Cursor, and Antigravity.",
         applicationCategory: "DeveloperApplication",
         operatingSystem: ["macOS", "Windows", "Linux"],
-        image: `${product.websiteUrl}/assets/og.png?v=mark-2`,
+        image: `${product.websiteUrl}/assets/og.png?v=og-3`,
         sameAs: [`https://github.com/${product.releaseRepository}`],
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       }).replaceAll("<", "\\u003c"),
