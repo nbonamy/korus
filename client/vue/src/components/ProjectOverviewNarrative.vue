@@ -19,6 +19,7 @@
         <span v-if="writing" role="status" class="project-narrative__updating">{{ t('projectOverview.narrative.updating') }}</span>
       </p>
     </template>
+    <ProjectOverviewProgress v-else-if="state.status !== 'unavailable'" :read="{ sources, lookback }" />
     <p v-else class="project-narrative__empty" role="status">{{ t(emptyKey) }}</p>
   </section>
 </template>
@@ -26,9 +27,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ProjectNarrativeState, ProjectOverviewLookback } from '@workspace/core/project-overview';
+import type { ProjectNarrativeState, ProjectOverviewLookback, ProjectOverviewSources } from '@workspace/core/project-overview';
 import { formatCompactAge } from '../shared/compact-age';
 import { projectMarkClass } from './project-overview-presentation';
+import ProjectOverviewProgress from './ProjectOverviewProgress.vue';
 
 const props = defineProps<{
   state: ProjectNarrativeState;
@@ -37,6 +39,8 @@ const props = defineProps<{
   repositoryOnly: boolean;
   /** The period the narrative was written from, chosen by the daemon from the project's activity. */
   lookback: ProjectOverviewLookback;
+  /** What was reached while reading, named while the narrative is first written. */
+  sources: ProjectOverviewSources;
   now: number;
 }>();
 const { t } = useI18n();
@@ -50,9 +54,10 @@ const period = computed(() => props.lookback.days === null
   ? t('projectOverview.narrative.periodAll', { date: new Date(props.lookback.since).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) })
   : t('projectOverview.narrative.periodDays', { days: props.lookback.days }));
 const age = computed(() => formatCompactAge(narrative.value?.writtenAt, props.now, t('projectOverview.justNow')));
-const emptyKey = computed(() => props.state.status !== 'unavailable' ? 'projectOverview.narrative.writing'
-  : props.state.reason === 'noEngine' ? 'projectOverview.narrative.noEngine'
-    : props.state.reason === 'quiet' ? 'projectOverview.narrative.quiet' : 'projectOverview.narrative.failed');
+const emptyKey = computed(() => {
+  const reason = props.state.status === 'unavailable' ? props.state.reason : null;
+  return reason === 'noEngine' ? 'projectOverview.narrative.noEngine' : reason === 'quiet' ? 'projectOverview.narrative.quiet' : 'projectOverview.narrative.failed';
+});
 </script>
 
 <style scoped>

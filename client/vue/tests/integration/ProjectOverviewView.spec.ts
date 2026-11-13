@@ -60,6 +60,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const progress = (root: { findAll: ReturnType<typeof mount>['findAll'] }) => root.findAll('.project-progress__step').map(step => [step.attributes('data-state'), step.text()]);
 const station = (wrapper: ReturnType<typeof mount>, kind: string) => wrapper.get(`[data-station="${kind}"]`);
 const mountView = (agentId = 'agent-1') => mount(ProjectOverviewView, { props: { agentId, activityKey: 'a' }, attachTo: document.body });
 
@@ -72,8 +73,18 @@ describe('project overview page', () => {
     const refreshProjectNarrative = vi.fn();
     setElectronTestClient({ getProjectOverview, refreshProjectNarrative });
     const wrapper = mountView();
-    expect(wrapper.get('[role="status"]').text()).toBe('Reading the project…');
+    // While the project is read, the page says what is being read and connected, all at once.
+    expect(wrapper.get('[aria-label="Flow"]').attributes('aria-busy')).toBe('true');
+    expect(progress(wrapper)).toStrictEqual([
+      ['active', 'Reading the git history'],
+      ['active', 'Connecting to issues, reviews and CI'],
+      ['active', 'Mapping where the work is'],
+      ['pending', 'Writing the narrative'],
+    ]);
+    expect(wrapper.find('.project-progress__conveyor').exists()).toBe(true);
     await flushPromises();
+    expect(wrapper.get('[aria-label="Flow"]').attributes('aria-busy')).toBe('false');
+    expect(wrapper.find('.project-progress').exists()).toBe(false);
 
     expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith('agent-1');
     expect(refreshProjectNarrative).not.toHaveBeenCalled();
@@ -115,7 +126,13 @@ describe('project overview page', () => {
     const wrapper = mountView();
     await flushPromises();
 
-    expect(wrapper.get('[aria-label="Narrative"]').text()).toBe('Writing the narrative…');
+    // What was read is ticked off with what it found; the narrative is the one step still running.
+    expect(progress(wrapper.get('[aria-label="Narrative"]'))).toStrictEqual([
+      ['done', 'Read the last 90 days of history'],
+      ['done', 'Connected to issues, reviews and CI'],
+      ['done', 'Mapped where the work is'],
+      ['active', 'Writing the narrative'],
+    ]);
     expect(station(wrapper, 'backlog').text()).toContain('47');
     expect(refreshProjectNarrative).toHaveBeenCalledExactlyOnceWith('agent-1');
 
@@ -156,6 +173,30 @@ describe('project overview page', () => {
     wrapper.unmount();
   });
 
+  it('names only the sources it reached while the narrative is written, and the whole history when it read all of it', async () => {
+    setElectronTestClient({
+      getProjectOverview: vi.fn(async () => overview({
+        lookback: { days: null, since: '2024-05-25T12:00:00.000Z' },
+        sources: { git: 'available', backlog: 'available', pullRequests: 'notConnected', pipelines: 'failed' },
+        narrative: { status: 'missing' },
+      })),
+      refreshProjectNarrative: vi.fn(() => new Promise<ProjectOverview>(() => {})),
+    });
+    const partial = mountView();
+    await flushPromises();
+    expect(progress(partial).map(([, text]) => text).slice(0, 2)).toStrictEqual(['Read the whole history', 'Connected to issues']);
+    partial.unmount();
+
+    setElectronTestClient({
+      getProjectOverview: vi.fn(async () => overview({ sources: { git: 'available', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' }, narrative: { status: 'missing' } })),
+      refreshProjectNarrative: vi.fn(() => new Promise<ProjectOverview>(() => {})),
+    });
+    const alone = mountView();
+    await flushPromises();
+    expect(progress(alone)[1]).toStrictEqual(['done', 'Repository only: no issues, reviews or CI connected']);
+    alone.unmount();
+  });
+
   it('draws unconnected stations dashed and says the narrative comes from the repository alone', async () => {
     const base = overview();
     setElectronTestClient({ getProjectOverview: vi.fn(async () => overview({
@@ -184,7 +225,7 @@ describe('project overview page', () => {
     setElectronTestClient({ getProjectOverview: vi.fn(async () => { throw new Error('Agent not found'); }), refreshProjectNarrative: vi.fn() });
     const failed = mountView();
     await flushPromises();
-    expect(failed.get('[role="alert"]').text()).toBe('The project overview could not be read. It will be tried again shortly.');
+    expect(failed.get('[role="alert"]').text()).toBe('The flow could not be read. It will be tried again shortly.');
     failed.unmount();
 
     setElectronTestClient({ getProjectOverview: vi.fn(async () => overview({ sources: { git: 'unavailable', backlog: 'notConnected', pullRequests: 'notConnected', pipelines: 'notConnected' }, narrative: { status: 'unavailable', reason: 'quiet' } })), refreshProjectNarrative: vi.fn() });

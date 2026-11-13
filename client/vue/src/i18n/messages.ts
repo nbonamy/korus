@@ -110,11 +110,11 @@ export const messages = {
       copyFailed: 'The link is saved, but copying failed. Try Copy link again.',
     },
     projectOverview: {
-      open: 'Project overview', loading: 'Reading the project…', failed: 'The project overview could not be read. It will be tried again shortly.',
+      open: 'Flow', failed: 'The flow could not be read. It will be tried again shortly.',
       noRepository: 'This folder has no Git repository to read.', justNow: 'just now',
       live: 'Live · updated {age}', liveAgo: 'Live · updated {age} ago', repositoryOnly: 'repository only',
       narrative: {
-        heading: 'Narrative', writing: 'Writing the narrative…', updating: 'updating',
+        heading: 'Narrative', updating: 'updating',
         noEngine: 'No connected engine here can write the narrative.',
         failed: 'The narrative could not be written. It will be tried again later.',
         quiet: 'This repository has no history to write about yet.',
@@ -123,6 +123,14 @@ export const messages = {
         basis: 'From {basis}',
         writtenBy: 'Written by {engine} from the code and its issues · {age}',
         writtenByCode: 'Written by {engine} from the code alone · {age}',
+      },
+      progress: {
+        label: 'Reading the project',
+        history: 'Reading the git history', historyDays: 'Read the last {days} days of history', historyAll: 'Read the whole history',
+        sourcesActive: 'Connecting to issues, reviews and CI', connectedOne: 'Connected to {a}', connectedTwo: 'Connected to {a} and {b}', connectedThree: 'Connected to {a}, {b} and {c}',
+        repositoryOnly: 'Repository only: no issues, reviews or CI connected',
+        sources: { backlog: 'issues', pullRequests: 'reviews', pipelines: 'CI' },
+        flow: 'Mapping where the work is', flowDone: 'Mapped where the work is', narrative: 'Writing the narrative',
       },
       states: { starting: 'Starting', moving: 'Moving', settling: 'Settling', recurring: 'Recurring', waiting: 'Waiting', stalled: 'Stalled' },
       flow: {

@@ -1,5 +1,5 @@
 <template>
-  <section class="project-overview" :aria-label="t('projectOverview.open')">
+  <section class="project-overview" :aria-label="t('projectOverview.open')" :aria-busy="!overview && !failed">
     <WorkspaceHeader class="project-overview__header" :sidebar-collapsed="sidebarCollapsed">
       <SidebarExpandButton v-if="sidebarCollapsed" :label="t('surface.agentHeader.showAgentSidebar')" @click="emit('expand-sidebar')" />
       <h1 class="workspace-header__title">{{ overview?.repository.name ?? t('projectOverview.open') }}</h1>
@@ -11,10 +11,10 @@
     </WorkspaceHeader>
     <div class="project-overview__body">
       <p v-if="failed" class="project-overview__state" role="alert">{{ t('projectOverview.failed') }}</p>
-      <p v-else-if="!overview" class="project-overview__state" role="status">{{ t('projectOverview.loading') }}</p>
+      <ProjectOverviewProgress v-else-if="!overview" :read="null" />
       <p v-else-if="overview.sources.git === 'unavailable'" class="project-overview__state">{{ t('projectOverview.noRepository') }}</p>
       <template v-else>
-        <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :now="now" />
+        <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :sources="overview.sources" :now="now" />
         <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" @select-agent="emit('select-agent', $event)" />
       </template>
     </div>
@@ -29,6 +29,7 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import ProjectOverviewFlow from './ProjectOverviewFlow.vue';
 import ProjectOverviewNarrative from './ProjectOverviewNarrative.vue';
+import ProjectOverviewProgress from './ProjectOverviewProgress.vue';
 import { useProjectOverview } from './use-project-overview';
 import './project-overview-marks.css';
 

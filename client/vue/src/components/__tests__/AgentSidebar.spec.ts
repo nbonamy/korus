@@ -1048,7 +1048,7 @@ it('pins a project overview entry first in each repository, above its branches, 
   const agentRow = () => group().get('.agent-sidebar__agent');
   // First in the repository's rows, before its branches.
   expect(group().get('.agent-sidebar__group-rows').element.firstElementChild!.contains(entry().element)).toBe(true);
-  expect(entry().text()).toBe('Project overview');
+  expect(entry().text()).toBe('Flow');
   expect(entry().attributes('aria-pressed')).toBe('false');
   expect(agentRow().classes()).toContain('agent-sidebar__agent--active');
 
