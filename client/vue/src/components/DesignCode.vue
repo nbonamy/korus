@@ -3,8 +3,7 @@
     <section v-for="part in parts" :key="part.language" class="design-code__section">
       <header>
         <span class="design-code__title">{{ part.label }}<code v-if="part.selector" :title="part.selector">{{ part.selector }}</code></span>
-        <span v-if="copied === part.language" role="status">{{ t('design.copiedCode', { format: part.label }) }}</span>
-        <button type="button" class="app-icon-button" :aria-label="t('design.copyCode', { format: part.label })" :title="t('design.copyCode', { format: part.label })" @click="copy(part.language, part.content)"><CopyIcon /></button>
+        <CopyButton :label="t('design.copyCode', { format: part.label })" :copied-label="t('design.copiedCode', { format: part.label })" :action="() => copy(part.content)" />
       </header>
       <SourcePreviewPanel :content="part.content" language="text" :show-line-numbers="false" word-wrap />
     </section>
@@ -16,7 +15,7 @@
 import { computed, ref, watch } from 'vue';
 import { designNodeHtml, type DesignNode } from '@workspace/core/design';
 import { translate as t } from '../i18n';
-import { CopyIcon } from '../shared/icons/app-icons';
+import { CopyButton } from '@korus-dev/agent-ui-sdk';
 import SourcePreviewPanel from './SourcePreviewPanel.vue';
 
 const props = defineProps<{ node: DesignNode; styles?: Record<string, string> }>();
@@ -24,13 +23,13 @@ const parts = computed(() => [
   { label: 'HTML', language: 'html', selector: '', content: designNodeHtml(props.node).replaceAll('><', '>\n<') },
   { label: 'CSS', language: 'css', selector: `#${props.node.id}`, content: Object.entries(props.styles ?? props.node.styles ?? {}).map(([property, value]) => `${property}: ${value};`).join('\n') },
 ]);
-const copied = ref('');
 const error = ref('');
-watch(parts, () => { copied.value = ''; error.value = ''; });
-async function copy(language: string, content: string) {
+watch(parts, () => { error.value = ''; });
+// The button shows its own tick; a failure is reported here and leaves no tick.
+async function copy(content: string) {
   error.value = '';
-  try { await navigator.clipboard.writeText(content); copied.value = language; }
-  catch { copied.value = ''; error.value = t('design.copyFailed'); }
+  try { await navigator.clipboard.writeText(content); }
+  catch (cause) { error.value = t('design.copyFailed'); throw cause; }
 }
 </script>
 

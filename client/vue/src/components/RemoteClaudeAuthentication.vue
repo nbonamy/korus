@@ -20,7 +20,7 @@
         <FormField v-for="option in loginOptions" :key="option.id" :label="$t(option.labelKey)">
           <div class="remote-claude-auth__command-row">
             <code class="remote-claude-auth__command">{{ option.command }}</code>
-            <el-button text size="small" :icon="copiedCommand === option.id ? CheckIcon : CopyIcon" :aria-label="$t(copiedCommand === option.id ? option.copiedKey : option.copyKey)" @click="copyCommand(option.id)" />
+            <CopyButton :label="$t(option.copyKey)" :copied-label="$t(option.copiedKey)" :action="() => copyCommand(option.id)" />
           </div>
           <p v-if="copyFailedCommand === option.id" class="remote-claude-auth__error">{{ $t('surface.remoteClaudeAuth.copyFailed') }}</p>
         </FormField>
@@ -40,7 +40,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import type { ClaudeAuthentication, AppApi, RemoteConnection } from '@workspace/core/contracts';
 import { providerAuthenticationState } from '@workspace/core/contracts/provider-setup';
-import { CheckIcon, CopyIcon } from '../shared/icons/app-icons';
+import { CopyButton } from '@korus-dev/agent-ui-sdk';
 import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
@@ -62,7 +62,6 @@ const checking = ref(false);
 watch(checking, active => emit('activity', active), { immediate: true });
 const error = ref('');
 const dialogVisible = ref(false);
-const copiedCommand = ref<LoginOptionId | null>(null);
 const copyFailedCommand = ref<LoginOptionId | null>(null);
 let revision = 0;
 
@@ -89,13 +88,13 @@ async function refresh(): Promise<void> {
 async function copyCommand(optionId: LoginOptionId): Promise<void> {
   const command = loginOptions.value.find((option) => option.id === optionId)?.command;
   if (!command) return;
+  // The button shows its own tick; a failure is reported here and leaves no tick.
   try {
     await navigator.clipboard.writeText(command);
-    copiedCommand.value = optionId;
     copyFailedCommand.value = null;
-  } catch {
-    copiedCommand.value = null;
+  } catch (cause) {
     copyFailedCommand.value = optionId;
+    throw cause;
   }
 }
 
@@ -105,7 +104,6 @@ watch([() => props.connection.id, () => props.connection.status, () => props.con
   checking.value = false;
   error.value = '';
   dialogVisible.value = props.connection.status === 'ready';
-  copiedCommand.value = null;
   copyFailedCommand.value = null;
 }, { immediate: true });
 onScopeDispose(() => { ++revision; emit('activity', false); });
