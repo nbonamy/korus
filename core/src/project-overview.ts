@@ -325,7 +325,13 @@ export function projectOverviewSourceFailed(overview: ProjectOverview, source: P
 
 /** One thing code worked out about the repository. `text` is given to the engine; `label` names it to the reader. */
 export type ProjectNarrativeFact = { id: string; text: string; label: string };
-export type ProjectNarrativeEvidence = { facts: readonly ProjectNarrativeFact[]; branches: readonly string[]; issues: readonly string[] };
+export type ProjectNarrativeEvidence = {
+  facts: readonly ProjectNarrativeFact[];
+  branches: readonly string[];
+  issues: readonly string[];
+  /** The repository's name, which the lead opens with. */
+  project?: string;
+};
 export type ProjectNarrativeDraft = {
   lead: string;
   workstreams: (ProjectWorkstream & { branches: string[]; issues: string[] })[];
@@ -356,6 +362,7 @@ export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarra
   const draft = reply as Record<string, unknown>;
   const problems: string[] = [];
   if (!sentence(draft.lead, leadLimit)) problems.push(`The lead must be one sentence of at most ${leadLimit} characters.`);
+  else if (evidence.project && !projectNarrativeLeadParts(draft.lead.trim(), evidence.project)) problems.push(`The lead must start with the project name, ${evidence.project}.`);
   if (!Array.isArray(draft.workstreams) || draft.workstreams.length < 1 || draft.workstreams.length > maxWorkstreams) {
     return { ok: false, problems: [...problems, `There must be 1 to ${maxWorkstreams} workstreams.`] };
   }
@@ -400,6 +407,13 @@ export function projectNarrativeFromDraft(reply: unknown, evidence: ProjectNarra
   }
   if (problems.length) return { ok: false, problems };
   return { ok: true, lead: (draft.lead as string).trim(), workstreams: workstreams as ProjectNarrativeDraft['workstreams'] };
+}
+
+/** The project name a lead opens with, as the lead spells it, and the rest of the lead; null when it does not open with the name. */
+export function projectNarrativeLeadParts(lead: string, project: string): { name: string; rest: string } | null {
+  const name = lead.slice(0, project.length);
+  if (!project || name.toLowerCase() !== project.toLowerCase() || /[\p{L}\p{N}_-]/u.test(lead.charAt(project.length))) return null;
+  return { name, rest: lead.slice(project.length) };
 }
 
 /** The middle of a set of durations, or null when there are too few to say what is usual. */

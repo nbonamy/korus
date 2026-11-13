@@ -9,6 +9,7 @@ import {
   projectFlowStation,
   projectMedianDuration,
   projectNarrativeFromDraft,
+  projectNarrativeLeadParts,
   projectOverviewCommitKind,
   projectOverviewIntegrationRisk,
   projectOverviewMergedBranch,
@@ -275,6 +276,21 @@ describe('project narrative drafts', () => {
     ['something that is not a narrative', 'just prose', 'The reply is not a narrative object.'],
   ] as const)('rejects %s', (_name, draft, problem) => {
     expect(projectNarrativeFromDraft(draft, evidence)).toStrictEqual({ ok: false, problems: [problem] });
+  });
+
+  it('opens the lead with the project name and keeps it to what the project is', () => {
+    const named = { ...evidence, project: 'metadata-search' };
+    expect(projectNarrativeFromDraft({ lead: 'Metadata-search pulls Discogs label catalogs into Excel contract schedules.', workstreams: [cursor] }, named)).toMatchObject({ ok: true });
+    expect(projectNarrativeFromDraft({ lead: 'A music search app that pulls Discogs label catalogs into Excel.', workstreams: [cursor] }, named))
+      .toStrictEqual({ ok: false, problems: ['The lead must start with the project name, metadata-search.'] });
+  });
+
+  it('splits a lead into the project name it opens with and the rest, keeping how the lead spells it', () => {
+    expect(projectNarrativeLeadParts('Korus is a desktop app for coordinating teams of coding agents.', 'korus'))
+      .toStrictEqual({ name: 'Korus', rest: ' is a desktop app for coordinating teams of coding agents.' });
+    // A name inside a longer word is not the name, and a lead written before the rule has none.
+    expect(projectNarrativeLeadParts('Korusville is a town.', 'korus')).toBeNull();
+    expect(projectNarrativeLeadParts('Cursor follow-up dominates.', 'korus')).toBeNull();
   });
 
   it('reads a version or a decimal inside a sentence as part of it, not as a second sentence', () => {

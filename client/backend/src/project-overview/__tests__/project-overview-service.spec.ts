@@ -91,7 +91,7 @@ function engine(reply?: (factId: (needle: string) => string) => unknown) {
   return { generate, prompts };
 }
 const grounded = (factId: (needle: string) => string) => ({
-  lead: 'Cursor follow-up dominates while one large refactor waits.',
+  lead: 'Korus is a desktop app for coordinating teams of coding agents.',
   workstreams: [
     { name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but 4 fixes have followed.', facts: [factId('"cursor"')], branches: ['feat/cursor-steering', 'feat/cursor-usage'], issues: ['#84'] },
     { name: 'SDK extraction', state: 'waiting', analysis: 'One branch changes 273 files and is waiting for review.', facts: [factId('refactor/sdk-extraction is')], branches: ['refactor/sdk-extraction'] },
@@ -236,6 +236,8 @@ describe('project overview narrative', () => {
       '- #84 Cursor resume fails',
       '- fix: hide cursor thoughts',
     ]) expect(prompt).toContain(line);
+    // The title names the project and says what it is; where the work stands is left to the workstreams.
+    expect(prompt).toContain('Start the lead with the repository name "korus"');
     expect(prompt).toContain('Project description (from AGENTS.md):\n# AGENTS.md\n\n**Korus** is an Electron desktop app for coordinating teams of coding agents.');
     expect(prompt.indexOf('<<<EVIDENCE')).toBeLessThan(prompt.indexOf('Project description'));
     expect(prompt.indexOf('<<<EVIDENCE')).toBeLessThan(prompt.indexOf('- #84 Cursor resume fails'));
@@ -244,7 +246,7 @@ describe('project overview narrative', () => {
     expect(overview.narrative).toStrictEqual({
       status: 'fresh',
       narrative: {
-        lead: 'Cursor follow-up dominates while one large refactor waits.',
+        lead: 'Korus is a desktop app for coordinating teams of coding agents.',
         workstreams: [
           { id: 'w1', name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but 4 fixes have followed.', basis: ['4 cursor fixes in 30 days'] },
           { id: 'w2', name: 'SDK extraction', state: 'waiting', analysis: 'One branch changes 273 files and is waiting for review.', basis: ['refactor/sdk-extraction'] },
@@ -289,7 +291,7 @@ describe('project overview narrative', () => {
 
     git.commits.unshift({ at: start + hour, subject: 'feat: add zoom shortcuts', merge: false });
     clock.now += 16 * 60_000;
-    expect((await service.get(requester)).narrative).toMatchObject({ status: 'stale', narrative: { lead: 'Cursor follow-up dominates while one large refactor waits.' } });
+    expect((await service.get(requester)).narrative).toMatchObject({ status: 'stale', narrative: { lead: 'Korus is a desktop app for coordinating teams of coding agents.' } });
     expect((await service.refreshNarrative(requester, generate)).narrative.status).toBe('fresh');
     expect(generate).toHaveBeenCalledTimes(2);
   });

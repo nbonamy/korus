@@ -11,7 +11,7 @@ const start = new Date('2026-11-11T12:00:00Z');
 const written: ProjectNarrativeState = {
   status: 'fresh',
   narrative: {
-    lead: 'Cursor follow-up dominates while one large refactor waits.',
+    lead: 'Korus is a desktop app for coordinating teams of coding agents.',
     workstreams: [
       { id: 'w1', name: 'Cursor engine', state: 'settling', analysis: 'Shipped, but fixes keep following.', basis: ['the 0.56 release', '32 cursor fixes in 30 days'] },
       { id: 'w2', name: 'SDK extraction', state: 'waiting', analysis: 'One branch gets harder to land every day.', basis: ['refactor/sdk-extraction'] },
@@ -94,7 +94,9 @@ describe('project overview page', () => {
     expect(wrapper.get('.project-overview__live').text()).toBe('Live · updated 2m ago');
 
     const narrative = wrapper.get('[aria-label="Narrative"]');
-    expect(narrative.get('.project-narrative__lead').text()).toBe('Cursor follow-up dominates while one large refactor waits.');
+    expect(narrative.get('.project-narrative__lead').text()).toBe('Korus is a desktop app for coordinating teams of coding agents.');
+    // The title opens with the project's name in bold, spelled as the narrative wrote it.
+    expect(narrative.get('.project-narrative__lead strong').text()).toBe('Korus');
     expect(narrative.findAll('.project-narrative__workstream').map(item => item.text())).toStrictEqual([
       'Cursor engineSettlingShipped, but fixes keep following.From the 0.56 release, 32 cursor fixes in 30 days',
       'SDK extractionWaitingOne branch gets harder to land every day.From refactor/sdk-extraction',
@@ -140,7 +142,7 @@ describe('project overview page', () => {
 
     rewrite.resolve(overview());
     await flushPromises();
-    expect(wrapper.get('.project-narrative__lead').text()).toBe('Cursor follow-up dominates while one large refactor waits.');
+    expect(wrapper.get('.project-narrative__lead').text()).toBe('Korus is a desktop app for coordinating teams of coding agents.');
     wrapper.unmount();
   });
 
@@ -151,11 +153,11 @@ describe('project overview page', () => {
     const wrapper = mountView();
     await flushPromises();
 
-    expect(wrapper.get('.project-narrative__lead').text()).toBe('Cursor follow-up dominates while one large refactor waits.');
+    expect(wrapper.get('.project-narrative__lead').text()).toBe('Korus is a desktop app for coordinating teams of coding agents.');
     expect(wrapper.get('.project-narrative__updating').text()).toBe('updating');
     rewrite.reject(new Error('backend went away'));
     await flushPromises();
-    expect(wrapper.get('.project-narrative__lead').text()).toBe('Cursor follow-up dominates while one large refactor waits.');
+    expect(wrapper.get('.project-narrative__lead').text()).toBe('Korus is a desktop app for coordinating teams of coding agents.');
     expect(wrapper.find('.project-narrative__updating').exists()).toBe(false);
     wrapper.unmount();
   });

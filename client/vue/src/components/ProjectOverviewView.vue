@@ -17,7 +17,7 @@
       </template>
       <p v-else-if="overview.sources.git === 'unavailable'" class="project-overview__state">{{ t('projectOverview.noRepository') }}</p>
       <template v-else>
-        <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :sources="overview.sources" :now="now" />
+        <ProjectOverviewNarrative :state="overview.narrative" :writing="writing" :repository-only="repositoryOnly" :lookback="overview.lookback" :sources="overview.sources" :project="overview.repository.name" :now="now" />
         <ProjectOverviewFlow :flow="overview.flow" :narrative="narrative" :tool-links="overview.toolLinks" :sources="overview.sources" @select-agent="emit('select-agent', $event)" />
       </template>
     </div>

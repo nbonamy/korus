@@ -148,6 +148,7 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
     facts,
     branches,
     issues: issues.map(issue => issue.id),
+    project: git.name,
     key,
     quiet: !git.commits.length && !units.length,
     subjects: work.slice(0, maxSubjects).map(commit => commit.subject),
@@ -158,12 +159,13 @@ export function buildProjectEvidence(input: ProjectEvidenceInput): ProjectEviden
 }
 
 const states = 'starting, moving, settling, recurring, waiting, stalled';
-const narrativeRules = 2;
+const narrativeRules = 3;
 export const projectNarrativeInstructions = [
   'You write a short status of a software project for the people working on it.',
   'Return only JSON that matches the schema: a lead and one to four workstreams.',
   'A workstream is a line of related work, not a single commit or ticket. Leave routine maintenance out.',
-  'The lead is one short sentence, at most 160 characters: what the project is and where it stands now.',
+  'The lead is one short sentence, at most 160 characters, that names the project and says what it is, such as "<name> is a … that …" or "<name> coordinates …". Drop "is a" when a verb reads more concisely.',
+  'The lead says nothing about where the work stands, what is in flight or what shipped: the workstreams say that.',
   'When a project description is given, say what the project is in that description\'s own words.',
   `Each workstream has a name of at most 40 characters, a state (one of: ${states}), and an analysis of one sentence, at most 180 characters.`,
   'Keep each analysis on the changeset: what changed in the code and on which branches. Issues may inform its state but are not its subject.',
@@ -204,6 +206,7 @@ export function projectNarrativePrompt(repository: string, evidence: ProjectEvid
   const list = (title: string, lines: readonly string[]) => lines.length ? [`${title}:`, ...lines.map(line => `- ${line.replace(/\s+/gu, ' ').slice(0, 200)}`)] : [];
   return [
     `Write the project status for the repository "${repository}" from this evidence.`,
+    `Start the lead with the repository name "${repository}", in any letter case.`,
     `The evidence covers ${evidence.period}.`,
     '<<<EVIDENCE',
     ...(evidence.guide ? ['Project description (from AGENTS.md):', evidence.guide, ''] : []),
