@@ -26,6 +26,7 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AnnotationPopup from './AnnotationPopup.vue';
+import { useAnnotationSelectionHighlight } from '../shared/use-annotation-selection-highlight';
 import { describeCodeRange } from './use-code-annotations';
 import type { CodeSelection } from './use-code-selection';
 
@@ -36,7 +37,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const selectionHighlight = useAnnotationSelectionHighlight();
 const commenting = ref<CodeSelection | null>(null);
+watch(commenting, (value) => { if (!value) selectionHighlight.clear(); }, { flush: 'sync' });
 const actionStyle = computed(() => {
   const anchor = props.selection?.anchor;
   if (!anchor) return {};
@@ -56,7 +59,10 @@ watch(() => props.commenting, next => { commenting.value = next ?? null; }, { im
 const description = (selection: CodeSelection) => describeCodeRange(selection);
 
 function startComment(): void {
-  if (props.selection) commenting.value = props.selection;
+  if (props.selection) {
+    selectionHighlight.retain();
+    commenting.value = props.selection;
+  }
 }
 
 function cancelComment(): void {

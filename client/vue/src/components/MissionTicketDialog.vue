@@ -132,6 +132,7 @@
 
 <script setup lang="ts">
 import { ref, useSlots, watch } from "vue";
+import { useAnnotationSelectionHighlight } from "../shared/use-annotation-selection-highlight";
 import { useI18n } from "vue-i18n";
 import type { MissionTicket } from "@workspace/core/missions";
 import { ExternalLinkIcon, Trash2Icon, X } from "../shared/icons/app-icons";
@@ -190,6 +191,7 @@ const activeTarget = ref<{
 } | null>(null);
 const editingId = ref<string | null>(null);
 let commentId = 0;
+const selectionHighlight = useAnnotationSelectionHighlight();
 
 watch(() => [props.modelValue, props.ticketKey], cancelComment);
 
@@ -216,6 +218,8 @@ function captureSelection(event: MouseEvent): void {
     event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   if (!documentElement?.contains(range.commonAncestorContainer)) return;
   const rangeRect = range.getBoundingClientRect();
+  selectionHighlight.retain(range);
+  editingId.value = null;
   activeTarget.value = {
     quote: quote.length > 180 ? `${quote.slice(0, 177)}...` : quote,
     initialValue: "",
@@ -250,6 +254,7 @@ function saveComment(body: string): void {
 
 function editComment(comment: MissionTicketComment): void {
   if (props.disabled) return;
+  selectionHighlight.clear();
   const dialog = document.querySelector<HTMLElement>(
     ".mission-ticket-dialog .el-dialog__footer",
   );
@@ -278,6 +283,7 @@ function removeComment(id: string): void {
 }
 
 function cancelComment(): void {
+  selectionHighlight.clear();
   activeTarget.value = null;
   editingId.value = null;
 }

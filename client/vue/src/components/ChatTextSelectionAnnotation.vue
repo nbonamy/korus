@@ -27,6 +27,7 @@ import type { ChatTextSelection } from './use-chat-text-annotations';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AnnotationPopup from './AnnotationPopup.vue';
+import { useAnnotationSelectionHighlight } from '../shared/use-annotation-selection-highlight';
 
 const props = defineProps<{
   conversationKey: string;
@@ -39,7 +40,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const selectionHighlight = useAnnotationSelectionHighlight();
 const commentingSelection = ref<ChatTextSelection | null>(null);
+watch(commentingSelection, (value) => { if (!value) selectionHighlight.clear(); }, { flush: 'sync' });
 const actionStyle = computed(() => {
   const anchor = props.selection?.anchor;
   if (!anchor) return {};
@@ -56,7 +59,10 @@ watch(() => props.conversationKey, () => {
 });
 
 function startComment(): void {
-  if (props.selection) commentingSelection.value = props.selection;
+  if (props.selection) {
+    selectionHighlight.retain();
+    commentingSelection.value = props.selection;
+  }
 }
 
 function cancelComment(): void {

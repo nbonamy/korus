@@ -1,0 +1,4 @@
+::highlight(annotation-selection) {
+  background-color: var(--color-annotation-focus);
+  color: var(--color-on-annotation-focus);
+}

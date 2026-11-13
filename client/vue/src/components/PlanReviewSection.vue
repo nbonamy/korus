@@ -46,7 +46,7 @@
         :model-value="comment.body"
         :open="target?.id === comment.id"
         :disabled="disabled"
-        @edit="target = comment"
+        @edit="selectionHighlight.clear(); target = comment"
         @close="close"
         @update:model-value="emit('comment', { ...comment, body: $event })"
       />
@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useAnnotationSelectionHighlight } from '../shared/use-annotation-selection-highlight';
 import type { PlanReviewDraft } from '@workspace/core/plan-review';
 import type { PlanMarkdownSection, PlanMarkdownDiagram } from './plan-markdown';
 import { MessageIcon } from '../shared/icons/app-icons';
@@ -73,6 +74,7 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const editorId = useId();
+const selectionHighlight = useAnnotationSelectionHighlight();
 const target = ref<PlanReviewDraft['comments'][number] | null>(null);
 const commentButton = ref<HTMLButtonElement>();
 let activeCommentButton: HTMLButtonElement | undefined;
@@ -91,6 +93,7 @@ function commentLabel(comment: PlanReviewDraft['comments'][number]) {
 }
 function toggleComment(event: MouseEvent, diagram?: PlanMarkdownDiagram) {
   if (props.disabled) return;
+  selectionHighlight.clear();
   activeCommentButton = event.currentTarget as HTMLButtonElement;
   const id = diagram?.id ?? props.section.id;
   target.value =
@@ -113,6 +116,7 @@ function selectText(event: MouseEvent) {
     !(event.currentTarget as Element).contains(selection.getRangeAt(0).commonAncestorContainer)
   )
     return;
+  selectionHighlight.retain(selection.getRangeAt(0));
   target.value = {
     id: crypto.randomUUID(),
     sectionId: props.section.id,
@@ -122,6 +126,7 @@ function selectText(event: MouseEvent) {
   selection.removeAllRanges();
 }
 async function close() {
+  selectionHighlight.clear();
   target.value = null;
   await nextTick();
   (activeCommentButton ?? commentButton.value)?.focus();
