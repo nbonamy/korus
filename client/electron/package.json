@@ -28,13 +28,13 @@
   "dependencies": {
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
+    "@korus-dev/agent-ui-sdk": "0.27.1",
     "@workspace/core": "0.56.0",
     "@workspace/vue": "0.56.0",
     "autolib": "github:nbonamy/witsy-autolib#v1.2.4",
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",
-    "vue": "^3.5.35",
-    "@korus-dev/agent-ui-sdk": "0.27.0"
+    "vue": "^3.5.35"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",

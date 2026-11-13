@@ -677,7 +677,7 @@ describe('Cursor ACP host transport boundary', () => {
       expect(parts).toContainEqual(expect.objectContaining({type:'tool',title:'Write added.txt',metadata:expect.objectContaining({changes:[{path:'added.txt',kind:'add',oldText:null,newText:'created'}]})}));
       expect(tool.body).toContain('before'); expect(tool.body).toContain('after'); expect(tool.body).toContain('RESOURCE_MARKER');
       expect(parts.filter(part=>part.type==='media').map(part=>part.type==='media' && part.media.url)).toStrictEqual(['data:image/png;base64,iVBORw0KGgo=','data:image/png;base64,iVBORw0KGgo=']);
-      expect(parts).toContainEqual({type:'text',text:'Rich output complete',phase:'final_answer'});
+      expect(parts).toContainEqual({type:'text',text:'Rich output complete'});
       const mcp = parts.find(part=>part.type==='tool' && part.title==='korus: send-message');
       expect(mcp).toMatchObject({kind:'mcp',input:{to:'other-agent',message:'Hello'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool:'send-message',cursorMcpInput:{providerIdentifier:'korus',toolName:'send-message',args:{to:'other-agent',message:'Hello'}}}});
       expect(mcp?.type==='tool' && mcp.metadata?.displayTitle).toBeUndefined();
@@ -849,7 +849,7 @@ describe('Cursor ACP host transport boundary', () => {
     await vi.waitFor(() => expect(completions()).toHaveLength(2));
     const state = await snapshot();
     expect(state.turns.map(turn => turn.status)).toEqual(['completed', 'completed']);
-    expect(state.messages.flatMap(message => message.parts).filter(part => part.type === 'text')).toContainEqual({ type: 'text', text: 'Hello Cursor', phase: 'commentary' });
+    expect(state.messages.flatMap(message => message.parts).filter(part => part.type === 'text')).toContainEqual({ type: 'text', text: 'Hello Cursor' });
     expect(state.messages.flatMap(message => message.parts)).toContainEqual(expect.objectContaining({ type: 'tool', title: 'Read synthetic.txt', status: 'completed', body: 'synthetic contents' }));
     expect(second.providerSession).toEqual(first.providerSession);
     const calls = await wire();

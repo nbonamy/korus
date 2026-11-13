@@ -38,14 +38,6 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(scope('antigravity')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
   });
 
-  it('tells the harness which Korus tools are bookkeeping', () => {
-    let captured: Parameters<Parameters<typeof createClaudeDriver>[1] & {}>[1] | undefined;
-    opened.push(createClaudeDriver({}, (provider, options) => { captured = options; return createScriptedHarness(provider as 'claude').harness; }));
-    const finish = { type: 'tool', id: 't', kind: 'generic', title: 'finish', status: 'completed', metadata: { server: 'korus', tool: 'finish_turn' } } as const;
-    expect(captured?.isBookkeepingTool?.(finish)).toBe(true);
-    expect(captured?.isBookkeepingTool?.({ ...finish, metadata: { server: 'korus', tool: 'list-agents' } })).toBe(false);
-  });
-
   it('keeps plan capture wording in Korus, not the SDK', async () => {
     let captured: Parameters<Parameters<typeof createClaudeDriver>[1] & {}>[1] | undefined;
     const driver = createClaudeDriver({}, (provider, options) => { captured = options; return createScriptedHarness(provider as 'claude').harness; });
