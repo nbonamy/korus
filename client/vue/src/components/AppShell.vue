@@ -2980,7 +2980,9 @@ function toggleAutomations(): void {
     return;
   }
   const returnHost = automationsReturnHost.value;
-  activeHost.value = returnHost === 'mission' && !selectedMission.value ? 'agent' : returnHost;
+  const mission = selectedMission.value;
+  const missionReachable = mission !== null && (cockpitScope.value || mission.teamId === activeTeam.value?.id);
+  activeHost.value = returnHost === 'mission' && !missionReachable ? 'agent' : returnHost;
 }
 
 function openSettings(tab?: SettingsTab): void {
