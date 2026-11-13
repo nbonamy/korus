@@ -164,4 +164,3 @@ it.each([
 ])('explains why a design is rejected: %#', (content, expected) => {
   expect(designContentIssue(content)).toContain(expected);
 });
-
