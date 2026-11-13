@@ -1002,7 +1002,7 @@ describe('AppShell work routing', () => {
     ));
     await clientNavigationSelectTeam?.vm.$emit('update:modelValue', '__new_team__');
     await nextTick();
-    expect(agentDialog.get<HTMLInputElement>('[aria-label="New team name"]').element.value).toBe('GitHub #12');
+    expect(agentDialog.get<HTMLInputElement>('[aria-label="New workspace name"]').element.value).toBe('GitHub #12');
     expect(agentDialog.getComponent({ name: 'NewSourceWorktreeDialog' }).props('visible')).toBe(false);
     await agentDialog.find('.app-dialog__footer .app-button--primary').trigger('click');
     await flushPromises();
@@ -1143,12 +1143,12 @@ describe('AppShell work routing', () => {
       createTeam,
     });
 
-    await wrapper.get('[aria-label="Create team"]').trigger('click');
+    await wrapper.get('[aria-label="Create workspace"]').trigger('click');
 
-    expect(wrapper.text()).toContain('Create Team');
+    expect(wrapper.text()).toContain('Create Workspace');
     await wrapper.get('#team-dialog-name').setValue('Skwad Core');
     await wrapper.findAll('.team-dialog__color')[10]?.trigger('click');
-    await wrapper.findAll('button').find((button) => button.text() === 'Create Team')?.trigger('click');
+    await wrapper.findAll('button').find((button) => button.text() === 'Create Workspace')?.trigger('click');
 
     expect(createTeam).toHaveBeenCalledWith({
       name: 'Skwad Core',
@@ -1233,7 +1233,7 @@ describe('AppShell work routing', () => {
     await wrapper.get(`[aria-label="${product.defaultTeamName}"]`).trigger('contextmenu');
     await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit')?.trigger('click');
 
-    expect(wrapper.text()).toContain('Edit Team');
+    expect(wrapper.text()).toContain('Edit Workspace');
     await wrapper.get('#team-dialog-name').setValue('Skwad Core');
     await wrapper.findAll('.team-dialog__color')[10]?.trigger('click');
     await wrapper.findAll('button').find((button) => button.text() === 'Save')?.trigger('click');
@@ -1266,7 +1266,7 @@ describe('AppShell work routing', () => {
       'Close Skwad?',
       {
         cancelButtonText: 'Cancel',
-        confirmButtonText: 'Close Team',
+        confirmButtonText: 'Close Workspace',
         type: 'warning',
       },
     );

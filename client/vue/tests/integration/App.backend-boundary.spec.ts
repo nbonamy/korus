@@ -333,7 +333,7 @@ describe('Unified backend → mounted application', () => {
         content: `# Feature061\n\n| Research ticket | Document |\n| --- | --- |\n| Research | [Research **spike**](${href}) |`,
       } });
       await flushPromises();
-      const workspace = () => wrapper.get('[aria-label="Right workspace"]');
+      const workspace = () => wrapper.get('[aria-label="Right panel"]');
       const event = new MouseEvent('click', { bubbles: true, cancelable: true });
       workspace().get('a strong').element.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
@@ -617,7 +617,7 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
     emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'turn', payload: { itemId: 'proposal', markdown: '# Review this\n\nKeep the backend independent.' } });
     await flushPromises();
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Keep the backend independent.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Keep the backend independent.');
     const reviewId = JSON.stringify([agent.id, null, 'turn', 'proposal']);
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview = { id: reviewId, conversationId: null, turnId: 'turn', itemId: 'proposal', markdown: '# Review this', status: 'accept' };
@@ -640,7 +640,7 @@ describe('Unified backend → mounted application', () => {
     api.respondToPlanReview.mockRejectedValueOnce(new Error('backend unavailable'));
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Restored proposal');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Restored proposal');
     await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(true);

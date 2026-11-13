@@ -37,7 +37,7 @@ describe('AutomationEditor', () => {
     expect(wrapper.findAll('.form-section h3').map(label => label.text())).toEqual(['Run in', 'Schedule', 'Model']);
     expect(wrapper.get('.automation-editor__header').text()).toContain('Enabled');
     expect(wrapper.get('[aria-label="Name"]').attributes('placeholder')).toBe('Name this automation');
-    expect(wrapper.findAll('[role="combobox"]').slice(0, 2).map(control => control.attributes('aria-label'))).toEqual(['Automation target team', 'Conversation']);
+    expect(wrapper.findAll('[role="combobox"]').slice(0, 2).map(control => control.attributes('aria-label'))).toEqual(['Automation target workspace', 'Conversation']);
     expect(wrapper.text()).toContain('Next run:');
     expect(wrapper.text()).not.toContain('repository');
   });
@@ -122,7 +122,7 @@ describe('AutomationEditor', () => {
     expect(wrapper.get('#automation-team').element.closest('.el-select')?.textContent).toContain('Other team');
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ target: automation.target });
-    await choose(wrapper, 'Automation target team', snapshot.teams[0]!.name);
+    await choose(wrapper, 'Automation target workspace', snapshot.teams[0]!.name);
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')).toHaveLength(1);
     await choose(wrapper, 'Conversation', 'Dina @ agent-workspace');

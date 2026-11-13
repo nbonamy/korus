@@ -59,7 +59,7 @@ describe('TeamRail', () => {
     try {
       for (const [selector, label] of [
         ['.team-rail__backlog', 'Backlog'], ['.team-rail__cockpit', 'Cockpit'],
-        ['.team-rail__team', 'Skwad'], ['.team-rail__new', 'Create team'],
+        ['.team-rail__team', 'Skwad'], ['.team-rail__new', 'Create workspace'],
         ['.team-rail__speech-mute', 'Mute spoken acknowledgments (⇧⌘M)'],
         ['.team-rail__automations', 'Automations'], ['.team-rail__lock', 'Disable screen lock'],
       ]) {
@@ -122,7 +122,7 @@ describe('TeamRail', () => {
     expect(wrapper.get('[aria-label="Skwad"]').attributes('aria-pressed')).toBe('false');
     expect((wrapper.get('[aria-label="Skwad"]').element as HTMLButtonElement).style.backgroundColor).toBe('rgb(70, 168, 87)');
     expect(wrapper.find('.team-rail__window-controls').exists()).toBe(false);
-    expect(wrapper.find('[aria-label="Create team"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Create workspace"]').exists()).toBe(true);
     expect(wrapper.get('[aria-label="Automations"]').attributes('aria-pressed')).toBe('false');
     expect(wrapper.get('[aria-label="Settings menu"]').attributes('aria-pressed')).toBe('false');
     expect(wrapper.find('.team-rail__header').exists()).toBe(true);
@@ -227,7 +227,7 @@ describe('TeamRail', () => {
     });
 
     await wrapper.get(`[aria-label="${product.name}"]`).trigger('click');
-    await wrapper.get('[aria-label="Create team"]').trigger('click');
+    await wrapper.get('[aria-label="Create workspace"]').trigger('click');
 
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-app']]);
     expect(wrapper.emitted('new-team')).toStrictEqual([[]]);
@@ -269,7 +269,7 @@ describe('TeamRail', () => {
   it('keeps navigation borderless until selected and matches all active navigation to the add-team surface', async () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-sk' });
     const cockpit = wrapper.get('[aria-label="Cockpit"]');
-    const add = wrapper.get('[aria-label="Create team"]');
+    const add = wrapper.get('[aria-label="Create workspace"]');
     expect(getComputedStyle(cockpit.element).background).toBe('rgba(0, 0, 0, 0)');
     expect(getComputedStyle(cockpit.element).opacity).toBe('0.6');
     expect(wrapper.find('[role="separator"]').exists()).toBe(false);
@@ -438,7 +438,7 @@ describe('TeamRail', () => {
       clientY: 64,
     });
     expect(wrapper.get('.team-context-menu').attributes('style')).toContain('left: 42px');
-    expect(wrapper.find('[aria-label="Team actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Workspace actions"]').exists()).toBe(true);
     await wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Edit')?.trigger('click');
 
     expect(wrapper.emitted('edit-team')).toStrictEqual([['team-app']]);
@@ -463,7 +463,7 @@ describe('TeamRail', () => {
       `Close ${product.name}?`,
       {
         cancelButtonText: 'Cancel',
-        confirmButtonText: 'Close Team',
+        confirmButtonText: 'Close Workspace',
         type: 'warning',
       },
     );

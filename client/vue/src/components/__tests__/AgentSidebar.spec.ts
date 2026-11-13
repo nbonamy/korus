@@ -28,7 +28,7 @@ describe('AgentSidebar sessions', () => {
     const local = { ...agents[0]!, id: 'local', name: 'Local' };
     const remote = { ...agents[0]!, id: 'remote', name: 'Remote', remoteConnectionId: connection.id };
     const wrapper = mount(AgentSidebar, {
-      props: { agents: [local, remote], activeAgentId: remote.id, teamName: 'All teams', allTeams: true, remoteConnections: [connection] },
+      props: { agents: [local, remote], activeAgentId: remote.id, teamName: 'All workspaces', allTeams: true, remoteConnections: [connection] },
       global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
     try {

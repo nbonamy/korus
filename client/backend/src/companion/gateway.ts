@@ -481,7 +481,7 @@ export class CompanionGateway {
   private readonly operations: Record<string, Operation> = {
     'team.create': async (peer, args) => {
       const { name } = z.object({ name: z.string().trim().min(1).max(100) }).strict().parse(args);
-      if (!this.port.createTeam) throw new Error('Team creation is unavailable.');
+      if (!this.port.createTeam) throw new Error('Workspace creation is unavailable.');
       this.requireGrant(peer);
       return { teamId: await this.port.createTeam(name) };
     },
@@ -566,11 +566,11 @@ export class CompanionGateway {
       const workspace = await this.workspace();
       const team = workspace.teams.find(team => team.id === input.teamId);
       this.requireGrant(peer);
-      if (!team) throw new Error('Team not found.');
+      if (!team) throw new Error('Workspace not found.');
       const authorize = async () => {
         const current = await this.workspace();
         this.requireGrant(peer);
-        if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Team changed.');
+        if (!current.teams.some(candidate => candidate.id === team.id)) throw new Error('Workspace changed.');
         if (!current.providers?.[team.id]?.includes(input.selection.provider)) throw new Error('That engine is not available.');
       };
       await authorize();
@@ -645,7 +645,7 @@ export class CompanionGateway {
       const input = z.object({ teamId: identity, provider: z.enum(companionProviders) }).strict().parse(args);
       const workspace = await this.workspace();
       this.requireGrant(peer);
-      if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Team not found.');
+      if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Workspace not found.');
       if (workspace.providers && !workspace.providers[input.teamId]?.includes(input.provider)) throw new Error('That engine is not available.');
       return { creationId: this.creations.start(peer.peerId, () => this.port.createQuickChat(input)) };
     },
@@ -752,7 +752,7 @@ export class CompanionGateway {
   }
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);
-    if (!team) throw new Error('Team not found.');
+    if (!team) throw new Error('Workspace not found.');
     const owner = workspace.agents.find((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot, agent.remoteConnectionId) === input.repositoryId);
     const repository = owner?.workspace?.kind === 'git' ? owner.workspace : undefined;
     if (!owner || !repository) throw new Error('Repository not found.');
@@ -762,11 +762,11 @@ export class CompanionGateway {
     const workspace = await this.workspace();
     this.requireGrant(peer);
     const team = workspace.teams.find(team => team.id === teamId);
-    if (!team) throw new Error('Team not found.');
+    if (!team) throw new Error('Workspace not found.');
     const result = await read();
     const current = await this.workspace();
     this.requireGrant(peer);
-    if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Team changed.');
+    if (!current.teams.some(candidate => candidate.id === teamId)) throw new Error('Workspace changed.');
     return result;
   }
   private async workspace(): Promise<CompanionWorkspace> { return this.port.workspace(); }

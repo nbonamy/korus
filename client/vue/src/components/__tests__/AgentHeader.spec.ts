@@ -451,7 +451,7 @@ describe('AgentHeader', () => {
 
   it('renders an icon-only right-workspace action in the header', async () => {
     const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, null, true);
-    const workspaceAction = wrapper.get('[aria-label="Toggle right workspace"]');
+    const workspaceAction = wrapper.get('[aria-label="Toggle right panel"]');
 
     expect(workspaceAction.text()).toBe('');
     expect(workspaceAction.attributes('aria-pressed')).toBe('true');

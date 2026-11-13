@@ -100,8 +100,8 @@ describe('RemoteTeamService', () => {
 
   it('requires an explicit valid team instead of consulting shared navigation', async () => {
     const service = new RemoteTeamService({ clients: {} as never, getSnapshot: createTestSnapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
-    await expect(service.pointerForAgentInput({})).rejects.toThrow('target team');
-    await expect(service.pointerForAgentInput({ teamId: 'missing' })).rejects.toThrow('Team not found');
+    await expect(service.pointerForAgentInput({})).rejects.toThrow('target workspace');
+    await expect(service.pointerForAgentInput({ teamId: 'missing' })).rejects.toThrow('Workspace not found');
     await expect(service.pointerForAgentInput({ teamId: 'team-test' })).resolves.toBeNull();
   });
 

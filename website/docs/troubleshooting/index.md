@@ -59,7 +59,7 @@ Use the extension's **Update** or **Reinstall** action when needed, then reload 
 
 ## A skill is missing from an agent
 
-Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote teams use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
+Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote workspaces use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
 
 ## Computer Use cannot act
 

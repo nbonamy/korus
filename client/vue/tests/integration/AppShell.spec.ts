@@ -2196,7 +2196,7 @@ describe('AppShell authentication and conversation', () => {
       realConversationPane: true,
     });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Browser'))
       ?.trigger('click');

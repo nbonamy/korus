@@ -197,7 +197,7 @@ describe('AgentDialog', () => {
     await emitSelect(wrapper, 'agent-dialog-team', '__new_team__');
     await nextTick();
 
-    const newTeamInput = wrapper.get<HTMLInputElement>('[aria-label="New team name"]');
+    const newTeamInput = wrapper.get<HTMLInputElement>('[aria-label="New workspace name"]');
     expect(newTeamInput.element.value).toBe('GitHub #12');
 
     await saveButton(wrapper).trigger('click');

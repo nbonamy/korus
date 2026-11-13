@@ -200,18 +200,18 @@ describe('AgentWorkspace', () => {
 
   it('expands and restores the artifact pane while retaining mounted conversations and the split-layout restore control', async () => {
     const { wrapper, workspace } = mountWorkspace();
-    expect(wrapper.find('[aria-label="Expand workspace"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Expand panel"]').exists()).toBe(false);
     await wrapper.setProps({ rightWorkspaceVisible: true });
     const conversation = wrapper.get('.app-shell__conversations');
     const mountedConversation = wrapper.getComponent({ name: 'WorkspaceConversationSlot' });
-    const expand = wrapper.get('[aria-label="Expand workspace"]');
+    const expand = wrapper.get('[aria-label="Expand panel"]');
     expect(expand.element.nextElementSibling?.hasAttribute('data-global-workspace-toggle')).toBe(true);
     await expand.trigger('click');
     expect(conversation.isVisible()).toBe(false);
     expect(wrapper.get('.app-shell__right-workspace').attributes('style')).toContain('flex-basis: 100%');
     expect(wrapper.find('.app-shell__right-workspace-resizer').exists()).toBe(false);
     await wrapper.setProps({ splitHeaders: true });
-    await wrapper.get('[aria-label="Restore workspace width"]').trigger('click');
+    await wrapper.get('[aria-label="Restore panel width"]').trigger('click');
     expect(conversation.isVisible()).toBe(true);
     expect(wrapper.getComponent({ name: 'WorkspaceConversationSlot' }).vm).toBe(mountedConversation.vm);
     expect(wrapper.get('.app-shell__right-workspace').attributes('style')).toContain('flex-basis: 420px');

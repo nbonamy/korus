@@ -169,17 +169,17 @@ describe('AppShell workspace and plans', () => {
     const snapshot = createInitialSnapshot();
     const wrapper = mountShell({ snapshot });
     await flushPromises();
-    const panel = wrapper.findAll('[aria-label="Right workspace"]')[0]!;
+    const panel = wrapper.findAll('[aria-label="Right panel"]')[0]!;
     expect(panel.isVisible()).toBe(false);
     expect(panel.attributes('style')).toContain('610px');
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     expect(wrapper.get('[role="tab"][aria-label="Restored proposal"]').attributes('aria-selected')).toBe('true');
     expect(panel.text()).toContain('Exact restored content');
     await wrapper.setProps({ sidePanelRequest: { kind: 'markdown', agentId: 'agent-jesse', documentId: 'background', title: 'Background proposal', content: '# Background content' } });
     expect(wrapper.emitted('select-agent')).toBeUndefined();
     expect(panel.attributes('style')).not.toContain('display: none');
     await wrapper.setProps({ activeAgent: snapshot.agents[1] });
-    expect(wrapper.findAll('[aria-label="Right workspace"]')[1]!.text()).toContain('Background content');
+    expect(wrapper.findAll('[aria-label="Right panel"]')[1]!.text()).toContain('Background content');
     await wrapper.get('[aria-label="Close Background proposal tab"]').trigger('click');
     await settlePersistence();
     expect(update).toHaveBeenCalledWith('agent-jesse', expect.objectContaining({ close: ['file:markdown:background'] }));
@@ -219,7 +219,7 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mountShell(); await flushPromises();
     await settlePersistence();
     update.mockClear();
-    const toggle = wrapper.get('[aria-label="Toggle right workspace"]');
+    const toggle = wrapper.get('[aria-label="Toggle right panel"]');
     await toggle.trigger('click'); await toggle.trigger('click'); await toggle.trigger('click');
     expect(update).not.toHaveBeenCalled();
     await settlePersistence();
@@ -372,7 +372,7 @@ describe('AppShell workspace and plans', () => {
       expect(readAgentFileChunk).toHaveBeenCalledWith('agent-dina', 'film.mp4', 0);
       expect(download).toHaveBeenCalledOnce();
       expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
-      expect(wrapper.get('[aria-label="Right workspace"]').isVisible()).toBe(false);
+      expect(wrapper.get('[aria-label="Right panel"]').isVisible()).toBe(false);
       await wrapper.get('a[href="film.mp4"]').trigger('contextmenu');
       const menu = new DOMWrapper(document.body).get('[role="menu"][aria-label="File actions"]');
       const items = menu.findAll('[role="menuitem"]');
@@ -430,7 +430,7 @@ describe('AppShell workspace and plans', () => {
         textMessage('links', 'assistant', '[Example](https://example.com/docs) [Other](https://example.org/)'),
       ] }),
     });
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text().includes('Browser'))!.trigger('click');
     readyBrowserGuest(wrapper.get('webview').element, 41);
     await flushPromises();
@@ -513,13 +513,13 @@ describe('AppShell workspace and plans', () => {
       },
     });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.text()).toContain('Chat with Dina');
     expect(wrapper.find('.app-shell__right-workspace').exists()).toBe(true);
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Browser');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Review');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Browser');
     expect(browserOpen).not.toHaveBeenCalled();
 
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.text().includes('Browser'))?.trigger('click');
@@ -528,9 +528,9 @@ describe('AppShell workspace and plans', () => {
 
     expect(wrapper.get('[role="tab"]').text()).toBe('Browser');
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await flushPromises();
 
     expect(browserSetVisible).toHaveBeenCalledWith('agent-dina', 'primary', false);
@@ -555,7 +555,7 @@ describe('AppShell workspace and plans', () => {
       onEvent: vi.fn(() => vi.fn()),
     });
     const wrapper = mountShell();
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.text().includes('Browser'))?.trigger('click');
     readyBrowserGuest(wrapper.get('webview').element, 42);
     await flushPromises();
@@ -588,7 +588,7 @@ describe('AppShell workspace and plans', () => {
     window.dispatchEvent(new PointerEvent('pointerup'));
     await nextTick();
     expect(wrapper.find('.app-shell__right-workspace-resize-shield').exists()).toBe(false);
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     expect(workspace?.attributes('style')).not.toContain('display: none');
     expect((workspace?.element as HTMLElement).style.flexBasis).toBe('420px');
     wrapper.unmount();
@@ -611,7 +611,7 @@ describe('AppShell workspace and plans', () => {
       previewAgentFile,
     });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Files'))
       ?.trigger('click');
@@ -736,7 +736,7 @@ describe('AppShell workspace and plans', () => {
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.text().includes('Browser'))?.trigger('click');
     readyBrowserGuest(wrapper.get('webview').element, 42);
     await flushPromises();
@@ -747,7 +747,7 @@ describe('AppShell workspace and plans', () => {
 
     expect(browserClose).not.toHaveBeenCalled();
     expect(wrapper.findAll('webview')).toHaveLength(1);
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button').find((button) => button.isVisible() && button.text().includes('Browser'))?.trigger('click');
     readyBrowserGuest(wrapper.findAll('webview')[1]!.element, 43);
     await flushPromises();
@@ -833,7 +833,7 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
     if (!open) {
       expect(getAgentGitDiff).not.toHaveBeenCalled();
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     }
     expect(getAgentGitDiff).toHaveBeenCalledExactlyOnceWith('agent-dina');
     expect(wrapper.get('.git-diff-preview-panel').attributes('aria-busy')).toBe('true');
@@ -885,7 +885,7 @@ describe('AppShell workspace and plans', () => {
     await wrapper.get('[aria-label="Open repository diff"]').trigger('click');
 
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina', { type: 'uncommitted' });
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Changes');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Changes');
     expect(wrapper.get('.git-diff-preview-panel').attributes('aria-busy')).toBe('true');
 
     resolveDiff({
@@ -945,9 +945,9 @@ describe('AppShell workspace and plans', () => {
       assignWorkItemAction,
     });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await nextTick();
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     const backlogMenuItem = wrapper.findAll('.right-workspace-panel__add-menu .app-menu__item')
       .find((candidate) => candidate.text().includes('Backlog'));
     expect(backlogMenuItem).toBeUndefined();
@@ -1095,7 +1095,7 @@ describe('AppShell workspace and plans', () => {
       },
     });
 
-    expect(wrapper.get('[aria-label="Right workspace"]').isVisible()).toBe(false);
+    expect(wrapper.get('[aria-label="Right panel"]').isVisible()).toBe(false);
   });
 
   it('previews markdown links, closes tabs, and reports unreadable files', async () => {
@@ -1296,7 +1296,7 @@ describe('AppShell workspace and plans', () => {
     } as Record<string, unknown>);
 
     expect(previewAgentFile).not.toHaveBeenCalled();
-    expect(wrapper.find('[aria-label="Right workspace"]:not([style*="display: none"])').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Right panel"]:not([style*="display: none"])').exists()).toBe(false);
 
     await wrapper.setProps({
       fileActivity: {

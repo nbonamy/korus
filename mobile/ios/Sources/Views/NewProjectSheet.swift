@@ -40,7 +40,7 @@ struct NewAgentMenu: View {
         .buttonStyle(.glassProminent)
         .tint(.accentColor)
         .disabled(!enabled && !allTeams)
-        .alert("Switch to a team to create a new agent.", isPresented: $showingTeamRequired) {
+        .alert("Switch to a workspace to create a new agent.", isPresented: $showingTeamRequired) {
             Button("OK", role: .cancel) {}
         }
     }

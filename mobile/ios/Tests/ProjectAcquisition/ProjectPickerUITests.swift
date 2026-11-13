@@ -9,12 +9,12 @@ final class ProjectPickerUITests: XCTestCase {
         app.launchArguments = ["--all-teams"]
         app.launch()
         app.buttons["New Agent"].tap()
-        let prompt = app.alerts["Switch to a team to create a new agent."]
+        let prompt = app.alerts["Switch to a workspace to create a new agent."]
         XCTAssertTrue(prompt.waitForExistence(timeout: 3))
         XCTAssertFalse(app.buttons["From GitHub"].exists)
         capture("all-teams-new-agent")
         prompt.buttons["OK"].tap()
-        app.buttons["Switch to Team"].tap()
+        app.buttons["Switch to Workspace"].tap()
         app.buttons["New Agent"].tap()
         XCTAssertTrue(app.buttons["From GitHub"].waitForExistence(timeout: 3))
     }

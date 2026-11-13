@@ -168,7 +168,7 @@ describe('split-screen conversations', () => {
       await wrapper.findAll('.agent-sidebar__agent').find(row => row.text().includes(first!.name!))!.trigger('click');
       await flushPromises();
       // Split panes share sidebar visibility; reopen it if the other pane left it closed.
-      if (!firstWorkspace.isVisible()) await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      if (!firstWorkspace.isVisible()) await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       expect(firstWorkspace.isVisible()).toBe(true);
       expect(wrapper.get('a[href="https://example.com"]').isVisible()).toBe(true);
     } finally { wrapper.unmount(); open.mockRestore(); }
@@ -416,8 +416,8 @@ describe('split-screen conversations', () => {
       expect(header.text()).toContain(agent.statusText);
       expect(header.text()).toContain(`+${11 + index}`);
     }
-    expect(wrapper.findAll('[aria-label="Toggle right workspace"]')).toHaveLength(1);
-    const toggle = panes[toggleIndex]!.get('[aria-label="Toggle right workspace"]');
+    expect(wrapper.findAll('[aria-label="Toggle right panel"]')).toHaveLength(1);
+    const toggle = panes[toggleIndex]!.get('[aria-label="Toggle right panel"]');
     // This fixed-position control operates on focus, not the pane containing it.
     await toggle.trigger('pointerdown');
     await toggle.trigger('focusin');
@@ -434,10 +434,10 @@ describe('split-screen conversations', () => {
     await panes[1]!.get('.agent-header').trigger('pointerdown');
     await flushPromises();
     expect(wrapper.get('.agent-split-grid__pane--focused').attributes('data-agent-id')).toBe(second!.id);
-    expect(panes[toggleIndex]!.get('[aria-label="Toggle right workspace"]').attributes('aria-pressed')).toBe('true');
+    expect(panes[toggleIndex]!.get('[aria-label="Toggle right panel"]').attributes('aria-pressed')).toBe('true');
     const emptyWorkspace = wrapper.findAll('.app-shell__right-workspace').filter(panel => panel.isVisible());
     expect(emptyWorkspace).toHaveLength(1);
-    expect(emptyWorkspace[0]!.get('[aria-label="Open a workspace tab"]').isVisible()).toBe(true);
+    expect(emptyWorkspace[0]!.get('[aria-label="Open a panel tab"]').isVisible()).toBe(true);
     expect(emptyWorkspace[0]!.findAll('[role="tab"]')).toHaveLength(0);
     if (layout === 'Vertical Split') {
       await panes[1]!.get('[aria-label="Open repository diff"]').trigger('click');
@@ -498,7 +498,7 @@ describe('split-screen conversations', () => {
     expect(getComputedStyle(wrapper.get('.app-shell__conversations').element).position).toBe('relative');
     expect(getComputedStyle(wrapper.get('.app-shell__layout-control').element).position).toBe('absolute');
     expect(getComputedStyle(layoutButton.element).width).toBe('24px');
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await chooseLayout(wrapper, '4-Pane Split');
     await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
     expect(
@@ -508,7 +508,7 @@ describe('split-screen conversations', () => {
     ).toHaveLength(0);
     expect(
       wrapper
-        .get('[aria-label="Toggle right workspace"]')
+        .get('[aria-label="Toggle right panel"]')
         .attributes('disabled'),
     ).toBeDefined();
     expect(wrapper.findAll('.agent-split-grid__pane')[3]!.find('[aria-label="Run Git action"]').exists()).toBe(false);
@@ -574,7 +574,7 @@ describe('split-screen conversations', () => {
     );
     await wrapper.get('.conversation-plan__close').trigger('click');
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await flushPromises();
     expect(
       wrapper

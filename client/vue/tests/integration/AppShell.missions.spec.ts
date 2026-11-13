@@ -247,12 +247,12 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const wrapper = mountShell({ snapshot });
     try {
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
       await flushPromises();
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
       expect(wrapper.find('.mission-document-dialog').exists()).toBe(true);
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       await flushPromises();
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }

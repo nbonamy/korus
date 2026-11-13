@@ -45,7 +45,7 @@ async function reviewContext(port: CompanionBackendPort, agentId: string) {
 export async function readReviewSession(port: CompanionBackendPort, hostId: string, agentId: string): Promise<import('@workspace/core/companion-review').CompanionReviewDetails> {
   const { snapshot, agent, reviewer, session } = await reviewContext(port, agentId);
   const team = snapshot.teams.find(candidate => candidate.id === agent.teamId);
-  if (!team) throw new Error('Review team unavailable.');
+  if (!team) throw new Error('Review workspace unavailable.');
   return { target: companionTarget(hostId, team, agent, true), session: session ? {
     id: session.id, targetAgentId: session.targetAgentId, reviewerAgentId: session.reviewerAgentId,
     status: session.status, activeRoundId: session.activeRoundId, updatedAt: session.updatedAt,

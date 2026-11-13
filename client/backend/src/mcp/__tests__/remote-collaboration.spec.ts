@@ -345,7 +345,7 @@ describe('collaboration across daemon ownership boundaries', () => {
     expect(second.teams.some(team => team.id === 'second-team')).toBe(false);
     const lastRealTeam = { jsonrpc: '2.0', id: 'protected', method: backendMethods.teamDelete,
       params: { teamId: first.teams[0]!.id, missingOk: true } } as const;
-    await expect(firstHost.server.handleMessage(lastRealTeam)).rejects.toThrow('At least one team must remain open');
+    await expect(firstHost.server.handleMessage(lastRealTeam)).rejects.toThrow('At least one workspace must remain open');
   });
 
   it.each(['completion', 'cancellation', 'controller outage'] as const)('creates once on the selected host, exchanges messages, and persists remote %s', async lifecycle => {

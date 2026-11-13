@@ -26,14 +26,14 @@ Give each writing task an owner and a separate worktree when isolation is needed
 
 ## Native subagents and Korus teammates
 
-A provider-native subagent works inside its parent provider session. A Korus teammate has its own identity, folder, and conversation in the team.
+A provider-native subagent works inside its parent provider session. A Korus teammate has its own identity, folder, and conversation in the workspace.
 
 Specify which one you want when delegating:
 
 | Request | Result |
 | --- | --- |
-| “Use native subagents to audit these three modules.” | Child work stays within the provider's parent session; it does not create separate Korus team agents. |
-| “Create a Korus teammate in a worktree to implement the filter.” | A separate agent appears in the team, with its own folder and conversation. |
+| “Use native subagents to audit these three modules.” | Child work stays within the provider's parent session; it does not create separate Korus agents. |
+| “Create a Korus teammate in a worktree to implement the filter.” | A separate agent appears in the workspace, with its own folder and conversation. |
 
 Native subagent availability follows the provider's tools and settings. For a substantial independent repository change, a dedicated Korus agent and worktree keep the outcome separately reviewable.
 

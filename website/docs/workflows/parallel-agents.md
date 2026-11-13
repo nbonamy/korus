@@ -13,7 +13,7 @@ Korus supports two different forms of delegation:
 | Agent | Use it for | Where to follow the work |
 | --- | --- | --- |
 | Native subagent | A bounded task inside the current Codex or Claude Code session, such as scanning different parts of a repository. | The parent agent's conversation and the provider's subagent activity. |
-| Korus teammate, also called a co-agent | A separately named agent with its own folder and conversation, such as an implementation that needs a dedicated worktree. | Its own entry in the team's sidebar. |
+| Korus teammate, also called a co-agent | A separately named agent with its own folder and conversation, such as an implementation that needs a dedicated worktree. | Its own entry in the workspace's sidebar. |
 
 Be explicit in the request. For example:
 
@@ -27,13 +27,13 @@ The second request creates a separate Korus workspace. A native subagent request
 
 When a Codex or Claude agent starts native subagents, open **Subagents** in its conversation header to see their status and select an individual thread. This includes Claude tasks running in the background and completed work restored after a reload.
 
-The child thread is for inspection; send follow-up instructions through the parent conversation. A child appearing completed is not a substitute for reviewing its result. Native child threads are separate from the Korus teammates listed in the team sidebar and do not by themselves isolate files in a worktree.
+The child thread is for inspection; send follow-up instructions through the parent conversation. A child appearing completed is not a substitute for reviewing its result. Native child threads are separate from the Korus teammates listed in the workspace sidebar and do not by themselves isolate files in a worktree.
 
 ## Start separate Korus teammates
 
-Before starting, connect the [provider](../providers/) each teammate will use and add the repository to the team.
+Before starting, connect the [provider](../providers/) each teammate will use and add the repository to the workspace.
 
-1. Open the team and find the repository group in its sidebar.
+1. Open the workspace and find the repository group in its sidebar.
 2. Use the **+** beside the repository to open its new-session menu. Choose a new worktree for an isolated writer, or the offered default branch for a session in that checkout. The repository's **Create from…** action offers the broader branch/worktree selection.
 3. Check the resulting folder and branch, and select the provider when that creation flow offers more than one. Use a recognizable agent name when creating teammates through the agent dialog or a delegation request.
 4. Send a task that includes its outcome, allowed scope, dependencies, and verification requirements.

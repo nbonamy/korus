@@ -14,7 +14,7 @@ Open **Agent view** at the top of the sidebar and choose **Repository** to keep 
 
 Activity view groups agents into **Needs input**, **Done**, **Working**, and **Idle**. Check **Needs input** for questions and approvals, and **Done** for recent activity and unread updates. Agents move between sections as their state changes; a Done entry is not proof that its work is validated or ready to ship.
 
-Unread updates show a dot in place of the elapsed-time indicator. Each section scrolls independently; use **Show more** to reach additional agents. In **Idle**, open **Sort idle agents** and choose **Repository** or **Recent activity**. Each team remembers its view and idle sorting choices.
+Unread updates show a dot in place of the elapsed-time indicator. Each section scrolls independently; use **Show more** to reach additional agents. In **Idle**, open **Sort idle agents** and choose **Repository** or **Recent activity**. Each workspace remembers its view and idle sorting choices.
 
 ### Group agents by feature
 
@@ -22,9 +22,9 @@ Choose **Worktree** in **Agent view** to group agents by their feature branch ac
 
 Use the **+** beside a feature to add an agent to that feature's worktrees. Drag feature groups to put the work you want to follow first; the default-branch group stays at the top.
 
-### Follow all teams in Cockpit
+### Follow all workspaces in Cockpit
 
-Open **Cockpit** from the left rail to follow activity across teams without switching between them. Its shared sidebar groups agents by activity and shows Mission progress. Select an agent or Mission to open its conversation and work; local and SSH-hosted agents appear together, with host connection indicators for remote work.
+Open **Cockpit** from the left rail to follow activity across workspaces without switching between them. Its shared sidebar groups agents by activity and shows Mission progress. Select an agent or Mission to open its conversation and work; local and SSH-hosted agents appear together, with host connection indicators for remote work.
 
 ## Documents and plans
 
@@ -134,7 +134,7 @@ In a repository backlog, search by issue identifier or title and use the state, 
 
 For a pull request or merge request, **Existing agent** is offered only for agents already on its branch, so reviews and feedback run against the right code.
 
-From the global Backlog, select items and start work, choose the destination **Team** and coding engine, and choose a **Code repository** for Linear. Each selected item starts a separate agent in a worktree. Korus does not infer a local clone from the Linear team or project name.
+From the global Backlog, select items and start work, choose the destination **Workspace** and coding engine, and choose a **Code repository** for Linear. Each selected item starts a separate agent in a worktree. Korus does not infer a local clone from the Linear team or project name.
 
 Assigned items link back to their agent. Korus's assignment and completion status tracks the agent's work; it does not by itself change an issue's status in GitHub, GitLab, or Linear, merge a pull request or merge request, or deploy code. Ask explicitly when you want an external issue updated.
 
@@ -160,11 +160,11 @@ Worktrees with uncommitted changes are marked in red. The uncommitted-file count
 
 ## Agent workspace state
 
-Workspace tabs stay associated with their agent. Switching agents changes the context without combining their documents or browser work.
+Panel tabs stay associated with their agent. Switching agents changes the context without combining their documents or browser work.
 
 In a split conversation layout, the artifact sidebar follows the focused agent.
 
-Drag the dividers to resize conversation panes, or focus a divider and use the arrow keys. Each team keeps its pane assignments, focused pane, and sizes across restarts.
+Drag the dividers to resize conversation panes, or focus a divider and use the arrow keys. Each workspace keeps its pane assignments, focused pane, and sizes across restarts.
 
 Drag an agent or artifact sidebar's divider closed to give the conversation more room. Drag it open again when you need the sidebar.
 
@@ -178,9 +178,9 @@ The iPhone and Android companions connect to your computer's Korus workspace. En
 
 The companion remembers multiple computers. Use **Connections** in mobile Settings to add or switch computers, rename a saved connection, or forget one you no longer use. Pairings start with the computer's name; renaming a connection changes the label on that phone. Forgetting removes its saved connection rather than deleting work on the computer. Revoke a lost device from the desktop.
 
-On iPhone, enable **Live Activities** in mobile Settings to follow running work and requests for attention from the Lock Screen and Dynamic Island. The activity follows the selected computer across its teams, including Mission workers. Tap an agent row to return to its conversation. Allow Live Activities in iOS Settings if prompted; this control is separate from notification permission. Switching computers or turning Live Activities off ends the previous activity.
+On iPhone, enable **Live Activities** in mobile Settings to follow running work and requests for attention from the Lock Screen and Dynamic Island. The activity follows the selected computer across its workspaces, including Mission workers. Tap an agent row to return to its conversation. Allow Live Activities in iOS Settings if prompted; this control is separate from notification permission. Switching computers or turning Live Activities off ends the previous activity.
 
-Use the mobile sidebar to browse one team or **All teams**, switch between repository and activity views, and create a team. Select an agent to follow its conversation, respond to requests, or send a follow-up. Mobile Settings also offers usage, follow-up behavior, notification controls, and optional app lock.
+Use the mobile sidebar to browse one workspace or **All workspaces**, switch between repository and activity views, and create a workspace. Select an agent to follow its conversation, respond to requests, or send a follow-up. Mobile Settings also offers usage, follow-up behavior, notification controls, and optional app lock.
 
 ## Understand usage and performance
 
@@ -208,7 +208,7 @@ Sharing sends hourly summaries containing only a random installation ID, UTC rep
 
 The random ID links your hourly reports without being linked to your account; reports are not completely unlinkable. Usage summaries and the minimal ID/first-reported-day registry are kept indefinitely. Server backup copies rotate after seven days. A private dashboard displays aggregates about participating installation identities, not all downloads or people.
 
-Uploads run hourly and on startup. They send unsent or updated UTC-hour buckets from the local ledger across the retained local history, starting with the next full UTC hour after enabling sharing. Re-enabling starts a new window; usage recorded while sharing was off is excluded. Foreground-active hours can report empty usage if you ran no turns. Pending reports survive restarts; retries preserve their original bytes and acknowledged updates replace the earlier bucket. Reports can arrive late or be dropped after delivery failures. Remote teams and mobile companions do not submit duplicate reports.
+Uploads run hourly and on startup. They send unsent or updated UTC-hour buckets from the local ledger across the retained local history, starting with the next full UTC hour after enabling sharing. Re-enabling starts a new window; usage recorded while sharing was off is excluded. Foreground-active hours can report empty usage if you ran no turns. Pending reports survive restarts; retries preserve their original bytes and acknowledged updates replace the earlier bucket. Reports can arrive late or be dropped after delivery failures. Remote workspaces and mobile companions do not submit duplicate reports.
 
 Input includes cache reads and recorded cache creation. Total tokens add inclusive input and output, without adding cache reads or reasoning twice. Missing or incomplete measurements remain unknown. Costs are API-equivalent estimates from complete ledger evidence, not billed spend or subscription charges.
 

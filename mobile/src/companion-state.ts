@@ -662,7 +662,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!active || status.value !== 'connected' || teamCreation.value === 'creating' || !name || name.length > 100) return null;
     teamCreation.value = 'creating';
     try {
-      if (!active.createTeam) throw new Error('Team creation unavailable.');
+      if (!active.createTeam) throw new Error('Workspace creation unavailable.');
       const id = await active.createTeam(name);
       if (!await refreshWorkspace(active)) return null;
       if (!workspace.value.teams.some(team => team.id === id)) throw new Error('Created team is unavailable.');

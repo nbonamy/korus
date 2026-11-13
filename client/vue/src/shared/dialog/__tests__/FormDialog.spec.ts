@@ -47,7 +47,7 @@ describe('FormDialog', () => {
     const wrapper = mount(FormDialog, {
       props: {
         modelValue: true,
-        title: 'Create team',
+        title: 'Create workspace',
         subtitle: 'Choose how this team should work.',
       },
       slots: {
@@ -60,7 +60,7 @@ describe('FormDialog', () => {
       },
     });
 
-    expect(wrapper.get('.app-dialog__title').text()).toBe('Create team');
+    expect(wrapper.get('.app-dialog__title').text()).toBe('Create workspace');
     expect(wrapper.get('.app-dialog__subtitle').text()).toBe('Choose how this team should work.');
     expect(wrapper.get('input').attributes('aria-label')).toBe('Name');
     expect(wrapper.get('.app-form-dialog__footer-left').text()).toBe('Advanced');

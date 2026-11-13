@@ -114,8 +114,8 @@ describe('App', () => {
     });
     await flushPromises();
 
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Domain review');
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Build the unified backend.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Domain review');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Build the unified backend.');
     expect(wrapper.get('.plan-review-footer').findAll('button').map(button => button.text())).toContain('Approve');
   });
 

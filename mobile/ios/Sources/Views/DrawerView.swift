@@ -140,7 +140,7 @@ struct DrawerView: View {
                     HStack(spacing: 8) {
                         if model.teams.count > 1 {
                             teamPill("All", selected: model.allTeams) { model.command("selectAllTeams") }
-                                .accessibilityLabel("All teams")
+                                .accessibilityLabel("All workspaces")
                         }
                         ForEach(model.teams) { team in
                             let selected = !model.allTeams && team.id == model.teamID
@@ -226,14 +226,14 @@ private struct NewTeamButton: View {
         }
         .buttonStyle(.plain)
         .disabled(model.connection != .connected || model.teamCreation == .creating)
-        .accessibilityLabel("New team")
-        .alert("New Team", isPresented: $showingPrompt) {
+        .accessibilityLabel("New workspace")
+        .alert("New Workspace", isPresented: $showingPrompt) {
             TextField("Name", text: $name)
             Button("Create") { model.command("createTeam", ["name": cleanName]) }
                 .disabled(cleanName.isEmpty || cleanName.utf16.count > 100 || model.connection != .connected)
             Button("Cancel", role: .cancel) { model.command("dismissTeamCreation") }
         } message: {
-            if model.teamCreation == .failed { Text("Couldn’t create the team. Check the connection and try again.") }
+            if model.teamCreation == .failed { Text("Couldn’t create the workspace. Check the connection and try again.") }
         }
         .onChange(of: model.teamCreation) { _, phase in
             if phase == .failed { showingPrompt = true }

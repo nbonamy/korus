@@ -203,7 +203,7 @@ describe('team-manager', () => {
         },
       ],
     }, 'missing-team')).toBeNull();
-    expect(() => closeTeamInSnapshot(snapshot, 'team-app')).toThrow('At least one team must remain open.');
+    expect(() => closeTeamInSnapshot(snapshot, 'team-app')).toThrow('At least one workspace must remain open.');
   });
 
   it('computes short initials for team avatars', () => {

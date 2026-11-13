@@ -137,7 +137,7 @@ describe('app menu', () => {
     const linux = items('linux');
     expect(linux.find(item => item.label === 'Next Window')).toBeDefined();
     expect(linux.find(item => item.label === 'Next Window')?.accelerator).toBeUndefined();
-    expect(linux.some(item => item.label === 'Next Team')).toBe(false);
+    expect(linux.some(item => item.label === 'Next Workspace')).toBe(false);
   });
   it('offers Show Workspace next to New Window', () => {
     const showWorkspace = vi.fn();
@@ -213,7 +213,7 @@ describe('app menu', () => {
     expect(menu.map((item) => item.label)).toStrictEqual([`${product.name}`, 'File', undefined, 'View', 'Agent', 'Window', 'Help']);
 
     expect(menuLabels(submenu(menu, 'File'))).toStrictEqual([
-      'New Team',
+      'New Workspace',
       'Close Window',
       'Close Agent',
       'Quit',
@@ -233,8 +233,8 @@ describe('app menu', () => {
       'Go to Agent...',
       'Next Agent',
       'Previous Agent',
-      'Next Team',
-      'Previous Team',
+      'Next Workspace',
+      'Previous Workspace',
     ]);
     expect(submenu(menu, 'Agent').map((item) => item.type ?? item.label)).toStrictEqual([
       'Rename agent',
@@ -322,13 +322,13 @@ describe('app menu', () => {
     const menu = buildAppMenuTemplate(nextCallbacks, { debugMode: false }, 'darwin');
 
     [
-      ['File', 'New Team'],
+      ['File', 'New Workspace'],
       ['File', 'Close Agent'],
       ['View', 'Go to Agent...'],
       ['View', 'Changes'],
       ['View', 'Browser'],
-      ['View', 'Next Team'],
-      ['View', 'Previous Team'],
+      ['View', 'Next Workspace'],
+      ['View', 'Previous Workspace'],
       ['View', 'Next Agent'],
       ['View', 'Previous Agent'],
     ].forEach(([menuLabel, itemLabel]) => clickItem(menu, menuLabel, itemLabel));
@@ -365,11 +365,11 @@ describe('app menu', () => {
   it('uses the expected file menu accelerators', () => {
     const menu = buildAppMenuTemplate(callbacks(), { debugMode: false }, 'darwin');
 
-    expect(menuItem(menu, 'File', 'New Team')?.accelerator).toBe('CommandOrControl+N');
+    expect(menuItem(menu, 'File', 'New Workspace')?.accelerator).toBe('CommandOrControl+N');
     expect(menuItem(menu, 'File', 'Close Window')?.accelerator).toBe('CommandOrControl+W');
     expect(menuItem(menu, 'File', 'Close Agent')?.accelerator).toBe('CommandOrControl+Backspace');
-    expect(menuItem(menu, 'View', 'Next Team')?.accelerator).toBe('Control+`');
-    expect(menuItem(menu, 'View', 'Previous Team')?.accelerator).toBe('Control+Shift+`');
+    expect(menuItem(menu, 'View', 'Next Workspace')?.accelerator).toBe('Control+`');
+    expect(menuItem(menu, 'View', 'Previous Workspace')?.accelerator).toBe('Control+Shift+`');
     expect(menuItem(menu, 'File', 'Quit')?.accelerator).toBe('CommandOrControl+Q');
     expect(menuItem(menu, 'View', 'Go to Agent...')?.accelerator).toBe('CommandOrControl+K');
     expect(menuItem(menu, 'View', 'Changes')?.accelerator).toBe('CommandOrControl+G');
@@ -525,8 +525,8 @@ describe('app menu', () => {
       'Go to Agent...',
       'Next Agent',
       'Previous Agent',
-      'Next Team',
-      'Previous Team',
+      'Next Workspace',
+      'Previous Workspace',
       'Reload',
       'Toggle Developer Tools',
     ]);
@@ -632,7 +632,7 @@ describe('app menu', () => {
       'Merge Progress',
       'Merge Conflicts',
     ]);
-    expect(menuItem(debugMenu, 'View', 'Next Team')?.accelerator).toBe('Control+`');
+    expect(menuItem(debugMenu, 'View', 'Next Workspace')?.accelerator).toBe('Control+`');
     expect(menuItem(debugMenu, 'View', 'Next Agent')?.accelerator).toBe('Control+Tab');
     expect(menuItem(debugMenu, 'View', 'Previous Agent')?.accelerator).toBe('Control+Shift+Tab');
     expect(menuItem(debugMenu, 'View', 'Reload')?.accelerator).toBe('CommandOrControl+Shift+R');

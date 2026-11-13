@@ -420,7 +420,7 @@ describe('AppShell navigation and teams', () => {
       expect(wrapper.find('[data-group-kind="repository"]').exists()).toBe(true);
       await wrapper.get('[aria-label="Cockpit"]').trigger('click');
       const sidebar = () => wrapper.get('.agent-sidebar');
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       expect(sidebar().findAll('[data-activity-group]').map(group => group.attributes('data-activity-group'))).toEqual(['attention', 'working', 'idle']);
       expect(sidebar().text()).toContain(firstMission.outcome);
       expect(sidebar().text()).toContain(otherMission.outcome);
@@ -436,12 +436,12 @@ describe('AppShell navigation and teams', () => {
       selectAgent(snapshot, other.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
       expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(other.id);
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       await sidebar().findAll('[data-group-kind="missions"] .agent-sidebar__agent').find(row => row.text().includes(otherMission.outcome))!.trigger('click');
       selectAgent(snapshot, worker.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: worker });
       expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
       await sidebar().get(`[data-reorder-id="${other.id}"]`).trigger('click');
       selectAgent(snapshot, other.id);

@@ -72,7 +72,7 @@ describe('CommandPalette', () => {
   });
   it('keeps artifact panes in workspace-menu order and puts file search in navigation', () => {
     const { wrapper } = setup({ planAvailable: true });
-    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open code review', 'Open Design', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
+    expect(sectionRows(wrapper, 'Panels')).toStrictEqual(['Open code review', 'Open Design', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
     expect(sectionRows(wrapper, 'Navigation')).toContain('Go to file');
     wrapper.unmount();
   });
@@ -81,8 +81,8 @@ describe('CommandPalette', () => {
     context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];
     await nextTick();
     const groups = wrapper.findAll('h3').map(heading => heading.text());
-    expect(groups[0]).toBe('Workspace');
-    for (const group of ['Workspace', 'Agent', 'Git']) {
+    expect(groups[0]).toBe('Panels');
+    for (const group of ['Panels', 'Agent', 'Git']) {
       expect(groups).toContain(group);
       expect(groups.indexOf(group)).toBeLessThan(groups.indexOf('Settings'));
     }
@@ -98,7 +98,7 @@ describe('CommandPalette', () => {
     await wrapper.get('input').setValue('reviews');
     expect(wrapper.get('button').text()).toBe('Open code review');
     expect(wrapper.get('button').attributes('disabled')).toBeUndefined();
-    expect(sectionRows(wrapper, 'Workspace')).toContain('Open code review');
+    expect(sectionRows(wrapper, 'Panels')).toContain('Open code review');
     await wrapper.get('input').trigger('keydown.enter');
     expect(actions.codeReview).toHaveBeenCalledExactlyOnceWith();
     wrapper.unmount();

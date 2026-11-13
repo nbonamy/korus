@@ -299,7 +299,7 @@ export class CompanionManager {
         const snapshot = await this.provider.request<AppSnapshot>(backendMethods.teamCreate, {
           input: { name, color: defaultTeamColor }, _clientId: 'companion-write',
         });
-        if (!snapshot.activeTeamId) throw new Error('Team creation returned no team.');
+        if (!snapshot.activeTeamId) throw new Error('Workspace creation returned no workspace.');
         return snapshot.activeTeamId;
       },
       usage: async () => {

@@ -187,7 +187,7 @@ describe('AppBackendServer', () => {
 
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'delete-last-team', method: backendMethods.teamDelete, params: { teamId: 'team-test' },
-    })).rejects.toThrow('At least one team must remain open.');
+    })).rejects.toThrow('At least one workspace must remain open.');
 
     expect(snapshot.teams.map(team => team.id)).toStrictEqual(['team-test']);
     expect(snapshot.missions?.map(candidate => candidate.id)).toStrictEqual([mission.id]);
@@ -212,7 +212,7 @@ describe('AppBackendServer', () => {
 
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'delete-team-partial', method: backendMethods.teamDelete, params: { teamId: 'team-test' },
-    })).rejects.toThrow('Team deletion stopped after removing 1 of 2 Missions. The team remains');
+    })).rejects.toThrow('Workspace deletion stopped after removing 1 of 2 Missions. The workspace remains');
 
     expect(snapshot.teams.map(team => team.id)).toStrictEqual(['team-test', 'team-keep']);
     expect(snapshot.missions?.map(mission => mission.id)).toStrictEqual([second.id]);
@@ -274,7 +274,7 @@ describe('AppBackendServer', () => {
     const remoteClients = { request: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
     const server = new AppBackendServer({ version: 'test-version', pid: 123, snapshot, remoteClients: remoteClients as never });
 
-    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'delete-last', method: 'team/delete', params: { teamId: 'team-test' } })).rejects.toThrow('At least one team');
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'delete-last', method: 'team/delete', params: { teamId: 'team-test' } })).rejects.toThrow('At least one workspace');
 
     expect(remoteClients.request).not.toHaveBeenCalled();
     expect(snapshot.teams).toHaveLength(1);

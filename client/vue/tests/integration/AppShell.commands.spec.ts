@@ -319,7 +319,7 @@ describe('AppShell dialogs and commands', () => {
     setElectronTestClient({ design, onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) });
     const wrapper = mountShell({ stubAgentWorkspace: false, realConversationPane: true });
     if (source === 'workspace launcher') {
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       await wrapper.findAll('.right-workspace-panel__launcher button').find(button => button.text() === 'Design')!.trigger('click');
     } else if (source === 'composer menu') {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
@@ -358,7 +358,7 @@ describe('AppShell dialogs and commands', () => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountShell({ snapshot, startVisualize, sendPromptAction, stubAgentWorkspace: false });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     const visualizeButton = wrapper.findAll('.right-workspace-panel__launcher button')
       .find(button => button.text() === 'Visualize');
     expect(visualizeButton).toBeDefined();
@@ -375,7 +375,7 @@ describe('AppShell dialogs and commands', () => {
     const startVisualize = vi.fn().mockRejectedValue(new Error('Cannot start Visualize'));
     const wrapper = mountShell({ startVisualize, stubAgentWorkspace: false });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     const visualizeButton = wrapper.findAll('.right-workspace-panel__launcher button')
       .find(button => button.text() === 'Visualize');
     await visualizeButton!.trigger('click');
@@ -980,7 +980,7 @@ describe('AppShell dialogs and commands', () => {
     await nextTick();
     listener({ type: 'new-team' });
     await nextTick();
-    expect(wrapper.text()).toContain('Create Team');
+    expect(wrapper.text()).toContain('Create Workspace');
     await wrapper.findAll('button').find((button) => button.text() === 'Cancel')?.trigger('click');
     await nextTick();
     listener({ type: 'close-active-agent' });
@@ -1003,7 +1003,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('duplicate-agent')).toStrictEqual([['agent-dina']]);
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
-    expect(wrapper.get('[aria-label="Right workspace tabs"]').findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
+    expect(wrapper.get('[aria-label="Right panel tabs"]').findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
     expect(wrapper.text()).toContain('Rename agent');
 
     wrapper.unmount();

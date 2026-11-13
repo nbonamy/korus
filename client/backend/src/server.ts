@@ -249,7 +249,7 @@ export class AppBackendServer {
 
   private async prepareDelegationHandoff(agent: Agent, operationId: string): Promise<void> {
     const team = this.snapshot.teams.find(team => team.id === agent.teamId);
-    if (!team) throw new Error('The handoff team is unavailable.');
+    if (!team) throw new Error('The handoff workspace is unavailable.');
     const previous = team.delegationHandoffs?.[agent.id];
     if (previous?.targetAgentId && previous.operationId !== operationId) throw new Error('The source agent was already replaced.');
     if (previous?.operationId === operationId) return;
@@ -356,7 +356,7 @@ export class AppBackendServer {
 
   private reserveRemoteCreation(input: { teamId?: string; remoteConnectionId?: string }): () => void {
     if (!input.remoteConnectionId) return () => undefined;
-    if ((input.teamId && this.deletingTeams.has(input.teamId)) || this.deletingConnections.has(input.remoteConnectionId)) throw new Error('Team or connection deletion in progress. Retry creation after it finishes.');
+    if ((input.teamId && this.deletingTeams.has(input.teamId)) || this.deletingConnections.has(input.remoteConnectionId)) throw new Error('Workspace or connection deletion in progress. Retry creation after it finishes.');
     const key = JSON.stringify([input.teamId, input.remoteConnectionId]);
     this.remoteCreations.set(key, (this.remoteCreations.get(key) ?? 0) + 1);
     return () => {
@@ -494,7 +494,7 @@ export class AppBackendServer {
       await this.remoteTeams.snapshot(connectionId);
       agent = this.collaborationAgents().find(agent => agent.id === agentId && agent.teamId === team.id && agent.remoteConnectionId === connectionId);
     }
-    if (!agent) throw new Error('The caller is not a member of this collaboration team.');
+    if (!agent) throw new Error('The caller is not a member of this collaboration workspace.');
     if (name === 'handoff-check') {
       const operationId = requireString(requireRecord(input.arguments).operationId, 'operationId');
       await this.prepareDelegationHandoff(agent, operationId);
@@ -1152,7 +1152,7 @@ export class AppBackendServer {
   async createProjectFromQuickChat(agentId: string, name: string, prompt: string, selection?: ExecutionSelectionOverrides): Promise<CreatedProject> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     if (caller?.sessionKind !== 'quickChat' || !caller.teamId) {
-      throw new Error('create-project is available only in a Quick Chat with a team.');
+      throw new Error('create-project is available only in a Quick Chat with a workspace.');
     }
     if (!prompt.trim()) throw new Error('A self-contained project handoff prompt is required.');
     return this.projectCreation.create({ name, teamId: caller.teamId, providerDefaults: !selection?.provider || selection.provider === caller.provider ? caller.providerDefaults : undefined, prompt, selection: { ...selection, provider: resolveAgentProvider(this.snapshot, selection?.provider ?? caller.provider) } }, payload => this.applyAndEmitBackendEvent({ agentId: caller.id, type: 'agentCreation.progress', payload }));
@@ -1433,7 +1433,7 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         if (message.method === backendMethods.guestConversationControl) {
           const input = params.input as import('@workspace/core/guest-navigation').GuestJoinControl;
-          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId)) throw new Error('Join requires a team.');
+          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId)) throw new Error('Join requires a workspace.');
         }
         const result = message.method === backendMethods.guestConversationControl
           ? await joins.control(params.input as import('@workspace/core/guest-navigation').GuestJoinControl, this.snapshot.activeTeamId ?? this.snapshot.teams[0]?.id)
@@ -1557,7 +1557,7 @@ export class AppBackendServer {
       const input = isRecord(params?.input) ? params.input : {};
       const teamId = input.teamId ?? projectClientSnapshot(before, clientId).activeTeamId;
       if (typeof teamId !== 'string' || !before.teams.some((team) => team.id === teamId)) {
-        return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'A valid target team is required.');
+        return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'A valid target workspace is required.');
       }
       request.params = { ...params, input: { ...input, teamId } };
     }
@@ -1668,7 +1668,7 @@ export class AppBackendServer {
         const teamId = requireString(params.teamId, 'teamId');
         const ownerId = requireString(params.ownerId, 'ownerId');
         const team = this.snapshot.teams.find(team => team.id === teamId);
-        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote team belongs to a different collaboration controller.');
+        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote workspace belongs to a different collaboration controller.');
         team.collaborationOwnerId = ownerId;
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -1678,7 +1678,7 @@ export class AppBackendServer {
         const teamId = requireString(params.teamId, 'teamId');
         const ownerId = requireString(params.ownerId, 'ownerId');
         const team = this.snapshot.teams.find(team => team.id === teamId);
-        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote team belongs to a different collaboration controller.');
+        if (!team || (team.collaborationOwnerId && team.collaborationOwnerId !== ownerId)) throw new Error('The remote workspace belongs to a different collaboration controller.');
         const input = requireRecord(params.input);
         requireString(input.repoPath, 'repoPath');
         const caller = requireRecord(params.caller);
@@ -2100,7 +2100,7 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
         const team = this.snapshot.teams.find(candidate => candidate.id === input.teamId);
-        if (!team) throw new Error(`Team not found: ${input.teamId}`);
+        if (!team) throw new Error(`Workspace not found: ${input.teamId}`);
         const created = await this.projectCreation.create({ ...input, teamId: team.id, selection: { ...input.selection, provider: resolveAgentProvider(this.snapshot, input.selection?.provider) } });
         onCreated(created.agent.id);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
@@ -2315,17 +2315,17 @@ export class AppBackendServer {
         const input = requireMoveAgentInput(message.params);
         const route = await this.locationForAgentId(input.agentId);
         if (route?.kind === 'remote') {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Remote agents cannot be moved between teams from the local pointer.');
+          return createAppRpcError(message.id, appRpcErrorCodes.internalError, 'Remote agents cannot be moved between workspaces from the local pointer.');
         }
         const movingAgent = this.snapshot.agents.find((candidate) => candidate.id === input.agentId);
         const targetTeam = this.snapshot.teams.find((candidate) => candidate.id === input.teamId) ?? null;
         if (!movingAgent || !targetTeam) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
+          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or workspace not found: ${input.agentId} -> ${input.teamId}`);
         }
         if (handoffInProgress(movingAgent)) throw new Error('Wait for the handoff to finish.');
         const agent = moveAgentToTeamInSnapshot(this.snapshot, input.agentId, input.teamId);
         if (!agent) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or team not found: ${input.agentId} -> ${input.teamId}`);
+          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent or workspace not found: ${input.agentId} -> ${input.teamId}`);
         }
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
@@ -3309,7 +3309,7 @@ export class AppBackendServer {
         validateTeamInput(input);
         const existingTeam = this.snapshot.teams.find((candidate) => candidate.id === input.id) ?? null;
         if (!existingTeam) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${input.id}`);
+          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Workspace not found: ${input.id}`);
         }
         for (const link of this.remoteTeams.linksForTeam(existingTeam)) {
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(link.connectionId, backendMethods.teamUpdate, {
@@ -3330,7 +3330,7 @@ export class AppBackendServer {
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
         if (existingTeam) {
-          if (this.snapshot.teams.length <= 1) throw new Error('At least one team must remain open.');
+          if (this.snapshot.teams.length <= 1) throw new Error('At least one workspace must remain open.');
           await this.remoteTeams.deleteRemoteTeams(existingTeam, () => this.persistSnapshotOnly());
 
           const missions = this.snapshot.missions?.filter(candidate => candidate.teamId === teamId) ?? [];
@@ -3356,7 +3356,7 @@ export class AppBackendServer {
             if (deletedMissions === 0) throw error;
             await this.emitProjectedSnapshot();
             const reason = error instanceof Error ? error.message : String(error);
-            throw new Error(`Team deletion stopped after removing ${deletedMissions} of ${missions.length} Missions. The team remains; retry deletion to finish cleanup. ${reason}`, { cause: error });
+            throw new Error(`Workspace deletion stopped after removing ${deletedMissions} of ${missions.length} Missions. The workspace remains; retry deletion to finish cleanup. ${reason}`, { cause: error });
           }
         }
         for (const agentId of existingTeam?.agentIds ?? []) {
@@ -3365,7 +3365,7 @@ export class AppBackendServer {
         }
         const team = closeTeamInSnapshot(this.snapshot, teamId);
         if (!team) {
-          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Team not found: ${teamId}`);
+          return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Workspace not found: ${teamId}`);
         }
         for (const agentId of team.agentIds) this.agentRequests.clearAgent(agentId);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
@@ -5209,11 +5209,11 @@ function requireAgentRequestResponse(params: unknown): AgentRequestResponse {
 
 function validateTeamInput(input: CreateTeamInput): void {
   if (!input.name.trim()) {
-    throw new Error('Team name is required.');
+    throw new Error('Workspace name is required.');
   }
 
   if (!teamColors.some((color) => color === input.color.trim().toUpperCase())) {
-    throw new Error('Team color is invalid.');
+    throw new Error('Workspace color is invalid.');
   }
 }
 

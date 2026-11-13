@@ -412,7 +412,7 @@ describe('AgentSidebar actions', () => {
       'Duplicate',
       'Fork',
       'Hand off',
-      'Move to Other Team',
+      'Move to…',
       'Compact⇧⌘K',
       'Compress',
       'Resume',

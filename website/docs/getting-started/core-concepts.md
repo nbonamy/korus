@@ -1,24 +1,24 @@
 ---
-description: Understand teams, agents, conversations, repositories, worktrees, and Missions.
+description: Understand workspaces, agents, conversations, repositories, worktrees, and Missions.
 ---
 
 # Core concepts
 
 Korus organizes the workspace around agents and the work you give them.
 
-## Teams and agents
+## Workspaces and agents
 
-A **team** groups agents. An **agent** has an identity, a working folder, provider settings, and its own conversation. Selecting another agent changes the conversation you see while background work can continue.
+A **workspace** groups agents. An **agent** has an identity, a working folder, provider settings, and its own conversation. Selecting another agent changes the conversation you see while background work can continue.
 
-Use names that communicate responsibility: implementation, documentation, or review, for example. A team groups work; it does not turn the members into one conversation or give them isolated files automatically.
+Use names that communicate responsibility: implementation, documentation, or review, for example. A workspace groups work; it does not turn the members into one conversation or give them isolated files automatically.
 
-A team can contain agents on this computer and on connected SSH hosts. Each agent's host owns its files and running work. See [Remote hosts](../providers/#remote-hosts) for setup and [Cockpit](../features/workspace#follow-all-teams-in-cockpit) to follow activity across teams.
+A workspace can contain agents on this computer and on connected SSH hosts. Each agent's host owns its files and running work. See [Remote hosts](../providers/#remote-hosts) for setup and [Cockpit](../features/workspace#follow-all-workspaces-in-cockpit) to follow activity across workspaces.
 
 ## Quick Chats and project work
 
 Use a Quick Chat to discuss an idea without first attaching it to a repository task. When the idea becomes implementation work, ask for a project or a dedicated agent with an explicit working folder.
 
-A Quick Chat opened in a team can use that team's project context. Name the repository when several could fit, or answer the agent's clarification. This lets you discuss work across projects before choosing where implementation belongs.
+A Quick Chat opened in a workspace can use that workspace's project context. Name the repository when several could fit, or answer the agent's clarification. This lets you discuss work across projects before choosing where implementation belongs.
 
 The start-work menu can create a new project, open an existing folder, browse GitHub or GitLab repositories, or clone a repository URL. Opening a project gives the conversation concrete filesystem context. Creating a project folder and creating a Git worktree are different operations: worktrees require an existing Git repository.
 
@@ -54,6 +54,6 @@ A Mission is a staged outcome: Requirements, Tickets, Implementation, Review, an
 
 ## Providers
 
-The provider supplies the coding engine and model access. Korus supplies team coordination, workspace surfaces, and delivery workflows around it. Available controls can differ between engines.
+The provider supplies the coding engine and model access. Korus supplies coordination, panels, and delivery workflows around it. Available controls can differ between engines.
 
 See [Providers](../providers/) and [Missions](../workflows/missions).

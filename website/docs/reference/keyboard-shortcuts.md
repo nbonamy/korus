@@ -17,12 +17,12 @@ Open **View → Keyboard Shortcuts** for a searchable reference to actions and k
 | Shortcut | Action |
 | --- | --- |
 | ⌘K | Open the agent and Mission picker; a Mission returns to its last selected agent. |
-| ⌘N | Create a team. |
-| ⌘1–9 | Select the corresponding agent in the active team. |
-| Control Tab | Cycle forward through the agents of the team, or of the feature in a feature window. |
+| ⌘N | Create a workspace. |
+| ⌘1–9 | Select the corresponding agent in the active workspace. |
+| Control Tab | Cycle forward through the agents of the workspace, or of the feature in a feature window. |
 | Control Shift Tab | Cycle backward through agents. |
-| Control \` | Cycle forward through teams in a full window. |
-| Control Shift \` | Cycle backward through teams. |
+| Control \` | Cycle forward through workspaces in a full window. |
+| Control Shift \` | Cycle backward through workspaces. |
 | ⌘\` | Cycle forward through windows. |
 | ⌘Shift \` | Cycle backward through windows. |
 

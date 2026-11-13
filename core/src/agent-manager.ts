@@ -187,7 +187,7 @@ function insertAgentInSnapshot(snapshot: AppSnapshot, agent: Agent, select = tru
 }
 
 function targetTeamId(snapshot: AppSnapshot, teamId: string | undefined): string {
-  if (teamId && !snapshot.teams.some((team) => team.id === teamId)) throw new Error(`Team not found: ${teamId}`);
+  if (teamId && !snapshot.teams.some((team) => team.id === teamId)) throw new Error(`Workspace not found: ${teamId}`);
   // Legacy callers without a client context get only the stable default team.
   // Backend dispatch resolves the initiating client's explicit target first.
   return teamId ?? snapshot.teams[0]?.id ?? seedTeamId;

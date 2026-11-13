@@ -116,7 +116,7 @@ enum EngineState {
                 Text(model.questionAnswers)
                 Button("Existing Project") { model.newProjectSource = .existing }
                 NewAgentMenu(enabled: true, allTeams: allTeams, quickChat: {}, select: { model.newProjectSource = $0 })
-                if allTeams { Button("Switch to Team") { allTeams = false } }
+                if allTeams { Button("Switch to Workspace") { allTeams = false } }
                 Text(model.selection)
                 Button("Rename Agent") { showingRename = true }
                 Text("Agent: \(name)")

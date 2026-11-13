@@ -16,7 +16,7 @@ Korus's **Worktree initialization** setting controls extra setup. **Auto-detect*
 
 ## Create one from the sidebar
 
-1. Open a team with an agent in the repository.
+1. Open a workspace with an agent in the repository.
 2. Use the **+** beside that repository group and choose the new-worktree option.
 3. In **New Worktree**, choose **Start from** and enter a branch such as `feat/export-csv`. Check the destination folder wherever the creation flow lets you change it. If Korus offers an existing worktree, verify its path and branch before reusing it.
 4. Create the worktree and send the implementation task to the new session. Provider selection is part of the start-work flow; the worktree dialog handles the branch and checkout.

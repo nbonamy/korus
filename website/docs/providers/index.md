@@ -4,7 +4,7 @@ description: Connect coding engines for agent work, and GitHub, GitLab, or Linea
 
 # Provider guides
 
-Korus can run different coding engines in the same team. Each engine has its own account, conversation location, and customization. Connecting one does not authenticate the others.
+Korus can run different coding engines in the same workspace. Each engine has its own account, conversation location, and customization. Connecting one does not authenticate the others.
 
 | Engine | Installation and sign-in |
 | --- | --- |
@@ -56,7 +56,7 @@ For usage recorded by Korus, open [Settings → Analytics](../features/workspace
 
 ## Cursor
 
-Run Cursor agents in the same team as your other engines. Use them for conversations, delegation, Missions, code reviews, and automations.
+Run Cursor agents in the same workspace as your other engines. Use them for conversations, delegation, Missions, code reviews, and automations.
 
 ### Connect Cursor
 
@@ -128,7 +128,7 @@ Git branches, commits, pushes, and delivery requests still belong to the code re
 
 ## Remote hosts
 
-Run agents on another computer while keeping their conversations alongside local work in the same team.
+Run agents on another computer while keeping their conversations alongside local work in the same workspace.
 
 1. Configure SSH key access to the host and add it to your SSH configuration.
 2. Open **Settings → Connections → Add remote**, choose the host, and connect. Verify the host identity when asked.
@@ -136,7 +136,7 @@ Run agents on another computer while keeping their conversations alongside local
 4. Expand the host's row to connect the selected coding-provider accounts and manage engine updates. A working local sign-in does not establish remote access; check each remote engine's connection state.
 5. When opening a repository or creating work, choose **Host**. Korus can use an existing clone there or clone the repository from its origin. Check the destination path, coding engine, and model before starting.
 
-Local and remote agents can share a team, but each agent's files, Git operations, tools, and running processes belong to its host. A repository credential or service available locally may need separate setup there. Agents stay on their chosen host; create another agent to work elsewhere.
+Local and remote agents can share a workspace, but each agent's files, Git operations, tools, and running processes belong to its host. A repository credential or service available locally may need separate setup there. Agents stay on their chosen host; create another agent to work elsewhere.
 
 The host indicator shows connection health separately from whether the coding engine is signed in. If it is unavailable, reconnect from Connections rather than creating a duplicate agent. **Update Korus** upgrades the remote runtime; finish active turns and pending requests first. Removing the connection removes those remote agents from this app while leaving them running on the host. Missions and conversation sharing use local agents.
 
@@ -182,7 +182,7 @@ Choose the location before creating agents when possible. Switching between **Se
 4. Acknowledge the removal, then choose **Remove agents and switch** only if you intend to proceed.
 5. Connect the new setup if needed and create new agents there.
 
-Conversation files remain in the previous provider home. This action does not migrate them, and switching back does **not** restore the removed agents in Korus. Your repository folders and worktrees are not deleted by the location switch. Remote-team agents use their remote host's setup and are outside this local reset.
+Conversation files remain in the previous provider home. This action does not migrate them, and switching back does **not** restore the removed agents in Korus. Your repository folders and worktrees are not deleted by the location switch. Remote-workspace agents use their remote host's setup and are outside this local reset.
 
 ## If the connection behaves differently from your terminal
 

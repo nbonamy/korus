@@ -54,7 +54,7 @@ class SidebarWorkflowTest {
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
             engine.state(state()); mount(engine)
             app.onNodeWithContentDescription("Open workspace").performClick()
-            app.onNodeWithContentDescription("New team").performScrollTo().performClick()
+            app.onNodeWithContentDescription("New workspace").performScrollTo().performClick()
             app.onNodeWithText("Create").assertIsNotEnabled()
             app.onNodeWithText("Name").performTextInput("Mobile team")
             app.onNodeWithText("Create").performClick()
@@ -63,7 +63,7 @@ class SidebarWorkflowTest {
             app.onNodeWithText("Create").assertIsNotEnabled()
             engine.state(state().put("teamCreation", "failed"))
             app.onNodeWithText("Mobile team").assertIsDisplayed()
-            app.onNodeWithText("Couldn’t create the team. Check the connection and try again.").assertIsDisplayed()
+            app.onNodeWithText("Couldn’t create the workspace. Check the connection and try again.").assertIsDisplayed()
             app.onNodeWithText("Create").performClick()
             app.waitUntil(5_000) { engine.commands().count { it.string("type") == "createTeam" } == 2 }
             engine.state(state().put("teamCreation", "creating"))
@@ -71,9 +71,9 @@ class SidebarWorkflowTest {
             app.onNodeWithText("Create").assertDoesNotExist()
             app.onNodeWithContentDescription("Mobile team").assertIsSelected()
             engine.state(state().put("connection", "disconnected"))
-            app.onNodeWithContentDescription("New team").performScrollTo().assertIsNotEnabled()
+            app.onNodeWithContentDescription("New workspace").performScrollTo().assertIsNotEnabled()
             engine.state(state())
-            app.onNodeWithContentDescription("New team").performScrollTo().performClick()
+            app.onNodeWithContentDescription("New workspace").performScrollTo().performClick()
             app.onNodeWithText("Name").performTextInput("Fast team")
             app.onNodeWithText("Create").performClick()
             engine.state(state(team = "fast").put("teamCreation", "idle").put("teams", JSONArray().put(json("id" to "fast", "name" to "Fast team"))))
@@ -90,13 +90,13 @@ class SidebarWorkflowTest {
             val teams = JSONArray((1..12).map { json("id" to "t$it", "name" to "Team $it", "isUnread" to (it == 12)) })
             engine.state(state(team = "t1").put("teams", teams)); mount(engine)
             app.onNodeWithContentDescription("Open workspace").performClick()
-            app.onNodeWithContentDescription("All teams").assertIsNotSelected().performClick()
+            app.onNodeWithContentDescription("All workspaces").assertIsNotSelected().performClick()
             assertCommand(engine, json("type" to "selectAllTeams"))
             engine.state(state(team = "t1").put("teams", teams).put("allTeams", true))
-            app.onNodeWithContentDescription("All teams").assertIsSelected()
+            app.onNodeWithContentDescription("All workspaces").assertIsSelected()
             val commandsBeforeCreation = engine.commands().size
             app.onNodeWithText("New Agent").performClick()
-            app.onNodeWithText("Switch to a team to create a new agent.").assertIsDisplayed()
+            app.onNodeWithText("Switch to a workspace to create a new agent.").assertIsDisplayed()
             app.onNodeWithText("From GitHub").assertDoesNotExist()
             app.onNodeWithText("OK").performClick()
             assertEquals(commandsBeforeCreation, engine.commands().size)
@@ -115,7 +115,7 @@ class SidebarWorkflowTest {
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
             app.onNodeWithContentDescription("Team 12, unread activity").assertDoesNotExist()
             engine.state(state(team = "t12").put("teams", JSONArray().put(teams.getJSONObject(11))))
-            app.onNodeWithContentDescription("All teams").assertDoesNotExist()
+            app.onNodeWithContentDescription("All workspaces").assertDoesNotExist()
         }
     }
 

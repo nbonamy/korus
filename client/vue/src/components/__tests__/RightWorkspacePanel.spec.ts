@@ -124,11 +124,11 @@ describe('RightWorkspacePanel', () => {
   it(`shows a ${product.name} launcher when no workspace tab has been opened`, async () => {
     const wrapper = mountPanel([], null);
 
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Visualize');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Changes');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Browser');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Files');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Review');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Visualize');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Changes');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Browser');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Files');
     expect(wrapper.findAll('.right-workspace-panel__launcher kbd').map((shortcut) => shortcut.text())).toStrictEqual(['⌘G', '⌘B']);
     expect(wrapper.text()).not.toContain('Terminal');
 
@@ -138,7 +138,7 @@ describe('RightWorkspacePanel', () => {
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview'], ['design'], ['visualize'], ['review'], ['simulator'], ['browser'], ['files']]);
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     const visualizeMenuItem = bodyAll('[role="menuitem"]').find(item => item.text() === 'Visualize');
     expect(visualizeMenuItem).toBeDefined();
     await visualizeMenuItem!.trigger('click');
@@ -319,9 +319,9 @@ describe('RightWorkspacePanel', () => {
   it('opens the dedicated Review pane from the add-tab menu', async () => {
     const wrapper = mountPanel();
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
-    await bodyAll('[role="menu"][aria-label="Open right workspace tab"] .app-menu__item')[0]?.trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
+    expect(bodyAll('[role="menu"][aria-label="Open right panel tab"] .app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
+    await bodyAll('[role="menu"][aria-label="Open right panel tab"] .app-menu__item')[0]?.trigger('click');
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview']]);
   });
@@ -331,7 +331,7 @@ describe('RightWorkspacePanel', () => {
     const launcher = mountPanel([], null);
     await launcher.setProps({ githubRepository: 'nbonamy/agent-workspace' });
 
-    expect(launcher.get('[aria-label="Open a workspace tab"]').text()).not.toContain('Backlog');
+    expect(launcher.get('[aria-label="Open a panel tab"]').text()).not.toContain('Backlog');
 
     const wrapper = mountPanel(['backlog'], 'backlog');
     await wrapper.setProps({
@@ -346,7 +346,7 @@ describe('RightWorkspacePanel', () => {
       startWorkAction: startRepositoryWork,
     });
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     expect(bodyAll('.app-menu__item').map((item) => item.text())).not.toContain('Backlog');
   });
 
@@ -361,9 +361,9 @@ describe('RightWorkspacePanel', () => {
   it('omits the embedded Browser when the host does not provide it', async () => {
     const wrapper = mountPanel([], null, {}, null, {}, undefined, false);
 
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).not.toContain('Browser');
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Review');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).not.toContain('Browser');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Files']);
   });
 
@@ -575,7 +575,7 @@ describe('RightWorkspacePanel', () => {
     expect(document.body.querySelector('[aria-label="Tab actions"]')).toBeNull();
     expect(browserSetVisible).not.toHaveBeenCalled();
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     await flushPromises();
     expect(browserSetVisible).not.toHaveBeenCalled();
 
@@ -632,7 +632,7 @@ describe('RightWorkspacePanel', () => {
 
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Browser', 'Implementation plan']);
     expect(wrapper.get('h1').text()).toBe('Plan');
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Keep Browser available.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Keep Browser available.');
     expect(wrapper.find('.plan-review-footer').exists()).toBe(kind === 'native review');
 
     await wrapper.findAll('[role="tab"]')[0]?.trigger('click');

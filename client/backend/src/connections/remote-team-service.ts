@@ -70,9 +70,9 @@ export class RemoteTeamService {
    */
   async pointerForAgentInput(input: { teamId?: string; remoteConnectionId?: string }): Promise<RemoteTeamPointer | null> {
     const snapshot = this.options.getSnapshot();
-    if (!input.teamId) throw new Error('A target team is required before resolving its location.');
+    if (!input.teamId) throw new Error('A target workspace is required before resolving its location.');
     const team = snapshot.teams.find((candidate) => candidate.id === input.teamId);
-    if (!team) throw new Error(`Team not found: ${input.teamId}`);
+    if (!team) throw new Error(`Workspace not found: ${input.teamId}`);
     const connectionId = input.remoteConnectionId?.trim() ?? '';
     if (!connectionId) return null;
     this.validateConnection(connectionId);
@@ -167,7 +167,7 @@ export class RemoteTeamService {
     this.rememberSnapshot(connectionId, remoteSnapshot);
     const remoteTeam = remoteSnapshot.teams.find((team) => team.id === remoteSnapshot.activeTeamId)
       ?? remoteSnapshot.teams[remoteSnapshot.teams.length - 1];
-    if (!remoteTeam) throw new Error('Remote team was not created.');
+    if (!remoteTeam) throw new Error('Remote workspace was not created.');
     return remoteTeam;
   }
 

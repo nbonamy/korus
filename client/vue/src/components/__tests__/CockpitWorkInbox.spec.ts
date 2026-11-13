@@ -19,7 +19,7 @@ describe('CockpitWorkInbox', () => {
     await wrapper.get('[aria-label="Start work on #21"]').trigger('click');
     await flushPromises();
     const fields = wrapper.findAll('.cockpit-inbox__start-body > label');
-    expect(fields.map(field => field.element.firstChild?.textContent?.trim())).toEqual(['Team', 'Host', 'Agent']);
+    expect(fields.map(field => field.element.firstChild?.textContent?.trim())).toEqual(['Workspace', 'Host', 'Agent']);
     const options = wrapper.get('[aria-label="Host"]').findAll('option');
     expect(options[0]!.find('.tabler-icon-device-imac').exists()).toBe(true);
     expect(options[1]!.find('.tabler-icon-world').exists()).toBe(true);
@@ -342,7 +342,7 @@ describe('CockpitWorkInbox', () => {
     expect(startButton.props('disabled')).toBe(false);
     await startButton.trigger('click');
     expect(wrapper.get('.cockpit-inbox__start-body').text()).toContain('Launch 1 agent?');
-    const clientNavigationSelectTeam = wrapper.findAllComponents({ name: 'ElSelect' }).find(select => select.attributes('aria-label') === 'Team for new agents')!;
+    const clientNavigationSelectTeam = wrapper.findAllComponents({ name: 'ElSelect' }).find(select => select.attributes('aria-label') === 'Workspace for new agents')!;
     expect(clientNavigationSelectTeam.props('modelValue')).toBe('team-one');
     await clientNavigationSelectTeam.vm.$emit('update:modelValue', 'team-two');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');

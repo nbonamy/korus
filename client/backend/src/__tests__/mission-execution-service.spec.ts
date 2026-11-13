@@ -2112,7 +2112,7 @@ describe('mission execution', () => {
     h.snapshot.agents.push(moved);
     h.snapshot.teams[1]!.agentIds.push(moved.id);
 
-    await expect(h.command({ action: 'configure', teamId: 'team-other', memberIds: [moved.id] })).rejects.toThrow('local team');
+    await expect(h.command({ action: 'configure', teamId: 'team-other', memberIds: [moved.id] })).rejects.toThrow('local workspace');
     expect(h.current().teamId).toBe('team-app');
   });
 
@@ -2142,7 +2142,7 @@ describe('mission execution', () => {
     const outsider = { ...replacement, id: 'outside-member', teamId: 'another-team' };
     h.snapshot.agents.push(remote, outsider);
     for (const memberId of [removed.id, remote.id, outsider.id]) {
-      await expect(h.command({ action: 'configure', teamId: before.teamId, memberIds: [memberId] })).rejects.toThrow('local team');
+      await expect(h.command({ action: 'configure', teamId: before.teamId, memberIds: [memberId] })).rejects.toThrow('local workspace');
     }
     await h.command({ action: 'configure', teamId: before.teamId, memberIds: [replacement.id] });
     expect(h.current().execution!.runs).toStrictEqual(before.execution!.runs);
@@ -2272,7 +2272,7 @@ describe('mission execution', () => {
 
 it('rejects invalid configuration, stale commands and inactive worker results without accepting artifacts', async () => {
   const h = setup();
-  await expect(h.command({ action: 'configure', teamId: 'missing', memberIds: [] })).rejects.toThrow('local team');
+  await expect(h.command({ action: 'configure', teamId: 'missing', memberIds: [] })).rejects.toThrow('local workspace');
   await expect(h.command({ action: 'attachRepository', repoPath: '' })).rejects.toThrow('repository');
   await expect(h.command({ action: 'attachRepository', repoPath: '/outside-team' })).rejects.toThrow('represented');
   await h.configure();
