@@ -9,6 +9,7 @@ import {
   isDrawableAnnotation,
   measurementAnnotation,
   type ImageAnnotation,
+  type ImageRuler,
 } from '../image-annotation';
 
 afterEach(() => {
@@ -255,6 +256,58 @@ describe('image annotation geometry', () => {
     await rejection;
   });
 
+});
+
+describe('measuring against rulers', () => {
+  const vertical = (position: number): ImageRuler => ({ id: `v${position}`, axis: 'vertical', position });
+  const horizontal = (position: number): ImageRuler => ({ id: `h${position}`, axis: 'horizontal', position });
+  const gapImage = () => {
+    const imageData = solidImageData(11, 11, 255);
+    paintColumn(imageData, 2, 0);
+    paintColumn(imageData, 8, 0);
+    paintRow(imageData, 2, 0);
+    paintRow(imageData, 8, 0);
+    return imageData;
+  };
+  const measure = (tool: 'measure-horizontal' | 'measure-vertical', rulers: readonly ImageRuler[]) =>
+    measurementAnnotation(gapImage(), { x: 5, y: 5 }, tool, 11, 11, rulers);
+
+  it('stops a horizontal measurement at the nearest vertical rulers when they sit inside the detected edges', () => {
+    expect(measure('measure-horizontal', [vertical(3), vertical(4), vertical(7)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 4, y: 5 }, end: { x: 7, y: 5 },
+    });
+  });
+
+  it('keeps the detected edge when a ruler lies beyond it', () => {
+    expect(measure('measure-horizontal', [vertical(1), vertical(10)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 2, y: 5 }, end: { x: 8, y: 5 },
+    });
+  });
+
+  it('bounds only one side when only one ruler is in range', () => {
+    expect(measure('measure-horizontal', [vertical(6)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 2, y: 5 }, end: { x: 6, y: 5 },
+    });
+  });
+
+  it('applies horizontal rulers to vertical measurements only', () => {
+    const rulers = [horizontal(4), horizontal(7), vertical(5)];
+    expect(measure('measure-vertical', rulers)).toStrictEqual({
+      tool: 'measure-vertical', start: { x: 5, y: 4 }, end: { x: 5, y: 7 },
+    });
+    expect(measure('measure-horizontal', [horizontal(4), horizontal(7)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 2, y: 5 }, end: { x: 8, y: 5 },
+    });
+  });
+
+  it('ignores a ruler under the cursor and measures to the image boundary without pixel data', () => {
+    expect(measure('measure-horizontal', [vertical(5)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 2, y: 5 }, end: { x: 8, y: 5 },
+    });
+    expect(measurementAnnotation(null, { x: 5, y: 5 }, 'measure-horizontal', 11, 11, [vertical(3), vertical(9)])).toStrictEqual({
+      tool: 'measure-horizontal', start: { x: 3, y: 5 }, end: { x: 9, y: 5 },
+    });
+  });
 });
 
 function solidImageData(width: number, height: number, value: number): ImageData {

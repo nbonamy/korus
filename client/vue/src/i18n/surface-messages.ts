@@ -737,6 +737,8 @@ export const conversationMessages = {
     "rectangle": "Rectangle",
     "measureHorizontalGap": "Measure horizontal gap",
     "measureVerticalGap": "Measure vertical gap",
+    "verticalRuler": "Vertical ruler",
+    "horizontalRuler": "Horizontal ruler",
     "saveAnnotationComment": "Save annotation comment",
     "addAComment": "Add a comment"
   },

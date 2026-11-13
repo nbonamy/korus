@@ -23,6 +23,7 @@ const context = {
   quadraticCurveTo: vi.fn(),
   restore: vi.fn(),
   save: vi.fn(),
+  setLineDash: vi.fn(),
   stroke: vi.fn(),
 };
 const mountedWrappers: VueWrapper[] = [];
@@ -483,6 +484,101 @@ describe('ImageAnnotationDialog', () => {
     dispatchPointer(canvas, 'pointermove', 430, 150);
 
     expect(scrollBy).toHaveBeenCalledWith({ left: 28, top: 0, behavior: 'auto' });
+  });
+
+  it('places rulers that measurements stop at, removes one by clicking it again, and clears them with the annotations', async () => {
+    const wrapper = await mountDialog();
+    const canvas = annotationCanvas(wrapper);
+    const clearButton = () => wrapper.get('[aria-label="Clear image annotations"]');
+    expect(clearButton().attributes('disabled')).toBeDefined();
+
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'x' });
+    expect(wrapper.get('[aria-label="Vertical ruler"]').attributes('aria-pressed')).toBe('true');
+    dispatchPointer(canvas, 'pointerdown', 300, 100);
+    dispatchPointer(canvas, 'pointerup', 300, 100);
+    await nextTick();
+    // The guide spans the image at the clicked column, and is a guide only: no numbered annotation.
+    expect(context.moveTo).toHaveBeenCalledWith(600.5, 96);
+    expect(context.lineTo).toHaveBeenCalledWith(600.5, 496);
+    expect(wrapper.findAll('.image-annotation-dialog__comment-number')).toHaveLength(0);
+    expect(clearButton().attributes('disabled')).toBeUndefined();
+
+    // The model sees the rulers: they are drawn into the saved image as well.
+    context.lineTo.mockClear();
+    await wrapper.get('[aria-label="Save image annotations"]').trigger('click');
+    expect(context.lineTo).toHaveBeenCalledWith(600.5, 496);
+    expect(wrapper.emitted('save')).toHaveLength(1);
+
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'h' });
+    context.fillText.mockClear();
+    dispatchPointer(canvas, 'pointermove', 200, 100);
+    // Without the ruler the gap runs to the image edge (798px); with it, it stops at the ruler.
+    expect(context.fillText).toHaveBeenCalledWith('503px', expect.any(Number), expect.any(Number));
+
+    // A horizontal ruler never bounds a horizontal measurement.
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'y' });
+    dispatchPointer(canvas, 'pointerdown', 200, 120);
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'h' });
+    context.fillText.mockClear();
+    dispatchPointer(canvas, 'pointermove', 200, 100);
+    expect(context.fillText).toHaveBeenCalledWith('503px', expect.any(Number), expect.any(Number));
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'v' });
+    context.fillText.mockClear();
+    dispatchPointer(canvas, 'pointermove', 200, 100);
+    expect(context.fillText).toHaveBeenCalledWith('143px', expect.any(Number), expect.any(Number));
+
+    // Clicking a ruler again with its tool removes it, and measurements run to the edge once more.
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'x' });
+    dispatchPointer(canvas, 'pointerdown', 301, 100);
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'h' });
+    context.fillText.mockClear();
+    dispatchPointer(canvas, 'pointermove', 200, 100);
+    expect(context.fillText).toHaveBeenCalledWith('798px', expect.any(Number), expect.any(Number));
+
+    // Clear drops the remaining ruler too, even without annotations.
+    await clearButton().trigger('click');
+    expect(clearButton().attributes('disabled')).toBeDefined();
+    await wrapper.get('.image-annotation-dialog__body').trigger('keydown', { key: 'v' });
+    context.fillText.mockClear();
+    dispatchPointer(canvas, 'pointermove', 200, 100);
+    expect(context.fillText).toHaveBeenCalledWith('398px', expect.any(Number), expect.any(Number));
+  });
+
+  it('turns the measure and ruler tools the other way each time Shift is pressed', async () => {
+    const wrapper = await mountDialog();
+    const canvas = annotationCanvas(wrapper);
+    const body = () => wrapper.get('.image-annotation-dialog__body');
+    const pressed = (label: string) => wrapper.get(`[aria-label="${label}"]`).attributes('aria-pressed');
+    const label = async (apply: () => unknown) => {
+      context.fillText.mockClear();
+      await apply();
+      return context.fillText.mock.calls.at(-1)?.[0];
+    };
+
+    await body().trigger('keydown', { key: 'h' });
+    expect(await label(() => dispatchPointer(canvas, 'pointermove', 200, 100))).toBe('798px');
+    // One press turns the preview at once, without moving the pointer, and it stays turned after the key is released.
+    expect(await label(() => body().trigger('keydown', { key: 'Shift' }))).toBe('398px');
+    await body().trigger('keyup', { key: 'Shift' });
+    expect(pressed('Measure vertical gap')).toBe('true');
+    expect(pressed('Measure horizontal gap')).toBe('false');
+    expect(await label(() => dispatchPointer(canvas, 'pointermove', 201, 100))).toBe('398px');
+    // Key repeat does not flip it back and forth; the next press does.
+    await body().trigger('keydown', { key: 'Shift', repeat: true });
+    expect(pressed('Measure vertical gap')).toBe('true');
+    expect(await label(() => body().trigger('keydown', { key: 'Shift' }))).toBe('798px');
+
+    // Choosing a tool starts from its own direction again; rulers turn the same way.
+    await body().trigger('keydown', { key: 'Shift' });
+    await body().trigger('keydown', { key: 'x' });
+    expect(pressed('Vertical ruler')).toBe('true');
+    await body().trigger('keydown', { key: 'Shift' });
+    context.moveTo.mockClear();
+    dispatchPointer(canvas, 'pointerdown', 300, 100);
+    dispatchPointer(canvas, 'pointerup', 300, 100);
+    await nextTick();
+    expect(context.moveTo).toHaveBeenCalledWith(96, 200.5);
+    expect(pressed('Horizontal ruler')).toBe('true');
   });
 
   it('handles tool shortcuts without dialog focus and keeps measurement visible at the last hover point', async () => {
