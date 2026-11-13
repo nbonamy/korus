@@ -36,6 +36,7 @@ import { computed, defineComponent, nextTick, provide, reactive, shallowRef } fr
 import { createConversationPaneController, provideHostCapabilities, type ConversationPaneState } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
+import { engineName } from '../../src/engine-name';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { providerChoicesKey } from '@workspace/vue/components/provider-selection';
@@ -174,8 +175,6 @@ const controller = createConversationPaneController({
   },
 });
 
-const engineNames: Record<string, string> = { codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity' };
-const engineName = (id: string) => engineNames[id] ?? id;
 function chooseEngine(provider: string) {
   if (provider !== engines.value?.current) void handler('transcript').postMessage(JSON.stringify({ type: 'provider', provider }));
 }

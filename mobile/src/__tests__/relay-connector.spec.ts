@@ -143,7 +143,22 @@ describe('native relay host adapter', () => {
     const session = await connector.connect(host.hostId);
     try {
       expect(await session.getUsage!()).toStrictEqual(providers);
-      expect(transport.requests.at(-1)).toMatchObject({ method: 'usage.get', args: {} });
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'usage.get', args: { providers: 'all' } });
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
+  it('reads the quotas of released laptops that only answer for the engines they always listed', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    const providers = [{ provider: 'codex', limits: null, failed: false }];
+    transport.response = (method, args) => {
+      if (method !== 'usage.get') return {};
+      if (args.providers) throw new Error('Unknown field');
+      return providers;
+    };
+    const session = await connector.connect(host.hostId);
+    try {
+      expect(await session.getUsage!()).toStrictEqual(providers);
+      expect(transport.requests.filter(request => request.method === 'usage.get').map(request => request.args)).toStrictEqual([{ providers: 'all' }, {}]);
     } finally { session.close(); await connector.dispose!(); }
   });
 

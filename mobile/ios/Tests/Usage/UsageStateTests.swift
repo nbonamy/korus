@@ -21,6 +21,18 @@ final class UsageStateTests: XCTestCase {
         XCTAssertTrue(usage.providers[1].failed)
     }
 
+    func testNamesWhatAWindowLimitsWhenTheEngineSaysSo() throws {
+        let json = """
+        {"status":"loaded","providers":[{"provider":"antigravity","failed":false,"limits":{
+          "primary":{"label":"Claude","usedPercent":10,"windowDurationMins":300,"resetsAt":null},
+          "secondary":{"label":"Gemini","usedPercent":40,"windowDurationMins":300,"resetsAt":null}
+        }}]}
+        """
+        let usage = try JSONDecoder().decode(UsageState.self, from: Data(json.utf8))
+        XCTAssertEqual(usage.visibleProviders.map(\.name), ["Antigravity"])
+        XCTAssertEqual(usage.providers[0].rows.map(\.label), ["Claude", "Gemini"])
+    }
+
     func testUnknownAndExpiredLimitsRemainDistinctFromZeroUsage() {
         let unknown = UsageState.Row(id: "primary", window: .init(usedPercent: nil, windowDurationMins: nil, resetsAt: nil), fallback: "Usage")
         XCTAssertEqual(unknown.remaining, "—")

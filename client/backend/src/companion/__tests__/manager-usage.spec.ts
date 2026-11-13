@@ -65,6 +65,14 @@ describe('companion usage from the paired laptop', () => {
     expect(await f.gateway.request('phone', 'usage.get', {})).toStrictEqual([]);
   });
 
+  it('lists every engine with a subscription quota only for phones that ask, keeping released phones on the engines they know', async () => {
+    const f = await fixture();
+    const everyone = ['codex', 'claude', 'antigravity', 'cursor'];
+    expect((await f.gateway.request('phone', 'usage.get', { providers: 'all' }) as { provider: string }[]).map(item => item.provider)).toStrictEqual(everyone);
+    expect((await f.gateway.request('phone', 'usage.get', {}) as { provider: string }[]).map(item => item.provider)).toStrictEqual(['codex', 'claude']);
+    await expect(f.gateway.request('phone', 'usage.get', { providers: 'some' })).rejects.toThrow();
+  });
+
   it('requires a current grant, rejects extra parameters and withholds results after revocation', async () => {
     const f = await fixture();
     await expect(f.gateway.request('stranger', 'usage.get', {})).rejects.toThrow('not authorized');

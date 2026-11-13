@@ -1106,6 +1106,13 @@ describe('companion authorization gateway', () => {
       await f.gateway.request('phone', 'agent.provider.set', { target, provider: 'claude' });
       expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
     });
+    it('switches to an engine this laptop lists even when released phones never named it', async () => {
+      const f = fixture(); await f.pair();
+      f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'cursor'] }, agents: [{ ...workspace.agents[0]! }, workspace.agents[1]!] });
+      await f.gateway.request('phone', 'agent.provider.set', { target, provider: 'cursor' });
+      expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('agent', 'cursor');
+      await expect(f.gateway.request('phone', 'agent.provider.set', { target, provider: 'antigravity' })).rejects.toThrow('not available');
+    });
     it.each([
       ['a chat that already has a conversation', { providerSession: { kind: 'codex', conversationId: 'thread' } }, 'claude'],
       ['a chat that has sent a prompt', { hasSubmittedPrompt: true }, 'claude'],

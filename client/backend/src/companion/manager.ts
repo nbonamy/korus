@@ -302,12 +302,11 @@ export class CompanionManager {
         if (!snapshot.activeTeamId) throw new Error('Workspace creation returned no workspace.');
         return snapshot.activeTeamId;
       },
-      usage: async () => {
+      usage: async (everyProvider) => {
         const { snapshot } = await this.provider.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
-        // Shipped clients understand only these quota providers. Other engines
-        // require negotiated labels and monetary balances before inclusion.
+        // Released phones label only these quota providers; the others go to phones that ask for every engine.
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && companionQuotaProviders.includes(provider.provider) && supportsSubscriptionQuota(connectionAccount(provider.authentication)));
+          && (everyProvider || companionQuotaProviders.includes(provider.provider)) && supportsSubscriptionQuota(connectionAccount(provider.authentication)));
         return Promise.all(providers.map(async ({ provider: provider }) => {
           try {
             const limits = await this.provider.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { provider: provider });

@@ -13,10 +13,11 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 import type { HarnessProvider, AgentGitDiff, AgentGitDiffTarget, ProviderSkillSummary, ProviderPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionConversation, CompanionConversationFrame, CompanionGrant, CompanionPending, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionConversationOf, companionDataModel, companionMaxUploadBytes, companionMaxUploads, companionProviders, companionSessionId, followsCompanionConversation, sameCompanionSession } from '@workspace/core/companion-protocol';
+import { companionConversationOf, companionDataModel, companionMaxUploadBytes, companionMaxUploads, companionSessionId, followsCompanionConversation, sameCompanionSession } from '@workspace/core/companion-protocol';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { canChangeAgentConversation } from '@workspace/core/agent-manager';
@@ -48,6 +49,8 @@ const promptSelectionKeys = ['model', 'reasoningEffort', 'serviceTier'] as const
 const reviewSelectionKeys = ['provider', 'model', 'reasoningEffort'] as const;
 
 const identity = z.string().min(1).max(200);
+/** Any harness the SDK supports: availability is checked against this laptop's own list, not a list baked into released phones. */
+const providerId = z.enum(harnessProviders);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
 const requestOutcomeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('answered'), answers: z.record(z.string().min(1).max(500), z.object({ answers: z.array(z.string().max(100_000)).max(100) }).strict()) }).strict(),
@@ -114,7 +117,7 @@ export type GatewayPort = {
   duplicateAgent?(agentId: string, provider: HarnessProvider): Promise<string>;
   renameAgent?(agentId: string, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
-  usage?(): Promise<CompanionUsage[]>;
+  usage?(everyProvider?: boolean): Promise<CompanionUsage[]>;
   /** What the person calls this computer, so a phone can name the pairing without asking. */
   hostName?(): string;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
@@ -309,7 +312,7 @@ const agentOperations = {
       await port.changeGoal(agent.id, objective); return {};
     },
   }),
-  'agent.provider.set': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders) }).strict()))({
+  'agent.provider.set': agentOperation(withTarget(z.object({ provider: providerId }).strict()))({
     check: (agent, { provider: backend }, { providers: backends }) => {
       if (!canSelectAgentProvider(agent)) throw new Error('The engine can only change before the first prompt.');
       if (backends && !backends[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
@@ -322,7 +325,7 @@ const agentOperations = {
       await port.renameAgent(agent.id, name); return {};
     },
   }),
-  'agent.duplicate': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders) }).strict()))({
+  'agent.duplicate': agentOperation(withTarget(z.object({ provider: providerId }).strict()))({
     check: (agent, { provider: backend }, { providers: backends }) => {
       if (!backends?.[agent.remoteConnectionId ?? agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
@@ -339,7 +342,7 @@ const agentOperations = {
   'agent.close': agentOperation(withTarget(z.object({ input: closeInputSchema.optional() }).strict()))({
     act: async (port, agent, { input }) => { await port.close(agent.id, input); return {}; },
   }),
-  'agent.review.setup': agentOperation(withTarget(z.object({ provider: z.enum(companionProviders).optional() }).strict()))({
+  'agent.review.setup': agentOperation(withTarget(z.object({ provider: providerId.optional() }).strict()))({
     act: async (port, agent, { provider: backend }) => {
       if (!port.reviewSetup) throw new Error('Review setup unavailable.');
       return port.reviewSetup(agent.id, backend);
@@ -578,9 +581,10 @@ export class CompanionGateway {
       return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, undefined, authorize)) };
     },
     'usage.get': async (peer, args) => {
-      z.object({}).strict().parse(args);
+      // Released phones send no argument and keep the engines they can label; newer ones ask for every engine.
+      const { providers } = z.object({ providers: z.literal('all').optional() }).strict().parse(args);
       if (!this.port.usage) throw new Error('Usage is unavailable.');
-      const usage = await this.port.usage();
+      const usage = await this.port.usage(providers === 'all');
       this.requireGrant(peer);
       return usage;
     },
@@ -642,7 +646,7 @@ export class CompanionGateway {
       return { creationId: this.creations.start(peer.peerId, () => this.port.createChat(request)) };
     },
     'agent.quickChat.create': async (peer, args) => {
-      const input = z.object({ teamId: identity, provider: z.enum(companionProviders) }).strict().parse(args);
+      const input = z.object({ teamId: identity, provider: providerId }).strict().parse(args);
       const workspace = await this.workspace();
       this.requireGrant(peer);
       if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Workspace not found.');

@@ -5,7 +5,7 @@ import { ConversationCache } from './conversation-cache';
 import { legacyPermissionCall, speaksCurrentDataModel, companionTargetFor, companionAgents, companionTarget, companionUpdatesProtocol } from '@workspace/core/companion-protocol';
 import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
-import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionChatCreation, CompanionCommandReceipt, CompanionUsage, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionConversation, CompanionSession } from './companion-port';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { PairedLaptop, RelayNetwork } from './relay-network';
@@ -131,7 +131,8 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
     previewFile: (agentId, input) => call('agent.file.preview', { target: target(agentId), input }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
-    getUsage: () => call('usage.get', {}),
+    // Laptops that predate the request for every engine answer for the ones they always listed.
+    async getUsage() { try { return await call<CompanionUsage[]>('usage.get', { providers: 'all' }); } catch { return call<CompanionUsage[]>('usage.get', {}); } },
     async registerPush(registration) {
       if (!registration) { await call('notifications.register', null); return; }
       const signer = await network.signer();
