@@ -220,8 +220,10 @@ export class AppMcpService {
 
   handleBackendEvent(event: BackendPublishedEvent): void {
     if (event.agentId) void this.monitors.flush(event.agentId);
+    if (event.type === 'turn.started') this.coordinator.turnStarted(event.agentId);
     if (event.type === 'turn.completed') {
       this.coordinator.clearStatus(event.agentId);
+      void this.coordinator.turnEnded(event.agentId, event.payload.status, event.payload.willRetry);
       // User-entered delegation controls belong to the turn they were submitted for.
       const owner = this.snapshot.agents.find(agent => agent.id === event.agentId);
       if (owner && event.conversationId) {

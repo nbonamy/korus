@@ -96,8 +96,6 @@ export type FinishTurnResponse = {
   success: true;
   status: null;
   flag?: ThreadFlagId;
-  announcement?: AnnouncementResponse;
-  celebration?: CelebrationResponse;
 };
 
 export type FinishTurnInput = {
@@ -344,6 +342,9 @@ export class AppMcpAgentCoordinator {
     return true;
   }
 
+  /** What finish_turn asked for, applied when the turn it ends completes. */
+  private readonly pendingFinish = new Map<string, { flag?: ThreadFlagId; suggestedPrompt?: string; announcement?: StatusAnnouncementInput; celebration: boolean }>();
+
   async finishTurn(agentId: string, input: FinishTurnInput = {}): Promise<FinishTurnResponse> {
     const agent = this.requireAgent(agentId);
     let flag = input.flag;
@@ -352,34 +353,43 @@ export class AppMcpAgentCoordinator {
         ? await this.resolveWorkspaceIdentity?.(agent.folder).catch(() => undefined) : undefined;
       if (workspace?.kind !== 'git' || !workspace.branch || workspace.branch !== workspace.defaultBranch) flag = undefined;
     }
-    const normalizedAnnouncement = input.announcement
+    const announcement = input.announcement
       ? this.normalizedAnnouncement({ phase: 'finish', text: input.announcement.text })
       : undefined;
     if (input.celebration && !this.onCelebrate) {
       throw new McpToolError('Celebrations are not available.');
     }
+    this.pendingFinish.set(agentId, {
+      ...(flag ? { flag } : {}),
+      ...(input.suggestedPrompt?.trim() ? { suggestedPrompt: input.suggestedPrompt.trim() } : {}),
+      ...(announcement ? { announcement } : {}),
+      celebration: Boolean(input.celebration),
+    });
+    return { success: true, status: null, ...(flag ? { flag } : {}) };
+  }
+
+  /** A new turn starts clean: nothing is left over from a finish that never completed. */
+  turnStarted(agentId: string): void {
+    this.pendingFinish.delete(agentId);
+  }
+
+  /** The turn ended: only a completed one applies what finish_turn asked for. */
+  async turnEnded(agentId: string, status: string, willRetry: boolean): Promise<void> {
+    if (willRetry) return;
+    const pending = this.pendingFinish.get(agentId);
+    this.pendingFinish.delete(agentId);
+    const agent = this.getAgents().find(candidate => candidate.id === agentId);
+    if (!pending || !agent || status !== 'completed') return;
     delete agent.statusText;
-    if (flag) agent.threadFlags = { [flag]: true };
-    const suggestedPrompt = input.suggestedPrompt?.trim();
-    if (suggestedPrompt) agent.suggestedPrompt = suggestedPrompt;
+    if (pending.flag) agent.threadFlags = { [pending.flag]: true };
+    if (pending.suggestedPrompt) agent.suggestedPrompt = pending.suggestedPrompt;
     else delete agent.suggestedPrompt;
     agent.updatedAt = this.now().toISOString();
     this.onAgentUpdated?.(agent);
-    const [announcement, celebration] = await Promise.all([
-      normalizedAnnouncement
-        ? this.onAnnounce!(agent, normalizedAnnouncement.phase, normalizedAnnouncement.text)
-        : undefined,
-      input.celebration
-        ? this.onCelebrate!(agent)
-        : undefined,
+    await Promise.allSettled([
+      pending.announcement ? this.onAnnounce?.(agent, pending.announcement.phase, pending.announcement.text) : undefined,
+      pending.celebration ? this.onCelebrate?.(agent) : undefined,
     ]);
-    return {
-      success: true,
-      status: null,
-      ...(flag ? { flag } : {}),
-      ...(announcement ? { announcement } : {}),
-      ...(celebration ? { celebration } : {}),
-    };
   }
 
   async displayMarkdown(agentId: string, input: DisplayMarkdownInput): Promise<DisplayMarkdownResponse> {

@@ -32,6 +32,17 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 describe('AppMcpService', () => {
   let service: AppMcpService | null = null;
 
+  /** finish_turn takes effect when its turn completes, so the test completes the turn. */
+  async function completeTurn(agentId: string) {
+    service!.handleBackendEvent({ agentId, provider: 'codex', type: 'turn.completed', turnId: 'turn', seq: 0, occurredAt: '', payload: { status: 'completed', error: null, willRetry: false } } as never);
+    await Promise.resolve();
+  }
+  async function callFinish(url: string, agentId: string, arguments_: Record<string, unknown>) {
+    const response = await callTool(url, agentId, 'finish_turn', arguments_);
+    await completeTurn(agentId);
+    return response;
+  }
+
   afterEach(async () => {
     await service?.stop();
     service = null;
@@ -112,17 +123,16 @@ describe('AppMcpService', () => {
     const url = await service.start();
     vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValueOnce(0.99);
     for (const kind of ['confetti', 'stars', 'schoolPride']) {
-      const response = await callTool(url, 'agent-dina', 'finish_turn', { celebration: true });
-      expect(response.result.structuredContent).toMatchObject({ celebration: { requested: true, kind } });
+      await callFinish(url, 'agent-dina', { celebration: true });
       expect(events.at(-1)).toMatchObject({ type: 'client.celebrationRequested', agentId: 'agent-dina', payload: { kind } });
     }
     events.length = 0;
     for (const input of [{}, { celebration: false }]) {
-      const response = await callTool(url, 'agent-dina', 'finish_turn', input);
+      const response = await callFinish(url, 'agent-dina', input);
       expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     }
     expect(events.some(event => event.type === 'client.celebrationRequested')).toBe(false);
-    const invalid = await callTool(url, 'agent-dina', 'finish_turn', { celebration: { kind: 'stars' } });
+    const invalid = await callFinish(url, 'agent-dina', { celebration: { kind: 'stars' } });
     expect(invalid.result.isError).toBe(true);
   });
 
@@ -397,11 +407,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, resolveWorkspaceIdentity: folder => git.identity(folder), onEvent: (event) => events.push(event) });
     try {
       const url = await service.start();
-      const removedAlias = await callTool(url, 'agent-dina', 'finish_turn', { flag: 'delegate_to_worktree' });
+      const removedAlias = await callFinish(url, 'agent-dina', { flag: 'delegate_to_worktree' });
       expect(removedAlias.result.isError).toBe(true);
 
       await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
-      const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
+      const delegated = await callFinish(url, 'agent-dina', {
         flag,
       });
       expect(delegated.result.structuredContent).toStrictEqual({
@@ -420,7 +430,7 @@ describe('AppMcpService', () => {
       await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
-      const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
+      const plain = await callFinish(url, 'agent-dina', {});
       expect(plain.result.structuredContent).toStrictEqual({
         success: true, status: null,
       });
@@ -435,22 +445,22 @@ describe('AppMcpService', () => {
       }));
       snapshot.agents[0]!.threadFlags = undefined;
       await run(['switch', '-c', 'feature/discussion']);
-      const filtered = await callTool(url, 'agent-dina', 'finish_turn', { flag, suggestedPrompt: 'Keep investigating' });
+      const filtered = await callFinish(url, 'agent-dina', { flag, suggestedPrompt: 'Keep investigating' });
       expect(filtered.result.structuredContent).toStrictEqual({ success: true, status: null });
       expect(snapshot.agents[0]!.threadFlags).toBeUndefined();
       expect(snapshot.agents[0]!.suggestedPrompt).toBe('Keep investigating');
       expect(events.at(-1)).toMatchObject({ type: 'agent.updated', payload: { threadFlags: null, statusText: null } });
-      await callTool(url, 'agent-dina', 'finish_turn', { flag: 'ready_for_review' });
+      await callFinish(url, 'agent-dina', { flag: 'ready_for_review' });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       await run(['checkout', '--detach']);
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       snapshot.agents[0]!.folder = os.tmpdir();
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       snapshot.agents[0]!.folder = folder;
       await run(['switch', 'trunk']);
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     } finally { await service?.stop(); await rm(folder, { recursive: true, force: true }); }
   });
@@ -460,7 +470,7 @@ describe('AppMcpService', () => {
     const events: BackendEvent[] = [];
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
     const url = await service.start();
-    const result = await callTool(url, 'agent-dina', 'finish_turn', {
+    const result = await callFinish(url, 'agent-dina', {
       suggestedPrompt: '  Add keyboard navigation  ',
     });
     expect(result.result.isError).not.toBe(true);
@@ -470,7 +480,7 @@ describe('AppMcpService', () => {
       agentId: 'agent-dina', type: 'agent.updated',
       payload: { suggestedPrompt: 'Add keyboard navigation' },
     });
-    await callTool(url, 'agent-dina', 'finish_turn', {});
+    await callFinish(url, 'agent-dina', {});
     expect(snapshot.agents[0]!.suggestedPrompt).toBeUndefined();
     expect(events.at(-1)).toMatchObject({ payload: { suggestedPrompt: null } });
   });
@@ -1253,20 +1263,12 @@ describe('AppMcpService', () => {
       jsonrpc: '2.0', id: 2, method: 'tools/call',
       params: { name: 'finish_turn', arguments: { celebration: true } },
     });
-    expect(celebrationResponse.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(celebrationResponse.result.structuredContent).toStrictEqual({ success: true, status: null });
+    await completeTurn('agent-dina');
     expect(events).toContainEqual(expect.objectContaining({
       agentId: 'agent-dina',
       type: 'client.celebrationRequested',
-      payload: { kind: celebrationResponse.result.structuredContent.celebration.kind },
+      payload: { kind: expect.any(String) },
     }));
 
     const createResponse = await postJson(callerUrl, {
@@ -1747,20 +1749,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-dina', 'finish_turn', {
+    const response = await callFinish(url, 'agent-dina', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested' }));
   });
 
@@ -1772,20 +1765,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-jesse', 'finish_turn', {
+    const response = await callFinish(url, 'agent-jesse', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested', agentId: 'agent-jesse' }));
   });
 
@@ -1823,26 +1807,22 @@ describe('AppMcpService', () => {
       text: 'On it.',
     });
 
-    const background = await callTool(url, 'agent-jesse', 'finish_turn', {
+    const background = await callFinish(url, 'agent-jesse', {
       announcement: { text: 'Done.' },
     });
-    expect(background.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(background.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(2);
 
     snapshot.general.spokenAnnouncementsMuted = true;
-    const muted = await callTool(url, 'agent-dina', 'finish_turn', {
+    const muted = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
-    expect(muted.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(muted.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(3);
 
     snapshot.general.spokenAnnouncementsMuted = false;
     snapshot.general.spokenAnnouncementScope = 'all';
-    await callTool(url, 'agent-jesse', 'finish_turn', {
+    await callFinish(url, 'agent-jesse', {
       announcement: { text: 'Done.' },
     });
     expect(queueSpokenAnnouncement).toHaveBeenLastCalledWith({
@@ -1875,16 +1855,14 @@ describe('AppMcpService', () => {
     const dictatedStart = await callTool(url, 'agent-dina', 'set-status', {
       status: 'Starting', announcement: { phase: 'start', text: 'On it.' },
     });
-    const dictatedFinish = await callTool(url, 'agent-dina', 'finish_turn', {
+    const dictatedFinish = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
 
     expect(dictatedStart.result.structuredContent).toStrictEqual({
       success: true, status: 'Starting', announcement: { success: true, phase: 'start' },
     });
-    expect(dictatedFinish.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(dictatedFinish.result.structuredContent).toStrictEqual({ success: true, status: null });
 
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(2);
   });
@@ -1899,13 +1877,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, queueSpokenAnnouncement });
     const url = await service.start();
 
-    const failed = await callTool(url, 'agent-dina', 'finish_turn', {
+    const failed = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
     expect(failed.result.isError).toBe(false);
-    expect(failed.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(failed.result.structuredContent).toStrictEqual({ success: true, status: null });
 
     const invalid = await callTool(url, 'agent-dina', 'set-status', {
       status: 'Starting', announcement: { phase: 'start', text: 'x'.repeat(161) },
@@ -1944,14 +1920,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-dina', 'finish_turn', {
+    const response = await callFinish(url, 'agent-dina', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toMatchObject({
-      status: null,
-      celebration: { requested: true, kind: expect.any(String) },
-    });
+    expect(response.result.structuredContent).toMatchObject({ status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested' }));
   });
 
