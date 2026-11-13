@@ -2,10 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Agent } from '@workspace/core/contracts';
+import type { Agent, AgentBackend } from '@workspace/core/contracts';
 import type { ProjectOverviewGitFacts } from '../git-reader';
 import { ProjectNarrativeStore } from '../narrative-store';
-import { ProjectOverviewService, type ProjectOverviewGenerate, type ProjectOverviewOuterLoop } from '../project-overview-service';
+import { ProjectOverviewService, projectNarrativeHostEngines, type ProjectOverviewGenerate, type ProjectOverviewOuterLoop } from '../project-overview-service';
 import { inferProjectToolLinks } from '../tool-links';
 import type { ProjectToolLinks } from '@workspace/core/project-overview';
 
@@ -66,7 +66,7 @@ const connected = (): ProjectOverviewOuterLoop => ({
   pipelines: vi.fn(async () => ({ provider: 'github' as const, runs: [{ id: '1', branch: 'refactor/sdk-extraction', status: 'failed' as const, at: ago(day) }] })),
 });
 
-function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoop?: ProjectOverviewOuterLoop; agents?: Agent[]; store?: ProjectNarrativeStore } = {}) {
+function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoop?: ProjectOverviewOuterLoop; agents?: Agent[]; store?: ProjectNarrativeStore; hostEngines?: AgentBackend[] } = {}) {
   // The config file answers what was inferred, as it does the first time it is written.
   const tools = { load: vi.fn(async (_root: string, infer: () => { links: ProjectToolLinks; proposals: unknown[] }) => infer().links) };
   const requester = agent('a1', 'feat/cursor-steering', { name: 'Steering', status: { type: 'working' } });
@@ -76,7 +76,10 @@ function setup(options: { git?: ProjectOverviewGitFacts | null | Error; outerLoo
   const read = vi.fn(async () => { if (git instanceof Error) throw git; return git; });
   const sessions = vi.fn(() => [{ provider: 'claude', sessionId: 's1', startedAt: start - day, turns: 4, failedTurns: 1 }, { provider: 'codex', sessionId: 's2', startedAt: start - 2 * day, turns: 2, failedTurns: 0 }]);
   const store = options.store ?? new ProjectNarrativeStore(null);
-  const service = new ProjectOverviewService({ git: { read }, sessions, agents: () => agents, outerLoop: options.outerLoop, narratives: store, tools, now: () => clock.now });
+  const service = new ProjectOverviewService({
+    git: { read }, sessions, agents: () => agents, outerLoop: options.outerLoop, narratives: store, tools, now: () => clock.now,
+    ...(options.hostEngines ? { hostEngines: () => options.hostEngines! } : {}),
+  });
   return { service, requester, read, sessions, clock, store, tools };
 }
 
@@ -313,6 +316,53 @@ describe('project overview narrative', () => {
     const none = setup({ outerLoop: connected() });
     const broken = vi.fn<ProjectOverviewGenerate>(async () => { throw new Error('nope'); });
     expect((await none.service.refreshNarrative(none.requester, broken)).narrative).toStrictEqual({ status: 'unavailable', reason: 'noEngine' });
+  });
+
+  it('has another engine signed in on this host write for a repository whose agents cannot, in its primary checkout', async () => {
+    const cursorOnly = agent('c1', 'feat/cursor-steering', { backend: 'cursor', status: { type: 'working' } });
+    const { service } = setup({ outerLoop: connected(), agents: [cursorOnly], hostEngines: ['cursor', 'codex', 'claude'] });
+    const { generate } = engine();
+    const picky = vi.fn<ProjectOverviewGenerate>(async (candidate, request) => {
+      if (candidate.backend === 'cursor') throw new Error('No lightweight text model is available for cursor.');
+      return generate(candidate, request);
+    });
+
+    const overview = await service.refreshNarrative(cursorOnly, picky);
+
+    expect(overview.narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'Codex' } });
+    // Cursor is tried once, as the requesting agent's engine; the host then offers Codex, which writes it.
+    expect(picky.mock.calls.map(call => call[0].backend)).toStrictEqual(['cursor', 'codex']);
+    const [stand, request] = picky.mock.calls[1]!;
+    expect(request).toMatchObject({ cwd: '/work/korus', complexity: 'normal' });
+    // The host engine is not a teammate: it carries no session, no team and no remote link of its own.
+    expect(stand).toStrictEqual({ id: 'project-narrative-codex', name: null, backend: 'codex', folder: '/work/korus', status: { type: 'idle' }, workspace: cursorOnly.workspace });
+  });
+
+  it('offers the host engines that are installed, enabled and signed in, the most capable writers first', () => {
+    const connection = (backend: AgentBackend, state: { installed?: boolean; connected?: boolean; enabled?: boolean } = {}) => ({ backend, installed: true, connected: true, checking: false, ...state });
+    expect(projectNarrativeHostEngines([
+      connection('cursor'), connection('antigravity'), connection('codex', { connected: false }), connection('claude'),
+    ])).toStrictEqual(['claude', 'antigravity', 'cursor']);
+    expect(projectNarrativeHostEngines([connection('claude', { enabled: false }), connection('codex', { installed: false })])).toStrictEqual([]);
+    expect(projectNarrativeHostEngines(undefined)).toStrictEqual([]);
+  });
+
+  it('tries agents in the repository before engines on the host, and says no engine can write when none is signed in', async () => {
+    const { service, requester } = setup({ outerLoop: connected(), hostEngines: ['claude', 'codex', 'antigravity'] });
+    const { generate } = engine();
+    const onlyAntigravity = vi.fn<ProjectOverviewGenerate>(async (candidate, request) => {
+      if (candidate.backend !== 'antigravity') throw new Error('unavailable');
+      return generate(candidate, request);
+    });
+    expect((await service.refreshNarrative(requester, onlyAntigravity)).narrative).toMatchObject({ status: 'fresh', narrative: { writtenBy: 'Antigravity' } });
+    // Claude and Codex were already tried through the repository's own agents, so each engine is asked once.
+    expect(onlyAntigravity.mock.calls.map(call => [call[0].backend, call[0].id])).toStrictEqual([['claude', 'a1'], ['codex', 'a2'], ['antigravity', 'project-narrative-antigravity']]);
+
+    const cursorOnly = agent('c1', 'main', { backend: 'cursor' });
+    const nobody = setup({ outerLoop: connected(), agents: [cursorOnly], hostEngines: [] });
+    const refused = vi.fn<ProjectOverviewGenerate>(async () => { throw new Error('No lightweight text model is available for cursor.'); });
+    expect((await nobody.service.refreshNarrative(cursorOnly, refused)).narrative).toStrictEqual({ status: 'unavailable', reason: 'noEngine' });
+    expect(refused).toHaveBeenCalledOnce();
   });
 
   it('looks further back for a repository that was quiet this month, and reads issues and sessions over the same period', async () => {

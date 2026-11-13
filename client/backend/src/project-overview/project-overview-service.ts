@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import { backendDisplayName, type BackendTextGenerationInput } from '@workspace/core/backend-driver';
-import type { Agent } from '@workspace/core/contracts';
+import type { Agent, AgentBackend } from '@workspace/core/contracts';
+import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import {
   buildProjectFlow,
@@ -27,7 +28,6 @@ const day = 86_400_000;
 const cacheLifetime = 30_000;
 const maxCacheEntries = 32;
 const rewriteInterval = 15 * 60_000;
-const maxEngines = 2;
 
 type ProjectOverviewSession = { provider: string; sessionId: string; startedAt: number; turns: number; failedTurns: number };
 
@@ -50,6 +50,8 @@ export type ProjectOverviewServiceOptions = {
   narratives: ProjectNarrativeStore;
   /** The project's tool links, read from and first written to its own config file. */
   tools?: Pick<ProjectToolConfigFile, 'load'>;
+  /** Engines installed, enabled and signed in on this host, tried after the repository's own agents. */
+  hostEngines?: () => readonly AgentBackend[];
   now?: () => number;
 };
 
@@ -153,11 +155,15 @@ export class ProjectOverviewService {
 
   private async write(agent: Agent, { reading, overview }: Composition, evidence: ProjectEvidence, generate: ProjectOverviewGenerate): Promise<void> {
     const record = (failure: 'noEngine' | 'failed' | null) => { this.attempts.set(reading.repository, { at: reading.now, evidenceKey: evidence.key, failure }); };
-    // The requesting agent's engine first, then one teammate on another engine, for engines that cannot generate.
-    const engines = [agent, ...reading.teammates.filter(mate => mate.id !== agent.id && mate.folder)]
-      .filter((candidate, index, all) => all.findIndex(other => other.backend === candidate.backend) === index)
-      .slice(0, maxEngines);
-    for (const candidate of engines) {
+    // The requesting agent's engine first, then teammates on other engines, then any other engine signed in on
+    // this host: the evidence is already read, so any engine can write it. Each engine is asked once.
+    const teammates = [agent, ...reading.teammates.filter(mate => mate.id !== agent.id && mate.folder)]
+      .filter((candidate, index, all) => all.findIndex(other => other.backend === candidate.backend) === index);
+    const root = (agent.workspace?.kind === 'git' ? agent.workspace.primaryWorktreeRoot || agent.workspace.repositoryRoot : null) || agent.folder!;
+    const host = (this.options.hostEngines?.() ?? [])
+      .filter((backend, index, all) => all.indexOf(backend) === index && !teammates.some(mate => mate.backend === backend))
+      .map(backend => hostEngine(agent, backend, root));
+    for (const candidate of [...teammates, ...host]) {
       let problems: string[] = [];
       for (let attempt = 0; attempt < 2; attempt++) {
         let generated: unknown;
@@ -325,6 +331,17 @@ export class ProjectOverviewService {
     if (complete) reading.complete = composition;
     return composition;
   }
+}
+
+const hostEngineOrder: readonly AgentBackend[] = ['claude', 'codex', 'antigravity', 'cursor'];
+/** Engines a narrative can fall back to on this host: installed, enabled and signed in. */
+export function projectNarrativeHostEngines(connections: readonly ProviderConnection[] | undefined): AgentBackend[] {
+  return hostEngineOrder.filter(backend => connections?.some(connection => connection.backend === backend && connection.installed && connection.connected && connection.enabled !== false));
+}
+
+/** An engine on this host with no agent in the repository: it only writes the narrative, from the repository's primary checkout. */
+function hostEngine(requester: Agent, backend: AgentBackend, folder: string): Agent {
+  return { id: `project-narrative-${backend}`, name: null, backend, folder, status: { type: 'idle' }, ...(requester.workspace ? { workspace: requester.workspace } : {}) } as Agent;
 }
 
 function branchOf(agent: Agent): string | null {

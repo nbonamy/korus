@@ -163,7 +163,7 @@ describe('project overview page', () => {
   });
 
   it.each([
-    ['noEngine', 'No connected engine here can write the narrative.'],
+    ['noEngine', 'Sign in to Claude Code, Codex or Antigravity to get a narrative for this project.'],
     ['failed', 'The narrative could not be written. It will be tried again later.'],
     ['quiet', 'This repository has no history to write about yet.'],
   ] as const)('says why there is no narrative (%s) without asking for one', async (reason, message) => {

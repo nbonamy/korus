@@ -115,7 +115,7 @@ export const messages = {
       live: 'Live · updated {age}', liveAgo: 'Live · updated {age} ago', repositoryOnly: 'repository only',
       narrative: {
         heading: 'Narrative', updating: 'updating',
-        noEngine: 'No connected engine here can write the narrative.',
+        noEngine: 'Sign in to Claude Code, Codex or Antigravity to get a narrative for this project.',
         failed: 'The narrative could not be written. It will be tried again later.',
         quiet: 'This repository has no history to write about yet.',
         periodDays: 'Covers the last {days} days',
