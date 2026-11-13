@@ -10,11 +10,11 @@ import { createComposerState } from './composer-state';
 import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
-import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
-import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
+import type { PromptPart } from '@korus-dev/multi-agent-sdk';
+import type { Agent, HarnessProvider, ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { sameCompanionTarget, companionTargetFor, companionAgents, companionConversationOf, companionTarget, companionSessionId, followsCompanionConversation, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { composerCapabilitiesFor, promptOptionsFor } from './composer-settings';
@@ -71,7 +71,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const historyFailed = ref(false);
   const hasOlder = ref<boolean | null>(null);
   const history = computed<CompanionHistoryState>(() => ({
-    hasOlder: status.value === 'connected' && Boolean(conversation.value) && (hasOlder.value ?? conversation.value?.payload.snapshot.historyState?.hasOlder ?? true),
+    hasOlder: status.value === 'connected' && Boolean(conversation.value) && (hasOlder.value ?? conversation.value?.payload.snapshot.state.historyState?.hasOlder ?? true),
     loadingOlder: loadingOlder.value,
     failed: historyFailed.value,
   }));
@@ -84,6 +84,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let selectionEpoch = 0;
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
+  let providerSwitch: { held: CompanionWorkspace | null } | null = null;
+  let switchToken = 0;
+  /** The engine an empty chat is switching to while the laptop and its models catch up. */
+  const switchingProvider = shallowRef<HarnessProvider | null>(null);
   let reconnectWanted = false;
   let workspaceLoaded = false;
   let isForeground = true;
@@ -132,14 +136,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return agents.value.reduce<Agent | undefined>((latest, candidate) =>
       !latest || activity(candidate) > activity(latest) ? candidate : latest, undefined);
   }
-  const skillList = createRemoteList<BackendSkillSummary>(remote, {});
+  const skillList = createRemoteList<ProviderSkillSummary>(remote, {});
   const skills = skillList.state;
-  const pluginList = createRemoteList<BackendPluginSummary>(remote, {});
+  const pluginList = createRemoteList<ProviderPluginSummary>(remote, {});
   const plugins = pluginList.state;
   const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null; details?: CompanionReviewDetails; action?: 'idle' | 'working' | 'unknown' | 'failed' | 'completed' }>({ status: 'idle', setup: null });
   let reviewEpoch = 0;
   function dismissReview() { ++reviewEpoch; review.value = { status: 'idle', setup: null }; }
-  const stopReview = watch(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value?.teamId,
+  const stopReview = watch(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.provider, agent.value?.folder, agent.value?.teamId,
     agent.value?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), (next, previous) => {
       // Independent reviewers reset their provider session between rounds. Keep the ledger
       // visible, invalidate its old target, and read it again under the new session identity.
@@ -147,7 +151,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         ++reviewEpoch; review.value = { ...review.value, action: 'failed' }; void loadReviewDetails();
       } else dismissReview();
     }, { flush: 'sync' });
-  async function loadReview(backend?: AgentBackend) {
+  async function loadReview(provider?: HarnessProvider) {
     const active = session; const id = agentId.value; const epoch = ++reviewEpoch;
     review.value = { status: 'loading', setup: review.value.setup };
     try {
@@ -159,7 +163,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         if (details?.session) { review.value = { status: 'ready', setup: null, details, action: 'idle' }; return; }
       }
       if (!active.reviewSetup) throw new Error('Review unavailable.');
-      const setup = await active.reviewSetup(id, backend);
+      const setup = await active.reviewSetup(id, provider);
       if (epoch === reviewEpoch && active === session) {
         review.value = { status: 'ready', setup };
       }
@@ -207,7 +211,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if ((input.scope.type === 'branch' && (!setup.branchChanges || input.scope.baseRef !== setup.baseRef))
       || (input.scope.type === 'uncommitted' && !setup.uncommitted)
       || (input.threadMode === 'current' && (!setup.currentThread || input.automation?.enabled))
-      || (input.threadMode === 'independent' && input.selection?.backend !== setup.backend)) return;
+      || (input.threadMode === 'independent' && input.selection?.provider !== setup.provider)) return;
     review.value = { status: 'starting', setup };
     try {
       const reviewerId = await active.startReview(setup.target, input);
@@ -222,7 +226,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === reviewEpoch) review.value = { status: 'started', setup };
     } catch { if (epoch === reviewEpoch) review.value = { status: 'unknown', setup }; }
   }
-  const skillContext = computed(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value && companionSessionId(agent.value)]));
+  const skillContext = computed(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.provider, agent.value?.folder, agent.value && companionSessionId(agent.value)]));
   const stopSkills = watch(skillContext, skillList.reset, { flush: 'sync' });
   const stopPlugins = watch(skillContext, pluginList.reset, { flush: 'sync' });
   /** Skills and plugins are read once per chat; only the enabled ones are offered, and an engine without them offers none. */
@@ -231,7 +235,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const owner = agent.value;
     if (list.pending) return list.pending;
     if (list.state.value.status === 'loaded' || status.value !== 'connected' || !owner) return Promise.resolve();
-    if (!session || !supports(session) || !defaultBackendCapabilities(owner.backend)[capability]) { list.settle([]); return Promise.resolve(); }
+    if (!session || !supports(session) || !defaultProviderCapabilities(owner.provider)[capability]) { list.settle([]); return Promise.resolve(); }
     return list.loadOnce({}, active => read(active, owner.id)?.then(items => items.filter(item => item.enabled)));
   }
   const loadSkills = () => loadCatalog(skillList, 'skills', active => Boolean(active.listSkills), (active, id) => active.listSkills?.(id));
@@ -258,8 +262,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   async function respondRequest(reply: CompanionRequestReply) {
     const pending = requests.value.find((entry) => entry.request.id === reply.id && entry.request.conversationId === reply.conversationId
-      && entry.target.hostId === reply.target.hostId && entry.target.locationId === reply.target.locationId
-      && entry.target.teamId === reply.target.teamId && entry.target.agentId === reply.target.agentId && entry.target.sessionId === reply.target.sessionId);
+      && sameCompanionTarget(entry.target, reply.target));
     if (!pending || respondingRequest.value || status.value !== 'connected' || !session?.respondRequest) return;
     const active = session; const epoch = connectionEpoch;
     respondingRequest.value = pending.key; failedRequest.value = null;
@@ -284,7 +287,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
   const composer = createComposerState({ session: () => session, agent: () => agent.value, agentId: () => agentId.value, workspace: () => workspace.value, applyWorkspace: (next) => { applyWorkspace(next); } });
-  const { models, composerSettings, modelFavorites, permissions, loadModels } = composer;
+  const { models, composerSettings, modelFavorites, loadModels, modelsLoading } = composer;
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
@@ -294,13 +297,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   /** The agent as the laptop identifies it: host, location, team, agent and session. */
   function targetOf(owner: Agent | null | undefined): CompanionTarget | null {
     const team = workspace.value.teams.find(team => team.id === owner?.teamId);
-    return owner && team ? companionTarget(laptopId.value, team, owner) : null;
+    return owner && team ? companionTargetFor(workspace.value, laptopId.value, team, owner) : null;
   }
   /** The selected conversation as the laptop identifies it, captured before any await. */
   const currentTarget = () => targetOf(agent.value);
   function conversationIdentity(owner = agent.value): string {
     const target = targetOf(owner);
-    return owner && target ? JSON.stringify([target, owner.backend]) : '';
+    return owner && target ? JSON.stringify([target, owner.provider]) : '';
   }
   /** Reads the laptop's workspace after a command. False when the session changed meanwhile, so nothing is applied. */
   async function refreshWorkspace(active: CompanionSession): Promise<boolean> {
@@ -317,9 +320,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   });
   function matchesCurrentSession(frame: CompanionConversation): boolean {
     const owner = agent.value;
-    if (!owner?.backendSession || frame.agentId !== owner.id || frame.backend !== owner.backend) return false;
-    if (frame.type === 'codex.conversationSnapshotChanged') return owner.backendSession.kind === 'codex' && frame.threadId === owner.backendSession.threadId;
-    return owner.backendSession.kind !== 'codex' && frame.payload.snapshot.sessionId === owner.backendSession.sessionId;
+    return Boolean(owner?.providerSession) && followsCompanionConversation(frame, owner!);
   }
   const notificationReads = new Map<string, number>();
   function forwardNotification(notification: CompanionNotification) {
@@ -336,10 +337,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     for (const agent of next.agents) {
       const team = next.teams.find(team => team.id === agent.teamId);
       if (team && agent.readState && agent.readState.readRevision > 0) forwardNotification({ id: 'read', kind: 'read', revision: agent.readState.readRevision,
-        name: '', createdAt: Date.now(), target: companionTarget(laptopId.value, team, agent) });
+        name: '', createdAt: Date.now(), target: companionTargetFor(next, laptopId.value, team, agent) });
     }
   }
   function applyWorkspace(next: CompanionWorkspace): boolean {
+    if (providerSwitch) { providerSwitch.held = next; return false; }
     reconcileNotificationReads(next);
     workspace.value = reconcileWorkspace(workspace.value, next);
     if ((!agentId.value && agents.value.length) || (agentId.value && selectedConversationKey !== conversationIdentity())) {
@@ -454,7 +456,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function changeGoal(target: CompanionTarget, objective: string | null): Promise<'accepted' | 'rejected' | 'unknown'> {
     const active = session; const selected = agent.value;
     const current = currentTarget();
-    if (!canSend.value || !active?.changeGoal || !selected || !defaultBackendCapabilities(selected.backend).goals
+    if (!canSend.value || !active?.changeGoal || !selected || !defaultProviderCapabilities(selected.provider).goals
       || !current || !sameTarget(current, target)
       || (objective !== null && (!objective.trim() || objective.trim().length > 100_000))) return 'rejected';
     const key = goalKey(); const epoch = selectionEpoch;
@@ -465,8 +467,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         // Initializing an empty session reloads its transcript without navigating away
         // from the goal's owner. Keep its uncertain result visible across that rebind.
         const owner = agent.value; const current = targetOf(owner);
-        if (active === session && owner?.backend === selected.backend && current
-          && (Object.keys(target) as (keyof CompanionTarget)[]).every(key => (key === 'sessionId' && target.sessionId === null) || target[key] === current[key])) goalError.value = true;
+        if (active === session && owner?.provider === selected.provider && current
+          && sameCompanionTarget(target.sessionId === null ? { ...target, sessionId: current.sessionId } : target, current)) goalError.value = true;
         return 'unknown';
       }
       // The command was accepted even if refreshing later loses the connection.
@@ -511,8 +513,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const frame = await active.loadConversation(id);
       if (epoch !== selectionEpoch) return;
-      if (frame && (frame.agentId !== id || frame.backend !== agent.value?.backend)) throw new Error('Conversation identity mismatch.');
-      if (!frame && agent.value?.backendSession) throw new Error('Conversation is unavailable.');
+      if (frame && (frame.agentId !== id || frame.provider !== agent.value?.provider)) throw new Error('Conversation identity mismatch.');
+      if (!frame && agent.value?.providerSession) throw new Error('Conversation is unavailable.');
       conversation.value = frame;
       if (!conversationReady.value) ++conversationGeneration.value;
       conversationReady.value = true;
@@ -532,7 +534,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function readConversationContent(id: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
     const active = session; const epoch = selectionEpoch;
     const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected'
-      && input.sessionId === (agent.value?.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value?.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null);
+      && input.sessionId === companionConversationOf(agent.value?.providerSession);
     if (!valid() || !active?.readConversationContent) throw new Error('Conversation content is unavailable.');
     const chunk = await active.readConversationContent(id, input);
     if (!valid()) throw new Error('Conversation changed.');
@@ -547,12 +549,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const load = () => {
       const current = companionAgents(workspace.value).find(candidate => candidate.id === id);
       if (active !== session || host !== laptopId.value || status.value !== 'connected' || !current ||
-          current.backend !== owner?.backend || companionSessionId(current) !== identity) throw new Error('Conversation changed.');
+          current.provider !== owner?.provider || companionSessionId(current) !== identity) throw new Error('Conversation changed.');
       return active.readImage!(id, path);
     };
-    const provider = owner?.backendSession;
-    const sessionId = provider?.kind === 'codex' ? provider.threadId : provider?.sessionId ?? null;
-    const image = cache && owner ? await cache.read(host, owner.backend, sessionId, path, load) : await load();
+    const sessionId = companionConversationOf(owner?.providerSession);
+    const image = cache && owner ? await cache.read(host, owner.provider, sessionId, path, load) : await load();
     if (!valid()) throw new Error('Conversation changed.');
     return image;
   }
@@ -584,7 +585,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const page = await active.loadOlderHistory(id);
       if (epoch !== selectionEpoch || active !== session) return;
-      if (page.frame.agentId !== id || page.frame.backend !== agent.value?.backend) throw new Error('Conversation identity mismatch.');
+      if (page.frame.agentId !== id || page.frame.provider !== agent.value?.provider) throw new Error('Conversation identity mismatch.');
       conversation.value = page.frame;
       hasOlder.value = page.hasOlder;
     } catch {
@@ -608,9 +609,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (active === session && epoch === selectionEpoch) queuedPromptFailed.value = true;
     } finally { queuedPromptPending.value = null; }
   }
-  async function submit(prompt: string, sendOptions?: { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
+  async function submit(prompt: string, sendOptions?: { content?: readonly PromptPart[]; followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
-    if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
+    if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultProviderCapabilities(agent.value!.provider).attachments)) return 'rejected';
     const target = currentTarget();
     if (!target) return 'rejected';
     const draftKey = key();
@@ -633,7 +634,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { uncertain[draftKey] = false; sending[draftKey] = false; return 'rejected'; }
     try {
       const settings = composerSettings.value;
-      const composerOptions = settings && agent.value ? promptOptionsFor(settings, composerCapabilitiesFor(agent.value.backend, models.value)) : undefined;
+      const composerOptions = settings && agent.value ? promptOptionsFor(settings, composerCapabilitiesFor(agent.value.provider, models.value)) : undefined;
       const options = sendOptions?.content !== undefined || sendOptions?.followUpBehavior ? { ...composerOptions, ...(sendOptions?.content === undefined ? {} : { content: sendOptions.content }), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
       const promptText = prompt.trim() ? prompt : '(no user instructions)';
       await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));
@@ -666,7 +667,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!active || status.value !== 'connected' || teamCreation.value === 'creating' || !name || name.length > 100) return null;
     teamCreation.value = 'creating';
     try {
-      if (!active.createTeam) throw new Error('Team creation unavailable.');
+      if (!active.createTeam) throw new Error('Workspace creation unavailable.');
       const id = await active.createTeam(name);
       if (!await refreshWorkspace(active)) return null;
       if (!workspace.value.teams.some(team => team.id === id)) throw new Error('Created team is unavailable.');
@@ -721,22 +722,46 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     }
   }
   const createChat = (chat: Omit<CompanionNewChat, 'teamId'>, team = teamId.value) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }), team);
-  const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
+  const createQuickChat = (provider: HarnessProvider) => startChat((active, teamId) => active.createQuickChat?.({ teamId, provider: provider }));
   const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
-  const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {
+  const duplicateAgent = (target: CompanionTarget, provider: HarnessProvider) => startChat((active) => {
     const current = currentTarget();
     if (!current || !sameTarget(current, target)) throw new Error('Target is stale.');
-    if (!workspace.value.backends?.[current.locationId !== 'local' ? current.locationId : current.teamId]?.includes(backend)) throw new Error('That engine is not available.');
-    return active.duplicateAgent?.(target, backend);
+    if (!workspace.value.providers?.[current.locationId !== 'local' ? current.locationId : current.teamId]?.includes(provider)) throw new Error('That engine is not available.');
+    return active.duplicateAgent?.(target, provider);
   });
-  /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
-  async function selectBackend(backend: AgentBackend) {
+  /**
+   * The engine of a chat that has not started. The choice shows at once; the laptop switches, then its workspace,
+   * the chat's transcript and the engine's models are read together and swapped in as one step so the screen never blanks.
+   */
+  async function selectProvider(provider: HarnessProvider) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
-    if (!id || !active?.setBackend || status.value !== 'connected' || agent.value?.backend === backend) return;
+    if (!id || !active?.setProvider || status.value !== 'connected' || agent.value?.provider === provider || switchingProvider.value === provider) return;
+    const token = ++switchToken;
+    switchingProvider.value = provider;
+    // Workspace updates that arrive meanwhile would show the new engine on the old transcript; they wait for the swap.
+    providerSwitch = { held: null };
     try {
-      await active.setBackend(id, backend);
-      if (await refreshWorkspace(active) && epoch === selectionEpoch) await selectAgent(id);
-    } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
+      await active.setProvider(id, provider);
+      const [next, frame, list] = await Promise.all([active.getWorkspace(), active.loadConversation(id), active.listModels ? active.listModels(id).catch(() => null) : null]);
+      if (token !== switchToken || active !== session || epoch !== selectionEpoch) return;
+      reconcileNotificationReads(next);
+      workspace.value = reconcileWorkspace(workspace.value, next);
+      if (agentId.value !== id) return;
+      if (frame && (frame.agentId !== id || frame.provider !== agent.value?.provider)) throw new Error('Conversation identity mismatch.');
+      composer.forgetPermission(id);
+      selectedConversationKey = conversationIdentity();
+      conversation.value = frame; historyFailed.value = false; hasOlder.value = null;
+      if (list) composer.seedModels(id, provider, list); else void loadModels(id, active);
+      ++conversationGeneration.value; conversationReady.value = true;
+    } catch { if (token === switchToken && active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
+    finally {
+      if (token === switchToken) {
+        switchingProvider.value = null;
+        const held = providerSwitch?.held; providerSwitch = null;
+        if (held && active === session) applyWorkspace(held);
+      }
+    }
   }
   const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
   function disconnect() { reconnectWanted = false; closeSession(); status.value = 'disconnected'; }
@@ -778,7 +803,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectProvider, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, loadTurnHistory, readImage, readFilePreview, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
@@ -786,8 +811,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
     // The composer: the draft, sending it, and what was sent along with it.
-    draft, updateDraft, submit, canSend, deliveryUnknown, models, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
-    permissions, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode,
+    draft, updateDraft, submit, canSend, deliveryUnknown, models, modelsLoading, switchingProvider, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
+    permission: composer.permission, setPermission: composer.setPermission,
     skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
     // Goals and questions the agent asks.
     goalBusy, goalError, changeGoal, requests, dismissRequest, respondRequest, respondingRequest, failedRequest,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readConversationImage, conversationImageReference } from '../images';
-import type { CompanionReset } from '@workspace/core/companion-protocol';
+import type { CompanionConversation } from '@workspace/core/companion-protocol';
 
 const image = { path: '/tmp/shot.png', kind: 'image' as const, size: 3, dataUrl: 'data:image/png;base64,cG5n' };
 describe('conversation images', () => {
@@ -20,10 +20,10 @@ describe('conversation images', () => {
   });
 
   it('recognizes normal Markdown references and attachments without treating code snippets or other files as an image grant', () => {
-    const frame = { payload: { snapshot: { messages: [{ id: 'answer', parts: [
+    const frame = { payload: { snapshot: { state: { messages: [{ id: 'answer', parts: [
       { type: 'text', text: '[First][shot]\n\n[shot]: </tmp/phone shot.png>\n\n`[Secret](/private/secret.png)`\n\n![Second](file:///tmp/second.png)' },
       { type: 'attachment', attachment: { kind: 'image', path: 'relative.png' } },
-    ] }] } } } as CompanionReset;
+    ] }] } } } } as unknown as CompanionConversation;
     expect(conversationImageReference(frame, '/tmp/phone shot.png')).toStrictEqual('/tmp/phone shot.png');
     expect(conversationImageReference(frame, 'file:///tmp/second.png')).toStrictEqual('/tmp/second.png');
     expect(conversationImageReference(frame, 'relative.png')).toStrictEqual('relative.png');

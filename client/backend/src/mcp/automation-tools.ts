@@ -46,8 +46,8 @@ export function createAutomationToolModuleProvider(options: {
           let target: AutomationTarget;
           if (!input.target || input.target.kind === 'newQuickChat') {
             if (!caller.teamId) throw new McpToolError('Choose a team for this conversation first.');
-            const backend = input.selection?.backend ?? caller.backend;
-            target = { kind: 'newQuickChat', teamId: caller.teamId, selection: { ...input.selection, backend } };
+            const provider = input.selection?.provider ?? caller.provider;
+            target = { kind: 'newQuickChat', teamId: caller.teamId, selection: { ...input.selection, provider: provider } };
           } else {
             if (input.selection) throw new McpToolError('Existing conversations retain their backend, model and effort. Remove the overrides.');
             const id = input.target.kind === 'current' ? caller.id : input.target.agentId;
@@ -105,9 +105,9 @@ export function createAutomationToolModuleProvider(options: {
           let target = existing.target;
           if (input.target?.kind === 'newQuickChat' || (!input.target && input.selection && target.kind === 'newQuickChat')) {
             if (!caller.teamId) throw new McpToolError('Choose a team first.');
-            const previous = target.kind === 'newQuickChat' ? target.selection : { backend: caller.backend };
-            const backend = input.selection?.backend ?? previous.backend;
-            target = {kind:'newQuickChat',teamId:caller.teamId,selection:{...(backend === previous.backend ? previous : {backend}),...input.selection,backend}};
+            const previous = target.kind === 'newQuickChat' ? target.selection : { provider: caller.provider };
+            const provider = input.selection?.provider ?? previous.provider;
+            target = {kind:'newQuickChat',teamId:caller.teamId,selection:{...(provider === previous.provider ? previous : {provider: provider}),...input.selection,provider: provider}};
           } else if (input.target) {
             if (input.selection) throw new McpToolError('Existing conversations retain their model settings. Remove selection overrides.');
             const id = input.target.kind === 'current' ? caller.id : input.target.agentId;

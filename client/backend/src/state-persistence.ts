@@ -1,4 +1,6 @@
 import { isProviderSafetyReview, providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
+import { withConversationId, withPermission } from '@workspace/core/legacy-fields';
 import { isDesignWorkspace, type DesignWorkspace } from '@workspace/core/design';
 import { migrateRemoteTeamLinks } from './persistence/migrations';
 import { readPersistedExecutionSelection } from '@workspace/core/execution-selection';
@@ -15,9 +17,8 @@ import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
 import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
-import type { AccountRateLimits, Agent, AgentBackend, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, BackendDefaults, BackendSession, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
+import type { AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, ProviderDefaults, ProviderSessionData, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
 import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
-import { isCodexApprovalPreset, isCodexApprovalsReviewer } from '@workspace/core/codex-approval-presets';
 import { normalizeGeneralSettings, normalizeSourceFolderState, normalizeThemeSettings } from '@workspace/core/settings';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { sanitizeWorkItemAssignmentSource, workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -68,11 +69,11 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   sharedConversation?: Agent['sharedConversation'];
   conversationTitle?: string;
   avatar?: string;
-  backend: AgentBackend;
-  backendSession?: BackendSession;
+  provider: HarnessProvider;
+  providerSession?: ProviderSessionData;
   hasSubmittedPrompt?: boolean;
   readState?: Agent['readState'];
-  backendDefaults?: BackendDefaults;
+  providerDefaults?: ProviderDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: Agent['gitDiffTarget'];
   workspace?: AgentWorkspaceIdentity;
@@ -86,7 +87,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   autoResumePending?: boolean;
   status?: Extract<Agent['status'], { type: 'error' }>;
   goal?: ThreadGoal;
-  designWorkspace?: DesignWorkspace;
+  designWorkspaces?: DesignWorkspace[];
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
   lastActivityAt?: string;
@@ -117,7 +118,8 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
     automations: snapshot.automations.map(cloneAutomation),
     activeTeamId: snapshot.activeTeamId,
     activeAgentId: snapshot.activeAgentId,
-    ...(snapshot.accountRateLimits ? { accountRateLimits: { ...snapshot.accountRateLimits } } : {}),
+    // Only Codex quotas outlive a restart, under their original name.
+    ...(snapshot.providerAccountRateLimits?.codex ? { accountRateLimits: { ...snapshot.providerAccountRateLimits.codex } } : {}),
     subagentTrees: cloneSubagentTrees(snapshot.subagentTrees),
     workBacklog: cloneWorkBacklogState(snapshot.workBacklog),
     remoteConnections: cloneRemoteConnectionsState(snapshot.remoteConnections),
@@ -167,11 +169,11 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     avatar: agent.avatar,
     folder: agent.folder,
     ...(agent.workspace ? { workspace: { ...agent.workspace } } : {}),
-    backend: agent.backend,
-    ...(agent.backendSession ? { backendSession: cloneBackendSession(agent.backendSession) } : {}),
+    provider: agent.provider,
+    ...(agent.providerSession ? { providerSession: cloneProviderSession(agent.providerSession) } : {}),
     ...(agent.readState ? { readState: agent.readState } : {}),
     ...(agent.hasSubmittedPrompt ? { hasSubmittedPrompt: true } : {}),
-    ...(agent.backendDefaults ? { backendDefaults: cloneBackendDefaults(agent.backendDefaults) } : {}),
+    ...(agent.providerDefaults ? { providerDefaults: cloneProviderDefaults(agent.providerDefaults) } : {}),
     ...(agent.openInApplication ? { openInApplication: agent.openInApplication } : {}),
     ...(agent.gitDiffTarget ? { gitDiffTarget: { ...agent.gitDiffTarget } } : {}),
     ...(agent.contextUsage ? { contextUsage: { ...agent.contextUsage } } : {}),
@@ -184,7 +186,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
     ...(agent.goal ? { goal: { ...agent.goal } } : {}),
-    ...(agent.designWorkspace ? { designWorkspace: persistedDesignWorkspace(agent.designWorkspace) } : {}),
+    ...(agent.designWorkspaces?.length ? { designWorkspaces: agent.designWorkspaces.map(persistedDesignWorkspace) } : {}),
     ...(persistedVisualize ? { visualize: persistedVisualize } : {}),
     statusText: agent.statusText,
     createdAt: agent.createdAt,
@@ -231,7 +233,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
       .filter((automation): automation is Automation => Boolean(automation)),
     activeTeamId: typeof value.activeTeamId === 'string' ? value.activeTeamId : null,
     activeAgentId: typeof value.activeAgentId === 'string' ? value.activeAgentId : null,
-    ...(accountRateLimits ? { accountRateLimits } : {}),
+    ...(accountRateLimits ? { providerAccountRateLimits: { codex: accountRateLimits } } : {}),
     subagentTrees: sanitizeSubagentTrees(value.subagentTrees),
     workBacklog,
     remoteConnections,
@@ -239,7 +241,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
     sourceFolder: normalizeSourceFolderState(value.sourceFolder),
     theme: normalizeThemeSettings(value.theme),
     queuedPrompts: [],
-    backendRuntimes: seed.backendRuntimes.map((runtime) => ({ ...runtime })),
+    providerRuntimes: seed.providerRuntimes.map((runtime) => ({ ...runtime })),
   };
 
   repairTeamMembership(snapshot);
@@ -396,18 +398,24 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const updatedAt = typeof value.updatedAt === 'string' ? value.updatedAt : createdAt;
   const lastActivityAt = typeof value.lastActivityAt === 'string' ? value.lastActivityAt : updatedAt;
   const contextUsage = sanitizeContextUsage(value.contextUsage);
-  const backend = sanitizeBackend(value.backend) ?? 'codex';
-  const backendSession = sanitizeBackendSession(value.backendSession, backend);
-  const backendDefaults = sanitizeBackendDefaults(value.backendDefaults, backend);
+  const provider = sanitizeProvider(value.provider) ?? 'codex';
+  const providerSession = sanitizeProviderSession(value.providerSession, provider);
+  const providerDefaults = sanitizeProviderDefaults(value.providerDefaults, provider);
   const plan = sanitizeThreadPlan(value.plan);
-  const planReview = restorePlanReview(value, backendSession?.kind === 'codex' ? backendSession.threadId : backendSession?.sessionId ?? null);
+  const planReview = restorePlanReview(value, providerSession?.conversationId ?? null);
   const goal = sanitizeThreadGoal(value.goal);
+  const codeReview = withReviewerConversationIds(value.codeReview);
   const openInApplication = sanitizeOpenInApplication(value.openInApplication);
   const gitDiffTarget = isAgentGitDiffTarget(value.gitDiffTarget) ? { ...value.gitDiffTarget } : undefined;
   const workspace = sanitizeAgentWorkspace(value.workspace);
   const pullRequest = sanitizeAgentPullRequest(value.pullRequest);
   const repositoryRoot = workspace?.kind === 'git' && workspace.folder === folder ? workspace.primaryWorktreeRoot : null;
   const visualize = sanitizeVisualizeSession(value.visualize ?? value.design, repositoryRoot ? libraries[repositoryRoot] : undefined);
+  // Unversioned legacy state kept one design workspace in `designWorkspace`.
+  const designWorkspaces = (Array.isArray(value.designWorkspaces) ? value.designWorkspaces : value.designWorkspace ? [value.designWorkspace] : [])
+    .filter(isDesignWorkspace)
+    .slice(0, 20)
+    .map(workspace => persistedDesignWorkspace({ ...structuredClone(workspace), conversationRef: withConversationId(workspace.conversationRef) as DesignWorkspace['conversationRef'] }));
   return {
     id: value.id,
     ...(readPersistedAgentHandoff(value.handoff) ? { handoff: readPersistedAgentHandoff(value.handoff) } : {}),
@@ -431,11 +439,11 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     avatar: typeof value.avatar === 'string' ? value.avatar : undefined,
     folder,
     ...(workspace ? { workspace } : {}),
-    backend,
-    ...(backendSession ? { backendSession } : {}),
+    provider: provider,
+    ...(providerSession ? { providerSession: providerSession } : {}),
     ...(isAgentReadState(value.readState) ? { readState: value.readState } : {}),
     ...(value.hasSubmittedPrompt === true ? { hasSubmittedPrompt: true } : {}),
-    ...(backendDefaults ? { backendDefaults } : {}),
+    ...(providerDefaults ? { providerDefaults: providerDefaults } : {}),
     ...(openInApplication ? { openInApplication } : {}),
     ...(gitDiffTarget ? { gitDiffTarget } : {}),
     ...(contextUsage ? { contextUsage } : {}),
@@ -445,11 +453,11 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(value.autoResumePending === true ? { autoResumePending: true } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
-    ...(isCodeReviewSession(value.codeReview)
-      ? { codeReview: cloneCodeReviewSession(value.codeReview) }
+    ...(isCodeReviewSession(codeReview)
+      ? { codeReview: cloneCodeReviewSession(codeReview) }
       : {}),
     ...(goal ? { goal } : {}),
-    ...(isDesignWorkspace(value.designWorkspace) ? { designWorkspace: persistedDesignWorkspace(structuredClone(value.designWorkspace)) } : {}),
+    ...(designWorkspaces.length ? { designWorkspaces } : {}),
     ...(visualize ? { visualize } : {}),
     ...(typeof value.statusText === 'string' ? { statusText: value.statusText } : {}),
     status: providerSafetyBlockMessage(isRecord(value.status) && value.status.type === 'error' ? value.status.message : null)
@@ -1067,7 +1075,7 @@ function sanitizeAutomation(value: unknown): Automation | null {
   if (isRecord(value) && isRecord(value.target) && value.target.kind === 'newQuickChat') {
     const target = value.target;
     const selection = target.selection ?? {
-      backend: target.backend,
+      provider: target.provider,
       ...(target.model === undefined ? {} : { model: target.model }),
       ...(target.reasoningEffort === undefined ? {} : { reasoningEffort: target.reasoningEffort }),
       ...(target.serviceTier === undefined ? {} : { serviceTier: target.serviceTier }),
@@ -1084,16 +1092,13 @@ function sanitizeAutomation(value: unknown): Automation | null {
   const executionLog: AutomationExecutionLogEntry[] = Array.isArray(value.executionLog) ? value.executionLog.flatMap(entry => {
     if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.startedAt !== 'string' || entry.automationId !== automationId
       || !['working', 'awaitingInput', 'completed', 'failed'].includes(String(entry.status))) return [];
+    const conversationRef = withConversationId(entry.conversationRef);
     return [{ id: entry.id, automationId, startedAt: entry.startedAt, status: entry.status as AutomationExecutionLogEntry['status'],
       ...(typeof entry.agentId === 'string' ? { agentId: entry.agentId } : {}),
       ...(typeof entry.agentName === 'string' ? { agentName: entry.agentName } : {}),
       ...(typeof entry.completedAt === 'string' ? { completedAt: entry.completedAt } : {}),
       ...(typeof entry.error === 'string' ? { error: entry.error } : {}),
-      ...(isRecord(entry.conversationRef) && entry.conversationRef.backend === 'codex' && typeof entry.conversationRef.threadId === 'string'
-        ? { conversationRef: { backend: 'codex' as const, threadId: entry.conversationRef.threadId } }
-        : isRecord(entry.conversationRef) && (entry.conversationRef.backend === 'claude' || entry.conversationRef.backend === 'antigravity' || entry.conversationRef.backend === 'cursor') && typeof entry.conversationRef.sessionId === 'string'
-          && (entry.conversationRef.folder === null || typeof entry.conversationRef.folder === 'string')
-          ? { conversationRef: { backend: entry.conversationRef.backend, folder: entry.conversationRef.folder, sessionId: entry.conversationRef.sessionId } } : {}),
+      ...(isProviderConversationRef(conversationRef) ? { conversationRef } : {}),
     }];
   }) : [];
   return { id: value.id, name: value.name, enabled: value.enabled !== false, prompt: value.prompt, target: { ...value.target },
@@ -1179,11 +1184,11 @@ function assignmentsForAgents(assignments: WorkBacklogState['assignments'], agen
   );
 }
 
-function cloneBackendSession(session: BackendSession): BackendSession {
+function cloneProviderSession(session: ProviderSessionData): ProviderSessionData {
   return { ...session };
 }
 
-function cloneBackendDefaults(defaults: BackendDefaults): BackendDefaults {
+function cloneProviderDefaults(defaults: ProviderDefaults): ProviderDefaults {
   return defaults.kind === 'claude' && defaults.thinking
     ? { ...defaults, thinking: { ...defaults.thinking } }
     : { ...defaults };
@@ -1196,28 +1201,35 @@ function cloneThreadPlan(plan: ThreadPlan): ThreadPlan {
   };
 }
 
-function sanitizeBackend(value: unknown): AgentBackend | null {
+/** Review rounds saved before conversations were named `conversationId`. */
+function withReviewerConversationIds(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.rounds)) return value;
+  return { ...value, rounds: value.rounds.map(round => isRecord(round) && round.reviewerSession !== undefined ? { ...round, reviewerSession: withConversationId(round.reviewerSession) } : round) };
+}
+
+function sanitizeProvider(value: unknown): HarnessProvider | null {
   return value === 'codex' || value === 'claude' || value === 'antigravity' || value === 'cursor' ? value : null;
 }
 
-function sanitizeBackendSession(value: unknown, expectedBackend: AgentBackend): BackendSession | undefined {
+function sanitizeProviderSession(stored: unknown, expectedProvider: HarnessProvider): ProviderSessionData | undefined {
+  const value = withConversationId(stored);
   if (!isRecord(value) || typeof value.kind !== 'string') {
     return undefined;
   }
-  if ((value.kind === 'antigravity' || value.kind === 'cursor') && expectedBackend === value.kind && typeof value.sessionId === 'string') {
-    return { kind: value.kind, sessionId: value.sessionId };
+  if ((value.kind === 'antigravity' || value.kind === 'cursor') && expectedProvider === value.kind && typeof value.conversationId === 'string') {
+    return { kind: value.kind, conversationId: value.conversationId };
   }
 
   if (value.kind === 'codex') {
-    const session = typeof value.threadId === 'string'
-      ? { kind: 'codex' as const, threadId: value.threadId }
+    const session = typeof value.conversationId === 'string'
+      ? { kind: 'codex' as const, conversationId: value.conversationId }
       : undefined;
-    return session?.kind === expectedBackend ? session : undefined;
+    return session?.kind === expectedProvider ? session : undefined;
   }
 
   if (value.kind === 'claude') {
     if (
-      typeof value.sessionId !== 'string' ||
+      typeof value.conversationId !== 'string' ||
       (value.transport !== 'stdio' && value.transport !== 'websocket')
     ) {
       return undefined;
@@ -1225,72 +1237,37 @@ function sanitizeBackendSession(value: unknown, expectedBackend: AgentBackend): 
 
     const session = {
       kind: 'claude',
-      sessionId: value.sessionId,
+      conversationId: value.conversationId,
       transport: value.transport,
-      ...(typeof value.transcriptSessionId === 'string' ? { transcriptSessionId: value.transcriptSessionId } : {}),
+      ...(typeof value.transcriptConversationId === 'string' ? { transcriptConversationId: value.transcriptConversationId } : {}),
       ...(typeof value.transcriptFolder === 'string' ? { transcriptFolder: value.transcriptFolder } : {}),
       ...(typeof value.serverUrl === 'string' ? { serverUrl: value.serverUrl } : {}),
       ...(typeof value.model === 'string' ? { model: value.model } : {}),
       ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
-    } satisfies BackendSession;
-    return session.kind === expectedBackend ? session : undefined;
+    } satisfies ProviderSessionData;
+    return session.kind === expectedProvider ? session : undefined;
   }
 
   return undefined;
 }
 
-function sanitizeBackendDefaults(value: unknown, expectedBackend: AgentBackend): BackendDefaults | undefined {
-  if (!isRecord(value) || typeof value.kind !== 'string') {
-    return undefined;
-  }
-  if (value.kind === 'cursor' && expectedBackend === 'cursor') return {
-    kind: 'cursor',
+function sanitizeProviderDefaults(stored: unknown, expectedProvider: HarnessProvider): ProviderDefaults | undefined {
+  const value = withPermission(stored);
+  if (!isRecord(value) || value.kind !== expectedProvider) return undefined;
+  // The same fields for every harness; only Claude adds its thinking budget.
+  const thinking = value.kind === 'claude' ? sanitizeClaudeThinking(value.thinking) : undefined;
+  return {
+    kind: expectedProvider,
     ...(typeof value.model === 'string' ? { model: value.model } : {}),
     ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-    ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
     ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
     ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-  };
-  if (value.kind === 'antigravity' && expectedBackend === 'antigravity') return {
-    kind: 'antigravity',
-    ...(typeof value.model === 'string' ? { model: value.model } : {}),
-    ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-    ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
-  };
-
-  if (value.kind === 'codex') {
-    const defaults = {
-      kind: 'codex',
-      ...(typeof value.model === 'string' ? { model: value.model } : {}),
-      ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-      ...(isCodexApprovalPreset(value.approvalPreset) ? { approvalPreset: value.approvalPreset } : {}),
-      ...(typeof value.approvalPolicy === 'string' ? { approvalPolicy: value.approvalPolicy } : {}),
-      ...(isCodexApprovalsReviewer(value.approvalsReviewer) ? { approvalsReviewer: value.approvalsReviewer } : {}),
-      ...(typeof value.sandboxMode === 'string' ? { sandboxMode: value.sandboxMode } : {}),
-      ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
-      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-    } satisfies BackendDefaults;
-    return defaults.kind === expectedBackend ? defaults : undefined;
-  }
-
-  if (value.kind === 'claude') {
-    const thinking = sanitizeClaudeThinking(value.thinking);
-    const defaults = {
-      kind: 'claude',
-      ...(typeof value.model === 'string' ? { model: value.model } : {}),
-      ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
-      ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
-      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
-      ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
-      ...(thinking ? { thinking } : {}),
-    } satisfies BackendDefaults;
-    return defaults.kind === expectedBackend ? defaults : undefined;
-  }
-
-  return undefined;
+    ...(typeof value.permission === 'string' ? { permission: value.permission } : {}),
+    ...(thinking ? { thinking } : {}),
+  } as ProviderDefaults;
 }
 
-function sanitizeClaudeThinking(value: unknown): Extract<BackendDefaults, { kind: 'claude' }>['thinking'] | undefined {
+function sanitizeClaudeThinking(value: unknown): Extract<ProviderDefaults, { kind: 'claude' }>['thinking'] | undefined {
   if (!isRecord(value) || (value.type !== 'enabled' && value.type !== 'disabled')) {
     return undefined;
   }

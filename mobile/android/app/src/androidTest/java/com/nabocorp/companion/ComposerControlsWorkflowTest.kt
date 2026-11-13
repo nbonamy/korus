@@ -24,7 +24,7 @@ class ComposerControlsWorkflowTest {
         "capabilities" to json("goals" to true,"planMode" to true,"reasoningEffort" to true,"serviceTier" to true),
         "composer" to json("modelId" to "model","effort" to "high","serviceTier" to null,"planMode" to plan),
         "models" to JSONArray().put(json("id" to "model","name" to "Model","efforts" to JSONArray(listOf("high","low")),"tiers" to JSONArray().put(json("id" to "priority","name" to "Fast")))),
-        "permissions" to json("approvalPreset" to "read-only","presets" to JSONArray(listOf("read-only","full-access")),"modes" to JSONArray()))
+        "permissions" to json("current" to "read-only","options" to JSONArray().put(json("id" to "read-only","label" to "Read only","dangerous" to false)).put(json("id" to "full-access","label" to "Full access","dangerous" to true))))
     private fun mount(e: NativeEngineFixture, state: JSONObject) {
         app.waitUntil(20_000) { e.model.state.string("startup")=="ready" }; e.state(state)
         app.activityRule.scenario.onActivity { a -> a.setContent { CompanionTheme { CompanionApp(e.model,{},{},{},{},{},{}) } } }
@@ -93,12 +93,12 @@ class ComposerControlsWorkflowTest {
     @Test fun addPermissionsShowsTheCurrentChoiceAndTracksTheOfferedPermissionCatalog() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e,state());app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Permissions").performClick()
-            app.onNode(hasText("Read Only") and hasAnyAncestor(isPopup())).assertExists();app.onNodeWithText("Full Access").performClick()
-            command(e,json("type" to "approvalPreset","preset" to "full-access"))
-            e.state(state().put("permissions",json("permissionMode" to "default","presets" to JSONArray(),"modes" to JSONArray().put(json("id" to "default","label" to "Default")).put(json("id" to "acceptEdits","label" to "Accept edits")))))
+            app.onNode(hasText("Read only") and hasAnyAncestor(isPopup())).assertExists();app.onNodeWithText("Full access").performClick()
+            command(e,json("type" to "permission","permission" to "full-access"))
+            e.state(state().put("permissions",json("current" to "default","options" to JSONArray().put(json("id" to "default","label" to "Default","dangerous" to false)).put(json("id" to "acceptEdits","label" to "Accept edits","dangerous" to false)))))
             app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Permissions").performClick()
-            app.onNodeWithText("Read Only").assertDoesNotExist();app.onNodeWithText("Default").assertExists()
-            app.onNodeWithText("Accept edits").performClick();command(e,json("type" to "permissionMode","mode" to "acceptEdits"))
+            app.onNodeWithText("Read only").assertDoesNotExist();app.onNodeWithText("Default").assertExists()
+            app.onNodeWithText("Accept edits").performClick();command(e,json("type" to "permission","permission" to "acceptEdits"))
         }
     }
 
@@ -110,7 +110,7 @@ class ComposerControlsWorkflowTest {
             app.onNodeWithContentDescription("Add").performClick()
             app.onNodeWithText("Plan mode").assertIsNotEnabled()
             app.onNodeWithText("Permissions").assertIsNotEnabled()
-            assertTrue(e.commands().none { it.string("type") in listOf("composer","approvalPreset","permissionMode") })
+            assertTrue(e.commands().none { it.string("type") in listOf("composer","permission") })
         }
     }
 

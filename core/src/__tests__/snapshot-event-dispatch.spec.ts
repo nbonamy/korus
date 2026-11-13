@@ -40,7 +40,7 @@ describe('snapshot event dispatch', () => {
       const event = {
         seq: 1,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-1',
         turnId: 'turn-1',
         type,

@@ -52,12 +52,12 @@ async function fixture() {
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createEmptySnapshot();
   snapshot.teams = [{ id: 'demo-team', name: 'Shared demo', agentIds: [] }];
-  const backend: CompanionBackendPort = { request: async (method) => {
+  const provider: CompanionBackendPort = { request: async (method) => {
     if (method !== backendMethods.snapshotGet) throw new Error('Unexpected backend operation');
     return { snapshot } as never;
   } };
   const state = path.join(directory, 'companion');
-  const initial = new CompanionManager(state, backend, {});
+  const initial = new CompanionManager(state, provider, {});
   const hostId = (await initial.control({ action: 'status' })).status.hostId;
   await initial.stop();
   const policyFile = path.join(directory, 'pairing.json');
@@ -71,10 +71,10 @@ async function fixture() {
   const address = relay.getMultiaddrs()[0]!.toString();
   const port = relay.getMultiaddrs()[0]!.getComponents().find(part => part.name === 'tcp')!.value;
   const runtime = { ...env, APP_COMPANION_RELAY_URL: `ws://127.0.0.1:${port}`, APP_COMPANION_RELAY_PEER_ID: relay.peerId.toString() };
-  const manager = new CompanionManager(state, backend, runtime);
+  const manager = new CompanionManager(state, provider, runtime);
   cleanup.push(() => manager.stop());
   await manager.control({ action: 'resume' });
-  return { directory, state, policyFile, runtime, manager, hostId, address, backend };
+  return { directory, state, policyFile, runtime, manager, hostId, address, provider: provider };
 }
 
 describe('shared configured companion pairing', () => {
@@ -95,7 +95,7 @@ describe('shared configured companion pairing', () => {
     await f.manager.stop();
     await mkdir(path.join(f.state, 'companion'), { recursive: true });
     await rename(path.join(f.state, 'companions.json'), path.join(f.state, 'companion/state.json'));
-    const restarted = new CompanionManager(f.state, f.backend, f.runtime);
+    const restarted = new CompanionManager(f.state, f.provider, f.runtime);
     cleanup.push(() => restarted.stop());
     expect((await restarted.control({ action: 'status' })).status.devices).toStrictEqual(status.devices);
     await expect.poll(() => call(first, circuit, 'snapshot.get', {})).toMatchObject({ teams: [{ name: 'Shared demo' }] });
@@ -106,7 +106,7 @@ describe('shared configured companion pairing', () => {
 
   it('keeps automatic approval off for other daemon identities and preserves ordinary desktop approval', async () => {
     const f = await fixture(); const node = await phone();
-    const ordinary = new CompanionManager(path.join(f.directory, 'ordinary'), f.backend, f.runtime);
+    const ordinary = new CompanionManager(path.join(f.directory, 'ordinary'), f.provider, f.runtime);
     cleanup.push(() => ordinary.stop());
     const { status, invitation } = await ordinary.control({ action: 'invite' });
     const circuit = `${f.address}/p2p-circuit/p2p/${status.hostId}`;
@@ -138,7 +138,7 @@ describe('shared configured companion pairing', () => {
   it('rejects malformed shared configuration instead of silently enabling a different pairing policy', async () => {
     const f = await fixture(); await f.manager.stop();
     await writeFile(f.policyFile, JSON.stringify({ code: 'invalid', hostId: f.hostId }));
-    const invalid = new CompanionManager(f.state, f.backend, f.runtime);
+    const invalid = new CompanionManager(f.state, f.provider, f.runtime);
     cleanup.push(() => invalid.stop());
     await expect(invalid.control({ action: 'status' })).rejects.toThrow('pairing configuration');
   });

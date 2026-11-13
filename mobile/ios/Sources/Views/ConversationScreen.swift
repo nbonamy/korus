@@ -89,8 +89,10 @@ struct ConversationScreen: View {
                         }
                         .background(.regularMaterial)
                     }
+                    if model.canSelectProvider && model.conversationProviders.count > 1 { EngineChoiceList() }
                     ComposerView()
                 }
+                .animation(.smooth(duration: 0.2), value: model.canSelectProvider)
                 }
             }
             .toolbar {

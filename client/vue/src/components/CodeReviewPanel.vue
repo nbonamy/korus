@@ -90,7 +90,7 @@
           </fieldset>
           <fieldset>
             <legend class="app-section-label">{{ t('automaticReview.model') }}</legend>
-            <BackendModelSelector
+            <ProviderModelSelector
               :key="`${agent.id}:${modelReload}`"
               v-model:selection="reviewSelection"
               :agent-id="agent.id"
@@ -336,15 +336,15 @@ import {
 } from "@workspace/core/code-review";
 import type { Agent, AgentGitStatus, AppSnapshot } from "@workspace/core/contracts";
 import ReviewFindingList, { type ReviewFindingListItem } from './ReviewFindingList.vue';
-import BackendModelSelector from './BackendModelSelector.vue';
-import { backendModelCatalogKey } from './backend-model-catalog';
+import ProviderModelSelector from './ProviderModelSelector.vue';
+import { providerModelCatalogKey } from './provider-model-catalog';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import { useBackendChoices } from './backend-selection';
+import { useProviderChoices } from './provider-selection';
 import { useCodeReviewSettings } from './code-review-settings';
 import type { CodeReviewPriority } from '@workspace/core/code-review';
-import { codeReviewAvailability, preferredReviewBackend } from '@workspace/core/code-review';
+import { codeReviewAvailability, preferredReviewProvider } from '@workspace/core/code-review';
 
 const props = defineProps<{
   agent: Agent;
@@ -378,11 +378,11 @@ const error = ref<string | null>(null);
 const scope = ref<CodeReviewStartInput["scope"]["type"]>("uncommitted");
 const threadMode = ref<CodeReviewThreadMode>("independent");
 const reviewSettings = useCodeReviewSettings();
-provide(backendModelCatalogKey, { listModels: reviewSettings.listModels });
+provide(providerModelCatalogKey, { listModels: reviewSettings.listModels });
 const remembered = reviewSettings.preferences();
-const connectedBackends = useBackendChoices(() => props.agent.remoteConnectionId);
-const { selection: reviewSelection, backend: reviewBackend, model: reviewModel, reasoningEffort: reviewEffort, serviceTier: reviewTier } = useExecutionSelection();
-const initialBackend = preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend);
+const connectedBackends = useProviderChoices(() => props.agent.remoteConnectionId);
+const { selection: reviewSelection, provider: reviewBackend, model: reviewModel, reasoningEffort: reviewEffort, serviceTier: reviewTier } = useExecutionSelection();
+const initialBackend = preferredReviewProvider(props.agent.provider, connectedBackends.value, remembered?.provider);
 if (initialBackend) reviewBackend.value = initialBackend;
 const automatic = ref(remembered?.automation.enabled ?? false);
 const automaticSettingsOpen = ref(false);
@@ -392,7 +392,7 @@ const autoCommit = ref(remembered?.automation.autoCommit ?? false);
 const modelsLoading = ref(false);
 const modelsError = ref(false);
 const modelReload = ref(0);
-const effectiveBackend = computed(() => threadMode.value === 'current' ? props.agent.backend : reviewBackend.value);
+const effectiveBackend = computed(() => threadMode.value === 'current' ? props.agent.provider : reviewBackend.value);
 const selections = { ...remembered?.providers };
 watch(automatic, enabled => { if (enabled) threadMode.value = 'independent'; });
 watch([effectiveBackend, () => props.agent.id, () => Boolean(props.agent.codeReview)], ([backend], previous) => {
@@ -407,7 +407,7 @@ watch([effectiveBackend, () => props.agent.id, () => Boolean(props.agent.codeRev
 watch(() => props.agent.id, () => {
   automaticSettingsOpen.value = false;
   const latest = reviewSettings.preferences();
-  reviewBackend.value = preferredReviewBackend(props.agent.backend, connectedBackends.value, latest?.backend);
+  reviewBackend.value = preferredReviewProvider(props.agent.provider, connectedBackends.value, latest?.provider);
   automatic.value = latest?.automation.enabled ?? false;
   maxPriority.value = latest?.automation.maxPriority ?? 'p2';
   maxRounds.value = latest?.automation.maxRounds ?? 3;
@@ -622,7 +622,7 @@ function submitRound(): void {
 
 function startSelectedReview(): void {
   if (nothingToReview.value || modelsLoading.value) return;
-  if (!connectedBackends.value.includes(threadMode.value === 'current' ? props.agent.backend : reviewBackend.value!)) {
+  if (!connectedBackends.value.includes(threadMode.value === 'current' ? props.agent.provider : reviewBackend.value!)) {
     error.value = t('engineConnection.required');
     return;
   }

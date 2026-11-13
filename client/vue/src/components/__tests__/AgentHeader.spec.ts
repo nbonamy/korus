@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import AgentHeader from '../AgentHeader.vue';
 import { conversationSharePresenceByAgentIdKey, type ConversationSharePresence } from '../conversation-share-state';
-import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
+import type { Agent, AgentGitStatus, ProviderRuntimeStatus } from '@workspace/core/contracts';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { setElectronTestClient } from '../../../tests/support/client';
 import { createClientApiMock } from '../../../tests/support/client-api-mock';
@@ -16,19 +16,19 @@ const agent: Agent = {
   name: 'Dina',
   avatar: 'DI',
   folder: '~/src/id8',
-  backend: 'codex',
-  backendDefaults: { kind: 'codex' },
+  provider: 'codex',
+  providerDefaults: { kind: 'codex' },
   status: { type: 'idle' },
   createdAt: '2026-06-05T00:00:00.000Z',
   updatedAt: '2026-06-05T00:00:00.000Z',
 };
 
-function mountHeader(backendRuntime: BackendRuntimeStatus, isLoading = false, gitStatus: AgentGitStatus | null = null, workspaceOpen = false) {
+function mountHeader(providerRuntime: ProviderRuntimeStatus, isLoading = false, gitStatus: AgentGitStatus | null = null, workspaceOpen = false) {
   return mount(AgentHeader, {
     props: {
       agent,
       gitStatus,
-      backendRuntime,
+      providerRuntime,
       workspaceOpen,
       isLoading,
       sidebarCollapsed: false,
@@ -44,7 +44,7 @@ describe('AgentHeader', () => {
     const client = createClientApiMock();
     setElectronTestClient({ onEvent: client.api.onEvent, conversationShareControl: vi.fn(() => new Promise<{ state: typeof state }>(resolve => { resolveStatus = resolve; })) });
     const wrapper = mount(AgentHeader, {
-      props: { agent: { ...agent, backendSession: { kind: 'codex', threadId: 'owner' } }, shareAvailable: true, shareStatusOnMount: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+      props: { agent: { ...agent, providerSession: { kind: 'codex', conversationId: 'owner' } }, shareAvailable: true, shareStatusOnMount: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
     });
     try {
       client.emit(decodeAppBackendEvent({ seq: 1, occurredAt: 'now', type: 'conversation.shareChanged', agentId: agent.id, payload: { ...state, connectedGuests: 3 } }));
@@ -53,7 +53,7 @@ describe('AgentHeader', () => {
       resolveStatus({ state });
       await flushPromises();
       expect(wrapper.get('.agent-header__guest-count').text()).toBe('3');
-      await wrapper.setProps({ agent: { ...agent, id: 'other', backendSession: { kind: 'codex', threadId: 'other' } } });
+      await wrapper.setProps({ agent: { ...agent, id: 'other', providerSession: { kind: 'codex', conversationId: 'other' } } });
       expect(wrapper.find('.agent-header__guest-count').exists()).toBe(false);
       resolveStatus({ state });
       await flushPromises();
@@ -65,7 +65,7 @@ describe('AgentHeader', () => {
   it('moves Share from the actions menu to a separate button while sharing is active', async () => {
     const sharing = reactive<Record<string, ConversationSharePresence>>({ [agent.id]: { active: false, connectedGuests: null } });
     const wrapper = mount(AgentHeader, {
-      props: { agent, shareAvailable: true, backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+      props: { agent, shareAvailable: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
       global: { provide: { [conversationSharePresenceByAgentIdKey as symbol]: sharing } },
       attachTo: document.body,
     });
@@ -99,7 +99,7 @@ describe('AgentHeader', () => {
   it('opens Git log for a restored Git workspace before volatile status has loaded', async () => {
     const wrapper = mount(AgentHeader, { props: {
       agent: { ...agent, folder: '/repo/worktree', workspace: { kind: 'git', folder: '/repo/worktree', repositoryName: 'repo', repositoryRoot: '/repo/worktree', primaryWorktreeRoot: '/repo', branch: 'feature', isLinkedWorktree: true, updatedAt: '' } },
-      backendRuntime: { backend: 'codex', status: 'running' }, gitStatus: null, isLoading: false, sidebarCollapsed: false,
+      providerRuntime: { provider: 'codex', status: 'running' }, gitStatus: null, isLoading: false, sidebarCollapsed: false,
     } });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
@@ -108,7 +108,7 @@ describe('AgentHeader', () => {
     wrapper.unmount();
   });
   it('renders the active agent identity without a duplicate right-side status', () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'notConfigured' });
+    const wrapper = mountHeader({ provider: 'codex', status: 'notConfigured' });
 
     expect(wrapper.text()).toContain('Dina');
     expect(wrapper.text()).toContain('~/src/id8');
@@ -124,7 +124,7 @@ describe('AgentHeader', () => {
       props: {
         agent,
         repositoryIcon: '🦞',
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -135,7 +135,7 @@ describe('AgentHeader', () => {
   });
 
   it('renders repo diff stats and a separate bordered Git actions control', () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'main',
       ahead: 2,
@@ -162,7 +162,7 @@ describe('AgentHeader', () => {
   });
 
   it('shows the canonical repository name for a linked worktree', () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/agent-workspace-git-fixture-test',
       repository: 'agent-workspace-git-fixture',
       branch: 'test',
@@ -210,7 +210,7 @@ describe('AgentHeader', () => {
           state: 'clean',
           updatedAt: '2026-09-07T00:00:00.000Z',
         },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -239,7 +239,7 @@ describe('AgentHeader', () => {
           },
         },
         gitStatus: null,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -250,7 +250,7 @@ describe('AgentHeader', () => {
   });
 
   it('emits a git diff preview request when repo diff stats are clicked', async () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'main',
       ahead: 0,
@@ -281,7 +281,7 @@ describe('AgentHeader', () => {
       unstaged: { ...stats(1, 0, 1), byKind: byKind(stats(0, 0, 0), stats(0, 0, 0), stats(1, 0, 1)) },
       staged: stats(3, 2, 1),
     });
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, withKinds);
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, withKinds);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
     expect(wrapper.getComponent({ name: 'AppMenu' }).element.lastElementChild?.querySelector('.app-menu__label')?.textContent).toBe('Exclude lockfiles');
     const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.id === 'kinds-heading' || item.id.startsWith('kind:'));
@@ -309,7 +309,7 @@ describe('AgentHeader', () => {
       diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, uncommitted: { ...stats(5, 0, 2), byKind: { code: stats(3, 0, 1), test: stats(2, 0, 1), docs: zero, other: zero } }, unstaged: stats(5, 0, 2), staged: zero, commits: [] },
       updatedAt: '2026-06-05T00:00:00.000Z',
     } as unknown as AgentGitStatus;
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, gitStatus);
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, gitStatus);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
     const items = wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string }>;
     expect(items.find(item => item.id === 'kind:test')!.type).toBe('action');
@@ -325,7 +325,7 @@ describe('AgentHeader', () => {
       diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, uncommitted: { addedLines: 1, removedLines: 0, changedFiles: 1 }, unstaged: { addedLines: 1, removedLines: 0, changedFiles: 1 }, staged: { addedLines: 0, removedLines: 0, changedFiles: 0 }, commits: [] },
       updatedAt: '2026-06-05T00:00:00.000Z',
     } as AgentGitStatus;
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, gitStatus);
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, gitStatus);
     await wrapper.setProps({ lastTurnGitDiff: { agentId: agent.id, turnId: 'turn-1', addedLines: 4, removedLines: 0, diff: [file('src/app.ts', 3), file('src/app.test.ts', 1)].join('\n'), updatedAt: '2026-06-05T00:00:01.000Z' } });
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
     wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'turn');
@@ -337,7 +337,7 @@ describe('AgentHeader', () => {
   });
 
   it('switches among diff targets and remembers the selection per agent', async () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'feature',
       ahead: 1,
@@ -411,7 +411,7 @@ describe('AgentHeader', () => {
   });
 
   it('keeps Git actions available for a clean repository and opens file-only changes', async () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'main',
       ahead: 0,
@@ -440,7 +440,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -450,8 +450,8 @@ describe('AgentHeader', () => {
   });
 
   it('renders an icon-only right-workspace action in the header', async () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, null, true);
-    const workspaceAction = wrapper.get('[aria-label="Toggle right workspace"]');
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, null, true);
+    const workspaceAction = wrapper.get('[aria-label="Toggle right panel"]');
 
     expect(workspaceAction.text()).toBe('');
     expect(workspaceAction.attributes('aria-pressed')).toBe('true');
@@ -462,7 +462,7 @@ describe('AgentHeader', () => {
   });
 
   it('does not render a code review action in the header', () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       branch: 'feature',
       ahead: 1,
@@ -482,7 +482,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent: { ...agent, openInApplication: 'xcode' },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         openInAvailable: true,
@@ -505,7 +505,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent: { ...agent, name: null, folder: null, sessionKind: 'quickChat' },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         openInAvailable: true,
@@ -526,7 +526,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         executionPlanAvailable: true,
@@ -542,7 +542,7 @@ describe('AgentHeader', () => {
     const hiddenWrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         executionPlanAvailable: false,
@@ -555,7 +555,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         updateStatus: { state: 'downloaded', version: '0.4.0' },
@@ -576,7 +576,7 @@ describe('AgentHeader', () => {
           ...agent,
           statusText: 'Running tests',
         },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -600,7 +600,7 @@ describe('AgentHeader', () => {
           ...agent,
           status,
         },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
       },
@@ -614,7 +614,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent: null,
-        backendRuntime: { backend: 'codex', status: 'notConfigured' },
+        providerRuntime: { provider: 'codex', status: 'notConfigured' },
         isLoading: false,
         sidebarCollapsed: true,
       },
@@ -641,7 +641,7 @@ describe('AgentHeader', () => {
           state: 'dirty',
           updatedAt: '2026-06-05T00:00:00.000Z',
         },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: true,
       },
@@ -664,7 +664,7 @@ describe('AgentHeader', () => {
   });
 
   it('falls back to the agent folder when Git status is unavailable', () => {
-    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
+    const wrapper = mountHeader({ provider: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
       ahead: 0,
       behind: 0,
@@ -684,7 +684,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         gitStatus: {
           folder: '/Users/nbonamy/src/id8',
           branch: 'main',
@@ -743,7 +743,7 @@ describe('AgentHeader', () => {
           state: 'dirty',
           updatedAt: '2026-06-05T00:00:00.000Z',
         },
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         openInAvailable: true,
@@ -791,7 +791,7 @@ describe('AgentHeader', () => {
     const wrapper = mount(AgentHeader, {
       props: {
         agent,
-        backendRuntime: { backend: 'codex', status: 'running' },
+        providerRuntime: { provider: 'codex', status: 'running' },
         isLoading: false,
         sidebarCollapsed: false,
         subagentTree: {

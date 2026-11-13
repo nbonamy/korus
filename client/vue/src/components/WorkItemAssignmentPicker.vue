@@ -47,7 +47,7 @@
         <section class="work-item-assignment-picker__section">
           <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
           <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-            <BackendModelSelector v-model:selection="executionSelection" :agent-id="modelCatalogAgentId" :remote-connection-id="remoteConnectionId" :disabled="busy" />
+            <ProviderModelSelector v-model:selection="executionSelection" :agent-id="modelCatalogAgentId" :remote-connection-id="remoteConnectionId" :disabled="busy" />
           </div>
           <el-select
             v-else
@@ -113,9 +113,9 @@ import { IconAlertTriangle, IconCopy, IconGitBranch, IconGitPullRequest, IconRob
 import type { WorkItem } from '@workspace/core/contracts';
 import type { WorkItemAssignmentAction } from '@workspace/core/work-item-prompts';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
-import BackendModelSelector from './BackendModelSelector.vue';
-import { useBackendChoices, useNewAgentBackend } from './backend-selection';
-const backendBinding = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
+import ProviderModelSelector from './ProviderModelSelector.vue';
+import { useProviderChoices, useNewAgentProvider } from './provider-selection';
+const backendBinding = defineModel<import('@workspace/core/contracts').HarnessProvider>('provider');
 
 export type WorkItemAssignmentDestination = 'existing' | 'new';
 
@@ -157,11 +157,11 @@ const emit = defineEmits<{
   submit: [selection: WorkItemAssignmentSelection];
 }>();
 
-const { selection: executionSelection, backend } = useExecutionSelection();
-if (backendBinding.value) backend.value = backendBinding.value;
-watch(backendBinding, value => { backend.value = value; });
-watch(backend, value => { backendBinding.value = value; }, { flush: 'sync' });
-useNewAgentBackend(backend, useBackendChoices(() => props.remoteConnectionId));
+const { selection: executionSelection, provider } = useExecutionSelection();
+if (backendBinding.value) provider.value = backendBinding.value;
+watch(backendBinding, value => { provider.value = value; });
+watch(provider, value => { backendBinding.value = value; }, { flush: 'sync' });
+useNewAgentProvider(provider, useProviderChoices(() => props.remoteConnectionId));
 const { t } = useI18n();
 const destination = ref<WorkItemAssignmentDestination>('new');
 const selectedAgentId = ref('');
@@ -180,7 +180,7 @@ const displayedBranch = computed(() => destination.value === 'existing'
   : props.branchName);
 const canSubmit = computed(() => !props.busy
   && (destination.value === 'new'
-    ? props.branchName.trim().length > 0 && Boolean(backend.value)
+    ? props.branchName.trim().length > 0 && Boolean(provider.value)
     : Boolean(selectedAgentId.value)));
 
 watch(() => [props.item.id, eligibleSessions.value.map((session) => session.agentId).join('|')] as const, () => {

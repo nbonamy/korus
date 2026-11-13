@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { useI18n } from 'vue-i18n';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
@@ -36,8 +36,8 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
 const props = defineProps<{ setup: ProviderSetupStatus | null; busy: boolean; error: string | null; allowReset?: boolean }>();
-const providerName = computed(() => props.setup ? backendDisplayName(props.setup.backend) : '');
-const capabilities = computed(() => props.setup ? resolveProviderSetupCapabilities(props.setup.backend, props.setup.capabilities) : undefined);
+const providerName = computed(() => props.setup ? providerDisplayName(props.setup.provider) : '');
+const capabilities = computed(() => props.setup ? resolveProviderSetupCapabilities(props.setup.provider, props.setup.capabilities) : undefined);
 const configurable = computed(() => capabilities.value?.homeSelection || capabilities.value?.skillSharing);
 const emit = defineEmits<{ close: []; save: [choice: ProviderSetupChange] }>();
 const { t } = useI18n();

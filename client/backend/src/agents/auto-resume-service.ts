@@ -1,8 +1,7 @@
 import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
-import type { Agent, AppSnapshot, AccountRateLimits, MainToRendererEvent } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, AccountRateLimits, BackendPublishedEvent } from '@workspace/core/contracts';
 import { isRateLimitPause, type RateLimitPause } from '@workspace/core/auto-resume';
 import { agentConversationId } from '@workspace/core/plan-review';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 
 type Options = {
@@ -23,27 +22,25 @@ export class AutoResumeService {
   private readonly pendingSends = new Map<string, symbol>();
   constructor(private readonly options: Options) {}
 
-  observe(event: MainToRendererEvent): void {
+  observe(event: BackendPublishedEvent): void {
     if (this.closed) return;
-    const view = providerConversationEventView(event);
-    const agent = this.options.snapshot.agents.find(agent => agent.id === view.agentId);
+    const agent = this.options.snapshot.agents.find(agent => agent.id === event.agentId);
     if (agent && this.options.isLocal(agent)) {
-      if (view.conversationId && view.conversationId !== agentConversationId(agent)) return;
-      if (view.type === 'turn.started' || event.type === 'agent.statusChanged' && event.payload.type === 'working') this.cancel(agent.id);
-      const payload = record(view.payload), error = record(payload.error);
+      if (event.conversationId && event.conversationId !== agentConversationId(agent)) return;
+      if (event.type === 'turn.started' || event.type === 'agent.statusChanged' && event.payload.type === 'working') this.cancel(agent.id);
+      const error = event.type === 'session.error' || event.type === 'turn.completed' ? event.payload.error : null;
       const message = event.type === 'agent.statusChanged' && event.payload.type === 'error' ? event.payload.message
-        : ['error', 'turn.error', 'turn.completed'].includes(view.type) && payload.willRetry !== true ? payload.message ?? error.message : undefined;
+        : error && (event.type === 'session.error' || event.type === 'turn.completed') && !event.payload.willRetry ? error.message : undefined;
       if (providerSafetyBlockMessage(error) || providerSafetyBlockMessage(message)) { this.cancel(agent.id); this.sync(); return; }
       if (typeof message === 'string' && /(?:usage.?limit|session.?limit|rate.?limit|quota)/i.test(message)) {
-        const now = Date.now(), resumeAt = resetTime(message, this.options.snapshot.backendAccountRateLimits?.[agent.backend], now, record(payload.rateLimit));
+        const now = Date.now(), resumeAt = resetTime(message, this.options.snapshot.providerAccountRateLimits?.[agent.provider], now, record(error?.rateLimit));
         const conversationId = agentConversationId(agent);
-        if (resumeAt && conversationId && (!view.conversationId || view.conversationId === conversationId)) {
-          this.options.update(agent.id, { backend: agent.backend, conversationId, ...(view.turnId ? { turnId: view.turnId } : {}), detectedAt: now, resumeAt,
+        if (resumeAt && conversationId && (!event.conversationId || event.conversationId === conversationId)) {
+          this.options.update(agent.id, { provider: agent.provider, conversationId, ...(event.turnId ? { turnId: event.turnId } : {}), detectedAt: now, resumeAt,
             enabled: this.options.snapshot.general.autoResumeAfterLimit !== false });
         }
       }
-      const status = payload.status ?? record(payload.turn).status;
-      if (view.type === 'turn.completed' && ['completed', 'interrupted'].includes(String(status)) && agent.rateLimitPause?.turnId === view.turnId) this.cancel(agent.id);
+      if (event.type === 'turn.completed' && ['completed', 'interrupted'].includes(event.payload.status) && agent.rateLimitPause?.turnId === event.turnId) this.cancel(agent.id);
     }
     this.sync();
   }
@@ -64,7 +61,7 @@ export class AutoResumeService {
     for (const agent of this.options.snapshot.agents) {
       let pause = agent.rateLimitPause;
       if (!pause || !this.options.isLocal(agent)) continue;
-      if (!isRateLimitPause(pause) || pause.backend !== agent.backend || pause.conversationId !== agentConversationId(agent)) {
+      if (!isRateLimitPause(pause) || pause.provider !== agent.provider || pause.conversationId !== agentConversationId(agent)) {
         this.cancel(agent.id); continue;
       }
       if (agent.status.type === 'error' && providerSafetyBlockMessage(agent.status.message)) { this.cancel(agent.id); continue; }
@@ -86,7 +83,7 @@ export class AutoResumeService {
     for (const agent of this.options.snapshot.agents) {
       const pause = agent.rateLimitPause;
       if (this.closed || !pause?.enabled || !this.options.isLocal(agent) || pause.resumeAt + RESET_GRACE_MS > Date.now() || !this.available(agent)) continue;
-      if (pause.backend !== agent.backend || pause.conversationId !== agentConversationId(agent)) { this.cancel(agent.id); continue; }
+      if (pause.provider !== agent.provider || pause.conversationId !== agentConversationId(agent)) { this.cancel(agent.id); continue; }
       const token = Symbol();
       this.options.update(agent.id, null);
       this.pendingSends.set(agent.id, token);

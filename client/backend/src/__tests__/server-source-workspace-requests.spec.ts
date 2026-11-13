@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SourceWorktree } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { AgentGitService } from '../git/agent-git-service';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import {
@@ -36,7 +36,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue(repositories),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -73,7 +73,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue(repository),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -114,7 +114,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue(repository),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -150,7 +150,7 @@ describe('AppBackendServer', () => {
     const driverRpc = {
       handle: vi.fn().mockResolvedValue(repository),
       onEvent: vi.fn(() => () => undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const agentGitService = {
       identity: vi.fn(async (folder: string) => ({
         kind: 'git' as const,
@@ -173,7 +173,7 @@ describe('AppBackendServer', () => {
 
     expect(response).toMatchObject({ result: {
       activeAgentId: expect.any(String),
-      agents: [{ folder: '/src/new-product', teamId: 'team-test', name: null, backend: 'codex' }],
+      agents: [{ folder: '/src/new-product', teamId: 'team-test', name: null, provider: 'codex' }],
       sourceFolder: { recentRepoNames: ['new-product'] },
     } });
     expect(driverRpc.handle).toHaveBeenCalledWith(backendMethods.sourceRepositoryCreate, {
@@ -204,27 +204,27 @@ describe('AppBackendServer', () => {
     );
   });
 
-  it.each(['codex', 'claude'] as const)('starts a project using the %s Quick Chat backend', async (backend) => {
+  it.each(['codex', 'claude'] as const)('starts a project using the %s Quick Chat backend', async (provider) => {
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };
-    createQuickChatInSnapshot(snapshot, { teamId: 'team-test', selection: { backend } }, undefined, 'agent-quick-chat', { select: false });
-    const backendSession = backend === 'codex'
-      ? { kind: 'codex', threadId: 'thread-project' }
-      : { kind: 'claude', sessionId: 'session-project', transport: 'stdio' };
+    createQuickChatInSnapshot(snapshot, { teamId: 'team-test', selection: { provider: provider } }, undefined, 'agent-quick-chat', { select: false });
+    const providerSession = provider === 'codex'
+      ? { kind: 'codex', conversationId: 'thread-project' }
+      : { kind: 'claude', conversationId: 'session-project', transport: 'stdio' };
     const repository = {
       name: 'new-product', path: '/src/new-product', worktrees: [{ name: 'main', path: '/src/new-product' }],
     };
     const handle = vi.fn(async (method: string) => method === backendMethods.sourceRepositoryCreate
       ? repository
       : method === backendMethods.driverPromptSend
-        ? { backendSession, turnId: 'turn-1' }
+        ? { providerSession: providerSession, turnId: 'turn-1' }
         : undefined);
     const driverRpc = {
       handle,
       tryHandlePromptCommand: vi.fn().mockReturnValue(null),
       onEvent: vi.fn(() => () => undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const agentGitService = {
       identity: vi.fn(async (folder: string) => ({
         kind: 'git' as const, folder, repositoryName: 'new-product', repositoryRoot: folder,
@@ -240,8 +240,8 @@ describe('AppBackendServer', () => {
     );
 
     expect(result).toMatchObject({ repository, promptSubmitted: true, agent: {
-      folder: repository.path, teamId: 'team-test', name: null, backend,
-      backendSession,
+      folder: repository.path, teamId: 'team-test', name: null, provider: provider,
+      providerSession: providerSession,
     } });
     expect(result.agent.delegatedByAgentId).toBeUndefined();
     const progress = events.filter(event => event.type === 'agentCreation.progress');
@@ -437,7 +437,7 @@ describe('AppBackendServer', () => {
       }),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -469,7 +469,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue('/Users/nbonamy/src/agent-workspace-backend-split'),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -503,7 +503,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue(worktrees),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -540,7 +540,7 @@ describe('AppBackendServer', () => {
       handle: vi.fn().mockResolvedValue(worktree),
       onEvent: vi.fn(() => () => undefined),
       close: vi.fn().mockResolvedValue(undefined),
-    } as unknown as BackendDriverRpc;
+    } as unknown as ProviderDriverRpc;
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -648,7 +648,7 @@ describe('AppBackendServer', () => {
       id: 'remote-agent',
       method: 'agent/create',
       params: {
-        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { provider: 'codex' }, remoteConnectionId: 'connection-devbox' },
       },
     })).resolves.toMatchObject({
       result: {
@@ -670,7 +670,7 @@ describe('AppBackendServer', () => {
       snapshot.remoteConnections.connections[0],
       'agent/create',
       { ...{
-        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ provider: 'codex' } } },
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
@@ -705,7 +705,7 @@ describe('AppBackendServer', () => {
         id: 'remote-agent',
         method: 'agent/create',
         params: {
-          input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' },
+          input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', selection: { provider: 'codex' }, remoteConnectionId: 'connection-devbox' },
         },
       }),
       new Promise((resolve) => {
@@ -728,7 +728,7 @@ describe('AppBackendServer', () => {
       snapshot.remoteConnections.connections[0],
       'agent/create',
       { ...{
-        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ backend: 'codex' } } },
+        input: { name: 'Remote Dina', folder: '/home/nicolas/src/agent-workspace', teamId: 'team-remote', selection: { ...{ provider: 'codex' } } },
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
@@ -763,7 +763,7 @@ it.each([true, false])('deletes a confirmed repository and its worktrees without
     snapshot.agents.push({ ...snapshot.agents[0]!, id: 'other-clone', folder: other,
       workspace: await identity.identity(other) });
     const originalIds = snapshot.agents.map(a => a.id);
-    const driverRpc = { handle: vi.fn().mockResolvedValue(undefined), onEvent: () => () => undefined, close: vi.fn() } as unknown as BackendDriverRpc;
+    const driverRpc = { handle: vi.fn().mockResolvedValue(undefined), onEvent: () => () => undefined, close: vi.fn() } as unknown as ProviderDriverRpc;
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc, saveSnapshot: vi.fn().mockResolvedValue(undefined) });
     const request = (method: string, params: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 'delete-test', method, params });
     const response = await request('repository/delete/preview', { agentId: originalIds[0] });

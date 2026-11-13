@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
-import { createClientApiMock as createBaseClientApiMock } from '../../../tests/support/client-api-mock';
+import { createClientApiMock as createBaseClientApiMock, scriptedAuthentication } from '../../../tests/support/client-api-mock';
 import RemoteEngineConnections from '../RemoteEngineConnections.vue';
 function createClientApiMock() {
   const result = createBaseClientApiMock();
-  result.api.getProviderUpdate.mockImplementation(async backend => ({ backend, status: 'current', installedVersion: '1.0', method: 'npm', canUpgrade: false, busy: false }));
+  result.api.getProviderUpdate.mockImplementation(async provider => ({ provider: provider, status: 'current', installedVersion: '1.0', method: 'npm', canUpgrade: false, busy: false }));
   return result;
 }
 
@@ -37,9 +37,9 @@ afterEach(() => { vi.useRealTimers(); configureAppClient(undefined); document.bo
 describe('RemoteEngineConnections', () => {
   it('honors remote setup capabilities and the explicit controller install grant', async () => {
     const { api } = createClientApiMock();
-    const setup = { backend: 'claude' as const, installed: false, isolated: false, shareSkills: false, homePath: '/remote/claude', locked: false,
+    const setup = { provider: 'claude' as const, installed: false, isolated: false, shareSkills: false, homePath: '/remote/claude', locked: false,
       capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: false, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#remote' } } };
-    api.getProviderConnections.mockResolvedValue([{ backend: 'claude', installed: false, connected: false, checking: false }]);
+    api.getProviderConnections.mockResolvedValue([{ provider: 'claude', installed: false, connected: false, checking: false }]);
     api.getProviderSetup.mockResolvedValue([setup]);
     api.refreshProvider.mockResolvedValue(setup);
     configureAppClient({ platform: 'desktop', api });
@@ -65,7 +65,7 @@ describe('RemoteEngineConnections', () => {
 
   it('reports Cursor on its owning host and asks for remote login instead of opening a local browser', async () => {
     const { api } = createClientApiMock();
-    api.getProviderConnections.mockResolvedValue([{ backend: 'cursor', installed: true, connected: false, checking: false }]);
+    api.getProviderConnections.mockResolvedValue([{ provider: 'cursor', installed: true, connected: false, checking: false }]);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
@@ -73,7 +73,7 @@ describe('RemoteEngineConnections', () => {
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
     expect(wrapper.get('[role="alert"]').text()).toContain('agent login on the remote host');
     expect(api.authenticateProvider).not.toHaveBeenCalled();
-    api.getProviderConnections.mockResolvedValue([{ backend: 'cursor', installed: true, connected: false, checking: false,
+    api.getProviderConnections.mockResolvedValue([{ provider: 'cursor', installed: true, connected: false, checking: false,
       authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/remote/.cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }]);
     await wrapper.get('.remote-engine-connections > button').trigger('click');
     await flushPromises();
@@ -83,7 +83,7 @@ describe('RemoteEngineConnections', () => {
 
   it('keeps Antigravity sign-in native without offering unsupported remote upgrades', async () => {
     const { api } = createClientApiMock();
-    api.getProviderConnections.mockResolvedValue([{ backend: 'antigravity', installed: true, connected: false, checking: false }]);
+    api.getProviderConnections.mockResolvedValue([{ provider: 'antigravity', installed: true, connected: false, checking: false }]);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
@@ -97,11 +97,11 @@ describe('RemoteEngineConnections', () => {
   });
   it('keeps the connected account on one row and routes refresh and upgrade actions to its host', async () => {
     const { api } = createClientApiMock();
-    const engine = { backend: 'claude' as const, installed: true, connected: true, checking: false,
-      authentication: { kind: 'claude' as const, connected: true, state: { loggedIn: true, account: { type: 'subscription' as const, email: 'user@example.com', subscription: 'pro' } } },
+    const engine = { provider: 'claude' as const, installed: true, connected: true, checking: false,
+      authentication: { kind: 'claude' as const, connected: true, state: { loggedIn: true, account: { type: 'subscription' as const, email: 'user@example.com', subscription: 'pro' } }, account: { kind: 'subscription' as const, email: 'user@example.com', plan: 'pro' } },
     };
     api.getProviderConnections.mockResolvedValue([engine]);
-    const update = { backend: 'claude' as const, status: 'available' as const, installedVersion: '1.0', latestVersion: '2.0', method: 'native' as const, canUpgrade: true, busy: false, token: 'verified-installation' };
+    const update = { provider: 'claude' as const, status: 'available' as const, installedVersion: '1.0', latestVersion: '2.0', method: 'native' as const, canUpgrade: true, busy: false, token: 'verified-installation' };
     api.getProviderUpdate.mockResolvedValue(update);
     api.setProviderUpdate.mockResolvedValue({ ...update, status: 'current', installedVersion: '2.0', canUpgrade: false });
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
@@ -117,20 +117,20 @@ describe('RemoteEngineConnections', () => {
     await flushPromises();
     expect(api.setProviderUpdate).toHaveBeenCalledExactlyOnceWith('claude', { action: 'upgrade', confirmed: true, token: 'verified-installation' }, 'wall-e');
     expect(row.text()).toContain('2.0');
-    expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
-  it.each(['codex', 'claude'] as const)('keeps remote %s connected on logout failure and refreshes after successful logout', async backend => {
+  it.each(['codex', 'claude'] as const)('keeps remote %s connected on logout failure and refreshes after successful logout', async provider => {
     const { api } = createClientApiMock();
-    const engine = { backend, installed: true, connected: true, checking: false, enabled: false };
+    const engine = { provider: provider, installed: true, connected: true, checking: false, enabled: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, connected: false }]);
     api.disconnectProvider.mockRejectedValueOnce(new Error('private CLI output')).mockResolvedValue({ kind: 'claude', connected: false, state: { loggedIn: false } });
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
     await choose(wrapper, 'Disconnect');
-    expect(api.disconnectProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
+    expect(api.disconnectProvider).toHaveBeenCalledExactlyOnceWith(provider, 'wall-e');
     expect(wrapper.get('[role="alert"]').text()).toBe('Could not sign out. Please try again.');
     await choose(wrapper, 'Disconnect');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -140,17 +140,17 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it.each(['antigravity', 'codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (backend) => {
+  it.each(['codex', 'claude'] as const)('installs %s on its owning remote host and refreshes its availability without signing in', async (provider) => {
     const { api } = createClientApiMock();
-    const engine = { backend, installed: false, connected: false, checking: false };
+    const engine = { provider: provider, installed: false, connected: false, checking: false };
     api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);
-    api.installProvider.mockResolvedValue({ backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
+    api.installProvider.mockResolvedValue({ provider: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
     await wrapper.findAll('button').find(button => button.text() === 'Install')!.trigger('click');
     await flushPromises();
-    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
+    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith(provider, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
     expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(wrapper.get('.form-row__control button').text()).toBe('Connect');
@@ -158,52 +158,54 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
-  it.each(['codex', 'claude'] as const)('rechecks external installation and starts %s sign-in with one Connect click', async backend => {
+  it.each(['codex', 'claude'] as const)('rechecks external installation and starts %s sign-in with one Connect click', async provider => {
     vi.useFakeTimers();
     const { api } = createClientApiMock();
-    const missing = (['codex', 'claude'] as const).map(backend => ({ backend, installed: false, connected: false, checking: false }));
-    api.getProviderConnections.mockResolvedValueOnce(missing).mockResolvedValue(missing.map(engine => ({ ...engine, installed: engine.backend === backend, enabled: false, ...(engine.backend === 'claude' ? { authentication: { kind: 'claude' as const, connected: false, state: { loggedIn: false, configDirectory: '/remote/app/claude-home' } } } : {}) })));
-    api.refreshProvider.mockResolvedValue({ backend, installed: true, locked: false, isolated: true, shareSkills: true, homePath: '/remote/app/claude-home' });
-    api.getClaudeAuthentication.mockResolvedValue({ loggedIn: false, configDirectory: '/remote/app/claude-home' });
-    api.getCodexAuthentication.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } });
-    api.cancelCodexChatGptLogin.mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'cancelled', error: null } });
-    api.startCodexChatGptDeviceCodeLogin.mockResolvedValue({ loginId: 'remote-login', userCode: 'REMOTE-CODE', verificationUrl: 'https://auth.openai.com/codex/device' });
-    if (backend === 'codex') api.startCodexChatGptDeviceCodeLogin.mockRejectedValueOnce(new Error('Temporary login error'));
+    const missing = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: false, connected: false, checking: false }));
+    api.getProviderConnections.mockResolvedValueOnce(missing).mockResolvedValue(missing.map(engine => ({ ...engine, installed: engine.provider === provider, enabled: false, ...(engine.provider === 'claude' ? { authentication: { kind: 'claude' as const, connected: false, state: { loggedIn: false, configDirectory: '/remote/app/claude-home' } } } : {}) })));
+    api.refreshProvider.mockResolvedValue({ provider: provider, installed: true, locked: false, isolated: true, shareSkills: true, homePath: '/remote/app/claude-home' });
+    const checkClaude = vi.fn().mockResolvedValue({ loggedIn: false, configDirectory: '/remote/app/claude-home' });
+    const checkCodex = vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } });
+    const cancelCodex = vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'cancelled', error: null } });
+    const loginCodex = vi.fn().mockResolvedValue({ kind: 'codex', connected: false, state: { account: null, requiresOpenaiAuth: true, login: { status: 'pending', error: null } },
+      login: { method: 'deviceCode', id: 'remote-login', code: 'REMOTE-CODE', url: 'https://auth.openai.com/codex/device' } });
+    if (provider === 'codex') loginCodex.mockRejectedValueOnce(new Error('Temporary login error'));
+    const authenticateProvider = scriptedAuthentication({ codex: { check: checkCodex, login: loginCodex, cancel: cancelCodex }, claude: { check: checkClaude } });
+    api.authenticateProvider.mockImplementation(authenticateProvider);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RemoteEngineConnections, { props: { connection } });
     await flushPromises();
 
     expect(wrapper.findAll('button').filter(button => button.text() === 'Install')).toHaveLength(2);
-    await choose(wrapper, 'Refresh status', backend === 'codex' ? 0 : 1);
-    expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith(backend, 'wall-e');
+    await choose(wrapper, 'Refresh status', provider === 'codex' ? 0 : 1);
+    expect(api.refreshProvider).toHaveBeenCalledExactlyOnceWith(provider, 'wall-e');
     expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
-    expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
-    expect(api.getCodexAuthentication).not.toHaveBeenCalled();
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
     await flushPromises();
-    if (backend === 'claude') {
-      expect(api.getClaudeAuthentication).not.toHaveBeenCalled();
+    if (provider === 'claude') {
+      expect(checkClaude).not.toHaveBeenCalled();
       expect(document.body.textContent).toContain("CLAUDE_CONFIG_DIR='/remote/app/claude-home' claude auth login --console");
     } else {
-      expect(api.startCodexChatGptDeviceCodeLogin).toHaveBeenCalledExactlyOnceWith('wall-e');
+      expect(loginCodex).toHaveBeenCalledExactlyOnceWith({ method: 'deviceCode', remoteConnectionId: 'wall-e' });
       expect(wrapper.emitted('activity')?.at(-1)).toStrictEqual([false]);
       await wrapper.findAll('button').find(button => button.text() === 'Retry sign-in')!.trigger('click');
       await flushPromises();
       expect(wrapper.text()).toContain('REMOTE-CODE');
       expect(wrapper.emitted('activity')?.at(-1)).toStrictEqual([true]);
     }
-    const connected = [{ backend, installed: true, connected: true, checking: false, enabled: true }];
+    const connected = [{ provider: provider, installed: true, connected: true, checking: false, enabled: true }];
     api.setProviderEnabled.mockResolvedValue(connected);
     api.getProviderConnections.mockResolvedValue(connected);
-    if (backend === 'claude') {
-      api.getClaudeAuthentication.mockResolvedValue({ loggedIn: true, configDirectory: '/remote/app/claude-home' });
+    if (provider === 'claude') {
+      checkClaude.mockResolvedValue({ loggedIn: true, configDirectory: '/remote/app/claude-home' });
       (document.body.querySelector('.app-dialog__footer .app-button--primary') as HTMLButtonElement).click();
     } else {
-      api.getCodexAuthentication.mockResolvedValue({ account: { type: 'chatgpt', email: 'remote@example.com', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'completed', error: null } });
+      checkCodex.mockResolvedValue({ account: { type: 'chatgpt', email: 'remote@example.com', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'completed', error: null } });
       await vi.advanceTimersByTimeAsync(2_000);
     }
     await flushPromises();
-    expect(api.setProviderEnabled).toHaveBeenCalledExactlyOnceWith(backend, true, 'wall-e');
+    expect(api.setProviderEnabled).toHaveBeenCalledExactlyOnceWith(provider, true, 'wall-e');
     expect(wrapper.get('.form-row').text()).toContain('Connected');
     wrapper.unmount();
   });

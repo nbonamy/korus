@@ -11,10 +11,10 @@ import { acquireRepository } from '../projects/repository-acquisition';
 export class CompanionProjectAcquisition {
   private readonly selectionSalt = randomUUID();
 
-  constructor(private readonly backend: CompanionBackendPort) {}
+  constructor(private readonly provider: CompanionBackendPort) {}
 
   private async request<Result>(method: string, params: unknown, provider?: CompanionRepositoryProvider): Promise<Result> {
-    try { return await this.backend.request<Result>(method, params); }
+    try { return await this.provider.request<Result>(method, params); }
     catch (error) {
       if (provider !== 'gitlab') throw error;
       if (method === backendMethods.workProviderSourcesList) throw new Error('Could not load GitLab repositories on the selected host. Check its GitLab connection and repository access, then refresh.');
@@ -72,7 +72,7 @@ export class CompanionProjectAcquisition {
 
   async localBranches(repositoryId: string, remoteConnectionId?: string) {
     const repository = await this.localRepository(repositoryId, remoteConnectionId);
-    return (await this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, {
+    return (await this.provider.request<SourceBranch[]>(backendMethods.sourceBranchesList, {
       repoPath: repository.path, ...(remoteConnectionId ? { remoteConnectionId } : {}), _clientId: 'companion-read',
     })).map(({ name, isDefault }) => ({ name, isDefault }));
   }

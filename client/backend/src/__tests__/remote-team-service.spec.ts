@@ -14,7 +14,7 @@ describe('RemoteTeamService', () => {
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{ id: 'pointer', name: 'Remote', remoteLinks: [{ connectionId: 'connection-devbox', remoteTeamId: 'team-remote' }], agentIds: [] }];
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
-    remote.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    remote.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     const service = new RemoteTeamService({
       clients: { request: vi.fn().mockResolvedValue({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }) } as never,
       getSnapshot: () => snapshot,
@@ -52,6 +52,14 @@ describe('RemoteTeamService', () => {
 
       expect(projected.agents.find(agent => agent.id === remoteAgent.id)).toMatchObject({ remoteConnectionId: 'connection-devbox', status: { type: 'idle' } });
       await vi.waitFor(() => expect(onConnectionFailed).toHaveBeenCalledWith('connection-devbox', expect.objectContaining({ message: 'Cannot find module daemon.mjs' })));
+    });
+
+    it('refreshes a team without failing on a host that is not ready', async () => {
+      const { service, snapshot, request } = offlineSetup();
+      snapshot.remoteConnections.connections[0]!.status = 'error';
+
+      await expect(service.refreshTeam('pointer')).resolves.toBeUndefined();
+      expect(request).not.toHaveBeenCalled();
     });
 
     it('does not report a connection that was already marked unavailable', async () => {
@@ -92,8 +100,8 @@ describe('RemoteTeamService', () => {
 
   it('requires an explicit valid team instead of consulting shared navigation', async () => {
     const service = new RemoteTeamService({ clients: {} as never, getSnapshot: createTestSnapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
-    await expect(service.pointerForAgentInput({})).rejects.toThrow('target team');
-    await expect(service.pointerForAgentInput({ teamId: 'missing' })).rejects.toThrow('Team not found');
+    await expect(service.pointerForAgentInput({})).rejects.toThrow('target workspace');
+    await expect(service.pointerForAgentInput({ teamId: 'missing' })).rejects.toThrow('Workspace not found');
     await expect(service.pointerForAgentInput({ teamId: 'team-test' })).resolves.toBeNull();
   });
 
@@ -253,7 +261,7 @@ describe('RemoteTeamService', () => {
     });
 
     await expect(service.request('connection-devbox', 'agent/quickChat/create', {
-      input: { teamId: 'team-remote', selection: { ...{ backend: 'claude' } } },
+      input: { teamId: 'team-remote', selection: { ...{ provider: 'claude' } } },
     })).resolves.toMatchObject({ general: { claudeCodeEnabled: false } });
     expect(requests).toStrictEqual(['agent/quickChat/create']);
 
@@ -264,7 +272,7 @@ describe('RemoteTeamService', () => {
     expect(requests).toStrictEqual(['agent/quickChat/create', 'snapshot/get']);
   });
 
-  it('adopts and forwards provider frames without restoring a global transcript', async () => {
+  it('adopts and forwards conversation frames without restoring a global transcript', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
@@ -279,20 +287,12 @@ describe('RemoteTeamService', () => {
       seq: 1,
       occurredAt: '2026-06-13T00:00:01.000Z',
       agentId: remoteAgent.id,
-      backend: 'codex',
-      threadId: 'thread-remote',
-      type: 'codex.conversationEventReceived',
+      provider: 'codex',
+      type: 'conversation.sessionPatch',
       payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-06-13T00:00:01.000Z',
-          origin: 'notification',
-          conversationId: 'thread-remote',
-          turnId: 'turn-1',
-          type: 'turn.completed',
-          payload: { status: 'completed' },
-        },
+        conversation: 'thread-remote',
+        epoch: 'remote-epoch',
+        patch: { revision: 2, ops: [{ op: 'set', key: 'busy', value: false }] },
       },
       snapshot: remoteSnapshot,
     } as const;
@@ -305,9 +305,9 @@ describe('RemoteTeamService', () => {
         onEvent?.({
           seq: 4,
           occurredAt: '2026-06-13T00:00:04.000Z',
-          backend: 'codex',
-          type: 'backend.statusChanged',
-          payload: { backend: 'codex', status: 'running' },
+          provider: 'codex',
+          type: 'provider.statusChanged',
+          payload: { provider: 'codex', status: 'running' },
         });
         return null;
       }),

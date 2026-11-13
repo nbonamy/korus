@@ -11,7 +11,7 @@ function setup() {
   const snapshot = createTestSnapshot();
   snapshot.activeAgentId = 'agent';
   snapshot.agents = [{
-    id: 'agent', teamId: 'team-test', name: 'Test', folder: '/repo', backend: 'codex',
+    id: 'agent', teamId: 'team-test', name: 'Test', folder: '/repo', provider: 'codex',
     status: { type: 'working' }, createdAt: '', updatedAt: '',
   }];
   const getGitStatus = vi.fn(async () => null);

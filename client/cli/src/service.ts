@@ -52,6 +52,6 @@ export async function backendCommand(context: CliContext, options: CliOptions, a
     }
     await context.exec('launchctl', ['kickstart', ...(action === 'restart' ? ['-k'] : []), `${domain}/${label}`], { timeout: options.timeout });
   }
-  print(context, options, { success: true, action }, `${product.name} background backend: ${action} requested.`);
+  print(context, options, { success: true, action }, `${product.name} background provider: ${action} requested.`);
   return 0;
 }

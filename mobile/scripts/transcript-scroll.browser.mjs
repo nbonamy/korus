@@ -17,12 +17,12 @@ test('mobile keeps provider findings visible after reading, without exposing a c
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     const show = (blocked, read = false) => page.evaluate(async ({ blocked, read }) => {
-      const agent = { id: 'blocked-agent', name: 'Blocked', backend: 'codex', teamId: 'team', folder: null,
+      const agent = { id: 'blocked-agent', name: 'Blocked', provider: 'codex', teamId: 'team', folder: null,
         readState: { revision: 2, readRevision: read ? 2 : 1 },
         status: blocked ? { type: 'error', message: 'Conversation blocked by provider. Automatic retries are stopped.\n\nOriginal provider error',
           safetyReview: { id: 'review', conversationId: 'thread', turnId: 'turn', explanation: 'Original provider findings', canContinue: true } } : { type: 'idle' } };
       await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, agents: [agent], ready: true,
-        frame: { agentId: agent.id, backend: 'codex', payload: { snapshot: { messages: Array.from({ length: 12 }, (_, i) => ({ id: `m-${i}`, role: 'assistant', status: 'complete',
+        frame: { agentId: agent.id, provider: 'codex', payload: { snapshot: { messages: Array.from({ length: 12 }, (_, i) => ({ id: `m-${i}`, role: 'assistant', status: 'complete',
           parts: [{ type: 'text', text: `Retained conversation message ${i}` }] })), turns: [], busy: false, activeTurnId: null } } } }));
     }, { blocked, read });
     await show(true);
@@ -40,7 +40,7 @@ test('mobile keeps provider findings visible after reading, without exposing a c
     await page.screenshot({ path: `${directory}/${process.env.TRANSCRIPT_BROWSER === 'webkit' ? 'webkit' : 'chromium'}.png` });
     await show(false);
     assert.equal(await warning.count(), 0);
-    assert.equal(await page.locator('.codex-workbench-layout__footer').isVisible(), false, 'the native composer owns unlocked conversations');
+    assert.equal(await page.locator('.agent-ui-workbench-layout__footer').isVisible(), false, 'the native composer owns unlocked conversations');
   } finally { await browser?.close(); await server.close(); }
 });
 
@@ -161,10 +161,9 @@ test('empty repository chats show the repository and branch without overlapping 
     await page.waitForFunction(() => window.companionTranscript);
     for (const repositoryName of ['korus', 'a-very-long-repository-name-that-needs-to-wrap']) {
       await page.evaluate(async (repositoryName) => {
-        const agent = { id: 'empty-repository', teamId: 'team', name: 'feat/mobile-companion', backend: 'codex',
+        const agent = { id: 'empty-repository', teamId: 'team', name: 'feat/mobile-companion', provider: 'codex',
           status: { type: 'idle' }, workspace: { kind: 'git', repositoryName, branch: 'feat/mobile-companion' } };
-        await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, frame: null, ready: true,
-          engines: { current: 'codex', choices: ['codex', 'claude', 'antigravity'] } }));
+        await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, frame: null, ready: true }));
       }, repositoryName);
       assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), `Chat in ${repositoryName}`);
       assert.ok(await page.getByText('feat/mobile-companion', { exact: true }).isVisible());
@@ -204,12 +203,12 @@ test('the transcript automatically retrieves bounded deferred Claude content thr
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'content-agent', name: 'Content', folder: null, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'content-session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const agent = { id: 'content-agent', name: 'Content', folder: null, provider: 'claude', providerSession: { kind: 'claude', conversationId: 'content-session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
       const message = { id: 'deferred-message', agentId: agent.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: '工具🙂 '.repeat(15_000) + 'Lossless content reached the transcript.' }] };
       window.fullContentBytes = new TextEncoder().encode(JSON.stringify(message));
       const preview = { ...message, parts: [{ type: 'text', text: 'Preview only' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: window.fullContentBytes.length } };
-      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
-        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [preview], turns: [], activeTurnId: null, busy: false } } } }));
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false },
+        frame: { agentId: agent.id, provider: 'claude', payload: { snapshot: { messages: [preview], turns: [], activeTurnId: null, busy: false } } } }));
     });
     await page.getByText('Lossless content reached the transcript.', { exact: false }).waitFor();
     const requests = await page.evaluate(() => window.contentRequests);
@@ -241,7 +240,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     // A superseded selection must never reveal the wrong/empty transcript.
     const presentation = await page.evaluate(async () => {
       const agent = { id: 'presentation-agent', teamId: 'scroll-team', name: 'Presentation test', folder: null, readState: { revision: 3, readRevision: 1 },
-        backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+        provider: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
       const conversation = { agentId: agent.id, generation: 1, ready: true, agent, peers: [], frame: { payload: { snapshot: {
         messages: [{ id: 'presentation-message', role: 'assistant', status: 'complete', createdAt: '2026-01-01',
           parts: [{ type: 'text', text: 'The selected conversation has rendered.' }] }], turns: [], activeTurnId: null, busy: false,
@@ -259,22 +258,18 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       // A genuinely empty, loaded thread is ready too; a null frame is not.
       const newThread = await window.companionTranscript.setConversation(JSON.stringify({ ...conversation,
         ready: true, frame: null, agent: { ...agent, name: null, sessionKind: 'quickChat' },
-        engines: { current: 'codex', choices: ['codex', 'claude'] },
       }));
       return { before, ready, after, superseded, empty, newThread };
     });
     assert.deepEqual(presentation, { before: false, ready: { agentId: 'presentation-agent', revision: 3, generation: 1 }, after: true, superseded: null, empty: null, newThread: { agentId: 'presentation-agent', revision: 3, generation: 1 } });
     assert.ok(await page.locator('.conversation-pane__empty h1').isVisible(), 'the empty quick chat shows its welcome headline');
-    assert.equal(await page.getByRole('radio', { name: 'Codex', exact: true }).getAttribute('aria-checked'), 'true');
-    await page.getByRole('radio', { name: 'Claude', exact: true }).click();
-    assert.deepEqual(await page.evaluate(() => window.nativeEvents.at(-1)), { type: 'backend', backend: 'claude' });
     // Cached switches reuse the mounted pane and may arrive while the previous paint is pending.
     for (let index = 0; index < 6; index++) {
       const expected = `Cached chat ${index}`;
       await page.evaluate(async ({ index, expected }) => {
         const id = `cached-${index % 2}`;
-        const agent = { id, teamId: 'scroll-team', name: expected, folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
-        const message = { agent, agents: [agent], ready: true, frame: { agentId: id, backend: 'claude', payload: { snapshot: {
+        const agent = { id, teamId: 'scroll-team', name: expected, folder: null, provider: 'claude', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+        const message = { agent, agents: [agent], ready: true, frame: { agentId: id, provider: 'claude', payload: { snapshot: {
           messages: [{ id: 'shared-message-id', role: 'assistant', status: 'complete', createdAt: '2026-01-01', parts: [{ type: 'text', text: expected }] }], turns: [], activeTurnId: null, busy: false,
         } } } };
         await window.companionTranscript.setConversation(JSON.stringify(message));
@@ -283,7 +278,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     }
     const initialConversation = await page.evaluate(() => {
       const agent = { id: 'scroll-agent', teamId: 'scroll-team', name: 'Scroll test', folder: null,
-        backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+        provider: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
       const messages = Array.from({ length: 30 }, (_, i) => ({ id: `message-${i}`, role: i % 2 ? 'assistant' : 'user',
         status: 'complete', createdAt: '2026-01-01', parts: [{ type: 'text', text: `Message ${i}: conversation content that should remain reachable by scrolling.` }] }));
       window.companionTranscript.setInsets(60, 100);
@@ -320,7 +315,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     for (const bottom of [100, 170, 400]) {
       await page.evaluate((inset) => window.companionTranscript.setInsets(60, inset), bottom);
       await page.waitForFunction((inset) => {
-        const button = document.querySelector('.codex-message-list__scroll-to-bottom');
+        const button = document.querySelector('.agent-ui-message-list__scroll-to-bottom');
         return button && button.getBoundingClientRect().bottom <= innerHeight - inset - 8;
       }, bottom, { timeout: 1000 });
       const box = await jump.boundingBox();
@@ -334,10 +329,10 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     // WebKit applies the restored native inset on its next layout. Aim the gesture
     // inside the resulting scroller rather than the composer's previous bounds.
     await page.waitForFunction(() => {
-      const pane = document.querySelector('.transcript .codex-message-list');
+      const pane = document.querySelector('.transcript .agent-ui-message-list');
       return pane && Math.abs(pane.getBoundingClientRect().bottom - (innerHeight - 100)) <= 1;
     });
-    const scrollBox = await page.locator('.transcript .codex-message-list').boundingBox();
+    const scrollBox = await page.locator('.transcript .agent-ui-message-list').boundingBox();
     await page.mouse.move(scrollBox.x + scrollBox.width / 2, scrollBox.y + scrollBox.height / 2);
     const older = await metrics();
     await page.mouse.wheel(0, 500);
@@ -387,10 +382,10 @@ test('a context update changes the chat around the transcript without redrawing 
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     const result = await page.evaluate(async () => {
-      const agent = { id: 'a', teamId: 't', name: 'First', folder: null, backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+      const agent = { id: 'a', teamId: 't', name: 'First', folder: null, provider: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
       const messages = Array.from({ length: 200 }, (_, index) => ({ id: `m${index}`, role: index % 2 ? 'assistant' : 'user', status: 'complete', createdAt: '2026-01-01', parts: [{ type: 'text', text: `message ${index} ${'x'.repeat(900)}` }] }));
-      const full = { agentId: 'a', ready: true, agent, peers: [{ id: 'a', label: 'First' }], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
-        frame: { agentId: 'a', backend: 'codex', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
+      const full = { agentId: 'a', ready: true, agent, peers: [{ id: 'a', label: 'First' }], history: { hasOlder: false, loadingOlder: false, failed: false },
+        frame: { agentId: 'a', provider: 'codex', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
       let started = performance.now();
       await window.companionTranscript.setConversation(JSON.stringify(full));
       const conversationMs = performance.now() - started;
@@ -430,10 +425,10 @@ test('transcript links ask iOS to open external destinations without navigating 
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'links', name: 'Links', folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const agent = { id: 'links', name: 'Links', folder: null, provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
       const message = { id: 'links-message', role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: '[Website](https://example.com/docs?q=hello#section) [Email](mailto:hello@example.com) [File](/workspace/readme.md)' }] };
-      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
-        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [message], turns: [], activeTurnId: null, busy: false } } } }));
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false },
+        frame: { agentId: agent.id, provider: 'claude', payload: { snapshot: { messages: [message], turns: [], activeTurnId: null, busy: false } } } }));
     });
     const original = page.url();
     await page.getByRole('link', { name: 'Website', exact: true }).click();
@@ -470,10 +465,10 @@ test('a normal laptop image link resolves through native and opens the image vie
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'image-links', name: 'Images', backend: 'claude', folder: '/repo', status: { type: 'idle' } };
+      const agent = { id: 'image-links', name: 'Images', provider: 'claude', folder: '/repo', status: { type: 'idle' } };
       const message = { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](/tmp/phone.png) [Missing](missing.png) [Slow](slow.png) [Fast](fast.png)' }, { type: 'media', media: { url: 'conversation-image:thread:' + 'a'.repeat(64), mimeType: 'image/png' } }] };
       await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true,
-        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [message], turns: [], busy: false } } } }));
+        frame: { agentId: agent.id, provider: 'claude', payload: { snapshot: { messages: [message], turns: [], busy: false } } } }));
     });
     await page.waitForFunction(() => window.nativeEvents.some(event => event.type === 'readConversationImage' && event.path.startsWith('conversation-image:')));
     await page.waitForFunction(() => document.querySelector('img.chat-media-block__image')?.naturalWidth === 1);
@@ -517,13 +512,13 @@ test('conversation images open the native viewer through the SDK action without 
     await page.waitForFunction(() => window.companionTranscript);
     const src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=';
     await page.evaluate(async src => {
-      const agent = { id: 'image-agent', name: 'Images', folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const agent = { id: 'image-agent', name: 'Images', folder: null, provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
       const messages = [
         { id: 'photo', role: 'user', parts: [{ type: 'attachment', attachment: { kind: 'image', name: 'Photo.jpg', path: '/private/laptop/Photo.jpg' } }] },
         { id: 'result', role: 'assistant', parts: [{ type: 'media', media: { title: 'Result', alt: 'Result', url: src } }] },
       ];
       window.imageConversation = { agentId: agent.id, agent, ready: true,
-        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
+        frame: { agentId: agent.id, provider: 'claude', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
       await window.companionTranscript.setConversation(JSON.stringify(window.imageConversation));
     }, src);
     await page.waitForFunction(() => document.querySelector('[aria-label="Open Photo.jpg"] img')?.naturalWidth > 0);
@@ -580,8 +575,8 @@ test('image previews follow the viewport with stable geometry, bounded caching a
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`); await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = {id:'images-budget',name:'Images',backend:'codex',status:{type:'idle'}};
-      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,backend:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
+      const agent = {id:'images-budget',name:'Images',provider:'codex',status:{type:'idle'}};
+      window.imageBudgetConversation = {agentId:agent.id,agent,ready:true,frame:{agentId:agent.id,provider:'codex',payload:{snapshot:{messages:Array.from({length:12},(_,i)=>({id:`shot-${i}`,role:'assistant',parts:[{type:'text',text:'Context for screenshot '+i+'\n\n'+('Context line\n\n'.repeat(12))}, i % 2 ? {type:'attachment',attachment:{kind:'image',path:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,name:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}} : {type:'media',media:{url:`conversation-image:images-budget:${i.toString(16).padStart(64,'0')}`,title:`Shot ${i}`,width:i%3===0?2048:i%3===1?512:1024,height:i%3===0?512:i%3===1?2048:1024}}]})),turns:[],busy:false}}}};
       window.imageBudgetConversation.imageCacheScope = 'paired-laptop-a';
       await window.companionTranscript.setConversation(JSON.stringify(window.imageBudgetConversation));
     });
@@ -679,12 +674,12 @@ test('summary turns load only the selected Working details through the native br
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
     await page.evaluate(async () => {
-      const agent = { id: 'summary-agent', name: 'Summary', backend: 'codex', backendSession: { kind: 'codex', threadId: 'summary-thread' }, status: { type: 'idle' } };
+      const agent = { id: 'summary-agent', name: 'Summary', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'summary-thread' }, status: { type: 'idle' } };
       const turn = { id: 'summary-turn', itemsView: 'summary', status: 'completed', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:49Z', durationMs: 109000 };
       const messages = [{ id: 'request', turnId: turn.id, role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Check this turn.' }] },
         { id: 'answer', turnId: turn.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Here is the final answer.', phase: 'final_answer' }] }];
       window.summaryScene = { generation: 1, agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false },
-        frame: { agentId: agent.id, backend: 'codex', payload: { snapshot: { messages, turns: [turn], activeTurnId: null, busy: false } } } };
+        frame: { agentId: agent.id, provider: 'codex', payload: { snapshot: { messages, turns: [turn], activeTurnId: null, busy: false } } } };
       await window.companionTranscript.setConversation(JSON.stringify(window.summaryScene));
     });
     assert.equal(await page.getByText('Here is the final answer.', { exact: true }).isVisible(), true);
@@ -764,7 +759,7 @@ test('Claude backend frames reveal selected Working content and retain it across
     await page.waitForFunction(() => window.companionTranscript);
     const initial = await page.evaluate(async () => {
       const fixture = window.claudeFixture;
-      window.claudeContext = { agent: fixture.agent, agentId: fixture.agent.id, generation: 1, ready: true, peers: [], engines: null,
+      window.claudeContext = { agent: fixture.agent, agentId: fixture.agent.id, generation: 1, ready: true, peers: [],
         identity: 'claude-summary-evidence', history: { hasOlder: !fixture.olderPages, loadingOlder: false, failed: false } };
       return window.companionTranscript.setTransfer(JSON.stringify({ ...window.claudeContext, frames: fixture.initialFrames,
         checkpoint: { epoch: 'claude-history', revision: fixture.initialFrames.at(-1).payload.revision } }));

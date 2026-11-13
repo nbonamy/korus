@@ -139,9 +139,9 @@ describe('team-manager', () => {
 
   it('disables new Quick Chat automations of a closed team', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const skwadTeam = createTeamInSnapshot(snapshot, { name: 'Skwad', color: '#46A857' }, '2026-06-05T10:11:12.000Z');
-    const target = (teamId: string) => ({ kind: 'newQuickChat', teamId, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }) as const;
+    const target = (teamId: string) => ({ kind: 'newQuickChat', teamId, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } }) as const;
     const closing = createAutomationInSnapshot(snapshot, { prompt: 'Check', schedule: { intervalMinutes: 60 }, target: target('team-app') }, 'created', () => 'closing')!;
     const staying = createAutomationInSnapshot(snapshot, { prompt: 'Check', schedule: { intervalMinutes: 60 }, target: target(skwadTeam.id) }, 'created', () => 'staying')!;
 
@@ -203,7 +203,7 @@ describe('team-manager', () => {
         },
       ],
     }, 'missing-team')).toBeNull();
-    expect(() => closeTeamInSnapshot(snapshot, 'team-app')).toThrow('At least one team must remain open.');
+    expect(() => closeTeamInSnapshot(snapshot, 'team-app')).toThrow('At least one workspace must remain open.');
   });
 
   it('computes short initials for team avatars', () => {

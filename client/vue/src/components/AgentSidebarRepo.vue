@@ -271,13 +271,13 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId)"
+                v-if="!session.shared && providerChoices.length > 1 && agentsById.get(session.agentId)"
                 class="agent-sidebar__engine"
                 role="img"
-                :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-                :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+                :aria-label="providerDisplayName(agentsById.get(session.agentId)!.provider)"
+                :title="providerDisplayName(agentsById.get(session.agentId)!.provider)"
               >
-                <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
+                <ProviderIcon :provider="agentsById.get(session.agentId)!.provider" monochrome />
               </span>
               <span
                 v-if="session.status.type === 'awaitingInput'"
@@ -348,7 +348,7 @@ import type { AgentSidebarModel } from './use-agent-sidebar';
 import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { AlertTriangleIcon, ArrowsSortIcon, ChartBarIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
-import BackendIcon from './BackendIcon.vue';
+import ProviderIcon from './ProviderIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -420,9 +420,9 @@ const {
   clientAgentOrderUpdate,
   selectAgent,
   openAgentMenu,
-  backendChoices,
+  providerChoices,
   agentsById,
-  backendDisplayName,
+  providerDisplayName,
   isPullRequestFinished,
   statusLabel,
   showQuickSwitchShortcut,

@@ -55,11 +55,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentBackend, AgentCreationProgress, CreateAgentInput, CreateSourceWorktreeInput, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AgentCreationProgress, CreateAgentInput, CreateSourceWorktreeInput, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import type { SidebarRepositoryTarget } from './agent-sidebar-contracts';
 import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 const props = withDefaults(defineProps<{
   /** `agent` starts one agent on a new or existing branch of one repository; `worktree` makes a feature worktree across repositories. */
@@ -71,7 +72,7 @@ const props = withDefaults(defineProps<{
   createAgent: (input: CreateAgentInput, navigation?: { select?: boolean }) => Promise<Agent | null | void>;
   createWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   listBranches: (path: string, remoteConnectionId?: string) => Promise<SourceBranch[]>;
-  backendForHost: (remoteConnectionId?: string) => AgentBackend | undefined;
+  providerForHost: (remoteConnectionId?: string) => HarnessProvider | undefined;
 }>(), { mode: 'worktree' });
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
@@ -136,7 +137,7 @@ async function create(): Promise<void> {
   progress.value = props.repositories.filter(repository => selected.value.includes(repositoryKey(repository)) && !completed.value.has(repositoryKey(repository)))
     .map(repository => ({
       id: repositoryKey(repository), repositoryName: repository.repositoryName,
-      backend: props.backendForHost(repository.remoteConnectionId) ?? 'codex',
+      provider: props.providerForHost(repository.remoteConnectionId) ?? defaultHarnessProvider,
       state: 'running', hasPrompt: false,
       createWorktree: !existing || !branches.value.find(item => item.name === existing)?.worktreePath,
       branchName: existing ?? branch.value.trim(),
@@ -147,8 +148,8 @@ async function create(): Promise<void> {
       const key = repositoryKey(repository);
       if (!selected.value.includes(key) || completed.value.has(key)) continue;
       try {
-        const backend = props.backendForHost(repository.remoteConnectionId);
-        if (!backend) throw new Error(t('features.noBackend'));
+        const provider = props.providerForHost(repository.remoteConnectionId);
+        if (!provider) throw new Error(t('features.noProvider'));
         let folder = worktrees.value.get(key);
         if (!folder) {
           const available = await props.listBranches(repository.repositoryRoot, repository.remoteConnectionId);
@@ -174,7 +175,7 @@ async function create(): Promise<void> {
           sourceRepositoryName: repository.repositoryName,
           teamId: props.teamId,
           ...(repository.remoteConnectionId ? { remoteConnectionId: repository.remoteConnectionId } : {}),
-          selection: { backend },
+          selection: { provider },
         }, { select: agentMode.value });
         if (result === null) throw new Error(t('features.creationFailed'));
         completed.value.add(key);

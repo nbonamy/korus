@@ -23,9 +23,13 @@ well; shared contracts live in [`core/`](../core/AGENTS.md).
   Compatibility rule; the evidence belongs at the owning runtime boundary and the
   handoff names the released-client baseline.
 - **Mobile is isolated from the desktop runtime.** It never imports Electron, the
-  daemon, desktop packages or provider SDKs (including the Claude Agent SDK); it
-  consumes `core` contracts and the companion protocol only.
-  `npm run lint:architecture` enforces it.
+  daemon, desktop packages, harness drivers or `codex-sdk`; it consumes `core`
+  contracts, the companion protocol and the SDKs' portable entries (neutral
+  `multi-agent-sdk` contracts and replicas, `agent-ui-sdk` browser UI) only.
+  `npm run lint:architecture` enforces it. It supports whatever harnesses the desktop
+  runs and never branches on one: show capabilities the desktop reports.
+- **The wire says `team`, the screens say Workspace.** Keep the protocol names for
+  shipped clients; user-visible text follows the product word.
 - **The desktop owns the work.** The phone shows and drives agents that run on the
   laptop. Do not add behavior that assumes the phone can run agents, hold
   provider credentials or reach a repository directly.

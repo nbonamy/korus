@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../support/backend-fixture';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { completedTurn, sessionPatchEvent, sessionSnapshotEvent, sessionState, setOps, textMessage } from '../support/conversation-fixtures';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { approvalAgentRequest } from '@workspace/core/agent-request';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 
@@ -21,7 +21,7 @@ describe('Unified backend → mounted application', () => {
   it('shows a history error after a startup event is covered by the roster, and Retry loads the transcript', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'restored-history' };
+    agent.providerSession = { kind: 'codex', conversationId: 'restored-history' };
     const { api, emitSequenced } = installBackendFixture(snapshot);
     let fail!: (error: Error) => void;
     api.loadConversationHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
@@ -43,8 +43,8 @@ describe('Unified backend → mounted application', () => {
       expect(api.loadConversationHistory).toHaveBeenCalledTimes(2);
       expect(wrapper.text()).toContain('Conversation couldn’t be loaded.');
       api.loadConversationHistory.mockImplementationOnce(async () => {
-        emitSequenced({ seq: 56, occurredAt: '', backend: 'codex', agentId: agent.id, threadId: 'restored-history', type: 'codex.conversationSnapshotChanged',
-          payload: { revision: 1, snapshot: codexConversationSnapshot([{ id: 'restored-answer', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Recovered saved conversation.' }] }]) } });
+        emitSequenced(sessionSnapshotEvent(agent.id, sessionState({ messages: [textMessage('restored-answer', 'assistant', 'Recovered saved conversation.', { agentId: agent.id })] }),
+          { seq: 56, conversation: 'restored-history' }));
         return snapshot;
       });
       await wrapper.getComponent({ name: 'ConversationLoadError' }).get('button').trigger('click');
@@ -55,7 +55,7 @@ describe('Unified backend → mounted application', () => {
   });
   it.each(['', '/code'])('creates a new team project after saving its source folder (configured: %s)', async sourceFolder => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     snapshot.general.claudeCodeEnabled = true;
     snapshot.sourceFolder = { path: sourceFolder, initialized: true, recentRepoNames: [] };
     const { api } = installBackendFixture(snapshot);
@@ -92,7 +92,7 @@ describe('Unified backend → mounted application', () => {
         expect(api.chooseSourceFolder).not.toHaveBeenCalled();
         expect(api.updateSettings).not.toHaveBeenCalled();
       }
-      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId, selection: { backend: 'claude' } });
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId, selection: { provider: 'claude' } });
       expect(dialog.props('visible')).toBe(false);
     } finally {
       wrapper.unmount();
@@ -101,7 +101,7 @@ describe('Unified backend → mounted application', () => {
 
   it('preserves a new project draft when source-folder selection is canceled or saving fails, then allows retry', async () => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api } = installBackendFixture(snapshot);
     api.chooseSourceFolder.mockResolvedValueOnce(null).mockResolvedValue('/code');
     api.updateSettings.mockRejectedValueOnce(new Error('Cannot save settings')).mockImplementation(async () => {
@@ -131,7 +131,7 @@ describe('Unified backend → mounted application', () => {
       expect((dialog.get('#new-project-name').element as HTMLInputElement).value).toBe('korus');
       await dialog.get('.app-button--primary').trigger('click');
       await flushPromises();
-      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId: snapshot.activeTeamId, selection: { backend: 'codex' } });
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: 'korus', teamId: snapshot.activeTeamId, selection: { provider: 'codex' } });
       expect(dialog.props('visible')).toBe(false);
     } finally {
       wrapper.unmount();
@@ -140,7 +140,7 @@ describe('Unified backend → mounted application', () => {
 
   it.each(['github', 'gitlab', 'url'] as const)('chooses and saves a missing source folder before acquiring a %s repository for a new team', async mode => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
     const project = { provider: mode === 'gitlab' ? 'gitlab' as const : 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: `https://${mode === 'gitlab' ? 'gitlab' : 'github'}.com/owner/project` };
     const { api } = installBackendFixture(snapshot);
@@ -189,7 +189,7 @@ describe('Unified backend → mounted application', () => {
 
   it('keeps the GitHub picker usable after canceling source-folder selection or failing to save it', async () => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }];
     const project = { provider: 'github' as const, id: 'owner/project', name: 'project', fullName: 'owner/project', url: 'https://github.com/owner/project' };
     const { api } = installBackendFixture(snapshot);
@@ -221,7 +221,7 @@ describe('Unified backend → mounted application', () => {
 
   it.each(['work_proposed', 'ready_for_review'] as const)('clears %s as soon as a prompt is submitted, before backend acceptance', async flag => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
     agent.threadFlags = { [flag]: true };
     const { api, emit } = installBackendFixture(snapshot);
@@ -259,7 +259,7 @@ describe('Unified backend → mounted application', () => {
 
   it('keeps a fresh flag when an older submission snapshot arrives after it', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.agents[0]!.threadFlags = { work_proposed: true };
     const { api, emit } = installBackendFixture(snapshot);
     let accept!: (value: typeof snapshot) => void;
@@ -285,7 +285,7 @@ describe('Unified backend → mounted application', () => {
 
   it.each([false, true])('restores flags after a rejected prompt without replacing newer flags (new flag: %s)', async newerFlag => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.agents[0]!.threadFlags = { work_proposed: true };
     const { api, emit } = installBackendFixture(snapshot);
     let reject!: (error: Error) => void;
@@ -333,7 +333,7 @@ describe('Unified backend → mounted application', () => {
         content: `# Feature061\n\n| Research ticket | Document |\n| --- | --- |\n| Research | [Research **spike**](${href}) |`,
       } });
       await flushPromises();
-      const workspace = () => wrapper.get('[aria-label="Right workspace"]');
+      const workspace = () => wrapper.get('[aria-label="Right panel"]');
       const event = new MouseEvent('click', { bubbles: true, cancelable: true });
       workspace().get('a strong').element.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
@@ -376,15 +376,13 @@ describe('Unified backend → mounted application', () => {
   it.each(['during', 'after'])('renders the first Codex history reset received %s the startup snapshot read', async timing => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'first-history' };
+    agent.providerSession = { kind: 'codex', conversationId: 'first-history' };
     const { api, emitSequenced } = installBackendFixture(snapshot);
     let finishHistory!: (value: typeof snapshot) => void;
     api.loadConversationHistory.mockImplementationOnce(() => new Promise(resolve => { finishHistory = resolve; }));
-    const emitHistory = () => emitSequenced({ seq: 54, occurredAt: '2026-11-02T12:00:00Z', type: 'codex.conversationSnapshotChanged',
-        backend: 'codex', agentId: agent.id, threadId: 'first-history', payload: { revision: 1,
-          snapshot: codexConversationSnapshot([{ id: 'first-answer', role: 'assistant', status: 'complete',
-            parts: [{ type: 'text', text: 'First history is ready without switching chats.' }] }]),
-        } });
+    const emitHistory = () => emitSequenced(sessionSnapshotEvent(agent.id, sessionState({
+      messages: [textMessage('first-answer', 'assistant', 'First history is ready without switching chats.', { agentId: agent.id })],
+    }), { seq: 54, occurredAt: '2026-11-02T12:00:00Z', conversation: 'first-history' }));
     api.getSnapshotState.mockImplementationOnce(async () => {
       if (timing === 'during') emitHistory();
       return { snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } };
@@ -403,15 +401,13 @@ describe('Unified backend → mounted application', () => {
   it.each(['backend gap', 'desktop recovery'])('settles a silent completed report after %s without another user prompt', async (recovery) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-1' };
     const { api, emit, emitSequenced } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
-    const report = { id: 'report', role: 'user' as const, status: 'complete' as const, turnId: 'report-turn', parts: [{ type: 'text' as const, text: 'Automatic review completed. No review findings to report.' }] };
-    const messages = [report, { id: 'silent-report', role: 'assistant' as const, status: 'streaming' as const, turnId: 'report-turn', parts: [] }];
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: {
-      revision: 1, snapshot: codexConversationSnapshot(messages, { busy: true, activeTurnId: 'report-turn' }),
-    } });
+    const report = textMessage('report', 'user', 'Automatic review completed. No review findings to report.', { agentId: agent.id, turnId: 'report-turn' });
+    const messages = [report, { ...textMessage('silent-report', 'assistant', '', { agentId: agent.id, turnId: 'report-turn', status: 'streaming' }), parts: [] }];
+    emit(sessionSnapshotEvent(agent.id, sessionState({ messages, busy: true, activeTurnId: 'report-turn' }), { conversation: 'thread-1', revision: 1 }));
     await flushPromises();
     expect(wrapper.find('.chat-message__thinking').exists()).toBe(true);
 
@@ -419,12 +415,9 @@ describe('Unified backend → mounted application', () => {
     // intentionally carries no provider transcript. Recover it from its owner.
     api.getSnapshotState.mockResolvedValue({ snapshot, lastBackendEventSeq: 55, connection: { status: 'connected' } });
     api.loadConversationHistory.mockImplementation(async () => {
-      emitSequenced({ seq: 56, occurredAt: '2026-10-05T19:05:26Z', type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: {
-        revision: 4, snapshot: codexConversationSnapshot([report], { turns: [{
-          id: 'report-turn', status: 'completed', error: null, willRetry: false,
-          startedAt: '2026-10-05T19:05:19Z', completedAt: '2026-10-05T19:05:26Z', durationMs: 6930,
-        }] }),
-      } });
+      emitSequenced(sessionSnapshotEvent(agent.id, sessionState({ messages: [report], turns: [completedTurn('report-turn', {
+        startedAt: '2026-10-05T19:05:19Z', completedAt: '2026-10-05T19:05:26Z', durationMs: 6930,
+      })] }), { seq: 56, occurredAt: '2026-10-05T19:05:26Z', conversation: 'thread-1', revision: 4 }));
       return snapshot;
     });
     if (recovery === 'backend gap') {
@@ -435,7 +428,7 @@ describe('Unified backend → mounted application', () => {
     await flushPromises();
     expect(wrapper.find('.chat-message__thinking').exists()).toBe(false);
     expect(wrapper.get('.chat-message__empty-response').text()).toBe('Empty response');
-    expect(wrapper.text()).toContain(report.parts[0]!.text);
+    expect(wrapper.text()).toContain('Automatic review completed. No review findings to report.');
     expect(wrapper.find('button[aria-label="Send prompt"]').exists()).toBe(true);
     expect(api.sendPrompt).not.toHaveBeenCalled();
   });
@@ -445,7 +438,7 @@ describe('Unified backend → mounted application', () => {
     [false, '  /review   Focus on race conditions.\nCheck backward compatibility.  ', 'Focus on race conditions.\nCheck backward compatibility.'],
   ] as const)('opens review setup and forwards instructions (flag present: %s)', async (ready, prompt, instructions) => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
     agent.threadFlags = { work_proposed: true, ...(ready ? { ready_for_review: true } : {}) };
     const { api } = installBackendFixture(snapshot);
@@ -474,7 +467,7 @@ describe('Unified backend → mounted application', () => {
     api.startCodeReview.mockResolvedValue(cleared);
     await wrapper.get('.code-review-panel__start').trigger('click');
     await flushPromises();
-    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
+    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', ...(instructions ? { instructions } : {}), selection: { provider: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
   it.each([['Continue', 'implement'], ['Worktree', 'delegate'], ['Mission', 'create_mission']] as const)('handles %s, retries, discard and review routing through the client seam', async (label, action) => {
@@ -534,24 +527,26 @@ describe('Unified backend → mounted application', () => {
   it('reflects execution progress and queued work from backend events without inventing review state', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-1' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-1' };
     const { emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
-    const executionPlan = { turnId: 'turn', explanation: 'Implementing', steps: [{ step: 'Verify boundary behavior', status: 'inProgress' as const }], markdown: '- [ ] Verify boundary behavior', updatedAt: '2026-09-16T00:00:00Z' };
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeTurnId: 'turn', executionPlan, busy: true }) } });
+    const plan = { threadId: 'thread-1', turnId: 'turn', kind: 'execution' as const, status: 'inProgress' as const, explanation: 'Implementing',
+      steps: [{ step: 'Verify boundary behavior', status: 'inProgress' as const }], markdown: '- [ ] Verify boundary behavior', updatedAt: '2026-09-16T00:00:00Z' };
+    const stream = { conversation: 'thread-1' };
+    emit(sessionSnapshotEvent(agent.id, sessionState({ activeTurnId: 'turn', plan, busy: true }), { ...stream, revision: 1 }));
     await flushPromises();
     expect(wrapper.get('.conversation-plan').text()).toContain('Verify boundary behavior');
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 2, snapshot: codexConversationSnapshot([], { activeTurnId: 'turn', executionPlan: { ...executionPlan, steps: [{ step: 'Verify boundary behavior', status: 'completed' }] } }) } });
+    emit(sessionPatchEvent(agent.id, 2, setOps({ busy: false, plan: { ...plan, steps: [{ step: 'Verify boundary behavior', status: 'completed' }] } }), stream));
     await flushPromises();
     expect(wrapper.find('.conversation-plan__step--completed').exists()).toBe(true);
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 3, snapshot: codexConversationSnapshot([], { executionPlan: null }) } });
+    emit(sessionPatchEvent(agent.id, 3, setOps({ activeTurnId: null, plan: null }), stream));
     await flushPromises();
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
 
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: agent.id, threadId: 'thread-1', payload: { revision: 4, snapshot: codexConversationSnapshot() } });
+    emit(sessionSnapshotEvent(agent.id, sessionState(), { ...stream, revision: 4 }));
     emit({ type: 'agent.promptQueued', agentId: agent.id, payload: { id: 'queued', text: 'Review the other agent change.' } });
     await flushPromises();
     expect(wrapper.text()).toContain('Review the other agent change.');
@@ -562,20 +557,20 @@ describe('Unified backend → mounted application', () => {
 
   it('enforces advertised composer capabilities in the visible menu and submitted options', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api, emit } = installBackendFixture(snapshot);
     api.sendPrompt.mockResolvedValue(snapshot);
     const wrapper = mount(App);
     await flushPromises();
-    const capabilities = { ...codexBackendCapabilities, attachments: false, planMode: 'unsupported' as const };
-    emit({ type: 'backend.statusChanged', backend: 'codex', payload: { backend: 'codex', status: 'running', capabilities } });
+    const capabilities = { ...codexProviderCapabilities, attachments: false, planMode: 'unsupported' as const };
+    emit({ type: 'provider.statusChanged', provider: 'codex', payload: { provider: 'codex', status: 'running', capabilities } });
     await flushPromises();
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[role="menu"]').text()).not.toContain('Add Files & Photos');
     expect(wrapper.get('[role="menu"]').text()).not.toContain('Plan mode');
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
-    emit({ type: 'backend.statusChanged', backend: 'codex', payload: { backend: 'codex', status: 'running', capabilities: codexBackendCapabilities } });
+    emit({ type: 'provider.statusChanged', provider: 'codex', payload: { provider: 'codex', status: 'running', capabilities: codexProviderCapabilities } });
     await flushPromises();
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     await flushPromises();
@@ -592,37 +587,37 @@ describe('Unified backend → mounted application', () => {
 
   it('shows a normalized approval and removes it when the backend cancels the request', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
-    agent.backend = 'claude';
-    agent.backendSession = undefined;
-    agent.backendDefaults = undefined;
+    agent.provider = 'claude';
+    agent.providerSession = undefined;
+    agent.providerDefaults = undefined;
     const { api, emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
     const request = approvalAgentRequest({ id: 'permission', kind: 'permissions', conversationId: 'session', turnId: 'turn', itemId: 'item', title: 'Allow test workspace access', requestedPermissions: [{ kind: 'filesystem', access: 'write', path: '/tmp/project' }], allowedScopes: ['once'], canDeny: true });
-    emit({ type: 'agentRequest.created', backend: 'claude', agentId: agent.id, payload: { request } });
+    emit({ type: 'agentRequest.created', provider: 'claude', agentId: agent.id, payload: { request } });
     await flushPromises();
     expect(wrapper.findAll('[role="status"]').some(element => element.text().includes('Allow test workspace access'))).toBe(true);
-    emit({ type: 'agentRequest.resolved', backend: 'claude', agentId: agent.id, payload: { id: request.id, outcome: { kind: 'cancelled' } } });
+    emit({ type: 'agentRequest.resolved', provider: 'claude', agentId: agent.id, payload: { id: request.id, outcome: { kind: 'cancelled' } } });
     emit({ type: 'agent.statusChanged', agentId: agent.id, payload: { type: 'working' } });
     await flushPromises();
     expect(wrapper.findAll('[role="status"]').some(element => element.text().includes('Allow test workspace access'))).toBe(false);
-    expect(api.respondToClientRequest).not.toHaveBeenCalled();
+    expect(api.respondToAgentRequest).not.toHaveBeenCalled();
   });
 
   it.each(['codex', 'claude'] as const)('reviews a %s agent plan using only the common contract', async (backend) => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendSession = undefined;
-    agent.backendDefaults = undefined;
+    agent.provider = backend;
+    agent.providerSession = undefined;
+    agent.providerDefaults = undefined;
     const { api, emit } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
     emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'turn', payload: { itemId: 'proposal', markdown: '# Review this\n\nKeep the backend independent.' } });
     await flushPromises();
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Keep the backend independent.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Keep the backend independent.');
     const reviewId = JSON.stringify([agent.id, null, 'turn', 'proposal']);
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview = { id: reviewId, conversationId: null, turnId: 'turn', itemId: 'proposal', markdown: '# Review this', status: 'accept' };
@@ -645,7 +640,7 @@ describe('Unified backend → mounted application', () => {
     api.respondToPlanReview.mockRejectedValueOnce(new Error('backend unavailable'));
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Restored proposal');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Restored proposal');
     await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
@@ -680,7 +675,7 @@ describe('Unified backend → mounted application', () => {
 
   it('adopts durable review findings and decisions through the unified client seam', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
     // Other mounted workspaces must not determine which agent receives the review.
     snapshot.agents.reverse();
@@ -701,14 +696,14 @@ describe('Unified backend → mounted application', () => {
       ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
-      backendSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
+      providerSession: { kind: 'codex' as const, conversationId: 'reviewer-1' },
     };
     reviewer.codeReview = {
       id: 'review-1', targetAgentId: agent.id, reviewerAgentId: reviewer.id,
       scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'ready', activeRoundId: 'round-1',
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:01:00.000Z',
       rounds: [{
-        id: 'round-1', number: 1, status: 'ready', reviewerSession: { kind: 'codex', threadId: 'reviewer-1' },
+        id: 'round-1', number: 1, status: 'ready', reviewerSession: { kind: 'codex', conversationId: 'reviewer-1' },
         startedAt: '2026-09-19T10:00:00.000Z', completedAt: '2026-09-19T10:01:00.000Z',
         findings: [{
           id: 'finding-1', roundId: 'round-1', priority: 'p1',
@@ -730,7 +725,7 @@ describe('Unified backend → mounted application', () => {
     await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
-    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
+    expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { provider: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
     const reviewerPanel = wrapper.findAllComponents({ name: 'CodeReviewPanel' })
       .find((panel) => (panel.props('agent') as { id: string }).id === reviewer.id);
     expect(reviewerPanel?.props('agent')).toMatchObject({

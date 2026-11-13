@@ -11,7 +11,7 @@ Automations send a prompt on a schedule. Use them for a daily project summary, a
 1. Open **Automations** from the left rail. Choose **Local** or a connected remote host.
 2. Select **New automation** and give it a name.
 3. Write the prompt the agent should receive each time.
-4. Under **Run in**, choose a team and conversation:
+4. Under **Run in**, choose a workspace and conversation:
    - **Existing agent** runs in that agent's folder or worktree, with its conversation context.
    - **Existing Quick Chat** continues a chat you already use.
    - **New Quick Chat each run** starts with fresh context. Choose its coding engine, model, and reasoning effort, or leave the model and effort at their defaults.
@@ -70,4 +70,4 @@ Edit the automation to change its prompt, conversation, or schedule. Use the swi
 
 Deleting an automation removes its schedule, not its conversations or worktrees. **Clear** in the log removes finished entries and keeps active runs.
 
-If a run fails, check its error and the selected conversation. Reconnect the coding engine if needed. If you close the agent, Quick Chat, or team an automation runs in, Korus switches the automation off and ends any run in progress. Edit it to choose another conversation, then switch it back on.
+If a run fails, check its error and the selected conversation. Reconnect the coding engine if needed. If you close the agent, Quick Chat, or workspace an automation runs in, Korus switches the automation off and ends any run in progress. Edit it to choose another conversation, then switch it back on.

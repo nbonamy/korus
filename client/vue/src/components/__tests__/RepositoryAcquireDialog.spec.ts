@@ -1,7 +1,7 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import { describe, expect, it } from 'vitest';
 import type { WorkSource } from '@workspace/core/contracts';
 import RepositoryAcquireDialog from '../RepositoryAcquireDialog.vue';
@@ -143,7 +143,7 @@ describe('RepositoryAcquireDialog', () => {
     const choices = ref<('codex' | 'claude')[]>(['codex']);
     const wrapper = mount(RepositoryAcquireDialog, {
       props: { visible: true, mode: 'url', connection: { provider: 'github', status: 'connected' } },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => choices.value) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => choices.value) } },
     });
     await flushPromises();
 
@@ -154,7 +154,7 @@ describe('RepositoryAcquireDialog', () => {
     expect(wrapper.find('.repository-acquire-dialog__search').exists()).toBe(false);
     expect(wrapper.find('.repository-acquire-dialog__body--state').exists()).toBe(false);
     expect(wrapper.find('.app-form-dialog__field [aria-label="Repository URL"]').exists()).toBe(true);
-    expect(wrapper.find('.backend-selector').exists()).toBe(false);
+    expect(wrapper.find('.provider-selector').exists()).toBe(false);
     expect(wrapper.get('.app-dialog__title').text()).toBe('Clone repository');
     expect(wrapper.get('.el-dialog').classes()).not.toContain('app-dialog--compact');
     expect(wrapper.get('[aria-label="Repository URL"]').attributes('placeholder')).toBe('https://github.com/owner/repository.git');

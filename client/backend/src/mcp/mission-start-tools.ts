@@ -34,7 +34,7 @@ export function createMissionStartToolModuleProvider(options: {
             selection: executionSelectionOverridesSchema.optional().describe('Execution overrides. Same-provider work inherits the caller; a different provider uses its own defaults. Null selects the provider default, including Standard tier.'),
             }),
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-          }, ({ outcome, prompt, selection }) => loggedToolResult('create-mission', { agentId, outcomeLength: outcome.length, promptLength: prompt.length, backend: selection?.backend, model: selection?.model }, async () => {
+          }, ({ outcome, prompt, selection }) => loggedToolResult('create-mission', { agentId, outcomeLength: outcome.length, promptLength: prompt.length, provider: selection?.provider, model: selection?.model }, async () => {
             const started = await options.startMission(agentId, { outcome, prompt, selection });
             return { success: true, missionId: started.missionId, outcome: started.outcome, message: 'The Mission was started and opened for the user.' };
           }));

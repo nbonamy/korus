@@ -1,9 +1,9 @@
 import type { Component } from 'vue';
-import BackendIcon from './BackendIcon.vue';
+import ProviderIcon from './ProviderIcon.vue';
 import { actionIcon } from '../shared/icons/action-icons';
 import { availableShortcuts, keyboardShortcuts, shortcutKeys, type ShortcutContext } from '@workspace/core/keyboard-shortcuts';
-import type { Agent, AppCommand, BackendCapabilities, Team } from '@workspace/core/contracts';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import type { Agent, AppCommand, ProviderCapabilities, Team } from '@workspace/core/contracts';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { availableSettingsDestinations, type SettingsTab } from './settings-tabs';
 import { translate } from '../i18n';
 
@@ -29,7 +29,7 @@ type Context = {
   hostConnected: boolean;
   engineConnected: boolean;
   canCreateAgent: boolean;
-  capabilities: BackendCapabilities;
+  capabilities: ProviderCapabilities;
   gitAvailable: boolean;
   planAvailable: boolean;
   simulatorAvailable: boolean;
@@ -73,8 +73,8 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   };
   addShortcut('settings', 'settings');
   result.push(...availableSettingsDestinations(context.settings).map(destination => ({
-    id: `settings:${destination.id}`, section: 'settings' as const, icon: destination.backend ? BackendIcon : destination.icon,
-    iconProps: destination.backend ? { backend: destination.backend, monochrome: true } : undefined, label: translate(destination.labelKey), aliases: destination.aliases,
+    id: `settings:${destination.id}`, section: 'settings' as const, icon: destination.provider ? ProviderIcon : destination.icon,
+    iconProps: destination.provider ? { provider: destination.provider, monochrome: true } : undefined, label: translate(destination.labelKey), aliases: destination.aliases,
     run: () => actions.settings(destination.id),
   })));
   addShortcut('help', 'application');
@@ -94,8 +94,8 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   if (!context.shortcuts.workspace || !context.agent) return groupedActions(result);
   // Keep the existing agent-menu sequence.
   for (const id of ['edit', 'duplicate']) addShortcut(id, 'agent', disconnected, agentScope);
-  if (context.agent.backendSession && context.capabilities.conversationFork) result.push({ id: 'fork', section: 'agent', label: translate('commands.fork'), aliases: 'branch conversation', scope: agentScope, disabledReason: engineUnavailable ?? idleUnavailable, run: () => actions.command({ type: 'fork-active-agent' }) });
-  if (context.agent.backendSession && defaultBackendCommands(context.agent.backend).some(command => command.slashName === 'compact')) addShortcut('compact', 'agent', engineUnavailable ?? idleUnavailable, agentScope);
+  if (context.agent.providerSession && context.capabilities.conversationFork) result.push({ id: 'fork', section: 'agent', label: translate('commands.fork'), aliases: 'branch conversation', scope: agentScope, disabledReason: engineUnavailable ?? idleUnavailable, run: () => actions.command({ type: 'fork-active-agent' }) });
+  if (context.agent.providerSession && defaultProviderCommands(context.agent.provider).some(command => command.slashName === 'compact')) addShortcut('compact', 'agent', engineUnavailable ?? idleUnavailable, agentScope);
   if (context.capabilities.conversationResume) result.push({ id: 'resume', section: 'agent', label: translate('commands.resume'), aliases: 'history conversation', scope: agentScope, disabledReason: engineUnavailable ?? busy, run: () => actions.command({ type: 'resume-active-session' }) });
   addShortcut('restart', 'agent', engineUnavailable ?? busy, agentScope);
   addShortcut('closeAgent', 'agent', disconnected, agentScope);

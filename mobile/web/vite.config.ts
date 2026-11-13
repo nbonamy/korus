@@ -3,10 +3,10 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
 import { appleCryptoBuild } from '../native/build';
-import { sdkSourceAliases, sdkSourceRoot } from '../../vite.sdk-aliases';
+import { sdkSourceAliases, sdkSourceRoot, sdkSourcesEnabled } from '../../vite.sdk-aliases';
 
 const android = process.env.COMPANION_PLATFORM === 'android';
-const useSdkSources = process.env.CODEX_APP_SDK_SOURCE === '1';
+const useSdkSources = sdkSourcesEnabled;
 
 /** Bundled mobile pages: the background engine, shared conversation pane and changes. */
 export default defineConfig({
@@ -21,15 +21,15 @@ export default defineConfig({
       return JSON.stringify({ ...product, repository: product.releaseRepository });
     },
   }, vue(), excalidrawAssets(), ...(android ? [] : [appleCryptoBuild()])],
-  resolve: { dedupe: ['vue', '@codex-app-sdk/core', '@codex-app-sdk/vue'], alias: {
-    ...(android ? {} : {
-      '@chainsafe/libp2p-noise': path.resolve(__dirname, '../src/apple-crypto/noise.ts'),
-      '@libp2p/crypto/keys': path.resolve(__dirname, '../src/apple-crypto/keys.ts'),
-    }),
-    '@workspace/core': path.resolve(__dirname, '../../core/src'),
-    '@workspace/vue': path.resolve(__dirname, '../../client/vue/src'),
-    ...(useSdkSources ? sdkSourceAliases : {}),
-  } },
+  resolve: { dedupe: ['vue', '@korus-dev/multi-agent-sdk/contracts', '@korus-dev/agent-ui-sdk'], alias: [
+    ...(android ? [] : [
+      { find: '@chainsafe/libp2p-noise', replacement: path.resolve(__dirname, '../src/apple-crypto/noise.ts') },
+      { find: '@libp2p/crypto/keys', replacement: path.resolve(__dirname, '../src/apple-crypto/keys.ts') },
+    ]),
+    { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+    { find: '@workspace/vue', replacement: path.resolve(__dirname, '../../client/vue/src') },
+    ...sdkSourceAliases,
+  ] },
   server: { fs: { allow: [path.resolve(__dirname, '../..'), ...(useSdkSources ? [sdkSourceRoot] : [])] } },
   build: {
     outDir: path.resolve(__dirname, android ? '../android/app/src/main/assets/web' : '../ios/Web'),

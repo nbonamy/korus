@@ -1,4 +1,5 @@
-import { codexConversationSnapshot, codexTextMessage } from '../../../client/vue/tests/support/codex-conversation-fixtures';
+import type { Agent } from '@workspace/core/contracts';
+import { conversation, conversationPatch, textMessage } from './support/conversation';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
@@ -6,7 +7,7 @@ import { companionPushAuthorizationMessage } from '@workspace/core/companion-not
 import { liveActivityAuthorizationMessage, type LiveActivityRegistration } from '@workspace/core/companion-live-activity';
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
-import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionCompressedProtocol, companionProtocol, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, companionSessionId } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
@@ -137,12 +138,27 @@ describe('native relay host adapter', () => {
   });
   it('reads account quotas through the paired laptop circuit without a selected conversation', async () => {
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
-    const providers = [{ backend: 'codex', limits: { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null }, failed: false }];
+    const providers = [{ provider: 'codex', limits: { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null }, failed: false }];
     transport.response = () => providers;
     const session = await connector.connect(host.hostId);
     try {
       expect(await session.getUsage!()).toStrictEqual(providers);
-      expect(transport.requests.at(-1)).toMatchObject({ method: 'usage.get', args: {} });
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'usage.get', args: { providers: 'all' } });
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
+  it('reads the quotas of released laptops that only answer for the engines they always listed', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    const providers = [{ provider: 'codex', limits: null, failed: false }];
+    transport.response = (method, args) => {
+      if (method !== 'usage.get') return {};
+      if (args.providers) throw new Error('Unknown field');
+      return providers;
+    };
+    const session = await connector.connect(host.hostId);
+    try {
+      expect(await session.getUsage!()).toStrictEqual(providers);
+      expect(transport.requests.filter(request => request.method === 'usage.get').map(request => request.args)).toStrictEqual([{ providers: 'all' }, {}]);
     } finally { session.close(); await connector.dispose!(); }
   });
 
@@ -260,7 +276,7 @@ describe('native relay host adapter', () => {
       }
     } finally { await connector.dispose!(); }
   });
-  const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
+  const agent = { id: 'agent', name: 'Agent', teamId: 'team', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
   it('reads an image through the paired host and complete owning conversation target', async () => {
     const connector = connect(); await pairWith(connector);
     const image = { dataUrl: 'data:image/png;base64,cG5n' };
@@ -273,9 +289,21 @@ describe('native relay host adapter', () => {
       } });
     } finally { await connector.dispose!(); }
   });
+  it('speaks the current data model to a laptop that takes it: conversationId keys and one permission call', async () => {
+    const connector = connect(); await pairWith(connector);
+    transport.response = method => method === 'snapshot.get' ? { dataModel: 2, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : {};
+    try {
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
+      await session.setPermission!('agent', 'full-access');
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.permission.set', args: {
+        target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","conversationId":"thread"}' }, permission: 'full-access',
+      } });
+    } finally { await connector.dispose!(); }
+  });
+
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);
-    const page = { frame: { type: 'codex.conversationSnapshotChanged', backend: 'codex', threadId: 'thread', agentId: 'agent', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
+    const page = { frame: conversation('agent', { conversation: 'thread', messages: [textMessage('large', 'assistant', 'x'.repeat(companionFrameLimit))] }), hasOlder: false };
     transport.response = (method) => method === 'snapshot.get'
       ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote' }] } : page;
     try {
@@ -306,7 +334,7 @@ describe('native relay host adapter', () => {
       expect(transport.rendezvous).toStrictEqual([{ code: 'K7QDM2XP' }]);
       expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.claim', 'pair.status']);
       expect(reused).toHaveBeenCalledTimes(2);
-      expect(reused).toHaveBeenCalledWith(['/workspace/companion/2.0.0', '/workspace/companion/1.0.0'], expect.objectContaining({ runOnLimitedConnection: true }));
+      expect(reused).toHaveBeenCalledWith([companionCompressedProtocol, companionProtocol], expect.objectContaining({ runOnLimitedConnection: true }));
       expect(wrongPath).not.toHaveBeenCalled(); expect(transport.dial).toHaveBeenCalledTimes(1);
       expect(pending).toHaveBeenCalledOnce();
       expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({ event: 'transport.stream-open', reused: true, connectionId: 'circuit', remainingBytes: '67108864', remainingSeconds: 120 }));
@@ -317,13 +345,13 @@ describe('native relay host adapter', () => {
     const connector = connect();
     try {
       await pairWith(connector);
-      const frame = { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 2, snapshot: codexConversationSnapshot([codexTextMessage('response', 'assistant', 'Live response')], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } };
+      const frame = conversation('agent', { conversation: 'thread', revision: 2, messages: [textMessage('response', 'assistant', 'Live response')], state: { historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } } });
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : frame;
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       const update = vi.fn(); const disconnected = vi.fn();
       const stop = session.onUpdate!(update); session.onDisconnect(disconnected);
       await session.loadConversation('agent');
-      const next = { ...frame, payload: { ...frame.payload, revision: 3 } };
+      const next = { ...frame, payload: { ...frame.payload, snapshot: { ...frame.payload.snapshot, revision: 3 } } };
       transport.publish({ type: 'conversation', frame: next });
       await vi.advanceTimersByTimeAsync(0);
       expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ teams: [expect.objectContaining({ id: 'team' })] }), next);
@@ -344,36 +372,34 @@ describe('native relay host adapter', () => {
       stop(); await connector.suspend!();
     } finally { await connector.dispose!(); vi.useRealTimers(); }
   });
-  it('finishes a streamed Claude turn and keeps the completed reply when selected again', async () => {
+  it('finishes a streamed turn and keeps the completed reply when selected again', async () => {
     const connector = connect();
     try {
       await pairWith(connector);
-      const claude = { ...agent, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session' } };
-      const snapshot = { agentId: agent.id, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false,
-        historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
-      const frame = { type: 'claude.conversationSnapshotChanged', agentId: agent.id, backend: 'claude', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot } };
+      const claude = { ...agent, provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 'session' } };
+      const frame = conversation(agent.id, { provider: 'cursor', conversation: 'session', state: { historyState: { hasOlder: false, loadingOlder: false } } });
+      const answer = { ...textMessage('answer', 'assistant', 'The completed answer.'), status: 'streaming' as const };
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] } : frame;
       const session = await connector.connect(host.hostId); await session.getWorkspace();
       const update = vi.fn(); const disconnected = vi.fn(); session.onUpdate!(update); session.onDisconnect(disconnected);
       await session.loadConversation('agent');
-      for (const [index, event] of [
-        { type: 'turn.started', payload: { turn: { id: 'turn', backend: 'claude' } } },
-        { type: 'message.delta', payload: { itemId: 'answer', delta: 'The completed Claude answer.' } },
-        { type: 'turn.completed', payload: { turn: { id: 'turn', status: 'completed' } } },
-      ].entries()) transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: index + 2, payload: {
-        revision: index + 2, event: { ...event, agentId: 'agent', backend: 'claude', backendSessionId: 'session', turnId: 'turn', seq: index + 2, occurredAt: '2026-10-14T00:00:01Z' },
-      } } });
-      await vi.waitFor(() => expect(update.mock.calls.at(-1)?.[1]?.payload.revision).toBe(4));
+      for (const patch of [
+        conversationPatch(frame, 2, [{ op: 'set', key: 'busy', value: true }, { op: 'set', key: 'activeTurnId', value: 'turn' }]),
+        conversationPatch(frame, 3, [{ op: 'spliceMessages', start: 0, deleteCount: 0, messages: [answer] }]),
+        conversationPatch(frame, 4, [{ op: 'spliceMessages', start: 0, deleteCount: 1, messages: [{ ...answer, status: 'complete' }] }, { op: 'set', key: 'busy', value: false }, { op: 'set', key: 'activeTurnId', value: null }]),
+      ]) transport.publish({ type: 'conversation', frame: patch });
+      await vi.waitFor(() => expect(update.mock.calls.at(-1)?.[1]?.payload.snapshot.revision).toBe(4));
       expect(disconnected).not.toHaveBeenCalled();
       session.deselectConversation!();
       const completed = await session.loadConversation('agent');
-      expect(completed?.payload.snapshot).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', itemId: 'answer', text: 'The completed Claude answer.' }] })] });
-      const older = { id: 'older', agentId: 'agent', role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Earlier question' }] };
-      const pageFrame = { ...frame, type: 'claude.conversationEventReceived', seq: 5, payload: { revision: 5, event: { seq: 5, occurredAt: '', agentId: 'agent', backend: 'claude', backendSessionId: 'session', type: 'history.prepended', payload: { messages: [older], hasOlder: false } } } };
+      expect(completed?.payload.snapshot.state).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', text: 'The completed answer.' }] })] });
+      const older = textMessage('older', 'user', 'Earlier question');
+      // The laptop answers with the conversation that includes the older page.
+      const pageFrame = { ...completed!, payload: { ...completed!.payload, snapshot: { revision: 5, state: { ...completed!.payload.snapshot.state, messages: [older, ...completed!.payload.snapshot.state.messages] } } } };
       const chunk = { data: 'e30=', nextOffset: null, totalBytes: 2 };
       transport.response = (method) => method === 'conversation.loadOlder' ? { frame: pageFrame, hasOlder: false } : chunk;
       const page = await session.loadOlderHistory!('agent');
-      expect(page.frame.payload.snapshot.messages).toEqual([older, ...completed!.payload.snapshot.messages]);
+      expect(page.frame.payload.snapshot.state.messages).toEqual([older, ...completed!.payload.snapshot.state.messages]);
       const input = { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 };
       expect(await session.readConversationContent!('agent', input)).toStrictEqual(chunk);
       expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.content.read', args: { target: { agentId: 'agent' }, input } });
@@ -401,11 +427,11 @@ describe('native relay host adapter', () => {
     expect(transport.requests.at(-1)).toMatchObject({ method: 'skills.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
     expect(await session.listPlugins!('agent')).toStrictEqual([{ id: 'github', name: 'github', displayName: 'GitHub', enabled: true }]);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'plugins.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
-    await session.selectModel!('agent', {backend: 'codex',  model: 'm', reasoningEffort: 'high', serviceTier: null });
+    await session.selectModel!('agent', {provider: 'codex',  model: 'm', reasoningEffort: 'high', serviceTier: null });
     const selectedTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
     await session.sendPrompt(selectedTarget, 'Go', randomUUID(), { planMode: true, selection: { model: 'm' } }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
     expect(transport.requests.find((request) => request.method === 'models.list')?.args).toStrictEqual(selectedTarget);
-    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ target: selectedTarget, selection: { backend: 'codex', model: 'm', reasoningEffort: 'high', serviceTier: null } });
+    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ target: selectedTarget, selection: { provider: 'codex', model: 'm', reasoningEffort: 'high', serviceTier: null } });
     expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ target: selectedTarget, text: 'Go', options: { planMode: true, selection: { model: 'm' } }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
     await session.gitDiff!('agent', { type: 'staged' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.git.diff', args: { target: selectedTarget, scope: { type: 'staged' } } });
@@ -413,9 +439,10 @@ describe('native relay host adapter', () => {
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.file.preview', args: { target: selectedTarget, input: { path: 'src/app.ts', action: 'edit', turnId: 'turn' } } });
     await session.startReview!(selectedTarget, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { target: selectedTarget, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
-    await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
-    expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
-      .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }], ['agent.permissionMode.set', { target: selectedTarget, mode: 'acceptEdits' }]]);
+    // This laptop predates the current data model: it takes Codex's permission as an approval preset.
+    await session.interrupt!('agent'); await session.setPermission!('agent', 'full-access');
+    expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode|permission)\b/.test(request.method)).map((request) => [request.method, request.args]))
+      .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }]]);
     await session.renameAgent!(selectedTarget, 'Mobile work');
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.rename', args: { target: selectedTarget, name: 'Mobile work' } });
     await session.restartSession!('agent');
@@ -510,11 +537,11 @@ describe('native relay host adapter', () => {
     const storage = vault(); const connector = connect(storage);
     await pairWith(connector);
     transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ ...agent, remoteConnectionId: 'remote-host' }] }
-      : method === 'conversation.subscribe' ? { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } }
+      : method === 'conversation.subscribe' ? conversation('agent', { conversation: 'thread', state: { historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } } })
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     await session.loadConversation('agent');
-    const remoteTarget = { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify(agent.backendSession) };
+    const remoteTarget = { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: companionSessionId({ providerSession: agent.providerSession } as Agent) };
     const commandId = randomUUID(); await session.sendPrompt(remoteTarget, 'Reply once', commandId);
     expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ clientCommandId: commandId, target: remoteTarget });
     expect(await session.commandStatus!(commandId)).toBe('accepted');
@@ -556,7 +583,7 @@ describe('native relay host adapter', () => {
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     vi.useFakeTimers();
     try {
-      const chat = { teamId: 'team', repositoryId: 'repo', worktree: { branchName: 'feature' }, selection: { backend: 'claude' as const } };
+      const chat = { teamId: 'team', repositoryId: 'repo', worktree: { branchName: 'feature' }, selection: { provider: 'claude' as const } };
       const created = session.createChat!(chat);
       await vi.advanceTimersByTimeAsync(3000);
       expect(await created).toBe('new-chat');
@@ -568,10 +595,10 @@ describe('native relay host adapter', () => {
       await failed;
       answers.push({ state: 'success', agentId: 'quick-chat' });
       transport.response = (method) => method === 'agent.quickChat.create' ? { creationId: 'quick' } : method === 'agent.create.status' ? answers.shift() : {};
-      const quick = session.createQuickChat!({ teamId: 'team', backend: 'claude' });
+      const quick = session.createQuickChat!({ teamId: 'team', provider: 'claude' });
       await vi.advanceTimersByTimeAsync(1000);
       expect(await quick).toBe('quick-chat');
-      expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
+      expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', provider: 'claude' });
       const projectRepositories = [{ id: 'org/repo', name: 'org/repo' }];
       transport.response = method => method === 'project.github.list' ? projectRepositories : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
       expect(await session.githubRepositories!('team')).toStrictEqual(projectRepositories);
@@ -586,7 +613,7 @@ describe('native relay host adapter', () => {
       expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
       expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
       transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
-      const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', branch: 'feature/mobile', selection: { backend: 'claude' as const } };
+      const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', branch: 'feature/mobile', selection: { provider: 'claude' as const } };
       const project = session.createProject!(projectInput);
       await vi.advanceTimersByTimeAsync(1000);
       expect(await project).toBe('project-agent');
@@ -599,11 +626,11 @@ describe('native relay host adapter', () => {
       expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.branches', args: { teamId: 'team', repositoryId: 'opaque-repository' } });
       const duplicateTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: agent.id, sessionId: null };
       expect(await session.duplicateAgent!(duplicateTarget, 'claude')).toBe('duplicate-agent');
-      expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.duplicate', args: { target: duplicateTarget, backend: 'claude' } });
-      transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.duplicate', args: { target: duplicateTarget, provider: 'claude' } });
+      transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', providerSession: undefined }] } : {};
       await session.getWorkspace();
-      await session.setBackend!('new-chat', 'claude');
-      expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, backend: 'claude' });
+      await session.setProvider!('new-chat', 'claude');
+      expect(transport.requests.find((request) => request.method === 'agent.provider.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, provider: 'claude' });
     } finally {
       try { await connector.dispose!(); }
       finally { vi.useRealTimers(); }
@@ -614,10 +641,9 @@ describe('native relay host adapter', () => {
 it('retains paired-host conversations across reconnects and uses checkpoints only when the host advertises support', async () => {
   const connector = createRelayConnector(vault(), host.relay);
   await pairWith(connector);
-  const claude = { id: 'agent', teamId: 'team', backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session' } };
+  const claude = { id: 'agent', teamId: 'team', provider: 'claude', providerSession: { kind: 'claude', conversationId: 'session' } };
   const workspace = { conversationSync: true, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] };
-  const snapshot = { agentId: 'agent', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
-  const frame = { type: 'claude.conversationSnapshotChanged', backend: 'claude', agentId: 'agent', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot } };
+  const frame = conversation('agent', { provider: 'claude', conversation: 'session' });
   transport.response = (method, args) => {
     if (method === 'snapshot.get') return workspace;
     if (method === 'conversation.synchronize') {
@@ -628,11 +654,11 @@ it('retains paired-host conversations across reconnects and uses checkpoints onl
   };
   try {
     const first = await connector.connect(host.hostId); await first.getWorkspace(); await first.loadConversation('agent');
-    transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: 2, payload: { revision: 2, event: { type: 'turn.started', seq: 2, agentId: 'agent', backend: 'claude', backendSessionId: 'session', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', backend: 'claude' } } } } } });
-    await vi.waitFor(() => expect(first.cachedConversation!('agent')?.payload.revision).toBe(2));
+    transport.publish({ type: 'conversation', frame: conversationPatch(frame, 2, [{ op: 'set', key: 'activeTurnId', value: 'live-turn' }]) });
+    await vi.waitFor(() => expect(first.cachedConversation!('agent')?.payload.snapshot.revision).toBe(2));
     first.close();
     const second = await connector.connect(host.hostId); await second.getWorkspace();
-    expect(second.cachedConversation!('agent')?.payload.snapshot.activeTurnId).toBe('live-turn');
+    expect(second.cachedConversation!('agent')?.payload.snapshot.state.activeTurnId).toBe('live-turn');
     await second.loadConversation('agent');
     first.close(); // A delayed close from the old connection must not suspend the new cache.
     expect(second.isConversationCurrent!('agent')).toBe(true);

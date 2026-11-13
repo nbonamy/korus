@@ -7,29 +7,28 @@ import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confet
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { snapshotEventOwnership } from '@workspace/core/snapshot-event-ownership';
-import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
+import { appendMessages, runningTurn, sessionPatchEvent, sessionSnapshotEvent, sessionState, setOps, textMessage } from '../support/conversation-fixtures';
 describe('useAppState', () => {
   afterEach(() => {
     clearConfetti();
     clearFirstRunOnboardingStage();
     vi.useRealTimers();
   });
-  it('routes Cursor frames into its own conversation without reducing transcript into the app snapshot', async () => {
+  it('keeps a Cursor conversation in session state without reducing its transcript into the app snapshot', async () => {
     let receive!: (event: MainToRendererEvent) => void;
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'cursor'; agent.backendDefaults = { kind: 'cursor' }; agent.backendSession = { kind: 'cursor', sessionId: 'cursor-native' };
+    agent.provider = 'cursor'; agent.providerDefaults = { kind: 'cursor' }; agent.providerSession = { kind: 'cursor', conversationId: 'cursor-native' };
     stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(snapshot), onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } satisfies Partial<AppApi> });
     const state = useAppState(); await state.loadSnapshot();
     const before = state.snapshot.value;
-    const identity = { agentId: agent.id, backend: 'cursor' as const, backendSessionId: 'cursor-native', occurredAt: '2026-11-03T12:00:00Z' };
-    receive({ ...identity, seq: 1, type: 'cursor.conversationSnapshotChanged', payload: { revision: 1, snapshot: emptyCursorSnapshot(agent.id, 'cursor-native') } });
-    const eventIdentity = { agentId: agent.id, sessionId: 'cursor-native', turnId: 'turn', occurredAt: identity.occurredAt };
-    receive({ ...identity, seq: 2, type: 'cursor.conversationEventReceived', payload: { revision: 2, event: { ...eventIdentity, type: 'turn.started', payload: { turn: { id: 'turn' } } } } });
-    receive({ ...identity, seq: 3, type: 'cursor.conversationEventReceived', payload: { revision: 3, event: { ...eventIdentity, type: 'message.upsert', payload: { message: { agentId: agent.id, id: 'answer', turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt, parts: [{ type: 'text', text: 'Native Cursor reply' }] } } } } });
+    const stream = { provider: 'cursor' as const, conversation: 'cursor-native' };
+    receive(sessionSnapshotEvent(agent.id, sessionState(), { ...stream, seq: 1, revision: 1 }));
+    receive(sessionPatchEvent(agent.id, 2, setOps({ busy: true, activeTurnId: 'turn', turns: [runningTurn('turn')] }), { ...stream, seq: 2 }));
+    receive(sessionPatchEvent(agent.id, 3, [appendMessages(0, textMessage('answer', 'assistant', 'Native Cursor reply', { agentId: agent.id, turnId: 'turn', status: 'streaming' }))], { ...stream, seq: 3 }));
     expect(state.agentConversationFor(agent.id)?.conversation?.messages[0]?.parts).toEqual([{ type: 'text', text: 'Native Cursor reply' }]);
-    expect(state.activeCursorConversationSnapshot.value?.messages).toBe(state.agentConversationFor(agent.id)?.conversation?.messages);
-    expect(state.activeCursorConversationSnapshot.value?.activeTurnId).toBe('turn');
+    expect(state.activeConversationPresentation.value?.messages).toStrictEqual(state.agentConversationFor(agent.id)?.conversation?.messages);
+    expect(state.activeConversationPresentation.value?.activeTurnId).toBe('turn');
     expect(state.agentConversationFor(agent.id)?.conversation?.latestTurnId).toBe('turn');
     expect(state.snapshot.value).toBe(before);
   });
@@ -39,7 +38,7 @@ describe('useAppState', () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents.push({
       id: 'agent-jesse', teamId: 'team-app', name: 'Jesse', avatar: 'J',
-      folder: '/Users/nbonamy/src/other', backend: 'codex', status: { type: 'working' },
+      folder: '/Users/nbonamy/src/other', provider: 'codex', status: { type: 'working' },
       createdAt: '2026-06-05T00:00:00.000Z', updatedAt: '2026-06-05T00:00:00.000Z',
     });
     stubElectronTestWindow({
@@ -58,8 +57,8 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-jesse',
-      backend: 'codex',
-      threadId: 'thread-jesse',
+      provider: 'codex',
+      conversationId: 'thread-jesse',
       turnId: 'turn-jesse',
       type: 'workspace.fileActivityDetected',
       payload: {
@@ -83,7 +82,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 2,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       turnId: 'turn-jesse',
       type: 'workspace.fileActivityDetected',
@@ -95,7 +94,7 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 3,
       agentId: 'agent-jesse',
-      backend: 'codex',
+      provider: 'codex',
       threadId: 'thread-jesse',
       type: 'workspace.fileActivityDetected',
       payload: {
@@ -265,7 +264,7 @@ describe('useAppState', () => {
     const progress = {
       id: 'agent-creation-1',
       state: 'running' as const,
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       repositoryName: 'codex-app-sdk',
       createWorktree: true,
       branchName: 'feature/contracts',
@@ -316,7 +315,7 @@ describe('useAppState', () => {
     });
     const state = useAppState();
     await state.loadSnapshot();
-    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'repo', createWorktree: true, hasPrompt: true };
+    const base = { state: 'running' as const, provider: 'codex' as const, repositoryName: 'repo', createWorktree: true, hasPrompt: true };
     const emit = (seq: number, payload: Record<string, unknown>) => listeners[0]?.({
       seq, agentId: 'agent-dina', type: 'agentCreation.progress', payload: { ...base, ...payload }, occurredAt: '2026-06-05T00:00:00.000Z',
     } as MainToRendererEvent);
@@ -346,7 +345,7 @@ describe('useAppState', () => {
     const progress = {
       id: 'agent-creation-1',
       state: 'running' as const,
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       repositoryName: 'codex-app-sdk',
       createWorktree: true,
       hasPrompt: true,
@@ -488,17 +487,9 @@ describe('useAppState', () => {
       .map(([type]) => type)
       .sort()).toStrictEqual([
       'agentCreation.progress',
-      'antigravity.conversationEventReceived',
-      'antigravity.conversationSnapshotChanged',
-      'cursor.conversationEventReceived',
-      'cursor.conversationSnapshotChanged',
       'browser.annotationCreated',
       'client.celebrationRequested',
-      'claude.conversationEventReceived',
-      'claude.conversationSnapshotChanged',
       'client.connectionChanged',
-      'codex.conversationEventReceived',
-      'codex.conversationSnapshotChanged',
       'remoteControl.statusChanged',
       'provider.authenticationChanged',
       'workspace.fileActivityDetected',
@@ -512,6 +503,15 @@ describe('useAppState', () => {
       'conversation.historyLoadFailed',
       'conversation.modeUpdated',
       'conversation.shareChanged',
+      'conversation.sessionSnapshot',
+      'conversation.sessionPatch',
+      'turn.started',
+      'turn.completed',
+      'session.error',
+      'tool.updated',
+      'turn.output',
+      'diff.updated',
+      'file.activity',
     ].sort());
 
     listeners[0]?.({
@@ -560,8 +560,14 @@ describe('useAppState', () => {
       payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' },
       occurredAt: '2026-06-05T00:00:06.000Z',
     });
+    // The window follows session state; turn activity is the daemon's own business.
+    const activity = { agentId: 'agent-dina', provider: 'codex' as const, turnId: 'turn-1', occurredAt: '2026-06-05T00:00:07.000Z' };
+    listeners[0]?.({ ...activity, seq: 7, type: 'turn.started', payload: {} });
+    listeners[0]?.({ ...activity, seq: 8, type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false } });
+    listeners[0]?.({ ...activity, seq: 9, type: 'file.activity', payload: { path: '/tmp/a.ts', action: 'edit', status: 'running' } });
 
     expect(state.snapshot.value).toBe(originalSnapshot);
+    expect(state.agentConversationFor('agent-dina')?.conversation ?? null).toBeNull();
     expect(state.sidePanelRequest.value).toBeNull();
     expect(state.fileActivity.value).toBeNull();
     expect(state.agentCreationProgresses.value).toStrictEqual([]);

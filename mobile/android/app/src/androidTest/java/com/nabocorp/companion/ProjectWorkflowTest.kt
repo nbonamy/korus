@@ -23,7 +23,7 @@ class ProjectWorkflowTest {
         "agentId" to "agent", "composerTarget" to ConversationTarget(host, "local", team, "agent", "session").toJson(), "canSend" to connected,
         "laptops" to JSONArray().put(json("id" to host, "name" to "Computer")), "teams" to JSONArray().put(json("id" to team, "name" to "Team")),
         "groups" to JSONArray().put(json("id" to "group-key", "kind" to "repository", "repositoryRoot" to "repo-key", "label" to "Fixture repository", "sessions" to JSONArray())),
-        "backends" to JSONArray(listOf("codex", "claude")), "capabilities" to json(), "chatCreation" to creation)
+        "providers" to JSONArray(listOf("codex", "claude")), "capabilities" to json(), "chatCreation" to creation)
     private fun branches(repository: String = "repo-key", status: String = "loaded") = json("repositoryId" to repository, "status" to status,
         "items" to JSONArray().put(json("name" to "main", "isDefault" to true, "isCheckedOut" to true)).put(json("name" to "feature/native", "isDefault" to false, "isCheckedOut" to false)))
     private fun mount(engine: NativeEngineFixture) {
@@ -71,7 +71,7 @@ class ProjectWorkflowTest {
     @Test fun gitlabAccessRetryNestedCatalogDefaultBranchAndProviderSwitchKeepOpaqueIdentity() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
+            engine.state(state().put("providers", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
             assertCommand(engine, json("type" to "loadProjectRepositories", "source" to "gitlab"))
             app.onNodeWithText("GitLab Repository").assertIsDisplayed()
             app.onNodeWithText("Loading repositories…").assertIsDisplayed()
@@ -102,12 +102,12 @@ class ProjectWorkflowTest {
             app.onNodeWithText("group/subgroup/repository").assertDoesNotExist()
             app.onNodeWithContentDescription("Cancel creation").performClick()
             engine.state(state()); newAgent("From GitLab")
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectRepositories", gitlabCatalog()))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("projectRepositories", gitlabCatalog()))
             app.onNodeWithText("other/repository").assertIsDisplayed()
             app.onNodeWithText("group/subgroup/repository").performClick()
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
             app.onNodeWithText("develop").assertIsDisplayed().performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("backend" to "codex"), "branch" to "develop"))
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("provider" to "codex"), "branch" to "develop"))
             engine.state(state(creation = "creating")); engine.state(state())
             app.onNodeWithTag("composer").assertIsDisplayed()
         }
@@ -116,7 +116,7 @@ class ProjectWorkflowTest {
     @Test fun gitlabWorktreeUsesDefaultBaseAndRetainsFormForExplicitCloneRetry() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
+            engine.state(state().put("providers", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
             engine.state(state().put("projectRepositories", gitlabCatalog()))
             app.onNodeWithText("group/subgroup/repository").performClick()
             engine.state(state().put("projectBranches", gitlabBranches(status = "failed")))
@@ -129,12 +129,12 @@ class ProjectWorkflowTest {
             app.onNodeWithTag("branch-name").performTextInput("feature/android-new")
             app.runOnIdle { engine.model.chooseCreationBackend("codex") }
             app.onNodeWithText("Create Branch").performClick()
-            val expected = json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("backend" to "codex"),
+            val expected = json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "selection" to json("provider" to "codex"),
                 "worktree" to json("branchName" to "feature/android-new", "baseBranch" to "develop"))
             assertCommand(engine, expected)
             engine.state(state(creation = "creating").put("projectBranches", gitlabBranches()))
             app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
-            engine.state(state(creation = "failed").put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
+            engine.state(state(creation = "failed").put("providers", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
             app.onNodeWithTag("branch-name").assertTextContains("feature/android-new")
             app.onNodeWithText("develop").assertIsDisplayed()
             app.onNodeWithText("Couldn’t create this branch.", substring = true).assertIsDisplayed()
@@ -167,9 +167,9 @@ class ProjectWorkflowTest {
             engine.state(state(host = "remote-host").put("projectRepositories", gitlabCatalog("remote:opaque")))
             app.onNodeWithText("group/subgroup/repository").performClick()
             assertCommand(engine, json("type" to "loadProjectBranches", "source" to "gitlab", "repositoryId" to "remote:opaque"))
-            engine.state(state(host = "remote-host").put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches("remote:opaque")))
+            engine.state(state(host = "remote-host").put("providers", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches("remote:opaque")))
             app.onNodeWithText("feature/android").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "remote:opaque", "selection" to json("backend" to "codex"), "branch" to "feature/android"))
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "remote:opaque", "selection" to json("provider" to "codex"), "branch" to "feature/android"))
             assertTrue(engine.commands().filter { it.string("type") == "createProject" }.all { it.string("value") == "remote:opaque" })
         }
     }
@@ -177,19 +177,19 @@ class ProjectWorkflowTest {
     @Test fun existingProjectUsesHostCatalogAndTheSameBranchPickerAsGitHub() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("Existing Project")
+            engine.state(state().put("providers", JSONArray(listOf("codex")))); mount(engine); newAgent("Existing Project")
             assertCommand(engine, json("type" to "loadProjectRepositories", "source" to "local"))
             val repositories = JSONArray()
             repeat(80) { index -> repositories.put(if (index == 25) json("id" to "opaque-local", "name" to "Local repository") else json("id" to "repo-$index", "name" to "Project $index")) }
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectRepositories", json("status" to "loaded", "items" to repositories)))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("projectRepositories", json("status" to "loaded", "items" to repositories)))
             app.onNode(hasScrollAction()).performScrollToNode(hasText("Local repository"))
             app.onNodeWithText("Local repository").performClick()
             assertCommand(engine, json("type" to "loadProjectBranches", "repositoryId" to "opaque-local", "source" to "local"))
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectBranches", branches("opaque-local")))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("projectBranches", branches("opaque-local")))
             app.onNodeWithText("New Branch").assertIsDisplayed()
             app.onNodeWithText("main").assertIsDisplayed()
             app.onNodeWithText("feature/native").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "local", "value" to "opaque-local", "selection" to json("backend" to "codex"), "branch" to "feature/native"))
+            assertCommand(engine, json("type" to "createProject", "source" to "local", "value" to "opaque-local", "selection" to json("provider" to "codex"), "branch" to "feature/native"))
         }
     }
 
@@ -215,51 +215,51 @@ class ProjectWorkflowTest {
     @Test fun repositoryCreationUsesItsHostWhileQuickChatKeepsTheLocalEngine() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            fun mixed() = state().put("backends", JSONArray(listOf("codex")))
-                .put("repositoryBackends", json("repo-key" to JSONArray(listOf("claude"))))
+            fun mixed() = state().put("providers", JSONArray(listOf("codex")))
+                .put("repositoryProviders", json("repo-key" to JSONArray(listOf("claude"))))
             engine.state(mixed()); mount(engine)
             repository("Default Branch")
-            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "claude"))
+            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "provider" to "claude"))
             screenshot("remote-repository-creation")
             engine.state(mixed().put("chatCreation", "creating"))
             app.waitUntil(5_000) { engine.model.state.string("chatCreation") == "creating" }
             engine.state(mixed())
             app.waitUntil(5_000) { engine.model.creation == null }
             newAgent("Quick Chat")
-            assertCommand(engine, json("type" to "newQuickChat", "backend" to "codex"))
+            assertCommand(engine, json("type" to "newQuickChat", "provider" to "codex"))
         }
     }
     @Test fun remoteDuplicationUsesTheSourceHostEngineEvenWithoutLocalEngines() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
             val target = ConversationTarget("host", "box", "team", "agent", "session")
-            engine.state(state().put("backends", JSONArray()).put("conversationBackends", JSONArray(listOf("claude")))
-                .put("backend", "claude").put("composerTarget", target.toJson())); mount(engine)
+            engine.state(state().put("providers", JSONArray()).put("conversationProviders", JSONArray(listOf("claude")))
+                .put("provider", "claude").put("composerTarget", target.toJson())); mount(engine)
             app.onNodeWithContentDescription("Conversation actions").performClick()
             app.onNodeWithText("Duplicate Agent").performClick()
-            assertCommand(engine, json("type" to "duplicateAgent", "target" to target.toJson(), "backend" to "claude"))
+            assertCommand(engine, json("type" to "duplicateAgent", "target" to target.toJson(), "provider" to "claude"))
         }
     }
     @Test fun duplicateAgentStartsImmediatelyWithoutAFormAndReportsFailureForAnExplicitRetry() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backend", "codex")); mount(engine)
+            engine.state(state().put("provider", "codex")); mount(engine)
             app.onNodeWithContentDescription("Conversation actions").performClick()
             app.onNodeWithText("Duplicate Agent").performClick()
-            val expected = json("type" to "duplicateAgent", "target" to ConversationTarget("host", "local", "team", "agent", "session").toJson(), "backend" to "codex")
+            val expected = json("type" to "duplicateAgent", "target" to ConversationTarget("host", "local", "team", "agent", "session").toJson(), "provider" to "codex")
             assertCommand(engine, expected)
             app.onNodeWithContentDescription("Choose engine").assertDoesNotExist()
             app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
-            engine.state(state(creation = "creating").put("backend", "codex"))
-            engine.state(state(creation = "failed").put("backend", "codex"))
+            engine.state(state(creation = "creating").put("provider", "codex"))
+            engine.state(state(creation = "failed").put("provider", "codex"))
             app.onNodeWithText("Couldn’t duplicate the agent").assertIsDisplayed()
             app.onNodeWithText("OK").performClick()
             app.onNodeWithContentDescription("Conversation actions").performClick()
             app.onNodeWithText("Duplicate Agent").performClick()
             app.waitUntil(5_000) { engine.commands().count { it.string("type") == "duplicateAgent" } == 2 }
             assertCommand(engine, expected)
-            engine.state(state(creation = "creating").put("backend", "codex"))
-            engine.state(state().put("agentId", "duplicate").put("backend", "codex")
+            engine.state(state(creation = "creating").put("provider", "codex"))
+            engine.state(state().put("agentId", "duplicate").put("provider", "codex")
                 .put("composerTarget", ConversationTarget("host", "local", "team", "duplicate", null).toJson()).put("canSelectBackend", true))
             app.onNodeWithContentDescription("Choose engine").assertDoesNotExist()
             app.onNodeWithContentDescription("Conversation actions").assertIsDisplayed()
@@ -285,7 +285,7 @@ class ProjectWorkflowTest {
                 app.activityRule.scenario.recreate(); mount(engine)
                 app.onNodeWithTag("project-value").assertTextContains("  native-project  ")
                 app.onNodeWithText("Create Project").performClick()
-                assertCommand(engine, json("type" to "createProject", "source" to "new", "value" to "native-project", "selection" to json("backend" to "claude")))
+                assertCommand(engine, json("type" to "createProject", "source" to "new", "value" to "native-project", "selection" to json("provider" to "claude")))
                 app.onNodeWithText("Preparing your project").assertIsDisplayed()
                 app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
                 engine.state(state(creation = "creating"))
@@ -320,10 +320,10 @@ class ProjectWorkflowTest {
                 engine.state(state())
                 app.onNodeWithTag("project-value").assertTextContains("  git@github.com:org/repo.git  ")
                 app.onNodeWithText("Clone Repository").performClick()
-                assertCommand(engine, json("type" to "createProject", "source" to "url", "value" to "git@github.com:org/repo.git", "selection" to json("backend" to "codex")))
+                assertCommand(engine, json("type" to "createProject", "source" to "url", "value" to "git@github.com:org/repo.git", "selection" to json("provider" to "codex")))
                 engine.state(state(creation = "creating")); engine.state(state())
                 newAgent("Quick Chat")
-                assertCommand(engine, json("type" to "newQuickChat", "backend" to "codex"))
+                assertCommand(engine, json("type" to "newQuickChat", "provider" to "codex"))
                 engine.state(state(creation = "creating")); engine.state(state())
                 engine.state(state(connected = false))
                 app.onNodeWithContentDescription("Open workspace").performClick()
@@ -354,7 +354,7 @@ class ProjectWorkflowTest {
             app.runOnIdle { engine.model.chooseCreationBackend("codex") }
             app.onNodeWithTag("branch-search").performTextInput("native")
             app.onNodeWithText("feature/native").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "selection" to json("backend" to "codex"), "branch" to "feature/native"))
+            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "selection" to json("provider" to "codex"), "branch" to "feature/native"))
             engine.state(state(creation = "creating").put("projectBranches", branches("org/repository")))
             engine.state(state(creation = "failed").put("projectBranches", branches("org/repository")))
             app.onNodeWithText("New Branch").performClick()
@@ -364,7 +364,7 @@ class ProjectWorkflowTest {
             app.onNodeWithContentDescription("Base branch").performClick()
             app.onNodeWithText("feature/native").performClick()
             app.onNodeWithText("Create Branch").performClick()
-            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "backend" to engine.model.state.strings("backends").first(),
+            assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "selection" to json("provider" to engine.model.state.strings("providers").first()),
                 "worktree" to json("branchName" to "feature/android", "baseBranch" to "feature/native")))
             engine.state(state(creation = "creating")); engine.state(state())
             app.onNodeWithTag("composer").assertIsDisplayed()
@@ -374,24 +374,24 @@ class ProjectWorkflowTest {
     @Test fun existingBranchAndWorktreeUseOpaqueRepositoryRootRatherThanSidebarGroupId() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); repository("Existing Branch…")
+            engine.state(state().put("providers", JSONArray(listOf("codex")))); mount(engine); repository("Existing Branch…")
             assertCommand(engine, json("type" to "loadBranches", "repositoryId" to "repo-key"))
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("branches", branches(status = "failed")))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("branches", branches(status = "failed")))
             app.onNodeWithText("Retry").performClick()
             assertEquals(2, engine.commands().count { it.string("type") == "loadBranches" })
-            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("branches", branches()))
+            engine.state(state().put("providers", JSONArray(listOf("codex"))).put("branches", branches()))
             app.onNodeWithTag("branch-search").performTextInput("feature")
             app.onNodeWithText("main").assertDoesNotExist()
             app.onNodeWithText("feature/native").performClick()
-            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "codex", "existingBranch" to "feature/native"))
+            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "provider" to "codex", "existingBranch" to "feature/native"))
             engine.state(state(creation = "creating")); engine.state(state())
             repository("New Worktree…")
             app.onNodeWithTag("branch-name").performTextInput("feature android")
             app.onNodeWithText("Create").performClick()
-            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "codex", "branchName" to "feature-android"))
+            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "provider" to "codex", "branchName" to "feature-android"))
             engine.state(state(creation = "creating")); engine.state(state())
             repository("Default Branch")
-            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "codex"))
+            assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "provider" to "codex"))
         }
     }
 

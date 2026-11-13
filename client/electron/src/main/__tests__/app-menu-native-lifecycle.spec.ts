@@ -25,8 +25,8 @@ describe.skipIf(process.platform !== 'darwin')('native app menu', () => {
         target: 'node22', outDir: folder, emptyOutDir: false, minify: false,
         lib: { entry: path.join(root, 'client/electron/src/main/app-menu.ts'), formats: ['es'], fileName: () => 'app-menu.mjs' },
         rollupOptions: {
-          external: ['electron', '@codex-app-sdk/electron'],
-          output: { paths: { '@codex-app-sdk/electron': fileURLToPath(import.meta.resolve('@codex-app-sdk/electron')) } },
+          external: ['electron', '@korus-dev/agent-ui-sdk/electron'],
+          output: { paths: { '@korus-dev/agent-ui-sdk/electron': fileURLToPath(import.meta.resolve('@korus-dev/agent-ui-sdk/electron')) } },
         },
       },
     });

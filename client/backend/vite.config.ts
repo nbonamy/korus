@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { chmod } from 'node:fs/promises';
 import product from '../../core/src/product.json';
-import { sdkSourceAliases } from '../../vite.sdk-aliases';
+import { sdkSourceAliases, sdkSourcesEnabled } from '../../vite.sdk-aliases';
 
 export default defineConfig(({ mode }) => {
   const rootDir = path.resolve(__dirname, '../..');
@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     ...loadEnv(mode, rootDir, ''),
     ...process.env,
   };
-  const useSdkSources = env.CODEX_APP_SDK_SOURCE === '1';
+  const useSdkSources = sdkSourcesEnabled;
 
   return {
     plugins: [{
@@ -39,10 +39,10 @@ export default defineConfig(({ mode }) => {
       }),
     },
     resolve: {
-      alias: {
-        '@workspace/core': path.resolve(__dirname, '../../core/src'),
-        ...(useSdkSources ? sdkSourceAliases : {}),
-      },
+      alias: [
+        { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+        ...(useSdkSources ? sdkSourceAliases : []),
+      ],
     },
     ssr: {
       noExternal: true,

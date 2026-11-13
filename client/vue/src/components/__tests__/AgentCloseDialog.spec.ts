@@ -8,7 +8,7 @@ const agent = {
   teamId: 'team-test',
   name: 'Dina',
   folder: '/repo-fix-gh-22',
-  backend: 'codex' as const,
+  provider: 'codex' as const,
   status: { type: 'idle' as const },
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',

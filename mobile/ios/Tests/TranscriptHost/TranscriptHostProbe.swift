@@ -80,19 +80,19 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         host.setInsets(top: 0, bottom: 0, leading: 0, trailing: 0)
     }
     func frame(_ revision: Int, generation: Int = 1, ready: Bool = true, text: String? = nil) -> String {
-        let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Transcript test", "backend": "codex", "status": ["type": "working"], "readState": ["revision": revision, "readRevision": 0]]
+        let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Transcript test", "provider": "codex", "status": ["type": "working"], "readState": ["revision": revision, "readRevision": 0]]
         let message: [String: Any] = ["id": "message", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": text ?? "Rendered test content \(revision)"]]]
-        let snapshot: [String: Any] = ["messages": [message], "turns": [], "activeTurnId": NSNull(), "busy": false]
-        let object: [String: Any] = ["agent": agent, "agentId": "transcript-probe", "generation": generation, "ready": ready, "peers": [], "history": ["hasOlder": false, "loadingOlder": false, "failed": false], "frame": ["agentId": "transcript-probe", "backend": "codex", "payload": ["snapshot": snapshot]]]
+        let state: [String: Any] = ["messages": [message], "turns": [], "activeTurnId": NSNull(), "busy": false]
+        let object: [String: Any] = ["agent": agent, "agentId": "transcript-probe", "generation": generation, "ready": ready, "peers": [], "history": ["hasOlder": false, "loadingOlder": false, "failed": false], "frame": ["type": "conversation.sessionSnapshot", "agentId": "transcript-probe", "provider": "codex", "payload": ["conversation": NSNull(), "epoch": "probe", "snapshot": ["revision": revision, "state": state]]]]
         return String(data: try! JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
     }
     func transferChecks() async {
         var applied = 0
         var resets = 0
         func transfer(_ includeFrame: Bool, generation: Int = 1, engineInstance: String = "native-engine") -> String {
-            let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Cached conversation", "backend": "claude", "backendSession": ["kind": "claude", "sessionId": "probe-session"], "status": ["type": "idle"]]
-            let snapshot: [String: Any] = ["agentId": "transcript-probe", "sessionId": "probe-session", "messages": [["id": "cached-answer", "agentId": "transcript-probe", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": "Retained native conversation"]]]], "turns": [], "turnIds": [], "activeTurnId": NSNull(), "busy": false, "historyLoading": false, "historyState": ["hasOlder": false, "loadingOlder": false], "answeredClientRequestIds": [], "contextUsage": NSNull(), "plan": NSNull(), "error": NSNull()]
-            let frame: [String: Any] = ["type": "claude.conversationSnapshotChanged", "agentId": "transcript-probe", "backend": "claude", "payload": ["revision": 1, "snapshot": snapshot]]
+            let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Cached conversation", "provider": "claude", "providerSession": ["kind": "claude", "sessionId": "probe-session"], "status": ["type": "idle"]]
+            let state: [String: Any] = ["messages": [["id": "cached-answer", "agentId": "transcript-probe", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": "Retained native conversation"]]]], "turns": [], "activeTurnId": NSNull(), "busy": false, "historyState": ["hasOlder": false, "loadingOlder": false], "requests": [], "error": NSNull(), "title": NSNull(), "goal": NSNull(), "contextUsage": NSNull(), "plan": NSNull()]
+            let frame: [String: Any] = ["type": "conversation.sessionSnapshot", "agentId": "transcript-probe", "provider": "claude", "payload": ["conversation": "probe-session", "epoch": "probe", "snapshot": ["revision": 1, "state": state]]]
             let message: [String: Any] = ["engineInstance": engineInstance, "identity": "native-cached", "checkpoint": ["epoch": "native-epoch", "revision": 1], "agentId": "transcript-probe", "agent": agent, "generation": generation, "ready": true, "peers": [], "frames": includeFrame ? [frame] : []]
             return String(data: try! JSONSerialization.data(withJSONObject: message), encoding: .utf8)!
         }
@@ -167,16 +167,16 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             var agent = object["agent"] as! [String: Any]
             let id = images ? "transcript-probe" : "other-conversation"
             object["agentId"] = id; agent["id"] = id
-            agent["backendSession"] = ["kind": "codex", "threadId": "native-images"]
+            agent["providerSession"] = ["kind": "codex", "threadId": "native-images"]
             object["agent"] = agent
             if images {
                 let parts: [[String: Any]] = names.enumerated().map { index, name in
                     ["type": "media", "media": ["url": "conversation-image:native-images:\(String(repeating: "0", count: 63))\(index)",
                         "title": name, "width": index == 1 ? 780 : 1510, "height": index == 1 ? 1696 : 900]]
                 }
-                object["frame"] = ["agentId": "transcript-probe", "backend": "codex", "payload": ["snapshot": [
+                object["frame"] = ["type": "conversation.sessionSnapshot", "agentId": "transcript-probe", "provider": "codex", "payload": ["conversation": "native-images", "epoch": "probe", "snapshot": ["revision": revision, "state": [
                     "messages": [["id": "recorded-screenshots", "role": "assistant", "status": "complete", "parts": parts]],
-                    "turns": [], "busy": false]]]
+                    "turns": [], "activeTurnId": NSNull(), "busy": false]]]]
             }
             var payload = object["frame"] as! [String: Any]
             payload["agentId"] = id; object["frame"] = payload
@@ -209,7 +209,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         let pressure = await js("""
         (() => {
         window.cachePressureConversation = \(conversation(true, revision: 90));
-        const snapshot = window.cachePressureConversation.frame.payload.snapshot;
+        const snapshot = window.cachePressureConversation.frame.payload.snapshot.state;
         snapshot.messages = snapshot.messages[0].parts.map((part, index) => ({id:'pressure-'+index,role:'assistant',status:'complete',parts:[{type:'text',text:'Context paragraph\\n\\n'.repeat(60)},part]}));
         snapshot.messages.push({id:'cold-images',role:'assistant',status:'complete',parts:[{type:'text',text:'Other context\\n\\n'.repeat(60)},...[3,4].map(index => ({type:'media',media:{url:'conversation-image:native-images:'+String(index).padStart(64,'0'),title:'Cold '+index,width:100,height:100}}))]});
         return JSON.stringify(window.cachePressureConversation);

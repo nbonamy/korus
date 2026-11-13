@@ -99,8 +99,8 @@ final class AppModel {
     var goalBusy = false
     var goalError = false
     var goalMode: Bool { composerDrafts.goalMode }
-    var approvalPreset: String?
-    var approvalPresets: [String] = []
+    var permission: String?
+    var permissionOptions: [EngineState.PermissionOption] = []
     var canSend = false
     var providerBlock: EngineState.ProviderBlock?
     var canInterrupt = false
@@ -113,10 +113,16 @@ final class AppModel {
     var closePreview: EngineState.ClosePreview?
     var chatCreation: EngineState.ChatCreation = .idle
     var teamCreation: EngineState.ChatCreation = .idle
-    var backends: [String] = []
-    var conversationBackends: [String] = []
-    var repositoryBackends: [String: [String]] = [:]
-    var backend: String?
+    var providers: [String] = []
+    var conversationProviders: [String] = []
+    var repositoryProviders: [String: [String]] = [:]
+    var provider: String?
+    /// An empty chat can still take another engine; false once a prompt was sent.
+    var canSelectProvider = false
+    /// The engine an empty chat is switching to, shown chosen while the laptop catches up.
+    var switchingProvider: String?
+    /// The model menu has nothing to show yet: it is loading, not empty.
+    var modelsLoading = false
     private var duplicateTarget: ComposerTarget?
     var duplicatingAgent: Bool { duplicateTarget != nil }
     var duplicateFailed = false
@@ -135,12 +141,12 @@ final class AppModel {
     var branches = RepositoryBranches()
     var creatingChatGroupID: String?
     /// The engine new chats start with, remembered between launches; unavailable ones fall back to the first the laptop offers.
-    var preferredBackend = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
-        didSet { UserDefaults.standard.set(preferredBackend, forKey: "newChat.backend") }
+    var preferredProvider = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
+        didSet { UserDefaults.standard.set(preferredProvider, forKey: "newChat.backend") }
     }
-    private func creationBackend(from choices: [String]) -> String? { choices.contains(preferredBackend) ? preferredBackend : choices.first }
-    var newChatBackend: String? { creationBackend(from: backends) }
-    private func backends(in group: SidebarGroup) -> [String] { group.repositoryId.flatMap { repositoryBackends[$0] } ?? backends }
+    private func creationProvider(from choices: [String]) -> String? { choices.contains(preferredProvider) ? preferredProvider : choices.first }
+    var newChatProvider: String? { creationProvider(from: providers) }
+    private func providers(in group: SidebarGroup) -> [String] { group.repositoryId.flatMap { repositoryProviders[$0] } ?? providers }
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     let composerDrafts = ComposerDrafts()
@@ -222,7 +228,6 @@ final class AppModel {
             self?.filePreviewOpen = open
             if open { self?.dictation.cancel() }
         }
-        transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onLifecycle = { [weak self] stage in self?.engine.recordLifecycle("app.transcript", stage: stage) }
         transcript.onRenderFailed = { [weak self] in
@@ -339,10 +344,13 @@ final class AppModel {
         set(\.chatCreation, state.chatCreation)
         set(\.teamCreation, state.teamCreation ?? .idle)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
-        set(\.backends, state.backends)
-        set(\.conversationBackends, state.conversationBackends ?? state.backends)
-        set(\.repositoryBackends, state.repositoryBackends ?? [:])
-        set(\.backend, state.backend)
+        set(\.providers, state.providers)
+        set(\.conversationProviders, state.conversationProviders ?? state.providers)
+        set(\.repositoryProviders, state.repositoryProviders ?? [:])
+        set(\.provider, state.provider)
+        set(\.canSelectProvider, state.canSelectProvider ?? false)
+        set(\.switchingProvider, state.switchingProvider)
+        set(\.modelsLoading, state.modelsLoading ?? false)
         if let source = duplicateTarget {
             if source != state.composerTarget || created { duplicateTarget = nil }
             else if state.chatCreation == .failed { duplicateTarget = nil; duplicateFailed = true }
@@ -368,8 +376,8 @@ final class AppModel {
         set(\.selectedServiceTier, state.composer.serviceTier)
         set(\.supportsServiceTier, state.capabilities.serviceTier)
         set(\.planMode, state.composer.planMode)
-        set(\.approvalPreset, state.permissions.approvalPreset)
-        set(\.approvalPresets, state.permissions.presets)
+        set(\.permission, state.permissions.current)
+        set(\.permissionOptions, state.permissions.options)
         if let target = composerDrafts.target, target != state.composerTarget {
             let sameReview = reviewState.details?.session?.id != nil && reviewState.details?.session?.id == state.review?.details?.session?.id
                 && target.hostId == state.composerTarget?.hostId && target.locationId == state.composerTarget?.locationId
@@ -523,7 +531,7 @@ final class AppModel {
               let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
         command("clearGoal", ["target": fields])
     }
-    func setApprovalPreset(_ preset: String) { command("approvalPreset", ["preset": preset]) }
+    func setPermission(_ permission: String) { command("permission", ["permission": permission]) }
     func interrupt() { command("interrupt") }
     func restartSession() { dictation.cancel(); command("restartSession") }
     func closeSession() { dictation.cancel(); command("closeSession") }
@@ -533,14 +541,14 @@ final class AppModel {
     func cancelCloseSession() { if sessionAction == nil { closePreview = nil; command("cancelCloseSession") } }
     func dismissSessionError() { sessionActionFailed = false; command("dismissSessionError") }
     /// An empty chat takes another engine, and later new chats start with the one chosen last.
-    func chooseBackend(_ backend: String) {
-        preferredBackend = backend
-        command("backend", ["backend": backend])
+    func chooseProvider(_ provider: String) {
+        preferredProvider = provider
+        command("provider", ["provider": provider])
     }
     func startChat(in group: SidebarGroup, branchName: String? = nil, existingBranch: String? = nil) {
-        guard canStartChat(in: group), let repositoryId = group.repositoryId, let backend = creationBackend(from: backends(in: group)), chatCreation != .creating else { return }
+        guard canStartChat(in: group), let repositoryId = group.repositoryId, let provider = creationProvider(from: providers(in: group)), chatCreation != .creating else { return }
         creatingChatGroupID = group.id
-        var fields: [String: Any] = ["repositoryId": repositoryId, "backend": backend]
+        var fields: [String: Any] = ["repositoryId": repositoryId, "provider": provider]
         if let existingBranch { fields["existingBranch"] = existingBranch }
         else if let branchName { fields["branchName"] = branchName }
         command("newChat", fields)
@@ -548,23 +556,23 @@ final class AppModel {
     /// A conversation with no repository: one tap, the engine chosen in the empty chat.
     static let quickChatID = "quick-chat"
     private var creationReady: Bool { connection == .connected && !teamID.isEmpty && !duplicatingAgent }
-    var canStartChat: Bool { creationReady && !backends.isEmpty }
-    func canStartChat(in group: SidebarGroup) -> Bool { creationReady && !backends(in: group).isEmpty }
-    var canDuplicateAgent: Bool { canManageSession && creationReady && !conversationBackends.isEmpty && chatCreation != .creating }
+    var canStartChat: Bool { creationReady && !providers.isEmpty }
+    func canStartChat(in group: SidebarGroup) -> Bool { creationReady && !providers(in: group).isEmpty }
+    var canDuplicateAgent: Bool { canManageSession && creationReady && !conversationProviders.isEmpty && chatCreation != .creating }
     func startQuickChat() {
-        guard let backend = newChatBackend, chatCreation != .creating else { return }
+        guard let provider = newChatProvider, chatCreation != .creating else { return }
         creatingChatGroupID = Self.quickChatID
-        command("newQuickChat", ["backend": backend])
+        command("newQuickChat", ["provider": provider])
     }
     func duplicateAgent() {
-        guard canDuplicateAgent, let target = composerDrafts.target, let fallback = creationBackend(from: conversationBackends),
+        guard canDuplicateAgent, let target = composerDrafts.target, let fallback = creationProvider(from: conversationProviders),
               let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
         dismissChatFailure()
         dictation.cancel()
         duplicateFailed = false
         duplicateTarget = target
-        let initialBackend = backend.flatMap { conversationBackends.contains($0) ? $0 : nil } ?? fallback
-        command("duplicateAgent", ["target": fields, "backend": initialBackend])
+        let initialProvider = provider.flatMap { conversationProviders.contains($0) ? $0 : nil } ?? fallback
+        command("duplicateAgent", ["target": fields, "provider": initialProvider])
     }
     func openAgentRename() {
         guard canManageSession, let target = composerDrafts.target else { return }
@@ -583,10 +591,10 @@ final class AppModel {
         dismissChatFailure()
         newProjectSource = source
     }
-    func createProject(source: NewProjectSource, value: String, backend: String, branch: String? = nil, worktree: [String: String]? = nil) {
-        guard canStartChat, backends.contains(backend), chatCreation != .creating else { return }
-        preferredBackend = backend
-        var fields: [String: Any] = ["source": source.rawValue, "value": value, "selection": ["backend": backend]]
+    func createProject(source: NewProjectSource, value: String, provider: String, branch: String? = nil, worktree: [String: String]? = nil) {
+        guard canStartChat, providers.contains(provider), chatCreation != .creating else { return }
+        preferredProvider = provider
+        var fields: [String: Any] = ["source": source.rawValue, "value": value, "selection": ["provider": provider]]
         if let branch { fields["branch"] = branch }
         if let worktree { fields["worktree"] = worktree }
         command("createProject", fields)

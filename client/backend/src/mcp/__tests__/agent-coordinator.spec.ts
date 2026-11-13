@@ -106,45 +106,32 @@ describe('AppMcpAgentCoordinator', () => {
     expect(onAgentUpdated).toHaveBeenCalledTimes(3);
   });
 
-  it('finishes a turn with status cleanup, a proposed action, and optional effects atomically', async () => {
+  it('applies what finish_turn asked for when the turn completes', async () => {
     const onAnnounce = vi.fn().mockResolvedValue({ success: true, phase: 'finish' });
-    const onCelebrate = vi.fn().mockResolvedValue({
-      success: true,
-      requested: true,
-      kind: 'stars',
-      message: 'Celebration requested.',
-    });
-    const { agents, coordinator, onAgentUpdated } = fixture({ onAnnounce, onCelebrate });
+    const onCelebrate = vi.fn().mockResolvedValue({ success: true, requested: true, kind: 'stars', message: 'Celebration requested.' });
+    const { agents, coordinator } = fixture({ onAnnounce, onCelebrate });
     agents[0]!.delegatedByAgentId = 'agent-parent';
     await coordinator.setStatus('agent-dina', 'Reviewing changes');
 
     await expect(coordinator.finishTurn('agent-dina', {
       flag: 'work_proposed',
+      suggestedPrompt: '  Start the follow-up.  ',
       announcement: { text: '  Ready to hand off.  ' },
       celebration: true,
-    })).resolves.toStrictEqual({
-      success: true,
-      status: null,
-      flag: 'work_proposed',
-      announcement: { success: true, phase: 'finish' },
-      celebration: {
-        success: true,
-        requested: true,
-        kind: 'stars',
-        message: 'Celebration requested.',
-      },
-    });
-    expect(onAnnounce).toHaveBeenCalledWith(agents[0], 'finish', 'Ready to hand off.');
-    expect(onCelebrate).toHaveBeenCalledWith(agents[0]);
+    })).resolves.toStrictEqual({ success: true, status: null, flag: 'work_proposed' });
+    expect(agents[0]!.statusText).toBe('Reviewing changes');
+
+    await coordinator.turnEnded('agent-dina', 'completed', false);
     expect(agents[0]!.statusText).toBeUndefined();
     expect(agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
-    await expect(coordinator.finishTurn('agent-dina', { flag: 'ready_for_review' }))
-      .resolves.toStrictEqual({ success: true, status: null, flag: 'ready_for_review' });
+    expect(agents[0]!.suggestedPrompt).toBe('Start the follow-up.');
+    expect(onAnnounce).toHaveBeenCalledWith(agents[0], 'finish', 'Ready to hand off.');
+    expect(onCelebrate).toHaveBeenCalledWith(agents[0]);
+
+    await coordinator.finishTurn('agent-dina', { flag: 'ready_for_review' });
+    await coordinator.turnEnded('agent-dina', 'completed', false);
     expect(agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
-    await expect(coordinator.finishTurn('agent-dina'))
-      .resolves.toStrictEqual({ success: true, status: null });
-    expect(agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
-    expect(onAgentUpdated).toHaveBeenCalledTimes(4);
+    expect(agents[0]!.suggestedPrompt).toBeUndefined();
   });
 
 
@@ -370,12 +357,12 @@ describe('AppMcpAgentCoordinator', () => {
     });
 
     await coordinator.createAgent('agent-dina', { repoPath: ' /src/app ', name: ' New Agent ', createWorktree: true, branchName: ' coverage ', destinationPath: ' /src/app-coverage ', prompt: ' Fix the flaky test. ', selection: { model: ' gpt-5.6-sol ', reasoningEffort: ' high ', serviceTier: ' fast ' } });
-    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), { repoPath: '/src/app', name: 'New Agent', createWorktree: true, branchName: 'coverage', destinationPath: '/src/app-coverage', prompt: 'Fix the flaky test.', teamId: 'team-app', selection: { backend: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', serviceTier: 'fast' } });
-    agents[0]!.backend = 'claude';
+    expect(onCreateAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), { repoPath: '/src/app', name: 'New Agent', createWorktree: true, branchName: 'coverage', destinationPath: '/src/app-coverage', prompt: 'Fix the flaky test.', teamId: 'team-app', selection: { provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', serviceTier: 'fast' } });
+    agents[0]!.provider = 'claude';
     await coordinator.createAgent('agent-dina', { repoPath: '/src/app' });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'claude' } }));
-    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', selection: { backend: 'codex' } });
-    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { backend: 'codex' } }));
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { provider: 'claude' } }));
+    await coordinator.createAgent('agent-dina', { repoPath: '/src/app', selection: { provider: 'codex' } });
+    expect(onCreateAgent).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ selection: { provider: 'codex' } }));
   });
 
   it('reports unavailable agent creation', async () => {
@@ -474,8 +461,8 @@ function agent(overrides: Partial<Agent> & Pick<Agent, 'id' | 'name' | 'folder'>
     name,
     avatar: 'AG',
     folder,
-    backend: 'codex',
-    backendDefaults: { kind: 'codex' },
+    provider: 'codex',
+    providerDefaults: { kind: 'codex' },
     status: { type: 'idle' },
     createdAt: '2026-08-02T00:00:00.000Z',
     updatedAt: '2026-08-02T00:00:00.000Z',

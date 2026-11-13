@@ -12,11 +12,11 @@ async function fixture() {
   const engine = createEngine({ connector, post() {} });
   await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
   const setup: CompanionReviewSetup = { target: engine.snapshot().composerTarget!, branch: 'feature', baseRef: 'main', uncommitted: true, branchChanges: true,
-    currentThread: false, activeReview: false, reviewerAgentId: null, agentBackend: 'codex', backend: 'claude', backends: ['codex', 'claude'], models: [{ id: 'review-model', name: 'Reviewer', efforts: ['high'] }] };
+    currentThread: false, activeReview: false, reviewerAgentId: null, agentProvider: 'codex', provider: 'claude', providers: ['codex', 'claude'], models: [{ id: 'review-model', name: 'Reviewer', efforts: ['high'] }] };
   reviewSetup.mockResolvedValue(setup);
   return { engine, sendPrompt, startReview, reviewSetup, getWorkspace, setup };
 }
-const input = { scope: { type: 'branch' as const, baseRef: 'main' }, threadMode: 'independent' as const, automation: { enabled: true, maxPriority: 'p2' as const, maxRounds: 3, autoCommit: false }, selection: { backend: 'claude' as const, model: 'review-model', reasoningEffort: 'high', serviceTier: null } };
+const input = { scope: { type: 'branch' as const, baseRef: 'main' }, threadMode: 'independent' as const, automation: { enabled: true, maxPriority: 'p2' as const, maxRounds: 3, autoCommit: false }, selection: { provider: 'claude' as const, model: 'review-model', reasoningEffort: 'high', serviceTier: null } };
 
 describe('native composer actions', () => {
   it('sends Delegate as a command and keeps the unfinished draft', async () => {
@@ -135,7 +135,7 @@ it('refreshes review findings, serializes actions and never replays an uncertain
     expect(reviewAction).toHaveBeenCalledTimes(2);
     expect(engine.snapshot().review.action).toBe('failed');
     details.target = { ...details.target, sessionId: 'next-round-session' };
-    workspace = { ...workspace, reviewFindings: { "demo-agent": 3 }, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, backendSession: { kind: 'codex' as const, threadId: 'next-round-session' } } : agent) };
+    workspace = { ...workspace, reviewFindings: { "demo-agent": 3 }, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerSession: { kind: 'codex' as const, conversationId: 'next-round-session' } } : agent) };
     update(workspace, null);
     expect(engine.snapshot().reviewFindingsCount).toBe(3);
     await vi.waitFor(() => expect(engine.snapshot().review.details?.target.sessionId).toBe('next-round-session'));

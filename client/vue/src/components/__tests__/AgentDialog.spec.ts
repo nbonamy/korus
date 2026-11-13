@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import { describe, expect, it, vi } from 'vitest';
 import AgentDialog from '../AgentDialog.vue';
 import type { Agent, CreateAgentInput, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput } from '@workspace/core/contracts';
@@ -12,8 +12,8 @@ const idleAgent: Agent = {
   name: 'Dina',
   avatar: 'DI',
   folder: '/Users/nbonamy/src/agent-workspace',
-  backend: 'codex',
-  backendDefaults: { kind: 'codex' },
+  provider: 'codex',
+  providerDefaults: { kind: 'codex' },
   status: { type: 'idle' },
   createdAt: '2026-06-05T00:00:00.000Z',
   updatedAt: '2026-06-05T00:00:00.000Z',
@@ -70,7 +70,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/new-agent', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/new-agent', selection: { ...{ provider: 'codex' } } });
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
   });
 
@@ -85,7 +85,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: 'Custom Agent', folder: '/Users/nbonamy/src/new-agent', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'Custom Agent', folder: '/Users/nbonamy/src/new-agent', selection: { ...{ provider: 'codex' } } });
   });
 
   it('creates a Claude Code agent when selected', async () => {
@@ -100,7 +100,7 @@ describe('AgentDialog', () => {
     await emitSelect(wrapper, 'agent-dialog-backend', 'claude');
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/claude-agent', selection: { ...{ backend: 'claude' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/claude-agent', selection: { ...{ provider: 'claude' } } });
   });
 
   it('keeps the folder empty when folder selection is cancelled', async () => {
@@ -152,8 +152,8 @@ describe('AgentDialog', () => {
     const wrapper = mountDialog({
       agent: {
         ...idleAgent,
-        backend: 'claude',
-        backendDefaults: { kind: 'claude' },
+        provider: 'claude',
+        providerDefaults: { kind: 'claude' },
       },
       mode: 'edit',
       updateAgent,
@@ -197,12 +197,12 @@ describe('AgentDialog', () => {
     await emitSelect(wrapper, 'agent-dialog-team', '__new_team__');
     await nextTick();
 
-    const newTeamInput = wrapper.get<HTMLInputElement>('[aria-label="New team name"]');
+    const newTeamInput = wrapper.get<HTMLInputElement>('[aria-label="New workspace name"]');
     expect(newTeamInput.element.value).toBe('GitHub #12');
 
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/issue-agent', newTeamName: 'GitHub #12', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/issue-agent', newTeamName: 'GitHub #12', selection: { ...{ provider: 'codex' } } });
   });
 
   it('creates ticket-driven agents in an existing selected team', async () => {
@@ -231,7 +231,7 @@ describe('AgentDialog', () => {
     await chooseCustomFolder(wrapper);
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/existing-team-agent', teamId: 'team-skwad', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/existing-team-agent', teamId: 'team-skwad', selection: { ...{ provider: 'codex' } } });
   });
 
   it('allows renaming non-idle agents', async () => {
@@ -308,7 +308,7 @@ describe('AgentDialog', () => {
     expect(wrapper.get('#agent-dialog-name').attributes('placeholder')).toBe('source-folder');
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-source-folder', sourceRepositoryName: 'agent-workspace', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/Users/nbonamy/src/agent-workspace-source-folder', sourceRepositoryName: 'agent-workspace', selection: { ...{ provider: 'codex' } } });
   });
 
   it('prefers an explicitly requested repository for quick agent creation', async () => {
@@ -374,7 +374,7 @@ describe('AgentDialog', () => {
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'fix/gh-24',
     });
-    expect(createAgent).toHaveBeenCalledWith({ name: 'agent-workspace - gh-24', folder: '/Users/nbonamy/src/agent-workspace-fix-gh-24', sourceRepositoryName: 'agent-workspace', selection: { ...{ backend: 'codex' } } });
+    expect(createAgent).toHaveBeenCalledWith({ name: 'agent-workspace - gh-24', folder: '/Users/nbonamy/src/agent-workspace-fix-gh-24', sourceRepositoryName: 'agent-workspace', selection: { ...{ provider: 'codex' } } });
   });
 
   it('keeps the selected repository when streaming snapshots replace team state', async () => {
@@ -441,7 +441,7 @@ describe('AgentDialog', () => {
     await nextTick();
     await saveButton(wrapper).trigger('click');
 
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/agent-workspace-ssh-agent', sourceRepositoryName: 'agent-workspace', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/agent-workspace-ssh-agent', sourceRepositoryName: 'agent-workspace', selection: { provider: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('picks a custom folder through the selected SSH connection', async () => {
@@ -487,7 +487,7 @@ describe('AgentDialog', () => {
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src' });
     expect(listSourceFolders).toHaveBeenCalledWith({ remoteConnectionId: 'connection-devbox', path: '/home/nicolas/src/witsy' });
-    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/witsy', selection: { backend: 'codex' }, remoteConnectionId: 'connection-devbox' });
+    expect(createAgent).toHaveBeenCalledWith({ name: null, folder: '/home/nicolas/src/witsy', selection: { provider: 'codex' }, remoteConnectionId: 'connection-devbox' });
   });
 
   it('loads selected repository worktrees through the backend list action', async () => {
@@ -610,7 +610,7 @@ function mountDialog(overrides: Partial<{
       ...overrides,
     },
     global: {
-      provide: { [backendChoicesKey as symbol]: computed(() => overrides.claudeCodeEnabled ? ['codex', 'claude'] : ['codex']) },
+      provide: { [providerChoicesKey as symbol]: computed(() => overrides.claudeCodeEnabled ? ['codex', 'claude'] : ['codex']) },
       stubs: {
         ElDialog: {
           name: 'ElDialog',

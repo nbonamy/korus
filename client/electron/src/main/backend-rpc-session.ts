@@ -122,8 +122,8 @@ export class BackendRpcSession {
       const message = parseAppRpcMessage(JSON.parse(line));
       if (isAppRpcNotification(message)) {
         const params = message.params as { type?: string; agentId?: string; threadId?: string; seq?: number } | undefined;
-        if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && typeof params?.type === 'string' && params.type.endsWith('.conversationSnapshotChanged')) warnMain('conversation-load', 'electron.frame.received', {
-          agentId: params.agentId, threadId: params.threadId, seq: params.seq, bytes: Buffer.byteLength(line),
+        if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && typeof params?.type === 'string' && params.type === 'conversation.sessionSnapshot') warnMain('conversation-load', 'electron.frame.received', {
+          agentId: params.agentId, seq: params.seq, bytes: Buffer.byteLength(line),
           at: performance.timeOrigin + performance.now(), parseMs: performance.now() - parseStarted,
         });
         this.handleNotification(message);
@@ -208,8 +208,8 @@ export class BackendRpcSession {
       return;
     }
     for (const listener of this.eventListeners) listener(event);
-    if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && event.type === 'codex.conversationSnapshotChanged') warnMain('conversation-load', 'electron.frame.decoded-and-forwarded', {
-      agentId: event.agentId, threadId: event.threadId, seq: event.seq, revision: event.payload.revision,
+    if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1' && event.type === 'conversation.sessionSnapshot') warnMain('conversation-load', 'electron.frame.decoded-and-forwarded', {
+      agentId: event.agentId, conversation: event.payload.conversation, seq: event.seq, revision: event.payload.snapshot.revision,
       at: performance.timeOrigin + performance.now(), durationMs: performance.now() - started,
     });
   }

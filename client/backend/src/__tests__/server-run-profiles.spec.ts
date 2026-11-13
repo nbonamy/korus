@@ -14,7 +14,7 @@ const request = (server: AppBackendServer, method: string, params: object) => se
 async function local(options: Pick<AppBackendServerOptions, 'agentGitService'> = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'korus-profile-boundary-')));
   const snapshot = createTestSnapshot();
-  const agent = { ...createRemoteAgent(), id: 'one', teamId: snapshot.teams[0].id, folder: root, backendSession: undefined };
+  const agent = { ...createRemoteAgent(), id: 'one', teamId: snapshot.teams[0].id, folder: root, providerSession: undefined };
   snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];
   snapshot.teams.push({ id: 'other', name: 'Other', agentIds: [] });
   const runProfiles = new RunProfileService(path.join(root, 'home', 'profiles.json'));

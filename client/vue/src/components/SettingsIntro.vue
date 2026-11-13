@@ -31,7 +31,7 @@ defineProps<{ kind?: SettingsIllustrationKind; title: string; description: strin
   background: var(--color-card-background);
 }
 
-.settings-intro :slotted(.backend-icon.settings-intro-logo) {
+.settings-intro :slotted(.provider-icon.settings-intro-logo) {
   width: var(--space-20) !important;
   height: var(--space-20) !important;
   color: var(--color-text);

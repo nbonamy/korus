@@ -19,7 +19,7 @@ Development builds have additional runtime and SDK requirements described in the
 3. Complete the authentication flow for that selected location. A detected engine and a connected account are separate states.
 4. Confirm the engine is enabled. The initial **Continue** button needs at least one installed, connected, enabled engine.
 
-See the [provider guides](../providers/) for the engine's setup and sign-in steps. If Antigravity is not detected, check that its runtime and matching harness are both installed, then select the refresh icon. Include the selected provider and any custom runtime or provider home when reporting the error.
+See the [provider guides](../providers/) for the engine's setup and sign-in steps. If Antigravity is not detected, check that `agy --version` reports 1.5.1 or later, then select the refresh icon. Include the selected provider and any custom runtime or provider home when reporting the error.
 
 ## My previous conversations are missing after changing setup
 
@@ -59,7 +59,7 @@ Use the extension's **Update** or **Reinstall** action when needed, then reload 
 
 ## A skill is missing from an agent
 
-Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote teams use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
+Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote workspaces use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
 
 ## Computer Use cannot act
 

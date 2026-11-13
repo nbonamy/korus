@@ -12,7 +12,7 @@ const branch = 'codex/feature-057-record-trading-actions';
 const names = ['MartinXP', 'KentXP', 'DaveXP', 'An exceptionally long agent name that cannot fit inside a narrow conversation pane'];
 const agents: Agent[] = names.map((name, index) => ({
   id: `agent-${index}`, name, avatar: '👋', folder: '/projects/trading-actions',
-  backend: 'codex', backendDefaults: { kind: 'codex' },
+  provider: 'codex', providerDefaults: { kind: 'codex' },
   status: { type: 'working' }, statusText: 'Validating the recorded trading actions and checking the resulting account balances',
   createdAt: '', updatedAt: '',
 }));
@@ -32,7 +32,7 @@ createApp({
       h('select', { 'aria-label': 'Assigned agent', value: assigned.value, onChange: (event: Event) => { assigned.value = Number((event.target as HTMLSelectElement).value); } },
         names.map((name, index) => h('option', { value: index }, name))),
       h('section', { id: 'pane', style: `width:${width.value}px;max-width:100%;height:300px;display:flex;flex-direction:column;border:1px solid var(--color-border)` }, [
-        h(AgentHeader, { agent: agents[assigned.value], gitStatus, repositoryIcon: '📈', backendRuntime: { backend: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false, class: 'agent-header--pane' }),
+        h(AgentHeader, { agent: agents[assigned.value], gitStatus, repositoryIcon: '📈', providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false, class: 'agent-header--pane' }),
         h('div', { id: 'conversation', style: 'min-height:0;overflow:auto' }, Array.from({ length: 40 }, (_, index) => h('p', `Conversation message ${index + 1}`))),
       ]),
     ]);

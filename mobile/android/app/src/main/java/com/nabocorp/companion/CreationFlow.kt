@@ -5,7 +5,7 @@ import org.json.JSONObject
 internal enum class CreationKind { PROJECT, LOCAL, URL, GITHUB, GITLAB, EXISTING, WORKTREE, QUICK, DEFAULT }
 
 internal fun JSONObject.creationBackends(repositoryId: String? = null): List<String> =
-    repositoryId?.let { obj("repositoryBackends").optJSONArray(it) }?.let { choices -> (0 until choices.length()).map { choices.getString(it) } } ?: strings("backends")
+    repositoryId?.let { obj("repositoryProviders").optJSONArray(it) }?.let { choices -> (0 until choices.length()).map { choices.getString(it) } } ?: strings("providers")
 
 /** Native form state only; catalogs, workspace mutation and resulting agent selection stay in the engine. */
 internal data class CreationFlow(
@@ -53,14 +53,14 @@ internal data class CreationFlow(
         return when (kind) {
             CreationKind.PROJECT, CreationKind.URL -> {
                 if (input.isEmpty() || kind == CreationKind.PROJECT && (input in listOf(".", "..") || input.any { it == '/' || it == '\\' })) return null
-                json("type" to "createProject", "source" to if (kind == CreationKind.PROJECT) "new" else "url", "value" to input, "selection" to json("backend" to backend))
+                json("type" to "createProject", "source" to if (kind == CreationKind.PROJECT) "new" else "url", "value" to input, "selection" to json("provider" to backend))
             }
             CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL -> {
                 val repository = repositoryId ?: return null
                 val catalog = catalog(state)
                 if (catalog.string("status") != "loaded") return null
                 val names = catalog.items("items").map { it.string("name") }
-                json("type" to "createProject", "source" to projectSource, "value" to repository, "selection" to json("backend" to backend)).apply {
+                json("type" to "createProject", "source" to projectSource, "value" to repository, "selection" to json("provider" to backend)).apply {
                     if (newBranch) {
                         val branch = branchName.trim()
                         if (branch.isBlank() || names.contains(branch) || !names.contains(baseBranch)) return null
@@ -74,14 +74,14 @@ internal data class CreationFlow(
             CreationKind.EXISTING -> {
                 val catalog = catalog(state)
                 if (catalog.string("status") != "loaded" || !catalog.items("items").any { it.string("name") == selectedBranch }) return null
-                json("type" to "newChat", "repositoryId" to repositoryId, "backend" to backend, "existingBranch" to selectedBranch)
+                json("type" to "newChat", "repositoryId" to repositoryId, "provider" to backend, "existingBranch" to selectedBranch)
             }
             CreationKind.WORKTREE -> {
                 if (branchName.trim().isEmpty() || repositoryId.isNullOrBlank()) return null
-                json("type" to "newChat", "repositoryId" to repositoryId, "backend" to backend, "branchName" to branchName.trim())
+                json("type" to "newChat", "repositoryId" to repositoryId, "provider" to backend, "branchName" to branchName.trim())
             }
-            CreationKind.DEFAULT -> if (repositoryId.isNullOrBlank()) null else json("type" to "newChat", "repositoryId" to repositoryId, "backend" to backend)
-            CreationKind.QUICK -> json("type" to "newQuickChat", "backend" to backend)
+            CreationKind.DEFAULT -> if (repositoryId.isNullOrBlank()) null else json("type" to "newChat", "repositoryId" to repositoryId, "provider" to backend)
+            CreationKind.QUICK -> json("type" to "newQuickChat", "provider" to backend)
         }
     }
 }

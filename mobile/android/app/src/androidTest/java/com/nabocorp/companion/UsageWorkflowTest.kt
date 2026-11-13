@@ -19,7 +19,7 @@ class UsageWorkflowTest {
 
     @Test fun reconnectLoadsUsageAndProviderRetryReplacesItsFailure() {
         val connection = mutableStateOf(Connection.Disconnected)
-        val usage = mutableStateOf(json("status" to "loaded", "providers" to JSONArray().put(json("backend" to "codex", "failed" to false,
+        val usage = mutableStateOf(json("status" to "loaded", "providers" to JSONArray().put(json("provider" to "codex", "failed" to false,
             "limits" to json("primary" to json("usedPercent" to 80, "windowDurationMins" to 300), "secondary" to json("usedPercent" to null, "windowDurationMins" to 10080))))))
         var refreshed = 0
         var reconnected = 0
@@ -37,18 +37,34 @@ class UsageWorkflowTest {
         app.onNodeWithText("20% left").assertIsDisplayed()
         app.onNodeWithText("Weekly").assertIsDisplayed()
         app.onNodeWithText("Unavailable").assertIsDisplayed()
-        app.runOnIdle { usage.value = json("status" to "loaded", "providers" to JSONArray().put(json("backend" to "claude", "limits" to null, "failed" to true))) }
+        app.runOnIdle { usage.value = json("status" to "loaded", "providers" to JSONArray().put(json("provider" to "claude", "limits" to null, "failed" to true))) }
         app.onNodeWithText("Claude").assertIsDisplayed()
         app.onNodeWithText("Couldn’t load usage").assertIsDisplayed()
         app.onNodeWithText("Retry").performClick()
         app.runOnIdle {
             assertEquals(2, refreshed)
-            usage.value = json("status" to "loaded", "providers" to JSONArray().put(json("backend" to "claude", "failed" to false,
+            usage.value = json("status" to "loaded", "providers" to JSONArray().put(json("provider" to "claude", "failed" to false,
                 "limits" to json("primary" to json("usedPercent" to 40, "windowDurationMins" to 300, "resetsAt" to (System.currentTimeMillis() / 1000.0 + 3600))))))
         }
         app.onNodeWithText("60% left").assertIsDisplayed()
         app.onNodeWithText("Couldn’t load usage").assertDoesNotExist()
         app.onNodeWithText("Resets in ", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun everyEngineIsNamedAndWindowsKeepTheLabelTheEngineGaveThem() {
+        val usage = json("status" to "loaded", "providers" to JSONArray()
+            .put(json("provider" to "antigravity", "failed" to false, "limits" to json(
+                "primary" to json("label" to "Claude", "usedPercent" to 10, "windowDurationMins" to 300),
+                "secondary" to json("label" to "Gemini", "usedPercent" to 40, "windowDurationMins" to 300))))
+            .put(json("provider" to "cursor", "failed" to false, "limits" to json("primary" to json("label" to null, "usedPercent" to 25, "windowDurationMins" to 300)))))
+        app.activityRule.scenario.onActivity { activity ->
+            activity.setContent { MaterialTheme { UsageContent(usage, Connection.Connected, {}, {}) } }
+        }
+        app.onNodeWithText("Antigravity").assertIsDisplayed()
+        app.onNodeWithText("Cursor").assertIsDisplayed()
+        app.onNodeWithText("Claude").assertIsDisplayed()
+        app.onNodeWithText("Gemini").assertIsDisplayed()
+        app.onNodeWithText("5h").assertIsDisplayed()
     }
 
     @Test fun loadingAndFailedFetchCannotMasqueradeAsEmptyQuotaData() {

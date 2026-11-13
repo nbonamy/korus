@@ -114,15 +114,15 @@ describe('App', () => {
     });
     await flushPromises();
 
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Domain review');
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Build the unified backend.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Domain review');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Build the unified backend.');
     expect(wrapper.get('.plan-review-footer').findAll('button').map(button => button.text())).toContain('Approve');
   });
 
   it('loads the main-process snapshot on mount', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes = [{
-      backend: 'codex',
+    snapshot.providerRuntimes = [{
+      provider: 'codex',
       status: 'running',
       detail: 'ready',
     }];
@@ -173,7 +173,7 @@ describe('App', () => {
 
   it('submits bare compact without opening the session-compression flow', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-old' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-old' };
     const sendPrompt = vi.fn().mockResolvedValue(snapshot);
     setElectronTestClient({
       getSnapshot: vi.fn().mockResolvedValue(snapshot),
@@ -309,6 +309,37 @@ describe('App', () => {
     expect(wrapper.findComponent(AgentCloseDialog).props('visible')).toBe(false);
     expect(closeAgent).toHaveBeenCalledWith(agent.id);
     expect(getAgentClosePreview).toHaveBeenCalledWith(agent.id);
+  });
+
+  it('offers to undo a plain close, bringing the agent back in its place', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const next = { ...agent, id: 'agent-next', name: 'Next agent' };
+    snapshot.agents = [agent, next];
+    snapshot.teams[0]!.agentIds = [agent.id, next.id];
+    const closeAgent = vi.fn().mockResolvedValue({ ...snapshot, agents: [next] });
+    const restoreClosedAgent = vi.fn().mockResolvedValue(snapshot);
+    setElectronTestClient({
+      getSnapshot: vi.fn().mockResolvedValue(snapshot),
+      getAgentClosePreview: vi.fn().mockResolvedValue({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }),
+      closeAgent,
+      restoreClosedAgent,
+      onEvent: vi.fn(),
+    });
+    const wrapper = mount(App, { global: { stubs: { AppShell: true, ElPopover: { template: '<div><slot name="reference" /><slot /></div>' } } } });
+    await flushPromises();
+
+    wrapper.findComponent(AppShell).vm.$emit('close-agent', agent.id);
+    await flushPromises();
+    const undo = [...document.body.querySelectorAll<HTMLElement>('.agent-close-undo')].at(-1);
+    expect(undo?.textContent).toBe('Undo');
+    undo!.click();
+    await flushPromises();
+
+    expect(restoreClosedAgent).toHaveBeenCalledExactlyOnceWith({
+      agent: expect.objectContaining({ id: agent.id, name: agent.name }), index: 0, teamPosition: 0, nextAgentId: next.id,
+    });
+    expect(document.body.contains(undo!)).toBe(false);
   });
 
   it('does not treat matching folder paths on different backend locations as a shared worktree', async () => {

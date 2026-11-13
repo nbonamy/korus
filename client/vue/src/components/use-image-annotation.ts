@@ -1,11 +1,10 @@
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@codex-app-sdk/core/surface';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import {
-  getCodexNativeRendererApi,
-  type CodexNativeAttachment,
-  type CodexComposerState,
-  type CodexRendererSendMessageOptions,
-} from '@codex-app-sdk/vue';
+  getNativeRendererApi,
+  type NativeAttachment,
+  type ComposerState} from '@korus-dev/agent-ui-sdk';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import type { RendererPromptAttachment, RendererSendPromptOptions } from '@workspace/core/contracts';
 import { computed, reactive, ref } from 'vue';
 import { translate } from '../i18n';
@@ -19,24 +18,24 @@ import {
 
 type CapturedImageAnnotations = {
   agentId: string | undefined;
-  attachments: CodexNativeAttachment[];
-  composerState: CodexComposerState;
+  attachments: NativeAttachment[];
+  composerState: ComposerState;
   drafts: Record<string, SavedImageAnnotations>;
 };
 
 type AttachmentAnnotationTarget = {
   agentId: string;
-  attachment: CodexNativeAttachment;
+  attachment: NativeAttachment;
 };
 
 export function useImageAnnotation(options: {
-  composerAttachments: () => readonly CodexNativeAttachment[];
-  composerState: () => CodexComposerState;
+  composerAttachments: () => readonly NativeAttachment[];
+  composerState: () => ComposerState;
   currentAgentId: () => string | undefined;
   debugFallbackImageSource: string;
   notifyError: (message: string) => void;
-  updateComposerAttachments: (agentId: string, attachments: readonly CodexNativeAttachment[]) => void;
-  updateComposerState: (agentId: string, state: CodexComposerState) => void;
+  updateComposerAttachments: (agentId: string, attachments: readonly NativeAttachment[]) => void;
+  updateComposerState: (agentId: string, state: ComposerState) => void;
 }) {
   const draftsByAgentId = conversationAnnotationDrafts('image', () => reactive<Record<string, Record<string, SavedImageAnnotations>>>({}));
   const debugVisible = ref(false);
@@ -65,7 +64,7 @@ export function useImageAnnotation(options: {
     return Object.fromEntries(Object.entries(drafts).map(([reference, draft]) => [reference, draft.annotations.length]));
   });
 
-  function openAttachment(attachment: CodexNativeAttachment): void {
+  function openAttachment(attachment: NativeAttachment): void {
     const agentId = options.currentAgentId();
     if (!agentId || attachment.type !== 'image') return;
     if (!attachment.previewUrl) {
@@ -134,7 +133,7 @@ export function useImageAnnotation(options: {
 
   async function forward(
     prompt: string,
-    sendOptions: CodexRendererSendMessageOptions | undefined,
+    sendOptions: ReferenceSendPromptOptions | undefined,
     send: (nextPrompt: string, nextOptions?: RendererSendPromptOptions) => void | Promise<void>,
     captured: CapturedImageAnnotations = capture(),
   ): Promise<void> {
@@ -150,7 +149,7 @@ export function useImageAnnotation(options: {
       await send(prompt, promptOptions(sendOptions));
       return;
     }
-    const nativeApi = getCodexNativeRendererApi();
+    const nativeApi = getNativeRendererApi();
     if (!nativeApi?.capabilities.attachments) {
       throw new Error(translate('surface.appShell.annotatedImagesCannotBePreparedByThisHost'));
     }
@@ -173,7 +172,7 @@ export function useImageAnnotation(options: {
         type: attachment.type,
         reference: attachment.reference,
       }));
-      const nextOptions: CodexRendererSendMessageOptions = {
+      const nextOptions: ReferenceSendPromptOptions = {
         ...sendOptions,
         attachments: submittedAttachments.map((attachment) => ({
           ...attachment,
@@ -199,7 +198,7 @@ export function useImageAnnotation(options: {
     }
   }
 
-  function prune(agentId: string, attachments: readonly CodexNativeAttachment[]): void {
+  function prune(agentId: string, attachments: readonly NativeAttachment[]): void {
     const existing = draftsByAgentId[agentId];
     if (!existing) return;
     const references = new Set(attachments.map((attachment) => attachment.reference));
@@ -256,7 +255,7 @@ function cloneDraft(draft: SavedImageAnnotations): SavedImageAnnotations {
   };
 }
 
-function promptOptions(options?: CodexRendererSendMessageOptions): RendererSendPromptOptions | undefined {
+function promptOptions(options?: ReferenceSendPromptOptions): RendererSendPromptOptions | undefined {
   const attachments = options?.attachments?.map<RendererPromptAttachment>((attachment) => ({ ...attachment }));
   if (!attachments?.length && !options?.inputMethod && options?.content === undefined) return undefined;
   return {

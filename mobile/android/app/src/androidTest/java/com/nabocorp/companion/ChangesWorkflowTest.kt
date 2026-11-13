@@ -59,7 +59,7 @@ class ChangesWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }; e.state(state()); mount(e)
             app.onNodeWithTag("composer").performTextInput("Keep this draft")
-            val agent = json("id" to "agent", "name" to "Agent", "backend" to "codex", "status" to json("type" to "idle"))
+            val agent = json("id" to "agent", "name" to "Agent", "provider" to "codex", "status" to json("type" to "idle"))
             val payload = json("agentId" to "agent", "agent" to agent, "generation" to 1, "ready" to true, "peers" to JSONArray(),
                 "frame" to json("payload" to json("snapshot" to json("messages" to JSONArray().put(json("id" to "m", "role" to "assistant", "status" to "complete", "parts" to JSONArray().put(json("type" to "text", "text" to "Read [app.kt](src/app.kt:1)")))), "turns" to JSONArray(), "busy" to false))))
             e.event("conversation", payload)

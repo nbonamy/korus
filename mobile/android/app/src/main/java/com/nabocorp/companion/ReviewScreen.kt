@@ -45,7 +45,7 @@ import org.json.JSONObject
     val choices = model.reviewChoices
     var priorConnection by remember { mutableStateOf(connected) }
     LaunchedEffect(connected) {
-        if (connected && !priorConnection) model.command("loadReview", "backend" to choices.backend.ifBlank { null })
+        if (connected && !priorConnection) model.command("loadReview", "provider" to choices.backend.ifBlank { null })
         priorConnection = connected
     }
     BackHandler { if (!starting) model.dismissReview() }
@@ -61,8 +61,8 @@ import org.json.JSONObject
             }
             setup != null && !setup.optBoolean("uncommitted") && !setup.optBoolean("branchChanges") -> AppUnavailable("Nothing to review", Modifier.weight(1f), Icons.Outlined.CheckCircle, "This workspace has no changes to review.")
             setup != null -> ReviewForm(setup, choices, status == "loading" || !connected, status, { model.reviewChoices = it },
-                { backend -> model.reviewChoices = choices.copy(backend = backend); model.command("loadReview", "backend" to backend) },
-                { model.command("loadReview", "backend" to choices.backend) }, Modifier.weight(1f))
+                { backend -> model.reviewChoices = choices.copy(backend = backend); model.command("loadReview", "provider" to backend) },
+                { model.command("loadReview", "provider" to choices.backend) }, Modifier.weight(1f))
             status == "failed" || !connected -> AppUnavailable("Couldn’t load review setup", Modifier.weight(1f), Icons.Outlined.WifiOff, "Check your laptop connection and try again.") {
                 AppUnavailableAction(if (connected) "Retry" else "Reconnect", { if (connected) model.command("loadReview") else model.command("reconnect") })
             }
@@ -92,10 +92,10 @@ import org.json.JSONObject
                 choices.thread == "current", !busy && setup.optBoolean("currentThread") && !choices.automatic) { choose(choices.copy(thread = "current")) }
         }
         if (choices.thread == "independent") AppSection("Model") {
-            NativeChoicePicker("Engine", "Reviewer engine", choices.backend, setup.strings("backends").map { it to it.replaceFirstChar(Char::uppercase) }, !busy, provider)
+            NativeChoicePicker("Engine", "Reviewer engine", choices.backend, setup.strings("providers").map { it to it.replaceFirstChar(Char::uppercase) }, !busy, provider)
             AppDivider()
             NativeChoicePicker("Model", "Reviewer model", choices.model,
-                listOf("" to if (setup.string("backend") == setup.string("agentBackend")) "Current Model" else "Default Model") + setup.items("models").map { it.string("id") to it.string("name") }, !busy) { id ->
+                listOf("" to if (setup.string("provider") == setup.string("agentProvider")) "Current Model" else "Default Model") + setup.items("models").map { it.string("id") to it.string("name") }, !busy) { id ->
                 val selected = setup.items("models").firstOrNull { it.string("id") == id }
                 choose(choices.copy(model = id, effort = choices.effort.takeIf { selected?.strings("efforts")?.contains(it) == true }.orEmpty(),
                     serviceTier = choices.serviceTier?.takeIf { tier -> selected?.items("tiers")?.any { it.string("id") == tier } == true }))

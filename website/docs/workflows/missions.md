@@ -8,16 +8,16 @@ A Mission turns a feature into a staged workflow with an approved brief, reposit
 
 Use a direct agent conversation for a focused fix or investigation. Use a Mission when you want explicit requirements and ticket approval before implementation, especially when the feature spans repositories. Mission workers are separate Korus agents; they are not simply native subagents of the conversation where you started.
 
-## Prepare the team
+## Prepare the workspace
 
-Connect the [providers](../providers/) the team will use. Add at least one repository-backed agent to the team before creating a Mission. For a feature spanning an API and a frontend, add an agent for each repository to that same team. Tickets can only target repositories represented in the Mission's team.
+Connect the [providers](../providers/) the workspace will use. Add at least one repository-backed agent to the workspace before creating a Mission. For a feature spanning an API and a frontend, add an agent for each repository to that same workspace. Tickets can only target repositories represented in the Mission's workspace.
 
 Check those repositories have Git history and can create worktrees. Have their setup instructions, dependency requirements, and verification commands available to the agents.
 
 ## Create the Mission
 
-1. Select the team where the feature belongs.
-2. Click **New mission** in the sidebar. If the team already has Missions, use the **+** beside **Missions**.
+1. Select the workspace where the feature belongs.
+2. Click **New mission** in the sidebar. If the workspace already has Missions, use the **+** beside **Missions**.
 3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub, GitLab, or Linear integration. Choose the provider first, then its repository, GitLab project, or Linear **Team / project**, and select the issue.
 4. Work with the Mission lead until the Requirements artifact is specific enough to approve.
 
@@ -25,7 +25,7 @@ To start from a conversation, type `/mission`, optionally followed by instructio
 
 For example:
 
-> Add CSV export to the reporting page. The API and web repositories are in this team. Only authorized users can export; preserve the current filters; escape spreadsheet formulas. Success means a browser download with the expected rows plus API authorization and escaping tests. Do not add scheduled exports.
+> Add CSV export to the reporting page. The API and web repositories are in this workspace. Only authorized users can export; preserve the current filters; escape spreadsheet formulas. Success means a browser download with the expected rows plus API authorization and escaping tests. Do not add scheduled exports.
 
 A selected issue supplies context for Requirements. A Linear team or project does not select an execution repository, and Mission tickets are not automatically exported as Linear issues. Review the code-repository assignment on each Mission ticket before approving implementation. Ship uses the code repository's provider: pull requests on GitHub or merge requests on GitLab.
 
@@ -92,6 +92,6 @@ The Mission completes when every affected repository has a recorded pull request
 
 ## Resume or clean up
 
-Mission stages, accepted artifacts, run status, worktree mappings, and delivery results are saved. Return to the Mission from its team's sidebar to continue. Read a failure's error and fix the underlying setup, provider, or Git issue before retrying. If a stage has no active run or proposal, **Continue mission** can resume it when offered.
+Mission stages, accepted artifacts, run status, worktree mappings, and delivery results are saved. Return to the Mission from its workspace's sidebar to continue. Read a failure's error and fix the underlying setup, provider, or Git issue before retrying. If a stage has no active run or proposal, **Continue mission** can resume it when offered.
 
 To remove a Mission, open its sidebar context menu and choose delete. The confirmation explains that Mission conversations and artifacts will be removed. **Keep worktrees** removes the Mission while preserving its checkouts. **Delete mission and worktrees** also removes the Mission worktrees and local branches and discards uncommitted changes. Preserve anything you still need before choosing that option.

@@ -12,9 +12,8 @@
     :spoken-announcements-enabled="snapshot.general.spokenAnnouncementsEnabled"
     :spoken-announcements-muted="snapshot.general.spokenAnnouncementsMuted"
     :agent-sidebar-expanded="showAgentSidebar"
-    :rate-limits="snapshot.accountRateLimits"
-    :enabled-backends="enabledAgentBackends(snapshot)"
-    :backend-rate-limits="snapshot.backendAccountRateLimits"
+    :enabled-providers="enabledAgentProviders(snapshot)"
+    :provider-rate-limits="snapshot.providerAccountRateLimits"
     :provider-connections="snapshot.providerConnections"
     :account="authentication?.account ?? null"
     :phone-scope="phoneScope"
@@ -115,7 +114,7 @@
 <script setup lang="ts">
 import PaneTransition from '../shared/PaneTransition.vue';
 import { missionAgentIds } from '@workspace/core/mission-attention';
-import { enabledAgentBackends } from '@workspace/core/agent-backends';
+import { enabledAgentProviders } from '@workspace/core/agent-providers';
 import { orderAgentsLikeWorktreeSidebar } from '@workspace/core/workspace-sidebar';
 import type {
   Agent,

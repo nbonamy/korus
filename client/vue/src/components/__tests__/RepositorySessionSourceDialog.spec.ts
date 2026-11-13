@@ -8,7 +8,7 @@ import '../../styles/base.css';
 import RepositorySessionSourceDialog from '../RepositorySessionSourceDialog.vue';
 import { createClientApiMock } from '../../../tests/support/client-api-mock';
 import { appApi, configureAppClient } from '../../platform-api';
-import { backendSnapshotKey } from '../backend-selection';
+import { backendSnapshotKey } from '../provider-selection';
 
 const branches: SourceBranch[] = [
   { name: 'main', isDefault: true, worktreePath: '/repos/project' },
@@ -36,15 +36,15 @@ describe('RepositorySessionSourceDialog', () => {
   // before the chosen machine has an agent that could supply a catalog.
   it('starts repository work with the selected remote provider and host catalog', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const remote = { id: 'claude-box', kind: 'ssh' as const, host: 'box', name: 'Box', status: 'ready' as const, createdAt: '', updatedAt: '',
-      providerConnections: [{ backend: 'claude' as const, installed: true, connected: true, checking: false }] };
+      providerConnections: [{ provider: 'claude' as const, installed: true, connected: true, checking: false }] };
     snapshot.remoteConnections.connections = [remote];
     const { api } = createClientApiMock();
-    api.listBackendModels.mockResolvedValue([{ id: 'remote-sonnet', model: 'sonnet', displayName: 'Remote Sonnet', isDefault: true }]);
+    api.listProviderModels.mockResolvedValue([{ id: 'remote-sonnet', model: 'sonnet', displayName: 'Remote Sonnet', isDefault: true }]);
     configureAppClient({ platform: 'desktop', api });
     const wrapper = mount(RepositorySessionSourceDialog, {
-      props: { visible: true, repositoryName: 'repo', selectedRepositoryId: issue.sourceId, branches, workItems: [issue], backend: 'claude', hosts: [remote], hostId: remote.id },
+      props: { visible: true, repositoryName: 'repo', selectedRepositoryId: issue.sourceId, branches, workItems: [issue], provider: 'claude', hosts: [remote], hostId: remote.id },
       global: { provide: { [backendSnapshotKey as symbol]: () => snapshot } },
     });
     await flushPromises();
@@ -53,10 +53,10 @@ describe('RepositorySessionSourceDialog', () => {
     await wrapper.setProps({ workItems: [{ ...issue, kind: 'pullRequest', branchName: 'feature' }] });
     await wrapper.get('.repository-session-source-dialog__result').trigger('click');
     await flushPromises();
-    expect(api.listBackendModels).toHaveBeenLastCalledWith(null, 'claude', remote.id);
+    expect(api.listProviderModels).toHaveBeenLastCalledWith(null, 'claude', remote.id);
     expect(wrapper.text()).toContain('Remote Sonnet');
     await wrapper.get('.work-item-assignment-picker .app-button--primary').trigger('click');
-    expect(wrapper.emitted('start-work-item')?.[0]?.[0]).toMatchObject({ selection: { backend: 'claude', model: 'sonnet' } });
+    expect(wrapper.emitted('start-work-item')?.[0]?.[0]).toMatchObject({ selection: { provider: 'claude', model: 'sonnet' } });
     wrapper.unmount();
   });
   beforeEach(() => {
@@ -289,7 +289,7 @@ describe('RepositorySessionSourceDialog', () => {
 
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('start-work-item')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, isCurrent: expect.any(Function), selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
+      { action: 'fix', destination: 'new', item: issue, isCurrent: expect.any(Function), selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
   });
 

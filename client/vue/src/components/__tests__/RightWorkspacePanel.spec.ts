@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, config, flushPromises, mount } from '@vue/test-utils';
 import { ElTooltip } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
@@ -48,7 +48,7 @@ function mountPanel(
     props: {
       activeTab,
       agent: {
-        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+        id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       },
       gitPanel: { kind: 'gitDiff', title: 'Review', diff: '', state: 'idle' },
       browserAvailable,
@@ -73,6 +73,19 @@ function mountPanel(
 }
 
 describe('RightWorkspacePanel', () => {
+  it('shows each design as its own tab titled by the design', async () => {
+    const stubs = config.global.stubs;
+    config.global.stubs = { ...stubs, DesignPanel: true };
+    const wrapper = mountPanel(['review'], 'review');
+    const design = (id: string, title: string) => ({ conversationRef: null, isOpen: true, selectedArtboardId: 'desktop', selectedNodeId: null, undo: [], checkpoints: [],
+      document: { id, revision: 1, content: { title, css: '', comments: [], artboards: [{ id: 'desktop', title: 'Desktop', width: 800, height: 600, root: { id: 'root', tag: 'main', text: 'Hi' } }] } } });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), designWorkspaces: [design('d1', 'Launch'), design('d2', 'Second')] }, tabs: ['design:d1', 'design:d2'], activeTab: 'design:d2' });
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.attributes('aria-label'))).toStrictEqual(['Launch', 'Second']);
+    expect(wrapper.findAllComponents({ name: 'DesignPanel' })).toHaveLength(2);
+    wrapper.unmount();
+    config.global.stubs = stubs;
+  });
+
   it('offers a collapsed outline for a full Markdown document tab', async () => {
     const tab = rightWorkspaceFileTab('readme.md');
     const wrapper = mountPanel([tab], tab, {
@@ -124,11 +137,11 @@ describe('RightWorkspacePanel', () => {
   it(`shows a ${product.name} launcher when no workspace tab has been opened`, async () => {
     const wrapper = mountPanel([], null);
 
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Visualize');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Changes');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Browser');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Files');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Review');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Visualize');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Changes');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Browser');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Files');
     expect(wrapper.findAll('.right-workspace-panel__launcher kbd').map((shortcut) => shortcut.text())).toStrictEqual(['⌘G', '⌘B']);
     expect(wrapper.text()).not.toContain('Terminal');
 
@@ -138,7 +151,7 @@ describe('RightWorkspacePanel', () => {
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview'], ['design'], ['visualize'], ['review'], ['simulator'], ['browser'], ['files']]);
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     const visualizeMenuItem = bodyAll('[role="menuitem"]').find(item => item.text() === 'Visualize');
     expect(visualizeMenuItem).toBeDefined();
     await visualizeMenuItem!.trigger('click');
@@ -319,9 +332,9 @@ describe('RightWorkspacePanel', () => {
   it('opens the dedicated Review pane from the add-tab menu', async () => {
     const wrapper = mountPanel();
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
-    await bodyAll('.app-menu__item')[0]?.trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
+    expect(bodyAll('[role="menu"][aria-label="Open right panel tab"] .app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
+    await bodyAll('[role="menu"][aria-label="Open right panel tab"] .app-menu__item')[0]?.trigger('click');
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview']]);
   });
@@ -331,7 +344,7 @@ describe('RightWorkspacePanel', () => {
     const launcher = mountPanel([], null);
     await launcher.setProps({ githubRepository: 'nbonamy/agent-workspace' });
 
-    expect(launcher.get('[aria-label="Open a workspace tab"]').text()).not.toContain('Backlog');
+    expect(launcher.get('[aria-label="Open a panel tab"]').text()).not.toContain('Backlog');
 
     const wrapper = mountPanel(['backlog'], 'backlog');
     await wrapper.setProps({
@@ -346,7 +359,7 @@ describe('RightWorkspacePanel', () => {
       startWorkAction: startRepositoryWork,
     });
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     expect(bodyAll('.app-menu__item').map((item) => item.text())).not.toContain('Backlog');
   });
 
@@ -361,9 +374,9 @@ describe('RightWorkspacePanel', () => {
   it('omits the embedded Browser when the host does not provide it', async () => {
     const wrapper = mountPanel([], null, {}, null, {}, undefined, false);
 
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
-    expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).not.toContain('Browser');
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).toContain('Review');
+    expect(wrapper.get('[aria-label="Open a panel tab"]').text()).not.toContain('Browser');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Design', 'Visualize', 'Changes', 'Simulator', 'Files']);
   });
 
@@ -575,7 +588,7 @@ describe('RightWorkspacePanel', () => {
     expect(document.body.querySelector('[aria-label="Tab actions"]')).toBeNull();
     expect(browserSetVisible).not.toHaveBeenCalled();
 
-    await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
+    await wrapper.get('[aria-label="Open right panel tab"]').trigger('click');
     await flushPromises();
     expect(browserSetVisible).not.toHaveBeenCalled();
 
@@ -625,14 +638,14 @@ describe('RightWorkspacePanel', () => {
     if (kind === 'native review') {
       await wrapper.setProps({ agent: {
         ...wrapper.props('agent'),
-        backendSession: { kind: 'codex', threadId: 'plan-thread' },
+        providerSession: { kind: 'codex', conversationId: 'plan-thread' },
         planReview: { id: 'plan-review', conversationId: 'plan-thread', turnId: 'plan-turn', markdown: '# Plan\n\nKeep Browser available.', status: 'pending' },
       } });
     }
 
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Browser', 'Implementation plan']);
     expect(wrapper.get('h1').text()).toBe('Plan');
-    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Keep Browser available.');
+    expect(wrapper.get('[aria-label="Right panel"]').text()).toContain('Keep Browser available.');
     expect(wrapper.find('.plan-review-footer').exists()).toBe(kind === 'native review');
 
     await wrapper.findAll('[role="tab"]')[0]?.trigger('click');
@@ -649,7 +662,7 @@ describe('RightWorkspacePanel', () => {
       if (response.resolution === 'save') review = { ...review, draft: response.draft, draftVersion: (response.draftVersion ?? 0) + 1 };
       return review;
     });
-    await wrapper.setProps({ agent: { ...wrapper.props('agent'), backend: 'cursor', backendSession: { kind: 'cursor', sessionId: 'session' }, planReview: review }, updatePlanReview });
+    await wrapper.setProps({ agent: { ...wrapper.props('agent'), provider: 'cursor', providerSession: { kind: 'cursor', conversationId: 'session' }, planReview: review }, updatePlanReview });
     expect(wrapper.get('h1').text()).toBe('Translation');
     await wrapper.findAll('input[type="radio"]')[1]!.setValue();
     await wrapper.get('button[aria-label="Comment on this section: French text"]').trigger('click');

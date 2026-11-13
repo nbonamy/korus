@@ -302,9 +302,9 @@ function conversationLoadFrameMetadata(message: AppRpcMessage, responseMethod?: 
   if (process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD !== '1') return undefined;
   if (isAppRpcResponse(message) && responseMethod === backendMethods.agentConversationLoad) return { id: message.id, kind: 'history-response' };
   if (!isAppRpcNotification(message) || message.method !== backendMethods.backendEventNotify) return undefined;
-  const event = message.params as { type?: unknown; agentId?: string; threadId?: string; seq?: number; payload?: { revision?: number } } | undefined;
-  if (event?.type !== 'codex.conversationSnapshotChanged') return undefined;
-  return { agentId: event.agentId, threadId: event.threadId, seq: event.seq, revision: event.payload?.revision, kind: 'conversation-frame' };
+  const event = message.params as { type?: unknown; agentId?: string; seq?: number; payload?: { conversation?: string | null; snapshot?: { revision?: number } } } | undefined;
+  if (event?.type !== 'conversation.sessionSnapshot') return undefined;
+  return { agentId: event.agentId, conversation: event.payload?.conversation, seq: event.seq, revision: event.payload?.snapshot?.revision, kind: 'conversation-frame' };
 }
 
 function outputFrameDetails(message: AppRpcMessage, responseMethod?: string): OutputFrameDetails {

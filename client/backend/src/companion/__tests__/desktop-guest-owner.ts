@@ -7,14 +7,11 @@ import path from 'node:path';
 import { createCompanionRelay } from '../relay';
 import { CompanionOutboundConnector } from '../connector';
 import type { CompanionGateway } from '../gateway';
-import { ConversationSource } from '../conversation-source';
 import { GuestConversationGateway } from '../../sharing/guest-gateway';
 import { ConversationShares } from '../../sharing/conversation-shares';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
-import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
 import { conversationShareTarget, decodeConversationShareLink, encodeConversationInvitation } from '@workspace/core/conversation-sharing';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import type { CompanionReset } from '@workspace/core/companion-protocol';
 
 const directory = process.argv[2]!; await mkdir(directory, { recursive: true, mode: 0o700 });
 const server = createServer(); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve()));
@@ -24,7 +21,7 @@ const pin = { origin: `ws://127.0.0.1:${port}`, peerId: relay.peerId.toString() 
 const key = await generateKeyPairFromSeed('Ed25519', new Uint8Array(32).fill(74)); const ownerId = peerIdFromPrivateKey(key).toString();
 const snapshot = createEmptySnapshot();
 snapshot.teams = [{ id: 'synthetic', name: 'Synthetic', agentIds: ['shared'] }];
-snapshot.agents = [{ id: 'shared', name: 'Synthetic conversation', backend: 'codex', backendSession: { kind: 'codex', threadId: 'synthetic-session' }, teamId: 'synthetic', folder: '/synthetic', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
+snapshot.agents = [{ id: 'shared', name: 'Synthetic conversation', provider: 'codex', providerSession: { kind: 'codex', conversationId: 'synthetic-session' }, teamId: 'synthetic', folder: '/synthetic', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' }];
 const guestState = createEmptySnapshot(); guestState.general.providerEnabled = { codex: false, claude: false, antigravity: false };
 guestState.general.providerHomes = { codex: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-codex') }, claude: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-claude') }, antigravity: { isolated: true, shareSkills: false, homePath: path.join(directory, 'empty-antigravity') } };
 await writeFile(path.join(directory, 'guest-state.json'), JSON.stringify(guestState), { mode: 0o600 });
@@ -38,15 +35,14 @@ const shares = new ConversationShares({ directory: path.join(directory, 'shares'
 const link = (await shares.control({ action: 'create', target })).link!;
 const handle = (await shares.control({ action: 'status', target })).state.handle!;
 const listeners = new Set<(event: AppBackendEvent) => void>(); let revision = 1; let live = false;
-function reset(): CompanionReset { return { type: 'codex.conversationSnapshotChanged', agentId: 'shared', backend: 'codex', threadId: 'synthetic-session', conversationId: 'synthetic-session', seq: revision, occurredAt: '2026-01-01T00:00:00Z', payload: { revision, snapshot: sdkSnapshot('synthetic-session', { messages: [
+function reset(): AppBackendEvent { return { type: 'conversation.sessionSnapshot', agentId: 'shared', provider: 'codex', seq: revision, occurredAt: '2026-01-01T00:00:00Z', payload: { conversation: 'synthetic-session', epoch: 'synthetic', snapshot: { revision, state: { busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, messages: [
   { id: 'history', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: live ? 'Synthetic live update after reconnect.' : 'Synthetic history from before sharing. No provider account or repository is needed.' }], createdAt: '2026-01-01T00:00:00Z' },
   ...submitted.flatMap(({ id, text }) => [{ id, role: 'user', status: 'complete', parts: [{ type: 'text', text }], createdAt: '2026-01-01T00:00:00Z' }, { id: `${id}-response`, role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Synthetic agent response to approved proposal.' }], createdAt: '2026-01-01T00:00:00Z' }]),
-] as never }) } }; }
-function emit(event: AppBackendEvent) { source.observe(event); for (const listener of listeners) listener(event); }
-const source = new ConversationSource(async () => { emit(reset()); });
+] as never } } } }; }
+function emit(event: AppBackendEvent) { for (const listener of listeners) listener(event); }
 shareChanged = (agentId, state) => emit({ type: 'conversation.shareChanged', agentId, payload: state, seq: revision, occurredAt: '2026-01-01T00:00:00Z' });
 const gateway = new GuestConversationGateway({ propose: (handle, peer, name, input) => shares.propose(handle, peer, name, input), proposals: (handle, peer) => shares.guestState(handle, peer), withdraw: (handle, peer, proposalId) => shares.withdraw(handle, peer, proposalId), authorize: (handle, credential) => shares.authorize(handle, credential), connected: (handle, count, guests) => shares.connected(handle, count, guests),
-  onEvent: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, synchronize: (agent, checkpoint) => source.synchronize(agent, checkpoint), conversation: agent => source.read(agent),
+  onEvent: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, loadConversation: async () => { emit(reset()); },
   loadOlderHistory: async () => ({ hasOlder: false }), readConversationContent: async () => { throw new Error('denied'); }, readImage: async () => { throw new Error('denied'); },
 });
 const connector = new CompanionOutboundConnector(key, { grants: [], pairingInvitations: () => [] } as unknown as CompanionGateway, { phoneEnabled: () => false, sharing: { handles: () => [handle], accept: (stream, peer) => gateway.accept(stream, peer) } });

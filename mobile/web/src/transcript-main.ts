@@ -1,7 +1,7 @@
 import { createApp } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import '@codex-app-sdk/vue/styles.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
 import '@workspace/vue/styles/variables.css';
 import '@workspace/vue/styles/theme.css';
 import '@workspace/vue/styles/base.css';

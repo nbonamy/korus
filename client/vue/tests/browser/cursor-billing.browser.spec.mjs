@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
@@ -26,13 +27,13 @@ test('Cursor shows weekly usage in the account menu and billing in settings, inc
       billing:{includedBalanceUsd:'9999.99',onDemand:{enabled:true,unlimited:false,usedUsd:1,limitUsd:50,remainingUsd:49}}};
     configureAppClient({platform:'desktop',api:{
       getProviderUsage:async()=>structuredClone(window.limits),
-      getProviderUpdate:async()=>({backend:'cursor',status:'current',installedVersion:'2026.11.05',canUpgrade:false,busy:false})
+      getProviderUpdate:async()=>({provider:'cursor',status:'current',installedVersion:'2026.11.05',canUpgrade:false,busy:false})
     }});
     createApp({setup(){
       const settingsOpen=ref(false);
       return ()=>[
         h('div',{style:'position:absolute;top:300px;left:20px'},[
-          h(Menu,{enabledBackends:['cursor'],onOpenSettings:()=>{settingsOpen.value=true}})
+          h(Menu,{enabledProviders:['cursor'],onOpenSettings:()=>{settingsOpen.value=true}})
         ]),
         settingsOpen.value?h('div',{style:'margin-left:280px;width:600px'},[
           h(CursorSettings,{installed:true,connected:true,enabled:true})
@@ -43,7 +44,7 @@ test('Cursor shows weekly usage in the account menu and billing in settings, inc
   const server = await createServer({
     configFile: false, root, logLevel: 'error', cacheDir: path.join(fixture, 'vite-cache'),
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') } },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'billing-fixture',
       configureServer(server) {
         server.middlewares.use('/billing-fixture', (_request, response) => {

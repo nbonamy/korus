@@ -1,4 +1,4 @@
-import type { CodexMessageTextSelection } from '@codex-app-sdk/vue';
+import type { MessageTextSelection } from '@korus-dev/agent-ui-sdk';
 import { flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
@@ -17,7 +17,7 @@ const visualizationAnnotation: VisualizationAnnotationInput = {
   elements: [{ id: 'service', type: 'rectangle', text: 'API service' }],
 };
 
-const selection: CodexMessageTextSelection = {
+const selection: MessageTextSelection = {
   text: 'The request should be retried.',
   messageId: 'message-2',
   turnId: 'turn-1',
@@ -131,7 +131,7 @@ describe('AppShell composer annotations', () => {
 
 async function saveSelectionComment(
   wrapper: ReturnType<typeof mountShell>,
-  nextSelection: CodexMessageTextSelection,
+  nextSelection: MessageTextSelection,
   comment: string,
 ): Promise<void> {
   const block = document.createElement('div');
@@ -148,7 +148,7 @@ async function saveSelectionComment(
   range.selectNodeContents(content);
   window.getSelection()!.removeAllRanges();
   window.getSelection()!.addRange(range);
-  wrapper.getComponent({ name: 'CodexConversationPane' }).vm
+  wrapper.getComponent({ name: 'ConversationPane' }).vm
     .$emit('messageTextSelectionChange', nextSelection);
   await nextTick();
   host.remove();

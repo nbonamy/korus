@@ -11,7 +11,7 @@ function setup(platform = 'darwin', secure = true) {
   directories.push(directory);
   const crypto = {
     isEncryptionAvailable: () => secure,
-    getSelectedStorageBackend: () => 'gnome_libsecret',
+    getSelectedStorageProvider: () => 'gnome_libsecret',
     encryptString: vi.fn((value: string) => Buffer.from(value.split('').reverse().join(''))),
     decryptString: vi.fn((value: Buffer) => value.toString().split('').reverse().join('')),
   };
@@ -47,7 +47,7 @@ describe('desktop dictation settings', () => {
   });
   it('rejects Linux basic_text even when Electron reports encryption available', () => {
     const { directory, crypto } = setup('linux');
-    crypto.getSelectedStorageBackend = () => 'basic_text';
+    crypto.getSelectedStorageProvider = () => 'basic_text';
     const store = new DictationSettingsStore(directory, crypto, 'linux');
     expect(() => store.update({ apiKey: 'test-secret' })).toThrow('Secure storage');
   });

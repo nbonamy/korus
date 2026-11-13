@@ -4,19 +4,16 @@ import path from 'node:path';
 import type { ProviderLifecycle } from '../provider-lifecycle';
 import { resolveProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { backendHomeDir } from '../state';
-import { resolveAcpRuntime } from './runtime';
-import { installAcpRuntime } from './installer';
+import { resolveAntigravityExecutable } from './runtime';
 
 export function createAntigravityLifecycle(): ProviderLifecycle {
   const isolated = path.join(backendHomeDir(), 'antigravity-home');
-  const existing = process.env.GEMINI_HOME && path.resolve(process.env.GEMINI_HOME) !== isolated
-    ? path.resolve(process.env.GEMINI_HOME) : path.join(homedir(), '.gemini');
+  const existing = path.join(homedir(), '.gemini');
   return {
     capabilities: resolveProviderSetupCapabilities('antigravity'),
     skillDirectories: home => ['config', 'antigravity-cli'].map(directory => path.join(home.homePath, directory, 'skills')),
     home: (_snapshot, choice = { isolated: true, shareSkills: false }) => ({ ...choice, homePath: choice.isolated ? isolated : existing }),
-    installed: () => Boolean(resolveAcpRuntime()),
-    install: installAcpRuntime,
+    installed: () => Boolean(resolveAntigravityExecutable()),
     async prepareHome(home, configuring) {
       await mkdir(home.homePath, { recursive: true, mode: 0o700 });
       if (!home.isolated) return;
@@ -37,6 +34,5 @@ export function createAntigravityLifecycle(): ProviderLifecycle {
         if (!home.shareSkills && linked === source) await unlink(target);
       }
     },
-    applyHome: home => { process.env.GEMINI_HOME = home.homePath; },
   };
 }

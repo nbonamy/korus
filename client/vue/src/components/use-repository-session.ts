@@ -1,9 +1,9 @@
 import { defaultExecutionSelection } from '@workspace/core/execution-selection';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { preferredBackendChoices } from './backend-selection';
+import { preferredProviderChoices } from './provider-selection';
 import type {
   Agent,
-  AgentBackend,
+  HarnessProvider,
   AgentCreationProgress,
   AppSnapshot,
   AutomationLocation,
@@ -25,6 +25,7 @@ import { translate } from '../i18n';
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
 import type { RemoteCheckout } from './use-remote-target';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 export function useRepositorySession(options: {
   activeTeamId: () => string | undefined;
@@ -56,7 +57,7 @@ export function useRepositorySession(options: {
   suggestSourceWorktreePath: (input: Pick<CreateSourceWorktreeInput, 'branchName' | 'repoPath' | 'remoteConnectionId'>) => Promise<string>;
 }) {
   const source = ref<RepositorySessionSource | null>(null);
-  const backend = ref<AgentBackend | undefined>();
+  const provider = ref<HarnessProvider | undefined>();
   const visible = ref(false);
   const branches = ref<SourceBranch[]>([]);
   const workItems = ref<WorkItem[]>([]);
@@ -107,7 +108,7 @@ export function useRepositorySession(options: {
   async function open(nextSource: RepositorySessionSource): Promise<void> {
     const originUrl = nextSource.originUrl ?? nextSource.workSource?.url;
     if (originUrl) nextSource = { ...nextSource, originUrl };
-    backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
+    provider.value = preferredProviderChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     const requestId = ++sourceRequestId;
     ++hostRequestId;
     source.value = nextSource;
@@ -196,7 +197,7 @@ export function useRepositorySession(options: {
     hostId.value = next;
     loading.value = false;
     hostBusy.value = false;
-    backend.value = preferredBackendChoices(options.getSnapshot(), next)[0];
+    provider.value = preferredProviderChoices(options.getSnapshot(), next)[0];
     error.value = null;
     const known = locations.get(hostKey(next));
     if (known) {
@@ -234,7 +235,7 @@ export function useRepositorySession(options: {
     source.value = sourceOn(current, host, root);
     branches.value = [];
     loading.value = true;
-    backend.value = preferredBackendChoices(options.getSnapshot(), host)[0];
+    provider.value = preferredProviderChoices(options.getSnapshot(), host)[0];
     try {
       const loaded = await options.listSourceBranches(root, host);
       if (requestId === sourceRequestId && request === hostRequestId) branches.value = loaded;
@@ -296,14 +297,14 @@ export function useRepositorySession(options: {
   }
 
   function createOnBranch(payload: RepositorySessionSource & { branch: SourceBranch }): void {
-    backend.value = preferredBackendChoices(options.getSnapshot(), context(payload).remoteConnectionId)[0];
+    provider.value = preferredProviderChoices(options.getSnapshot(), context(payload).remoteConnectionId)[0];
     const { branch, ...nextSource } = payload;
     void createSession(nextSource, branch);
   }
 
   async function openWorktree(nextSource: RepositorySessionSource): Promise<void> {
     const requestId = ++worktreeRequestId;
-    backend.value = preferredBackendChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
+    provider.value = preferredProviderChoices(options.getSnapshot(), context(nextSource).remoteConnectionId)[0];
     worktreeSource.value = nextSource;
     worktreeBranches.value = [];
     worktreeBranchesLoading.value = true;
@@ -346,7 +347,7 @@ export function useRepositorySession(options: {
     if (!nextSource) return;
     const { teamId, remoteConnectionId } = context(nextSource);
     try {
-      const input = { name: null, folder: worktree.path, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } };
+      const input = { name: null, folder: worktree.path, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { provider: provider.value } };
       if (navigation) await options.createAgent(input, navigation);
       else await options.createAgent(input);
     } catch (caught) {
@@ -404,11 +405,11 @@ export function useRepositorySession(options: {
 
     const id = `work-item-${Date.now()}`;
     const branchName = workItemBranchName(selection.item);
-    const resolvedBackend = selection.selection?.backend ?? backend.value ?? 'codex';
+    const resolvedProvider = selection.selection?.provider ?? provider.value ?? defaultHarnessProvider;
     creationProgress.value = {
       id,
       state: 'running',
-      backend: resolvedBackend,
+      provider: resolvedProvider,
       repositoryName: current.repositoryName,
       createWorktree: true,
       branchName,
@@ -421,7 +422,7 @@ export function useRepositorySession(options: {
     try {
       if (!teamId) throw new Error(translate('surface.appShell.createOrSelectATeamBeforeStartingRepositoryWork'));
       const { agent, item } = await options.createIsolatedWorkItemAgent(selection.item, teamId, {
-        selection: selection.selection ?? defaultExecutionSelection(resolvedBackend),
+        selection: selection.selection ?? defaultExecutionSelection(resolvedProvider),
         ...(selection.reuseExisting ? { reuseExisting: true } : {}),
         repository: { name: current.repositoryName, path: current.repositoryRoot, worktrees: [] },
         ...(remoteConnectionId ? { remoteConnectionId } : {}),
@@ -469,7 +470,7 @@ export function useRepositorySession(options: {
     const { teamId, remoteConnectionId } = context(nextSource);
     close();
     try {
-      await options.createAgent({ name: null, folder: nextSource.repositoryRoot, repositorySession: { existingBranch: branch.name }, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { backend: backend.value } });
+      await options.createAgent({ name: null, folder: nextSource.repositoryRoot, repositorySession: { existingBranch: branch.name }, sourceRepositoryName: nextSource.repositoryName, ...(teamId ? { teamId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}), selection: { provider: provider.value } });
     } catch (caught) {
       options.notifyError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -480,7 +481,7 @@ export function useRepositorySession(options: {
   }
 
   return {
-    backend,
+    provider: provider,
     assignmentSessions,
     branches,
     changeHost,

@@ -4,10 +4,10 @@ import XCTest
 final class UsageStateTests: XCTestCase {
     func testDecodesEngineUsageAndDisplaysRemainingQuotaAndResetWindows() throws {
         let json = """
-        {"status":"loaded","providers":[{"backend":"codex","failed":false,"limits":{
+        {"status":"loaded","providers":[{"provider":"codex","failed":false,"limits":{
           "primary":{"usedPercent":23.4,"windowDurationMins":300,"resetsAt":10601},
           "secondary":{"usedPercent":101,"windowDurationMins":10080,"resetsAt":180000}
-        }},{"backend":"claude","limits":null,"failed":true}]}
+        }},{"provider":"claude","limits":null,"failed":true}]}
         """
         let usage = try JSONDecoder().decode(UsageState.self, from: Data(json.utf8))
         XCTAssertEqual(usage.status, .loaded)
@@ -21,6 +21,18 @@ final class UsageStateTests: XCTestCase {
         XCTAssertTrue(usage.providers[1].failed)
     }
 
+    func testNamesWhatAWindowLimitsWhenTheEngineSaysSo() throws {
+        let json = """
+        {"status":"loaded","providers":[{"provider":"antigravity","failed":false,"limits":{
+          "primary":{"label":"Claude","usedPercent":10,"windowDurationMins":300,"resetsAt":null},
+          "secondary":{"label":"Gemini","usedPercent":40,"windowDurationMins":300,"resetsAt":null}
+        }}]}
+        """
+        let usage = try JSONDecoder().decode(UsageState.self, from: Data(json.utf8))
+        XCTAssertEqual(usage.visibleProviders.map(\.name), ["Antigravity"])
+        XCTAssertEqual(usage.providers[0].rows.map(\.label), ["Claude", "Gemini"])
+    }
+
     func testUnknownAndExpiredLimitsRemainDistinctFromZeroUsage() {
         let unknown = UsageState.Row(id: "primary", window: .init(usedPercent: nil, windowDurationMins: nil, resetsAt: nil), fallback: "Usage")
         XCTAssertEqual(unknown.remaining, "—")
@@ -32,7 +44,7 @@ final class UsageStateTests: XCTestCase {
         XCTAssertEqual(expired.remainingFraction, 1)
         XCTAssertEqual(expired.reset(at: .now), "0m")
         XCTAssertEqual(expired.label, "30m")
-        XCTAssertTrue(UsageState(status: .loaded, providers: [.init(backend: "codex", limits: nil, failed: false)]).visibleProviders.isEmpty)
+        XCTAssertTrue(UsageState(status: .loaded, providers: [.init(provider: "codex", limits: nil, failed: false)]).visibleProviders.isEmpty)
     }
 
     func testNonFiniteUsageDoesNotBecomeAFullOrEmptyQuota() {

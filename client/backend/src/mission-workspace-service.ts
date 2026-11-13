@@ -30,7 +30,7 @@ export class MissionWorkspaceService {
     if (assignedRepositoryPaths.some(repositoryPath => (
       !repositoryPath || !representedRepositories.includes(repositoryPath)
     ))) {
-      throw new Error('Every ticket must target a repository represented in this Mission team.');
+      throw new Error('Every ticket must target a repository represented in this Mission workspace.');
     }
     const repositoryPaths = [...new Set(assignedRepositoryPaths.filter(
       (repositoryPath): repositoryPath is string => Boolean(repositoryPath),
@@ -74,7 +74,7 @@ export class MissionWorkspaceService {
         agentId = handle?.id ?? createEntityId('agent');
         if (!handle) createAgentInSnapshot(this.ports.snapshot, {
           name: `Delivery · ${basename(workspace.repositoryPath)}`, teamId: execution.teamId,
-          folder: workspace.path, selection: { backend: lead.backend },
+          folder: workspace.path, selection: { provider: lead.provider },
         }, undefined, agentId, { select: false });
       }
       return { repositoryPath: workspace.repositoryPath, agentId, status: 'pending' };

@@ -1,5 +1,6 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
 import { DelegatedWorkReportService } from '../delegated-work-report-service';
@@ -134,8 +135,8 @@ describe('DelegatedWorkReportService', () => {
     const parent = agent('agent-main', 'main');
     const worker = {
       ...agent('agent-worker', 'fix/provider'),
-      backend: 'claude' as const,
-      backendSession: { kind: 'claude' as const, sessionId: 'session-worker', transport: 'stdio' as const },
+      provider: 'claude' as const,
+      providerSession: { kind: 'claude' as const, conversationId: 'session-worker', transport: 'stdio' as const },
       delegatedByAgentId: parent.id,
     };
     snapshot.agents = [parent, worker];
@@ -149,25 +150,7 @@ describe('DelegatedWorkReportService', () => {
     });
 
     const report = service.prepare(worker, { kind: 'merge', branch: 'fix/provider', repository: 'main' });
-    service.handleEvent({
-      seq: 1,
-      occurredAt: '2026-09-03T00:01:00.000Z',
-      agentId: worker.id,
-      backend: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 4,
-        event: {
-          seq: 4,
-          occurredAt: '2026-09-03T00:01:00.000Z',
-          agentId: worker.id,
-          backend: 'claude',
-          turnId: 'turn-report',
-          type: 'turn.completed',
-          payload: { turn: { id: 'turn-report', status: 'completed' } },
-        },
-      },
-    });
+    service.handleEvent({ ...turnCompleted(worker.id, 'turn-report', { provider: 'claude' }), seq: 1, occurredAt: '2026-09-03T00:01:00.000Z' } as BackendPublishedEvent);
 
     await expect(report).resolves.toBe('Provider-owned handoff.');
     expect(readConversationMessages).toHaveBeenCalledWith(worker);
@@ -190,7 +173,7 @@ describe('DelegatedWorkReportService', () => {
 
 function agent(id: string, name: string): Agent {
   return {
-    id, name, folder: `/repo/${name}`, backend: 'codex', status: { type: 'idle' },
+    id, name, folder: `/repo/${name}`, provider: 'codex', status: { type: 'idle' },
     createdAt: '2026-09-03T00:00:00.000Z', updatedAt: '2026-09-03T00:00:00.000Z',
   };
 }
@@ -202,32 +185,6 @@ function assistantMessage(agentId: string, turnId: string, text: string): Render
   };
 }
 
-function event(agentId: string, turnId: string, type: 'turn.completed'): BackendPublishedEvent {
-  return {
-    seq: 1,
-    occurredAt: '2026-09-03T00:01:00.000Z',
-    agentId,
-    backend: 'codex',
-    threadId: 'thread-report',
-    type: 'codex.conversationEventReceived',
-    payload: {
-      revision: 1,
-      event: {
-        seq: 1,
-        occurredAt: '2026-09-03T00:01:00.000Z',
-        origin: 'notification',
-        conversationId: 'thread-report',
-        turnId,
-        type,
-        payload: {
-          status: 'completed',
-          error: null,
-          willRetry: false,
-          startedAt: null,
-          completedAt: '2026-09-03T00:01:00.000Z',
-          durationMs: null,
-        },
-      },
-    },
-  };
+function event(agentId: string, turnId: string, _type: 'turn.completed'): BackendPublishedEvent {
+  return { ...turnCompleted(agentId, turnId, { conversationId: 'thread-report' }), seq: 1, occurredAt: '2026-09-03T00:01:00.000Z' } as BackendPublishedEvent;
 }

@@ -48,8 +48,9 @@ struct EngineState: Decodable {
         var status: Status = .idle
         var items: [ComposerSuggestion] = []
     }
-    struct Mode: Decodable, Hashable { let id: String; let label: String }
-    struct Permissions: Decodable { let approvalPreset: String?; let permissionMode: String?; let presets: [String]; let modes: [Mode] }
+    struct PermissionOption: Decodable, Hashable { let id: String; let label: String; let dangerous: Bool }
+    /// The permission the chat runs with, and the ones its engine offers.
+    struct Permissions: Decodable { let current: String?; let options: [PermissionOption] }
     struct Goal: Decodable, Equatable { let objective: String; let status: String }
     struct Capabilities: Decodable { let goals: Bool?; let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
     struct ClosePreview: Decodable, Identifiable, Equatable {
@@ -119,10 +120,13 @@ struct EngineState: Decodable {
     let chatCreation: ChatCreation
     let teamCreation: ChatCreation?
     let branches: RepositoryBranches?
-    let backend: String?
-    let backends: [String]
-    let conversationBackends: [String]?
-    let repositoryBackends: [String: [String]]?
+    let provider: String?
+    let canSelectProvider: Bool?
+    let switchingProvider: String?
+    let modelsLoading: Bool?
+    let providers: [String]
+    let conversationProviders: [String]?
+    let repositoryProviders: [String: [String]]?
     let suggestedPrompt: String?
     let draft: String
     let models: [Model]

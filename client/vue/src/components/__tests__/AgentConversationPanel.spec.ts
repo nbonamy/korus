@@ -1,55 +1,93 @@
-import { provideCodexToolCallDetails } from '@codex-app-sdk/vue';
+import { provideToolCallDetails } from '@korus-dev/agent-ui-sdk';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, h, ref, shallowReactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
+import type { Agent } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
+import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { AgentRequest, SessionState } from '@korus-dev/multi-agent-sdk';
 import { createAgentComposerState } from '../../agent-composer-state';
-import { projectCursorConversation } from '../../provider-conversation-bindings';
+import { conversationFrom, runningTurn, sessionState } from '../../../tests/support/conversation-fixtures';
 import type { AgentConversationView } from '../../app-state';
-import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import type { AgentConversationActions } from '../use-agent-conversation';
 import AgentConversationPanel from '../AgentConversationPanel.vue';
-import { backendChoicesKey } from '../backend-selection';
-import { cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { emptyCursorSnapshot, createCursorConversationReplica } from '@workspace/core/cursor-conversation-replica';
+import { providerChoicesKey, provideProviderSwitch } from '../provider-selection';
+import { cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
+
+type SessionView = AgentConversationView & { session: SessionState | null };
+const toolConfirmation = (id: string, confirmation: Extract<AgentRequest, { kind: 'toolConfirmation' }>['confirmation']): AgentRequest =>
+  ({ id, conversationId: 'session', turnId: 'turn', kind: 'toolConfirmation', confirmation });
 
 describe('AgentConversationPanel', () => {
+  it('lets a fresh conversation switch harness from the model picker, then keeps the one it runs', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = { ...snapshot.agents[0]!, provider: 'codex' as const, providerDefaults: { kind: 'codex' as const }, providerSession: undefined };
+    snapshot.agents[0] = agent;
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot });
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: null, composer: composer.configurationForAgent(agent.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, attachments: [], capabilities: cursorProviderCapabilities,
+      approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
+    });
+    const actions = { prepare: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn() } as unknown as AgentConversationActions;
+    const update = vi.fn(async (_id: string, provider: Agent['provider']) => { view.agent = { ...view.agent, provider }; });
+    const wrapper = mount({ setup() {
+      provideProviderSwitch(update);
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [],
+        savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn() });
+    } }, { attachTo: document.body, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude', 'cursor']) } } });
+    try {
+      const picker = () => wrapper.get('[aria-label="Coding agent and model"]');
+      const tab = (label: string) => wrapper.get(`[role="tab"][aria-label="${label}"]`);
+      await picker().trigger('click');
+      expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
+      await tab('Cursor').trigger('click');
+      await flushPromises();
+      expect(update).toHaveBeenCalledExactlyOnceWith(agent.id, 'cursor');
+      expect(tab('Cursor').attributes('aria-selected')).toBe('true');
+
+      view.session = sessionState({ messages: [{ id: 'hello', agentId: agent.id, turnId: 'turn', role: 'user', status: 'complete', createdAt: '2026-11-11T00:00:00.000Z', parts: [{ type: 'text', text: 'Hi' }] }] });
+      await flushPromises();
+      await picker().trigger('click');
+      expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    } finally { wrapper.unmount(); }
+  });
+
   it('renders Cursor model/effort selection, file links and media with interrupt, confirm and continue', async () => {
     const snapshot = createInitialSnapshot();
-    const agent = { ...snapshot.agents[0]!, backend: 'cursor' as const, backendDefaults: { kind: 'cursor' as const }, backendSession: undefined };
+    const agent = { ...snapshot.agents[0]!, provider: 'cursor' as const, providerDefaults: { kind: 'cursor' as const }, providerSession: undefined };
     snapshot.agents[0] = agent;
-    const capabilities = { ...cursorBackendCapabilities, reasoningEffort: true };
-    snapshot.backendRuntimes = [{ backend: 'cursor', status: 'running', capabilities }];
+    const capabilities = { ...cursorProviderCapabilities, reasoningEffort: true };
+    snapshot.providerRuntimes = [{ provider: 'cursor', status: 'running', capabilities }];
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
-    composer.handleMainEvent({ type: 'models.changed', backend: 'cursor', seq: 1, occurredAt: '', payload: { models: [
+    composer.handleMainEvent({ type: 'models.changed', provider: 'cursor', seq: 1, occurredAt: '', payload: { models: [
       { id: 'native-plain', model: 'native-plain', displayName: 'Cursor Plain', isDefault: true },
       { id: 'native-enum', model: 'native-enum', displayName: 'Cursor Enum', defaultReasoningEffort: 'low',
         supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'extra-high', description: '' }] },
     ] } });
     const sent = vi.fn();
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null, claudeSnapshot: null, cursorSnapshot: null,
-      get conversation() { return projectCursorConversation(this.cursorSnapshot, this.agent); },
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: null,
       composer: composer.configurationForAgent(agent.id),
       composerState: { text: 'Hello Cursor', selectionStart: 12, selectionEnd: 12 }, attachments: [], capabilities,
       approvals: [], sending: false, queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(), send: vi.fn(async (id, text, options) => { sent(id, text, composer.resolvePromptOptions(id, text, options)); }), steer: vi.fn(), interrupt: vi.fn(),
-      deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
-      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, backendDefaults: { kind: 'cursor', permissionMode: mode } }; }),
+      deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(), continueInterruptedTurn: vi.fn(), respond: vi.fn(),
+      selectModel: vi.fn(composer.selectModelForAgent), selectReasoningEffort: vi.fn(composer.selectReasoningEffortForAgent), selectServiceTier: vi.fn(), setPlanMode: vi.fn(), setPermissionMode: vi.fn(async (_id, mode) => { view.agent = { ...view.agent, providerDefaults: { kind: 'cursor', permission: mode } }; }),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(), deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const rawDetails = ref(false);
     const openLink = vi.fn();
     const wrapper = mount({ setup() {
-      provideCodexToolCallDetails(rawDetails);
-      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      provideToolCallDetails(rawDetails);
+      return () => h(AgentConversationPanel, { view, actions, agents: [agent], focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink, openImage: vi.fn(), openVisualization: vi.fn(),
     });
-    } }, { global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
+    } }, { global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'cursor']) } } });
     try {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
@@ -60,7 +98,6 @@ describe('AgentConversationPanel', () => {
       expect(choices[0]!.attributes('aria-checked')).toBe('true');
       await choices[1]!.trigger('click');
       expect(actions.setPermissionMode).toHaveBeenCalledExactlyOnceWith(agent.id, 'full-access');
-      expect(actions.setApprovalPreset).not.toHaveBeenCalled();
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
@@ -73,41 +110,36 @@ describe('AgentConversationPanel', () => {
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
       expect(wrapper.findAll('[role="menuitemradio"]').map(choice => choice.attributes('aria-checked'))).toEqual(['true', 'false']);
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
-      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Cursor Enum'))!.trigger('mouseenter');
       await flushPromises();
-      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Extra High')!.trigger('click');
+      await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'extra-high')!.trigger('click');
       await flushPromises();
       expect(actions.selectModel).toHaveBeenCalledExactlyOnceWith(agent.id, 'native-enum');
       expect(actions.selectReasoningEffort).toHaveBeenCalledExactlyOnceWith(agent.id, 'extra-high');
-      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).toContain('Extra High');
+      expect(wrapper.get('[aria-label="Coding agent and model"]').text()).toContain('extra-high');
       await wrapper.get('form').trigger('submit'); await flushPromises();
       expect(sent).toHaveBeenLastCalledWith(agent.id, 'Hello Cursor', { selection: { model: 'native-enum', reasoningEffort: 'extra-high' }, planMode: false });
-      await wrapper.get('[aria-label="Model and reasoning"]').trigger('click');
+      await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
       await flushPromises();
       await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().trim() === 'Cursor Plain')!.trigger('click');
       await flushPromises();
       expect(actions.selectModel).toHaveBeenLastCalledWith(agent.id, 'native-plain');
       expect(actions.selectReasoningEffort).toHaveBeenCalledTimes(1);
-      expect(wrapper.get('[aria-label="Model and reasoning"]').text()).not.toContain('Extra High');
+      expect(wrapper.get('[aria-label="Coding agent and model"]').text()).not.toContain('extra-high');
       view.composerState = { text: 'Plain Cursor', selectionStart: 12, selectionEnd: 12 };
       await flushPromises();
       await wrapper.get('form').trigger('submit'); await flushPromises();
       expect(sent).toHaveBeenLastCalledWith(agent.id, 'Plain Cursor', { selection: { model: 'native-plain' }, planMode: false });
-      const replica = createCursorConversationReplica(emptyCursorSnapshot(agent.id, 'session'));
-      const identity = { agentId: agent.id, sessionId: 'session', turnId: 'turn', occurredAt: '2026-11-03T12:00:00Z' };
-      replica.apply({ ...identity, type: 'turn.started', payload: { turn: { id: 'turn' } } });
+      const identity = { occurredAt: '2026-11-03T12:00:00Z' };
       const diffBody = 'File: synthetic.txt\nBefore:\nBEFORE\nAfter:\nAFTER\n\nfile:///observed.txt\nObserved resource contents';
       const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMfcAAAAASUVORK5CYII=';
-      view.cursorSnapshot = replica.apply({ ...identity, type: 'message.upsert', payload: { message: { id: 'answer', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt,
+      view.session = sessionState({ busy: true, activeTurnId: 'turn', turns: [runningTurn('turn')], messages: [{ id: 'answer', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'streaming', createdAt: identity.occurredAt,
         parts: [{ type: 'text', text: 'Cursor streamed reply' },
           { type: 'tool', id: 'tool', kind: 'fileChange', title: 'Edit synthetic.txt', status: 'completed', statusText: JSON.stringify({ source: 'cursor', action: 'edit', phase: 'completed', params: { target: 'synthetic.txt' } }), body: diffBody, metadata: { cwd: '/workspace', changes: [{ path: 'synthetic.txt', kind: 'update', oldText: 'BEFORE', newText: 'AFTER' }] } },
-          { type: 'media', itemId: 'cursor-tool:tool:0', media: { url: imageUrl, mimeType: 'image/png', alt: 'Image' } }] } } });
+          { type: 'media', itemId: 'cursor-tool:tool:0', media: { url: imageUrl, mimeType: 'image/png', alt: 'Image' } }] }] });
       view.composerState = { text: '', selectionStart: 0, selectionEnd: 0 };
-      await flushPromises();
-      // A retained frame from an old provider must never win over the registered binding.
-      view.claudeSnapshot = claudeConversationSnapshot([], { agentId: agent.id });
       await flushPromises();
       expect(wrapper.text()).toContain('Cursor streamed reply');
       const fileLink = wrapper.get('a.chat-tool-call__title-target--link');
@@ -123,7 +155,7 @@ describe('AgentConversationPanel', () => {
       await flushPromises();
       expect(wrapper.findAll('.chat-tool-call__body pre').at(-1)!.text()).toBe(diffBody);
       rawDetails.value = false;
-      view.cursorSnapshot = {...view.cursorSnapshot!, messages:[...view.cursorSnapshot!.messages,{id:'coordination',agentId:agent.id,turnId:'turn',role:'assistant',status:'complete',createdAt:identity.occurredAt,
+      view.session = {...view.session!, messages:[...view.session!.messages,{id:'coordination',agentId:agent.id,turnId:'turn',role:'assistant',status:'complete',createdAt:identity.occurredAt,
         parts:[{type:'reasoning',itemId:'thought-1',summaryIndex:0,summary:'Checking status first. Then launching System Settings with a lengthy explanation of each planned tool call.'},
           ...['set-status','send-message','finish_turn'].map(tool=>({type:'tool' as const,id:tool,kind:'mcp',title:`korus: ${tool}`,status:'completed' as const,input:{to:'other-agent'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool}}))]},
         {id:'thought-only',agentId:agent.id,turnId:'turn',role:'assistant',status:'streaming',createdAt:identity.occurredAt,
@@ -135,31 +167,29 @@ describe('AgentConversationPanel', () => {
       expect(wrapper.text()).not.toContain('Checking status first.');
       expect(wrapper.text()).not.toContain('More internal explanation');
       expect(view.conversation!.messages.some(message => message.id === 'thought-only')).toBe(false);
-      expect(view.cursorSnapshot!.messages.find(message => message.id === 'coordination')!.parts[0]).toMatchObject({type:'reasoning',summary:expect.stringContaining('Checking status first.')});
-      expect(view.cursorSnapshot!.messages.find(message => message.id === 'thought-only')!.parts).toHaveLength(1);
+      expect(view.session!.messages.find(message => message.id === 'coordination')!.parts[0]).toMatchObject({type:'reasoning',summary:expect.stringContaining('Checking status first.')});
+      expect(view.session!.messages.find(message => message.id === 'thought-only')!.parts).toHaveLength(1);
       expect(wrapper.text()).not.toContain('korus: set-status');
       expect(wrapper.text()).not.toContain('korus: finish_turn');
 
       await wrapper.get('button[title="Interrupt"]').trigger('click');
       expect(actions.interrupt).toHaveBeenCalledWith(agent.id);
-      view.agent = { ...view.agent, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
-      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
-        id: 'sidebar-plan', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'native-provider', integrationName: 'Provider', toolName: 'native_plan_request', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false } },
-      }] };
+      view.agent = { ...view.agent, providerSession: { kind: 'cursor', conversationId: 'session' }, planReview: { id: 'review', conversationId: 'old-session', turnId: 'turn', requestId: 'sidebar-plan', markdown: '# Translation', status: 'pending' } };
+      view.session = { ...view.session!, requests: [toolConfirmation('sidebar-plan',
+        { integrationId: 'native-provider', integrationName: 'Provider', toolName: 'native_plan_request', summary: 'Review Cursor plan', argumentsPreview: '# Translation', allowAlways: false })] };
       await flushPromises();
-      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Review Cursor plan');
+      expect(wrapper.get('.agent-ui-conversation-pane__footer').text()).toContain('Review Cursor plan');
       view.agent = { ...view.agent, planReview: { ...view.agent.planReview!, conversationId: 'session' } };
       await flushPromises();
       expect(wrapper.find('.chat-tool-confirmation').exists()).toBe(false);
-      view.cursorSnapshot = { ...view.cursorSnapshot!, clientRequests: [{
-        id: 'cursor-permission', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'Shell', summary: 'Run tests?', argumentsPreview: 'npm test', allowAlways: false, allowConversation: false } },
-      }] };
+      view.session = { ...view.session!, requests: [toolConfirmation('cursor-permission',
+        { integrationId: 'cursor', integrationName: 'Cursor', toolName: 'Shell', summary: 'Run tests?', argumentsPreview: 'npm test', allowAlways: false, allowConversation: false })] };
       await flushPromises();
-      expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Run tests?');
-      await wrapper.get('.codex-conversation-pane__footer').findAll('button').find(button => button.text() === 'Deny')!.trigger('click');
-      expect(actions.clientResponse).toHaveBeenCalledWith({ agentId: agent.id, id: 'cursor-permission', payload: { decision: 'deny' } });
-      view.cursorSnapshot = { ...view.cursorSnapshot!, busy: false, activeTurnId: null, clientRequests: [],
-        turns: view.cursorSnapshot!.turns.map(turn => ({ ...turn, status: 'interrupted' })) };
+      expect(wrapper.get('.agent-ui-conversation-pane__footer').text()).toContain('Run tests?');
+      await wrapper.get('.agent-ui-conversation-pane__footer').findAll('button').find(button => button.text() === 'Deny')!.trigger('click');
+      expect(actions.respond).toHaveBeenCalledWith(agent.id, { id: 'cursor-permission', outcome: { kind: 'decision', decision: 'deny' } });
+      view.session = { ...view.session!, busy: false, activeTurnId: null, requests: [],
+        turns: view.session!.turns.map(turn => ({ ...turn, status: 'interrupted' as const })) };
       await flushPromises();
       await wrapper.get('button[aria-label="Continue"]').trigger('click');
       expect(actions.continueInterruptedTurn).toHaveBeenCalledExactlyOnceWith(agent.id);
@@ -168,28 +198,29 @@ describe('AgentConversationPanel', () => {
   it('toggles Goal mode in a Claude composer and submits the objective to that agent', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[1]!;
-    agent.backend = 'claude'; agent.backendDefaults = { kind: 'claude' };
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null, claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id }),
+    agent.provider = 'claude'; agent.providerDefaults = { kind: 'claude' };
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: sessionState(),
       composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: 'Verify the feature', selectionStart: 18, selectionEnd: 18 },
-      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+      attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
       answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; }, updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     try {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       const goal = wrapper.findAll('[role="menuitemcheckbox"]').find(item => item.text() === 'Goal mode');
@@ -207,26 +238,27 @@ describe('AgentConversationPanel', () => {
   it('keeps default hints inert and accepts only the active agent suggestion into its draft', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null, claudeSnapshot: null,
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: null,
       composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
-      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+      attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
       answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     const editor = () => wrapper.get('.chat-rich-text-editor');
     const defaultPlaceholder = editor().attributes('data-placeholder');
     for (const key of ['Tab', 'ArrowRight', ' ', 'Enter']) {
@@ -266,28 +298,29 @@ describe('AgentConversationPanel', () => {
   it('routes composer commands from an unfocused split pane without submitting its draft', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[1]!;
-    agent.backend = 'claude'; agent.backendDefaults = { kind: 'claude' };
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null, claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id }),
+    agent.provider = 'claude'; agent.providerDefaults = { kind: 'claude' };
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: sessionState(),
       composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: 'Unsent split draft', selectionStart: 5, selectionEnd: 5 },
-      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false,
+      attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
       answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
+      setPermissionMode: vi.fn(), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const selectModelMenuItem = vi.fn();
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem,
+      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     for (const label of ['Design', 'Visualize', 'Delegate', 'Review', 'Mission']) {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text() === label)!.trigger('click');
@@ -312,16 +345,16 @@ describe('AgentConversationPanel', () => {
   it('applies the follow-up preference in a split pane and routes both actions to its own agent', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[1]!;
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
+    agent.provider = 'claude';
+    agent.providerDefaults = { kind: 'claude' };
     agent.status = { type: 'working' };
-    agent.backendSession = { kind: 'claude', sessionId: 'session-claude', transport: 'stdio' };
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null,
-      claudeSnapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'session-claude', busy: true, activeTurnId: 'turn-1' }),
+    agent.providerSession = { kind: 'claude', conversationId: 'session-claude', transport: 'stdio' };
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: sessionState({ busy: true, activeTurnId: 'turn-1' }),
       composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: 'Split follow-up', selectionStart: 15, selectionEnd: 15 },
-      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: true,
+      attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: true,
       queuedPrompts: [{ id: 'queued-split', agentId: agent.id, text: 'Already queued', createdAt: '2026-10-03T00:00:00Z' }],
       history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
       answeredClientRequestIds: new Set(),
@@ -329,18 +362,18 @@ describe('AgentConversationPanel', () => {
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; },
       updateAttachments: (_id, attachments) => { view.attachments = attachments; },
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: true, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
       followUpBehavior: 'steer',
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     expect(wrapper.get<HTMLButtonElement>('[aria-label="Steer queued prompt now"]').element.disabled).toBe(false);
     await wrapper.get('.chat-rich-text-editor').trigger('keydown', { key: 'Enter' });
     await flushPromises();
@@ -358,38 +391,45 @@ describe('AgentConversationPanel', () => {
   it('routes an unfocused Claude pane’s composer approval to its own agent and restores its draft and attachment', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'claude'; agent.backendDefaults = { kind: 'claude' };
-    agent.backendSession = { kind: 'claude', sessionId: 'session-claude', transport: 'stdio' };
-    const replica = createClaudeConversationReplica(claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'session-claude' }));
-    const view = shallowReactive<AgentConversationView>({
-      agent, codexSnapshot: null, claudeSnapshot: replica.getSnapshot(),
+    agent.provider = 'claude'; agent.providerDefaults = { kind: 'claude' };
+    agent.providerSession = { kind: 'claude', conversationId: 'session-claude', transport: 'stdio' };
+    const view = shallowReactive<SessionView>({
+      get conversation() { return conversationFrom(this.agent, this.session); },
+      agent, session: sessionState(),
       composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
       composerState: { text: 'Keep the split draft', selectionStart: 5, selectionEnd: 5 },
       attachments: [{ id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 }],
-      capabilities: claudeBackendCapabilities, approvals: [], queuedPrompts: [], sending: false,
+      capabilities: claudeProviderCapabilities, approvals: [], queuedPrompts: [], sending: false,
       history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
       answeredClientRequestIds: new Set(),
     });
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(),
+      setPermissionMode: vi.fn(),
       updateComposerState: (_id, state) => { view.composerState = state; },
       updateAttachments: (_id, attachments) => { view.attachments = attachments; },
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
     const wrapper = mount(AgentConversationPanel, { props: {
-      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem: vi.fn(),
+      view, actions, agents: snapshot.agents, focused: false, mentionGroups: [],
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
-    }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
+    }, global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe('Keep the split draft');
-    view.claudeSnapshot = replica.apply({ type: 'approval.requested', backend: 'claude', agentId: agent.id, seq: 1, occurredAt: '2026-10-03T00:00:00Z', turnId: 'turn-1', payload: {
-      id: 'permission', kind: 'confirm_tool', payload: { confirmation: { integrationId: 'claude', integrationName: 'Claude', toolName: 'Edit', summary: 'Edit file src/main.ts?', argumentsPreview: 'Before:\nstart(false);\n\nAfter:\nstart(true);', allowAlways: true } },
-    } });
+    const confirmation = { integrationId: 'claude', integrationName: 'Claude', toolName: 'Edit', summary: 'Edit file src/main.ts?', argumentsPreview: 'Before:\nstart(false);\n\nAfter:\nstart(true);', allowAlways: true };
+    // Claude records the tool call it asks about in the transcript.
+    const asking = sessionState({ answeredClientRequestIds: [], messages: [{
+      id: 'assistant-turn-1', agentId: agent.id, role: 'assistant', status: 'streaming', turnId: 'turn-1', createdAt: '2026-10-03T00:00:00Z',
+      parts: [{ type: 'tool', id: 'approval-permission', kind: 'mcp', title: 'claude.Edit', status: 'running',
+        statusText: JSON.stringify({ source: 'mcp', action: 'run', phase: 'running', params: { requestId: 'permission', tool: 'claude.Edit',
+          confirmationSummary: confirmation.summary, argumentsPreview: confirmation.argumentsPreview, allowConversation: false, allowAlways: true } }),
+        input: confirmation.argumentsPreview, metadata: { confirmationRequestId: 'permission', server: 'claude', tool: 'Edit' } }],
+    }] });
+    view.session = { ...asking, requests: [{ id: 'permission', conversationId: 'session-claude', turnId: 'turn-1', itemId: 'approval-permission', kind: 'toolConfirmation', confirmation }] };
     await flushPromises();
-    const footer = wrapper.get('.codex-conversation-pane__footer');
+    const footer = wrapper.get('.agent-ui-conversation-pane__footer');
     expect(wrapper.findAll('.chat-tool-confirmation')).toHaveLength(1);
     expect(footer.text()).toContain('Edit file src/main.ts?');
     await footer.get('details > summary').trigger('click');
@@ -397,8 +437,8 @@ describe('AgentConversationPanel', () => {
     expect(footer.findAll('button').map(button => button.text())).toEqual(['Allow', 'Always allow', 'Deny']);
     await footer.findAll('button')[1]!.trigger('click');
     await flushPromises();
-    expect(actions.clientResponse).toHaveBeenCalledExactlyOnceWith({ agentId: agent.id, id: 'permission', payload: { decision: 'always_allow' } });
-    view.claudeSnapshot = replica.apply({ type: 'clientRequest.resolved', backend: 'claude', agentId: agent.id, seq: 2, occurredAt: '2026-10-03T00:00:01Z', payload: { id: 'permission' } });
+    expect(actions.respond).toHaveBeenCalledExactlyOnceWith(agent.id, { id: 'permission', outcome: { kind: 'decision', decision: 'always_allow' } });
+    view.session = { ...asking, answeredClientRequestIds: ['permission'] };
     await flushPromises();
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe('Keep the split draft');
     expect(view.composerState).toEqual({ text: 'Keep the split draft', selectionStart: 5, selectionEnd: 5 });

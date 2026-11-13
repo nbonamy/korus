@@ -127,10 +127,10 @@ import { ElMessageBox } from 'element-plus';
 import { computed, ref, watch } from 'vue';
 import type {
   Agent,
-  AgentBackend,
-  BackendModelOption,
+  HarnessProvider,
+  ProviderModelOption,
   AppSnapshot,
-  BackendConversationRef,
+  ProviderConversationRef,
   CreateAutomationInput,
   Automation,
   AutomationLocation,
@@ -148,7 +148,7 @@ import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import AutomationEditor from './AutomationEditor.vue';
 import HostSelector from './HostSelector.vue';
-import { provideBackendHost } from './backend-selection';
+import { provideBackendHost } from './provider-selection';
 import AutomationExecutionLog from './AutomationExecutionLog.vue';
 import AutomationWelcome from './AutomationWelcome.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -164,10 +164,10 @@ const props = withDefaults(
     automations: Automation[];
     agents: Agent[];
     missions?: AppSnapshot['missions'];
-    listModels?: (agentId: string | null, backend: AgentBackend) => Promise<BackendModelOption[]>;
+    listModels?: (agentId: string | null, provider: HarnessProvider) => Promise<ProviderModelOption[]>;
     remoteConnections?: RemoteConnection[];
     runAutomation?: (automationId: string, location?: AutomationLocation) => Promise<AppSnapshot | void>;
-    readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
+    readConversationMessages?: (ref: ProviderConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
     teams: AppSnapshot['teams'];
     updateAutomation?: (input: UpdateAutomationInput, location?: AutomationLocation) => Promise<AppSnapshot | void>;
   }>(),
@@ -433,7 +433,7 @@ async function confirmDeleteAutomationExecution(payload: { executionId: string; 
   refreshLocationFromSnapshot(await deleteLocationAutomationExecution(automation.id, execution.id));
 }
 
-async function readLocationConversationMessages(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]> {
+async function readLocationConversationMessages(ref: ProviderConversationRef, agentId: string): Promise<RendererMessage[]> {
   const location = requestLocation();
   return location ? props.readConversationMessages(ref, agentId, location) : props.readConversationMessages(ref, agentId);
 }

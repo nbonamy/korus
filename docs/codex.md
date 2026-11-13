@@ -7,11 +7,12 @@ conversation state, rendering, actions, history or transport.
 
 ## Ownership
 
-The local `codex-app-sdk` owns: executable discovery, generated app-server types,
-request/response inference, bidirectional routing, stdio JSONL framing, targeted
-conversation operations, snapshots and reducers, optimistic submissions, history
-reconciliation, queues, turn mutations and the generic conversation UI
-(`CodexConversationPane`). `daemon` is the product adapter: explicit executable
+`codex-sdk` owns executable discovery, generated app-server types,
+request/response inference, bidirectional routing and stdio JSONL framing.
+`multi-agent-sdk` owns targeted conversation operations, snapshots and reducers,
+optimistic submissions, history reconciliation, queues and turn mutations.
+`agent-ui-sdk` owns the generic conversation UI (`CodexConversationPane`).
+`daemon` is the product adapter: explicit executable
 selection, initialization metadata, agent/session policy, approval presets, the
 routing envelope (agent, thread, revision) and recovery.
 
@@ -97,7 +98,9 @@ threads, routed by `threadId` and `agentId`.
   agents use `thread/start` and set the conversation title to the agent name
   (matching titles are a no-op; renaming the agent renames the conversation).
   Active sessions are SDK-memory-authoritative and are not re-resumed on selection;
-  after relaunch `agent/conversation/load` rebinds the persisted reference.
+  after relaunch `agent/conversation/load` rebinds the persisted reference. Existing
+  threads inherit model, effort, service tier and permissions from the SDK; saved
+  agent defaults configure new conversations and never rewrite a loaded thread.
 - Archive/reconcile/resume rules are in
   [architecture.md](architecture.md#backend-seam). Resume searches active and
   archived catalogs with the agent folder as exact `cwd`; `storageState` marks
@@ -167,7 +170,7 @@ and exhaustive reads for handoffs and other backend consumers use SDK `readHisto
   omits approval/sandbox overrides and lets app-server use its effective
   configuration rather than sending a known-invalid request. The generated
   `SandboxPolicy` shape is returned directly.
-- **Models and effort** come from `model/list`, adapted to `BackendModelOption[]`.
+- **Models and effort** come from `model/list`, adapted to `ProviderModelOption[]`.
   Korus prefers 6.1 Sol with High effort when advertised by the catalog and uses
   that combination for new conversations without an explicit selection.
   An explicit picker choice is saved immediately in
@@ -177,7 +180,7 @@ and exhaustive reads for handoffs and other backend consumers use SDK `readHisto
   ones. The service tier (Fast mode) is emitted with thread settings, including an
   explicit `null`, so a stale toggle never survives an agent switch or reload.
 - **Skills** are folder-scoped (`skills/list` per agent `cwd`), adapted to
-  `BackendSkillSummary[]`. Picker selection records the canonical target and frozen
+  `ProviderSkillSummary[]`. Picker selection records the canonical target and frozen
   display label in authored prompt parts. The SDK sends explicit skill and mention
   inputs; typed or pasted `$skill` and `@name` text carries no selected identity.
   `skills/changed` becomes `skills.changed` and invalidates folder-keyed caches.

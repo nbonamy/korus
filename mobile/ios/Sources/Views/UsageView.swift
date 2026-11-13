@@ -65,8 +65,8 @@ struct UsageView: View {
                             }
                         } header: {
                             HStack(spacing: 8) {
-                                if ["codex", "claude"].contains(provider.backend) {
-                                    Image("provider-\(provider.backend)")
+                                if UIImage(named: "provider-\(provider.provider)") != nil {
+                                    Image("provider-\(provider.provider)")
                                         .resizable().scaledToFit()
                                         .frame(width: 24, height: 24)
                                         .accessibilityHidden(true)

@@ -1,26 +1,28 @@
-import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
+import type { CompanionCheckpoint, CompanionConversationSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
-import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+import { promptContentText, trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import { type PromptPart } from '@korus-dev/multi-agent-sdk';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { mobileAgentStatus, providerBlockFor } from './provider-block';
 import { missionAgentsAttention, type MissionAttention } from '@workspace/core/mission-attention';
-import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
-import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
-import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@korus-dev/agent-ui-sdk';
+import type { Agent, HarnessProvider, ProviderModelOption } from '@workspace/core/contracts';
+import { canSelectAgentProvider } from '@workspace/core/agent-providers';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { sameCompanionTarget, companionTargetFor, companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
-import { composerCapabilitiesFor, type ComposerChange } from './composer-settings';
+import { composerCapabilitiesFor, pickableModels, type ComposerChange } from './composer-settings';
 import { createLifecycle } from './engine-lifecycle';
 import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
 import { ConversationImageCache, type ImageCacheStore } from './image-cache';
-import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
+import type { CompanionClosePreview, CompanionProvider, CompanionRequestReply } from '@workspace/core/companion-protocol';
+import { defaultHarnessProvider } from '@workspace/core/provider-capabilities';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 /** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
@@ -77,21 +79,26 @@ export type EngineState = {
   /** Moving a mission on, or accepting one of its tickets, is a request to the laptop that can be refused. */
   missionAction: 'idle' | 'working' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
-  backends: string[];
+  providers: string[];
   /** Engines on the selected conversation's host and on each sidebar repository's host. */
-  conversationBackends: string[];
-  repositoryBackends: Record<string, string[]>;
+  conversationProviders: string[];
+  repositoryProviders: Record<string, string[]>;
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
   /** The engine of the open chat, and whether it may still be changed: only before the first prompt. */
-  backend: string | null;
-  canSelectBackend: boolean;
+  provider: string | null;
+  canSelectProvider: boolean;
+  /** The engine an empty chat is switching to: show it chosen while the laptop catches up. */
+  switchingProvider: string | null;
+  /** The model menu has nothing to show yet: it is loading, not empty. */
+  modelsLoading: boolean;
   draft: string;
   suggestedPrompt: string | null;
   mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; value: string; description: string }[] };
   skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; value: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
-  permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
+  /** The permission the chat runs with, and the ones its engine offers. */
+  permissions: { current: string | null; options: { id: string; label: string; dangerous: boolean }[] };
   capabilities: { goals: boolean; models: boolean; reasoningEffort: boolean; serviceTier: boolean; planMode: boolean; interrupt: boolean; attachments: boolean };
   favorites: { modelId: string; reasoningEffort: string | null; serviceTier: string | null }[];
 };
@@ -110,7 +117,7 @@ export type EngineEvent =
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
   | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
   /** Everything around the open conversation changed but the conversation itself did not: small, and never resends the transcript. */
-  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionSync & TranscriptContext)
+  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionConversationSync & TranscriptContext)
   | ({ type: 'conversationContext'; agentId: string } & TranscriptContext);
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
@@ -121,8 +128,6 @@ export type TranscriptContext = {
   imageCacheScope?: string | null;
   generation: number;
   ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
-  /** An empty chat's engine and the ones it may switch to. */
-  engines: { current: string; choices: string[] } | null;
 };
 
 export type EngineCommand =
@@ -134,7 +139,7 @@ export type EngineCommand =
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories'; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectRepositories' }
-  | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
+  | { type: 'duplicateAgent'; target: CompanionTarget; provider: HarnessProvider }
   | { type: 'renameAgent'; target: CompanionTarget; name: string }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
@@ -162,25 +167,31 @@ export type EngineCommand =
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
-  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('@codex-app-sdk/core/surface').CodexPromptPart[]; attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('@korus-dev/multi-agent-sdk').PromptPart[]; attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'queuedPrompt'; target: CompanionTarget; promptId: string; action: 'steer' | 'delete' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
   | { type: 'loadBranches'; repositoryId: string } | { type: 'dismissBranches' }
-  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; backend: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
+  | { type: 'newChat'; repositoryId: string; provider: CompanionProvider; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; provider: CompanionProvider } | { type: 'dismissNewChat' } | { type: 'provider'; provider: CompanionProvider }
   | { type: 'composer'; change: ComposerChange }
-  | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
+  | { type: 'permission'; permission: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
-  | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
+  | { type: 'loadReview'; provider?: CompanionProvider } | { type: 'dismissReview' }
   | { type: 'loadReviewDetails' }
   | { type: 'reviewAction'; target: CompanionTarget; input: import('@workspace/core/companion-review').CompanionReviewAction }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
 export type EnginePort = { connector: CompanionConnector; imageCache?: ImageCacheStore; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
 
-const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
+const effortsOf = (model: ProviderModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
+
+/** A permission without words of its own, shown as its id in plain words: `approve-for-me` reads "Approve for me". */
+function readableId(id: string): string {
+  const words = id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export function createEngine(port: EnginePort) {
   const engineInstance = crypto.randomUUID();
@@ -229,8 +240,8 @@ export function createEngine(port: EnginePort) {
   let lastState = '';
   // Bumped whenever the person navigates, so a connection still restoring the saved selection gives way.
   let restoreEpoch = 0;
-  const backendChoices = (host = state.teamId.value) => state.workspace.value.backends?.[host] ?? [];
-  const engines = () => { const agent = state.agent.value; const choices = backendChoices(agent?.remoteConnectionId ?? state.teamId.value); return agent && choices.length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices } : null; };
+  const providerChoices = (host = state.teamId.value) => state.workspace.value.providers?.[host] ?? [];
+  const engines = () => { const agent = state.agent.value; const choices = providerChoices(agent?.remoteConnectionId ?? state.teamId.value); return agent && choices.length > 1 && canSelectAgentProvider(agent) ? { current: agent.provider, choices } : null; };
 
   async function rememberSelection() {
     if (!state.laptopId.value || !port.selectionStore) return;
@@ -316,9 +327,8 @@ export function createEngine(port: EnginePort) {
       ? ticketOf ? { title: ticketOf.repository || (agent.workspace?.kind === 'git' ? agent.workspace.repositoryName : ticketOf.title), subtitle: null }
         : owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null } : null
       : null;
-    const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
+    const capabilities = composerCapabilitiesFor(agent?.provider ?? defaultHarnessProvider, state.models.value);
     const settings = state.composerSettings.value;
-    const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
       missions, missionAttention: attentionFor(visibleMissions), mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
@@ -341,7 +351,7 @@ export function createEngine(port: EnginePort) {
         status: displayStatus, statusText: displayStatusText, icon: active.group.icon ?? null }
         : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
-      composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
+      composerTarget: agent && team ? companionTargetFor(state.workspace.value, state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
@@ -358,21 +368,21 @@ export function createEngine(port: EnginePort) {
       ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), value: skill.name, description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(),
-      conversationBackends: backendChoices(agent?.remoteConnectionId ?? state.teamId.value),
-      repositoryBackends: Object.fromEntries(sidebarGroups.value.flatMap(group => {
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, providers: providerChoices(),
+      conversationProviders: providerChoices(agent?.remoteConnectionId ?? state.teamId.value),
+      repositoryProviders: Object.fromEntries(sidebarGroups.value.flatMap(group => {
         if (!group.repositoryRoot) return [];
-        return [[group.repositoryRoot, backendChoices(group.remoteConnectionId ?? repositoryTeam(group.repositoryRoot))]];
+        return [[group.repositoryRoot, providerChoices(group.remoteConnectionId ?? repositoryTeam(group.repositoryRoot))]];
       })), branches: state.branches.value,
-      backend: agent?.backend ?? null,
-      canSelectBackend: engines() !== null,
-      models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
+      provider: agent?.provider ?? null,
+      canSelectProvider: engines() !== null, switchingProvider: state.switchingProvider.value, modelsLoading: state.modelsLoading.value || state.switchingProvider.value !== null,
+      models: pickableModels(state.models.value).map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
-      permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
-        modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
+      permissions: { current: state.permission.value, options: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id,
+        label: typeof mode.label === 'string' ? mode.label : readableId(mode.id), dangerous: mode.dangerous === true })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
         planMode: capabilities.planMode !== 'unsupported', interrupt: !providerBlock && capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: !providerBlock && capabilities.attachments && !agent?.remoteConnectionId },
-      favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
+      favorites: state.modelFavorites.value.filter((favorite) => favorite.provider === agent?.provider).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }
   // Derived once per change, shared by the watcher and by whoever asks, and only sent when it differs from what the shell has.
@@ -390,15 +400,15 @@ export function createEngine(port: EnginePort) {
     });
   }
   watch(view, publish, { flush: 'sync' });
-  // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
+  // A provider can publish the sent prompt only after the laptop accepts it.
   // Until the real message arrives, the transcript shows the prompt as sent.
-  const pending: { id: string; agentId: string; text: string; content?: readonly CodexPromptPart[]; baseline: number; expires: number; createdAt: string }[] = [];
+  const pending: { id: string; agentId: string; text: string; content?: readonly PromptPart[]; baseline: number; expires: number; createdAt: string }[] = [];
   let expiry: ReturnType<typeof setTimeout> | undefined;
-  const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
+  const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.state.messages
     .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
   /** The frame with the prompts still waiting for the laptop's confirmation, and which prompts those are. */
   function withPending(frame: CompanionConversation | null): { frame: CompanionConversation | null; key: string } {
-    if (!frame || frame.backend === 'codex') return { frame, key: '' };
+    if (!frame) return { frame, key: '' };
     const now = Date.now();
     const sent = new Map<string, number>();
     const shown = pending.filter((entry) => {
@@ -408,12 +418,12 @@ export function createEngine(port: EnginePort) {
     });
     if (!shown.length) return { frame, key: '' };
     const snapshot = frame.payload.snapshot;
-    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
-    return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
+    const messages = [...snapshot.state.messages, ...shown.map((entry): (typeof snapshot.state.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
+    return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, state: { ...snapshot.state, messages } } } }, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
   const contextNow = (): TranscriptContext => ({ engineInstance, imageCacheScope: state.status.value === 'connected' ? JSON.stringify([engineInstance, state.laptopId.value]) : null,
-    generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+    generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value });
 
   // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
   // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.
@@ -441,7 +451,7 @@ export function createEngine(port: EnginePort) {
       clearTimeout(trailing); trailing = undefined;
       const context = contextNow();
       sent = { agentId, frame: raw, ready, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
-      const identity = JSON.stringify([state.laptopId.value, state.teamId.value, context.agent?.id, context.agent?.backend, context.agent?.backendSession]);
+      const identity = JSON.stringify([state.laptopId.value, state.teamId.value, context.agent?.id, context.agent?.provider, context.agent?.providerSession]);
       const updates = port.incrementalTranscript && raw && !overlaid.key ? state.conversationUpdates(acknowledged.get(identity) ?? null) : null;
       if (updates) port.post({ type: 'conversationTransfer', identity, ...updates, agentId, ...context });
       else port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
@@ -463,7 +473,7 @@ export function createEngine(port: EnginePort) {
     const content = command.options?.content === undefined ? undefined : trimPromptContent(command.options.content);
     const text = content === undefined ? command.text : promptContentText(content);
     const options = { ...command.options, ...(content === undefined ? {} : { content }), followUpBehavior, uploads: command.uploads, onResolved };
-    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !text.trim()) return state.submit(text, options);
+    if (followUpBehavior === 'queue' || !frame || !state.canSend.value || !text.trim()) return state.submit(text, options);
     const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text, ...(content === undefined ? {} : { content }), baseline: userTexts(frame, text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
@@ -513,7 +523,7 @@ export function createEngine(port: EnginePort) {
         if (!foreground || state.status.value !== 'connected') { pendingNotification = target; return; }
         const agent = state.workspace.value.agents.find(agent => agent.id === target.agentId);
         const team = state.workspace.value.teams.find(team => team.id === target.teamId);
-        if (!agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
+        if (!agent || !team || !sameCompanionTarget(companionTarget(target.hostId, team, agent), target)) {
           port.post({ type: 'notificationOpenFailed' }); return;
         }
         await state.selectTeam(target.teamId, target.agentId);
@@ -707,23 +717,22 @@ export function createEngine(port: EnginePort) {
       case 'dismissProjectBranches': return state.dismissProjectBranches();
       case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
-      case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
+      case 'duplicateAgent': return state.duplicateAgent(command.target, command.provider);
       case 'renameAgent': return state.renameAgent(command.target, command.name);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}), selection: { ...command.selection } });
       case 'dismissBranches': return state.dismissBranches();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}), selection: { backend: command.backend } }, repositoryTeam(command.repositoryId));
-      case 'backend': return state.selectBackend(command.backend);
-      case 'newQuickChat': return state.createQuickChat(command.backend);
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}), selection: { provider: command.provider } }, repositoryTeam(command.repositoryId));
+      case 'provider': return state.selectProvider(command.provider);
+      case 'newQuickChat': return state.createQuickChat(command.provider);
       case 'dismissNewChat': return state.dismissChatCreation();
       case 'cancelCloseSession': return state.cancelCloseSession();
       case 'dismissSessionError': return state.dismissSessionError();
       case 'composer': return state.updateComposerSettings(command.change);
-      case 'approvalPreset': return state.setApprovalPreset(command.preset);
-      case 'permissionMode': return state.setPermissionMode(command.mode);
+      case 'permission': return state.setPermission(command.permission);
       case 'delegate': return state.delegate({ startingContext: command.startingContext, ...(command.instructions ? { instructions: command.instructions } : {}) });
       case 'loadReviewDetails': return state.loadReviewDetails();
       case 'reviewAction': return state.actOnReview(command.target, command.input);
-      case 'loadReview': return state.loadReview(command.backend);
+      case 'loadReview': return state.loadReview(command.provider);
       case 'dismissReview': return state.dismissReview();
       case 'review': await state.startReview(command.input, command.target); return rememberSelection();
     }

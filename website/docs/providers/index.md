@@ -4,18 +4,18 @@ description: Connect coding engines for agent work, and GitHub, GitLab, or Linea
 
 # Provider guides
 
-Korus can run different coding engines in the same team. Each engine has its own account, conversation location, and customization. Connecting one does not authenticate the others.
+Korus can run different coding engines in the same workspace. Each engine has its own account, conversation location, and customization. Connecting one does not authenticate the others.
 
 | Engine | Installation and sign-in |
 | --- | --- |
 | [Codex](./codex) | Uses an installed CLI, or ChatGPT's runtime on macOS; browser sign-in from Korus |
 | [Claude Code](./claude-code) | Uses an installed CLI or Korus's bundled runtime; sign-in through a command copied from Korus |
 | [Cursor](#cursor) | Uses the installed Cursor CLI and its existing setup; sign in from Korus |
-| [Antigravity](#antigravity) | Install its runtime from Korus; native Google sign-in |
+| [Antigravity](#antigravity) | Uses the installed Antigravity CLI; native Google sign-in |
 
 ## Choose where each engine keeps its setup
 
-Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex, Claude Code, and Cursor, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected. For Codex, Claude Code, and Antigravity, use **Customize** to choose a separate setup, either beneath the engine during connection or beside **Location** in Settings. Cursor uses its existing setup.
+Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens the engine's own installation instructions. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected. For Codex, Claude Code, and Antigravity, use **Customize** to choose a separate setup, either beneath the engine during connection or beside **Location** in Settings. Cursor uses its existing setup.
 
 There are two choices under **Conversations**:
 
@@ -56,7 +56,7 @@ For usage recorded by Korus, open [Settings → Analytics](../features/workspace
 
 ## Cursor
 
-Run Cursor agents in the same team as your other engines. Use them for conversations, delegation, Missions, code reviews, and automations.
+Run Cursor agents in the same workspace as your other engines. Use them for conversations, delegation, Missions, code reviews, and automations.
 
 ### Connect Cursor
 
@@ -82,17 +82,23 @@ Cursor's Settings page shows account billing and quota information when availabl
 
 ## Antigravity
 
-Select **Install** in Welcome or **Settings → Antigravity**. Korus downloads the appropriate runtime directly from Google, verifies it, and enables **Connect** when it is ready. A spinner appears during installation. No terminal commands or PATH changes are needed. Installation supports Apple Silicon and Intel Macs, and Linux and Windows on x64 and ARM64.
+Antigravity runs on the Antigravity CLI (`agy`), version 1.5.1 or later, with every model on your account. If it is missing, Welcome and **Settings → Antigravity** show the install command and a link to Google's instructions:
 
-Antigravity uses Google's ACP runtime, independently of the editor and the `agy` CLI. If you prefer to install it yourself, the [ACP registry entry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json) lists platform downloads. Extract the runtime and its companion executable together into a directory on PATH (`agy_acp_server.par` and `localharness_external` on macOS/Linux, or their `.exe` versions on Windows). Make both executable on macOS/Linux, then select the refresh icon in Korus.
+```sh
+curl -fsSL https://antigravity.google/cli/install.sh | bash
+```
+
+Select the refresh icon once it is installed. Keep it current with `agy update`.
 
 Once detected:
 
-1. Select **Customize** to choose separate Korus chats or your existing setup. Antigravity's existing setup uses `GEMINI_HOME` when configured, otherwise `~/.gemini`.
+1. Select **Customize** to choose separate Korus chats or your existing setup. Antigravity's existing setup is `~/.gemini`. The Google sign-in is shared by both.
 2. Select **Connect Antigravity** in Welcome, or **Connect** in its Settings page, and complete the native Google sign-in flow. Credentials stay with Antigravity; do not paste them into chat.
 3. Wait for **Connected**, enable the engine, and select it when creating an agent. Verify with a small read-only repository task.
 
-Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Model choices come from the ACP runtime and may differ from the editor's catalog; available effort variants appear in the model choices.
+Antigravity supports streaming conversations, history, approvals, interruption, native Plan mode, and Korus workflows including reviews, Missions, delegation, and automations. Review its proposed plan before accepting implementation. Each model appears once, and models that offer thinking levels let you pick one beside the model.
+
+Use the composer's **Permissions** menu to choose **Ask for approval**, **Allow file edits**, or **Auto**. These govern file edits and commands. Antigravity runs the tools of connected MCP servers without asking in every mode, so connect only servers you trust.
 
 Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for SSH-hosted agents and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 
@@ -122,7 +128,7 @@ Git branches, commits, pushes, and delivery requests still belong to the code re
 
 ## Remote hosts
 
-Run agents on another computer while keeping their conversations alongside local work in the same team.
+Run agents on another computer while keeping their conversations alongside local work in the same workspace.
 
 1. Configure SSH key access to the host and add it to your SSH configuration.
 2. Open **Settings → Connections → Add remote**, choose the host, and connect. Verify the host identity when asked.
@@ -130,7 +136,7 @@ Run agents on another computer while keeping their conversations alongside local
 4. Expand the host's row to connect the selected coding-provider accounts and manage engine updates. A working local sign-in does not establish remote access; check each remote engine's connection state.
 5. When opening a repository or creating work, choose **Host**. Korus can use an existing clone there or clone the repository from its origin. Check the destination path, coding engine, and model before starting.
 
-Local and remote agents can share a team, but each agent's files, Git operations, tools, and running processes belong to its host. A repository credential or service available locally may need separate setup there. Agents stay on their chosen host; create another agent to work elsewhere.
+Local and remote agents can share a workspace, but each agent's files, Git operations, tools, and running processes belong to its host. A repository credential or service available locally may need separate setup there. Agents stay on their chosen host; create another agent to work elsewhere.
 
 The host indicator shows connection health separately from whether the coding engine is signed in. If it is unavailable, reconnect from Connections rather than creating a duplicate agent. **Update Korus** upgrades the remote runtime; finish active turns and pending requests first. Removing the connection removes those remote agents from this app while leaving them running on the host. Missions and conversation sharing use local agents.
 
@@ -176,7 +182,7 @@ Choose the location before creating agents when possible. Switching between **Se
 4. Acknowledge the removal, then choose **Remove agents and switch** only if you intend to proceed.
 5. Connect the new setup if needed and create new agents there.
 
-Conversation files remain in the previous provider home. This action does not migrate them, and switching back does **not** restore the removed agents in Korus. Your repository folders and worktrees are not deleted by the location switch. Remote-team agents use their remote host's setup and are outside this local reset.
+Conversation files remain in the previous provider home. This action does not migrate them, and switching back does **not** restore the removed agents in Korus. Your repository folders and worktrees are not deleted by the location switch. Remote-workspace agents use their remote host's setup and are outside this local reset.
 
 ## If the connection behaves differently from your terminal
 

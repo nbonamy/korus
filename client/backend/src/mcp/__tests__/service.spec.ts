@@ -1,21 +1,24 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { turnCompleted } from '../../__tests__/support/conversation-activity';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { AgentGitService } from '../../git/agent-git-service';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
 import { product } from '@workspace/core/product';
+import { createDesignToolModuleProvider } from '../design-tools';
+import { DesignService } from '../../design-service';
 import { createMobileSimulatorToolModuleProvider } from '../mobile-simulator-tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { antigravityBackendCapabilities, codexBackendCapabilities, cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import { antigravityProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { Agent, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { createMission } from '@workspace/core/missions';
 import { createQuickChatInSnapshot } from '@workspace/core/agent-manager';
 import { projectWorkspaceSidebar } from '@workspace/core/workspace-sidebar';
-import { BackendDriverRpc } from '../../driver-rpc';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { VisualizeService } from '../../visualize-service';
 import { WorktreeManager } from '../../worktrees/worktree-manager';
 import { AppMcpService } from '../service';
@@ -30,6 +33,17 @@ import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 
 describe('AppMcpService', () => {
   let service: AppMcpService | null = null;
+
+  /** finish_turn takes effect when its turn completes, so the test completes the turn. */
+  async function completeTurn(agentId: string) {
+    service!.handleBackendEvent({ agentId, provider: 'codex', type: 'turn.completed', turnId: 'turn', seq: 0, occurredAt: '', payload: { status: 'completed', error: null, willRetry: false } } as never);
+    await Promise.resolve();
+  }
+  async function callFinish(url: string, agentId: string, arguments_: Record<string, unknown>) {
+    const response = await callTool(url, agentId, 'finish_turn', arguments_);
+    await completeTurn(agentId);
+    return response;
+  }
 
   afterEach(async () => {
     await service?.stop();
@@ -81,10 +95,10 @@ describe('AppMcpService', () => {
       getInitializationMode: () => 'automatic', runCommand: runner,
     });
     const snapshot = createInitialSnapshot();
-    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker' }, turnId: 'turn' });
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     service = new AppMcpService({ snapshot, worktreeManager: manager });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     try {
       const url = await service.start();
       const result = await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/source', branchName: 'feature/setup', createWorktree: true, prompt: 'Implement the feature.' });
@@ -111,18 +125,28 @@ describe('AppMcpService', () => {
     const url = await service.start();
     vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValueOnce(0.99);
     for (const kind of ['confetti', 'stars', 'schoolPride']) {
-      const response = await callTool(url, 'agent-dina', 'finish_turn', { celebration: true });
-      expect(response.result.structuredContent).toMatchObject({ celebration: { requested: true, kind } });
+      await callFinish(url, 'agent-dina', { celebration: true });
       expect(events.at(-1)).toMatchObject({ type: 'client.celebrationRequested', agentId: 'agent-dina', payload: { kind } });
     }
     events.length = 0;
     for (const input of [{}, { celebration: false }]) {
-      const response = await callTool(url, 'agent-dina', 'finish_turn', input);
+      const response = await callFinish(url, 'agent-dina', input);
       expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     }
     expect(events.some(event => event.type === 'client.celebrationRequested')).toBe(false);
-    const invalid = await callTool(url, 'agent-dina', 'finish_turn', { celebration: { kind: 'stars' } });
+    const invalid = await callFinish(url, 'agent-dina', { celebration: { kind: 'stars' } });
     expect(invalid.result.isError).toBe(true);
+  });
+
+  it('offers the design skill with the allowed subset to agents that have the design tools', async () => {
+    const snapshot = createInitialSnapshot();
+    const designs = new DesignService({ snapshot, persist: async () => undefined, publish: () => undefined });
+    service = new AppMcpService({ snapshot, toolModuleProviders: [createDesignToolModuleProvider(designs)] });
+    const url = await service.start();
+    const result = (await callTool(url, snapshot.agents[0]!.id, 'read-skill', { name: 'korus-design' })).result;
+    expect(result).toMatchObject({ isError: false, structuredContent: { name: 'korus-design', loaded: true } });
+    expect(result.content[0].text).toContain('HTML tags: main, section');
+    expect(result.content[0].text).not.toMatch(/\{\{[a-zA-Z]+\}\}/);
   });
 
   it('loads bundled skills over authenticated MCP without filesystem access and rechecks feature enablement', async () => {
@@ -239,10 +263,10 @@ describe('AppMcpService', () => {
         expect(saved?.agents.find(agent => agent.id === owner.id)?.codeReview).toMatchObject({
           status: 'reviewing', rounds: [{ inspectionCompletion: { findingCount: 2 } }],
         });
-        return { text: 'Two findings registered.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } };
+        return { text: 'Two findings registered.', reviewerSession: { kind: 'codex', conversationId: 'review-thread' } };
       },
     });
-    owner.backendSession = { kind: 'codex', threadId: 'review-thread' };
+    owner.providerSession = { kind: 'codex', conversationId: 'review-thread' };
     const session = reviewService.start(owner, { scope: { type: 'uncommitted' }, threadMode: 'current' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(session.rounds[0]?.findings.map(finding => finding.priority)).toEqual(['p1', 'p3']);
@@ -251,7 +275,7 @@ describe('AppMcpService', () => {
 
   it('offers create-project only to Quick Chats and routes the handoff through the shared project operation', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     createQuickChatInSnapshot(snapshot, { teamId: 'team-app' }, undefined, 'agent-quick-chat', { select: false });
     const createProject = vi.fn().mockResolvedValue({
       repository: { name: 'new-product', path: '/src/new-product', worktrees: [] },
@@ -271,11 +295,11 @@ describe('AppMcpService', () => {
     expect(quickChatTools.result.tools.map((tool: { name: string }) => tool.name)).toContain('create-project');
 
     const result = await callTool(url, 'agent-quick-chat', 'create-project', {
-      name: 'new-product', prompt: 'Build the agreed product and start with the requirements.', selection: { backend: 'claude' },
+      name: 'new-product', prompt: 'Build the agreed product and start with the requirements.', selection: { provider: 'claude' },
     });
     expect(createProject).toHaveBeenCalledWith(
       'agent-quick-chat', 'new-product', 'Build the agreed product and start with the requirements.',
-      { backend: 'claude' },
+      { provider: 'claude' },
     );
     expect(result.result.structuredContent).toStrictEqual({
       success: true,
@@ -289,7 +313,7 @@ describe('AppMcpService', () => {
 
   it('serializes an explicit null when set-status clears the current text', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: unknown[] = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
@@ -309,36 +333,17 @@ describe('AppMcpService', () => {
 
   it('clears the current status when the agent turn ends', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: any[] = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Running verification' });
     expect(snapshot.agents[0]!.statusText).toBe('Running verification');
-    sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-1' }) }), 'agent-dina', 'Delegate this task', { delegation: { startingContext: 'conversation', instructions: 'Do not run tests.' } }, vi.fn());
+    sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-1' }) }), 'agent-dina', 'Delegate this task', { delegation: { startingContext: 'conversation', instructions: 'Do not run tests.' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
 
-    service.handleBackendEvent({
-      seq: 1,
-      occurredAt: '2026-08-02T00:00:00.000Z',
-      agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-08-02T00:00:00.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          turnId: 'turn-1',
-          type: 'turn.completed',
-          payload: { status: 'completed' },
-        },
-      },
-    } as BackendPublishedEvent);
+    service.handleBackendEvent({ ...turnCompleted('agent-dina', 'turn-1', { conversationId: 'thread-dina' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
 
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
     expect(snapshot.agents[0]!.userDelegationOverrides).toBeUndefined();
@@ -352,20 +357,15 @@ describe('AppMcpService', () => {
   it('retains newer delegation controls through older and wrong-conversation terminals, including pending admission', async () => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'thread-dina' };
-    let accept!: (result: import('@workspace/core/backend-driver').BackendSendResult) => void;
-    const receipt = new Promise<import('@workspace/core/backend-driver').BackendSendResult>(resolve => { accept = resolve; });
+    parent.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
+    let accept!: (result: import('@workspace/core/provider-driver').ProviderSendResult) => void;
+    const receipt = new Promise<import('@workspace/core/provider-driver').ProviderSendResult>(resolve => { accept = resolve; });
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn(() => receipt) }), parent.id, 'Delegate B', { delegation: { startingContext: 'handoff', instructions: 'Keep B local.' } }, vi.fn());
-    const terminal = (turnId: string, conversationId = 'thread-dina') => service!.handleBackendEvent({
-      seq: 1, occurredAt: '', agentId: parent.id, backend: 'codex', threadId: conversationId,
-      type: 'codex.conversationEventReceived', payload: { revision: 1, event: {
-        seq: 1, occurredAt: '', origin: 'notification', conversationId, turnId, type: 'turn.completed', payload: { status: 'completed' },
-      } },
-    } as BackendPublishedEvent);
+    const terminal = (turnId: string, conversationId = 'thread-dina') => service!.handleBackendEvent({ ...turnCompleted(parent.id, turnId, { conversationId }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     terminal('turn-A');
     expect(parent.userDelegationOverrides?.instructions).toBe('Keep B local.');
-    accept({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
+    accept({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-B' });
     await new Promise(resolve => setImmediate(resolve));
     terminal('turn-A');
     terminal('turn-B', 'other-thread');
@@ -377,36 +377,27 @@ describe('AppMcpService', () => {
   it('clears delegation controls when their own terminal precedes the admission receipt', async () => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    let accept!: (result: import('@workspace/core/backend-driver').BackendSendResult) => void;
-    const receipt = new Promise<import('@workspace/core/backend-driver').BackendSendResult>(resolve => { accept = resolve; });
+    let accept!: (result: import('@workspace/core/provider-driver').ProviderSendResult) => void;
+    const receipt = new Promise<import('@workspace/core/provider-driver').ProviderSendResult>(resolve => { accept = resolve; });
     service = new AppMcpService({ snapshot });
     sendAgentPrompt(snapshot, createDriver({ sendPrompt: vi.fn(() => receipt) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff' } }, vi.fn());
-    service.handleBackendEvent({ seq: 1, occurredAt: '', agentId: parent.id, backend: 'codex', threadId: 'thread-dina', type: 'codex.conversationEventReceived', payload: { revision: 1, event: {
-      seq: 1, occurredAt: '', origin: 'notification', conversationId: 'thread-dina', turnId: 'turn-B', type: 'turn.completed', payload: { status: 'interrupted' },
-    } } } as BackendPublishedEvent);
-    accept({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-B' });
+    service.handleBackendEvent({ ...turnCompleted(parent.id, 'turn-B', { conversationId: 'thread-dina', status: 'interrupted' }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
+    accept({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-B' });
     await new Promise(resolve => setImmediate(resolve));
     expect(parent.userDelegationOverrides).toBeUndefined();
   });
 
-  it.each(['claude', 'antigravity'] as const)('binds and clears %s controls using the owning host session identity', async backend => {
+  it.each(['claude', 'antigravity'] as const)('binds and clears %s controls using the owning host session identity', async provider => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.backend = backend;
-    const backendSession = backend === 'claude'
-      ? { kind: 'claude' as const, sessionId: 'native-session', transport: 'stdio' as const }
-      : { kind: 'antigravity' as const, sessionId: 'native-session' };
+    parent.provider = provider;
+    const providerSession = provider === 'claude'
+      ? { kind: 'claude' as const, conversationId: 'native-session', transport: 'stdio' as const }
+      : { kind: 'antigravity' as const, conversationId: 'native-session' };
     service = new AppMcpService({ snapshot });
-    sendAgentPrompt(snapshot, createDriver({ backend, sendPrompt: vi.fn().mockResolvedValue({ backendSession, turnId: 'native-turn' }) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff', instructions: 'Native provider directions' } }, vi.fn());
+    sendAgentPrompt(snapshot, createDriver({ provider: provider, sendPrompt: vi.fn().mockResolvedValue({ providerSession: providerSession, turnId: 'native-turn' }) }), parent.id, 'Delegate', { delegation: { startingContext: 'handoff', instructions: 'Native provider directions' } }, vi.fn());
     await new Promise(resolve => setImmediate(resolve));
-    const terminal = (sessionId: string) => service!.handleBackendEvent({
-      seq: 1, occurredAt: '', agentId: parent.id, backend, conversationId: 'newer-envelope-session',
-      type: `${backend}.conversationEventReceived`, payload: { revision: 1, event: {
-        seq: 1, occurredAt: '', agentId: parent.id, backend, turnId: 'native-turn', type: 'turn.completed',
-        ...(backend === 'claude' ? { backendSessionId: sessionId, payload: { status: 'completed' } }
-          : { sessionId, payload: { turn: { id: 'native-turn', status: 'completed' } } }),
-      } },
-    } as BackendPublishedEvent);
+    const terminal = (sessionId: string) => service!.handleBackendEvent({ ...turnCompleted(parent.id, 'native-turn', { provider, conversationId: sessionId }), seq: 1, occurredAt: '' } as BackendPublishedEvent);
     terminal('different-native-session');
     expect(parent.userDelegationOverrides?.instructions).toBe('Native provider directions');
     terminal('native-session');
@@ -424,16 +415,16 @@ describe('AppMcpService', () => {
     const git = new AgentGitService();
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.folder = folder;
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: any[] = [];
     service = new AppMcpService({ snapshot, resolveWorkspaceIdentity: folder => git.identity(folder), onEvent: (event) => events.push(event) });
     try {
       const url = await service.start();
-      const removedAlias = await callTool(url, 'agent-dina', 'finish_turn', { flag: 'delegate_to_worktree' });
+      const removedAlias = await callFinish(url, 'agent-dina', { flag: 'delegate_to_worktree' });
       expect(removedAlias.result.isError).toBe(true);
 
       await callTool(url, 'agent-dina', 'set-status', { status: 'Considering delegation' });
-      const delegated = await callTool(url, 'agent-dina', 'finish_turn', {
+      const delegated = await callFinish(url, 'agent-dina', {
         flag,
       });
       expect(delegated.result.structuredContent).toStrictEqual({
@@ -452,7 +443,7 @@ describe('AppMcpService', () => {
       await callTool(url, 'agent-dina', 'set-status', { status: 'Implementing here' });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
 
-      const plain = await callTool(url, 'agent-dina', 'finish_turn', {});
+      const plain = await callFinish(url, 'agent-dina', {});
       expect(plain.result.structuredContent).toStrictEqual({
         success: true, status: null,
       });
@@ -467,22 +458,22 @@ describe('AppMcpService', () => {
       }));
       snapshot.agents[0]!.threadFlags = undefined;
       await run(['switch', '-c', 'feature/discussion']);
-      const filtered = await callTool(url, 'agent-dina', 'finish_turn', { flag, suggestedPrompt: 'Keep investigating' });
+      const filtered = await callFinish(url, 'agent-dina', { flag, suggestedPrompt: 'Keep investigating' });
       expect(filtered.result.structuredContent).toStrictEqual({ success: true, status: null });
       expect(snapshot.agents[0]!.threadFlags).toBeUndefined();
       expect(snapshot.agents[0]!.suggestedPrompt).toBe('Keep investigating');
       expect(events.at(-1)).toMatchObject({ type: 'agent.updated', payload: { threadFlags: null, statusText: null } });
-      await callTool(url, 'agent-dina', 'finish_turn', { flag: 'ready_for_review' });
+      await callFinish(url, 'agent-dina', { flag: 'ready_for_review' });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       await run(['checkout', '--detach']);
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       snapshot.agents[0]!.folder = os.tmpdir();
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ ready_for_review: true });
       snapshot.agents[0]!.folder = folder;
       await run(['switch', 'trunk']);
-      await callTool(url, 'agent-dina', 'finish_turn', { flag });
+      await callFinish(url, 'agent-dina', { flag });
       expect(snapshot.agents[0]!.threadFlags).toStrictEqual({ work_proposed: true });
     } finally { await service?.stop(); await rm(folder, { recursive: true, force: true }); }
   });
@@ -492,7 +483,7 @@ describe('AppMcpService', () => {
     const events: BackendEvent[] = [];
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
     const url = await service.start();
-    const result = await callTool(url, 'agent-dina', 'finish_turn', {
+    const result = await callFinish(url, 'agent-dina', {
       suggestedPrompt: '  Add keyboard navigation  ',
     });
     expect(result.result.isError).not.toBe(true);
@@ -502,14 +493,14 @@ describe('AppMcpService', () => {
       agentId: 'agent-dina', type: 'agent.updated',
       payload: { suggestedPrompt: 'Add keyboard navigation' },
     });
-    await callTool(url, 'agent-dina', 'finish_turn', {});
+    await callFinish(url, 'agent-dina', {});
     expect(snapshot.agents[0]!.suggestedPrompt).toBeUndefined();
     expect(events.at(-1)).toMatchObject({ payload: { suggestedPrompt: null } });
   });
 
   it('adds only model-owned finding actions to a scoped review context', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     service = new AppMcpService({ snapshot });
     const ordinaryUrl = await service.start();
     const reportFinding = vi.fn().mockResolvedValue({ id: 'finding-1' });
@@ -722,14 +713,14 @@ describe('AppMcpService', () => {
 
   it(`serves ${product.name} collaboration tools from daemon and delivers teammate messages through backend drivers`, async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: unknown[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-jesse',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     const url = await service.start();
     const dinaUrl = agentUrl(url, 'agent-dina');
 
@@ -775,7 +766,7 @@ describe('AppMcpService', () => {
 
   it('exposes mission tools only to the active mission worker over HTTP', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     let active = true;
     const onSetMissionTitle = vi.fn().mockResolvedValue({ success: true, title: 'Add team billing' });
     const acquireCommitLock = vi.fn().mockResolvedValue({ acquired: true });
@@ -841,7 +832,7 @@ describe('AppMcpService', () => {
 
   it('attaches a mode-specific tool module through the service extension seam', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     service = new AppMcpService({
       snapshot,
       toolModuleProviders: [{
@@ -872,7 +863,7 @@ describe('AppMcpService', () => {
 
   it('advertises Visualize tools before the pane opens while rejecting inactive calls', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const visualize = new VisualizeService({
       snapshot,
       generatedImagesRoot: process.cwd(),
@@ -916,13 +907,13 @@ describe('AppMcpService', () => {
 
   it('exposes the same message delivery path to backend-owned debug fixtures', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const sendPrompt = vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-jesse',
     });
     service = new AppMcpService({ snapshot });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
 
     service.sendMessage('agent-dina', 'agent-jesse', 'Debug menu delivery');
 
@@ -937,11 +928,11 @@ describe('AppMcpService', () => {
     const snapshot = createInitialSnapshot();
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'idle' };
-    recipient.handoff = { operationId: 'handoff', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { backend: 'codex', threadId: 'original' }, phase: 'closing', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'claude' } };
+    recipient.handoff = { operationId: 'handoff', sourceAgentId: recipient.id, sourceTitle: 'Jesse', sourceRef: { provider: 'codex', conversationId: 'original' }, phase: 'closing', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'claude' } };
     const events: BackendEvent[] = [];
     const sendPrompt = vi.fn();
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     service.sendMessage('agent-dina', recipient.id, 'Keep this requirement.');
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({
       agentId: recipient.id, type: 'agent.promptQueued',
@@ -952,17 +943,17 @@ describe('AppMcpService', () => {
 
   it('steers teammate messages into a recipient with an active turn', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const recipient = snapshot.agents.find((agent) => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'working' };
-    recipient.backendSession = { kind: 'codex', threadId: 'thread-jesse' };
+    recipient.providerSession = { kind: 'codex', conversationId: 'thread-jesse' };
     const events: any[] = [];
     const steerPrompt = vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-jesse' },
+      providerSession: { kind: 'codex', conversationId: 'thread-jesse' },
       turnId: 'turn-active',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ steerPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ steerPrompt })]])));
     const url = await service.start();
 
     await postJson(agentUrl(url, 'agent-dina'), {
@@ -978,22 +969,22 @@ describe('AppMcpService', () => {
     expect(events.some((event) => event.type === 'agent.promptQueued')).toBe(false);
   });
 
-  it.each(['cursor', 'antigravity'] as const)('steers teammate messages when live %s steerPrompt is enabled even if defaults disable it', async backend => {
+  it.each(['cursor', 'antigravity'] as const)('steers teammate messages when live %s steerPrompt is enabled even if defaults disable it', async provider => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
-    recipient.backend = backend;
-    recipient.backendDefaults = { kind: backend };
+    recipient.provider = provider;
+    recipient.providerDefaults = { kind: provider };
     recipient.status = { type: 'working' };
-    recipient.backendSession = { kind: backend, sessionId: 'live-session' };
+    recipient.providerSession = { kind: provider, conversationId: 'live-session' };
     const events: any[] = [];
-    const steerPrompt = vi.fn().mockResolvedValue({ backendSession: recipient.backendSession, turnId: 'turn-steer' });
-    const defaults = backend === 'cursor' ? cursorBackendCapabilities : antigravityBackendCapabilities;
+    const steerPrompt = vi.fn().mockResolvedValue({ providerSession: recipient.providerSession, turnId: 'turn-steer' });
+    const defaults = provider === 'cursor' ? cursorProviderCapabilities : antigravityProviderCapabilities;
     expect(defaults.steerPrompt).toBe(false);
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([[backend, createDriver({
-      backend,
-      getRuntimeStatus: () => ({ backend, status: 'running' }),
+    service.setDriverRpc(new ProviderDriverRpc(new Map([[provider, createDriver({
+      provider: provider,
+      getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
       getCapabilities: () => ({ ...defaults, steerPrompt: true }),
       steerPrompt,
     })]])));
@@ -1004,28 +995,28 @@ describe('AppMcpService', () => {
     });
     await vi.waitFor(() => expect(steerPrompt).toHaveBeenCalledOnce());
     expect(steerPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'agent-jesse', backendSession: recipient.backendSession }),
+      expect.objectContaining({ id: 'agent-jesse', providerSession: recipient.providerSession }),
       expect.stringContaining('Check the failing test.'),
     );
-    expect(recipient.backendSession).toEqual({ kind: backend, sessionId: 'live-session' });
+    expect(recipient.providerSession).toEqual({ kind: provider, conversationId: 'live-session' });
     expect(events.some(event => event.type === 'agent.promptQueued')).toBe(false);
   });
 
   it('queues teammate messages when live Cursor steerPrompt stays disabled', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
-    recipient.backend = 'cursor';
-    recipient.backendDefaults = { kind: 'cursor' };
+    recipient.provider = 'cursor';
+    recipient.providerDefaults = { kind: 'cursor' };
     recipient.status = { type: 'working' };
-    recipient.backendSession = { kind: 'cursor', sessionId: 'live-session' };
+    recipient.providerSession = { kind: 'cursor', conversationId: 'live-session' };
     const events: any[] = [];
     const steerPrompt = vi.fn();
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['cursor', createDriver({
-      backend: 'cursor',
-      getRuntimeStatus: () => ({ backend: 'cursor', status: 'running' }),
-      getCapabilities: () => ({ ...cursorBackendCapabilities, steerPrompt: false }),
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['cursor', createDriver({
+      provider: 'cursor',
+      getRuntimeStatus: () => ({ provider: 'cursor', status: 'running' }),
+      getCapabilities: () => ({ ...cursorProviderCapabilities, steerPrompt: false }),
       steerPrompt,
     })]])));
     const url = await service.start();
@@ -1042,21 +1033,21 @@ describe('AppMcpService', () => {
 
   it('keeps teammate messages unread when live Cursor steering fails', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const recipient = snapshot.agents.find(agent => agent.id === 'agent-jesse')!;
-    recipient.backend = 'cursor';
-    recipient.backendDefaults = { kind: 'cursor' };
+    recipient.provider = 'cursor';
+    recipient.providerDefaults = { kind: 'cursor' };
     recipient.status = { type: 'working' };
-    recipient.backendSession = { kind: 'cursor', sessionId: 'live-session' };
+    recipient.providerSession = { kind: 'cursor', conversationId: 'live-session' };
     const events: any[] = [];
     const steerPrompt = vi.fn()
       .mockRejectedValueOnce(new Error('Cursor turn changed during steering.'))
       .mockRejectedValue(new Error('Cursor turn changed during steering.'));
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['cursor', createDriver({
-      backend: 'cursor',
-      getRuntimeStatus: () => ({ backend: 'cursor', status: 'running' }),
-      getCapabilities: () => ({ ...cursorBackendCapabilities, steerPrompt: true }),
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['cursor', createDriver({
+      provider: 'cursor',
+      getRuntimeStatus: () => ({ provider: 'cursor', status: 'running' }),
+      getCapabilities: () => ({ ...cursorProviderCapabilities, steerPrompt: true }),
       steerPrompt,
     })]])));
     const url = await service.start();
@@ -1077,16 +1068,16 @@ describe('AppMcpService', () => {
 
   it('shows busy teammate messages in the backend-owned queue until it reports dequeue', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const recipient = snapshot.agents.find((agent) => agent.id === 'agent-jesse')!;
     recipient.status = { type: 'working' };
     const events: any[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-next' },
+      providerSession: { kind: 'codex', conversationId: 'thread-next' },
       turnId: 'turn-next',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     const url = await service.start();
 
     await postJson(agentUrl(url, 'agent-dina'), {
@@ -1126,11 +1117,11 @@ describe('AppMcpService', () => {
 
   it('marks collaboration messages already submitted when an idle delivery fails', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const events: any[] = [];
     const sendPrompt = vi.fn().mockRejectedValue(new Error('transport disconnected'));
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     const url = await service.start();
 
     await postJson(agentUrl(url, 'agent-dina'), {
@@ -1259,7 +1250,7 @@ describe('AppMcpService', () => {
 
   it('displays generated Markdown, requests celebrations, and creates agents through the service boundary', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.claudeCodeEnabled = true;
     const events: any[] = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
@@ -1285,33 +1276,25 @@ describe('AppMcpService', () => {
       jsonrpc: '2.0', id: 2, method: 'tools/call',
       params: { name: 'finish_turn', arguments: { celebration: true } },
     });
-    expect(celebrationResponse.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(celebrationResponse.result.structuredContent).toStrictEqual({ success: true, status: null });
+    await completeTurn('agent-dina');
     expect(events).toContainEqual(expect.objectContaining({
       agentId: 'agent-dina',
       type: 'client.celebrationRequested',
-      payload: { kind: celebrationResponse.result.structuredContent.celebration.kind },
+      payload: { kind: expect.any(String) },
     }));
 
     const createResponse = await postJson(callerUrl, {
       jsonrpc: '2.0', id: 3, method: 'tools/call',
       params: {
         name: 'create-agent',
-        arguments: { repoPath: '/tmp/new-agent', name: 'New Agent', selection: { backend: 'claude' } },
+        arguments: { repoPath: '/tmp/new-agent', name: 'New Agent', selection: { provider: 'claude' } },
       },
     });
     expect(createResponse.result.structuredContent).toMatchObject({ success: true, agentId: expect.any(String) });
     expect(snapshot.agents).toContainEqual(expect.objectContaining({
       name: 'New Agent',
-      backend: 'claude',
+      provider: 'claude',
       folder: '/tmp/new-agent',
       teamId: 'team-app',
     }));
@@ -1358,13 +1341,13 @@ describe('AppMcpService', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-targets-'));
     const git = promisify(execFile);
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     createQuickChatInSnapshot(snapshot, { teamId: 'team-app' }, undefined, 'batch-caller');
     const initialCount = snapshot.agents.length;
-    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker' }, turnId: 'turn' });
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker' }, turnId: 'turn' });
     const manager = new WorktreeManager({ getInitializationMode: () => 'off' });
     service = new AppMcpService({ snapshot, worktreeManager: manager });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     try {
       for (const repo of ['api', 'web', 'extra']) {
         const folder = path.join(root, repo);
@@ -1375,7 +1358,7 @@ describe('AppMcpService', () => {
       const url = await service.start();
       const create = (targets: unknown[]) => callTool(url, 'batch-caller', 'create-agent', {
         branchName: 'feat1', createWorktree: true, featureLabel: 'Account settings',
-        selection: { backend: 'codex', model: 'shared-model', reasoningEffort: 'high' },
+        selection: { provider: 'codex', model: 'shared-model', reasoningEffort: 'high' },
         targets,
       });
       const response = await create([
@@ -1395,7 +1378,7 @@ describe('AppMcpService', () => {
         expect((await git('git', ['-C', folder, 'branch', '--show-current'])).stdout.trim()).toBe('feat1');
         expect(snapshot.agents.find(agent => agent.folder === folder)).toMatchObject({
           teamId: 'team-app', delegatedByAgentId: 'batch-caller',
-          backendDefaults: { kind: 'codex', model: repo === 'api' ? 'shared-model' : 'web-model', reasoningEffort: 'high' },
+          providerDefaults: { kind: 'codex', model: repo === 'api' ? 'shared-model' : 'web-model', reasoningEffort: 'high' },
         });
       }
       expect(snapshot.teams.find(team => team.id === 'team-app')!.featureLabels).toStrictEqual({ feat1: 'Account settings' });
@@ -1442,21 +1425,21 @@ describe('AppMcpService', () => {
 
   it('lets create-agent override the inherited service tier, and drops it for antigravity', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backendDefaults = { kind: 'codex', model: 'gpt-5.6-sol', serviceTier: 'fast' };
-    snapshot.providerConnections = (['codex', 'antigravity'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.agents[0]!.providerDefaults = { kind: 'codex', model: 'gpt-5.6-sol', serviceTier: 'fast' };
+    snapshot.providerConnections = (['codex', 'antigravity'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     service = new AppMcpService({
       snapshot,
       resolveWorkspaceIdentity: vi.fn().mockResolvedValue({ kind: 'folder', folder: '/tmp/work', updatedAt: '2026-09-02T14:00:00.000Z' }),
     });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({})]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({})]])));
     const url = await service.start();
     await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Inherits' });
     await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Overrides', selection: { serviceTier: 'flex' } });
-    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', selection: { backend: 'antigravity', serviceTier: 'flex' } });
-    const tierOf = (name: string) => (snapshot.agents.find(agent => agent.name === name)?.backendDefaults as { serviceTier?: string } | undefined)?.serviceTier;
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', selection: { provider: 'antigravity', serviceTier: 'flex' } });
+    const tierOf = (name: string) => (snapshot.agents.find(agent => agent.name === name)?.providerDefaults as { serviceTier?: string } | undefined)?.serviceTier;
     expect(tierOf('Inherits')).toBe('fast');
     expect(tierOf('Overrides')).toBe('flex');
-    expect(snapshot.agents.find(agent => agent.name === 'Other provider')?.backendDefaults).not.toHaveProperty('serviceTier');
+    expect(snapshot.agents.find(agent => agent.name === 'Other provider')?.providerDefaults).not.toHaveProperty('serviceTier');
   });
 
   it.each([
@@ -1466,8 +1449,8 @@ describe('AppMcpService', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.sessionKind = 'quickChat';
     snapshot.agents[0]!.folder = null;
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
-    snapshot.agents[0]!.backendDefaults = {
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
+    snapshot.agents[0]!.providerDefaults = {
       kind: 'codex',
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
@@ -1475,7 +1458,7 @@ describe('AppMcpService', () => {
     };
     const events: any[] = [];
     const sendPrompt = vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-delegated' },
+      providerSession: { kind: 'codex', conversationId: 'thread-delegated' },
       turnId: 'turn-delegated',
     });
     const resolveWorkspaceIdentity = vi.fn().mockResolvedValue({
@@ -1500,7 +1483,7 @@ describe('AppMcpService', () => {
         getInitializationMode: () => 'repository',
       }),
     });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
     const url = await service.start();
 
     const response = await callTool(url, 'agent-dina', 'create-agent', {
@@ -1515,7 +1498,7 @@ describe('AppMcpService', () => {
     const createdAgent = snapshot.agents.find((agent) => agent.name === 'SDK worker');
     expect(createdAgent).toMatchObject({
       delegatedByAgentId: 'agent-dina',
-      backendDefaults: {
+      providerDefaults: {
         kind: 'codex',
         model: 'gpt-5.6-sol',
         reasoningEffort: 'high',
@@ -1526,7 +1509,7 @@ describe('AppMcpService', () => {
     expect(sendPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
         id: createdAgent!.id,
-        backendDefaults: {
+        providerDefaults: {
           kind: 'codex',
           model: 'gpt-5.6-sol',
           reasoningEffort: 'high',
@@ -1568,32 +1551,32 @@ describe('AppMcpService', () => {
   });
 
   it.each([
-    { saved: undefined, override: undefined, backend: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
-    { saved: 'conversation', override: 'conversation', user: { startingContext: 'handoff', instructions: 'User-entered: say Hello' }, backend: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
-    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
-    { saved: 'conversation', override: 'handoff', backend: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
-    { saved: 'handoff', override: 'conversation', backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
-    { saved: 'conversation', override: undefined, backend: 'claude', fork: 'success', effective: 'handoff', reason: 'cross-provider' },
-    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'unsupported', effective: 'handoff', reason: 'unsupported' },
-    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'failure', effective: 'handoff', reason: 'unavailable' },
-    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'handoff', reason: 'unavailable', noSession: true },
-    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined, preferenceChangeDuringProvisioning: true },
+    { saved: undefined, override: undefined, provider: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
+    { saved: 'conversation', override: 'conversation', user: { startingContext: 'handoff', instructions: 'User-entered: say Hello' }, provider: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
+    { saved: 'conversation', override: undefined, provider: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
+    { saved: 'conversation', override: 'handoff', provider: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
+    { saved: 'handoff', override: 'conversation', provider: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
+    { saved: 'conversation', override: undefined, provider: 'claude', fork: 'success', effective: 'handoff', reason: 'cross-provider' },
+    { saved: 'conversation', override: undefined, provider: 'codex', fork: 'unsupported', effective: 'handoff', reason: 'unsupported' },
+    { saved: 'conversation', override: undefined, provider: 'codex', fork: 'failure', effective: 'handoff', reason: 'unavailable' },
+    { saved: 'conversation', override: undefined, provider: 'codex', fork: 'success', effective: 'handoff', reason: 'unavailable', noSession: true },
+    { saved: 'conversation', override: undefined, provider: 'codex', fork: 'success', effective: 'conversation', reason: undefined, preferenceChangeDuringProvisioning: true },
   ] as const)('selects effective worktree context and delivers scoped instructions: %j', async row => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'source' };
-    if ('noSession' in row) parent.backendSession = undefined;
-    const originalSession = structuredClone(parent.backendSession);
+    parent.providerSession = { kind: 'codex', conversationId: 'source' };
+    if ('noSession' in row) parent.providerSession = undefined;
+    const originalSession = structuredClone(parent.providerSession);
     snapshot.general.worktreeDelegationStartingContext = row.saved;
     if ('user' in row) parent.userDelegationOverrides = row.user;
     snapshot.general.worktreeDelegationInstructions = 'Saved: run focused tests.';
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
-    const sendPrompt = vi.fn(async (agent: Agent) => ({ backendSession: row.backend === 'codex'
-      ? { kind: 'codex' as const, threadId: agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : 'fresh' }
-      : { kind: 'claude' as const, sessionId: 'fresh', transport: 'stdio' as const }, turnId: 'assignment-turn' }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
+    const sendPrompt = vi.fn(async (agent: Agent) => ({ providerSession: row.provider === 'codex'
+      ? { kind: 'codex' as const, conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId : 'fresh' }
+      : { kind: 'claude' as const, conversationId: 'fresh', transport: 'stdio' as const }, turnId: 'assignment-turn' }));
     const forkWorktreeConversation = vi.fn().mockImplementation(async () => {
       if (row.fork === 'failure') throw new Error('Provider fork rejected');
-      return { backendSession: { kind: 'codex', threadId: 'native-child' } };
+      return { providerSession: { kind: 'codex', conversationId: 'native-child' } };
     });
     const events: BackendEvent[] = [];
     service = new AppMcpService({ snapshot, onEvent: event => events.push(event), worktreeManager: new WorktreeManager({
@@ -1603,8 +1586,8 @@ describe('AppMcpService', () => {
       }),
       getInitializationMode: () => 'repository',
     }) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createDriver({ backend: 'claude', sendPrompt })]])));
-    const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.', startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.', selection: { backend: row.backend } });
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createDriver({ provider: 'claude', sendPrompt })]])));
+    const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.', startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.', selection: { provider: row.provider } });
     expect(response.result.isError).not.toBe(true);
     const child = snapshot.agents.at(-1)!;
     const context = { requested: ('user' in row ? row.user?.startingContext : undefined) ?? row.override ?? row.saved ?? 'handoff', effective: row.effective, ...(row.reason ? { reason: row.reason } : {}) };
@@ -1627,45 +1610,45 @@ describe('AppMcpService', () => {
     expect(sentPrompt).toContain('Implement only the agreed task.');
     expect(sentPrompt).toContain(`agent ID is ${child.id}`);
     expect(sentPrompt).toContain(`working directory is ${child.folder}`);
-    expect(parent.backendSession).toStrictEqual(originalSession);
+    expect(parent.providerSession).toStrictEqual(originalSession);
     expect(snapshot.activeAgentId).toBe(parent.id);
     if (row.effective === 'conversation') {
-      expect(child.backendSession).toStrictEqual({ kind: 'codex', threadId: 'native-child' });
+      expect(child.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'native-child' });
       expect(forkWorktreeConversation).toHaveBeenCalledExactlyOnceWith(parent, child);
     } else if (row.fork === 'failure') expect(forkWorktreeConversation).toHaveBeenCalledOnce();
     else expect(forkWorktreeConversation).not.toHaveBeenCalled();
   });
 
   it.each([
-    { backendSession: { kind: 'codex', threadId: 'source' } },
-    { backendSession: { kind: 'claude', sessionId: 'wrong-provider', transport: 'stdio' } },
-    { backendSession: { kind: 'codex', threadId: 'child' }, activeTurnId: 'running-child' },
+    { providerSession: { kind: 'codex', conversationId: 'source' } },
+    { providerSession: { kind: 'claude', conversationId: 'wrong-provider', transport: 'stdio' } },
+    { providerSession: { kind: 'codex', conversationId: 'child' }, activeTurnId: 'running-child' },
   ])('rejects a native fork that cannot isolate assignment execution: %j', async forkResult => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const parent = snapshot.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'source' };
+    parent.providerSession = { kind: 'codex', conversationId: 'source' };
     const sendPrompt = vi.fn();
     service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
       createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'worker', path: '/tmp/isolated-worker' }, created: true }), getInitializationMode: () => 'repository',
     }) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, forkWorktreeConversation: vi.fn().mockResolvedValue(forkResult) })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt, forkWorktreeConversation: vi.fn().mockResolvedValue(forkResult) })]])));
     const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/repo', createWorktree: true, branchName: 'feat/isolation', prompt: 'Execute the assignment', startingContext: 'conversation' });
     expect(response.result.isError).toBe(true);
     expect(JSON.stringify(response.result.content)).toContain('independent idle worker');
     expect(sendPrompt).not.toHaveBeenCalled();
-    expect(parent.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source' });
+    expect(parent.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'source' });
   });
 
   it('forks a durable assignment once and retains frozen instructions across creation retries', async () => {
     const snapshot = createInitialSnapshot();
     const parent = snapshot.agents[0]!;
-    parent.backendSession = { kind: 'codex', threadId: 'parent-native' };
+    parent.providerSession = { kind: 'codex', conversationId: 'parent-native' };
     parent.userDelegationOverrides = { startingContext: 'conversation', instructions: 'User-only startup instructions' };
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.general.worktreeDelegationInstructions = 'Saved preference at assignment time';
-    const forkWorktreeConversation = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker-native' } });
-    const send = vi.fn(async (worker: Agent) => ({ backendSession: worker.backendSession!, turnId: 'worker-turn' }));
+    const forkWorktreeConversation = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'worker-native' } });
+    const send = vi.fn(async (worker: Agent) => ({ providerSession: worker.providerSession!, turnId: 'worker-turn' }));
     let disk: import('@workspace/core/delegated-task').DelegatedTask[] = [];
     const tasks = new DurableTaskService({ tasks: [], save: async value => { disk = structuredClone(value); },
       agent: id => snapshot.agents.find(agent => agent.id === id), send, interrupt: vi.fn(), onError: vi.fn() });
@@ -1673,7 +1656,7 @@ describe('AppMcpService', () => {
       service = new AppMcpService({ snapshot, tasks, persistSnapshot: vi.fn(), worktreeManager: new WorktreeManager({
         createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'durable', path: '/tmp/durable-worker' }, created: true }), getInitializationMode: () => 'repository',
       }) });
-      service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ forkWorktreeConversation })]])));
+      service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ forkWorktreeConversation })]])));
       const url = await service.start();
       const input = { requestId: 'stable-assignment', task: { title: 'Implement the task', doneWhen: 'Focused regressions pass' }, repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/durable', prompt: 'Implement the agreed fix', instructions: 'Task-only directions', startingContext: 'conversation' };
       const creation = await callTool(url, parent.id, 'create-agent', input);
@@ -1683,9 +1666,9 @@ describe('AppMcpService', () => {
       expect(first.promptSubmitted).toBe(true);
       expect(first.delegationContext).toStrictEqual({ requested: 'conversation', effective: 'conversation' });
       const worker = snapshot.agents.find(agent => agent.id === first.agentId)!;
-      expect(worker.backendSession).toStrictEqual({ kind: 'codex', threadId: 'worker-native' });
+      expect(worker.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'worker-native' });
       expect(worker.folder).toBe('/tmp/durable-worker');
-      expect(disk[0]!.acceptance).toStrictEqual({ backendSession: worker.backendSession, turnId: 'worker-turn' });
+      expect(disk[0]!.acceptance).toStrictEqual({ providerSession: worker.providerSession, turnId: 'worker-turn' });
       snapshot.general.worktreeDelegationInstructions = 'Changed after assignment';
       snapshot.general.worktreeDelegationStartingContext = 'handoff';
       delete parent.userDelegationOverrides;
@@ -1711,38 +1694,38 @@ describe('AppMcpService', () => {
 
   it('delegates an Antigravity worktree prompt with its model and independent session', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'antigravity', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'antigravity', installed: true, connected: true, checking: false }];
     const parent = snapshot.agents[0]!;
-    parent.backend = 'antigravity';
-    parent.backendDefaults = { kind: 'antigravity', model: 'gemini-low', permissionMode: 'default' };
-    parent.backendSession = { kind: 'antigravity', sessionId: 'parent-session' };
-    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'antigravity', sessionId: 'child-session' }, turnId: 'child-turn' });
+    parent.provider = 'antigravity';
+    parent.providerDefaults = { kind: 'antigravity', model: 'gemini-low', permission: 'default' };
+    parent.providerSession = { kind: 'antigravity', conversationId: 'parent-session' };
+    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'antigravity', conversationId: 'child-session' }, turnId: 'child-turn' });
     service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
       createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'acp-task', path: '/tmp/acp-task' }, created: true }),
       getInitializationMode: () => 'repository',
     }) });
-    service.setDriverRpc(new BackendDriverRpc(new Map([['antigravity', createDriver({ backend: 'antigravity', sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['antigravity', createDriver({ provider: 'antigravity', sendPrompt })]])));
     const response = await callTool(await service.start(), parent.id, 'create-agent', {
       repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/acp-task', name: 'ACP worker', prompt: 'Complete the task', instructions: 'Keep commits local',
     });
     expect(response.result.structuredContent).toMatchObject({ success: true, promptSubmitted: true });
     const child = snapshot.agents.find(agent => agent.name === 'ACP worker')!;
-    expect(child).toMatchObject({ backend: 'antigravity', delegatedByAgentId: parent.id, backendDefaults: { kind: 'antigravity', model: 'gemini-low' }, backendSession: { kind: 'antigravity', sessionId: 'child-session' } });
+    expect(child).toMatchObject({ provider: 'antigravity', delegatedByAgentId: parent.id, providerDefaults: { kind: 'antigravity', model: 'gemini-low' }, providerSession: { kind: 'antigravity', conversationId: 'child-session' } });
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: child.id }), expect.stringContaining('Keep commits local'), { planMode: false });
-    expect(parent.backendSession).toEqual({ kind: 'antigravity', sessionId: 'parent-session' });
+    expect(parent.providerSession).toEqual({ kind: 'antigravity', conversationId: 'parent-session' });
     expect(snapshot.activeAgentId).toBe(parent.id);
   });
 
   it('lets create-agent override inherited model settings and avoids cross-backend inheritance', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.claudeCodeEnabled = true;
     snapshot.general.providerApprovalDefaults = { claude: 'auto' };
     snapshot.general.providerModelDefaults = {
-      codex: {backend: 'codex',  model: 'global-model', reasoningEffort: 'low', serviceTier: 'fast' },
-      claude: {backend: 'claude',  model: 'sonnet', reasoningEffort: 'medium', serviceTier: null },
+      codex: {provider: 'codex',  model: 'global-model', reasoningEffort: 'low', serviceTier: 'fast' },
+      claude: {provider: 'claude',  model: 'sonnet', reasoningEffort: 'medium', serviceTier: null },
     };
-    snapshot.agents[0]!.backendDefaults = {
+    snapshot.agents[0]!.providerDefaults = {
       kind: 'codex',
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
@@ -1752,78 +1735,60 @@ describe('AppMcpService', () => {
     const url = await service.start();
 
     await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/explicit-worker', name: 'Explicit worker', selection: { model: 'gpt-6-astra', reasoningEffort: 'max' } });
-    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/claude-worker', name: 'Claude worker', selection: { backend: 'claude' } });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/claude-worker', name: 'Claude worker', selection: { provider: 'claude' } });
 
-    expect(snapshot.agents.find((agent) => agent.name === 'Explicit worker')?.backendDefaults).toStrictEqual({
+    expect(snapshot.agents.find((agent) => agent.name === 'Explicit worker')?.providerDefaults).toStrictEqual({
       kind: 'codex',
       model: 'gpt-6-astra',
       reasoningEffort: 'max',
       userSelectedModel: true,
       serviceTier: null,
     });
-    expect(snapshot.agents.find((agent) => agent.name === 'Claude worker')?.backendDefaults).toStrictEqual({
+    expect(snapshot.agents.find((agent) => agent.name === 'Claude worker')?.providerDefaults).toStrictEqual({
       kind: 'claude',
       model: 'sonnet',
       reasoningEffort: 'medium',
       serviceTier: null,
       userSelectedModel: true,
-      permissionMode: 'auto',
+      permission: 'auto',
     });
   });
 
   it('leaves celebration display policy to the receiving client', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.celebrationsEnabled = false;
     const events: Array<{ type?: string }> = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-dina', 'finish_turn', {
+    const response = await callFinish(url, 'agent-dina', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested' }));
   });
 
   it('emits celebration requests independently of legacy shared selection', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.activeAgentId = 'agent-dina';
     const events: Array<{ type?: string }> = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-jesse', 'finish_turn', {
+    const response = await callFinish(url, 'agent-jesse', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toStrictEqual({
-      success: true,
-      status: null,
-      celebration: {
-        success: true,
-        requested: true,
-        kind: expect.any(String),
-        message: 'Celebration requested; each client decides whether to display it.',
-      },
-    });
+    expect(response.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested', agentId: 'agent-jesse' }));
   });
 
   it('retains global speech enablement but delegates selection, mute and voice to the client', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     const queueSpokenAnnouncement = vi.fn().mockResolvedValue({ queued: true });
     service = new AppMcpService({ snapshot, queueSpokenAnnouncement });
     const url = await service.start();
@@ -1855,26 +1820,22 @@ describe('AppMcpService', () => {
       text: 'On it.',
     });
 
-    const background = await callTool(url, 'agent-jesse', 'finish_turn', {
+    const background = await callFinish(url, 'agent-jesse', {
       announcement: { text: 'Done.' },
     });
-    expect(background.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(background.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(2);
 
     snapshot.general.spokenAnnouncementsMuted = true;
-    const muted = await callTool(url, 'agent-dina', 'finish_turn', {
+    const muted = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
-    expect(muted.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(muted.result.structuredContent).toStrictEqual({ success: true, status: null });
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(3);
 
     snapshot.general.spokenAnnouncementsMuted = false;
     snapshot.general.spokenAnnouncementScope = 'all';
-    await callTool(url, 'agent-jesse', 'finish_turn', {
+    await callFinish(url, 'agent-jesse', {
       announcement: { text: 'Done.' },
     });
     expect(queueSpokenAnnouncement).toHaveBeenLastCalledWith({
@@ -1886,7 +1847,7 @@ describe('AppMcpService', () => {
 
   it('queues spoken announcements only for dictated prompts when configured', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.spokenAnnouncementsEnabled = true;
     snapshot.general.spokenAnnouncementsOnlyForDictatedPrompts = true;
     snapshot.activeAgentId = 'agent-dina';
@@ -1907,23 +1868,21 @@ describe('AppMcpService', () => {
     const dictatedStart = await callTool(url, 'agent-dina', 'set-status', {
       status: 'Starting', announcement: { phase: 'start', text: 'On it.' },
     });
-    const dictatedFinish = await callTool(url, 'agent-dina', 'finish_turn', {
+    const dictatedFinish = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
 
     expect(dictatedStart.result.structuredContent).toStrictEqual({
       success: true, status: 'Starting', announcement: { success: true, phase: 'start' },
     });
-    expect(dictatedFinish.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(dictatedFinish.result.structuredContent).toStrictEqual({ success: true, status: null });
 
     expect(queueSpokenAnnouncement).toHaveBeenCalledTimes(2);
   });
 
   it('keeps TTS failures best-effort and rejects invalid MCP text before routing', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.spokenAnnouncementsEnabled = true;
     snapshot.general.spokenAnnouncementsOnlyForDictatedPrompts = false;
     snapshot.activeAgentId = 'agent-dina';
@@ -1931,13 +1890,11 @@ describe('AppMcpService', () => {
     service = new AppMcpService({ snapshot, queueSpokenAnnouncement });
     const url = await service.start();
 
-    const failed = await callTool(url, 'agent-dina', 'finish_turn', {
+    const failed = await callFinish(url, 'agent-dina', {
       announcement: { text: 'Done.' },
     });
     expect(failed.result.isError).toBe(false);
-    expect(failed.result.structuredContent).toStrictEqual({
-      success: true, status: null, announcement: { success: true, phase: 'finish' },
-    });
+    expect(failed.result.structuredContent).toStrictEqual({ success: true, status: null });
 
     const invalid = await callTool(url, 'agent-dina', 'set-status', {
       status: 'Starting', announcement: { phase: 'start', text: 'x'.repeat(161) },
@@ -1948,7 +1905,7 @@ describe('AppMcpService', () => {
 
   it('keeps client-side playback suppression private from the model', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.general.spokenAnnouncementsEnabled = true;
     snapshot.general.spokenAnnouncementsOnlyForDictatedPrompts = false;
     snapshot.activeAgentId = 'agent-dina';
@@ -1970,26 +1927,23 @@ describe('AppMcpService', () => {
 
   it('keeps celebrations enabled when a migrated live snapshot omits the setting', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     delete (snapshot.general as Partial<typeof snapshot.general>).celebrationsEnabled;
     const events: Array<{ type?: string }> = [];
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
     const url = await service.start();
 
-    const response = await callTool(url, 'agent-dina', 'finish_turn', {
+    const response = await callFinish(url, 'agent-dina', {
       celebration: true,
     });
 
-    expect(response.result.structuredContent).toMatchObject({
-      status: null,
-      celebration: { requested: true, kind: expect.any(String) },
-    });
+    expect(response.result.structuredContent).toMatchObject({ status: null });
     expect(events).toContainEqual(expect.objectContaining({ type: 'client.celebrationRequested' }));
   });
 
   it('updates only the caller-owned assignment and requires blocked context', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
     snapshot.workBacklog.assignments['github:nbonamy/agent-workspace#12'] = {
       provider: 'github',
       itemId: 'nbonamy/agent-workspace#12',
@@ -2031,17 +1985,17 @@ describe('AppMcpService', () => {
 
 });
 
-function createDriver(overrides: Partial<AgentBackendDriver> = {}): AgentBackendDriver {
+function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
   return {
-    backend: 'codex',
-    getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-    getCapabilities: () => codexBackendCapabilities,
+    provider: 'codex',
+    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+    getCapabilities: () => codexProviderCapabilities,
     sendPrompt: vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-test' },
+      providerSession: { kind: 'codex', conversationId: 'thread-test' },
       turnId: 'turn-test',
     }),
     interrupt: vi.fn().mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'thread-test' },
+      providerSession: { kind: 'codex', conversationId: 'thread-test' },
       turnId: 'turn-test',
     }),
     respondToAgentRequest: vi.fn().mockResolvedValue(undefined),
@@ -2093,8 +2047,8 @@ function createTestAgent(id: string, teamId: string, name: string): Agent {
     teamId,
     name,
     folder: `/Users/nbonamy/src/${id}`,
-    backend: 'codex',
-    backendSession: { kind: 'codex', threadId: `thread-${id}` },
+    provider: 'codex',
+    providerSession: { kind: 'codex', conversationId: `thread-${id}` },
     status: { type: 'idle' },
     createdAt: '2026-06-15T01:00:00.000Z',
     updatedAt: '2026-06-15T01:00:00.000Z',

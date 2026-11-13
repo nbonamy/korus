@@ -1,24 +1,25 @@
-import type { Agent, AppSnapshot, BackendModelOption, ClaudeConversationSnapshot, RendererMessage } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, ProviderModelOption, RendererMessage } from '@workspace/core/contracts';
+import type { SessionState } from '@korus-dev/multi-agent-sdk';
 import type { Mission } from '@workspace/core/missions';
 import type { MissionRun } from '@workspace/core/mission-execution';
 
 const sessionPrefix = 'mission-screenshot:';
 const repositories = ['/workspace/orbit-api', '/workspace/orbit-web'];
 const branch = 'feat/team-invitations';
-export const missionScreenshotModel: BackendModelOption = {
+export const missionScreenshotModel: ProviderModelOption = {
   id: 'claude-sonnet-4-6', model: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6', isDefault: true,
 };
 
 /** Reserved synthetic sessions never reach a provider, including after a daemon restart. */
 export function isMissionScreenshotAgent(agent: Agent): boolean {
-  return agent.backendSession?.kind === 'claude' && agent.backendSession.sessionId.startsWith(sessionPrefix);
+  return agent.providerSession?.kind === 'claude' && agent.providerSession.conversationId.startsWith(sessionPrefix);
 }
 
 export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: string, now = new Date().toISOString()): Mission {
   const mission = snapshot.missions?.find(candidate => candidate.id === missionId);
   if (!mission) throw new Error('Mission not found.');
   const team = snapshot.teams.find(candidate => candidate.id === mission.teamId);
-  if (!team) throw new Error('Mission team not found.');
+  if (!team) throw new Error('Mission workspace not found.');
   const at = (minutes: number) => new Date(Date.parse(now) - minutes * 60_000).toISOString();
   const agents = [
     { role: 'lead', name: 'Mira', repository: 0, working: false },
@@ -26,9 +27,9 @@ export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: 
     { role: 'web', name: 'Noah', repository: 1, working: false },
   ].map(({ role, name, repository, working }): Agent => ({
     id: `${missionId}-screenshot-${role}`, teamId: team.id, name,
-    folder: repositories[repository]!, backend: 'claude',
-    backendSession: { kind: 'claude', sessionId: `${sessionPrefix}${missionId}:${role}`, transport: 'stdio' },
-    backendDefaults: { kind: 'claude', model: missionScreenshotModel.model, userSelectedModel: true },
+    folder: repositories[repository]!, provider: 'claude',
+    providerSession: { kind: 'claude', conversationId: `${sessionPrefix}${missionId}:${role}`, transport: 'stdio' },
+    providerDefaults: { kind: 'claude', model: missionScreenshotModel.model, userSelectedModel: true },
     workspace: { kind: 'git', folder: repositories[repository]!, repositoryName: repositories[repository]!.split('/').at(-1)!,
       repositoryRoot: repositories[repository]!, primaryWorktreeRoot: repositories[repository]!, branch, isLinkedWorktree: true, updatedAt: now },
     status: { type: working ? 'working' : 'idle' },
@@ -80,7 +81,7 @@ export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: 
 }
 
 /** Regenerated from the persisted fixture identity, without provider transcript files. */
-export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: string): ClaudeConversationSnapshot | null {
+export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: string): SessionState | null {
   const agent = snapshot.agents.find(candidate => candidate.id === agentId);
   if (!agent || !isMissionScreenshotAgent(agent)) return null;
   const mission = snapshot.missions?.find(candidate => candidate.execution?.debugFixture
@@ -110,11 +111,17 @@ export function missionScreenshotConversation(snapshot: AppSnapshot, agentId: st
     text('done', 'assistant', 'Ready for review. **18 tests pass**, and the dialog works entirely from the keyboard. I used the shared form and dialog components so the new screens match the rest of the app.'),
   ];
   return {
-    agentId, sessionId: agent.backendSession!.kind === 'claude' ? agent.backendSession!.sessionId : null,
-    activeTurnId: busy ? turnId : null, turnIds: [turnId],
+    activeTurnId: busy ? turnId : null,
     turns: [{ id: turnId, status: busy ? 'inProgress' : 'completed', error: null, willRetry: false, startedAt: createdAt,
       completedAt: busy ? null : createdAt, durationMs: busy ? null : 180_000 }],
-    messages, answeredClientRequestIds: [], busy, historyLoading: false,
+    messages, answeredClientRequestIds: [], busy, historyLoading: false, requests: [], title: null, goal: null,
     historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null,
   };
+}
+
+/** The event that shows a screenshot fixture's conversation in the pane. */
+export function missionScreenshotSnapshotEvent(agentId: string, agent: Agent | null | undefined, state: SessionState): import('@workspace/core/provider-driver').BackendEvent {
+  const session = agent?.providerSession;
+  return { agentId, provider: 'claude', type: 'conversation.sessionSnapshot',
+    payload: { conversation: session && session.kind !== 'codex' ? session.conversationId : null, epoch: `screenshot:${agentId}`, snapshot: { revision: 0, state } } };
 }

@@ -8,7 +8,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
 
   it('closes after a brief success pause without an artificial minimum duration or stale progress', async () => {
     vi.useFakeTimers();
-    const progress = { id: 'quick', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: false };
+    const progress = { id: 'quick', state: 'running' as const, provider: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: false };
     const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'single', progress } } });
     try {
       await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'success' } } });
@@ -37,9 +37,9 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     wrapper.unmount();
   });
 
-  it.each(['codex', 'antigravity'] as const)('shows %s project creation stages and retains handoff failures', async backend => {
+  it.each(['codex', 'antigravity'] as const)('shows %s project creation stages and retains handoff failures', async provider => {
     const progress = {
-      id: 'project-1', state: 'running' as const, backend,
+      id: 'project-1', state: 'running' as const, provider: provider,
       repositoryName: 'new-product', createWorktree: false, createProject: true,
       hasPrompt: true, phase: 'creatingProject' as const,
     };
@@ -53,7 +53,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     expect(steps()[0]!.classes()).toContain('is-active');
     await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, phase: 'creatingAgent' } } });
     expect(steps()[1]!.classes()).toContain('is-active');
-    expect(steps()[1]!.text()).toContain(backend === 'antigravity' ? 'Antigravity' : 'Codex');
+    expect(steps()[1]!.text()).toContain(provider === 'antigravity' ? 'Antigravity' : 'Codex');
     await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, phase: 'startingPrompt' } } });
     expect(steps()[2]!.classes()).toContain('is-active');
     await wrapper.setProps({ operation: { mode: 'single', progress: {
@@ -66,7 +66,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
 
   it('keeps the background button in place through success and replaces it with Close on failure', async () => {
     const progress = {
-      id: 'agent-creation-1', state: 'running' as const, backend: 'codex' as const,
+      id: 'agent-creation-1', state: 'running' as const, provider: 'codex' as const,
       repositoryName: 'codex-app-sdk', createWorktree: true, hasPrompt: true, phase: 'creatingWorktree' as const,
     };
     const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'single', progress } } });
@@ -97,7 +97,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
   });
 
   it('shows concurrent agent creations as one aggregate operation', async () => {
-    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: true };
+    const base = { state: 'running' as const, provider: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: true };
     const progress = [
       { ...base, id: 'a', branchName: 'fix/a', phase: 'initializingWorktree' as const },
       { ...base, id: 'b', branchName: 'fix/b', phase: 'creatingAgent' as const },
@@ -123,7 +123,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     const initialProgress = {
       id: 'agent-creation-1',
       state: 'running' as const,
-      backend: 'codex' as const,
+      provider: 'codex' as const,
       repositoryName: 'codex-app-sdk',
       createWorktree: true,
       branchName: 'feature/contracts',

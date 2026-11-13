@@ -1,5 +1,5 @@
 import { isExecutionSelectionOverrides } from './execution-selection';
-import { normalizePromptContent } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent } from '@korus-dev/multi-agent-sdk/prompt';
 import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
 import {
@@ -16,7 +16,7 @@ import {
   optional,
 } from './snapshot-guard-primitives';
 import type { AgentGitDiffTarget } from './contracts/git';
-import type { AccountBilling } from './contracts/backend';
+import type { AccountBilling } from './contracts/provider';
 
 export function isRendererMessage(value: unknown): boolean {
   return isRecord(value) &&
@@ -100,7 +100,7 @@ function isSendPromptOptions(value: unknown): boolean {
     optional(value, 'skills', (candidate) => isArrayOf(candidate, isPromptSkill)) &&
     optional(value, 'inputMethod', (candidate) => includes(['typed', 'dictated'], candidate)) &&
     optional(value, 'recordUserMessage', isBoolean) &&
-    optional(value, 'backendOptions', isBackendPromptOptions);
+    optional(value, 'providerOptions', isProviderPromptOptions);
 }
 
 export function isPromptContent(value: unknown): boolean {
@@ -124,7 +124,7 @@ function isPromptSkill(value: unknown): boolean {
   return isRecord(value) && typeof value.name === 'string' && typeof value.path === 'string';
 }
 
-function isBackendPromptOptions(value: unknown): boolean {
+function isProviderPromptOptions(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.kind === 'antigravity' || value.kind === 'cursor') return optional(value, 'permissionMode', isNullableString);
   if (value.kind === 'codex') {

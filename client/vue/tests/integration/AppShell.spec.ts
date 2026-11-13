@@ -1,11 +1,12 @@
+import type { AgentRequest, SessionState } from '@korus-dev/multi-agent-sdk';
 import { product } from '@workspace/core/product';
+import { completedTurn, conversationFrom, runningTurn, sessionState, textMessage } from '../support/conversation-fixtures';
 import { config, DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import type {
-  CodexComposerMenuSelectableItem,
-  CodexNativeAttachment,
-  CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
-import type { CodexSurfaceClientRequest } from '@codex-app-sdk/core/surface';
+  ComposerMenuSelectableItem,
+  NativeAttachment,
+  NativeRendererApi,
+} from '@korus-dev/agent-ui-sdk';
 import { nextTick, reactive, shallowReactive } from 'vue';
 import type { AgentConversationView } from '../../src/app-state';
 import type { AgentConversationActions } from '../../src/components/use-agent-conversation';
@@ -14,19 +15,15 @@ import { ElMessageBox, ElRadio, ElRadioGroup } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import { claudeBackendCapabilities, codexBackendCapabilities, cursorBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
-import type { AppApi, RendererMessage } from '@workspace/core/contracts';
+import { claudeProviderCapabilities, codexProviderCapabilities, cursorProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
+import type { AppApi } from '@workspace/core/contracts';
 import { i18n } from '../../src/i18n';
 import { setElectronTestClient } from '../support/client';
+import { scriptedAuthentication } from '../support/client-api-mock';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../src/onboarding-session';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
-import { claudeConversationSnapshot } from '../support/claude-conversation-fixtures';
-import { projectCodexConversation } from '../../src/provider-conversation-bindings';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
-import { emptyCursorSnapshot } from '@workspace/core/cursor-conversation-replica';
-import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 
 import {
   conversationControllerActions,
@@ -60,24 +57,24 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 describe('AppShell authentication and conversation', () => {
-  it.each(['claude', 'cursor'] as const)('keeps %s permission routing and an annotated draft on the owning conversation across layouts', async backend => {
+  it.each(['claude', 'cursor'] as const)('keeps %s permission routing and an annotated draft on the owning conversation across layouts', async provider => {
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     const composer = createAgentComposerState({ getSnapshot: () => snapshot });
     const views = snapshot.agents.map(agent => {
-      agent.backend = backend;
-      agent.backendDefaults = { kind: backend, permissionMode: backend === 'cursor' ? 'default' : 'acceptEdits' };
-      return shallowReactive<AgentConversationView>({
-        agent, codexSnapshot: null, claudeSnapshot: backend === 'claude' ? claudeConversationSnapshot([], { agentId: agent.id }) : null,
-        cursorSnapshot: backend === 'cursor' ? emptyCursorSnapshot(agent.id, `session-${agent.id}`) : null,
+      agent.provider = provider;
+      agent.providerDefaults = { kind: provider, permission: provider === 'cursor' ? 'default' : 'acceptEdits' };
+      return shallowReactive<AgentConversationView & { session: SessionState }>({
+        get conversation() { return conversationFrom(this.agent, this.session); },
+        agent, session: sessionState(),
         composer: composer.configurationForAgent(agent.id),
         composerState: { text: `Draft for ${agent.id}`, selectionStart: 0, selectionEnd: 0 },
-        attachments: [], capabilities: backend === 'cursor' ? cursorBackendCapabilities : claudeBackendCapabilities, approvals: [], sending: false,
+        attachments: [], capabilities: provider === 'cursor' ? cursorProviderCapabilities : claudeProviderCapabilities, approvals: [], sending: false,
         queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false },
         answeredClientRequestIds: new Set(),
       });
@@ -85,11 +82,11 @@ describe('AppShell authentication and conversation', () => {
     const actions: AgentConversationActions = {
       planReview: vi.fn(), clearGoal: vi.fn(), threadFlag: vi.fn(), prepare: vi.fn(), loadOlder: vi.fn(),
       send: vi.fn(), steer: vi.fn(), interrupt: vi.fn(), deleteTurn: vi.fn(), editTurn: vi.fn(), forkTurn: vi.fn(), retryTurn: vi.fn(),
-      continueInterruptedTurn: vi.fn(), resolveApproval: vi.fn(), clientResponse: vi.fn(),
+      continueInterruptedTurn: vi.fn(), respond: vi.fn(),
       selectModel: vi.fn(), selectReasoningEffort: vi.fn(), selectServiceTier: vi.fn(), setPlanMode: vi.fn(),
-      setApprovalPreset: vi.fn(), setPermissionMode: vi.fn(async (id, mode) => {
+      setPermissionMode: vi.fn(async (id, mode) => {
         const view = views.find(view => view.agent.id === id)!;
-        view.agent = { ...view.agent, backendDefaults: { kind: backend, permissionMode: mode } };
+        view.agent = { ...view.agent, providerDefaults: { kind: provider, permission: mode } };
       }), updateComposerState: vi.fn(), updateAttachments: vi.fn(),
       deleteQueuedPrompt: vi.fn(), updateQueuedPrompt: vi.fn(), steerQueuedPrompt: vi.fn(),
     };
@@ -101,13 +98,13 @@ describe('AppShell authentication and conversation', () => {
       const selectPermission = async (pane: ReturnType<typeof wrapper.get>) => {
         await pane.get('button[aria-label="Composer actions"]').trigger('click');
         await pane.get('[role="menuitem"][aria-haspopup="menu"]').trigger('mouseenter');
-        const choice = pane.findAll('[role="menuitemradio"]').find(item => item.text().includes(backend === 'cursor' ? 'Full access' : "Don't ask"))!;
+        const choice = pane.findAll('[role="menuitemradio"]').find(item => item.text().includes(provider === 'cursor' ? 'Full access' : "Don't ask"))!;
         await choice.trigger('click');
       };
       await selectPermission(wrapper.get('.conversation-pane'));
-      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(selected.agent.id, backend === 'cursor' ? 'full-access' : 'dontAsk');
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(selected.agent.id, provider === 'cursor' ? 'full-access' : 'dontAsk');
       expect(wrapper.get('.chat-rich-text-editor').text()).toBe(selected.composerState.text);
-      wrapper.getComponent({ name: 'ConversationPane' }).vm.$emit('add-text-annotation', { selection: { text: 'Quoted text', messageIndex: 0, role: 'assistant' }, comment: 'Check this' });
+      wrapper.getComponent({ name: 'AppConversationPane' }).vm.$emit('add-text-annotation', { selection: { text: 'Quoted text', messageIndex: 0, role: 'assistant' }, comment: 'Check this' });
       await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', '2-vertical');
       await flushPromises();
       const panes = wrapper.findAll('.agent-split-grid__pane');
@@ -116,7 +113,7 @@ describe('AppShell authentication and conversation', () => {
       expect(ownPane.findAll('.chat-annotation-review')).toHaveLength(1);
       const otherPane = panes.find(pane => pane.attributes('data-agent-id') !== selected.agent.id)!;
       await selectPermission(otherPane);
-      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(otherPane.attributes('data-agent-id'), backend === 'cursor' ? 'full-access' : 'dontAsk');
+      expect(actions.setPermissionMode).toHaveBeenLastCalledWith(otherPane.attributes('data-agent-id'), provider === 'cursor' ? 'full-access' : 'dontAsk');
       expect(otherPane.find('.chat-annotation-review').exists()).toBe(false);
       expect(actions.setPermissionMode).toHaveBeenCalledTimes(2);
       await wrapper.getComponent({ name: 'SplitLayoutControl' }).vm.$emit('update:modelValue', 'single');
@@ -130,7 +127,7 @@ describe('AppShell authentication and conversation', () => {
     } finally { wrapper.unmount(); window.localStorage.clear(); }
   });
 
-  it.each(['codex', 'claude'] as const)('offers a compact sharing choice at the top of the %s conversation and remembers it', async backend => {
+  it.each(['codex', 'claude'] as const)('offers a compact sharing choice at the top of the %s conversation and remembers it', async provider => {
     let enabled: boolean | undefined;
     const getTelemetryConsent = vi.fn(async () => ({ enabled }));
     const changeTelemetryConsent = vi.fn(async action => {
@@ -141,9 +138,9 @@ describe('AppShell authentication and conversation', () => {
     const snapshot = createInitialSnapshot();
     snapshot.general.providerOnboardingComplete = true;
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
-    snapshot.agents[0]!.backend = backend;
-    snapshot.agents[0]!.backendDefaults = { kind: backend };
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
+    snapshot.agents[0]!.provider = provider;
+    snapshot.agents[0]!.providerDefaults = { kind: provider };
     const wrapper = mountShell({ snapshot, realConversationPane: true, stubAgentWorkspace: false });
     await flushPromises();
     try {
@@ -152,10 +149,10 @@ describe('AppShell authentication and conversation', () => {
       expect(notice.findAll('button').map(button => button.text())).toEqual(['Cancel', 'Close']);
       expect(notice.find('input').exists()).toBe(false);
       expect(changeTelemetryConsent).not.toHaveBeenCalled();
-      const action = backend === 'codex' ? 'Close' : 'Cancel';
+      const action = provider === 'codex' ? 'Close' : 'Cancel';
       await notice.findAll('button').find(button => button.text() === action)!.trigger('click');
       await flushPromises();
-      expect(changeTelemetryConsent).toHaveBeenLastCalledWith(backend === 'codex' ? 'enable' : 'disable');
+      expect(changeTelemetryConsent).toHaveBeenLastCalledWith(provider === 'codex' ? 'enable' : 'disable');
       expect(wrapper.find('[aria-label="Anonymous usage sharing"]').exists()).toBe(false);
       wrapper.unmount();
       const restarted = mountShell({ snapshot, realConversationPane: true, stubAgentWorkspace: false });
@@ -165,22 +162,22 @@ describe('AppShell authentication and conversation', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it.each(['codex', 'claude'] as const)('warns before continuing without a separate, signed-out %s setup and offers Review first', async backend => {
+  it.each(['codex', 'claude'] as const)('warns before continuing without a separate, signed-out %s setup and offers Review first', async provider => {
     const snapshot = createEmptySnapshot();
-    const connectedBackend = backend === 'codex' ? 'claude' : 'codex';
-    const providerName = backend === 'codex' ? 'Codex' : 'Claude Code';
+    const connectedProvider = provider === 'codex' ? 'claude' : 'codex';
+    const providerName = provider === 'codex' ? 'Codex' : 'Claude Code';
     snapshot.providerConnections = [
-      { backend, installed: true, connected: false, checking: false },
-      { backend: connectedBackend, installed: true, connected: true, checking: false },
+      { provider: provider, installed: true, connected: false, checking: false },
+      { provider: connectedProvider, installed: true, connected: true, checking: false },
     ];
     const updateSettings = vi.fn().mockResolvedValue(snapshot);
-    const startCodexChatGptLogin = vi.fn();
+    const loginCodex = vi.fn();
     setElectronTestClient({
       getProviderSetup: vi.fn().mockResolvedValue(snapshot.providerConnections.map(connection => ({
-        backend: connection.backend, installed: true, isolated: connection.backend === backend,
-        shareSkills: true, homePath: `/setup/${connection.backend}`, locked: false,
+        provider: connection.provider, installed: true, isolated: connection.provider === provider,
+        shareSkills: true, homePath: `/setup/${connection.provider}`, locked: false,
       }))),
-      updateSettings, startCodexChatGptLogin,
+      updateSettings, authenticateProvider: scriptedAuthentication({ codex: { login: loginCodex } }),
     });
     const wrapper = mountShell({ snapshot });
     try {
@@ -200,7 +197,7 @@ describe('AppShell authentication and conversation', () => {
       expect(wrapper.find('.codex-login').exists()).toBe(true);
       expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
       expect(updateSettings).not.toHaveBeenCalled();
-      expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+      expect(loginCodex).not.toHaveBeenCalled();
 
       await wrapper.get('.codex-login__continue').trigger('click');
       await flushPromises();
@@ -219,14 +216,14 @@ describe('AppShell authentication and conversation', () => {
   ])('continues without a separate sign-in warning for $isolated/$installed/$connected', async setup => {
     const snapshot = createEmptySnapshot();
     snapshot.providerConnections = [
-      { backend: 'codex', installed: true, connected: true, checking: false },
-      { backend: 'claude', installed: setup.installed, connected: setup.connected, checking: false },
+      { provider: 'codex', installed: true, connected: true, checking: false },
+      { provider: 'claude', installed: setup.installed, connected: setup.connected, checking: false },
     ];
     const updateSettings = vi.fn().mockResolvedValue(snapshot);
     setElectronTestClient({
       getProviderSetup: vi.fn().mockResolvedValue([
-        { backend: 'codex', installed: true, isolated: false, shareSkills: true, homePath: '/existing/codex', locked: false },
-        { backend: 'claude', ...setup, shareSkills: true, homePath: '/setup/claude', locked: false },
+        { provider: 'codex', installed: true, isolated: false, shareSkills: true, homePath: '/existing/codex', locked: false },
+        { provider: 'claude', ...setup, shareSkills: true, homePath: '/setup/claude', locked: false },
       ]), updateSettings,
     });
     const wrapper = mountShell({ snapshot });
@@ -240,18 +237,18 @@ describe('AppShell authentication and conversation', () => {
     } finally { ElMessageBox.close(); wrapper.unmount(); }
   });
 
-  it.each(['codex', 'claude'] as const)('continues with an existing %s login and offers direct GitHub access when gh is ready', async backend => {
+  it.each(['codex', 'claude'] as const)('continues with an existing %s login and offers direct GitHub access when gh is ready', async provider => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', source: 'cli', accountLabel: 'alice' }];
-    const getCodexAuthentication = vi.fn();
-    const getClaudeAuthentication = vi.fn();
-    const startCodexChatGptLogin = vi.fn();
+    const checkCodex = vi.fn();
+    const checkClaude = vi.fn();
+    const loginCodex = vi.fn();
     const connectWorkProvider = vi.fn();
     const updateSettings = vi.fn().mockResolvedValue(snapshot);
     setElectronTestClient({
-      getProviderSetup: vi.fn().mockResolvedValue([{ backend, installed: true, isolated: false, shareSkills: true, homePath: `/cli/${backend}`, locked: false }]),
-      getCodexAuthentication, getClaudeAuthentication, startCodexChatGptLogin, connectWorkProvider, updateSettings,
+      getProviderSetup: vi.fn().mockResolvedValue([{ provider: provider, installed: true, isolated: false, shareSkills: true, homePath: `/cli/${provider}`, locked: false }]),
+      authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex, login: loginCodex }, claude: { check: checkClaude } }), connectWorkProvider, updateSettings,
     });
     const wrapper = mountShell({ snapshot });
     await flushPromises();
@@ -260,9 +257,9 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     expect(wrapper.get('.repositories-onboarding').text()).toContain('GitHub CLI');
     expect(updateSettings).toHaveBeenCalledWith({ general: { providerOnboardingComplete: true } });
-    expect(getCodexAuthentication).not.toHaveBeenCalled();
-    expect(getClaudeAuthentication).not.toHaveBeenCalled();
-    expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+    expect(checkCodex).not.toHaveBeenCalled();
+    expect(checkClaude).not.toHaveBeenCalled();
+    expect(loginCodex).not.toHaveBeenCalled();
     expect(connectWorkProvider).not.toHaveBeenCalled();
     await wrapper.get('.repositories-onboarding').findAll('button').find(button => button.text() === 'Continue')!.trigger('click');
     expect(wrapper.find('.onboarding-complete').exists()).toBe(true);
@@ -273,7 +270,7 @@ describe('AppShell authentication and conversation', () => {
     window.sessionStorage.setItem('app:firstRunOnboardingStage', 'github');
     const snapshot = createEmptySnapshot();
     snapshot.general.providerOnboardingComplete = true;
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.workBacklog.connections = (['github', 'gitlab'] as const).map(provider => ({
       provider, status: selection === provider || selection === 'both' || selection === `${provider}-cli` ? 'connected' : 'disconnected',
       source: selection === 'gitlab-cli' && provider === 'gitlab' ? 'cli' : 'api',
@@ -305,11 +302,11 @@ describe('AppShell authentication and conversation', () => {
 
   it('shows the native Cursor update hint during onboarding before starting login', async () => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, checking: false,
+    snapshot.providerConnections = [{ provider: 'cursor', installed: true, connected: false, checking: false,
       authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }];
     const authenticateProvider = vi.fn();
     setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
-      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+      { provider: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
     ]), authenticateProvider });
     const wrapper = mountShell({ snapshot });
     try {
@@ -321,14 +318,14 @@ describe('AppShell authentication and conversation', () => {
 
   it('runs Cursor login only after Connect and cancels it without changing engine enablement', async () => {
     const snapshot = createEmptySnapshot();
-    snapshot.providerConnections = [{ backend: 'cursor', installed: true, connected: false, enabled: false, checking: false }];
+    snapshot.providerConnections = [{ provider: 'cursor', installed: true, connected: false, enabled: false, checking: false }];
     let settle!: (value: import('@workspace/core/contracts/provider-setup').ProviderAuthentication) => void;
     const disconnected = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
-    const authenticateProvider = vi.fn((_backend, action) => action === 'login'
+    const authenticateProvider = vi.fn((_provider, action) => action === 'login'
       ? new Promise<import('@workspace/core/contracts/provider-setup').ProviderAuthentication>(resolve => { settle = resolve; }) : (settle(disconnected), Promise.resolve(disconnected)));
     const setProviderEnabled = vi.fn().mockResolvedValue([]);
     setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([
-      { backend: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
+      { provider: 'cursor', installed: true, isolated: false, shareSkills: false, homePath: '/cursor', locked: false },
     ]), authenticateProvider, setProviderEnabled });
     const wrapper = mountShell({ snapshot });
     try {
@@ -385,21 +382,21 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.find('#handoff-instructions').exists()).toBe(true);
   });
 
-  it.each(['codex', 'claude'] as const)('disconnects %s from Settings and offers its sign-in flow again', async backend => {
+  it.each(['codex', 'claude'] as const)('disconnects %s from Settings and offers its sign-in flow again', async provider => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
-    const state = backend === 'claude'
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
+    const state = provider === 'claude'
       ? { loggedIn: false, configDirectory: '/app/claude-home' }
       : { account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } };
     const disconnectProvider = vi.fn().mockRejectedValueOnce(new Error("Error invoking remote method 'provider:disconnect': Error: Sign-out failed"))
-      .mockResolvedValue({ kind: backend, connected: false, state });
+      .mockResolvedValue({ kind: provider, connected: false, state });
     const setProviderEnabled = vi.fn();
-    const startCodexChatGptLogin = vi.fn().mockResolvedValue(undefined);
-    const getClaudeAuthentication = vi.fn().mockResolvedValue(state);
+    const loginCodex = vi.fn().mockResolvedValue(undefined);
+    const checkClaude = vi.fn().mockResolvedValue(state);
     const writeText = vi.fn().mockResolvedValue(undefined);
     const previousClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    window.app = { disconnectProvider, setProviderEnabled, startCodexChatGptLogin, getClaudeAuthentication } as unknown as AppApi;
+    window.app = { disconnectProvider, setProviderEnabled, authenticateProvider: scriptedAuthentication({ codex: { login: loginCodex }, claude: { check: checkClaude } }) } as unknown as AppApi;
     const components = config.global.components;
     config.global.components = { ...components, ElRadio, ElRadioGroup };
     const wrapper = mountRealShell({ snapshot, stubAgentWorkspace: true, stubRightWorkspacePanel: true, stubTeamRail: false });
@@ -407,10 +404,10 @@ describe('AppShell authentication and conversation', () => {
     try {
       await flushPromises();
       await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
-      await wrapper.get('.settings-sidebar').findAll('.el-menu-item').find(item => item.text() === (backend === 'claude' ? 'Claude Code' : 'Codex'))!.trigger('click');
+      await wrapper.get('.settings-sidebar').findAll('.el-menu-item').find(item => item.text() === (provider === 'claude' ? 'Claude Code' : 'Codex'))!.trigger('click');
       await wrapper.get('.settings-view').findAll('button').find(button => button.text() === 'Disconnect')!.trigger('click');
       await flushPromises();
-      expect(disconnectProvider).toHaveBeenCalledExactlyOnceWith(backend);
+      expect(disconnectProvider).toHaveBeenCalledExactlyOnceWith(provider);
       expect(setProviderEnabled).not.toHaveBeenCalled();
       expect(wrapper.get('.engine-hero__error').text()).toBe('Sign-out failed');
       await wrapper.get('.settings-view').findAll('button').find(button => button.text() === 'Disconnect')!.trigger('click');
@@ -421,7 +418,7 @@ describe('AppShell authentication and conversation', () => {
       await wrapper.setProps({ snapshot: { ...snapshot } });
       await wrapper.get('.settings-view').findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
       await flushPromises();
-      if (backend === 'claude') {
+      if (provider === 'claude') {
         const commands = wrapper.findAll('.claude-login-command');
         expect(commands).toHaveLength(2);
         expect(commands[0]!.text()).toContain("CLAUDE_CONFIG_DIR='/app/claude-home' claude auth login --claudeai");
@@ -429,8 +426,15 @@ describe('AppShell authentication and conversation', () => {
         expect(writeText).toHaveBeenLastCalledWith("CLAUDE_CONFIG_DIR='/app/claude-home' claude auth login --claudeai");
         await commands[1]!.get('button').trigger('click');
         expect(writeText).toHaveBeenLastCalledWith("CLAUDE_CONFIG_DIR='/app/claude-home' claude auth login --console");
+        // Checking while still signed out turns nothing on; finding the sign-in done from this dialog is the user connecting it.
+        expect(setProviderEnabled).not.toHaveBeenCalled();
+        checkClaude.mockResolvedValue({ loggedIn: true, configDirectory: '/app/claude-home' });
+        const check = [...wrapper.findAll('button').map(button => button.element), ...document.body.querySelectorAll('button')].find(button => button.closest('.claude-login-command') === null && /check|refresh/i.test(button.textContent ?? '') && button.classList.contains('app-button--primary'))!;
+        check.click();
+        await flushPromises();
+        expect(setProviderEnabled).toHaveBeenCalledExactlyOnceWith('claude', true);
       } else {
-        expect(startCodexChatGptLogin).toHaveBeenCalledOnce();
+        expect(loginCodex).toHaveBeenCalledExactlyOnceWith({ method: 'browser' });
         expect(wrapper.get('.settings-view').text()).toContain('Cancel sign-in');
       }
     } finally {
@@ -440,27 +444,25 @@ describe('AppShell authentication and conversation', () => {
     }
   });
 
-  it.each(['codex', 'claude'] as const)('applies live follow-up preferences to the %s composer without changing provider routing', async (backend) => {
+  it.each(['codex', 'claude'] as const)('applies live follow-up preferences to the %s composer without changing provider routing', async (provider) => {
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.general.followUpBehavior = 'steer';
-    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: provider, installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendDefaults = { kind: backend };
-    agent.backendSession = backend === 'claude'
-      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
-      : { kind: 'codex', threadId: 'thread-1' };
+    agent.provider = provider;
+    agent.providerDefaults = { kind: provider };
+    agent.providerSession = provider === 'claude'
+      ? { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'codex', conversationId: 'thread-1' };
     agent.status = { type: 'working' };
     const wrapper = mountShell({
       snapshot, stubAgentWorkspace: false, realConversationPane: true,
-      ...(backend === 'claude'
-        ? { claudeConversationSnapshot: claudeConversationSnapshot([], { busy: true, activeTurnId: 'turn-1' }) }
-        : { codexConversationSnapshot: codexConversationSnapshot([], { busy: true, activeTurnId: 'turn-1' }) }),
+      conversation: sessionState({ busy: true, activeTurnId: 'turn-1' }),
       composerState: { text: 'Do this next', selectionStart: 12, selectionEnd: 12 },
       queuedPrompts: [{ id: 'queued-1', agentId: agent.id, text: 'Already queued', createdAt: '2026-10-03T00:00:00Z' }],
     });
-    await wrapper.setProps({ backendCapabilities: backend === 'claude' ? claudeBackendCapabilities : codexBackendCapabilities, isSending: true });
+    await wrapper.setProps({ providerCapabilities: provider === 'claude' ? claudeProviderCapabilities : codexProviderCapabilities, isSending: true });
     expect(wrapper.get<HTMLButtonElement>('[aria-label="Steer queued prompt now"]').element.disabled).toBe(false);
     await wrapper.get('.chat-rich-text-editor').trigger('keydown', { key: 'Enter' });
     await flushPromises();
@@ -479,29 +481,35 @@ describe('AppShell authentication and conversation', () => {
   it('projects Claude approvals into the controlled pane with their exact transcript item identity', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = 'claude';
-    agent.backendDefaults = { kind: 'claude' };
-    agent.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
-    const replica = createClaudeConversationReplica(claudeConversationSnapshot([], { agentId: agent.id }));
+    agent.provider = 'claude';
+    agent.providerDefaults = { kind: 'claude' };
+    agent.providerSession = { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' };
     const confirmation = { integrationId: 'claude', integrationName: 'Claude', toolName: 'Bash', summary: 'Run the tests?', argumentsPreview: '{"command":"npm test"}', allowConversation: true, allowAlways: false };
-    replica.apply({ type: 'approval.requested', agentId: agent.id, backend: 'claude', seq: 1, occurredAt: '2026-10-03T00:00:00Z', turnId: 'turn-approval', payload: { id: 'permission', kind: 'confirm_tool', payload: { confirmation } } });
+    // Claude records the tool call it asks about in the transcript.
+    const pending = sessionState({ messages: [{
+      id: 'assistant-turn-approval', agentId: agent.id, role: 'assistant', status: 'streaming', turnId: 'turn-approval', createdAt: '2026-10-03T00:00:00Z',
+      parts: [{ type: 'tool', id: 'approval-permission', kind: 'mcp', title: 'claude.Bash', status: 'running',
+        statusText: JSON.stringify({ source: 'mcp', action: 'run', phase: 'running', params: { requestId: 'permission', tool: 'claude.Bash',
+          confirmationSummary: confirmation.summary, argumentsPreview: confirmation.argumentsPreview, allowConversation: true, allowAlways: false } }),
+        input: { command: 'npm test' }, metadata: { confirmationRequestId: 'permission', server: 'claude', tool: 'Bash' } }],
+    }], answeredClientRequestIds: [] });
     const draft = { text: 'Keep my draft', selectionStart: 4, selectionEnd: 4 };
-    const attachment: CodexNativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
-    const wrapper = mountShell({ snapshot, claudeConversationSnapshot: replica.getSnapshot(), stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
-    expect(conversationControllerState(wrapper).thread?.clientRequests).toStrictEqual([{
-      id: 'permission', kind: 'confirm_tool', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', payload: { confirmation },
+    const attachment: NativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
+    const request = { id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation } as const;
+    const wrapper = mountShell({ snapshot, conversation: pending, conversationRequests: [request], stubAgentWorkspace: false, realConversationPane: true, composerState: draft, composerAttachments: [attachment] });
+    expect(conversationControllerState(wrapper).thread?.requests).toStrictEqual([{
+      id: 'permission', kind: 'toolConfirmation', conversationId: 'claude-session-1', turnId: 'turn-approval', itemId: 'approval-permission', confirmation,
     }]);
-    const footer = wrapper.get('.codex-conversation-pane__footer');
+    const footer = wrapper.get('.agent-ui-conversation-pane__footer');
     expect(footer.text()).toContain('Run the tests?');
     expect(wrapper.findAll('.chat-tool-confirmation')).toHaveLength(1);
-    expect(wrapper.find('.codex-composer').exists()).toBe(false);
+    expect(wrapper.find('.agent-ui-composer').exists()).toBe(false);
     expect(footer.findAll('button').map(button => button.text())).toEqual(['Allow', 'Allow for session', 'Deny']);
     await footer.findAll('button')[1]!.trigger('click');
     await flushPromises();
-    expect(wrapper.emitted('client-response')).toEqual([[{ id: 'permission', payload: { decision: 'allow_conversation' } }]]);
-    replica.apply({ type: 'clientRequest.resolved', agentId: agent.id, backend: 'claude', seq: 2, occurredAt: '2026-10-03T00:00:01Z', payload: { id: 'permission' } });
-    await wrapper.setProps({ claudeConversationSnapshot: replica.getSnapshot() });
-    expect(conversationControllerState(wrapper).thread?.clientRequests).toEqual([]);
+    expect(wrapper.emitted('agent-response')).toEqual([[{ id: 'permission', outcome: { kind: 'decision', decision: 'allow_conversation' } }]]);
+    await wrapper.setProps({ conversationPresentation: conversationFrom(agent, { ...pending, answeredClientRequestIds: ['permission'] }) });
+    expect(conversationControllerState(wrapper).thread?.requests).toEqual([]);
     expect(conversationControllerState(wrapper).identity.messages).toHaveLength(1);
     expect(wrapper.get('.chat-rich-text-editor').text()).toBe(draft.text);
     expect(wrapper.text()).toContain('notes.txt');
@@ -510,134 +518,106 @@ describe('AppShell authentication and conversation', () => {
   it('uses the provider-owned Codex conversation', () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-provider' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-provider' };
     const providerMessages = [
-      codexTextMessage('provider-user', 'user', 'Provider prompt', 'turn-provider'),
-      codexTextMessage('provider-assistant', 'assistant', 'Provider response', 'turn-provider'),
+      textMessage('provider-user', 'user', 'Provider prompt', { agentId: agent.id, turnId: 'turn-provider' }),
+      textMessage('provider-assistant', 'assistant', 'Provider response', { agentId: agent.id, turnId: 'turn-provider' }),
     ];
-    const providerSnapshot = codexConversationSnapshot(providerMessages, {
-      activeConversationId: 'thread-provider',
+    const approval: AgentRequest = {
+      id: 'approval-provider', conversationId: 'thread-provider', turnId: 'turn-provider', itemId: 'item-provider', kind: 'approval',
+      approval: { id: 'approval-provider', kind: 'command', conversationId: 'thread-provider', turnId: 'turn-provider', itemId: 'item-provider',
+        command: 'npm test', cwd: '/tmp/project', title: 'Run tests' },
+    };
+    const providerSnapshot = sessionState({
+      messages: providerMessages,
       activeTurnId: 'turn-provider',
-      turnIds: ['turn-provider'],
-      turns: [{
-        id: 'turn-provider', status: 'inProgress', error: null, willRetry: false,
-        startedAt: '2026-09-06T00:00:00.000Z', completedAt: null, durationMs: null,
-      }],
+      turns: [runningTurn('turn-provider', { startedAt: '2026-09-06T00:00:00.000Z' })],
       busy: true,
-      approvals: [{
-        id: 'approval-provider',
-        kind: 'command',
-        conversationId: 'thread-provider',
-        turnId: 'turn-provider',
-        itemId: 'item-provider',
-        command: 'npm test',
-        cwd: '/tmp/project',
-        title: 'Run tests',
-      }],
+      requests: [approval],
     });
 
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
-      codexConversationSnapshot: providerSnapshot,
+      conversation: providerSnapshot,
     });
     const state = conversationControllerState(wrapper);
 
-    expect(state.identity.messages).toStrictEqual(providerMessages);
+    expect(state.identity.messages).toMatchObject(providerMessages);
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.activeTurnId).toBe('turn-provider');
     expect(state.identity.busy).toBe(true);
-    expect(state.thread?.approvals).toStrictEqual(providerSnapshot.approvals);
-    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('hasVisibleMessages')).toBe(true);
+    expect(state.thread?.requests).toStrictEqual([approval]);
+    expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
   it.each(['codex', 'cursor'] as const)('presents a blocking %s question through the controlled pane and forwards its answer', async backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendDefaults = { kind: backend };
-    agent.backendSession = backend === 'codex'
-      ? { kind: 'codex', threadId: 'thread-question' }
-      : { kind: 'cursor', sessionId: 'thread-question' };
-    const question: CodexSurfaceClientRequest = {
-      id: 'request-framework', kind: 'ask_user', conversationId: 'thread-question',
+    agent.provider = backend;
+    agent.providerDefaults = { kind: backend };
+    agent.providerSession = backend === 'codex'
+      ? { kind: 'codex', conversationId: 'thread-question' }
+      : { kind: 'cursor', conversationId: 'thread-question' };
+    const question = {
+      id: 'request-framework', kind: 'question', conversationId: 'thread-question',
       turnId: 'turn-question', itemId: 'item-framework',
-      payload: { request: { itemId: 'item-framework', delivery: 'tool', blocking: true,
+      question: { itemId: 'item-framework', delivery: 'tool', blocking: true,
         questions: [{ id: 'framework', header: 'Framework', question: 'Which framework should I use?',
           isOther: false, isSecret: false,
           options: [{ label: 'Vue', description: 'Use the SDK component package.' }],
         }],
-      } },
-    };
+      },
+    } satisfies AgentRequest;
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
-      cursorConversationSnapshot: backend === 'cursor' ? {
-        ...emptyCursorSnapshot(agent.id, 'thread-question'), activeTurnId: 'turn-question', busy: true,
-        clientRequests: [{ id: question.id, kind: 'ask_user', payload: question.payload }],
-      } : null,
-      codexConversationSnapshot: codexConversationSnapshot([{
-        id: 'assistant-question', role: 'assistant', status: 'streaming', turnId: 'turn-question',
-        parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
-          status: 'running', metadata: { requestId: question.id },
-          statusText: JSON.stringify({ source: 'codex', action: 'ask_user_question', phase: 'running',
-            params: { requestId: question.id, questions: question.payload.request.questions } }),
+      conversation: sessionState({
+        messages: backend === 'cursor' ? [] : [{
+          id: 'assistant-question', agentId: agent.id, role: 'assistant', status: 'streaming', turnId: 'turn-question', createdAt: '2026-09-06T00:00:00.000Z',
+          parts: [{ type: 'tool', id: 'item-framework', kind: 'generic', title: 'ask_user_question',
+            status: 'running', metadata: { requestId: question.id },
+            statusText: JSON.stringify({ source: 'codex', action: 'ask_user_question', phase: 'running',
+              params: { requestId: question.id, questions: question.question.questions } }),
+          }],
         }],
-      }], {
-        activeConversationId: 'thread-question',
         activeTurnId: 'turn-question',
-        turnIds: ['turn-question'],
-        turns: [{ id: 'turn-question', status: 'inProgress', error: null, willRetry: false,
-          startedAt: null, completedAt: null, durationMs: null }],
-        clientRequests: [question],
+        turns: backend === 'cursor' ? [] : [runningTurn('turn-question')],
+        requests: [question],
         busy: true,
       }),
     });
 
-    expect(wrapper.get('.codex-conversation-pane__footer').text()).toContain('Which framework should I use?');
-    expect(wrapper.find('.codex-composer').exists()).toBe(false);
-    expect(wrapper.find('.codex-conversation-pane__messages .chat-tool-user-input').exists()).toBe(false);
-    await wrapper.get('.codex-conversation-pane__footer button[aria-label="Vue"]').trigger('click');
+    expect(wrapper.get('.agent-ui-conversation-pane__footer').text()).toContain('Which framework should I use?');
+    expect(wrapper.find('.agent-ui-composer').exists()).toBe(false);
+    expect(wrapper.find('.agent-ui-conversation-pane__messages .chat-tool-user-input').exists()).toBe(false);
+    await wrapper.get('.agent-ui-conversation-pane__footer button[aria-label="Vue"]').trigger('click');
 
-    expect(wrapper.emitted('client-response')).toStrictEqual([[
-      { id: question.id, payload: { answers: { framework: { answers: ['Vue'] } } } },
+    expect(wrapper.emitted('agent-response')).toStrictEqual([[
+      { id: question.id, outcome: { kind: 'answered', answers: { framework: { answers: ['Vue'] } } } },
     ]]);
   });
 
   it.each(['claude', 'cursor'] as const)('uses the provider-owned %s conversation', backend => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backend = backend;
-    agent.backendDefaults = { kind: backend };
-    agent.backendSession = backend === 'claude'
-      ? { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' }
-      : { kind: 'cursor', sessionId: 'cursor-session-1' };
-    const messages: RendererMessage[] = [{
-      id: 'claude-owned', agentId: agent.id, role: 'assistant', status: 'complete', turnId: 'turn-1',
-      createdAt: '2026-09-06T00:00:01.000Z', parts: [{ type: 'text', text: 'Provider owned' }],
-    }];
-    const providerSnapshot = claudeConversationSnapshot(messages, {
+    agent.provider = backend;
+    agent.providerDefaults = { kind: backend };
+    agent.providerSession = backend === 'claude'
+      ? { kind: 'claude', conversationId: 'claude-session-1', transport: 'stdio' }
+      : { kind: 'cursor', conversationId: 'cursor-session-1' };
+    const messages = [textMessage('claude-owned', 'assistant', 'Provider owned', { agentId: agent.id, createdAt: '2026-09-06T00:00:01.000Z' })];
+    const providerSnapshot = sessionState({
+      messages,
       activeTurnId: 'turn-1',
-      turnIds: ['turn-1'],
-      turns: [{
-        id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
-        startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null,
-      }],
+      turns: [runningTurn('turn-1', { startedAt: '2026-09-06T00:00:01.000Z' })],
       busy: true,
     });
 
-    const state = conversationControllerState(mountShell({
-      snapshot,
-      ...(backend === 'claude' ? { claudeConversationSnapshot: providerSnapshot } : {
-        cursorConversationSnapshot: { ...emptyCursorSnapshot(agent.id, 'cursor-session-1'),
-          messages, turns: [{ id: 'turn-1', status: 'inProgress', error: null, willRetry: false,
-            startedAt: '2026-09-06T00:00:01.000Z', completedAt: null, durationMs: null }],
-          activeTurnId: 'turn-1', busy: true },
-      }),
-    }));
+    const state = conversationControllerState(mountShell({ snapshot, conversation: providerSnapshot }));
 
-    expect(state.identity.messages).toStrictEqual(messages);
+    expect(state.identity.messages).toMatchObject(messages);
     expect(state.identity.turns).toStrictEqual(providerSnapshot.turns);
     expect(state.identity.busy).toBe(true);
   });
@@ -645,18 +625,17 @@ describe('AppShell authentication and conversation', () => {
   it('forwards an edited terminal Codex prompt with its authoritative turn id', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-edit' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-edit' };
     const providerMessages = [
-      codexTextMessage('user-turn-edit', 'user', 'Original prompt', 'turn-edit'),
-      codexTextMessage('assistant-turn-edit', 'assistant', 'Original response', 'turn-edit'),
+      textMessage('user-turn-edit', 'user', 'Original prompt', { agentId: agent.id, turnId: 'turn-edit' }),
+      textMessage('assistant-turn-edit', 'assistant', 'Original response', { agentId: agent.id, turnId: 'turn-edit' }),
     ];
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot(providerMessages, {
-        activeConversationId: 'thread-edit',
-        turnIds: ['turn-edit'],
+      conversation: sessionState({
+        messages: providerMessages,
         turns: [{
           id: 'turn-edit', status: 'completed', error: null, willRetry: false,
           startedAt: '2026-09-06T00:00:00.000Z', completedAt: '2026-09-06T00:00:01.000Z', durationMs: 1_000,
@@ -676,19 +655,18 @@ describe('AppShell authentication and conversation', () => {
   it('keeps the asynchronous edit action attached so the SDK renders failures', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'thread-edit' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-edit' };
     const editTurnAction = vi.fn().mockRejectedValue(new Error('Codex rollback timed out'));
     const wrapper = mountShell({
       snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
       editTurnAction,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('user-turn-edit', 'user', 'Original prompt', 'turn-edit'),
-        codexTextMessage('assistant-turn-edit', 'assistant', 'Original response', 'turn-edit'),
-      ], {
-        activeConversationId: 'thread-edit',
-        turnIds: ['turn-edit'],
+      conversation: sessionState({
+        messages: [
+          textMessage('user-turn-edit', 'user', 'Original prompt', { agentId: agent.id, turnId: 'turn-edit' }),
+          textMessage('assistant-turn-edit', 'assistant', 'Original response', { agentId: agent.id, turnId: 'turn-edit' }),
+        ],
         turns: [{
           id: 'turn-edit', status: 'completed', error: null, willRetry: false,
           startedAt: '2026-09-06T00:00:00.000Z', completedAt: '2026-09-06T00:00:01.000Z', durationMs: 1_000,
@@ -726,11 +704,11 @@ describe('AppShell authentication and conversation', () => {
 
   it('opens an existing workspace while cached connection data loads, without new authentication probes', async () => {
     let resolveConnections!: (value: []) => void;
-    const getCodexAuthentication = vi.fn();
-    const getClaudeAuthentication = vi.fn();
+    const checkCodex = vi.fn();
+    const checkClaude = vi.fn();
     const setMenuBarVisible = vi.fn().mockResolvedValue(undefined);
     window.app = {
-      getCodexAuthentication, getClaudeAuthentication,
+      authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex }, claude: { check: checkClaude } }),
       setMenuBarVisible,
       getProviderConnections: vi.fn().mockReturnValue(new Promise((resolve) => {
         resolveConnections = resolve;
@@ -749,33 +727,33 @@ describe('AppShell authentication and conversation', () => {
 
     expect(wrapper.find('.codex-login').exists()).toBe(false);
     expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
-    expect(getCodexAuthentication).not.toHaveBeenCalled();
-    expect(getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(checkCodex).not.toHaveBeenCalled();
+    expect(checkClaude).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
   it('shows the cached account in engine settings without probing authentication', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false,
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false,
       authentication: { kind: 'codex', connected: true, state: {
         account: { type: 'chatgpt', email: 'cached@example.com', planType: 'plus' }, requiresOpenaiAuth: true,
         login: { status: 'idle', error: null },
-      } },
+      }, account: { kind: 'subscription', email: 'cached@example.com', plan: 'plus' } },
     }];
-    const getCodexAuthentication = vi.fn();
-    window.app = { getCodexAuthentication } as Partial<AppApi> as AppApi;
+    const checkCodex = vi.fn();
+    window.app = { authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex } }) } as Partial<AppApi> as AppApi;
     const wrapper = mountRealShell({ snapshot, stubAgentWorkspace: true, stubRightWorkspacePanel: true, stubTeamRail: false });
     await flushPromises();
     await wrapper.get('.settings-menu').findAll('[role="menuitem"]').find(item => item.text().startsWith('Settings'))!.trigger('click');
     await wrapper.get('.settings-sidebar').findAll('.el-menu-item').find(item => item.text() === 'Codex')!.trigger('click');
     expect(wrapper.get('.settings-view .engine-hero__summary').text()).toContain('cached@example.com');
-    expect(getCodexAuthentication).not.toHaveBeenCalled();
+    expect(checkCodex).not.toHaveBeenCalled();
   });
 
   it('saves a skills-only change from Settings for an engine that already has chats', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true };
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    const setup = { provider: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true };
     const configureProviderSetup = vi.fn().mockResolvedValue({ ...setup, shareSkills: false });
     setElectronTestClient({ getProviderSetup: vi.fn().mockResolvedValue([setup]), configureProviderSetup });
     const wrapper = mountRealShell({ snapshot, stubAgentWorkspace: true, stubRightWorkspacePanel: true, stubTeamRail: false });
@@ -794,8 +772,8 @@ describe('AppShell authentication and conversation', () => {
 
   it('routes a confirmed Settings setup switch with the exact agent list', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    const setup = { backend: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: snapshot.agents.map(agent => agent.id) };
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    const setup = { provider: 'codex' as const, installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: true, affectedAgentIds: snapshot.agents.map(agent => agent.id) };
     const configureProviderSetup = vi.fn()
       .mockRejectedValueOnce(new Error(`Error invoking remote method 'provider:setup:configure': ${encodeAppErrorDescriptor({ kind: 'appError', code: 'engineSetup.agentsBusy' }, 'diagnostic fallback')}`))
       .mockResolvedValue({ ...setup, isolated: false, locked: false, affectedAgentIds: [] });
@@ -831,7 +809,7 @@ describe('AppShell authentication and conversation', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
     const setMenuBarVisible = vi.fn().mockResolvedValue(undefined);
-    const getCodexAuthentication = vi.fn()
+    const checkCodex = vi.fn()
       .mockResolvedValueOnce({
         account: null,
         requiresOpenaiAuth: true,
@@ -843,12 +821,11 @@ describe('AppShell authentication and conversation', () => {
         login: { status: 'idle', error: null },
       });
     window.app = {
-      getCodexAuthentication,
-      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(backend => ({
-        backend, installed: true, isolated: false, shareSkills: true, homePath: `/existing/${backend}`, locked: false,
+      authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex, login: vi.fn().mockResolvedValue(undefined) } }),
+      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(provider => ({
+        provider: provider, installed: true, isolated: false, shareSkills: true, homePath: `/existing/${provider}`, locked: false,
       }))),
       setMenuBarVisible,
-      startCodexChatGptLogin: vi.fn().mockResolvedValue(undefined),
       updateSettings: vi.fn().mockResolvedValue(snapshot),
     } as Partial<AppApi> as AppApi;
 
@@ -859,7 +836,7 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     vi.advanceTimersByTime(1000);
     await flushPromises();
-    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ backend: 'codex', installed: true, connected: true, checking: false }] } });
+    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ provider: 'codex', installed: true, connected: true, checking: false }] } });
 
     expect(wrapper.get('.codex-login').text()).toContain('Codex connected');
     expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
@@ -911,11 +888,11 @@ describe('AppShell authentication and conversation', () => {
     useConfetti().clear();
     setFirstRunOnboardingStage('repositories');
     window.app = {
-      getCodexAuthentication: vi.fn().mockResolvedValue({
+      authenticateProvider: scriptedAuthentication({ codex: { check: vi.fn().mockResolvedValue({
         account: { type: 'chatgpt' },
         requiresOpenaiAuth: true,
         login: { status: 'idle', error: null },
-      }),
+      }) } }),
     } as Partial<AppApi> as AppApi;
 
     const wrapper = mountShell();
@@ -932,11 +909,11 @@ describe('AppShell authentication and conversation', () => {
 
   it('keeps provider selection pending across a reload even after Codex signs in', async () => {
     window.app = {
-      getCodexAuthentication: vi.fn().mockResolvedValue({
+      authenticateProvider: scriptedAuthentication({ codex: { check: vi.fn().mockResolvedValue({
         account: null,
         requiresOpenaiAuth: true,
         login: { status: 'idle', error: null },
-      }),
+      }) } }),
     } as Partial<AppApi> as AppApi;
 
     const signedOutShell = mountShell({ snapshot: createEmptySnapshot() });
@@ -944,15 +921,15 @@ describe('AppShell authentication and conversation', () => {
     signedOutShell.unmount();
 
     window.app = {
-      getCodexAuthentication: vi.fn().mockResolvedValue({
+      authenticateProvider: scriptedAuthentication({ codex: { check: vi.fn().mockResolvedValue({
         account: { type: 'chatgpt' },
         requiresOpenaiAuth: true,
         login: { status: 'idle', error: null },
-      }),
+      }) } }),
     } as Partial<AppApi> as AppApi;
 
     const reloadedSnapshot = createEmptySnapshot();
-    reloadedSnapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    reloadedSnapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const reloadedShell = mountShell({ snapshot: reloadedSnapshot });
     await flushPromises();
 
@@ -964,11 +941,13 @@ describe('AppShell authentication and conversation', () => {
   it('recognizes an already authenticated Claude during initial provider discovery before it is enabled', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     snapshot.general.claudeCodeEnabled = false;
     window.app = {
-      getCodexAuthentication: vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } }),
-      getClaudeAuthentication: vi.fn().mockResolvedValue({ loggedIn: true, configDirectory: null }),
+      authenticateProvider: scriptedAuthentication({
+        codex: { check: vi.fn().mockResolvedValue({ account: null, requiresOpenaiAuth: true, login: { status: 'idle', error: null } }) },
+        claude: { check: vi.fn().mockResolvedValue({ loggedIn: true, configDirectory: null }) },
+      }),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
@@ -980,16 +959,16 @@ describe('AppShell authentication and conversation', () => {
   it('connects Claude without Codex and persists onboarding completion rather than enable flags', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const getCodexAuthentication = vi.fn().mockRejectedValue(new Error('Codex unavailable'));
+    const checkCodex = vi.fn().mockRejectedValue(new Error('Codex unavailable'));
     let finishClaudeCheck!: (result: { loggedIn: boolean; configDirectory: string }) => void;
-    const getClaudeAuthentication = vi.fn()
+    const checkClaude = vi.fn()
       .mockReturnValueOnce(new Promise(resolve => { finishClaudeCheck = resolve; }))
       .mockResolvedValue({ loggedIn: true, configDirectory: '/tmp/private-claude-home' });
     const updateSettings = vi.fn().mockResolvedValue(snapshot);
     window.app = {
-      getCodexAuthentication, getClaudeAuthentication, updateSettings,
-      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(backend => ({
-        backend, installed: true, isolated: backend === 'claude', shareSkills: true, homePath: `/app/${backend}-home`, locked: false,
+      authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex }, claude: { check: checkClaude } }), updateSettings,
+      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(provider => ({
+        provider: provider, installed: true, isolated: provider === 'claude', shareSkills: true, homePath: `/app/${provider}-home`, locked: false,
       }))),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
@@ -1007,7 +986,7 @@ describe('AppShell authentication and conversation', () => {
     expect(checkConnection).toBeDefined();
     await checkConnection!.trigger('click');
     await flushPromises();
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     await wrapper.setProps({ snapshot: { ...snapshot } });
     expect(wrapper.get('.codex-login').text()).toContain('Claude Code connected');
     expect(wrapper.findAll('.codex-login__detection')[1]!.text()).toContain('Connected');
@@ -1026,46 +1005,35 @@ describe('AppShell authentication and conversation', () => {
     snapshot.general.codexEnabled = false;
     snapshot.general.claudeCodeEnabled = true;
     snapshot.general.providerOnboardingComplete = true;
-    getCodexAuthentication.mockClear();
+    checkCodex.mockClear();
     const reloaded = mountShell({ snapshot });
     await flushPromises();
     expect(reloaded.find('.codex-login').exists()).toBe(false);
     expect(reloaded.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');
-    expect(getCodexAuthentication).not.toHaveBeenCalled();
+    expect(checkCodex).not.toHaveBeenCalled();
     reloaded.unmount();
   });
 
-  it('keeps Antigravity Connect disabled during installation, recovers from failure, and enables it after a retry', async () => {
+  it('keeps Antigravity Connect disabled until its CLI is detected, with the official install instructions at hand', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setup = { backend: 'antigravity' as const, installed: false, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
-    let succeed!: (value: typeof setup) => void;
-    let fail!: (error: Error) => void;
-    const installProvider = vi.fn(() => new Promise<typeof setup>((resolve, reject) => { succeed = resolve; fail = reject; }));
+    const setup = { provider: 'antigravity' as const, installed: false, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
+    const refreshProvider = vi.fn().mockResolvedValue({ ...setup, installed: true });
     const authenticateProvider = vi.fn().mockResolvedValue({ kind: 'antigravity', connected: false, state: { loggedIn: false, homePath: setup.homePath } });
-    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), installProvider, authenticateProvider } as Partial<AppApi> as AppApi;
+    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), refreshProvider, authenticateProvider } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
     const connect = () => wrapper.findAll('.codex-login__provider button').find(button => button.text() === 'Connect Antigravity')!;
     expect(connect().attributes('disabled')).toBeDefined();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    await flushPromises();
-    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
-    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.get('.provider-install-actions a').attributes('href')).toBe('https://antigravity.google/docs/getting-started?tab=cli');
+    expect(wrapper.get('.provider-install-actions code').text()).toBe('curl -fsSL https://antigravity.google/cli/install.sh | bash');
     await connect().trigger('click');
     expect(authenticateProvider).not.toHaveBeenCalled();
-    fail(new Error('Download failed'));
+    await wrapper.get('button[aria-label="Check again"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.codex-login__error').text()).toContain('Download failed');
-    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('disabled')).toBeUndefined();
-    expect(connect().attributes('disabled')).toBeDefined();
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    succeed({ ...setup, installed: true });
-    await flushPromises();
-    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
-    expect(wrapper.find('.codex-login__error').exists()).toBe(false);
+    expect(refreshProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.find('.provider-install-actions').exists()).toBe(false);
     expect(connect().attributes('disabled')).toBeUndefined();
-    expect(authenticateProvider).not.toHaveBeenCalled();
     await connect().trigger('click');
     await flushPromises();
     expect(authenticateProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'login');
@@ -1074,21 +1042,21 @@ describe('AppShell authentication and conversation', () => {
   it.each([false, true])('redetects an externally installed provider without configuring its home (%s)', async (locked) => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setup = { backend: 'claude' as const, installed: false, isolated: true, shareSkills: true, locked, homePath: '/app/claude-home' };
+    const setup = { provider: 'claude' as const, installed: false, isolated: true, shareSkills: true, locked, homePath: '/app/claude-home' };
     const configureProviderSetup = vi.fn().mockResolvedValue(setup);
     const refreshProvider = vi.fn().mockResolvedValue({ ...setup, installed: true });
-    const getClaudeAuthentication = vi.fn().mockResolvedValue({ loggedIn: true, configDirectory: setup.homePath });
-    const getCodexAuthentication = vi.fn();
+    const checkClaude = vi.fn().mockResolvedValue({ loggedIn: true, configDirectory: setup.homePath });
+    const checkCodex = vi.fn();
     window.app = {
-      getProviderSetup: vi.fn().mockResolvedValue([setup, { ...setup, backend: 'codex', homePath: '/app/codex-home' }]),
-      configureProviderSetup, refreshProvider, getClaudeAuthentication, getCodexAuthentication,
+      getProviderSetup: vi.fn().mockResolvedValue([setup, { ...setup, provider: 'codex', homePath: '/app/codex-home' }]),
+      configureProviderSetup, refreshProvider, authenticateProvider: scriptedAuthentication({ codex: { check: checkCodex }, claude: { check: checkClaude } }),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
-    expect(getCodexAuthentication).not.toHaveBeenCalled();
+    expect(checkCodex).not.toHaveBeenCalled();
     await wrapper.findAll('.codex-login__providers .el-button')[1]!.trigger('click');
     await flushPromises();
-    expect(getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(checkClaude).not.toHaveBeenCalled();
     expect(refreshProvider).not.toHaveBeenCalled();
     expect(wrapper.find('.provider-setup__choices').exists()).toBe(false);
     const recheck = wrapper.findAll('.codex-login__provider')[1]!.findAll('button').find(button => button.attributes('aria-label') === 'Check again');
@@ -1096,9 +1064,9 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     expect(configureProviderSetup).not.toHaveBeenCalled();
     expect(refreshProvider).toHaveBeenCalledWith('claude');
-    expect(getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(checkClaude).not.toHaveBeenCalled();
     expect(wrapper.findAll('.codex-login__providers .el-button')[1]!.attributes('disabled')).toBeUndefined();
-    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }] } });
+    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ provider: 'claude', installed: true, connected: true, checking: false }] } });
     expect(wrapper.get('.codex-login').text()).toContain('Claude Code connected');
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
   });
@@ -1106,62 +1074,65 @@ describe('AppShell authentication and conversation', () => {
   it('keeps setup customization unavailable in Welcome until the provider is detected', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setup = { backend: 'claude' as const, installed: false, isolated: true, shareSkills: true, locked: false, homePath: '/app/claude-home' };
+    const setup = { provider: 'claude' as const, installed: false, isolated: true, shareSkills: true, locked: false, homePath: '/app/claude-home' };
     const configureProviderSetup = vi.fn().mockResolvedValue(setup);
     const refreshProvider = vi.fn();
-    const getClaudeAuthentication = vi.fn();
+    const checkClaude = vi.fn();
     window.app = {
-      getProviderSetup: vi.fn().mockResolvedValue([setup]), configureProviderSetup, refreshProvider, getClaudeAuthentication,
+      getProviderSetup: vi.fn().mockResolvedValue([setup]), configureProviderSetup, refreshProvider, authenticateProvider: scriptedAuthentication({ claude: { check: checkClaude } }),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
     expect(wrapper.findAll('.codex-login__provider')[1]!.text()).not.toContain('Customize');
     expect(configureProviderSetup).not.toHaveBeenCalled();
     expect(refreshProvider).not.toHaveBeenCalled();
-    expect(getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(checkClaude).not.toHaveBeenCalled();
     expect(wrapper.get('.provider-install-actions a').text()).toBe('Install');
     wrapper.unmount();
   });
 
-  it.each(['codex', 'claude'] as const)('recognizes existing %s authentication after separation is disabled', async backend => {
+  it.each(['codex', 'claude'] as const)('recognizes existing %s authentication after separation is disabled', async provider => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setups = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${backend}-home` }));
-    const configureProviderSetup = vi.fn().mockResolvedValue({ ...setups.find(setup => setup.backend === backend), isolated: false, homePath: `/existing/${backend}` });
-    const startCodexChatGptLogin = vi.fn();
+    const setups = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, isolated: true, shareSkills: true, locked: false, homePath: `/app/${provider}-home` }));
+    const configureProviderSetup = vi.fn().mockResolvedValue({ ...setups.find(setup => setup.provider === provider), isolated: false, homePath: `/existing/${provider}` });
+    const loginCodex = vi.fn();
     let finishAuthentication!: () => void;
     const authenticationReady = new Promise<void>(resolve => { finishAuthentication = resolve; });
     window.app = {
-      getProviderSetup: vi.fn().mockResolvedValue(setups), configureProviderSetup, startCodexChatGptLogin,
-      getCodexAuthentication: vi.fn()
-        .mockImplementation(async () => { await authenticationReady; return { account: { type: 'chatgpt' }, requiresOpenaiAuth: true, login: { status: 'idle', error: null } }; }),
-      getClaudeAuthentication: vi.fn()
-        .mockImplementation(async () => { await authenticationReady; return { loggedIn: true, configDirectory: '/existing/claude' }; }),
+      getProviderSetup: vi.fn().mockResolvedValue(setups), configureProviderSetup,
+      authenticateProvider: scriptedAuthentication({
+        codex: {
+          login: loginCodex,
+          check: vi.fn().mockImplementation(async () => { await authenticationReady; return { account: { type: 'chatgpt' }, requiresOpenaiAuth: true, login: { status: 'idle', error: null } }; }),
+        },
+        claude: { check: vi.fn().mockImplementation(async () => { await authenticationReady; return { loggedIn: true, configDirectory: '/existing/claude' }; }) },
+      }),
     } as Partial<AppApi> as AppApi;
     const wrapper = mount(AppShell, {
       props: { snapshot, activeAgent: null, isLoading: false, isSending: false },
       global: { components: { ElRadio, ElRadioGroup } },
     });
     await flushPromises();
-    const index = backend === 'codex' ? 0 : 1;
+    const index = provider === 'codex' ? 0 : 1;
     await wrapper.findAll('.codex-login__detection button')[index]!.trigger('click');
     const dialog = new DOMWrapper(document.body).get('[role="dialog"]');
     await dialog.get('input[type="radio"][value="false"]').setValue();
     await dialog.get('.app-form-dialog__footer .app-button--primary').trigger('click');
     await flushPromises();
-    expect(configureProviderSetup).toHaveBeenCalledWith(backend, { isolated: false, shareSkills: true });
+    expect(configureProviderSetup).toHaveBeenCalledWith(provider, { isolated: false, shareSkills: true });
     expect(wrapper.findAll('.codex-login__detection > span').map(status => status.text())).toStrictEqual(
-      backend === 'codex' ? ['Checking…', 'Detected'] : ['Detected', 'Checking…'],
+      provider === 'codex' ? ['Checking…', 'Detected'] : ['Detected', 'Checking…'],
     );
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
     finishAuthentication();
     await flushPromises();
-    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ backend, installed: true, connected: true, checking: false }] } });
+    await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ provider: provider, installed: true, connected: true, checking: false }] } });
     expect(wrapper.findAll('.codex-login__detection > span').map(status => status.text())).toStrictEqual(
-      backend === 'codex' ? ['Connected', 'Detected'] : ['Detected', 'Connected'],
+      provider === 'codex' ? ['Connected', 'Detected'] : ['Detected', 'Connected'],
     );
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
-    expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+    expect(loginCodex).not.toHaveBeenCalled();
   });
 
   it('keeps the workspace visible while reporting automatic daemon reconnection', () => {
@@ -1184,13 +1155,13 @@ describe('AppShell authentication and conversation', () => {
   it.each([false, true])('returns an existing workspace to setup when its only engine is unavailable (authenticated=%s)', async connected => {
     const snapshot = createInitialSnapshot();
     snapshot.general.providerOnboardingComplete = true;
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected, enabled: false, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected, enabled: false, checking: false }];
     const setProviderEnabled = vi.fn().mockResolvedValue([{ ...snapshot.providerConnections[0], enabled: true }]);
-    const startCodexChatGptLogin = vi.fn().mockResolvedValue(undefined);
+    const loginCodex = vi.fn().mockResolvedValue(undefined);
     window.app = {
-      setProviderEnabled, startCodexChatGptLogin, updateSettings: vi.fn().mockResolvedValue(snapshot),
+      setProviderEnabled, authenticateProvider: scriptedAuthentication({ codex: { login: loginCodex } }), updateSettings: vi.fn().mockResolvedValue(snapshot),
       getProviderSetup: vi.fn().mockResolvedValue([
-        { backend: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
+        { provider: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
       ]),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
@@ -1203,7 +1174,7 @@ describe('AppShell authentication and conversation', () => {
       await enable.trigger('click');
       await flushPromises();
       expect(setProviderEnabled).toHaveBeenCalledWith('codex', true);
-      expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+      expect(loginCodex).not.toHaveBeenCalled();
       await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ ...snapshot.providerConnections[0]!, enabled: true }] } });
       await wrapper.get('.codex-login__continue').trigger('click');
       await flushPromises();
@@ -1216,19 +1187,21 @@ describe('AppShell authentication and conversation', () => {
   });
 
   it('cancels a pending ChatGPT sign-in from the landing screen', async () => {
-    const cancelCodexChatGptLogin = vi.fn().mockResolvedValue({
+    const cancelCodex = vi.fn().mockResolvedValue({
       account: null,
       requiresOpenaiAuth: true,
       login: { status: 'cancelled', error: null },
     });
     window.app = {
-      getCodexAuthentication: vi.fn().mockResolvedValue({
-        account: null,
-        requiresOpenaiAuth: true,
-        login: { status: 'pending', error: null },
-      }),
-      cancelCodexChatGptLogin,
-      startCodexChatGptLogin: vi.fn().mockResolvedValue(undefined),
+      authenticateProvider: scriptedAuthentication({ codex: {
+        check: vi.fn().mockResolvedValue({
+          account: null,
+          requiresOpenaiAuth: true,
+          login: { status: 'pending', error: null },
+        }),
+        cancel: cancelCodex,
+        login: vi.fn().mockResolvedValue(undefined),
+      } }),
     } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot: createEmptySnapshot() });
     await flushPromises();
@@ -1241,7 +1214,7 @@ describe('AppShell authentication and conversation', () => {
     await cancel.trigger('click');
     await flushPromises();
 
-    expect(cancelCodexChatGptLogin).toHaveBeenCalledOnce();
+    expect(cancelCodex).toHaveBeenCalledOnce();
     expect(wrapper.find('.codex-login__cancel').exists()).toBe(false);
     expect(wrapper.find('.codex-login__continue').exists()).toBe(true);
 
@@ -1268,7 +1241,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.text()).toContain('Ready to get going');
     expect(wrapper.text()).toContain('Chat with Dina');
     expect(wrapper.text()).not.toContain('Artifacts');
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('agents')).toStrictEqual(snapshot.agents);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('agents')).toStrictEqual(snapshot.agents);
   });
 
   it('retains structured plan progress after the turn stops', async () => {
@@ -1285,48 +1258,42 @@ describe('AppShell authentication and conversation', () => {
       updatedAt: '2026-08-01T00:00:00.000Z',
     };
     activeAgent.plan = plan;
-    activeAgent.backendSession = { kind: 'codex', threadId: 'thread-plan' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-plan' };
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
         activeAgent,
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('assistant-plan', 'assistant', '', 'turn-plan'),
-        ], {
-          activeConversationId: 'thread-plan',
+        conversationPresentation: conversationFrom(activeAgent, sessionState({
+          messages: [textMessage('assistant-plan', 'assistant', '', { agentId: activeAgent.id, turnId: 'turn-plan' })],
           activeTurnId: 'turn-plan',
-          turnIds: ['turn-plan'],
-          turns: [{
-            id: 'turn-plan', status: 'inProgress', error: null, willRetry: false,
-            startedAt: '2026-08-01T00:00:00.000Z', completedAt: null, durationMs: null,
-          }],
+          turns: [runningTurn('turn-plan', { startedAt: '2026-08-01T00:00:00.000Z' })],
           busy: true,
-        }),
+        })),
         isLoading: false,
         isSending: true,
       },
     });
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toStrictEqual(plan);
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props()).not.toHaveProperty('turnGitDiff');
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toStrictEqual(plan);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props()).not.toHaveProperty('turnGitDiff');
 
     await wrapper.setProps({ isSending: false } as Record<string, unknown>);
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toStrictEqual(plan);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toStrictEqual(plan);
   });
 
-  it('shows the provider-owned Codex execution plan', () => {
+  it('shows the conversation\'s own execution plan', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0]!;
-    activeAgent.backendSession = { kind: 'codex', threadId: 'thread-plan' };
-    const providerSnapshot = codexConversationSnapshot([
-      codexTextMessage('assistant-plan', 'assistant', 'Working on it.', 'turn-plan'),
-    ], {
-      activeConversationId: 'thread-plan',
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-plan' };
+    const providerSnapshot = sessionState({
+      messages: [textMessage('assistant-plan', 'assistant', 'Working on it.', { agentId: activeAgent.id, turnId: 'turn-plan' })],
       activeTurnId: 'turn-plan',
-      turnIds: ['turn-plan'],
-      executionPlan: {
+      plan: {
+        threadId: 'thread-plan',
         turnId: 'turn-plan',
+        kind: 'execution',
+        status: 'inProgress',
         explanation: 'Current execution plan',
         steps: [{ step: 'Render the mini panel', status: 'inProgress' }],
         markdown: 'Current execution plan\n- [ ] Render the mini panel',
@@ -1338,13 +1305,13 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        conversationPresentation: projectCodexConversation(providerSnapshot, activeAgent),
+        conversationPresentation: conversationFrom(activeAgent, providerSnapshot),
         isLoading: false,
         isSending: true,
       },
     });
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toStrictEqual({
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toStrictEqual({
       threadId: 'thread-plan',
       turnId: 'turn-plan',
       kind: 'execution',
@@ -1359,7 +1326,7 @@ describe('AppShell authentication and conversation', () => {
   it('shows an active debug execution plan beside newer conversation history', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0]!;
-    activeAgent.backendSession = { kind: 'codex', threadId: 'thread-debug-plan' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-debug-plan' };
     activeAgent.plan = {
       threadId: 'thread-debug-plan',
       turnId: 'debug-plan-1',
@@ -1375,25 +1342,22 @@ describe('AppShell authentication and conversation', () => {
       props: {
         snapshot,
         activeAgent,
-        codexConversationSnapshot: codexConversationSnapshot([
-          codexTextMessage('assistant-real-turn', 'assistant', 'Existing history.', 'turn-real'),
-        ], {
-          activeConversationId: 'thread-debug-plan',
-          turnIds: ['turn-real'],
-        }),
+        conversationPresentation: conversationFrom(activeAgent, sessionState({
+          messages: [textMessage('assistant-real-turn', 'assistant', 'Existing history.', { agentId: activeAgent.id, turnId: 'turn-real' })],
+        })),
         isLoading: false,
         isSending: false,
       },
     });
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toStrictEqual(activeAgent.plan);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toStrictEqual(activeAgent.plan);
   });
 
   it('does not flash a persisted plan while conversation history hydrates', async () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
-    activeAgent.backendSession = { kind: 'codex', threadId: 'thread-persisted' };
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     activeAgent.plan = {
       threadId: 'thread-persisted',
       turnId: 'turn-old-plan',
@@ -1414,24 +1378,18 @@ describe('AppShell authentication and conversation', () => {
       },
     });
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toBeNull();
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toBeNull();
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
 
     await wrapper.setProps({
       isConversationLoading: false,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('assistant-newer-turn', 'assistant', 'Newer work completed.', 'turn-newer'),
-      ], {
-        activeConversationId: 'thread-persisted',
-        turnIds: ['turn-newer'],
-        turns: [{
-          id: 'turn-newer', status: 'completed', error: null, willRetry: false,
-          startedAt: '2026-08-02T00:00:00.000Z', completedAt: '2026-08-02T00:00:01.000Z', durationMs: 1_000,
-        }],
-      }),
+      conversationPresentation: conversationFrom(activeAgent, sessionState({
+        messages: [textMessage('assistant-newer-turn', 'assistant', 'Newer work completed.', { agentId: activeAgent.id, turnId: 'turn-newer' })],
+        turns: [completedTurn('turn-newer', { startedAt: '2026-08-02T00:00:00.000Z', completedAt: '2026-08-02T00:00:01.000Z', durationMs: 1_000 })],
+      })),
     } as Record<string, unknown>);
 
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toBeNull();
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('plan')).toBeNull();
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
   });
 
@@ -1444,9 +1402,9 @@ describe('AppShell authentication and conversation', () => {
     });
 
     expect(conversationControllerState(wrapper).identity.disabled).toBe(true);
-    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('historyLoadFailed')).toBe(true);
+    expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('historyLoadFailed')).toBe(true);
 
-    wrapper.getComponent({ name: 'ConversationPane' }).vm.$emit('retry-history');
+    wrapper.getComponent({ name: 'AppConversationPane' }).vm.$emit('retry-history');
     await flushPromises();
     expect(retryAgentHistory).toHaveBeenCalledOnce();
 
@@ -1455,17 +1413,15 @@ describe('AppShell authentication and conversation', () => {
       snapshot,
       isConversationLoadFailed: true,
       stubAgentWorkspace: false,
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('message-existing', 'assistant', 'Keep me visible.'),
-      ]),
+      conversation: sessionState({ messages: [textMessage('message-existing', 'assistant', 'Keep me visible.')] }),
     });
     expect(conversationControllerState(withMessages).identity.disabled).toBe(false);
-    expect(withMessages.getComponent({ name: 'ConversationPane' }).props('hasVisibleMessages')).toBe(true);
+    expect(withMessages.getComponent({ name: 'AppConversationPane' }).props('hasVisibleMessages')).toBe(true);
   });
 
   it('forwards prompts from the composer', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
@@ -1500,7 +1456,7 @@ describe('AppShell authentication and conversation', () => {
 
   it('uses the promise-returning prompt action when the host provides one', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(AppShell, {
       props: {
@@ -1529,17 +1485,17 @@ describe('AppShell authentication and conversation', () => {
     const design = vi.fn().mockResolvedValue({ workspace: { isOpen: true } });
     setElectronTestClient({ design });
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
-    const attachment: CodexNativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
+    const attachment: NativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
     const snapshot = createInitialSnapshot();
     snapshot.general.worktreeDelegationStartingContext = 'conversation';
     snapshot.general.worktreeDelegationInstructions = 'Keep the API stable';
     const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
-    await wrapper.setProps({ backendCapabilities: codexBackendCapabilities, backendCommands: defaultBackendCommands('codex'), approvalPreset: 'ask-for-approval' });
+    await wrapper.setProps({ providerCapabilities: codexProviderCapabilities, providerCommands: defaultProviderCommands('codex') });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
         .map(row => row.attributes('role') === 'separator' ? '---' : row.text())).toStrictEqual([
-        'Approval', '---', 'Design', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
+        'Permissions', '---', 'Design', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
       ]);
     }
     const item = wrapper.findAll('[role="menuitem"]').find(item => item.text() === label);
@@ -1601,7 +1557,7 @@ describe('AppShell authentication and conversation', () => {
       ...source,
       id: 'agent-reviewer',
       name: 'Review',
-      backendSession: { kind: 'codex' as const, threadId: 'review-thread' },
+      providerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
     };
     const next = structuredClone(snapshot);
     next.agents.push(reviewer);
@@ -1639,14 +1595,14 @@ describe('AppShell authentication and conversation', () => {
   it('does not override an independent reviewer with renderer-local model selection', async () => {
     const snapshot = createInitialSnapshot();
     const source = snapshot.agents[0]!;
-    source.backendDefaults = {
+    source.providerDefaults = {
       kind: 'codex', model: 'gpt-6-astra', reasoningEffort: 'medium',
     };
     const reviewer = {
       ...source,
       id: 'agent-reviewer',
       name: 'Review',
-      backendSession: { kind: 'codex' as const, threadId: 'review-thread' },
+      providerSession: { kind: 'codex' as const, conversationId: 'review-thread' },
     };
     const next = structuredClone(snapshot);
     next.agents.push(reviewer);
@@ -1656,7 +1612,7 @@ describe('AppShell authentication and conversation', () => {
     const wrapper = mountRealShell({
       snapshot,
       startCodeReview,
-      backendModels: [{
+      providerModels: [{
         id: 'astra-option',
         model: 'gpt-6-astra',
         displayName: 'GPT-6 Astra',
@@ -1671,13 +1627,13 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
-    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { backend: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
+    expect(startCodeReview).toHaveBeenCalledExactlyOnceWith(source.id, { automation: { enabled: false, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, scope: { type: 'uncommitted' }, threadMode: 'independent', selection: { provider: 'codex', serviceTier: null, model: null, reasoningEffort: null } });
   });
 
   it('attaches a finding to the real composer and submits the user question through its stable link', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'review-thread' };
+    agent.providerSession = { kind: 'codex', conversationId: 'review-thread' };
     const finding = {
       id: 'finding-1', roundId: 'round-1', priority: 'p1' as const,
       title: 'Authorize before writing',
@@ -1692,7 +1648,7 @@ describe('AppShell authentication and conversation', () => {
       scope: { type: 'uncommitted' }, threadMode: 'current', status: 'ready', activeRoundId: 'round-1',
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:01:00.000Z',
       rounds: [{
-        id: 'round-1', number: 1, status: 'ready', reviewerSession: agent.backendSession,
+        id: 'round-1', number: 1, status: 'ready', reviewerSession: agent.providerSession,
         startedAt: '2026-09-19T10:00:00.000Z', completedAt: '2026-09-19T10:01:00.000Z', findings: [finding],
       }],
     };
@@ -1738,7 +1694,7 @@ describe('AppShell authentication and conversation', () => {
   it('keeps the first submitted prompt visible while its Codex conversation is created', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    delete agent.backendSession;
+    delete agent.providerSession;
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountShell({
       snapshot,
@@ -1754,28 +1710,23 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.get('form').trigger('submit');
     await flushPromises();
 
-    expect(wrapper.find('.codex-conversation-pane__hero').exists()).toBe(false);
+    expect(wrapper.find('.agent-ui-conversation-pane__hero').exists()).toBe(false);
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
 
-    agent.backendSession = { kind: 'codex', threadId: 'thread-created' };
+    agent.providerSession = { kind: 'codex', conversationId: 'thread-created' };
     await wrapper.setProps({
       snapshot: { ...snapshot },
       activeAgent: agent,
-      codexConversationSnapshot: codexConversationSnapshot([], {
-        activeConversationId: 'thread-created',
-      }),
+      conversationPresentation: conversationFrom(agent, sessionState()),
     });
 
-    expect(wrapper.find('.codex-conversation-pane__hero').exists()).toBe(false);
+    expect(wrapper.find('.agent-ui-conversation-pane__hero').exists()).toBe(false);
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
 
     await wrapper.setProps({
-      codexConversationSnapshot: codexConversationSnapshot([
-        codexTextMessage('authoritative-user', 'user', 'Create the first turn', 'turn-created'),
-      ], {
-        activeConversationId: 'thread-created',
-        turnIds: ['turn-created'],
-      }),
+      conversationPresentation: conversationFrom(agent, sessionState({
+        messages: [textMessage('authoritative-user', 'user', 'Create the first turn', { agentId: agent.id, turnId: 'turn-created' })],
+      })),
     });
 
     expect(wrapper.findAll('.chat-message--user')).toHaveLength(1);
@@ -1799,28 +1750,20 @@ describe('AppShell authentication and conversation', () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    activeAgent.backendSession = { kind: 'codex', threadId: 'thread-dina' };
-    const providerSnapshot = codexConversationSnapshot([], {
-      activeConversationId: 'thread-dina',
-      plugins: [{
-        id: 'app-69b31dc2110c8191b8b47dc98fe5a052',
-        name: 'dropbox',
-        displayName: 'Dropbox',
-        enabled: true,
-      }],
-    });
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    activeAgent.providerSession = { kind: 'codex', conversationId: 'thread-dina' };
+    const providerSnapshot = sessionState({ selection: { model: 'native-model', reasoningEffort: 'low', serviceTier: null } });
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
         activeAgent,
         isLoading: false,
         isSending: false,
-        codexConversationSnapshot: providerSnapshot,
+        conversationPresentation: conversationFrom(activeAgent, providerSnapshot),
         selectedModelId: 'gpt-5',
         selectedReasoningEffort: 'high',
         selectedServiceTier: 'fast',
-        backendPlugins: [{
+        providerPlugins: [{
           id: 'app-69b31dc2110c8191b8b47dc98fe5a052',
           name: 'dropbox',
           displayName: 'Dropbox',
@@ -1839,9 +1782,9 @@ describe('AppShell authentication and conversation', () => {
       activeTurnId: null,
     });
     expect(state.composer).toMatchObject({
-      selectedModelId: 'gpt-5',
-      selectedReasoningEffort: 'high',
-      selectedServiceTier: 'fast',
+      selectedModelId: 'native-model',
+      selectedReasoningEffort: 'low',
+      selectedServiceTier: null,
       state: { text: 'saved draft', selectionStart: 5, selectionEnd: 5 },
     });
     expect(state.catalogs?.plugins).toStrictEqual([{
@@ -1868,23 +1811,19 @@ describe('AppShell authentication and conversation', () => {
     }]);
     expect(state.policy?.canForkTurn).toBe(true);
 
-    const updatedMessages = [codexTextMessage(
-      'controller-reactive-message', 'assistant', 'Updated through the stable controller.', 'turn-controller',
+    const updatedMessages = [textMessage(
+      'controller-reactive-message', 'assistant', 'Updated through the stable controller.', { agentId: activeAgent.id, turnId: 'turn-controller' },
     )];
     await wrapper.setProps({
       isSending: true,
-      codexConversationSnapshot: codexConversationSnapshot(updatedMessages, {
-        activeConversationId: 'thread-dina',
+      conversationPresentation: conversationFrom(activeAgent, sessionState({
+        messages: updatedMessages,
         activeTurnId: 'turn-controller',
-        turnIds: ['turn-controller'],
-        turns: [{
-          id: 'turn-controller', status: 'inProgress', error: null, willRetry: false,
-          startedAt: '2026-08-04T00:00:00.000Z', completedAt: null, durationMs: null,
-        }],
+        turns: [runningTurn('turn-controller', { startedAt: '2026-08-04T00:00:00.000Z' })],
         busy: true,
-      }),
+      })),
     } as Record<string, unknown>);
-    expect(conversationControllerState(wrapper).identity.messages).toStrictEqual(updatedMessages);
+    expect(conversationControllerState(wrapper).identity.messages).toMatchObject(updatedMessages);
     expect(conversationControllerState(wrapper).identity.activeTurnId).toBe('turn-controller');
     expect(wrapper.text()).toContain('Updated through the stable controller.');
 
@@ -1909,10 +1848,10 @@ describe('AppShell authentication and conversation', () => {
       mimeType: 'text/plain',
       size: 12,
     }]);
-    await actions.updateSettings?.({ modelId: 'gpt-5.1', serviceTier: null });
+    await actions.updateSettings?.({ model: 'gpt-5.1', serviceTier: null });
     await actions.submit?.('review context', {
       attachments: [{ type: 'file', reference: 'electron-attachment:context' }],
-      model: 'sdk-selection-does-not-cross-host-boundary',
+      selection: { model: 'sdk-selection-does-not-cross-host-boundary' },
     });
     await actions.openLink?.({ kind: 'external', href: 'https://example.com/docs' });
     const conversationImage = {
@@ -2001,152 +1940,17 @@ describe('AppShell authentication and conversation', () => {
     });
   });
 
-  it('contributes persistent model favorites through the SDK model-menu extension', async () => {
-    const snapshot = createInitialSnapshot();
-    const updateSettings = vi.fn().mockResolvedValue(undefined);
-    const backendModels = [{
-      id: 'terra',
-      model: 'gpt-5.6-terra',
-      displayName: 'GPT-5.6 Terra',
-      hidden: false,
-      supportedReasoningEfforts: [
-        { reasoningEffort: 'medium', description: 'Balanced' },
-        { reasoningEffort: 'high', description: 'Thorough' },
-      ],
-      defaultReasoningEffort: 'medium',
-      serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Fast responses' }],
-      defaultServiceTier: null,
-      isDefault: true,
-    }];
-    const wrapper = mountShell({
-      snapshot,
-      backendModels,
-      realConversationPane: true,
-      stubAgentWorkspace: false,
-      selectedModelId: 'terra',
-      selectedReasoningEffort: 'medium',
-      selectedServiceTier: 'priority',
-      updateSettings,
-    });
-    const currentFavorite = {
-      backend: 'codex' as const,
-      modelId: 'terra',
-      reasoningEffort: 'medium',
-      serviceTier: 'priority',
-    };
-
-    const initialItems = conversationControllerState(wrapper).composer?.modelMenuItems ?? [];
-    const addCurrent = initialItems.find((item) => item.id === 'model-favorite-add');
-    expect(addCurrent).toMatchObject({ label: 'Add current to favorites', type: 'action' });
-    await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
-    await flushPromises();
-    const addFavoriteItem = wrapper.findAll('[role="menuitem"]')
-      .find((item) => item.text().trim() === 'Add current to favorites');
-    expect(addFavoriteItem).toBeDefined();
-    await addFavoriteItem!.trigger('click');
-    await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ general: { modelFavorites: [currentFavorite] } });
-
-    await wrapper.setProps({
-      snapshot: {
-        ...snapshot,
-        general: { ...snapshot.general, modelFavorites: [currentFavorite] },
-      },
-    });
-    const favoriteItems = conversationControllerState(wrapper).composer?.modelMenuItems ?? [];
-    expect(favoriteItems.map((item) => item.type === 'separator' ? item.type : item.label)).toStrictEqual([
-      'Favorites',
-      'GPT-5.6 Terra',
-    ]);
-    expect(favoriteItems[1]).toMatchObject({
-      type: 'action',
-      value: 'Medium',
-      valueAppearance: 'badge',
-      valueIconLabel: 'Fast',
-    });
-    const heading = favoriteItems[0];
-    if (!heading || heading.type !== 'heading') throw new Error('Expected favorites heading.');
-    expect(heading.actions).toHaveLength(2);
-    expect(heading.actions?.[0]).toMatchObject({
-      disabled: true,
-      label: 'Add current to favorites',
-    });
-    expect(heading.actions?.[1]).toMatchObject({ label: 'Manage favorites' });
-
-    await wrapper.setProps({ selectedReasoningEffort: 'high' });
-    await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
-    await flushPromises();
-    const addCurrentButton = wrapper.get('button[aria-label="Add current to favorites"]');
-    expect(addCurrentButton.attributes('disabled')).toBeUndefined();
-    await addCurrentButton.trigger('click');
-    await flushPromises();
-    expect(updateSettings).toHaveBeenLastCalledWith({
-      general: {
-        modelFavorites: [currentFavorite, { ...currentFavorite, reasoningEffort: 'high' }],
-      },
-    });
-    expect(() => structuredClone(updateSettings.mock.lastCall?.[0])).not.toThrow();
-    await wrapper.setProps({ selectedReasoningEffort: 'medium' });
-
-    conversationControllerActions(wrapper).menuSelect?.(favoriteItems[1] as CodexComposerMenuSelectableItem);
-    expect(wrapper.emitted('select-model')).toStrictEqual([['terra']]);
-    expect(wrapper.emitted('select-reasoning-effort')).toStrictEqual([['medium']]);
-    expect(wrapper.emitted('select-service-tier')).toStrictEqual([['priority']]);
-
-    conversationControllerActions(wrapper).menuSelect?.(heading.actions?.[1] as CodexComposerMenuSelectableItem);
-    await nextTick();
-    const favoritesDialog = wrapper.getComponent({ name: 'ModelFavoritesDialog' });
-    expect(favoritesDialog.props('visible')).toBe(true);
-    favoritesDialog.vm.$emit('change', []);
-    await flushPromises();
-    expect(updateSettings).toHaveBeenLastCalledWith({ general: { modelFavorites: [] } });
-  });
-
-  it('treats the reserved default service tier as standard in saved favorites', () => {
-    const snapshot = createInitialSnapshot();
-    snapshot.general.modelFavorites = [{
-      backend: 'codex',
-      modelId: 'terra',
-      reasoningEffort: 'high',
-      serviceTier: 'default',
-    }];
-    const wrapper = mountShell({
-      snapshot,
-      backendModels: [{
-        id: 'terra',
-        model: 'gpt-5.6-terra',
-        displayName: 'GPT-5.6 Terra',
-        hidden: false,
-        supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'Thorough' }],
-        defaultReasoningEffort: 'high',
-        serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Fast responses' }],
-        defaultServiceTier: 'default',
-        isDefault: true,
-      }],
-      realConversationPane: true,
-      stubAgentWorkspace: false,
-      selectedModelId: 'terra',
-      selectedReasoningEffort: 'high',
-      selectedServiceTier: 'default',
-    });
-
-    const items = conversationControllerState(wrapper).composer?.modelMenuItems ?? [];
-    expect(items[1]).toMatchObject({ value: 'High', valueIcon: undefined, valueIconLabel: undefined });
-    conversationControllerActions(wrapper).menuSelect?.(items[1] as CodexComposerMenuSelectableItem);
-    expect(wrapper.emitted('select-service-tier')).toStrictEqual([[null]]);
-  });
-
   it('routes selectable Cursor permission modes from the main conversation menu', async () => {
     const snapshot = reactive(createInitialSnapshot());
     const agent = snapshot.agents[0]!;
-    agent.backend = 'cursor';
-    agent.backendDefaults = { kind: 'cursor' };
-    agent.backendSession = { kind: 'cursor', sessionId: 'cursor-permissions' };
+    agent.provider = 'cursor';
+    agent.providerDefaults = { kind: 'cursor' };
+    agent.providerSession = { kind: 'cursor', conversationId: 'cursor-permissions' };
     const wrapper = mountShell({ snapshot,
-      cursorConversationSnapshot: emptyCursorSnapshot(agent.id, 'cursor-permissions'),
+      conversation: sessionState(),
       realConversationPane: true, stubAgentWorkspace: false });
     try {
-      await wrapper.setProps({ backendCapabilities: cursorBackendCapabilities });
+      await wrapper.setProps({ providerCapabilities: cursorProviderCapabilities });
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       const permissions = wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'));
@@ -2157,7 +1961,7 @@ describe('AppShell authentication and conversation', () => {
       expect(choices[0]!.attributes('aria-checked')).toBe('true');
       await choices[1]!.trigger('click');
       expect(wrapper.emitted('select-permission-mode')).toStrictEqual([['full-access']]);
-      agent.backendDefaults = { kind: 'cursor', permissionMode: 'full-access' };
+      agent.providerDefaults = { kind: 'cursor', permission: 'full-access' };
       await flushPromises();
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Permissions'))!.trigger('mouseenter');
@@ -2166,56 +1970,40 @@ describe('AppShell authentication and conversation', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('exposes Claude permission modes as a distinct composer submenu', async () => {
+  it('offers Claude permission modes through the pane\'s own permission list', async () => {
     const snapshot = createInitialSnapshot();
     const activeAgent = snapshot.agents[0];
     if (!activeAgent) throw new Error('Expected seeded agent.');
-    activeAgent.backend = 'claude';
-    activeAgent.backendSession = undefined;
-    activeAgent.backendDefaults = { kind: 'claude', permissionMode: 'acceptEdits' };
+    activeAgent.provider = 'claude';
+    activeAgent.providerSession = undefined;
+    activeAgent.providerDefaults = { kind: 'claude', permission: 'acceptEdits' };
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
         activeAgent,
         isLoading: false,
         isSending: false,
-        backendCapabilities: claudeBackendCapabilities,
+        providerCapabilities: claudeProviderCapabilities,
         permissionMode: 'acceptEdits',
       },
     });
 
-    expect(conversationControllerState(wrapper).capabilities?.approvalPresets).toStrictEqual([]);
-    expect(conversationControllerState(wrapper).composer?.leadingMenuItems?.find((item) => item.id === 'backend-permissions')).toEqual(
-      expect.objectContaining({
-        id: 'backend-permissions',
-        type: 'submenu',
-        label: 'Permissions',
-        items: [
-          expect.objectContaining({ id: 'permission-mode:default', label: 'Default', checked: false }),
-          expect.objectContaining({ id: 'permission-mode:acceptEdits', label: 'Accept edits', checked: true }),
-          expect.objectContaining({ id: 'permission-mode:dontAsk', label: "Don't ask", checked: false }),
-          expect.objectContaining({ id: 'permission-mode:auto', label: 'Auto (experimental)', checked: false }),
-          expect.objectContaining({
-            id: 'permission-mode:bypassPermissions',
-            label: 'Dangerously skip permissions',
-            checked: false,
-          }),
-        ],
-      }),
-    );
+    expect(conversationControllerState(wrapper).capabilities?.permissions).toStrictEqual([
+      expect.objectContaining({ id: 'default', label: 'Default' }),
+      expect.objectContaining({ id: 'acceptEdits', label: 'Accept edits' }),
+      expect.objectContaining({ id: 'dontAsk', label: "Don't ask" }),
+      expect.objectContaining({ id: 'auto', label: 'Auto (experimental)' }),
+      expect.objectContaining({ id: 'bypassPermissions', label: 'Dangerously skip permissions', dangerous: true }),
+    ]);
+    expect(conversationControllerState(wrapper).composer?.permission).toBe('acceptEdits');
+    expect(conversationControllerState(wrapper).composer?.leadingMenuItems?.some((item) => item.id === 'backend-permissions')).toBe(false);
 
-    await conversationControllerActions(wrapper).menuSelect?.({
-      id: 'permission-mode:bypassPermissions',
-      type: 'radio',
-      label: 'Dangerously skip permissions',
-      checked: false,
-      payload: { kind: 'permission-mode', mode: 'bypassPermissions' },
-    });
+    await conversationControllerActions(wrapper).updateSettings?.({ permission: 'bypassPermissions' });
     expect(wrapper.emitted('select-permission-mode')).toStrictEqual([['bypassPermissions']]);
   });
 
   it('saves, reopens, and submits annotations for multiple composer images', async () => {
-    const firstImage: CodexNativeAttachment = {
+    const firstImage: NativeAttachment = {
       id: 'first-image',
       type: 'image',
       reference: 'electron-attachment:first',
@@ -2224,14 +2012,14 @@ describe('AppShell authentication and conversation', () => {
       size: 128,
       previewUrl: 'data:image/png;base64,Zmlyc3Q=',
     };
-    const secondImage: CodexNativeAttachment = {
+    const secondImage: NativeAttachment = {
       ...firstImage,
       id: 'second-image',
       reference: 'electron-attachment:second',
       name: 'second.png',
       previewUrl: 'data:image/png;base64,c2Vjb25k',
     };
-    const contextFile: CodexNativeAttachment = {
+    const contextFile: NativeAttachment = {
       id: 'context-file',
       type: 'file',
       reference: 'electron-attachment:context',
@@ -2239,13 +2027,13 @@ describe('AppShell authentication and conversation', () => {
       mimeType: 'text/markdown',
       size: 64,
     };
-    const unannotatedImage: CodexNativeAttachment = {
+    const unannotatedImage: NativeAttachment = {
       ...firstImage,
       id: 'unannotated-image',
       reference: 'electron-attachment:unannotated',
       name: 'reference.png',
     };
-    const firstAnnotatedAttachment: CodexNativeAttachment = {
+    const firstAnnotatedAttachment: NativeAttachment = {
       id: 'first-annotated',
       type: 'image',
       reference: 'electron-attachment:first-annotated',
@@ -2253,14 +2041,14 @@ describe('AppShell authentication and conversation', () => {
       mimeType: 'image/png',
       size: 256,
     };
-    const secondAnnotatedAttachment: CodexNativeAttachment = {
+    const secondAnnotatedAttachment: NativeAttachment = {
       ...firstAnnotatedAttachment,
       id: 'second-annotated',
       reference: 'electron-attachment:second-annotated',
       name: 'second-annotated.png',
     };
     const ingestAttachments = vi.fn().mockResolvedValue([firstAnnotatedAttachment, secondAnnotatedAttachment]);
-    (window as Window & { codexAppSdkNative?: Partial<CodexNativeRendererApi> }).codexAppSdkNative = {
+    (window as Window & { agentUiHostCapabilities?: Partial<NativeRendererApi> }).agentUiHostCapabilities = {
       capabilities: {
         attachments: true,
         clipboard: true,
@@ -2311,7 +2099,7 @@ describe('AppShell authentication and conversation', () => {
 
     expect(ingestAttachments).not.toHaveBeenCalled();
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
-    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('attachmentAnnotationCounts')).toStrictEqual({
+    expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('attachmentAnnotationCounts')).toStrictEqual({
       [firstImage.reference]: 2,
     });
     await wrapper.get('[aria-label="Edit annotations for first.png (2)"]').trigger('click');
@@ -2379,7 +2167,7 @@ describe('AppShell authentication and conversation', () => {
     expect(dialog.props('visible')).toBe(false);
 
     await conversationControllerActions(wrapper).updateAttachments?.([]);
-    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('attachmentAnnotationCounts')).toStrictEqual({});
+    expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('attachmentAnnotationCounts')).toStrictEqual({});
   });
 
   it('suspends the browser annotation overlay while the image annotation dialog is open', async () => {
@@ -2408,7 +2196,7 @@ describe('AppShell authentication and conversation', () => {
       realConversationPane: true,
     });
 
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await wrapper.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Browser'))
       ?.trigger('click');

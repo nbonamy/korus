@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -8,23 +9,20 @@ import { createServer } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { chromium } from 'playwright';
 import { excalidrawAssets } from '../../vite.excalidraw-assets.ts';
-import { sdkSourceAliases, sdkSourceRoot } from '../../../../vite.sdk-aliases.ts';
 
 test('inline renderer streams and renders diagrams, integrating with capable SDKs and preserving older code fallback', async () => {
   const root = fileURLToPath(new URL('../../../..', import.meta.url));
-  const useSource = process.env.CODEX_APP_SDK_SOURCE === '1';
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'inline-diagram-vite-'));
   const server = await createServer({
     configFile: false, root, logLevel: 'error', cacheDir,
-    server: { host: '127.0.0.1', port: 0, fs: { allow: [root, ...(useSource ? [sdkSourceRoot] : [])] } },
-    resolve: { alias: { '@workspace/core': path.join(root, 'core/src'), ...(useSource ? sdkSourceAliases : {}) }, dedupe: ['vue'] },
+    server: { host: '127.0.0.1', port: 0, fs: { allow: [root] } },
+    resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
     optimizeDeps: {
       // Lazy editor imports must not trigger an optimizer reload mid-interaction.
       entries: [path.join(root, 'client/vue/src/components/InlineExcalidrawBlock.vue'), path.join(root, 'client/vue/src/components/excalidraw-editor.ts')],
       include: ['@excalidraw/excalidraw', '@excalidraw/mermaid-to-excalidraw', 'react', 'react-dom/client'],
-      ...(useSource ? { exclude: Object.keys(sdkSourceAliases) } : {}),
     },
-    plugins: [vue(), excalidrawAssets(), {
+    plugins: [sdkSourcePlugin, vue(), excalidrawAssets(), {
       name: 'inline-diagram-fixture',
       configureServer(server) {
         server.middlewares.use('/inline-diagram', (_req, res) => {
@@ -36,19 +34,19 @@ test('inline renderer streams and renders diagrams, integrating with capable SDK
       load(id) {
         if (id !== '\0diagram-fixture') return;
         return `import {createApp,h,ref} from 'vue';
-          import * as SDK from '@codex-app-sdk/vue';
+          import * as SDK from '@korus-dev/agent-ui-sdk';
           import Diagram from '/client/vue/src/components/InlineExcalidrawBlock.vue';
-          import '@codex-app-sdk/vue/styles.css';
+          import '@korus-dev/agent-ui-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/base.css';
           import {i18n} from '/client/vue/src/i18n/index.ts';
           const content=ref(''),sourceText=ref(''),streaming=ref(false);
-          window.hasCustomBlocks=typeof Reflect.get(SDK,'codexCustomBlocksKey')==='symbol';
+          window.hasCustomBlocks=typeof Reflect.get(SDK,'customBlocksKey')==='symbol';
           window.setDiagram=(source,complete=true)=>{sourceText.value=source;streaming.value=!complete;content.value='Before\\n\\n\`\`\`excalidraw\\n'+source+(complete?'\\n\`\`\`\\n\\nAfter':'')};
           createApp({render:()=>h('div',[
             h('section',{id:'host'},h(Diagram,{source:sourceText.value,complete:!streaming.value})),
-            h('section',{id:'chat'},h(SDK.CodexMessage,{message:{id:'diagram',role:'assistant',content:content.value,streaming:streaming.value}}))
-          ])}).provide(Symbol.for('codex.custom-blocks'),{excalidraw:Diagram}).use(i18n).mount('#app');`;
+            h('section',{id:'chat'},h(SDK.Message,{message:{id:'diagram',role:'assistant',content:content.value,streaming:streaming.value}}))
+          ])}).provide(SDK.customBlocksKey,{excalidraw:Diagram}).use(i18n).mount('#app');`;
       },
     }],
   });

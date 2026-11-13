@@ -149,7 +149,7 @@ describe('AppController', () => {
     const send = vi.fn();
     setMainWindowSend(controller, send);
     await controller.initialize();
-    const progress = { id: 'creation', state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
+    const progress = { id: 'creation', state: 'running' as const, provider: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
     emitBackendEvent(controller, { seq: 1, agentId: 'agent-dina', type: 'agentCreation.progress', payload: progress });
     const refresh = getSnapshot(controller);
     await vi.waitFor(() => expect(reads).toBe(2));
@@ -222,20 +222,9 @@ describe('AppController', () => {
       seq: 2,
       occurredAt: '2026-09-06T20:00:00.000Z',
       agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt: '2026-09-06T20:00:00.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          type: 'message.delta',
-          payload: { messageId: 'message-1', itemId: 'item-1', delta: 'Hello' },
-        } as unknown as Extract<AppBackendEvent, { type: 'codex.conversationEventReceived' }>['payload']['event'],
-      },
+      provider: 'codex',
+      type: 'conversation.sessionPatch',
+      payload: { conversation: 'thread-dina', epoch: 'stream-1', patch: { revision: 2, ops: [{ op: 'set', key: 'busy', value: true }] } },
     } as AppBackendEvent;
     if (!late) backendEventListener(frame);
     resolveReconnectSnapshot({
@@ -256,8 +245,8 @@ describe('AppController', () => {
     expect(send.mock.calls
       .filter(([channel]) => channel === ipcChannels.event)
       .map(([, event]) => event.type))
-      .toStrictEqual(late ? ['client.connectionChanged', 'client.connectionChanged', 'snapshot.updated', 'codex.conversationEventReceived'] : [
-        'client.connectionChanged', 'codex.conversationEventReceived', 'client.connectionChanged', 'snapshot.updated',
+      .toStrictEqual(late ? ['client.connectionChanged', 'client.connectionChanged', 'snapshot.updated', 'conversation.sessionPatch'] : [
+        'client.connectionChanged', 'conversation.sessionPatch', 'client.connectionChanged', 'snapshot.updated',
       ]);
     await controller.shutdown();
   });
@@ -279,7 +268,7 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent({
       seq: 1,
-      backend: 'codex',
+      provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -296,7 +285,7 @@ describe('AppController', () => {
     expect(currentSnapshot(controller).agents[0]?.status).toStrictEqual({ type: 'working' });
     expect(send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({
       seq: 1,
-      backend: 'codex',
+      provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -351,50 +340,20 @@ describe('AppController', () => {
     }).emitBackendEvent({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 1,
-        event: {
-          seq: 1,
-          occurredAt: '2026-08-30T18:33:55.000Z',
-          origin: 'notification',
-          conversationId: 'thread-dina',
-          turnId: 'turn-image',
-          type: 'message.updated',
-          payload: {
-            message: {
-              id: 'assistant-turn-image',
-              agentId: 'agent-dina',
-              role: 'assistant',
-              status: 'complete',
-              turnId: 'turn-image',
-              createdAt: '2026-08-30T18:33:55.000Z',
-              parts: [{
-                type: 'media',
-                itemId: 'image-live',
-                media: {
-                  url: generatedImageUrl,
-                  alt: 'Generated image',
-                  mimeType: 'image/png',
-                  title: 'Generated image',
-                },
-              }],
-            },
-          },
-        } as unknown as Extract<AppBackendEvent, { type: 'codex.conversationEventReceived' }>['payload']['event'],
-      },
+      provider: 'codex',
+      type: 'conversation.sessionPatch',
+      payload: { conversation: 'thread-dina', epoch: 'stream-1', patch: { revision: 1, ops: [{ op: 'spliceMessages', start: 0, deleteCount: 0, messages: [{
+        id: 'assistant-turn-image', agentId: 'agent-dina', role: 'assistant', status: 'complete', turnId: 'turn-image', createdAt: '2026-08-30T18:33:55.000Z',
+        parts: [{ type: 'media', itemId: 'image-live', media: { url: generatedImageUrl, alt: 'Generated image', mimeType: 'image/png', title: 'Generated image' } }],
+      }] }] } },
       occurredAt: '2026-08-30T18:33:55.000Z',
     });
 
     const rendererEvent = send.mock.calls.find(([channel, event]) => (
-      channel === ipcChannels.event && event.type === 'codex.conversationEventReceived'
+      channel === ipcChannels.event && event.type === 'conversation.sessionPatch'
     ))?.[1] as MainToRendererEvent | undefined;
-    const message = rendererEvent?.type === 'codex.conversationEventReceived'
-      && rendererEvent.payload.event.type === 'message.updated'
-      ? rendererEvent.payload.event.payload.message
-      : undefined;
+    const op = rendererEvent?.type === 'conversation.sessionPatch' ? rendererEvent.payload.patch.ops[0] : undefined;
+    const message = op?.op === 'spliceMessages' ? op.messages[0] : undefined;
     const media = message?.parts.find((part) => part.type === 'media');
 
     expect(media?.type === 'media' ? media.media.url : null).toMatch(/^agent-workspace-media:\/\/generated\//);
@@ -459,8 +418,8 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
+      provider: 'codex',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.contextUsageUpdated',
       payload: { contextUsage },
@@ -495,12 +454,12 @@ describe('AppController', () => {
     await controller.initialize();
     emitBackendEvent(controller, {
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: { rateLimits },
     });
     await flushMicrotasks();
 
-    expect(currentSnapshot(controller).accountRateLimits).toStrictEqual(rateLimits);
+    expect(currentSnapshot(controller).providerAccountRateLimits?.codex).toStrictEqual(rateLimits);
   });
 
 
@@ -521,8 +480,8 @@ describe('AppController', () => {
 
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
+      provider: 'codex',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'conversation.turnDiffUpdated',
       payload: {
@@ -550,7 +509,7 @@ describe('AppController', () => {
 
     emitBackendEvent(controller, {
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'plan.readyForReview',
       payload: {
@@ -560,7 +519,7 @@ describe('AppController', () => {
 
     expect(send).toHaveBeenCalledWith('app:event', expect.objectContaining({
       agentId: 'agent-dina',
-      threadId: 'thread-dina',
+      conversationId: 'thread-dina',
       turnId: 'turn-1',
       type: 'plan.readyForReview',
       payload: {

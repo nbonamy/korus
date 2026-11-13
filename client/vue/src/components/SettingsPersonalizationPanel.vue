@@ -23,28 +23,28 @@
 import { onMounted, ref } from 'vue';
 import { useDebouncedSave } from '../shared/use-debounced-save';
 import { ElMessageBox } from 'element-plus';
-import type { AgentBackend, AppApi } from '@workspace/core/contracts';
+import type { HarnessProvider, AppApi } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
 
 const props = defineProps<{ api?: Pick<AppApi, 'readEngineInstructions' | 'saveEngineInstructions'> }>();
-const engine = ref<AgentBackend>('codex');
+const engine = ref<HarnessProvider>('codex');
 const text = ref('');
 const original = ref('');
 const filePath = ref('');
 const busy = ref(false);
 const loaded = ref(false);
 const error = ref('');
-const { schedule, flush, error: saveError } = useDebouncedSave(async (input: { engine: AgentBackend; text: string }) => {
+const { schedule, flush, error: saveError } = useDebouncedSave(async (input: { engine: HarnessProvider; text: string }) => {
   const client = props.api ?? appApi;
   if (!client) throw new Error('Settings client unavailable.');
   await client.saveEngineInstructions(input);
   if (engine.value === input.engine) original.value = input.text;
 });
 function scheduleCurrent() { schedule({ engine: engine.value, text: text.value }); }
-async function load(next: AgentBackend) {
+async function load(next: HarnessProvider) {
   busy.value = true;
   error.value = '';
   loaded.value = false;
@@ -60,7 +60,7 @@ async function load(next: AgentBackend) {
     error.value = String(cause instanceof Error ? cause.message : cause);
   } finally { busy.value = false; }
 }
-async function selectEngine(next: AgentBackend) {
+async function selectEngine(next: HarnessProvider) {
   if (text.value !== original.value) scheduleCurrent();
   busy.value = true;
   if (!await flush()) { busy.value = false; return; }

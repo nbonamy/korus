@@ -56,6 +56,11 @@ export function workspaceSidebarRepositoryKeyForAgent(agent: Agent): string | nu
   return agent.remoteConnectionId ? `${agent.remoteConnectionId}:${workspace.primaryWorktreeRoot}` : workspace.primaryWorktreeRoot;
 }
 
+/** The key a sidebar section is reordered by: a git repository's key, or a plain folder's. Quick chats have none. */
+export function workspaceSidebarOrderKeyForAgent(agent: Agent): string | null {
+  return workspaceSidebarRepositoryKeyForAgent(agent) ?? repositoryMetadataKeyForAgent(agent);
+}
+
 export function workspaceSidebarGroupIdForAgent(agent: Agent): string {
   if (agent.sessionKind === 'quickChat') return 'quick-chats';
   const repositoryKey = workspaceSidebarRepositoryKeyForAgent(agent);

@@ -37,7 +37,7 @@ describe('KeyboardShortcutsDialog', () => {
     await wrapper.get('input').setValue('ctrl+d');
     expect(wrapper.findAll('kbd').map(key => key.text())).toStrictEqual(['Ctrl', 'D']);
     await wrapper.get('input').setValue('');
-    expect(wrapper.text()).not.toMatch(/Open browser|Compact session|Next team|Next agent|Go to agent 2/);
+    expect(wrapper.text()).not.toMatch(/Open browser|Compact session|Next workspace|Next agent|Go to agent 2/);
     wrapper.unmount();
   });
   it('requests close on Escape and returns focus to the invoking control', async () => {
@@ -56,7 +56,7 @@ describe('KeyboardShortcutsDialog', () => {
   it('keeps desktop-only bindings out of the web reference', async () => {
     const wrapper = mountDialog({ desktop: false, workspace: false, agent: false });
     await flushPromises();
-    expect(wrapper.text()).not.toMatch(/New team|Settings|Quit|Rename agent/);
+    expect(wrapper.text()).not.toMatch(/New workspace|Settings|Quit|Rename agent/);
     expect(wrapper.text()).toContain('Keyboard shortcuts');
     wrapper.unmount();
   });

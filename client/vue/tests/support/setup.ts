@@ -1,6 +1,6 @@
 import { config, disableAutoUnmount, enableAutoUnmount } from '@vue/test-utils';
 import { computed } from 'vue';
-import { backendChoicesKey } from '../../src/components/backend-selection';
+import { providerChoicesKey } from '../../src/components/provider-selection';
 import { resetProvisioningOperations } from '../../src/components/provisioning-operations';
 import { afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { i18n } from '../../src/i18n';
@@ -30,7 +30,7 @@ config.global.plugins = [i18n];
 config.global.components = elementPlusStubs;
 // Standalone component fixtures use a connected Codex host unless a test supplies
 // another catalog. AppShell provides its own authoritative snapshot catalog.
-config.global.provide = { [backendChoicesKey as symbol]: computed(() => ['codex']) };
+config.global.provide = { [providerChoicesKey as symbol]: computed(() => ['codex']) };
 enableAutoUnmount(afterEach);
 // Vue Test Utils is shared by reused VM workers; each suite must own its cleanup hook.
 afterAll(disableAutoUnmount);

@@ -11,7 +11,7 @@
           :title="$t(codeCopied ? 'surface.remoteCodexAuth.copied' : 'surface.remoteCodexAuth.copy')"
           @click="copyCode">
           <span>{{ $t(codeCopied ? 'surface.remoteCodexAuth.copied' : 'surface.remoteCodexAuth.copy') }}</span>
-          <strong class="remote-codex-auth__code">{{ login.userCode }}</strong>
+          <strong class="remote-codex-auth__code">{{ login.code }}</strong>
           <component :is="codeCopied ? CheckIcon : CopyIcon" aria-hidden="true" />
         </el-button>
       </div>
@@ -52,7 +52,7 @@ onScopeDispose(() => emit('activity', false));
 watch(connected, value => { if (value) emit('connected'); });
 const codeCopied = ref(false);
 const copyFailed = ref(false);
-watch(() => login.value?.userCode, () => {
+watch(() => login.value?.code, () => {
   codeCopied.value = false;
   copyFailed.value = false;
 });
@@ -61,22 +61,22 @@ async function cancelLogin() {
   if (!login.value) emit('cancel');
 }
 async function copyCode() {
-  const code = login.value?.userCode;
+  const code = login.value?.code;
   if (!code) return;
   try {
     await navigator.clipboard.writeText(code);
-    if (login.value?.userCode !== code) return;
+    if (login.value?.code !== code) return;
     codeCopied.value = true;
     copyFailed.value = false;
   } catch {
-    if (login.value?.userCode !== code) return;
+    if (login.value?.code !== code) return;
     codeCopied.value = false;
     copyFailed.value = true;
   }
 }
 const email = computed(() => authentication.value?.account?.type === 'chatgpt' ? authentication.value.account.email : null);
 function openVerification() {
-  if (login.value) window.open(login.value.verificationUrl, '_blank', 'noopener,noreferrer');
+  if (login.value) window.open(login.value.url, '_blank', 'noopener,noreferrer');
 }
 </script>
 

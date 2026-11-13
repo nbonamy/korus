@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import { computed, defineComponent, nextTick, reactive, ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import CommandPalette from '../CommandPalette.vue';
 import AgentContextMenu from '../AgentContextMenu.vue';
 import { commandPaletteActions, type CommandPaletteAction } from '../command-palette-actions';
@@ -10,11 +10,11 @@ import { commandPaletteActions, type CommandPaletteAction } from '../command-pal
 function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> = {}) {
   const snapshot = createInitialSnapshot();
   const context = reactive<Parameters<typeof commandPaletteActions>[0]>({
-    settings: { appshots: true, availableBackends: ['codex', 'claude'] },
+    settings: { appshots: true, availableProviders: ['codex', 'claude'] },
     shortcuts: { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true },
-    agent: { ...snapshot.agents[0]!, backendSession: { kind: 'codex', threadId: 'test-thread' } },
+    agent: { ...snapshot.agents[0]!, providerSession: { kind: 'codex', conversationId: 'test-thread' } },
     team: snapshot.teams[0]!, connected: true, hostConnected: true, engineConnected: true, canCreateAgent: true,
-    capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, simulatorAvailable: true, ...overrides,
+    capabilities: { ...defaultProviderCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, simulatorAvailable: true, ...overrides,
   });
   const command = vi.fn();
   const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), simulator: vi.fn(), design: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
@@ -72,7 +72,7 @@ describe('CommandPalette', () => {
   });
   it('keeps artifact panes in workspace-menu order and puts file search in navigation', () => {
     const { wrapper } = setup({ planAvailable: true });
-    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open code review', 'Open Design', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
+    expect(sectionRows(wrapper, 'Panels')).toStrictEqual(['Open code review', 'Open Design', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
     expect(sectionRows(wrapper, 'Navigation')).toContain('Go to file');
     wrapper.unmount();
   });
@@ -81,8 +81,8 @@ describe('CommandPalette', () => {
     context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];
     await nextTick();
     const groups = wrapper.findAll('h3').map(heading => heading.text());
-    expect(groups[0]).toBe('Workspace');
-    for (const group of ['Workspace', 'Agent', 'Git']) {
+    expect(groups[0]).toBe('Panels');
+    for (const group of ['Panels', 'Agent', 'Git']) {
       expect(groups).toContain(group);
       expect(groups.indexOf(group)).toBeLessThan(groups.indexOf('Settings'));
     }
@@ -98,7 +98,7 @@ describe('CommandPalette', () => {
     await wrapper.get('input').setValue('reviews');
     expect(wrapper.get('button').text()).toBe('Open code review');
     expect(wrapper.get('button').attributes('disabled')).toBeUndefined();
-    expect(sectionRows(wrapper, 'Workspace')).toContain('Open code review');
+    expect(sectionRows(wrapper, 'Panels')).toContain('Open code review');
     await wrapper.get('input').trigger('keydown.enter');
     expect(actions.codeReview).toHaveBeenCalledExactlyOnceWith();
     wrapper.unmount();
@@ -145,13 +145,13 @@ describe('CommandPalette', () => {
     wrapper.unmount();
   });
   it('searches settings categories and intent aliases while respecting host and provider availability', async () => {
-    const { wrapper, context, actions } = setup({ settings: { appshots: false, availableBackends: [] }, connected: false });
+    const { wrapper, context, actions } = setup({ settings: { appshots: false, availableProviders: [] }, connected: false });
     await wrapper.get('input').setValue('settings');
     expect(wrapper.findAll('h3').map(group => group.text())).toStrictEqual(['Settings']);
     expect(wrapper.text()).toContain('Claude Code');
     expect(wrapper.text()).not.toMatch(/Screenshots|Antigravity/);
     context.settings.appshots = true;
-    context.settings.availableBackends = ['antigravity'];
+    context.settings.availableProviders = ['antigravity'];
     await nextTick();
     expect(wrapper.text()).toContain('Screenshots');
     expect(wrapper.text()).toContain('Antigravity');

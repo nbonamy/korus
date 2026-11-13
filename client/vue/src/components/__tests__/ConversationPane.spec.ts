@@ -1,13 +1,15 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
+import type { SessionState } from '@korus-dev/multi-agent-sdk';
+import { conversationFrom, sessionState } from '../../../tests/support/conversation-fixtures';
 import {
-  createCodexConversationPaneController,
-  type CodexComposerState,
-  type CodexConversationPaneController,
-  type CodexMessageTextSelection,
-  type CodexNativeAttachment,
-  type CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
+  createConversationPaneController,
+  type ComposerState,
+  type ConversationPaneController,
+  type MessageTextSelection,
+  type NativeAttachment,
+  type NativeRendererApi,
+} from '@korus-dev/agent-ui-sdk';
 import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';
@@ -15,14 +17,13 @@ import { formatCollaborationMessageEnvelope } from '@workspace/core/collaboratio
 import ConversationPane from '../ConversationPane.vue';
 import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
-import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
+import { providerChoicesKey, provideProviderSwitch } from '../provider-selection';
 import { setElectronTestClient } from '../../../tests/support/client';
-import { antigravityBackendCapabilities, claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { antigravityProviderCapabilities, claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { createAgentComposerState } from '../../agent-composer-state';
 import type { AgentConversationView } from '../../app-state';
 import { agentConversationState } from '../use-agent-conversation';
-import { claudeConversationSnapshot } from '../../../tests/support/claude-conversation-fixtures';
 import { translate } from '../../i18n';
 import { configureAppClient } from '../../platform-api';
 
@@ -31,8 +32,8 @@ const agent: Agent = {
   name: 'Dina',
   avatar: 'DI',
   folder: '~/src/id8',
-  backend: 'codex',
-  backendDefaults: { kind: 'codex' },
+  provider: 'codex',
+  providerDefaults: { kind: 'codex' },
   status: { type: 'idle' },
   createdAt: '2026-06-05T00:00:00.000Z',
   updatedAt: '2026-06-05T00:00:00.000Z',
@@ -70,7 +71,7 @@ const executionPlan: ThreadPlan = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
-const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendererApi };
+const nativeWindow = window as Window & { agentUiHostCapabilities?: NativeRendererApi };
 
 describe('ConversationPane', () => {
   it.each([false, true])('records initial render timing only when the host enables tracing (%s)', async enabled => {
@@ -79,7 +80,7 @@ describe('ConversationPane', () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const state = shallowReactive({ identity: { conversationKey: agent.id, messages } });
-    const controller = createCodexConversationPaneController({ state, actions: {} });
+    const controller = createConversationPaneController({ state, actions: {} });
     const wrapper = mountPane({ controller, agent });
     const marks = (stage: string) => warning.mock.calls.filter(([message]) => String(message).includes(`"stage":"${stage}"`));
     try {
@@ -92,23 +93,24 @@ describe('ConversationPane', () => {
       expect(marks('content.paint-opportunity')).toHaveLength(enabled ? 1 : 0);
     } finally { wrapper.unmount(); warning.mockRestore(); configureAppClient({ api: window.app!, platform: 'desktop' }); }
   });
-  afterEach(() => { delete nativeWindow.codexAppSdkNative; vi.unstubAllGlobals(); });
+  afterEach(() => { delete nativeWindow.agentUiHostCapabilities; vi.unstubAllGlobals(); });
   it('loads consecutive older Claude pages when more history remains', async () => {
     const snapshot = createInitialSnapshot();
-    const owner = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+    const owner = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } };
     const recent = { ...messages[1]!, id: 'recent' };
     const older = { ...messages[1]!, id: 'older', turnId: 'older-turn' };
-    const view = shallowReactive<AgentConversationView>({ agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
-      composerState: { text: '', selectionStart: 0, selectionEnd: 0 }, codexSnapshot: null,
-      claudeSnapshot: claudeConversationSnapshot([recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } }),
-      attachments: [], capabilities: claudeBackendCapabilities, approvals: [], sending: false, queuedPrompts: [],
+    const view = shallowReactive<AgentConversationView & { session: SessionState | null }>({
+      get conversation() { return conversationFrom(this.agent, this.session); }, agent: owner, composer: createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(agent.id),
+      composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      session: sessionState({ messages: [recent], historyState: { hasOlder: true, loadingOlder: false } }),
+      attachments: [], capabilities: claudeProviderCapabilities, approvals: [], sending: false, queuedPrompts: [],
       history: { failed: false, hydrating: false, hasOlder: true, loadingOlder: false }, answeredClientRequestIds: new Set() });
     const loadOlderHistory = vi.fn();
-    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: { loadOlderHistory } });
+    const controller = createConversationPaneController({ state: agentConversationState(() => view), actions: { loadOlderHistory } });
     const wrapper = mountPane({ controller, agent: owner });
     try {
       await flushPromises();
-      const viewport = wrapper.get<HTMLElement>('.codex-message-list__viewport');
+      const viewport = wrapper.get<HTMLElement>('.agent-ui-message-list__viewport');
       Object.defineProperty(viewport.element, 'clientHeight', { configurable: true, value: 500 });
       Object.defineProperty(viewport.element, 'scrollHeight', { configurable: true, value: 2000 });
       viewport.element.scrollTop = 0;
@@ -116,7 +118,7 @@ describe('ConversationPane', () => {
       expect(loadOlderHistory).toHaveBeenCalledTimes(1);
       view.history = { ...view.history, loadingOlder: true };
       await nextTick();
-      view.claudeSnapshot = claudeConversationSnapshot([older, recent], { sessionId: 'session', historyState: { hasOlder: true, loadingOlder: false } });
+      view.session = sessionState({ messages: [older, recent], historyState: { hasOlder: true, loadingOlder: false } });
       view.history = { ...view.history, loadingOlder: false };
       await flushPromises();
       viewport.element.scrollTop = 0;
@@ -127,15 +129,16 @@ describe('ConversationPane', () => {
   // App-owned skills must remain selectable when the provider has no native skill support.
   it('offers an app-owned imagegen skill in the dollar picker without submitting a prompt', async () => {
     const snapshot = createInitialSnapshot();
-    const owner = { ...snapshot.agents[0]!, backend: 'antigravity' as const, backendDefaults: { kind: 'antigravity' as const } };
+    const owner = { ...snapshot.agents[0]!, provider: 'antigravity' as const, providerDefaults: { kind: 'antigravity' as const } };
     const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
     composer.skills = [{ name: 'imagegen', displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
       path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
-    const view = shallowReactive<AgentConversationView>({ agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
-      codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityBackendCapabilities, approvals: [], sending: false,
+    const view = shallowReactive<AgentConversationView & { session: SessionState | null }>({
+      get conversation() { return conversationFrom(this.agent, this.session); }, agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      session: null, attachments: [], capabilities: antigravityProviderCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
     const submit = vi.fn();
-    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: {
+    const controller = createConversationPaneController({ state: agentConversationState(() => view), actions: {
       submit, updateComposerState: state => { view.composerState = state; },
     } });
     const wrapper = mountPane({ controller, agent: owner });
@@ -156,17 +159,17 @@ describe('ConversationPane', () => {
       expect(submit).not.toHaveBeenCalled();
     } finally { wrapper.unmount(); }
   });
-  const claudeAgent = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+  const claudeAgent = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const } };
   it.each([
     ['claude', '/repo/banner.png', '/repo/banner.png'],
     ['codex', 'file:///repo/blue%20flower.png', '/repo/blue flower.png'],
     ['claude', 'website/assets/banner.png', 'website/assets/banner.png'],
-  ] as const)('loads a %s inline local image through its own agent file preview: %s', async (backend, reference, filePath) => {
+  ] as const)('loads a %s inline local image through its own agent file preview: %s', async (provider, reference, filePath) => {
     const readImagePreview = vi.fn().mockRejectedValue(new Error('Attachment reference is invalid or expired'));
     installNativeImagePreview(readImagePreview);
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'image', path: filePath, size: 3, mimeType: 'image/png', dataUrl: 'data:image/png;base64,cG5n' });
     setElectronTestClient({ previewAgentFile });
-    const owner = { ...agent, id: 'background-image-owner', backend };
+    const owner = { ...agent, id: 'background-image-owner', provider: provider };
     const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, agentId: owner.id, parts: [{ type: 'text', text: `![Blue flower](<${reference}>)` }] }]), agent: owner });
     await flushPromises();
     expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('blob:preview');
@@ -188,7 +191,7 @@ describe('ConversationPane', () => {
   it('shows a provider safety block with its original details and no automatic-resume control', async () => {
     const detail = 'This request was blocked by our safety systems. Reason: Potentially unintended activity.';
     const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, status: { type: 'error', message: `Conversation blocked by provider. Automatic retries are stopped.\n\n${detail}` } } });
-    const alert = wrapper.get('.codex-conversation-pane__footer [role="alert"]');
+    const alert = wrapper.get('.agent-ui-conversation-pane__footer [role="alert"]');
     expect(alert.text()).toContain('Conversation blocked by provider');
     expect(alert.get('pre').text()).toBe(detail);
     expect(alert.text()).not.toContain('Automatic retries are stopped');
@@ -221,10 +224,10 @@ describe('ConversationPane', () => {
   it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
     const setAutoResume = vi.fn().mockResolvedValue({});
     setElectronTestClient({ setAutoResume });
-    const pause = { backend: 'claude' as const, conversationId: 'session', detectedAt: Date.now(), resumeAt: Date.now() + 60_000, enabled: true };
-    const current = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
+    const pause = { provider: 'claude' as const, conversationId: 'session', detectedAt: Date.now(), resumeAt: Date.now() + 60_000, enabled: true };
+    const current = { ...agent, provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
     const wrapper = mountPane({ controller: controllerFor(messages), agent: current });
-    expect(wrapper.get('.codex-conversation-pane__composer-shelf [role="status"]').text()).toContain('Auto-resume');
+    expect(wrapper.get('.agent-ui-conversation-pane__composer-shelf [role="status"]').text()).toContain('Auto-resume');
     expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.get('[role="status"]').text()).toContain('Auto-resume');
     await wrapper.get('[role="switch"][aria-label="Auto-resume"]').setValue(false); await flushPromises();
@@ -376,17 +379,17 @@ describe('ConversationPane', () => {
   });
 
   it('keeps an interrupted handoff and its saved note visible after restoring the agent', () => {
-    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { backend: 'claude', sessionId: 'old-session', folder: '/repo' }, phase: 'failed', error: 'Check the target conversation before resending.', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  backend: 'codex' } } } });
-    expect(wrapper.get('[role="status"]').text()).toContain('Check the target conversation before resending.');
+    const wrapper = mountPane({ controller: controllerFor([]), agent: { ...agent, handoff: { targetAgentId: agent.id, operationId: 'once', sourceAgentId: 'old', sourceTitle: 'Original', sourceRef: { provider: 'claude', conversationId: 'old-session', folder: '/repo' }, phase: 'failed', note: 'The next action is to review the diff.', selection: {model: null, reasoningEffort: null, serviceTier: null,  provider: 'codex' } } } });
+    expect(wrapper.get('[role="status"]').text()).toContain('The handoff didn’t finish.');
     expect(wrapper.get('details pre').text()).toBe('The next action is to review the diff.');
   });
   it('parks only the selected composer text and restores a saved draft at the caret', async () => {
     const mention = { type: 'mention' as const, kind: 'file' as const, id: 'docs/then.md', value: 'docs/then.md', label: 'then' };
-    const composerState = ref<CodexComposerState>({ text: 'first then second', content: [{ type: 'text', text: 'first ' }, mention, { type: 'text', text: ' second' }], selectionStart: 6, selectionEnd: 10 });
+    const composerState = ref<ComposerState>({ text: 'first then second', content: [{ type: 'text', text: 'first ' }, mention, { type: 'text', text: ' second' }], selectionStart: 6, selectionEnd: 10 });
     const conversationId = ref(agent.id);
     const savePromptDraft = vi.fn().mockResolvedValue(undefined);
     const removePromptDraft = vi.fn().mockResolvedValue(undefined);
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: () => ({ identity: { conversationKey: conversationId.value, messages: [] }, composer: { state: composerState.value } }),
       actions: { updateComposerState: (state) => { composerState.value = state; } },
     });
@@ -464,66 +467,16 @@ describe('ConversationPane', () => {
     await nextTick();
     expect(wrapper.find('.saved-prompt-draft-picker').exists()).toBe(false);
   });
-  it('switches a fresh chat without losing its draft and locks the choice after submission', async () => {
-    const selectedAgent = ref<Agent>({ ...agent });
-    const choices = ref<Agent['backend'][]>(['codex']);
-    const update = vi.fn(async (_id: string, backend: Agent['backend']) => {
-      selectedAgent.value = { ...selectedAgent.value, backend, backendDefaults: { kind: backend } };
-    });
-    const updateSettings = vi.fn(() => { choices.value = ['codex', 'claude']; });
-    const controller = createCodexConversationPaneController({
-      state: { identity: { conversationKey: agent.id, messages: [] },
-        catalogs: { models: [{ id: 'cursor-model', model: 'cursor-model', displayName: 'Cursor model', isDefault: true }] } },
-      actions: { updateSettings },
-    });
-    const wrapper = mount(defineComponent({
-      setup() {
-        provide(backendChoicesKey, computed(() => choices.value));
-        provideBackendSwitch(update);
-        return () => h(ConversationPane, { agent: selectedAgent.value, controller });
-      },
-    }));
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-    choices.value = ['codex', 'claude', 'cursor'];
-    await nextTick();
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(true);
-    const editor = wrapper.get('[role="textbox"][contenteditable]');
-    editor.element.textContent = 'Keep this idea';
-    await editor.trigger('input');
-    await wrapper.get('.backend-selector select').setValue('cursor');
-    await flushPromises();
-    expect(update).toHaveBeenCalledExactlyOnceWith(agent.id, 'cursor');
-    expect(editor.element.textContent).toBe('Keep this idea');
-    expect(wrapper.get<HTMLSelectElement>('.backend-selector select').element.value).toBe('cursor');
-    await wrapper.get('button[aria-label="Model and reasoning"]').trigger('click');
-    await wrapper.findAll('[role="menuitemradio"]').find(item => item.text().startsWith('Cursor model'))!.trigger('click');
-    await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ modelId: 'cursor-model' });
-    // A connection refresh after model selection must not switch this chat.
-    expect(selectedAgent.value.backend).toBe('cursor');
-    expect(update).toHaveBeenCalledTimes(1);
-    choices.value = ['codex', 'claude', 'cursor'];
-    await nextTick();
-    expect(wrapper.get<HTMLSelectElement>('.backend-selector select').element.value).toBe('cursor');
-    await wrapper.get('.backend-selector select').setValue('claude');
-    await flushPromises();
-    expect(update).toHaveBeenLastCalledWith(agent.id, 'claude');
-    selectedAgent.value = { ...selectedAgent.value, hasSubmittedPrompt: true };
-    await nextTick();
-    expect(wrapper.find('.backend-selector').exists()).toBe(false);
-    expect(wrapper.find('.chat-composer-shelf').exists()).toBe(false);
-  });
-
   it('stays a thin presentation wrapper around an AppShell-owned controller', () => {
     const controller = controllerFor(messages);
     const wrapper = mountPane({ controller, agent });
 
-    expect(wrapper.getComponent({ name: 'CodexConversationPane' }).props('controller')).toStrictEqual(controller);
+    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('controller')).toStrictEqual(controller);
   });
 
   it('keeps empty-composer Send disabled without submitting a fallback prompt', async () => {
     const submit = vi.fn();
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: { conversationKey: 'agent:agent-dina', messages },
         composer: { placeholder: 'Ask for follow-up changes' },
@@ -574,8 +527,8 @@ describe('ConversationPane', () => {
 
   it('turns SDK text selections into removable composer annotations', async () => {
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
-    const sdkPane = wrapper.getComponent({ name: 'CodexConversationPane' });
-    const selection: CodexMessageTextSelection = {
+    const sdkPane = wrapper.getComponent({ name: 'ConversationPane' });
+    const selection: MessageTextSelection = {
       text: 'Looking now.',
       messageId: 'message-assistant',
       turnId: 'turn-1',
@@ -639,7 +592,7 @@ describe('ConversationPane', () => {
     };
     const wrapper = mountPane({ controller: controllerFor(messages), agent, visualizationAnnotations: [annotation] });
 
-    expect(wrapper.getComponent({ name: 'CodexConversationPane' }).props('hasComposerContext')).toBe(true);
+    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('hasComposerContext')).toBe(true);
     expect(wrapper.get('.composer-context-cards__label').text()).toBe('Annotation');
     expect(wrapper.find('.composer-context-cards__detail').exists()).toBe(false);
     expect(wrapper.find('.composer-context-cards__label .tabler-icon-sitemap').exists()).toBe(true);
@@ -664,7 +617,7 @@ describe('ConversationPane', () => {
       reviewFinding,
     });
 
-    expect(wrapper.getComponent({ name: 'CodexConversationPane' }).props('hasComposerContext')).toBe(false);
+    expect(wrapper.getComponent({ name: 'ConversationPane' }).props('hasComposerContext')).toBe(false);
     expect(wrapper.get('.composer-context-cards__card').text()).toContain('P1');
     expect(wrapper.get('.composer-context-cards__card').text()).toContain('Authorize before writing');
     expect(wrapper.text()).not.toContain(reviewFinding.body);
@@ -677,7 +630,7 @@ describe('ConversationPane', () => {
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
     await wrapper.setProps({ agent: { ...agent, threadFlags: { [id]: true } } });
     expect(wrapper.findAll('.thread-flag-affordance')).toHaveLength(1);
-    expect(wrapper.get('.codex-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
+    expect(wrapper.get('.agent-ui-conversation-pane__composer-shelf .thread-flag-affordance').text()).toContain('Turn this into work?');
     for (const label of ['Continue', 'Worktree', 'Mission']) {
       const button = wrapper.get(`button[aria-label="${label}"]`);
       expect(button.text()).toBe(label);
@@ -824,7 +777,7 @@ describe('ConversationPane', () => {
   });
 
   it.each(['agents', 'mission:infinite-scrolling'])('renders persisted agent mentions with the app-owned bot treatment (%s)', (groupId) => {
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: {
           conversationKey: 'agent:agent-dina',
@@ -851,7 +804,7 @@ describe('ConversationPane', () => {
   });
 
   it('renders agent suggestions above plugins and files with the app-owned bot treatment', async () => {
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: { conversationKey: 'agent:agent-dina', messages: [] },
         catalogs: {
@@ -891,7 +844,7 @@ describe('ConversationPane', () => {
   });
 
   it(`falls back to SDK translations for SDK actions ${product.name} has not overridden`, () => {
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: {
           conversationKey: 'agent:agent-dina',
@@ -966,7 +919,7 @@ describe('ConversationPane', () => {
   });
 
   it.each(['workspace', product.mcpServerName])('keeps working feedback visible while a %s status tool is hidden', (server) => {
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: {
           conversationKey: 'agent:agent-dina',
@@ -999,7 +952,7 @@ describe('ConversationPane', () => {
     ['completed', 'Review round finished'],
     ['failed', 'Could not finish review round'],
   ] as const)('renders the review completion tool while %s without its raw name', (status, label) => {
-    const controller = createCodexConversationPaneController({
+    const controller = createConversationPaneController({
       state: {
         identity: {
           conversationKey: `agent:${agent.id}`,
@@ -1188,7 +1141,7 @@ describe('ConversationPane', () => {
   });
 
   it('offers annotation for every composer image attachment and reports saved counts', async () => {
-    const image: CodexNativeAttachment = {
+    const image: NativeAttachment = {
       id: 'image-1',
       type: 'image',
       reference: '/tmp/screenshot.png',
@@ -1225,21 +1178,21 @@ describe('ConversationPane', () => {
   });
 });
 
-function installNativeImagePreview(readImagePreview: NonNullable<CodexNativeRendererApi['readImagePreview']>): void {
+function installNativeImagePreview(readImagePreview: NonNullable<NativeRendererApi['readImagePreview']>): void {
   vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL: () => 'blob:preview', revokeObjectURL: vi.fn() }));
   vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => ({ size: 3 }) })));
   vi.stubGlobal('Image', class {
     naturalWidth = 1; naturalHeight = 1; onload: (() => void) | null = null;
     set src(value: string) { if (value) queueMicrotask(() => this.onload?.()); }
   });
-  nativeWindow.codexAppSdkNative = {
+  nativeWindow.agentUiHostCapabilities = {
     capabilities: { attachments: true, clipboard: true, externalLinks: true, transcription: false },
     readImagePreview, copyToClipboard: vi.fn(), ingestAttachments: vi.fn(), openExternal: vi.fn(), pickAttachments: vi.fn(), transcribeAudio: vi.fn(),
   };
 }
 
 function mountPane(props: {
-  controller: CodexConversationPaneController;
+  controller: ConversationPaneController;
   agent: Agent | null;
   attachmentAnnotationCounts?: Readonly<Record<string, number>>;
   textAnnotations?: readonly ChatTextAnnotation[];
@@ -1263,8 +1216,8 @@ function mountPane(props: {
   });
 }
 
-function controllerFor(controllerMessages: RendererMessage[]): CodexConversationPaneController {
-  return createCodexConversationPaneController({
+function controllerFor(controllerMessages: RendererMessage[]): ConversationPaneController {
+  return createConversationPaneController({
     state: {
       identity: {
         conversationKey: 'agent:agent-dina',
@@ -1277,9 +1230,9 @@ function controllerFor(controllerMessages: RendererMessage[]): CodexConversation
 }
 
 function controllerWithAttachments(
-  attachments: readonly CodexNativeAttachment[],
-): CodexConversationPaneController {
-  return createCodexConversationPaneController({
+  attachments: readonly NativeAttachment[],
+): ConversationPaneController {
+  return createConversationPaneController({
     state: {
       identity: {
         conversationKey: 'agent:agent-dina',
@@ -1291,7 +1244,7 @@ function controllerWithAttachments(
   });
 }
 
-function resolveControllerState(controller: CodexConversationPaneController) {
+function resolveControllerState(controller: ConversationPaneController) {
   const source = controller.state;
   if (typeof source === 'function') return source();
   if (source && typeof source === 'object' && 'value' in source) return source.value;

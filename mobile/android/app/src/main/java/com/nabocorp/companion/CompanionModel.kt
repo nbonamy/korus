@@ -113,7 +113,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
     internal val canStartCreation get() = canStartCreationFor()
     internal fun canStartCreationFor(repositoryId: String? = null) = creationReady && state.creationBackends(repositoryId).isNotEmpty()
-    private val conversationBackends get() = if (state.has("conversationBackends")) state.strings("conversationBackends") else state.strings("backends")
+    private val conversationBackends get() = if (state.has("conversationProviders")) state.strings("conversationProviders") else state.strings("providers")
     internal val canDuplicateAgent get() = canManageSession && creationReady && conversationBackends.isNotEmpty()
     val canManageSession get() = composerDrafts.target != null && state.connection.isConnected && state.string("sessionAction").isBlank()
     val composerDrafts = ComposerDrafts()
@@ -391,9 +391,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     private fun updateReviewChoices(review: JSONObject) {
         val setup = review.optJSONObject("setup") ?: return
-        if (review.string("status") == "ready" && (reviewLoadedBackend == null || reviewLoadedBackend != setup.string("backend"))) {
+        if (review.string("status") == "ready" && (reviewLoadedBackend == null || reviewLoadedBackend != setup.string("provider"))) {
             reviewChoices = reviewChoices.load(setup, reviewLoadedBackend == null)
-            reviewLoadedBackend = setup.string("backend")
+            reviewLoadedBackend = setup.string("provider")
         }
     }
     fun dismissReview() {
@@ -429,13 +429,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command("composer", "change" to json("serviceTier" to tier))
     }
     internal val canChoosePermissions get() = canManageSession && !composerDrafts.sending
-    internal fun chooseApprovalPreset(preset: String) {
-        if (!canChoosePermissions || !state.obj("permissions").strings("presets").contains(preset)) return
-        command("approvalPreset","preset" to preset); sheet = null
-    }
-    internal fun choosePermissionMode(mode: String) {
-        if (!canChoosePermissions || state.obj("permissions").items("modes").none { it.string("id") == mode }) return
-        command("permissionMode","mode" to mode); sheet = null
+    internal fun choosePermission(permission: String) {
+        if (!canChoosePermissions || state.obj("permissions").items("options").none { it.string("id") == permission }) return
+        command("permission","permission" to permission); sheet = null
     }
     internal val canRestartSession get() = canManageSession && state.obj("header").string("status") !in listOf("working","awaitingInput")
     internal fun restartSession() {
@@ -445,6 +441,19 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun closeSession() {
         if (!canManageSession) return
         dictation.cancel(); command("closeSession"); sheet = null
+    }
+    /** An empty chat can still take another engine; false once a prompt was sent. */
+    val canSelectProvider get() = state.optBoolean("canSelectProvider") && conversationBackends.size > 1
+    internal val conversationEngines get() = conversationBackends
+    /** The engine an empty chat is switching to, shown chosen while the laptop catches up. */
+    val switchingProvider get() = state.string("switchingProvider")
+    /** The model menu has nothing to show yet: it is loading, not empty. */
+    val modelsLoading get() = state.optBoolean("modelsLoading")
+    /** The empty chat takes another engine, and later new chats start with the one chosen last. */
+    internal fun chooseProvider(provider: String) {
+        if (!canSelectProvider || !conversationBackends.contains(provider)) return
+        preferredNewBackend = provider; preferences.edit().putString("newChat.backend", provider).apply()
+        command("provider", "provider" to provider)
     }
     internal fun chooseCreationBackend(backend: String) {
         if (!(creation?.backends(state) ?: state.creationBackends()).contains(backend) || creation?.submitted == true) return
@@ -465,11 +474,11 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun duplicateAgent() {
         if (!canDuplicateAgent) return
         val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
-        val backend = state.string("backend").takeIf { conversationBackends.contains(it) } ?: preferredBackend(conversationBackends)
+        val backend = state.string("provider").takeIf { conversationBackends.contains(it) } ?: preferredBackend(conversationBackends)
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         dictation.cancel(); sheet = null
         duplicateFailed = false; duplicateTarget = target
-        command("duplicateAgent", "target" to target.toJson(), "backend" to backend)
+        command("duplicateAgent", "target" to target.toJson(), "provider" to backend)
     }
     private fun projectCatalogCommand(type: String, flow: CreationFlow, repositoryId: String? = null) {
         val fields = mutableListOf<Pair<String, Any?>>()
@@ -695,7 +704,6 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
                 "readConversationImage", "readConversationContent", "readFilePreview", "loadTurnHistory" -> dispatch(body)
                 "filePreviewVisibility" -> { filePreviewOpen = body.optBoolean("open"); if (filePreviewOpen) dictation.cancel(); acknowledge() }
-                "backend" -> { chooseCreationBackend(body.string("backend")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))
                 "openImage" -> if (foreground && screenUnlocked && !fatalError && !engineRecovering && state.string("agentId").isNotBlank()
                     && body.string("agentId") == state.string("agentId") && !drawerVisible && sheet == null && !reviewOpen && !changesOpen && creation == null && presentedRequest == null) {

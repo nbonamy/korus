@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ test('Backlog actions stay inside their rows when the inbox is narrower than the
     logLevel: 'error',
     server: { host: '127.0.0.1', port: 0 },
     resolve: { dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'backlog-layout-fixture',
       configureServer(server) {
         server.middlewares.use('/backlog-layout', (_req, res) => {

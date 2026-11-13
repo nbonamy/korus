@@ -22,7 +22,7 @@ function session(): CodeReviewSession {
       id: 'round-1',
       number: 1,
       status: 'completed',
-      reviewerSession: { kind: 'codex', threadId: 'review-thread-1' },
+      reviewerSession: { kind: 'codex', conversationId: 'review-thread-1' },
       startedAt: '2026-09-19T10:00:00.000Z',
       completedAt: '2026-09-19T10:50:00.000Z',
       findings: [{
@@ -57,7 +57,7 @@ function session(): CodeReviewSession {
       id: 'round-2',
       number: 2,
       status: 'ready',
-      reviewerSession: { kind: 'claude', sessionId: 'review-thread-2', transport: 'stdio' },
+      reviewerSession: { kind: 'claude', conversationId: 'review-thread-2', transport: 'stdio' },
       startedAt: '2026-09-19T11:00:00.000Z',
       findings: [{
         id: 'finding-new',
@@ -78,11 +78,11 @@ function session(): CodeReviewSession {
 describe('code review ledger', () => {
   it('decodes a saved review ledger with a Cursor reviewer session', () => {
     const review = session();
-    review.rounds[0]!.reviewerSession = { kind: 'cursor', sessionId: 'cursor-review' };
+    review.rounds[0]!.reviewerSession = { kind: 'cursor', conversationId: 'cursor-review' };
     const restored = JSON.parse(JSON.stringify(review));
     expect(isCodeReviewSession(restored)).toBe(true);
     expect(restored).toStrictEqual(review);
-    restored.rounds[0].reviewerSession.sessionId = 12;
+    restored.rounds[0].reviewerSession.conversationId = 12;
     expect(isCodeReviewSession(restored)).toBe(false);
   });
   it('preserves optional inspection summaries through serialization and rejects malformed summaries', () => {

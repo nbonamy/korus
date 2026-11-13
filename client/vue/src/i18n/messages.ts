@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { surfaceMessages } from './surface-messages';
+import { conversationMessages } from './surface-messages';
 
 export const messages = {
   en: {
@@ -27,7 +27,7 @@ export const messages = {
     design: {
       buildThis: 'Build this', sendForCoding: 'Send for coding', sentForCoding: 'Sent for coding', reviewComment: 'Comment on this proposal', buildHelp: 'Your agent will implement this direction and its linked screens using the saved design and your comments.',
       proposalComment: 'Proposal comment', commentOn: 'Comment on {title}', commentPlaceholder: 'What would you like to change?', commentAction: 'Comment',
-      title: 'Design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
+      title: 'Design', deleteTitle: 'Delete this design?', deleteConfirm: 'Its artboards, edits, comments and checkpoints will be permanently deleted. Your agent can start a new design afterwards.', deleteAction: 'Delete design', revision: 'r{revision}', edit: 'Edit', play: 'Play', export: 'Export',
       discardReload: 'Discard draft and reload', emptyTitle: 'Explore design ideas', emptyHelp: 'Use /design in the chat to explore ideas for a website, app, or interface. Your agent will create visual proposals here for you to compare and refine.',
       artboard: 'Artboard', zoom: 'Zoom', fit: 'Fit', undo: 'Undo', element: 'Element', text: 'Text', color: 'Text color', fill: 'Fill',
       onClick: 'On click', noInteraction: 'None', interactionTarget: 'Interaction target', action_navigate: 'Go to artboard', action_back: 'Go back', action_toggle: 'Toggle visibility', action_show: 'Show element', action_hide: 'Hide element', action_scroll: 'Scroll to element',
@@ -153,7 +153,7 @@ export const messages = {
     },
     repositoryDeletion: {
       action: 'Delete repository', title: 'Delete {name}?', loading: 'Checking repository…',
-      warning: 'This will permanently delete the repository, all linked worktrees, and all associated agents across all teams.',
+      warning: 'This will permanently delete the repository, all linked worktrees, and all associated agents across all workspaces.',
       loss: 'All local files, uncommitted changes, and local Git history will be lost.',
       irreversible: 'This cannot be undone.',
       remote: 'The remote repository will not be deleted.',
@@ -175,13 +175,12 @@ export const messages = {
       description: 'Repositories, issues and merge requests',
       setup: `Register a ${product.name} public OAuth application on GitLab.com with the api and mcp scopes, then set APP_GITLAB_CLIENT_ID on the owning host and restart it.`,
     },
-    modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       tokenReportingWarning: '{providers} turns are reported, but token usage and cost are unavailable.',
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',
       costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
-      title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',
+      title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Workspace',repository:'Repository',agentId:'Agent',
       clear:'Clear',clearConfirm:'Clear',clearing:'Clearing…',clearTitle:'Clear statistics?',clearConfirmation:'All recorded statistics will be deleted.',clearError:'Could not clear statistics. Try again.',
       allProviders:'All providers',usageOverview:'Usage',share:'Usage share',groupBy:'Group by',measuredTokens:'Tokens',cacheRead:'Cache read',cacheWrite:'Cache write',reasoning:'Reasoning',
       providerUsage:'Provider usage',modelUsage:'Model usage',repositoryUsage:'Repository usage',unknownRepository:'Quick chats',missions:'Missions',performance:'Performance',options:'Analytics options',groupServiceTiers:'Group service tiers',measure:'Measure',turns:'Turns',totalTokens:'Total tokens',inputTokens:'Input tokens',outputTokens:'Output tokens',dateRange:'Date range',days:'{count}d',loadError:'Could not load statistics. Try again.',loading:'Loading…',totals:'Analytics totals',breakdown:'Usage breakdown',shareNote:'Token shares include turns with available token data.',tokenSpeed:'Output Speed',tokensPerSecond:'tokens/s',speedColumn:'tok/sec',activity:'Token activity',activityLifetime:'Lifetime total',activityPeak:'Peak day',activityLongest:'Longest task',activityStreak:'Longest streak',activityStreakDay:'{count} day',activityStreakDays:'{count} days',activityDaily:'Daily',activityWeekly:'Weekly',activityWeekOf:'Week of {date}',activityNoData:'N/A',activitySummary:'{tokens} tokens over the past year',tokensValue:'{count} tokens',timeToFirstToken:'Time to First Token (TTFT)',firstTokenColumn:'sec',seconds:'{value} s',secondsUnit:'s',turnsUnit:'turns',unknownModel:'Unknown model',unknownServiceTier:'Unknown tier',fastTier:'fast',ultrafastTier:'Ultrafast',flexTier:'Flex',details:'Details',speedTrend:'Output speed over time',trend:'Activity over time',total:'Total',vsPrevious:'vs previous {count} days',tokenMix:'Token mix',percentOfInput:'% of input',percentOfOutput:'% of output',turnsPerDay:'Turns per day',tokensPerDay:'Tokens per day',costPerDay:'Cost per day',measureTotal:'Tokens',measureInput:'Input',measureOutput:'Output',
@@ -202,14 +201,14 @@ export const messages = {
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
-      groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
+      groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Workspace', settings: 'Settings', agent: 'Agent', workspace: 'Panels', git: 'Git', application: 'Application' },
       cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
       newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', design: 'Open Design', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', simulator: 'Open simulator', gitAction: 'Git: {action}',
     },
     shortcuts: {
       title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
       groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
-      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', previousTeam: 'Previous team', nextWindow: 'Next window', previousWindow: 'Previous window', closeWindow: 'Close window', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
+      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next workspace', previousTeam: 'Previous workspace', nextWindow: 'Next window', previousWindow: 'Previous window', closeWindow: 'Close window', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New workspace', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
     },
     cursor: { billing: 'Billing', refreshBilling: 'Refresh billing', team: 'Team', name: 'Cursor', conversation: 'Conversation', connect: 'Connect Cursor', connected: 'Cursor connected', enable: 'Enable Cursor', managedPermissions: 'Cursor-managed', steeringFallback: 'Steering fallback', steeringFallbackDescription: 'Interrupt the current turn and send your update as a new turn.', remoteLogin: 'Sign in with agent login on the remote host, then retry the connection.', existingHome: 'Uses your existing Cursor setup.', install: 'Install Cursor' },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
@@ -269,7 +268,7 @@ export const messages = {
     schedule: 'Schedule',
     hourly: 'Every hour',
     daily: 'Every day',
-      name: 'Name', namePlaceholder: 'Name this automation', enabled: 'Enabled', prompt: 'Prompt', target: 'Run in', team: 'Team', conversation: 'Conversation',
+      name: 'Name', namePlaceholder: 'Name this automation', enabled: 'Enabled', prompt: 'Prompt', target: 'Run in', team: 'Workspace', conversation: 'Conversation',
       newQuickChat: 'New Quick Chat each run', quickChat: 'Existing Quick Chat', agent: 'Existing agent',
       promptPlaceholder: 'What should happen each time this runs?',
       model: 'Model', effort: 'Reasoning effort', defaultModel: 'Default model', defaultEffort: 'Default effort',
@@ -317,16 +316,17 @@ export const messages = {
       signedInAs: 'Signed in as {account}',
     },
     handoff: {
-      action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel', hide: 'Hide',
+      action: 'Hand off…', submit: 'Hand off', cancel: 'Cancel',
       model: 'Model',
       instructions: 'Additional handoff instructions', optional: 'Optional — what should the current agent emphasize in its note?',
       permissions: 'The new agent uses the selected provider’s default permissions.',
-      preparing: 'Preparing the note and replacement. You can hide this dialog; the handoff will continue.',
+      interrupted: 'The handoff didn’t finish. Check both conversations before continuing; the saved note isn’t resent automatically.',
+      phase: { preparing: 'Preparing the handoff note…', closing: 'Closing the source conversation…', starting: 'Starting the new agent…' },
       savedNote: 'Saved handoff note', source: 'Source conversation',
     },
     engineConnection: {
       title: 'Account', connect: 'Connect', connected: 'Connected', update: 'Update', actions: '{name} actions', refreshStatus: 'Refresh status',
-      disconnect: 'Disconnect', disconnected: 'Disconnected', apiKey: 'API key', subscription: 'Claude subscription', amazonBedrock: 'Amazon Bedrock',
+      disconnect: 'Disconnect', disconnected: 'Disconnected', apiKey: 'API key', subscription: 'Subscription', cloud: 'Cloud account',
       enabled: 'Enable {name}', waiting: 'Waiting for sign-in', connectedDisabled: 'Connected · disabled',
       updateFailedTitle: 'Engine status unchanged',
       lastEngineTitle: `${product.name} needs an active engine`,
@@ -349,7 +349,7 @@ export const messages = {
       emptyPane: 'Empty pane', selectAgent: 'Focus this pane, then select an agent from the sidebar.',
       resizeColumns: 'Resize conversation columns', resizeRows: 'Resize conversation rows',
     },
-    surface: surfaceMessages,
+    surface: conversationMessages,
     missions: {
       documentPreview: 'Preview', documentRequest: 'Document request', documentOpenRequest: 'Agent wants to open {document}',
       openDocument: 'Open document', dismissDocumentRequest: 'Dismiss document request', closeDocument: 'Close document',
@@ -435,7 +435,7 @@ export const messages = {
       commentQuote: 'On', commentBody: 'Comment',
       whatDoYouWantToBuild: 'What do you want to build?', describeWhatYouWantToBuild: 'Describe what you want to build…',
       chooseIssue: 'Choose an issue…', issueMissionPrompt: 'Shape this Mission from issue {repository}#{number}: {title}\n{url}',
-      teamContextRequired: 'Add an agent to this team before starting a mission.', canonicalReference: 'Open canonical ticket',
+      teamContextRequired: 'Add an agent to this workspace before starting a mission.', canonicalReference: 'Open canonical ticket',
       active: 'In progress', completed: 'Completed', problem: 'Problem and scope', acceptance: 'Acceptance criteria',
       changes: 'Code changes and diff references', tests: 'Test results and verification evidence',
       reviewSummary: 'Review findings and delivery decision', pullRequest: 'Pull request', complete: 'Complete mission', support: 'Stage conversation',
@@ -583,7 +583,7 @@ export const messages = {
       duplicate: 'Duplicate Agent',
       edit: 'Rename agent',
       fork: 'Fork Agent',
-      moveToTeam: 'Move to Other Team',
+      moveToTeam: 'Move to…',
       openInNewWindow: 'Open in New Window',
       openIn: 'Open In…',
       noAgent: 'No agent',
@@ -634,7 +634,7 @@ export const messages = {
     features: {
       rename: 'Rename', renameTitle: 'Rename feature', label: 'Label', actions: 'Feature actions',
       newWorktree: 'New worktree', newAgent: 'New agent', repositories: 'Repositories', repository: 'Repository', branch: 'New branch', branchSelect: 'Branch', branchName: 'Branch name', retry: 'Retry',
-      noBackend: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
+      noProvider: 'No agent backend is available.', defaultBranchUnavailable: 'Default branch not found.', creationFailed: 'Could not create the agent.',
       openInNewWindow: 'Open in New Window',
       open: 'Open feature in split view', openLimited: 'Open the first 4 of {count} agents in split view',
       deleteTitle: 'Delete {feature}?', deleteDescription: 'Remove this feature’s agents and delete the listed worktrees and local branches. Uncommitted changes in these worktrees will be discarded.',
@@ -646,7 +646,7 @@ export const messages = {
     },
     sidebar: {
       create: 'Create',
-      allTeams: 'All teams',
+      allTeams: 'All workspaces',
       noConversations: 'No conversations yet',
       agents: 'Agents',
       collapseRepository: 'Collapse {repository} sessions',
@@ -685,7 +685,7 @@ export const messages = {
       sortIdle: 'Sort idle agents',
       sortIdleBy: 'Sort idle agents by',
       recentActivity: 'Recent activity',
-      repository: 'Repository',
+      repository: 'Project',
       activity: 'Activity',
       worktree: 'Worktree',
       activityGroups: { attention: 'Needs input', recent: 'Done', working: 'Working', idle: 'Idle' },
@@ -723,7 +723,7 @@ export const messages = {
       codexConnected: 'Codex backend connected.',
       codexConnecting: 'Connecting to Codex app-server.',
       codexNotConnected: 'Codex backend is not connected yet.',
-      connected: '{backend} backend connected.',
+      connected: '{provider} backend connected.',
       restarting: 'Restarting daemon…',
     },
     permissions: {
@@ -733,7 +733,8 @@ export const messages = {
       },
       antigravity: {
         default: { label: 'Ask for approval', description: 'Antigravity asks before commands and file changes.' },
-        autoEdit: { label: 'Allow file edits', description: 'Allow native file edits; commands still use Antigravity approvals.' },
+        acceptEdits: { label: 'Allow file edits', description: 'Antigravity edits files in the workspace without asking; commands still need approval.' },
+        auto: { label: 'Auto', description: 'Antigravity runs edits and safe commands, and asks before anything irreversible.' },
       },
       approval: {
         ask: {
@@ -824,7 +825,7 @@ export const messages = {
     newProjectDialog: {
       cancel: 'Cancel',
       create: 'Create project',
-      description: 'Creates a folder in this team’s source directory and initializes a Git repository.',
+      description: 'Creates a folder in this workspace’s source directory and initializes a Git repository.',
       invalidName: 'Use a single folder name without slashes.',
       name: 'Project name',
       namePlaceholder: 'my-project',
@@ -1005,7 +1006,7 @@ export const messages = {
       useRepository: 'Using repository',
       initializeWorktree: 'Initializing worktree',
       checkProjectSetup: 'Checking project setup',
-      newSession: 'New {backend} session',
+      newSession: 'New {provider} session',
       handOverInstructions: 'Handing over initial instructions',
       finishSetup: 'Finishing agent setup',
     },
@@ -1072,8 +1073,8 @@ export const messages = {
       existingSession: 'Existing agent',
       chooseSession: 'Choose an agent',
       branch: 'Branch',
-      workspace: 'Workspace',
-      currentWorkspace: 'Current workspace',
+      workspace: 'Folder',
+      currentWorkspace: 'Current folder',
       pullRequestCurrentFolder: 'PR branch in current folder',
       currentBranch: 'the current branch',
       newWorktree: 'New worktree',
@@ -1141,9 +1142,10 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
+      modelSelector: { label: 'Coding agent and model', agent: 'Coding agent', model: 'Model', loading: 'Loading models…', standardTier: 'Standard', serviceTier: 'Service tier', currentServiceTier: 'Service tier: {tier}', normalSpeed: 'Normal Speed', fastMode: 'Fast mode' },
       composerActions: { design: 'Design', visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
-      quickChatContext: 'Ask about this team’s projects. Other conversations aren’t included.',
+      quickChatContext: 'Ask about this workspace’s projects. Other conversations aren’t included.',
       savedDrafts: {
         title: 'Saved drafts',
         search: 'Search saved drafts',

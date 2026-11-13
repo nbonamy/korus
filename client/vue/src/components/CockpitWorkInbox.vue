@@ -258,7 +258,7 @@
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
-          <BackendModelSelector v-model:selection="selectedSelection" :remote-connection-id="remoteConnectionId" :disabled="startingWork" />
+          <ProviderModelSelector v-model:selection="selectedSelection" :remote-connection-id="remoteConnectionId" :disabled="startingWork" />
         </label>
       </div>
 
@@ -291,7 +291,7 @@ import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import BackendModelSelector from './BackendModelSelector.vue';
+import ProviderModelSelector from './ProviderModelSelector.vue';
 import HostSelector from './HostSelector.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
@@ -342,7 +342,7 @@ const emit = defineEmits<{
 
 const searchOpen = ref(false);
 const searchInput = ref<{ focus: () => void } | null>(null);
-const { selection: selectedSelection, backend: selectedBackend, model: selectedModel, reasoningEffort: selectedEffort, serviceTier: selectedTier } = useExecutionSelection();
+const { selection: selectedSelection, provider: selectedBackend, model: selectedModel, reasoningEffort: selectedEffort, serviceTier: selectedTier } = useExecutionSelection();
 const selectedItemIds = ref(new Set<string>());
 const startWorkDialogOpen = ref(false);
 const detailItem = ref<WorkItem | null>(null);

@@ -23,7 +23,7 @@ export class FeatureGroupService {
     }
     if (input.type === 'rename') {
       const team = this.snapshot.teams.find(team => team.id === input.teamId);
-      if (!team) throw new Error('Team not found.');
+      if (!team) throw new Error('Workspace not found.');
       const previous = team.featureLabels;
       this.deleting.add(key);
       try {
@@ -65,7 +65,7 @@ export class FeatureGroupService {
   private async preview(teamId: string, branch: string): Promise<FeatureGroupPreview> {
     const snapshot = await this.ports.currentSnapshot();
     const team = snapshot.teams.find(team => team.id === teamId);
-    if (!team) throw new Error('Team not found.');
+    if (!team) throw new Error('Workspace not found.');
     const agents = snapshot.agents.filter(agent => agent.teamId === teamId && agent.workspace?.kind === 'git' && agent.workspace.branch === branch && agent.sessionKind !== 'quickChat');
     if (isDefaultFeatureBranch(branch, agents)) throw new Error('Default branch groups cannot be renamed or deleted.');
     if (!agents.length) throw new Error('Feature not found.');

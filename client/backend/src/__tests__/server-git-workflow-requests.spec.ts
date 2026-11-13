@@ -1,11 +1,11 @@
 import path from 'node:path';
 import type { DiffVizDiagram } from '@workspace/core/git-diff-viz';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
-import { claudeBackendCapabilities, codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import { claudeProviderCapabilities, codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import type { WorkIntegrationManager } from '../work-integrations/manager';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
@@ -25,7 +25,7 @@ describe('AppBackendServer', () => {
 
   it('cancels only the matching ephemeral generation through the provider and prevents preflight starts', async () => {
     const snapshot = createTestSnapshot();
-    const agent: import('@workspace/core/contracts').Agent = { id: 'agent-dina', name: 'Dina', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+    const agent: import('@workspace/core/contracts').Agent = { id: 'agent-dina', name: 'Dina', folder: '/repo', provider: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
     snapshot.agents = [agent];
     snapshot.teams[0]!.agentIds = [agent.id];
     let signal!: AbortSignal;
@@ -34,11 +34,11 @@ describe('AppBackendServer', () => {
       signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
     }));
     const interrupt = vi.fn();
-    const driver = { backend: agent.backend, getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities, generateText, interrupt, sendPrompt: vi.fn(),
-      respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} } as unknown as AgentBackendDriver;
+    const driver = { provider: agent.provider, getRuntimeStatus: () => ({ provider: agent.provider, status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities, generateText, interrupt, sendPrompt: vi.fn(),
+      respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} } as unknown as AgentProviderDriver;
     const diff = vi.fn(async () => ({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' }));
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([[agent.backend, driver]])),
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([[agent.provider, driver]])),
       agentGitService: { diff } as unknown as AgentGitService });
     const request = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: generationId, method: backendMethods.agentGitMessageGenerate,
       params: { agentId: agent.id, input: { kind: 'viz', mode: 'fast', target: { type: 'uncommitted' }, generationId } } });
@@ -71,8 +71,8 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'claude',
-      backendDefaults: { kind: 'claude' },
+      provider: 'claude',
+      providerDefaults: { kind: 'claude' },
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -100,12 +100,12 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-08-11T00:00:00.000Z',
     });
-    const driver: AgentBackendDriver = {
-      backend: 'claude',
-      getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }),
-      getCapabilities: () => claudeBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'claude', sessionId: 'session-test', transport: 'stdio' } }),
-      interrupt: async () => ({ backendSession: { kind: 'claude', sessionId: 'session-test', transport: 'stdio' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'claude',
+      getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
+      getCapabilities: () => claudeProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
+      interrupt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -116,7 +116,7 @@ describe('AppBackendServer', () => {
       pid: 123,
       snapshot,
       onEvent: (event) => events.push(event),
-      driverRpc: new BackendDriverRpc(new Map([['claude', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['claude', driver]])),
       agentGitService: { diff: getGitDiff, status: getGitStatus } as unknown as AgentGitService,
     });
 
@@ -143,7 +143,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -180,12 +180,12 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-08-11T00:00:00.000Z',
     });
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -195,7 +195,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       agentGitService: { workflow, status: getGitStatus } as unknown as AgentGitService,
       workIntegrations: {
         githubConnected: vi.fn().mockResolvedValue(true),
@@ -220,10 +220,10 @@ describe('AppBackendServer', () => {
   });
 
   it.each([
-    { provider: 'github', backend: 'codex' as const },
-    { provider: 'github', backend: 'claude' as const },
-    { provider: 'gitlab', backend: 'antigravity' as const },
-  ])('generates editable $provider drafts through $backend without another provider or a conversation prompt', async ({ provider, backend }) => {
+    { gitProvider: 'github', provider: 'codex' as const },
+    { gitProvider: 'github', provider: 'claude' as const },
+    { gitProvider: 'gitlab', provider: 'antigravity' as const },
+  ])('generates editable $gitProvider drafts through $provider without another provider or a conversation prompt', async ({ gitProvider, provider }) => {
     const snapshot = createTestSnapshot();
     snapshot.general.commitMessageInstructions = 'Use lowercase conventional commits.';
     snapshot.general.pullRequestInstructions = 'Include a deployment checklist.';
@@ -233,7 +233,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend,
+      provider,
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -246,13 +246,13 @@ describe('AppBackendServer', () => {
         { id: 'result', label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
       ])) });
     const sendPrompt = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend,
-      getRuntimeStatus: () => ({ backend, status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
+    const driver: AgentProviderDriver = {
+      provider,
+      getRuntimeStatus: () => ({ provider, status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
       generateText,
       sendPrompt,
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -262,8 +262,8 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([[backend, driver]])),
-      agentGitService: { diff: vi.fn(async (_folder, target) => ({ target, sections: [], diff: ['src/input.ts', 'src/output.ts'].map(path => `diff --git a/${path} b/${path}\n`).join('') + '+LARGE_PATCH_SENTINEL'.repeat(20_000) })), commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${provider}.com:owner/repo.git` }) } as unknown as AgentGitService,
+      driverRpc: new ProviderDriverRpc(new Map([[provider, driver]])),
+      agentGitService: { diff: vi.fn(async (_folder, target) => ({ target, sections: [], diff: ['src/input.ts', 'src/output.ts'].map(path => `diff --git a/${path} b/${path}\n`).join('') + '+LARGE_PATCH_SENTINEL'.repeat(20_000) })), commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${gitProvider}.com:owner/repo.git` }) } as unknown as AgentGitService,
     });
 
     await expect(server.handleMessage({
@@ -287,8 +287,13 @@ describe('AppBackendServer', () => {
       { label: 'Request intake', status: 'unchanged', paths: [] }, { label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
     ] } } });
     expect(generateText).toHaveBeenCalledTimes(3);
-    expect(generateText.mock.calls[2]?.[1].prompt).not.toMatch(/LARGE_PATCH_SENTINEL|diff --git/);
-    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', tools: true, prompt: expect.stringContaining('origin/main'),
+    // The patch travels in the prompt, bounded, so the chat's harness needs no tools to read it.
+    const vizPrompt = generateText.mock.calls[2]?.[1].prompt as string;
+    expect(vizPrompt).toContain('diff --git a/src/input.ts');
+    expect(vizPrompt).toMatch(/patch shortened: 300000 of \d+ characters/);
+    expect(vizPrompt.length).toBeLessThan(310_000);
+    expect(generateText.mock.calls[2]?.[1]).not.toHaveProperty('tools');
+    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', prompt: expect.stringContaining('origin/main'),
       developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
     generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,
@@ -296,7 +301,7 @@ describe('AppBackendServer', () => {
     expect(generateText.mock.calls[0]?.[1].developerInstructions).toContain('Use lowercase conventional commits.');
     expect(generateText.mock.calls[0]?.[1].developerInstructions).not.toContain('deployment checklist');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).toContain('Include a deployment checklist.');
-    expect(generateText.mock.calls[1]?.[1].prompt).toContain(provider === 'gitlab' ? 'merge request' : 'pull request');
+    expect(generateText.mock.calls[1]?.[1].prompt).toContain(gitProvider === 'gitlab' ? 'merge request' : 'pull request');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).not.toContain('lowercase conventional commits');
     expect(generateText.mock.calls[0]?.[1]).toMatchObject({ cwd: '/repo', outputSchema: { type: 'object' } });
     expect(sendPrompt).not.toHaveBeenCalled();
@@ -311,7 +316,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
@@ -432,17 +437,17 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       onEvent: () => () => undefined,
       close: async () => undefined,
@@ -454,7 +459,7 @@ describe('AppBackendServer', () => {
       pid: 123,
       snapshot,
       onEvent: (event) => events.push(event),
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       agentGitService: { diff } as unknown as AgentGitService,
     });
 
@@ -476,7 +481,7 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/Users/nbonamy/src/agent-workspace',
-      backend: 'codex',
+      provider: 'codex',
       status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',

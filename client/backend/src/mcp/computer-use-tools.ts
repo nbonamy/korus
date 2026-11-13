@@ -235,18 +235,15 @@ const appStateInputSchema = z.strictObject({
   message: 'window_id is required for application observations',
 });
 
-const screenshotInputSchema = z.union([
-  z.object({
-    ...optionalAppSchema,
-    displayId: z.number().int().positive().optional(),
-    scope: z.literal('screen'),
-  }),
-  z.object({
-    ...optionalAppSchema,
-    scope: z.literal('window').optional(),
-    window_id: windowIdSchema,
-  }),
-]);
+// A plain object keeps the published JSON schema typed; a top-level union publishes no properties.
+const screenshotInputSchema = z.object({
+  ...optionalAppSchema,
+  displayId: z.number().int().positive().optional().describe('Display to capture when scope is screen.'),
+  scope: z.enum(['screen', 'window']).optional().describe('screen captures a whole display; window (default) needs window_id.'),
+  window_id: windowIdSchema.optional(),
+}).refine((input) => input.scope === 'screen' || input.window_id !== undefined, {
+  message: 'window_id is required for window screenshots',
+});
 
 const semanticSelectorSchema = z.strictObject({
   description: z.string().optional(),

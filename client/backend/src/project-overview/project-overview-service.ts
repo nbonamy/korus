@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
-import { backendDisplayName, type BackendTextGenerationInput } from '@workspace/core/backend-driver';
-import type { Agent, AgentBackend } from '@workspace/core/contracts';
+import { providerDisplayName, type ProviderTextGenerationInput } from '@workspace/core/provider-driver';
+import type { Agent, HarnessProvider } from '@workspace/core/contracts';
+import { harnessProviders } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import {
@@ -39,7 +40,7 @@ export type ProjectOverviewOuterLoop = {
 };
 
 /** Runs one utility generation through an agent's engine and answers its reply. */
-export type ProjectOverviewGenerate = (agent: Agent, request: Pick<BackendTextGenerationInput, 'cwd' | 'prompt' | 'developerInstructions' | 'outputSchema' | 'complexity'>) => Promise<unknown>;
+export type ProjectOverviewGenerate = (agent: Agent, request: Pick<ProviderTextGenerationInput, 'cwd' | 'prompt' | 'developerInstructions' | 'outputSchema' | 'complexity'>) => Promise<unknown>;
 
 export type ProjectOverviewServiceOptions = {
   git: Pick<ProjectOverviewGitReader, 'read'>;
@@ -51,7 +52,7 @@ export type ProjectOverviewServiceOptions = {
   /** The project's tool links, read from and first written to its own config file. */
   tools?: Pick<ProjectToolConfigFile, 'load'>;
   /** Engines installed, enabled and signed in on this host, tried after the repository's own agents. */
-  hostEngines?: () => readonly AgentBackend[];
+  hostEngines?: () => readonly HarnessProvider[];
   now?: () => number;
 };
 
@@ -158,11 +159,11 @@ export class ProjectOverviewService {
     // The requesting agent's engine first, then teammates on other engines, then any other engine signed in on
     // this host: the evidence is already read, so any engine can write it. Each engine is asked once.
     const teammates = [agent, ...reading.teammates.filter(mate => mate.id !== agent.id && mate.folder)]
-      .filter((candidate, index, all) => all.findIndex(other => other.backend === candidate.backend) === index);
+      .filter((candidate, index, all) => all.findIndex(other => other.provider === candidate.provider) === index);
     const root = (agent.workspace?.kind === 'git' ? agent.workspace.primaryWorktreeRoot || agent.workspace.repositoryRoot : null) || agent.folder!;
     const host = (this.options.hostEngines?.() ?? [])
-      .filter((backend, index, all) => all.indexOf(backend) === index && !teammates.some(mate => mate.backend === backend))
-      .map(backend => hostEngine(agent, backend, root));
+      .filter((provider, index, all) => all.indexOf(provider) === index && !teammates.some(mate => mate.provider === provider))
+      .map(provider => hostEngine(agent, provider, root));
     for (const candidate of [...teammates, ...host]) {
       let problems: string[] = [];
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -186,7 +187,7 @@ export class ProjectOverviewService {
             narrative: {
               lead: draft.lead,
               workstreams: draft.workstreams.map(({ id, name, state, analysis, basis }) => ({ id, name, state, analysis, basis })),
-              writtenBy: backendDisplayName(candidate.backend),
+              writtenBy: providerDisplayName(candidate.provider),
               writtenAt: new Date(reading.now).toISOString(),
             },
             workstreams: draft.workstreams.map(workstream => ({ id: workstream.id, branches: workstream.branches })),
@@ -333,15 +334,14 @@ export class ProjectOverviewService {
   }
 }
 
-const hostEngineOrder: readonly AgentBackend[] = ['claude', 'codex', 'antigravity', 'cursor'];
-/** Engines a narrative can fall back to on this host: installed, enabled and signed in. */
-export function projectNarrativeHostEngines(connections: readonly ProviderConnection[] | undefined): AgentBackend[] {
-  return hostEngineOrder.filter(backend => connections?.some(connection => connection.backend === backend && connection.installed && connection.connected && connection.enabled !== false));
+/** Engines a narrative can fall back to on this host, in the SDK's provider order: installed, enabled and signed in. */
+export function projectNarrativeHostEngines(connections: readonly ProviderConnection[] | undefined): HarnessProvider[] {
+  return harnessProviders.filter(provider => connections?.some(connection => connection.provider === provider && connection.installed && connection.connected && connection.enabled !== false));
 }
 
 /** An engine on this host with no agent in the repository: it only writes the narrative, from the repository's primary checkout. */
-function hostEngine(requester: Agent, backend: AgentBackend, folder: string): Agent {
-  return { id: `project-narrative-${backend}`, name: null, backend, folder, status: { type: 'idle' }, ...(requester.workspace ? { workspace: requester.workspace } : {}) } as Agent;
+function hostEngine(requester: Agent, provider: HarnessProvider, folder: string): Agent {
+  return { id: `project-narrative-${provider}`, name: null, provider, folder, status: { type: 'idle' }, ...(requester.workspace ? { workspace: requester.workspace } : {}) } as Agent;
 }
 
 function branchOf(agent: Agent): string | null {

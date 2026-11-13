@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMission } from '@workspace/core/missions';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import type { AgentGitWorkflow } from '@workspace/core/contracts';
-import { codexConversationSnapshot, codexTextMessage } from '../support/codex-conversation-fixtures';
+import { sessionState, textMessage } from '../support/conversation-fixtures';
 import { conversationControllerActions, conversationControllerState, mountShell, workItem } from '../support/app-shell-test-harness';
 
 const missionStorageKey = 'app.activeMissionId';
@@ -119,7 +119,7 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'text', path, content, size: content.length });
     const wrapper = mountShell({ snapshot, realConversationPane: true, previewAgentFile,
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', `[Readme](<${target}>)`)]),
+      conversation: sessionState({ messages: [textMessage('links', 'assistant', `[Readme](<${target}>)`)] }),
     });
     try {
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
@@ -214,7 +214,7 @@ describe('AppShell missions', () => {
       .mockRejectedValueOnce(new Error('Document unavailable'))
       .mockResolvedValue({kind:'text',path:'notes.md',content:'# Recovered',size:11});
     const wrapper = mountShell({snapshot,realConversationPane:true,previewAgentFile,
-      codexConversationSnapshot:codexConversationSnapshot([codexTextMessage('document-link','assistant','[Notes](notes.md)')]),
+      conversation: sessionState({ messages: [textMessage('document-link','assistant','[Notes](notes.md)')] }),
     });
     try {
       wrapper.getComponent({name:'AppShellNavigation'}).vm.$emit('select-mission',mission.id);
@@ -247,12 +247,12 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const wrapper = mountShell({ snapshot });
     try {
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
       await flushPromises();
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
       expect(wrapper.find('.mission-document-dialog').exists()).toBe(true);
-      await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       await flushPromises();
       expect(wrapper.get('.mission-workspace__workbench').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }
@@ -265,7 +265,7 @@ describe('AppShell missions', () => {
     prepareMissionLead(mission, agent.id);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const wrapper = mountShell({ snapshot, realConversationPane: true,
-      codexConversationSnapshot: codexConversationSnapshot([codexTextMessage('links', 'assistant', '[Example](https://example.com)')]),
+      conversation: sessionState({ messages: [textMessage('links', 'assistant', '[Example](https://example.com)')] }),
     });
     try {
       wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
@@ -295,7 +295,7 @@ describe('AppShell missions', () => {
         expect(menuItems().map(button => button.textContent?.trim())).toStrictEqual(['New agent in mission worktree', 'api', 'web', 'Delete mission']);
         menuItems().find(button => button.textContent?.trim() === repository)!.click();
         await flushPromises();
-        expect(createAgent).toHaveBeenLastCalledWith({ name: mission.outcome, folder, teamId: mission.teamId, selection: { ...{ backend: 'codex' } } });
+        expect(createAgent).toHaveBeenLastCalledWith({ name: mission.outcome, folder, teamId: mission.teamId, selection: { ...{ provider: 'codex' } } });
         expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['manual-agent']);
         expect(document.body.querySelector('[aria-label="Mission actions"]')).toBeNull();
       }
@@ -665,7 +665,7 @@ describe('AppShell missions', () => {
     await wrapper.findComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
     await flushPromises();
 
-    const conversation = wrapper.getComponent({ name: 'ConversationPane' });
+    const conversation = wrapper.getComponent({ name: 'AppConversationPane' });
     expect(conversation.props('emptyHeadline')).toBe('What do you want to build?');
     expect(conversation.props('emptySubhead')).toBe('');
     const editor = wrapper.get('.mission-conversation-rail .chat-rich-text-editor');
@@ -802,8 +802,8 @@ describe('AppShell missions', () => {
 
     expect(wrapper.emitted('select-agent')).toStrictEqual([[snapshot.agents[1]!.id]]);
     await wrapper.setProps({ activeAgent: snapshot.agents[1]! });
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).exists()).toBe(true);
-    expect(wrapper.findComponent({ name: 'ConversationPane' }).props('agent').id).toBe(snapshot.agents[1]!.id);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(snapshot.agents[1]!.id);
   });
 
   it('renders the Debug Mission Review fixture through the composed Vue review surface', async () => {

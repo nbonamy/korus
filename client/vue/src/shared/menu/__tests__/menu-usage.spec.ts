@@ -9,7 +9,7 @@ const compositeMenus = new Set([
   'components/AgentContextMenu.vue',
   'components/AgentEmptyState.vue',
   'components/AppShell.vue',
-  'components/BackendModelSelector.vue',
+  'components/ProviderModelSelector.vue',
   'components/BrowserPanel.vue',
   'components/MissionContextMenu.vue',
   'components/RepositoryBacklogPanel.vue',

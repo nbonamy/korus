@@ -1,8 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 import { describe, expect, it, vi } from 'vitest';
-import { backendModelCatalogKey } from '../backend-model-catalog';
+import { providerModelCatalogKey } from '../provider-model-catalog';
 import { ElPopover } from 'element-plus';
 import type { WorkItem } from '@workspace/core/contracts';
 import WorkItemAssignmentPicker from '../WorkItemAssignmentPicker.vue';
@@ -29,12 +29,12 @@ describe('WorkItemAssignmentPicker', () => {
       { id: 'm1', model: 'gpt-fast', displayName: 'GPT Fast', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }] },
       { id: 'm2', model: 'hidden', displayName: 'Hidden', hidden: true },
     ]);
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: { item: issue, branchName: 'fix/gh-24', modelAgentId: 'agent-main' },
       slots: { default: '<p class="issue-body">Issue body</p>' },
       global: { components: { ElPopover }, provide: {
-        [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-        [backendModelCatalogKey as symbol]: { listModels },
+        [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']),
+        [providerModelCatalogKey as symbol]: { listModels },
       } },
     });
     await vi.waitFor(() => expect(listModels).toHaveBeenCalledWith('agent-main', 'codex'));
@@ -53,18 +53,18 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } },
+      { action: 'fix', destination: 'new', item: issue, selection: { provider: 'codex', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } },
     ]]);
   });
 
   it('defaults to an isolated session and emits the tuned primary action', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',
         sessions: [{ agentId: 'agent-main', label: 'main · main' }],
       },
-      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+      global: { provide: { [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
     });
 
     const destinationButtons = wrapper.findAll('.work-item-assignment-picker__target-options button');
@@ -81,19 +81,19 @@ describe('WorkItemAssignmentPicker', () => {
     expect(wrapper.text()).not.toContain('New worktree');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
     await wrapper.vm.$nextTick();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes('Claude Code'))!.click();
+    document.querySelector<HTMLButtonElement>('[role=\"tab\"][aria-label=\"Claude Code\"]')!.click();
     await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, selection: { backend: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
+      { action: 'fix', destination: 'new', item: issue, selection: { provider: 'claude', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
     await destinationButtons[1]!.trigger('click');
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
   });
 
   it('assigns an existing repository session without offering a worktree', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',
@@ -116,7 +116,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('disables existing-session assignment when the repository has no session', () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: { item: issue, branchName: 'fix/gh-24' },
     });
 
@@ -146,7 +146,7 @@ describe('WorkItemAssignmentPicker', () => {
   });
 
   it('asks before reusing an existing worktree', async () => {
-    const wrapper = mount(WorkItemAssignmentPicker, {
+    const wrapper = mount(WorkItemAssignmentPicker, { attachTo: document.body,
       props: {
         item: issue,
         branchName: 'fix/gh-24',
@@ -164,7 +164,7 @@ describe('WorkItemAssignmentPicker', () => {
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
-      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
+      { action: 'fix', destination: 'new', item: issue, reuseExisting: true, selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } },
     ]]);
   });
 });

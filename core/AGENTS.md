@@ -8,9 +8,17 @@ maps to `src/<module>.ts`). Follow the root [AGENTS.md](../AGENTS.md) as well.
 
 ## Rules
 
-- **Stay platform-neutral.** No Electron, daemon, provider SDK or browser-only
+- **Stay platform-neutral.** No Electron, daemon, harness runtime or browser-only
   dependencies. The mobile app and the hosted console import `core` too, so a new
   import here widens what they can reach. Keep helpers pure and side-effect free.
+  SDK imports are limited to `multi-agent-sdk`'s neutral contracts and replicas and
+  `agent-ui-sdk`'s `/host` and `/browser` leaves; harness drivers, providers, ACP,
+  tools, `codex-sdk` and the renderer and trusted-runtime exports are forbidden
+  (`npm run lint:architecture` enforces it).
+- **Contracts are harness-neutral.** No harness-named fields or branches: describe
+  differences as capabilities, models and settings. `team` is the code and wire name
+  of what the product calls a workspace; do not rename it, since shipped phones and
+  older remote hosts use it.
 - **App-owned contracts first.** Backend-dependent product features enter through
   the contracts and the backend protocol in `src/backend-protocol/`, then the
   daemon, then the renderer. `docs/protocol.md` has the conventions; the method

@@ -36,7 +36,7 @@
       >
         {{ error }}
       </div>
-      <CodexMessageList
+      <MessageList
         v-else-if="messages.length > 0"
         class="automation-execution-conversation-overlay__messages"
         actions-disabled
@@ -57,7 +57,7 @@
 
 <script setup lang="ts">
 import type { RendererMessage } from '@workspace/core/contracts';
-import { CodexMessageList } from '@codex-app-sdk/vue';
+import { MessageList } from '@korus-dev/agent-ui-sdk';
 import { useI18n } from 'vue-i18n';
 import { X } from '../shared/icons/app-icons';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';

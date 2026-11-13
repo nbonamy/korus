@@ -8,10 +8,10 @@ import { createQuickChatInSnapshot } from '../agent-manager';
 
 function setup() {
   const snapshot = createInitialSnapshot();
-  snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+  snapshot.providerConnections = (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: true, checking: false }));
   return snapshot;
 }
-const input: CreateAutomationInput = { prompt: ' Check tasks. ', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } }, schedule: { intervalMinutes: 60.9 } };
+const input: CreateAutomationInput = { prompt: ' Check tasks. ', target: { kind: 'newQuickChat', teamId: 'team-app', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } }, schedule: { intervalMinutes: 60.9 } };
 function execution(id: string, status: AutomationExecutionLogEntry['status'] = 'completed'): AutomationExecutionLogEntry {
   return { id, automationId: 'auto', status, startedAt: '2026-10-06T12:00:00Z', agentId: 'agent-dina', agentName: 'Dina' };
 }
@@ -45,10 +45,10 @@ describe('prompt automation configuration', () => {
       { ...input, prompt: '' }, { ...input, target: { kind: 'agent', agentId: 'missing' } },
       { ...input, target: { kind: 'quickChat', agentId: 'agent-dina' } },
       { ...input, schedule: { intervalMinutes: 0 } }, { ...input, schedule: { intervalMinutes: NaN } },
-      { ...input, target: { kind: 'newQuickChat', teamId: 'missing', selection: { backend: 'codex', model: null, reasoningEffort: null, serviceTier: null } } },
+      { ...input, target: { kind: 'newQuickChat', teamId: 'missing', selection: { provider: 'codex', model: null, reasoningEffort: null, serviceTier: null } } },
       { ...input, target: undefined },
     ]) expect(createAutomationInSnapshot(snapshot, bad as CreateAutomationInput)).toBeNull();
-    createQuickChatInSnapshot(snapshot, { teamId: 'team-app', selection: { backend: 'claude' } }, 'now', 'quick');
+    createQuickChatInSnapshot(snapshot, { teamId: 'team-app', selection: { provider: 'claude' } }, 'now', 'quick');
     expect(createAutomationInSnapshot(snapshot, { ...input, target: { kind: 'quickChat', agentId: 'quick' } })).not.toBeNull();
     snapshot.agents.find(agent => agent.id === 'agent-dina')!.remoteConnectionId = 'remote';
     expect(createAutomationInSnapshot(snapshot, { ...input, target: { kind: 'agent', agentId: 'agent-dina' } })).toBeNull();

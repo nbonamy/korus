@@ -45,14 +45,14 @@ and API usage are billed separately.
 
 ## One cockpit for the whole team
 
-- **Run a real team** — Organize agents into teams, give each one a repository,
-  identity, conversation, and durable workspace, then switch between them
+- **Run a real team** — Organize agents into workspaces, give each one a repository,
+  identity, conversation, and durable working folder, then switch between them
   without interrupting their work.
 - **Choose your engines** — Connect the coding providers you use. Use different
   engines for different agents; available controls reflect each engine's
   supported capabilities.
-- **Work across machines** — Connect teams on other machines over SSH and
-  manage their agents alongside local teams.
+- **Work across machines** — Connect workspaces on other machines over SSH and
+  manage their agents alongside local workspaces.
 - **See the work, not a terminal stream** — Follow messages, plans, reasoning,
   tool calls, approvals, command output, file changes, and diffs in a native
   conversation UI.
@@ -76,7 +76,7 @@ and API usage are billed separately.
   Korus's Codex connection while agents continue running through the background
   backend. This pairing is specific to Codex.
 - **Take your team with you** — Pair the iPhone or Android companion with your
-  computers, switch saved connections, and follow agents across teams. Respond to
+  computers, switch saved connections, and follow agents across workspaces. Respond to
   requests and send follow-ups while work continues on the connected computer.
 - **Bring your backlog** — Connect GitHub, GitLab, or Linear to browse issues, start
   agent work, or shape a Mission. Choose the code repository separately from a
@@ -119,7 +119,7 @@ interrupting a running tool. Claude also supports idle conversation forks in
 the same folder and native goals; its goals do not support token budgets.
 
 Keep two or four agents visible in split panes, with one shared artifact sidebar
-following the focused agent. Resize panes and keep each team's layout across
+following the focused agent. Resize panes and keep each workspace's layout across
 restarts. Let project creation, worktree setup, and cleanup run in the background
 while you continue working. With the background backend enabled, closing the
 desktop app leaves the team running. Saved workspace state is restored when
@@ -220,9 +220,12 @@ node node_modules/electron/install.js
 npm run dev
 ```
 
-Workspace manifests pin published Codex App SDK packages; the lockfile is the
-release dependency boundary. No sibling checkout is required. SDK contributors
-can explicitly set `CODEX_APP_SDK_SOURCE=1` for development source aliases.
+Workspace manifests pin `@korus-dev/multi-agent-sdk` and `@korus-dev/agent-ui-sdk`
+npm packages; the lockfile is the dependency boundary. No sibling checkout is
+required. SDK contributors can set `SDK_LOCAL_SOURCE=1` in `.env` to use local
+source. `SDK_SOURCE_ROOT` selects the directory containing the three SDK
+repositories, defaulting to the parent directory. Local runtime builds use source;
+typechecking uses locally built declarations. `npm run dev` builds them first.
 Install Electron once before running parallel tests: its lazy first-import
 download can otherwise race across workers on a clean checkout.
 

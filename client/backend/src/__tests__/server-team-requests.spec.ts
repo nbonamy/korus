@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import { createMission } from '@workspace/core/missions';
 import {
   createTestSnapshot,
@@ -95,8 +95,8 @@ describe('AppBackendServer', () => {
       teamId: 'team-test',
       name: 'Dina',
       folder: '/repo',
-      backend: 'codex' as const,
-      backendSession: { kind: 'codex' as const, threadId: 'thread-dina' },
+      provider: 'codex' as const,
+      providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       status: { type: 'idle' as const },
       createdAt: '2026-09-08T00:00:00.000Z',
       updatedAt: '2026-09-08T00:00:00.000Z',
@@ -112,12 +112,12 @@ describe('AppBackendServer', () => {
     });
     const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
     const releaseConversation = vi.fn();
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: agent.backendSession }),
-      interrupt: async () => ({ backendSession: agent.backendSession }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: agent.providerSession }),
+      interrupt: async () => ({ providerSession: agent.providerSession }),
       respondToAgentRequest: async () => undefined,
       archiveAgentConversation,
       releaseConversation,
@@ -127,7 +127,7 @@ describe('AppBackendServer', () => {
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     });
 
     await expect(server.handleMessage({
@@ -150,7 +150,7 @@ describe('AppBackendServer', () => {
   it('deletes a local team’s missions and private homes while retaining other teams’ missions', async () => {
     const snapshot = createTestSnapshot();
     const agent = {
-      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', backend: 'codex' as const,
+      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', provider: 'codex' as const,
       status: { type: 'idle' as const }, createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
     };
     snapshot.agents.push(agent);
@@ -176,7 +176,7 @@ describe('AppBackendServer', () => {
   it('rejects deleting the last local team without touching its missions', async () => {
     const snapshot = createTestSnapshot();
     const agent = {
-      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', backend: 'codex' as const,
+      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', provider: 'codex' as const,
       status: { type: 'idle' as const }, createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
     };
     snapshot.agents.push(agent);
@@ -187,7 +187,7 @@ describe('AppBackendServer', () => {
 
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'delete-last-team', method: backendMethods.teamDelete, params: { teamId: 'team-test' },
-    })).rejects.toThrow('At least one team must remain open.');
+    })).rejects.toThrow('At least one workspace must remain open.');
 
     expect(snapshot.teams.map(team => team.id)).toStrictEqual(['team-test']);
     expect(snapshot.missions?.map(candidate => candidate.id)).toStrictEqual([mission.id]);
@@ -198,7 +198,7 @@ describe('AppBackendServer', () => {
   it('publishes the remaining missions when team cleanup stops partway through', async () => {
     const snapshot = createTestSnapshot();
     const agent = {
-      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', backend: 'codex' as const,
+      id: 'agent-mission', teamId: 'team-test', name: 'Mission lead', folder: '/repo', provider: 'codex' as const,
       status: { type: 'idle' as const }, createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
     };
     snapshot.agents.push(agent);
@@ -212,7 +212,7 @@ describe('AppBackendServer', () => {
 
     await expect(server.handleMessage({
       jsonrpc: '2.0', id: 'delete-team-partial', method: backendMethods.teamDelete, params: { teamId: 'team-test' },
-    })).rejects.toThrow('Team deletion stopped after removing 1 of 2 Missions. The team remains');
+    })).rejects.toThrow('Workspace deletion stopped after removing 1 of 2 Missions. The workspace remains');
 
     expect(snapshot.teams.map(team => team.id)).toStrictEqual(['team-test', 'team-keep']);
     expect(snapshot.missions?.map(mission => mission.id)).toStrictEqual([second.id]);
@@ -274,7 +274,7 @@ describe('AppBackendServer', () => {
     const remoteClients = { request: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
     const server = new AppBackendServer({ version: 'test-version', pid: 123, snapshot, remoteClients: remoteClients as never });
 
-    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'delete-last', method: 'team/delete', params: { teamId: 'team-test' } })).rejects.toThrow('At least one team');
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'delete-last', method: 'team/delete', params: { teamId: 'team-test' } })).rejects.toThrow('At least one workspace');
 
     expect(remoteClients.request).not.toHaveBeenCalled();
     expect(snapshot.teams).toHaveLength(1);

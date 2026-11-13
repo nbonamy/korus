@@ -47,7 +47,7 @@ describe('AgentContextMenu', () => {
       'Duplicate',
       'Fork',
       'Hand off',
-      'Move to Other Team',
+      'Move to…',
       'Compact⇧⌘K',
       'Resume',
       'Restart',
@@ -130,7 +130,7 @@ describe('AgentContextMenu', () => {
   it('disables move targets when no other teams are available', () => {
     const wrapper = mountMenu();
 
-    const moveItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Move to Other Team');
+    const moveItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Move to…');
     expect(moveItem?.attributes()).toHaveProperty('disabled');
   });
 
@@ -147,7 +147,7 @@ describe('AgentContextMenu', () => {
       ],
     });
 
-    const moveItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Move to Other Team');
+    const moveItem = wrapper.findAll('[role="menuitem"]').find((item) => item.text() === 'Move to…');
     expect(moveItem?.find('.app-menu__chevron').exists()).toBe(true);
   });
 

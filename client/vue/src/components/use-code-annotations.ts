@@ -1,23 +1,18 @@
+import { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
+export { describeCodeRange, type CodeRange, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
 import { conversationAnnotationDrafts } from './conversation-annotation-drafts';
-import { trimPromptContent } from '@codex-app-sdk/core/surface';
-import type { CodexRendererSendMessageOptions } from '@codex-app-sdk/vue';
+import { trimPromptContent } from '@korus-dev/multi-agent-sdk/prompt';
+import type { ReferenceSendPromptOptions } from '@korus-dev/multi-agent-sdk';
 import { computed, reactive } from 'vue';
 
 /** Where the code is: a file and a run of lines, with the lines of a diff numbered on the side the person pointed at. */
-export type CodeRange = { path: string; startLine: number; endLine: number; side?: 'old' | 'new' };
 
-export type CodeAnnotationInput = CodeRange & {
-  /** The selected code, one source line per line; diff lines carry their +/- marker. */
-  text: string;
-  comment: string;
-};
+
+
 
 export type CodeAnnotation = CodeAnnotationInput & { id: string };
 
-export function describeCodeRange(range: CodeRange): string {
-  const lines = range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}-${range.endLine}`;
-  return `${range.path} ${lines}${range.side === 'old' ? ' (before the change)' : ''}`;
-}
+
 
 /** Drafts of comments on code in the side panels, kept per agent until the next message carries them. */
 export function useCodeAnnotations(options: { currentAgentId: () => string | undefined }) {
@@ -46,8 +41,8 @@ export function useCodeAnnotations(options: { currentAgentId: () => string | und
 
   async function forward(
     prompt: string,
-    sendOptions: CodexRendererSendMessageOptions | undefined,
-    send: (nextPrompt: string, nextOptions?: CodexRendererSendMessageOptions) => void | Promise<void>,
+    sendOptions: ReferenceSendPromptOptions | undefined,
+    send: (nextPrompt: string, nextOptions?: ReferenceSendPromptOptions) => void | Promise<void>,
   ): Promise<void> {
     const agentId = options.currentAgentId();
     const annotations = agentId ? (draftsByAgentId[agentId] ?? []).map((annotation) => ({ ...annotation })) : [];

@@ -8,7 +8,7 @@ import { createRemoteAgent, createRemoteTeamSnapshot, createTestSnapshot, gitWor
 const overview = { generatedAt: '2026-11-11T12:00:00.000Z', repository: { name: 'korus', branch: 'main', baseBranch: 'main' } };
 
 function localAgent(): Agent {
-  return { id: 'agent-local', teamId: 'team-test', name: 'Local', backend: 'codex', folder: '/work/korus', status: { type: 'idle' }, workspace: gitWorkspace('/work/korus', 'korus', 'main') } as Agent;
+  return { id: 'agent-local', teamId: 'team-test', name: 'Local', provider: 'codex', folder: '/work/korus', status: { type: 'idle' }, workspace: gitWorkspace('/work/korus', 'korus', 'main') } as Agent;
 }
 
 it('answers a project overview from the local service for the requesting agent without changing navigation', async () => {

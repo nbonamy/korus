@@ -43,7 +43,7 @@ import org.json.JSONObject
                 val teams = state.items("teams")
                 val allTeams = state.optBoolean("allTeams")
                 if (teams.size > 1) {
-                    DrawerTeamPill("All", allTeams, false, "All teams") { model.command("selectAllTeams") }
+                    DrawerTeamPill("All", allTeams, false, "All workspaces") { model.command("selectAllTeams") }
                 }
                 teams.forEach { team ->
                     val selected = !allTeams && team.string("id") == state.string("teamId")
@@ -53,7 +53,7 @@ import org.json.JSONObject
                     }
                 }
                 IconButton(onClick = { newTeam = true }, enabled = state.connection.isConnected && state.string("teamCreation") != "creating",
-                    modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerLow).semantics { contentDescription = "New team" }) {
+                    modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerLow).semantics { contentDescription = "New workspace" }) {
                     if (state.string("teamCreation") == "creating") CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.Add, null)
                 }
@@ -155,7 +155,7 @@ import org.json.JSONObject
         }
     }
     if (newTeam) NewTeamDialog(model) { newTeam = false; model.command("dismissTeamCreation") }
-    if (teamRequired) AlertDialog(onDismissRequest = { teamRequired = false }, title = { Text("Switch to a team to create a new agent.") },
+    if (teamRequired) AlertDialog(onDismissRequest = { teamRequired = false }, title = { Text("Switch to a workspace to create a new agent.") },
         confirmButton = { TextButton(onClick = { teamRequired = false }) { Text("OK") } })
 }
 
@@ -170,10 +170,10 @@ import org.json.JSONObject
     LaunchedEffect(phase, teamIds) {
         if (phase == "idle" && submitted && teamIds != originalTeamIds) dismiss()
     }
-    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("New Team") },
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("New Workspace") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, enabled = !busy)
-            if (phase == "failed") Text("Couldn’t create the team. Check the connection and try again.", color = MaterialTheme.colorScheme.error)
+            if (phase == "failed") Text("Couldn’t create the workspace. Check the connection and try again.", color = MaterialTheme.colorScheme.error)
         } },
         confirmButton = { TextButton(enabled = !busy && model.state.connection.isConnected && cleanName.isNotEmpty() && cleanName.length <= 100,
             onClick = { submitted = true; model.command("createTeam", "name" to cleanName) }) { Text("Create") } },

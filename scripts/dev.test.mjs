@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 for (const scenario of [
   { name: 'local SDK selected by .env', dotenv: '1', source: true },
   { name: 'shell source mode overrides .env', dotenv: '0', shell: '1', source: true },
-  { name: 'workspace-installed SDK when shell disables source mode', dotenv: '1', shell: '0' },
+  { name: 'installed npm SDK when shell disables source mode', dotenv: '1', shell: '0' },
   { name: 'hoisted SDK by default', hoisted: true },
 ]) {
   test(`dev launcher supplies usable speech assets from ${scenario.name}`, () => {
@@ -18,18 +18,24 @@ for (const scenario of [
     try {
       mkdirSync(path.join(root, 'scripts'), { recursive: true });
       copyFileSync(new URL('./dev.mjs', import.meta.url), path.join(root, 'scripts/dev.mjs'));
+      copyFileSync(new URL('./sdk-sources.mjs', import.meta.url), path.join(root, 'scripts/sdk-sources.mjs'));
+      writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'example-app', type: 'module' }));
+      for (const name of ['codex-sdk', 'multi-agent-sdk', 'agent-ui-sdk']) {
+        mkdirSync(path.join(temp, name), { recursive: true });
+        writeFileSync(path.join(temp, name, 'package.json'), JSON.stringify({ name: '@korus-dev/' + name, exports: {} }));
+      }
       mkdirSync(path.join(root, 'node_modules'), { recursive: true });
       symlinkSync(fileURLToPath(new URL('../node_modules/dotenv', import.meta.url)), path.join(root, 'node_modules/dotenv'), process.platform === 'win32' ? 'junction' : 'dir');
-      const installedPackage = path.join(root, scenario.hoisted ? '' : 'client/backend', 'node_modules/@codex-app-sdk/backend');
-      const localAssets = path.join(temp, 'codex-app-sdk/packages/backend/assets');
+      const installedPackage = path.join(root, scenario.hoisted ? '' : 'client/electron', 'node_modules/@korus-dev/agent-ui-sdk');
+      const localAssets = path.join(temp, 'agent-ui-sdk/assets');
       for (const directory of [path.join(installedPackage, 'assets'), localAssets, path.join(root, 'client/backend/dist')]) {
         mkdirSync(directory, { recursive: true });
       }
-      writeFileSync(path.join(installedPackage, 'package.json'), '{"name":"@codex-app-sdk/backend"}');
+      writeFileSync(path.join(installedPackage, 'package.json'), '{"name":"@korus-dev/agent-ui-sdk"}');
       writeFileSync(path.join(installedPackage, 'assets/apple-speechanalyzer-cli'), 'installed helper');
       writeFileSync(path.join(localAssets, 'apple-speechanalyzer-cli'), 'local helper');
       writeFileSync(path.join(root, 'client/backend/dist/daemon.mjs'), '');
-      if (scenario.dotenv) writeFileSync(path.join(root, '.env'), `CODEX_APP_SDK_SOURCE=${scenario.dotenv}\n`);
+      if (scenario.dotenv) writeFileSync(path.join(root, '.env'), `SDK_LOCAL_SOURCE=${scenario.dotenv}\n`);
       const trace = path.join(temp, 'trace.json');
       const npmCli = path.join(temp, 'npm cli.cjs');
       writeFileSync(npmCli, `
@@ -45,10 +51,11 @@ for (const scenario of [
         }
       `);
       const env = { ...process.env, NODE_ENV: 'production', npm_execpath: npmCli, APP_DEV_TRACE: trace };
-      delete env.CODEX_APP_SDK_SOURCE;
+      delete env.SDK_LOCAL_SOURCE;
+      delete env.SDK_SOURCE_ROOT;
       delete env.CODEX_APP_SDK_ASSETS_PATH;
       delete env.APP_BUNDLED_CODEX_PATH;
-      if (scenario.shell) env.CODEX_APP_SDK_SOURCE = scenario.shell;
+      if (scenario.shell) env.SDK_LOCAL_SOURCE = scenario.shell;
       const result = spawnSync(process.execPath, [path.join(root, 'scripts/dev.mjs')], {
         cwd: temp, env, encoding: 'utf8', timeout: 10_000,
       });

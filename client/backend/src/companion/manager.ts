@@ -17,7 +17,7 @@ import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
-import { companionTarget, type CompanionControl, type CompanionControlResult, type CompanionWorkspace, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { companionQuotaProviders, companionTarget, sameCompanionTarget, type CompanionControl, type CompanionControlResult, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -32,7 +32,7 @@ import { storePromptUploads } from './uploads';
 import { readReviewSetup, readReviewSession, actOnReview } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
 import { resolveRepositorySession } from '../projects/repository-session';
-import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
+import { connectionAccount, supportsSubscriptionQuota } from '@workspace/core/provider-capabilities';
 import { readConversationImage } from './images';
 import { readConfiguredPairing } from './configured-pairing';
 
@@ -133,9 +133,10 @@ export class CompanionManager {
     return true;
   }
   private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
+  /** Guest sharing still reads native provider frames. */
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
   private readonly directory: string;
-  constructor(private readonly home: string, private readonly backend: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
+  constructor(private readonly home: string, private readonly provider: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
     this.directory = path.join(home, 'companion');
     this.environment = relayFromEnvironment(env);
   }
@@ -174,13 +175,12 @@ export class CompanionManager {
   }
   private async desktopIsViewing(target: CompanionTarget): Promise<boolean> {
     try {
-      if (!await this.backend.desktopFocused?.()) return false;
-      const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'desktop' });
+      if (!await this.provider.desktopFocused?.()) return false;
+      const { snapshot } = await this.provider.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'desktop' });
       const agent = snapshot.agents.find(agent => agent.id === snapshot.activeAgentId);
       const team = snapshot.teams.find(team => team.id === snapshot.activeTeamId && team.id === agent?.teamId);
       if (!agent || !team) return false;
-      const selected = companionTarget(target.hostId, team, agent);
-      return (Object.keys(target) as (keyof CompanionTarget)[]).every(key => selected[key] === target[key]);
+      return sameCompanionTarget(companionTarget(target.hostId, team, agent), target);
     } catch { return false; }
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
@@ -203,7 +203,7 @@ export class CompanionManager {
           await this.persist((saved) => ({ ...saved, enabled: false })); this.connector.disablePhone();
           if (this.shareRoutes.some(route => this.matchesRelay(route))) await this.connector.advertise();
           else { await this.connector.stop(); this.transportRelay = ''; }
-          if (!this.shareRoutes.length) this.conversations.clear(); break;
+          this.conversations.clear(); break;
         case 'invite':
           await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');
@@ -240,7 +240,7 @@ export class CompanionManager {
     await this.connector?.stop(); this.transportRelay = '';
     this.guestGateway?.close();
     this.conversations.clear();
-    this.backend.onAccessChanged?.(false);
+    this.provider.onAccessChanged?.(false);
   }
   private status() {
     return { configured: Boolean(this.relay), enabled: this.saved.enabled, connected: this.connector.connected, hostId: this.gateway.hostId,
@@ -276,14 +276,14 @@ export class CompanionManager {
     }
     this.saved = saved;
     this.notifications = new CompanionNotifications(peerIdFromPrivateKey(this.key).toString());
-    const projects = new CompanionProjectAcquisition(this.backend);
+    const projects = new CompanionProjectAcquisition(this.provider);
     void systemHostName().then((name) => { this.hostName = name; }).catch(() => {});
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       registerLiveActivity: (peerId, registration) => this.activities!.register(peerId, registration),
       hostName: () => this.hostName,
-      gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
-      previewFile: (agentId, filePath) => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' }),
-      readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
+      gitDiff: (agentId, target) => this.provider.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
+      previewFile: (agentId, filePath) => this.provider.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' }),
+      readImage: (agentId, filePath) => readConversationImage(() => this.provider.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
       localRepositories: remote => projects.localList(remote),
       localBranches: (repositoryId, remote) => projects.localBranches(repositoryId, remote),
       repositoryCatalog: (provider, remote) => projects.catalog(provider, remote),
@@ -294,31 +294,30 @@ export class CompanionManager {
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
-      executeMission: async (input) => { await this.backend.request(backendMethods.missionExecute, { input, _clientId: 'companion-write' }); },
+      executeMission: async (input) => { await this.provider.request(backendMethods.missionExecute, { input, _clientId: 'companion-write' }); },
       createTeam: async name => {
-        const snapshot = await this.backend.request<AppSnapshot>(backendMethods.teamCreate, {
+        const snapshot = await this.provider.request<AppSnapshot>(backendMethods.teamCreate, {
           input: { name, color: defaultTeamColor }, _clientId: 'companion-write',
         });
-        if (!snapshot.activeTeamId) throw new Error('Team creation returned no team.');
+        if (!snapshot.activeTeamId) throw new Error('Workspace creation returned no workspace.');
         return snapshot.activeTeamId;
       },
-      usage: async () => {
-        const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
-        // Shipped clients understand only these quota providers. Other engines
-        // require negotiated labels and monetary balances before inclusion.
+      usage: async (everyProvider) => {
+        const { snapshot } = await this.provider.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
+        // Released phones label only these quota providers; the others go to phones that ask for every engine.
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && (provider.backend === 'codex' || provider.backend === 'claude') && supportsSubscriptionQuota(provider.backend, provider.authentication?.kind === 'codex' ? provider.authentication.state.account : null));
-        return Promise.all(providers.map(async ({ backend }) => {
+          && (everyProvider || companionQuotaProviders.includes(provider.provider)) && supportsSubscriptionQuota(connectionAccount(provider.authentication)));
+        return Promise.all(providers.map(async ({ provider: provider }) => {
           try {
-            const limits = await this.backend.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { backend });
-            return { backend, limits: limits ? { primary: limits.primary, secondary: limits.secondary } : null, failed: false };
-          } catch { return { backend, limits: null, failed: true }; }
+            const limits = await this.provider.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { provider: provider });
+            return { provider: provider, limits: limits ? { primary: limits.primary, secondary: limits.secondary } : null, failed: false };
+          } catch { return { provider: provider, limits: null, failed: true }; }
         }));
       },
-      markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
-      loadTurnHistory: async (agentId, turnId) => { await this.backend.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'companion-read' }); },
-      loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
-      readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
+      markRead: async (agentId, revision) => { await this.provider.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
+      loadTurnHistory: async (agentId, turnId) => { await this.provider.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'companion-read' }); },
+      loadOlderHistory: (agentId) => this.provider.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
+      readConversationContent: (agentId, input) => this.provider.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
       synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
       conversation: async (agentId) => {
         try { return await this.conversations.read(agentId); }
@@ -329,64 +328,62 @@ export class CompanionManager {
         const { followUpBehavior = 'steer', ...composerOptions } = options ?? {};
         const promptOptions = options || attachments ? { ...composerOptions, ...(attachments ? { attachments } : {}) } : undefined;
         const method = followUpBehavior === 'queue' ? backendMethods.agentPromptSend : backendMethods.agentPromptSteer;
-        await this.backend.request(method, { agentId: target.agentId, expectedSessionId: target.sessionId, prompt, ...(followUpBehavior === 'steer' ? { startIfIdle: true } : {}), ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
+        await this.provider.request(method, { agentId: target.agentId, expectedSessionId: target.sessionId, prompt, ...(followUpBehavior === 'steer' ? { startIfIdle: true } : {}), ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
       },
-      respondRequest: async (response) => { await this.backend.request(backendMethods.agentRequestRespond, { response, _clientId: 'companion-write' }); },
+      respondRequest: async (response) => { await this.provider.request(backendMethods.agentRequestRespond, { response, _clientId: 'companion-write' }); },
       updateQueuedPrompt: async (target, promptId, action) => {
-        await this.backend.request(action === 'steer' ? backendMethods.agentQueuedPromptSteer : backendMethods.agentQueuedPromptDelete,
+        await this.provider.request(action === 'steer' ? backendMethods.agentQueuedPromptSteer : backendMethods.agentQueuedPromptDelete,
           { agentId: target.agentId, promptId, expectedSessionId: target.sessionId, _clientId: 'companion-write' });
       },
-      models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
-      plugins: (agentId) => this.backend.request(backendMethods.agentPluginsList, { agentId, _clientId: 'companion-read' }),
-      skills: (agentId) => this.backend.request(backendMethods.agentSkillsList, { agentId, _clientId: 'companion-read' }),
+      models: (agentId) => this.provider.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
+      plugins: (agentId) => this.provider.request(backendMethods.agentPluginsList, { agentId, _clientId: 'companion-read' }),
+      skills: (agentId) => this.provider.request(backendMethods.agentSkillsList, { agentId, _clientId: 'companion-read' }),
       changeGoal: async (agentId, objective) => {
-        if (objective === null) await this.backend.request(backendMethods.agentGoalClear, { agentId, _clientId: 'companion-write' });
-        else await this.backend.request(backendMethods.agentGoalUpdate, { agentId, objective, _clientId: 'companion-write' });
+        if (objective === null) await this.provider.request(backendMethods.agentGoalClear, { agentId, _clientId: 'companion-write' });
+        else await this.provider.request(backendMethods.agentGoalUpdate, { agentId, objective, _clientId: 'companion-write' });
       },
-      interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
-      restart: async (agentId) => { await this.backend.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
-      branches: (repoPath, remoteConnectionId) => this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath, ...(remoteConnectionId ? { remoteConnectionId } : {}), _clientId: 'companion-read' }),
+      interrupt: async (agentId) => { await this.provider.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
+      restart: async (agentId) => { await this.provider.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
+      branches: (repoPath, remoteConnectionId) => this.provider.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath, ...(remoteConnectionId ? { remoteConnectionId } : {}), _clientId: 'companion-read' }),
       createChat: async (chat) => {
         const remote = chat.remoteConnectionId ? { remoteConnectionId: chat.remoteConnectionId } : {};
         const folder = await resolveRepositorySession(chat.repositoryRoot, {
           ...(chat.existingBranch ? { existingBranch: chat.existingBranch } : {}),
           ...(chat.worktree ? { worktree: { ...chat.worktree, ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}) } } : {}),
         }, {
-          branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
-          createWorktree: input => this.backend.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
+          branches: () => this.provider.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
+          createWorktree: input => this.provider.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
         });
-        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId, ...remote }, entityResult: true, _clientId: 'companion-write' });
+        const result = await this.provider.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, selection: { ...chat.selection }, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId, ...remote }, entityResult: true, _clientId: 'companion-write' });
         return result.agentId;
       },
-      createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
-      duplicateAgent: async (agentId, backend) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentDuplicate, { agentId, options: { selection: { backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
-      renameAgent: async (agentId, name) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, name }, _clientId: 'companion-write' }); },
-      setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection: { backend } }, _clientId: 'companion-write' }); },
-      closePreview: agentId => this.backend.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
-      close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
-      setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
-      setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
-      startReview: async (agentId, input) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
-      readReview: agentId => readReviewSession(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId),
-      reviewAction: (agentId, input) => actOnReview(this.backend, agentId, input),
-      reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
-      selectModel: async (agentId, selection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, selection }, _clientId: 'companion-write' }); },
+      createQuickChat: async ({ teamId, provider: backend }) => (await this.provider.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, selection: { provider: backend } }, entityResult: true, _clientId: 'companion-write' })).agentId,
+      duplicateAgent: async (agentId, provider) => (await this.provider.request<CreatedAgentResult>(backendMethods.agentDuplicate, { agentId, options: { selection: { provider: provider } }, entityResult: true, _clientId: 'companion-write' })).agentId,
+      renameAgent: async (agentId, name) => { await this.provider.request(backendMethods.agentUpdate, { input: { id: agentId, name }, _clientId: 'companion-write' }); },
+      setProvider: async (agentId, provider) => { await this.provider.request(backendMethods.agentUpdate, { input: { id: agentId, selection: { provider: provider } }, _clientId: 'companion-write' }); },
+      closePreview: agentId => this.provider.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
+      close: async (agentId, input) => { await this.provider.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
+      setPermission: async (agentId, permission) => { await this.provider.request(backendMethods.agentPermissionModeUpdate, { agentId, mode: permission, _clientId: 'companion-write' }); },
+      startReview: async (agentId, input) => (await this.provider.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
+      readReview: agentId => readReviewSession(this.provider, peerIdFromPrivateKey(this.key).toString(), agentId),
+      reviewAction: (agentId, input) => actOnReview(this.provider, agentId, input),
+      reviewSetup: (agentId, backend) => readReviewSetup(this.provider, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
+      selectModel: async (agentId, selection) => { await this.provider.request(backendMethods.agentUpdate, { input: { id: agentId, selection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),
     }, Date.now, pairing?.hostId === peerIdFromPrivateKey(this.key).toString() ? pairing.code : undefined);
-    if (this.backend.authorizeGuest) this.guestGateway = new GuestConversationGateway({
-      ...(this.backend.proposeGuest ? { propose: (handle, identity, name, input) => this.backend.proposeGuest!(handle, identity, name, input) } : {}),
-      ...(this.backend.guestProposals ? { proposals: (handle, identity) => this.backend.guestProposals!(handle, identity) } : {}),
-      ...(this.backend.withdrawGuest ? { withdraw: (handle, identity, proposalId) => this.backend.withdrawGuest!(handle, identity, proposalId) } : {}),
-      authorize: (handle, credential) => this.backend.authorizeGuest!(handle, credential),
-      connected: (handle, count, guests) => this.backend.guestCount?.(handle, count, guests),
+    if (this.provider.authorizeGuest) this.guestGateway = new GuestConversationGateway({
+      ...(this.provider.proposeGuest ? { propose: (handle, identity, name, input) => this.provider.proposeGuest!(handle, identity, name, input) } : {}),
+      ...(this.provider.guestProposals ? { proposals: (handle, identity) => this.provider.guestProposals!(handle, identity) } : {}),
+      ...(this.provider.withdrawGuest ? { withdraw: (handle, identity, proposalId) => this.provider.withdrawGuest!(handle, identity, proposalId) } : {}),
+      authorize: (handle, credential) => this.provider.authorizeGuest!(handle, credential),
+      connected: (handle, count, guests) => this.provider.guestCount?.(handle, count, guests),
       onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
-      synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
-      conversation: agentId => this.conversations.read(agentId),
-      loadTurnHistory: async (agentId, turnId) => { await this.backend.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'guest-read' }); },
-      loadOlderHistory: agentId => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'guest-read' }),
-      readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'guest-read' }),
-      readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'guest-read' })),
+      loadConversation: agentId => this.provider.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'guest-read' }).then(() => {}),
+      loadTurnHistory: async (agentId, turnId) => { await this.provider.request(backendMethods.agentConversationTurnHistoryLoad, { agentId, turnId, _clientId: 'guest-read' }); },
+      loadOlderHistory: agentId => this.provider.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'guest-read' }),
+      readConversationContent: (agentId, input) => this.provider.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'guest-read' }),
+      readImage: (agentId, filePath) => readConversationImage(() => this.provider.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'guest-read' })),
     });
     this.connector = new CompanionOutboundConnector(this.key, this.gateway, {
       phoneEnabled: () => this.saved.enabled,
@@ -405,14 +402,14 @@ export class CompanionManager {
       await rmdir(this.directory).catch(error => { if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes(error.code)) throw error; });
     }
     const relay = this.relay;
-    this.backend.onAccessChanged?.(saved.enabled && Boolean(relay));
+    this.provider.onAccessChanged?.(saved.enabled && Boolean(relay));
     if (saved.enabled && relay) await this.startTransport();
   }
   private async loadConversation(agentId: string): Promise<void> {
-    await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });
+    await this.provider.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });
   }
   private async workspace(): Promise<CompanionWorkspace> {
-    const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
+    const { snapshot } = await this.provider.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
     return companionWorkspaceOf(snapshot);
   }
   private readonly written = new UnchangedWrites();
@@ -434,7 +431,7 @@ export class CompanionManager {
       });
       const accessChanged = this.saved.enabled !== next.enabled;
       this.saved = next;
-      if (accessChanged) this.backend.onAccessChanged?.(next.enabled && Boolean(this.relay));
+      if (accessChanged) this.provider.onAccessChanged?.(next.enabled && Boolean(this.relay));
     });
     this.writes = write.catch(() => {});
     return write;

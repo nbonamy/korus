@@ -2,10 +2,10 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
-import { companionAgents, companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
-import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
+import { legacyPermissionCall, speaksCurrentDataModel, companionTargetFor, companionAgents, companionTarget, companionUpdatesProtocol } from '@workspace/core/companion-protocol';
+import type { ProviderModelOption, ProviderSkillSummary, ProviderPluginSummary } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
-import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionChatCreation, CompanionCommandReceipt, CompanionUsage, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionConversation, CompanionSession } from './companion-port';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { PairedLaptop, RelayNetwork } from './relay-network';
@@ -67,7 +67,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const target = (agentId: string) => {
     const agent = companionAgents(workspace).find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
     if (!agent || !team) throw new Error('Agent is outside the paired scope.');
-    return companionTarget(host.hostId, team, agent);
+    return companionTargetFor(workspace, host.hostId, team, agent);
   };
   const notify = (frame: CompanionConversation | null = null) => { if (!closed && ownsCache()) for (const listener of updates) listener(workspace, frame); };
   const failed = (reason?: CompanionDisconnectReason) => {
@@ -88,7 +88,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
       cache.reconcile(companionAgents(workspace).flatMap((agent) => {
         const team = workspace.teams.find((team) => team.id === agent.teamId);
-        return team ? [companionTarget(host.hostId, team, agent)] : [];
+        return team ? [companionTargetFor(workspace, host.hostId, team, agent)] : [];
       }));
       notify();
     } else if (update.type === 'notification') {
@@ -131,7 +131,8 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
     previewFile: (agentId, input) => call('agent.file.preview', { target: target(agentId), input }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
-    getUsage: () => call('usage.get', {}),
+    // Laptops that predate the request for every engine answer for the ones they always listed.
+    async getUsage() { try { return await call<CompanionUsage[]>('usage.get', { providers: 'all' }); } catch { return call<CompanionUsage[]>('usage.get', {}); } },
     async registerPush(registration) {
       if (!registration) { await call('notifications.register', null); return; }
       const signer = await network.signer();
@@ -155,13 +156,10 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     },
     async loadOlderHistory(agentId) {
       const identity = target(agentId);
-      const page = await call<{ frame: ProviderConversationFrame; hasOlder: boolean }>('conversation.loadOlder', identity);
+      const page = await call<{ frame: CompanionConversation; hasOlder: boolean }>('conversation.loadOlder', identity);
       if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
       cache.receive(page.frame);
-      const returned = page.frame;
-      const frame = cache.peek(identity) ?? (isConversationReset(returned) ? returned : null);
-      if (!frame) throw new Error('Conversation history needs to be reloaded.');
-      return { hasOlder: page.hasOlder, frame };
+      return { hasOlder: page.hasOlder, frame: cache.peek(identity) ?? page.frame };
     },
     async readConversationContent(agentId, input) {
       const identity = target(agentId);
@@ -179,9 +177,9 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       if (receipt.state === 'rejected') throw new PromptRejectedError('Prompt was rejected.');
       if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
     },
-    async listModels(agentId) { return (await call<{ models: BackendModelOption[] }>('models.list', target(agentId))).models; },
-    async listPlugins(agentId) { return (await call<{ plugins: BackendPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
-    async listSkills(agentId) { return (await call<{ skills: BackendSkillSummary[] }>('skills.list', target(agentId))).skills; },
+    async listModels(agentId) { return (await call<{ models: ProviderModelOption[] }>('models.list', target(agentId))).models; },
+    async listPlugins(agentId) { return (await call<{ plugins: ProviderPluginSummary[] }>('plugins.list', target(agentId))).plugins; },
+    async listSkills(agentId) { return (await call<{ skills: ProviderSkillSummary[] }>('skills.list', target(agentId))).skills; },
     async selectModel(agentId, selection) { await call('agent.model.select', { target: target(agentId), selection }); },
     async changeGoal(target, objective) {
       if (closed) throw new Error('Disconnected.');
@@ -195,7 +193,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     listBranches: (teamId, repositoryId) => call('repository.branches', { teamId, repositoryId }),
     localRepositories: teamId => call('project.local.list', { teamId }),
     localBranches: (teamId, repositoryId) => call('project.local.branches', { teamId, repositoryId }),
-    async duplicateAgent(target, backend) { return (await call<{ agentId: string }>('agent.duplicate', { target, backend })).agentId; },
+    async duplicateAgent(target, provider) { return (await call<{ agentId: string }>('agent.duplicate', { target, provider: provider })).agentId; },
     async renameAgent(target, name) { await call('agent.rename', { target, name }); },
     repositoryCatalog: (teamId, provider) => call('project.repositories.list', { teamId, provider }),
     repositoryBranches: (teamId, provider, repositoryId) => call('project.repositories.branches', { teamId, provider, repositoryId }),
@@ -205,16 +203,21 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
     async createChat(chat, signal) { return created((await call<{ creationId: string }>('agent.create', chat)).creationId, signal); },
     async createQuickChat(chat, signal) { return created((await call<{ creationId: string }>('agent.quickChat.create', chat)).creationId, signal); },
-    async setBackend(agentId, backend) { await call('agent.backend.set', { target: target(agentId), backend }); },
+    async setProvider(agentId, provider) { await call('agent.provider.set', { target: target(agentId), provider: provider }); },
     readReview: agentId => call('agent.review.read', { target: target(agentId) }),
     reviewAction: (target, input) => call('agent.review.action', { target, input }),
-    reviewSetup: (agentId, backend) => call('agent.review.setup', { target: target(agentId), ...(backend ? { backend } : {}) }),
+    reviewSetup: (agentId, provider) => call('agent.review.setup', { target: target(agentId), ...(provider ? { provider: provider } : {}) }),
     async startReview(target, input) {
       const result = await call<{ reviewerAgentId?: string | null }>('agent.review.start', { target, input });
       return result.reviewerAgentId ?? undefined;
     },
-    async setApprovalPreset(agentId, preset) { await call('agent.approvalPreset.set', { target: target(agentId), preset }); },
-    async setPermissionMode(agentId, mode) { await call('agent.permissionMode.set', { target: target(agentId), mode }); },
+    async setPermission(agentId, permission) {
+      if (speaksCurrentDataModel(workspace)) { await call('agent.permission.set', { target: target(agentId), permission }); return; }
+      const provider = companionAgents(workspace).find((agent) => agent.id === agentId)?.provider;
+      if (!provider) throw new Error('Agent is outside the paired scope.');
+      const { method, input } = legacyPermissionCall(provider, permission);
+      await call(method, { target: target(agentId), ...input });
+    },
     async commandStatus(clientCommandId) { return (await call<{ state: CompanionCommandReceipt['state'] | 'notReceived' }>('command.status', { clientCommandId })).state; },
     onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     onUpdate(listener) { updates.add(listener); return () => updates.delete(listener); },

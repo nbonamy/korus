@@ -116,7 +116,7 @@ function onVisibilityChanged(visible: boolean): void {
   max-height: min(64vh, 620px);
 }
 
-.whats-new-dialog__notes :deep(.codex-markdown) {
+.whats-new-dialog__notes :deep(.agent-ui-markdown) {
   max-width: 72ch;
   margin: 0 auto;
 }

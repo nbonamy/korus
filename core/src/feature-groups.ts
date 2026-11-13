@@ -29,7 +29,7 @@ export function featureLabel(labels: Readonly<Record<string, string>> | undefine
 }
 export function setFeatureLabel(snapshot: AppSnapshot, teamId: string, branch: string, label: string): void {
   const team = snapshot.teams.find(team => team.id === teamId);
-  if (!team) throw new Error('Team not found.');
+  if (!team) throw new Error('Workspace not found.');
   if (!branch.trim() || branch !== branch.trim() || isDefaultFeatureBranch(branch, snapshot.agents.filter(agent => agent.teamId === teamId))) throw new Error('Default branch groups cannot be renamed or deleted.');
   const trimmed = label.trim();
   if (trimmed.length > 120) throw new Error('Feature labels must be at most 120 characters.');
@@ -47,7 +47,7 @@ export function orderFeatureBranches(branches: readonly string[], order: readonl
 /** Moves a feature before another one, or to the end; the default branch is never part of the order. */
 export function reorderFeature(snapshot: AppSnapshot, teamId: string, branch: string, beforeBranch: string | null): void {
   const team = snapshot.teams.find(team => team.id === teamId);
-  if (!team) throw new Error('Team not found.');
+  if (!team) throw new Error('Workspace not found.');
   const agents = team.agentIds.flatMap(id => snapshot.agents.find(agent => agent.id === id) ?? []);
   const branches = agents.flatMap(agent => agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && agent.workspace.branch && !isDefaultFeatureBranch(agent.workspace.branch, agents) ? [agent.workspace.branch] : []);
   const features = orderFeatureBranches([...new Set(branches)], team.featureOrder);

@@ -24,10 +24,10 @@ const native = vi.hoisted(() => ({
   factory: vi.fn(), createWindow: vi.fn(), maintenance: vi.fn(), capture: vi.fn(),
   keyStart: vi.fn((_hotkey: string, _capture: () => void) => true), keyStop: vi.fn(), ready: false,
 }));
-vi.mock('@codex-app-sdk/electron', async importOriginal => {
-  const sdk = await importOriginal<typeof import('@codex-app-sdk/electron')>();
-  return { ...sdk, registerCodexNativeIpc: (...args: Parameters<typeof sdk.registerCodexNativeIpc>) => {
-    native.nativeOptions = args[1]; return sdk.registerCodexNativeIpc(...args);
+vi.mock('@korus-dev/agent-ui-sdk/electron', async importOriginal => {
+  const sdk = await importOriginal<typeof import('@korus-dev/agent-ui-sdk/electron')>();
+  return { ...sdk, registerNativeIpc: (...args: Parameters<typeof sdk.registerNativeIpc>) => {
+    native.nativeOptions = args[1]; return sdk.registerNativeIpc(...args);
   } };
 });
 vi.mock('electron', async () => {
@@ -51,7 +51,7 @@ vi.mock('electron', async () => {
     },
     safeStorage: {
       isEncryptionAvailable: () => true,
-      getSelectedStorageBackend: () => 'gnome_libsecret',
+      getSelectedStorageProvider: () => 'gnome_libsecret',
       encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')),
       decryptString: (value: Buffer) => value.toString().split('').reverse().join(''),
     },
@@ -131,7 +131,7 @@ function backendFixture() {
   let disconnect = (_state: 'connected' | 'disconnected', _error?: Error) => {};
   const unsubscribe = vi.fn();
   const unsubscribeConnection = vi.fn();
-  const backend = {
+  const provider = {
     start: vi.fn().mockResolvedValue(undefined),
     health: vi.fn().mockResolvedValue({ ok: true, name: 'daemon', version: 'test', pid: 123 }),
     request: vi.fn(async (method: string, params?: unknown): Promise<unknown> => {
@@ -147,14 +147,14 @@ function backendFixture() {
     onConnectionState: vi.fn((listener: typeof disconnect) => { disconnect = listener; return unsubscribeConnection; }),
     close: vi.fn().mockResolvedValue(undefined),
   };
-  return { backend, state, unsubscribe, unsubscribeConnection, emit: (event: AppBackendEvent) => emit(event),
+  return { provider: provider, state, unsubscribe, unsubscribeConnection, emit: (event: AppBackendEvent) => emit(event),
     disconnect: (error?: Error) => disconnect('disconnected', error) };
 }
 function setup() {
   const fixture = backendFixture();
   const window = windowFixture();
   native.createWindow.mockReturnValue(window);
-  const controller = new AppController(fixture.state.snapshot, fixture.backend as AppBackendClientPort,
+  const controller = new AppController(fixture.state.snapshot, fixture.provider as AppBackendClientPort,
     undefined, undefined, undefined, new AppshotsKeyMonitor());
   controllers.push(controller);
   controller.registerIpcHandlers();
@@ -196,10 +196,10 @@ describe('controller desktop lifecycle', () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'desktop-dictation-'));
     native.dataDirectory = directory;
     try {
-      const { backend } = setup();
+      const { provider } = setup();
       await import('../../preload/index');
       const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
-      const speech = native.exposed.get('codexAppSdkNative') as { streamingTranscription?: { prepare?: unknown } };
+      const speech = native.exposed.get('agentUiHostCapabilities') as { streamingTranscription?: { prepare?: unknown } };
       expect(typeof speech.streamingTranscription?.prepare).toBe('function');
       expect((await api.getDictationSettings!()).hasApiKey).toBe(false);
       expect(await api.updateDictationSettings!({ engine: 'openai', apiKey: 'test-secret' })).toStrictEqual({
@@ -211,7 +211,7 @@ describe('controller desktop lifecycle', () => {
       await api.updateDictationSettings!({ apiKey: null });
       expect((await api.getDictationSettings!()).hasApiKey).toBe(false);
       expect(await api.getDictationApiKey!()).toBeNull();
-      expect(backend.request).not.toHaveBeenCalled();
+      expect(provider.request).not.toHaveBeenCalled();
     } finally {
       native.dataDirectory = '/test/data';
       await rm(directory, { recursive: true, force: true });
@@ -222,7 +222,7 @@ describe('controller desktop lifecycle', () => {
     fixture.state.snapshot.general.spokenAnnouncementsEnabled = true;
     fixture.state.snapshot.general.spokenAnnouncementsOnlyWhenFocused = false;
     fixture.state.snapshot.general.spokenAnnouncementScope = 'selected';
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     const speech = { queue: vi.fn().mockReturnValue({ queued: true }), dispose: vi.fn(), queueWithCompletion: vi.fn() };
     const controller = new AppController(fixture.state.snapshot, undefined, undefined, undefined, undefined,
       null, undefined, undefined, undefined, undefined, speech);
@@ -254,7 +254,7 @@ describe('controller desktop lifecycle', () => {
     const packaged = app.isPackaged;
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
     const fixture = backendFixture();
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     const controller = new AppController(fixture.state.snapshot, undefined, undefined, undefined, undefined, null,
       async () => ({ supported: false, installed: false, running: true, socketPath: '', launchAgentPath: '' }));
     controllers.push(controller);
@@ -264,14 +264,14 @@ describe('controller desktop lifecycle', () => {
       const restart = native.factory.mock.calls[0]![0].debugRestartBackend;
       expect(await restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Load the backend fix' })).toStrictEqual({ scheduled: true });
       expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
-      expect(fixture.backend.close).not.toHaveBeenCalled();
+      expect(fixture.provider.close).not.toHaveBeenCalled();
       await expect(restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Duplicate' })).rejects.toThrow('already pending');
       await vi.advanceTimersByTimeAsync(0);
-      expect(fixture.backend.close).toHaveBeenCalledOnce();
-      expect(fixture.backend.start).toHaveBeenCalledTimes(2);
+      expect(fixture.provider.close).toHaveBeenCalledOnce();
+      expect(fixture.provider.start).toHaveBeenCalledTimes(2);
       if (openWindow) expect(native.createWindow.mock.results[0]!.value.webContents.reload).not.toHaveBeenCalled();
       expect(app.relaunch).not.toHaveBeenCalled();
-      fixture.backend.close.mockRejectedValueOnce(new Error('Restart failed'));
+      fixture.provider.close.mockRejectedValueOnce(new Error('Restart failed'));
       expect(await restart({ agentId: fixture.state.snapshot.agents[0]!.id, reason: 'Retry the fix' })).toStrictEqual({ scheduled: true });
       await vi.advanceTimersByTimeAsync(0);
       expect(native.dialog.showErrorBox).not.toHaveBeenCalled();
@@ -290,7 +290,7 @@ describe('controller desktop lifecycle', () => {
     const fixture = backendFixture();
     const status = { supported: true, installed: true, running: true, socketPath: '', launchAgentPath: '' };
     const refresh = vi.fn().mockRejectedValueOnce(new Error('Daemon restart failed')).mockResolvedValue(status);
-    const controller = new AppController(fixture.state.snapshot, fixture.backend as AppBackendClientPort, undefined, undefined, undefined, null, async () => status, refresh);
+    const controller = new AppController(fixture.state.snapshot, fixture.provider as AppBackendClientPort, undefined, undefined, undefined, null, async () => status, refresh);
     controllers.push(controller);
     try {
       await controller.initialize();
@@ -300,14 +300,14 @@ describe('controller desktop lifecycle', () => {
       menu.restartBackend();
       await vi.advanceTimersByTimeAsync(0);
       expect(refresh).toHaveBeenCalledOnce();
-      expect(fixture.backend.close).toHaveBeenCalledOnce();
-      expect(fixture.backend.start).toHaveBeenCalledTimes(2);
+      expect(fixture.provider.close).toHaveBeenCalledOnce();
+      expect(fixture.provider.start).toHaveBeenCalledTimes(2);
       expect(native.dialog.showMessageBox).not.toHaveBeenCalled();
       expect(native.dialog.showErrorBox).toHaveBeenCalledWith('Could not restart backend', 'Daemon restart failed');
       menu.restartBackend();
       await vi.advanceTimersByTimeAsync(0);
       expect(refresh).toHaveBeenCalledTimes(2);
-      expect(fixture.backend.start).toHaveBeenCalledTimes(3);
+      expect(fixture.provider.start).toHaveBeenCalledTimes(3);
       expect(native.createWindow.mock.results[0]!.value.webContents.reload).not.toHaveBeenCalled();
       expect(app.relaunch).not.toHaveBeenCalled();
     } finally { Object.defineProperty(app, 'isPackaged', { value: packaged, configurable: true }); }
@@ -338,7 +338,7 @@ describe('controller desktop lifecycle', () => {
 
   describe('on-demand lock prevention', () => {
     it('does nothing without a hold, then holds the display until the stored expiry and lets the Mac lock again', async () => {
-      const { controller, state, emit, backend } = setup();
+      const { controller, state, emit, provider } = setup();
       onDemand(state, false);
       await controller.initialize();
       expect(powerSaveBlocker.start).not.toHaveBeenCalled();
@@ -348,45 +348,45 @@ describe('controller desktop lifecycle', () => {
       await vi.advanceTimersByTimeAsync(59 * 60_000);
       expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(2 * 60_000);
-      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(provider.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
       expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
       expect(state.snapshot.general.plugins).toMatchObject({ computerUseLockHold: false });
       await controller.shutdown();
     });
 
     it('keeps a hold with no expiry for as long as the user leaves it on', async () => {
-      const { controller, state, backend } = setup();
+      const { controller, state, provider } = setup();
       onDemand(state, { until: null });
       await controller.initialize();
       expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
       await vi.advanceTimersByTimeAsync(48 * 60 * 60_000);
       expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
-      expect(backend.request).not.toHaveBeenCalledWith(backendMethods.settingsUpdate, expect.anything());
+      expect(provider.request).not.toHaveBeenCalledWith(backendMethods.settingsUpdate, expect.anything());
       await controller.shutdown();
     });
 
     it('resumes a hold that outlived a restart, and ends it at its stored time', async () => {
-      const { controller, state, backend } = setup();
+      const { controller, state, provider } = setup();
       onDemand(state, { until: Date.now() + 30 * 60_000 });
       await controller.initialize();
       expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-display-sleep');
       await vi.advanceTimersByTimeAsync(31 * 60_000);
-      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(provider.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
       expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
       await controller.shutdown();
     });
 
     it('drops a hold that expired while Korus was not running without ever holding the display', async () => {
-      const { controller, state, backend } = setup();
+      const { controller, state, provider } = setup();
       onDemand(state, { until: Date.now() - 1000 });
       await controller.initialize();
-      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(provider.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
       expect(powerSaveBlocker.start).not.toHaveBeenCalled();
       await controller.shutdown();
     });
 
     it('ends the hold when it is replaced by a later one, when Computer Use is disabled or when the mode changes', async () => {
-      const { controller, state, emit, backend } = setup();
+      const { controller, state, emit, provider } = setup();
       onDemand(state, { until: Date.now() + 10 * 60_000 });
       await controller.initialize();
       onDemand(state, { until: Date.now() + 120 * 60_000 });
@@ -396,13 +396,13 @@ describe('controller desktop lifecycle', () => {
       onDemand(state, { until: Date.now() + 120 * 60_000 }, false);
       publish(emit, state, 2);
       await vi.advanceTimersByTimeAsync(0);
-      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(provider.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
       expect(powerSaveBlocker.stop).toHaveBeenCalledExactlyOnceWith(1);
-      backend.request.mockClear();
+      provider.request.mockClear();
       state.snapshot.general.plugins = { computerUseEnabled: true, chromeEnabled: false, computerUseLockPrevention: 'off', computerUseLockHold: { until: null } };
       publish(emit, state, 3);
       await vi.advanceTimersByTimeAsync(0);
-      expect(backend.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
+      expect(provider.request).toHaveBeenCalledWith(backendMethods.settingsUpdate, clearHold);
       await controller.shutdown();
     });
 
@@ -496,8 +496,8 @@ describe('controller desktop lifecycle', () => {
   });
 
   it('delegates open, focus, wake and reconnect activity to the local backend without creating upload timers', async () => {
-    const { backend, window, controller, disconnect, state } = setup();
-    backend.request.mockImplementation(async (method: string) => {
+    const { provider, window, controller, disconnect, state } = setup();
+    provider.request.mockImplementation(async (method: string) => {
       if (method === backendMethods.telemetryActivity) return null;
       if (method === backendMethods.snapshotGet) return state;
       if (method === backendMethods.clientStateGet) return state.clientState;
@@ -505,7 +505,7 @@ describe('controller desktop lifecycle', () => {
     });
     controller.createWindow();
     await controller.initialize();
-    const activityCalls = () => backend.request.mock.calls.filter(([method]) => method === backendMethods.telemetryActivity);
+    const activityCalls = () => provider.request.mock.calls.filter(([method]) => method === backendMethods.telemetryActivity);
     expect(activityCalls()).toHaveLength(1);
     window.emit('focus');
     powerMonitor.emit('resume');
@@ -530,58 +530,58 @@ describe('controller desktop lifecycle', () => {
       const imagePath = path.join(directory, 'viewed.png');
       const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=', 'base64');
       await writeFile(imagePath, png);
-      const { backend, state } = setup();
+      const { provider, state } = setup();
       const agentId = state.snapshot.agents[0]!.id;
-      backend.request.mockResolvedValueOnce([{ id: 'viewed', agentId, role: 'assistant', status: 'complete',
+      provider.request.mockResolvedValueOnce([{ id: 'viewed', agentId, role: 'assistant', status: 'complete',
         parts: [{ type: 'media', media: { url: pathToFileURL(imagePath).href, title: 'Viewed image', mimeType: 'image/png' } }] }]);
-      const messages = await invoke(ipcChannels.readConversationMessages, { backend: 'codex', threadId: 'history' }, agentId);
+      const messages = await invoke(ipcChannels.readConversationMessages, { provider: 'codex', conversationId: 'history' }, agentId);
       const reference = messages[0].parts[0].media.url;
       expect(reference).toMatch(/^agent-workspace-media:\/\/generated\//);
-      expect(await invoke('codex-native:read-image-preview', reference)).toBe('data:image/png;base64,' + png.toString('base64'));
-      await expect(invoke('codex-native:read-image-preview', 'agent-workspace-media://generated/not-registered')).rejects.toThrow('invalid or expired');
-      await expect(invoke('codex-native:read-image-preview', pathToFileURL(imagePath).href)).rejects.toThrow('invalid or expired');
+      expect(await invoke('agent-ui-native:read-image-preview', reference)).toBe('data:image/png;base64,' + png.toString('base64'));
+      await expect(invoke('agent-ui-native:read-image-preview', 'agent-workspace-media://generated/not-registered')).rejects.toThrow('invalid or expired');
+      await expect(invoke('agent-ui-native:read-image-preview', pathToFileURL(imagePath).href)).rejects.toThrow('invalid or expired');
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
   it('exposes statistics deletion through preload and propagates backend failures',async()=>{
-    const {backend}=setup();
+    const {provider}=setup();
     await import('../../preload');
     const api=native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
-    backend.request.mockResolvedValueOnce(null);
+    provider.request.mockResolvedValueOnce(null);
     await api.clearUsage();
-    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.usageClear);
-    backend.request.mockRejectedValueOnce(Error('storage unavailable'));
+    expect(provider.request).toHaveBeenCalledExactlyOnceWith(backendMethods.usageClear);
+    provider.request.mockRejectedValueOnce(Error('storage unavailable'));
     await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
   });
 
   it('routes share actions through preload and the daemon without exposing bearer links in events', async () => {
-    const { backend } = setup();
+    const { provider } = setup();
     await import('../../preload/index');
     const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
-    const target = { agentId: 'fixture', backend: 'codex' as const, sessionId: 'thread', conversation: { backend: 'codex' as const, threadId: 'thread' } };
+    const target = { agentId: 'fixture', provider: 'codex' as const, sessionId: 'thread', conversation: { provider: 'codex' as const, conversationId: 'thread' } };
     const input = { action: 'copy' as const, target };
     const result = { state: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' }, link: 'redacted-fixture' };
-    backend.request.mockResolvedValueOnce(result);
+    provider.request.mockResolvedValueOnce(result);
     await expect(api.conversationShareControl(input)).resolves.toStrictEqual(result);
-    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.conversationShareControl, { input });
+    expect(provider.request).toHaveBeenCalledExactlyOnceWith(backendMethods.conversationShareControl, { input });
   });
 
   it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
-    const { backend } = setup();
+    const { provider } = setup();
     const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
-    backend.request.mockResolvedValueOnce(result);
+    provider.request.mockResolvedValueOnce(result);
     const input = { action: 'decide', pendingId: 'pending-device', approve: true };
     await expect(invoke(ipcChannels.companionControl, input)).resolves.toBe(result);
-    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
+    expect(provider.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
   });
 
   it('hands a review to manual through the preload and IPC without an interruption request', async () => {
-    const { backend, state } = setup();
-    backend.request.mockImplementation(async method => method === 'agent/codeReview/manual' ? state.snapshot : state.clientState);
+    const { provider, state } = setup();
+    provider.request.mockImplementation(async method => method === 'agent/codeReview/manual' ? state.snapshot : state.clientState);
     await import('../../preload/index');
     const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
     await expect(api.switchCodeReviewToManual('reviewer', 'review')).resolves.toStrictEqual(state.snapshot);
-    expect(backend.request.mock.calls).toStrictEqual([
+    expect(provider.request.mock.calls).toStrictEqual([
       ['agent/codeReview/manual', { agentId: 'reviewer', sessionId: 'review' }],
       ['client/state/get'],
     ]);
@@ -609,7 +609,7 @@ describe('controller desktop lifecycle', () => {
 
   it('lets an agent attach without a prompt and ties the pane to its attach and detach', async () => {
     const fixture = backendFixture();
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     const window = windowFixture();
     native.createWindow.mockReturnValue(window);
     const controller = new AppController(fixture.state.snapshot);
@@ -631,7 +631,7 @@ describe('controller desktop lifecycle', () => {
   });
 
   it('synchronizes the execution-plan checkmark after removal, agent selection, and failed toggles', async () => {
-    const { controller, backend, state, emit } = setup();
+    const { controller, provider, state, emit } = setup();
     const packaged = app.isPackaged;
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
     try {
@@ -647,10 +647,10 @@ describe('controller desktop lifecycle', () => {
       expect(menu.hasDebugExecutionPlan()).toBe(true);
       const withoutPlan = structuredClone(snapshot);
       delete withoutPlan.agents[0]!.plan;
-      backend.request.mockImplementation(async method => method === 'debug/executionPlan/toggle' ? withoutPlan : state.clientState);
+      provider.request.mockImplementation(async method => method === 'debug/executionPlan/toggle' ? withoutPlan : state.clientState);
       menu.toggleDebugExecutionPlan();
       await vi.advanceTimersByTimeAsync(0);
-      expect(backend.request).toHaveBeenCalledWith('debug/executionPlan/toggle', { agentId: snapshot.activeAgentId });
+      expect(provider.request).toHaveBeenCalledWith('debug/executionPlan/toggle', { agentId: snapshot.activeAgentId });
       expect(vi.mocked(installAppMenu).mock.lastCall![1].hasDebugExecutionPlan!()).toBe(false);
 
       emit({ seq: 1, occurredAt: '2026-10-08T00:00:00Z', type: 'snapshot.updated', payload: snapshot });
@@ -661,7 +661,7 @@ describe('controller desktop lifecycle', () => {
       expect(vi.mocked(installAppMenu).mock.lastCall![1].hasDebugExecutionPlan!()).toBe(false);
 
       vi.mocked(installAppMenu).mockClear();
-      backend.request.mockRejectedValueOnce(new Error('Unavailable'));
+      provider.request.mockRejectedValueOnce(new Error('Unavailable'));
       menu.toggleDebugExecutionPlan();
       await vi.advanceTimersByTimeAsync(0);
       expect(vi.mocked(installAppMenu).mock.lastCall![1].hasDebugExecutionPlan!()).toBe(false);
@@ -672,10 +672,11 @@ describe('controller desktop lifecycle', () => {
 
   it.each([
     { get: 'getDebugMissingEngines', set: 'setDebugMissingEngines', type: 'debug-missing-engines' },
+    { get: 'getDebugDisconnectedEngine', set: 'setDebugDisconnectedEngine', type: 'debug-disconnected-engine' },
     { get: 'getDebugProviderUpgrades', set: 'setDebugProviderUpgrades', type: 'debug-provider-upgrades' },
     { get: 'getDebugReviewUncommitted', set: 'setDebugReviewUncommitted', type: 'debug-review-uncommitted' },
   ] as const)('keeps $type client-only, resets it on reload, and rejects it in packaged builds', ({ get, set, type }) => {
-    const { controller, window, backend } = setup();
+    const { controller, window, provider } = setup();
     const packaged = app.isPackaged;
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
     try {
@@ -695,7 +696,7 @@ describe('controller desktop lifecycle', () => {
       menu[set](true);
       expect(menu[get]()).toBe(false);
       expect(window.webContents.send).not.toHaveBeenCalled();
-      expect(backend.request).not.toHaveBeenCalled();
+      expect(provider.request).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(app, 'isPackaged', { value: packaged, configurable: true });
     }
@@ -881,7 +882,7 @@ describe('controller desktop lifecycle', () => {
   });
 
   it.each(['linux', 'win32', 'darwin'] as const)('applies menu visibility through the real preload bridge on %s without a backend request', async (platform) => {
-    const { controller, window, backend } = setup();
+    const { controller, window, provider } = setup();
     controller.createWindow();
     vi.stubGlobal('process', Object.create(process, { platform: { value: platform } }));
     await import('../../preload/index');
@@ -892,7 +893,7 @@ describe('controller desktop lifecycle', () => {
 
     expect(window.setAutoHideMenuBar.mock.calls).toStrictEqual(platform === 'darwin' ? [] : [[true], [false]]);
     expect(window.setMenuBarVisibility.mock.calls).toStrictEqual(platform === 'darwin' ? [] : [[false], [true]]);
-    expect(backend.request).not.toHaveBeenCalled();
+    expect(provider.request).not.toHaveBeenCalled();
 
     await expect(api.setMenuBarVisible('false' as unknown as boolean)).rejects.toThrow('must be a boolean');
     expect(window.setMenuBarVisibility).toHaveBeenCalledTimes(platform === 'darwin' ? 0 : 2);
@@ -903,7 +904,7 @@ describe('controller desktop lifecycle', () => {
 
   it('settles backend browser requests on replacement, timeout, IPC failure, and shutdown', async () => {
     const fixture = backendFixture();
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     native.createWindow.mockReturnValue(windowFixture());
     const controller = new AppController(fixture.state.snapshot);
     controllers.push(controller);
@@ -932,7 +933,7 @@ describe('controller desktop lifecycle', () => {
 
   it('handles native deep-link and activation events after successful startup', async () => {
     const fixture = backendFixture();
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     const window = windowFixture();
     native.createWindow.mockReturnValue(window);
     vi.mocked(app.whenReady).mockResolvedValue(undefined);
@@ -961,7 +962,7 @@ describe('controller desktop lifecycle', () => {
     app.emit('before-quit', { preventDefault: vi.fn() });
     await vi.advanceTimersByTimeAsync(0);
     expect(fixture.unsubscribe).toHaveBeenCalledOnce();
-    expect(fixture.backend.close).toHaveBeenCalledOnce();
+    expect(fixture.provider.close).toHaveBeenCalledOnce();
   });
 
   it('serializes appshot capture, queues it across loading, and recovers after capture failure', async () => {
@@ -1035,7 +1036,7 @@ describe('controller desktop lifecycle', () => {
   });
 
   it('queues cold and reloaded share delivery and forwards guest operations through the app-owned boundary', async () => {
-    const { controller, window, backend } = setup();
+    const { controller, window, provider } = setup();
     const link = `${product.protocolScheme}://share?v=9`;
     expect(controller.openDeepLink(link)).toBe(true);
     controller.createWindow();
@@ -1047,9 +1048,9 @@ describe('controller desktop lifecycle', () => {
     window.webContents.emit('did-finish-load');
     expect(window.webContents.send).toHaveBeenCalledTimes(1);
     await controller.initialize();
-    backend.request.mockResolvedValueOnce({ entries: [], view: null });
+    provider.request.mockResolvedValueOnce({ entries: [], view: null });
     await invoke(ipcChannels.guestConversationControl, { action: 'state' });
-    expect(backend.request).toHaveBeenCalledWith(backendMethods.guestConversationControl, { input: { action: 'state' } });
+    expect(provider.request).toHaveBeenCalledWith(backendMethods.guestConversationControl, { input: { action: 'state' } });
   });
   it('delivers deep links only after each renderer load and reuses or replaces its native window', async () => {
     const { controller, window } = setup();
@@ -1077,28 +1078,28 @@ describe('controller desktop lifecycle', () => {
   });
 
   it('backs off failed reconnects, exposes cached state, and cancels retries and subscriptions at shutdown', async () => {
-    const { controller, backend, state, disconnect, unsubscribe, unsubscribeConnection } = setup();
+    const { controller, provider, state, disconnect, unsubscribe, unsubscribeConnection } = setup();
     controller.createWindow();
     await controller.initialize();
-    backend.start.mockRejectedValue(new Error('daemon down'));
+    provider.start.mockRejectedValue(new Error('daemon down'));
     disconnect(new Error('socket closed'));
     disconnect(new Error('socket closed again'));
     await vi.advanceTimersByTimeAsync(249);
-    expect(backend.start).toHaveBeenCalledTimes(1);
+    expect(provider.start).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(backend.start).toHaveBeenCalledTimes(2);
+    expect(provider.start).toHaveBeenCalledTimes(2);
     expect(await invoke(ipcChannels.getSnapshotState)).toMatchObject({
       snapshot: state.snapshot, connection: { status: 'reconnecting', detail: 'daemon down' },
     });
     await vi.advanceTimersByTimeAsync(499);
-    expect(backend.start).toHaveBeenCalledTimes(2);
+    expect(provider.start).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
-    expect(backend.start).toHaveBeenCalledTimes(3);
+    expect(provider.start).toHaveBeenCalledTimes(3);
     await controller.shutdown();
     controllers = [];
     disconnect();
     await vi.advanceTimersByTimeAsync(20000);
-    expect(backend.start).toHaveBeenCalledTimes(3);
+    expect(provider.start).toHaveBeenCalledTimes(3);
     expect(unsubscribe).toHaveBeenCalledOnce();
     expect(unsubscribeConnection).toHaveBeenCalledOnce();
     expect(powerMonitor.listenerCount('on-ac')).toBe(0);
@@ -1106,9 +1107,9 @@ describe('controller desktop lifecycle', () => {
   });
 
   it('subscribes to backend events when startup first fails and the scheduled retry connects', async () => {
-    const { controller, backend, emit, window } = setup();
+    const { controller, provider, emit, window } = setup();
     controller.createWindow();
-    backend.start.mockRejectedValueOnce(new Error('daemon still starting'));
+    provider.start.mockRejectedValueOnce(new Error('daemon still starting'));
     await controller.initialize();
     await vi.advanceTimersByTimeAsync(250);
     emit({ seq: 1, occurredAt: '2026-10-04T00:00:00Z', type: 'agent.statusChanged',
@@ -1116,11 +1117,11 @@ describe('controller desktop lifecycle', () => {
     expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({
       type: 'agent.statusChanged', agentId: 'agent-dina', payload: { type: 'working' },
     }));
-    expect(backend.onConnectionState).toHaveBeenCalledOnce();
+    expect(provider.onConnectionState).toHaveBeenCalledOnce();
   });
 
   it('retries an inconsistent snapshot and publishes only the recovered state after a sequence gap', async () => {
-    const { controller, backend, state, emit, window } = setup();
+    const { controller, provider, state, emit, window } = setup();
     controller.createWindow();
     await controller.initialize();
     const event = (seq: number): AppBackendEvent => ({
@@ -1128,7 +1129,7 @@ describe('controller desktop lifecycle', () => {
       agentId: 'agent-dina', payload: { type: 'working' },
     });
     let reads = 0;
-    backend.request.mockImplementation(async () => {
+    provider.request.mockImplementation(async () => {
       reads++;
       if (reads === 1) { emit(event(4)); return { ...state, lastEventSeq: 1 }; }
       return { ...state, lastEventSeq: 4 };
@@ -1178,7 +1179,7 @@ describe('controller desktop lifecycle', () => {
 
   it('opens recovery UI after maintenance failure and waits for cleanup before exiting', async () => {
     const fixture = backendFixture();
-    native.factory.mockReturnValue(fixture.backend);
+    native.factory.mockReturnValue(fixture.provider);
     native.createWindow.mockReturnValue(windowFixture());
     native.maintenance.mockRejectedValue(new Error('maintenance failed'));
     vi.mocked(app.whenReady).mockResolvedValue(undefined);
@@ -1187,7 +1188,7 @@ describe('controller desktop lifecycle', () => {
     expect(native.createWindow).toHaveBeenCalledOnce();
     expect(app.setAsDefaultProtocolClient).toHaveBeenCalledWith(product.protocolScheme);
     let release!: () => void;
-    fixture.backend.close.mockReturnValue(new Promise<void>(resolve => { release = resolve; }));
+    fixture.provider.close.mockReturnValue(new Promise<void>(resolve => { release = resolve; }));
     const quit = { preventDefault: vi.fn() };
     app.emit('before-quit', quit);
     await vi.advanceTimersByTimeAsync(0);

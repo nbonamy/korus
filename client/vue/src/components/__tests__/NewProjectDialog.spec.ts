@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import NewProjectDialog from '../NewProjectDialog.vue';
 import { computed } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { providerChoicesKey } from '../provider-selection';
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -13,7 +13,7 @@ describe('NewProjectDialog', () => {
     const wrapper = mount(NewProjectDialog, {
       attachTo: document.body,
       props: { visible: true },
-      global: { stubs: { ElDialog: dialogStub }, provide: { [backendChoicesKey as symbol]: computed(() => ['claude']) } },
+      global: { stubs: { ElDialog: dialogStub }, provide: { [providerChoicesKey as symbol]: computed(() => ['claude']) } },
     });
 
     expect(wrapper.find('select').exists()).toBe(false);
@@ -27,7 +27,7 @@ describe('NewProjectDialog', () => {
     const wrapper = mount(NewProjectDialog, {
       attachTo: document.body,
       props: { visible: true },
-      global: { stubs: { ElDialog: dialogStub }, provide: { [backendChoicesKey as symbol]: computed(() => ['claude']) } },
+      global: { stubs: { ElDialog: dialogStub }, provide: { [providerChoicesKey as symbol]: computed(() => ['claude']) } },
     });
 
     await wrapper.get('#new-project-name').setValue('../fresh-project');

@@ -34,7 +34,7 @@ describe('SettingsCodexPanel', () => {
     configureAppClient({ api: client.api, platform: 'desktop' });
     const wrapper = mountPanel({ connected: false }); await flushPromises();
     expect(client.api.getBankedResets).not.toHaveBeenCalled();
-    await wrapper.setProps({ connected: true, remoteConnectionId: 'remote-owner', authentication: { kind: 'codex', connected: true, state: { account: { type: 'chatgpt', email: 'fixture@example.test', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'idle', error: null } } } });
+    await wrapper.setProps({ connected: true, remoteConnectionId: 'remote-owner', authentication: { kind: 'codex', connected: true, state: { account: { type: 'chatgpt', email: 'fixture@example.test', planType: 'plus' }, requiresOpenaiAuth: true, login: { status: 'idle', error: null } }, account: { kind: 'subscription', email: 'fixture@example.test', plan: 'plus' } } });
     await flushPromises(); expect(wrapper.text()).toContain('3 available');
     expect(client.api.getBankedResets).toHaveBeenCalledExactlyOnceWith('remote-owner');
     await wrapper.setProps({ connected: false }); await flushPromises();

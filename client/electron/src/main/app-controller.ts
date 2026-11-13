@@ -1,6 +1,7 @@
 import { DictationSettingsStore } from './dictation-settings';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
-import type { AgentBackend, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
+import type { HarnessProvider, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
+import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
@@ -10,7 +11,7 @@ import { product } from '@workspace/core/product';
 import { registerMissionIpcHandlers } from './mission-ipc';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { agentResponseFromClientResponse } from '@workspace/core/agent-request';
+import { isAgentRequestResponse, type AgentRequestResponse } from '@workspace/core/agent-request';
 import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/client-preferences';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { encodedAppError } from '@workspace/core/app-error';
@@ -18,7 +19,7 @@ import { mainT } from './i18n';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell } from 'electron';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { registerCodexNativeIpc, sendIpcEvent, TypedIpcMain } from '@codex-app-sdk/electron';
+import { registerNativeIpc, sendIpcEvent, TypedIpcMain } from '@korus-dev/agent-ui-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { COMPACT_MIN_SIZE, createMainWindow } from './main-window';
@@ -32,7 +33,7 @@ import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
-import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type BackendConnectionState, type BackendModelOption, type BackendPluginSummary, type BackendSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type ClaudeAuthentication, type ClientRequestResponse, type CodexAuthentication, type CodexChatGptLogin, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
+import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
@@ -60,7 +61,7 @@ type SpokenAnnouncementQueuePort = Pick<SpokenAnnouncementQueue, 'dispose' | 'qu
 type ClientEventInput<Event extends MainToRendererEvent = MainToRendererEvent> = Event extends MainToRendererEvent
   ? Omit<Event, 'seq' | 'source' | 'occurredAt'>
   : never;
-type DebugFlags = { missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
+type DebugFlags = { disconnectedEngine?: boolean; missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
 type PendingBrowserOpen = {
   agentId: string;
   browserId: string;
@@ -104,7 +105,7 @@ export class AppController {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
   private shuttingDown = false;
-  private connectionState: BackendConnectionState = { status: 'connecting' };
+  private connectionState: ProviderConnectionState = { status: 'connecting' };
   /** Debug fixtures live in one window's renderer, so their menu state follows that window. */
   private readonly debugFlags = new WeakMap<BrowserWindow, DebugFlags>();
   private readonly pendingDeepLinkCommands: AppCommand[] = [];
@@ -227,7 +228,7 @@ export class AppController {
 
   registerIpcHandlers(): void {
     this.nativeIpcUnregister?.();
-    this.nativeIpcUnregister = registerCodexNativeIpc(
+    this.nativeIpcUnregister = registerNativeIpc(
       { clipboard, dialog, ipcMain, shell },
       {
         prepareSpeechSession: (input, onEvent, options) => createDictationSpeechPreparer(this.dictationSettings())(input, onEvent, options),
@@ -255,8 +256,8 @@ export class AppController {
       return this.addSshConnection(input);
     });
 
-    ipc.handle(ipcChannels.checkRemoteConnection, async (_event, connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => {
-      return this.checkRemoteConnection(connectionId, inspectOnly, backends);
+    ipc.handle(ipcChannels.checkRemoteConnection, async (_event, connectionId: string, inspectOnly?: boolean, providers?: HarnessProvider[]) => {
+      return this.checkRemoteConnection(connectionId, inspectOnly, providers);
     });
 
     ipc.handle(ipcChannels.updateRemoteConnection, async (_event, connectionId: string, input: UpdateRemoteConnectionInput) => {
@@ -313,16 +314,16 @@ export class AppController {
       return this.listWorkItems(provider, repositoryId, location, query);
     });
 
-    ipc.handle(ipcChannels.listBackendModels, async (_event, agentId: string | null, backend?: import('@workspace/core/contracts').AgentBackend, remoteConnectionId?: string) => {
-      return this.listBackendModels(agentId, backend, remoteConnectionId);
+    ipc.handle(ipcChannels.listProviderModels, async (_event, agentId: string | null, provider?: import('@workspace/core/contracts').HarnessProvider, remoteConnectionId?: string) => {
+      return this.listProviderModels(agentId, provider, remoteConnectionId);
     });
 
-    ipc.handle(ipcChannels.listBackendPlugins, async (_event, agentId: string) => {
-      return this.listBackendPlugins(agentId);
+    ipc.handle(ipcChannels.listProviderPlugins, async (_event, agentId: string) => {
+      return this.listProviderPlugins(agentId);
     });
 
-    ipc.handle(ipcChannels.listBackendSkills, async (_event, agentId: string) => {
-      return this.listBackendSkills(agentId);
+    ipc.handle(ipcChannels.listProviderSkills, async (_event, agentId: string) => {
+      return this.listProviderSkills(agentId);
     });
 
     ipc.handle(ipcChannels.getRunProfiles, async (_event, agentId: string) => this.requireBackendClient().request(backendMethods.agentRunProfilesGet, { agentId }));
@@ -569,6 +570,10 @@ export class AppController {
       return this.closeAgent(agentId, input);
     });
 
+    ipc.handle(ipcChannels.restoreClosedAgent, async (_event, record) => {
+      return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRestore, { record }));
+    });
+
     ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
 
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {
@@ -595,27 +600,19 @@ export class AppController {
     ipc.handle(ipcChannels.readEngineInstructions, (_event, engine) => this.requireBackendClient().request<{ text: string; path: string }>(backendMethods.engineInstructionsRead, { engine }));
     ipc.handle(ipcChannels.manageSkills, (_event, input) => this.requireBackendClient().request(backendMethods.skillsManage, { input }));
     ipc.handle(ipcChannels.saveEngineInstructions, (_event, input) => this.requireBackendClient().request<void>(backendMethods.engineInstructionsSave, { input }));
-    ipc.handle(ipcChannels.getCodexAuthentication, (_event, remoteConnectionId?: string) => this.getCodexAuthentication(remoteConnectionId));
-    ipc.handle(ipcChannels.getClaudeAuthentication, (_event, remoteConnectionId?: string) => this.getClaudeAuthentication(remoteConnectionId));
     ipc.handle(ipcChannels.getProviderSetup, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerSetupGet, { remoteConnectionId }));
-    ipc.handle(ipcChannels.getProviderUpdate, (_event, backend, remoteConnectionId, refresh) => this.requireBackendClient().request(backendMethods.providerUpdateGet, { backend, remoteConnectionId, refresh }));
-    ipc.handle(ipcChannels.setProviderUpdate, (_event, backend, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerUpdateSet, { backend, input, remoteConnectionId }));
+    ipc.handle(ipcChannels.getProviderUpdate, (_event, provider, remoteConnectionId, refresh) => this.requireBackendClient().request(backendMethods.providerUpdateGet, { provider: provider, remoteConnectionId, refresh }));
+    ipc.handle(ipcChannels.setProviderUpdate, (_event, provider, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerUpdateSet, { provider: provider, input, remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderConnections, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerConnectionsGet, { remoteConnectionId }));
     ipc.handle(ipcChannels.getBankedResets, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetsGet, { remoteConnectionId }));
     ipc.handle(ipcChannels.useBankedReset, (_event, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetUse, { input, remoteConnectionId }));
-    ipc.handle(ipcChannels.getProviderUsage, (_event, backend) => this.requireBackendClient().request(backendMethods.providerUsageGet, { backend }));
-    ipc.handle(ipcChannels.setProviderEnabled, (_event, backend, enabled, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerEnabledSet, { backend, enabled, remoteConnectionId }));
-    ipc.handle(ipcChannels.disconnectProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { backend, remoteConnectionId }));
-    ipc.handle(ipcChannels.authenticateProvider, (_event, backend, action) => this.requireBackendClient().request(backendMethods.providerAuthenticate, { backend, action }));
-    ipc.handle(ipcChannels.configureProviderSetup, (_event, backend, choice) => this.requireBackendClient().request(backendMethods.providerSetupConfigure, { backend, choice }));
-    ipc.handle(ipcChannels.installProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerInstall, { backend, remoteConnectionId }));
-    ipc.handle(ipcChannels.refreshProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerRefresh, { backend, remoteConnectionId }));
-    ipc.handle(ipcChannels.cancelCodexChatGptLogin, (_event, remoteConnectionId?: string, loginId?: string) => this.cancelCodexChatGptLogin(remoteConnectionId, loginId));
-    ipc.handle(ipcChannels.startCodexChatGptDeviceCodeLogin, (_event, remoteConnectionId: string) => {
-      return this.startCodexChatGptDeviceCodeLogin(remoteConnectionId);
-    });
-    ipc.handle(ipcChannels.startCodexChatGptLogin, () => this.startCodexChatGptLogin());
-    ipc.handle(ipcChannels.logoutCodex, () => this.logoutCodex());
+    ipc.handle(ipcChannels.getProviderUsage, (_event, provider) => this.requireBackendClient().request(backendMethods.providerUsageGet, { provider: provider }));
+    ipc.handle(ipcChannels.setProviderEnabled, (_event, provider, enabled, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerEnabledSet, { provider: provider, enabled, remoteConnectionId }));
+    ipc.handle(ipcChannels.disconnectProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { provider: provider, remoteConnectionId }));
+    ipc.handle(ipcChannels.authenticateProvider, (_event, provider, action, options) => this.authenticateProvider(provider, action, options));
+    ipc.handle(ipcChannels.configureProviderSetup, (_event, provider, choice) => this.requireBackendClient().request(backendMethods.providerSetupConfigure, { provider: provider, choice }));
+    ipc.handle(ipcChannels.installProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerInstall, { provider: provider, remoteConnectionId }));
+    ipc.handle(ipcChannels.refreshProvider, (_event, provider, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerRefresh, { provider: provider, remoteConnectionId }));
     ipc.handle(ipcChannels.getUpdateStatus, () => this.desktopUpdateStatus);
     ipc.handle(ipcChannels.installUpdate, () => this.requestInstallUpdate());
     ipc.handle(ipcChannels.setDockBadgeCount, (_event, count: number) => this.setDockBadgeCount(count));
@@ -660,10 +657,6 @@ export class AppController {
 
     ipc.handle(ipcChannels.clearAgentGoal, (_event, agentId: string) => {
       return this.clearAgentGoal(agentId);
-    });
-
-    ipc.handle(ipcChannels.setAgentApprovalPreset, (_event, agentId: string, preset: ApprovalPreset) => {
-      return this.setAgentApprovalPreset(agentId, preset);
     });
 
     ipc.handle(ipcChannels.setAgentPermissionMode, (_event, agentId: string, mode: string) => {
@@ -805,9 +798,9 @@ export class AppController {
     // A window that lost the pane to another one must not close it on its way out.
     ipc.handle(ipcChannels.browserClose, (event, agentId: string, browserId: string) => this.hostsBrowserPane(event, agentId, browserId) ? this.browserPane.close(agentId, browserId) : undefined);
 
-    ipc.handle(ipcChannels.respondToClientRequest, async (_event, response: ClientRequestResponse) => {
+    ipc.handle(ipcChannels.respondToAgentRequest, async (_event, response: AgentRequestResponse) => {
       try {
-        return await this.respondToClientRequest(response);
+        return await this.respondToAgentRequest(response);
       } catch (error) {
         throw encodedAppError(error);
       }
@@ -1091,8 +1084,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.connectionsSshCreate, { input }));
   }
 
-  private async checkRemoteConnection(connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(inspectOnly ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId, ...(backends ? { backends } : {}) }));
+  private async checkRemoteConnection(connectionId: string, inspectOnly?: boolean, providers?: HarnessProvider[]): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(inspectOnly ? backendMethods.connectionsRuntimeInspect : backendMethods.connectionsRuntimeSync, { connectionId, ...(providers ? { providers } : {}) }));
   }
 
   private async updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot> {
@@ -1326,35 +1319,15 @@ export class AppController {
     return this.requireBackendClient().request<AppPluginStatus>(backendMethods.settingsPluginStatusGet);
   }
 
-  private getCodexAuthentication(remoteConnectionId?: string): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexAuthenticationGet, remoteConnectionId ? { remoteConnectionId } : undefined);
-  }
-
-  private getClaudeAuthentication(remoteConnectionId?: string): Promise<ClaudeAuthentication> {
+  private async authenticateProvider(provider: HarnessProvider, action: ProviderAuthenticationAction['action'], options: ProviderAuthenticationOptions = {}): Promise<ProviderAuthentication> {
+    const { method, loginId, remoteConnectionId } = options;
     if (remoteConnectionId !== undefined && (typeof remoteConnectionId !== 'string' || !remoteConnectionId.trim())) throw new Error('A remote connection is required.');
-    return this.requireBackendClient().request(backendMethods.claudeAuthenticationGet, remoteConnectionId === undefined ? undefined : { connectionId: remoteConnectionId });
-  }
-
-  private startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<import('@workspace/core/contracts').CodexChatGptDeviceCodeLogin> {
-    if (typeof remoteConnectionId !== 'string' || !remoteConnectionId.trim()) throw new Error('A remote connection is required.');
-    return this.requireBackendClient().request(backendMethods.codexChatGptDeviceCodeLoginStart, { remoteConnectionId });
-  }
-
-  private cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexLoginCancel,
-      remoteConnectionId || loginId ? { ...(remoteConnectionId ? { remoteConnectionId } : {}), ...(loginId ? { loginId } : {}) } : undefined);
-  }
-
-  private async startCodexChatGptLogin(): Promise<CodexChatGptLogin> {
-    const login = await this.requireBackendClient().request<CodexChatGptLogin>(
-      backendMethods.codexChatGptLoginStart,
-    );
-    await this.openExternal(login.authUrl);
-    return login;
-  }
-
-  private logoutCodex(): Promise<CodexAuthentication> {
-    return this.requireBackendClient().request(backendMethods.codexLogout);
+    const authentication = await this.requireBackendClient().request<ProviderAuthentication>(backendMethods.providerAuthenticate, {
+      provider: provider, action, ...(method ? { method } : {}), ...(loginId ? { loginId } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}),
+    });
+    // A local browser login continues in the user's default browser.
+    if (!remoteConnectionId && action === 'login' && authentication.login?.method === 'browser') await this.openExternal(authentication.login.url);
+    return authentication;
   }
 
   private async getDaemonStatus(): Promise<DaemonStatus> {
@@ -1535,11 +1508,11 @@ export class AppController {
     prompt: string,
     options?: RendererSendPromptOptions,
   ): Promise<AppSnapshot> {
-    const backendOptions = this.resolveRendererPromptOptions(options);
+    const providerOptions = this.resolveRendererPromptOptions(options);
     return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentPromptSend, {
       agentId,
       prompt,
-      options: backendOptions,
+      options: providerOptions,
     }));
   }
 
@@ -1708,25 +1681,21 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentGoalClear, { agentId }));
   }
 
-  private async setAgentApprovalPreset(agentId: string, preset: ApprovalPreset): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentApprovalPresetUpdate, { agentId, preset }));
-  }
-
   private async setAgentPermissionMode(agentId: string, mode: string): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentPermissionModeUpdate, { agentId, mode }));
   }
 
-  private async listBackendModels(agentId: string | null, backend?: import('@workspace/core/contracts').AgentBackend, remoteConnectionId?: string): Promise<BackendModelOption[]> {
+  private async listProviderModels(agentId: string | null, provider?: import('@workspace/core/contracts').HarnessProvider, remoteConnectionId?: string): Promise<ProviderModelOption[]> {
     return this.requireBackendClient().request(backendMethods.agentModelsList, {
-      ...(agentId ? { agentId } : {}), ...(backend ? { backend } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}),
+      ...(agentId ? { agentId } : {}), ...(provider ? { provider: provider } : {}), ...(remoteConnectionId ? { remoteConnectionId } : {}),
     });
   }
 
-  private async listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]> {
+  private async listProviderPlugins(agentId: string): Promise<ProviderPluginSummary[]> {
     return this.requireBackendClient().request(backendMethods.agentPluginsList, { agentId });
   }
 
-  private async listBackendSkills(agentId: string): Promise<BackendSkillSummary[]> {
+  private async listProviderSkills(agentId: string): Promise<ProviderSkillSummary[]> {
     return this.requireBackendClient().request(backendMethods.agentSkillsList, { agentId });
   }
 
@@ -1744,10 +1713,10 @@ export class AppController {
   }
 
   private async steerPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot> {
-    const backendOptions = this.resolveRendererPromptOptions(options);
+    const providerOptions = this.resolveRendererPromptOptions(options);
     return this.adoptBackendMutationSnapshot(await this.requireBackendClient().request<AppSnapshot>(
       backendMethods.agentPromptSteer,
-      backendOptions ? { agentId, prompt, options: backendOptions } : { agentId, prompt },
+      providerOptions ? { agentId, prompt, options: providerOptions } : { agentId, prompt },
     ));
   }
 
@@ -1964,8 +1933,9 @@ export class AppController {
     return this.backendClient;
   }
 
-  private async respondToClientRequest(response: ClientRequestResponse): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRequestRespond, { response: agentResponseFromClientResponse(response) }));
+  private async respondToAgentRequest(response: AgentRequestResponse): Promise<AppSnapshot> {
+    if (!isAgentRequestResponse(response)) throw new Error('Invalid agent request response.');
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentRequestRespond, { response }));
   }
 
   private installUpdate(): void {
@@ -2032,7 +2002,7 @@ export class AppController {
     });
   }
 
-  private debugMenuOptions(): Pick<AppMenuCallbacks, 'restartBackend' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
+  private debugMenuOptions(): Pick<AppMenuCallbacks, 'restartBackend' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugDisconnectedEngine' | 'setDebugDisconnectedEngine' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
     return {
       restartBackend: () => {
         if (!this.debugBackendRestartPending) void this.requestDebugBackendRestart().catch(error => this.reportDebugBackendRestartError(error));
@@ -2051,6 +2021,11 @@ export class AppController {
       setDebugMissingEngines: enabled => {
         if (app.isPackaged) return;
         this.setDebugFlag('missingEngines', 'debug-missing-engines', enabled);
+      },
+      getDebugDisconnectedEngine: () => this.currentDebugFlags().disconnectedEngine === true,
+      setDebugDisconnectedEngine: enabled => {
+        if (app.isPackaged) return;
+        this.setDebugFlag('disconnectedEngine', 'debug-disconnected-engine', enabled);
       },
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
@@ -2111,7 +2086,7 @@ export class AppController {
     return (window && this.debugFlags.get(window)) || {};
   }
 
-  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines', enabled: boolean): void {
+  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines' | 'debug-disconnected-engine', enabled: boolean): void {
     const window = this.windows.focused();
     if (!window) return;
     this.debugFlags.set(window, { ...this.debugFlags.get(window), [flag]: enabled });
@@ -2318,7 +2293,7 @@ export class AppController {
     }
   }
 
-  private setConnectionState(state: BackendConnectionState): void {
+  private setConnectionState(state: ProviderConnectionState): void {
     this.connectionState = state;
     this.emitClientEvent({
       type: 'client.connectionChanged',
@@ -2717,7 +2692,7 @@ function isRemoteAutomationLocation(location: AutomationLocation | undefined): l
 }
 
 function eventForRenderer(event: AppBackendEvent): MainToRendererEvent {
-  return { ...event, source: 'backend' };
+  return { ...event, source: 'provider' };
 }
 
 function decodeSnapshotFromBackendEvent(event: AppBackendEvent): DecodedAppSnapshot | null {

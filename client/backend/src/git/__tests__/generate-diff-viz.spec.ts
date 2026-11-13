@@ -103,16 +103,17 @@ it('keeps the review title, visual brief and code-backed box annotations, droppi
   expect(result).toMatchObject({ title: draft.title, layout: draft.layout, nodes: [{ review, locations: [locations[0]] }, { id: 'provider' }] });
 });
 
-it('sends only the working folder and selected scope with the normal tool-enabled utility tier', async () => {
+it('sends the selected scope and its patch, bounded, to the normal utility tier without tools', async () => {
   const generate = vi.fn().mockResolvedValue({ text: JSON.stringify(diagram) });
-  const selected = { ...comparison, target: { type: 'branch' as const, baseRef: 'origin/main' }, scopes: ['unstaged' as const] };
+  const selected = { ...comparison, target: { type: 'branch' as const, baseRef: 'origin/main' }, scopes: ['unstaged' as const], diff: 'diff --git a/new.ts b/new.ts\n+one\n' };
   await generateDiffViz(selected, '/repo/worktree', generate);
   const input = generate.mock.calls[0]![0];
-  expect(input).toMatchObject({ cwd: '/repo/worktree', complexity: 'normal', tools: true, timeoutMs: null });
-  expect(input.prompt).toContain('/repo/worktree');
+  expect(input).toMatchObject({ cwd: '/repo/worktree', complexity: 'normal', timeoutMs: null });
+  expect(input).not.toHaveProperty('tools');
   expect(input.prompt).toContain('origin/main');
   expect(input.prompt).toContain('unstaged');
-  expect(input.prompt).not.toMatch(/diff --git|Current working-tree context/);
+  expect(input.prompt).toContain(selected.diff);
+  expect(input.developerInstructions).not.toMatch(/Git and source tools|git diff, show and log/);
   const shared=readBundledSkill('korus-stack-diagram',{}).markdown;
   expect(input.developerInstructions).toContain(shared);
   expect(input.developerInstructions.indexOf(shared)).toBe(input.developerInstructions.lastIndexOf(shared));

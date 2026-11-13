@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 // Component-scoped renderer copy. Keep keys stable when editing messages.
-export const surfaceMessages = {
+export const conversationMessages = {
   settingsWorkflowsPanel: {
     introTitle: 'Shape how your agents work',
     introDescription: 'Choose how agents plan before they build and how they hand work to other agents.',
@@ -147,6 +147,8 @@ export const surfaceMessages = {
     "closingAgent": "Closing agent",
     "worktreeDeleted": "Worktree deleted",
     "agentClosed": "Agent closed",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the agent",
     "worktreeDeletionFailed": "Worktree deletion failed",
     "agentCloseFailed": "Agent close failed"
   },
@@ -157,10 +159,10 @@ export const surfaceMessages = {
     "repository": "Repository",
     "workIn": "Work in...",
     "newWorktree": "New Worktree...",
-    "team": "Team",
-    "newTeam": "New team",
-    "newTeamName": "New team name",
-    "enterTeamName": "Enter team name",
+    "team": "Workspace",
+    "newTeam": "New workspace",
+    "newTeamName": "New workspace name",
+    "enterTeamName": "Enter workspace name",
     "codingAgent": "Coding agent",
     "codex": "Codex",
     "claudeCode": "Claude Code",
@@ -183,7 +185,7 @@ export const surfaceMessages = {
     "searchAgents": "Search agents",
     "placeholder": "Go to agent…",
     "noMatchingAgents": "No matching agents.",
-    "noTeam": "No team"
+    "noTeam": "No workspace"
   },
   "fileKind": {
     "code": "Code",
@@ -212,11 +214,11 @@ export const surfaceMessages = {
     "removedLines": "Removed lines",
     "openRepositoryBacklog": "Open repository backlog",
     "toggleExecutionPlan": "Toggle execution plan",
-    "expandWorkspace": "Expand workspace",
-    "restoreWorkspaceWidth": "Restore workspace width",
-    "toggleRightWorkspace": "Toggle right workspace",
-    "closeRightWorkspace": "Close right workspace",
-    "openRightWorkspace": "Open right workspace",
+    "expandWorkspace": "Expand panel",
+    "restoreWorkspaceWidth": "Restore panel width",
+    "toggleRightWorkspace": "Toggle right panel",
+    "closeRightWorkspace": "Close right panel",
+    "openRightWorkspace": "Open right panel",
     "loading": "Loading",
     "connected": "Connected",
     "claude": "Claude",
@@ -230,7 +232,7 @@ export const surfaceMessages = {
     "actions": "Actions"
   },
   "appShell": {
-    "resizeRightWorkspace": "Resize right workspace",
+    "resizeRightWorkspace": "Resize right panel",
     "assign": "Assign",
     "repositoryCloningIsNotAvailable": "Repository cloning is not available.",
     "repositoryCreationIsNotAvailable": "Project creation is not available.",
@@ -267,8 +269,8 @@ export const surfaceMessages = {
     "theDuplicateAgentCouldNotBeCreated": "The duplicate agent could not be created.",
     "aDuplicatedAgentRequiresANewWorktree": "A duplicated agent requires a new worktree.",
     "gitHubDidNotReturnThePullRequestBranch": "GitHub did not return the pull request branch.",
-    "createOrSelectATeamBeforeStartingRepositoryWork": "Create or select a team before starting repository work.",
-    "theSelectedTeamIsUnavailable": "The selected team is unavailable.",
+    "createOrSelectATeamBeforeStartingRepositoryWork": "Create or select a workspace before starting repository work.",
+    "theSelectedTeamIsUnavailable": "The selected workspace is unavailable.",
     "assignAnyway": "Assign anyway?",
     "thisImageCannotBeOpenedForAnnotation": "This image cannot be opened for annotation.",
     "annotatedImagesCannotBePreparedByThisHost": "Annotated images cannot be prepared by this host.",
@@ -469,8 +471,8 @@ export const surfaceMessages = {
     "nextPage": "Next page",
     "launch": "Launch",
     "eachAgentWillWorkInADedicatedWorktree": "? Each agent will work in a dedicated worktree.",
-    "team": "Team",
-    "teamForNewAgents": "Team for new agents",
+    "team": "Workspace",
+    "teamForNewAgents": "Workspace for new agents",
     "cancel": "Cancel",
     "investigate": "Investigate",
     "fix": "Fix",
@@ -511,17 +513,17 @@ export const surfaceMessages = {
     "refreshFiles": "Refresh files",
     "unavailable": "File browsing is unavailable.",
     "loadMoreFiles": "Load more files",
-    "workspaceFiles": "Workspace files",
-    "searchWorkspaceFiles": "Search workspace files",
+    "workspaceFiles": "Project files",
+    "searchWorkspaceFiles": "Search project files",
     "searchFiles": "Search files",
     "loadingFiles": "Loading files…",
-    "noFilesInThisWorkspace": "No files in this workspace.",
+    "noFilesInThisWorkspace": "No files in this project.",
     "noMatchingFiles": "No matching files.",
-    "workspaceFileTree": "Workspace file tree"
+    "workspaceFileTree": "Project file tree"
   },
   "fileQuickOpen": {
-    "openWorkspaceFile": "Open workspace file",
-    "quickOpenWorkspaceFile": "Quick open workspace file",
+    "openWorkspaceFile": "Open project file",
+    "quickOpenWorkspaceFile": "Quick open project file",
     "openFile": "Open file…",
     "noMatchingFiles": "No matching files."
   },
@@ -748,9 +750,9 @@ export const surfaceMessages = {
     "selectRepositories": "Select repositories",
     "automationRepositories": "Automation repositories",
     "noConfiguredGitHubRepositories": "Add a local clone of a GitHub repository to use it in an automation.",
-    "team": "Team",
-    "selectTeam": "Select team",
-    "automationTargetTeam": "Automation target team",
+    "team": "Workspace",
+    "selectTeam": "Select workspace",
+    "automationTargetTeam": "Automation target workspace",
     "run": "Run",
     "automationSchedule": "Automation schedule",
     "every5Minutes": "Every 5 minutes",
@@ -812,7 +814,7 @@ export const surfaceMessages = {
     "clearHistory": "Clear history?",
     "thisExecutionWillBeRemovedFromTheAutomationHistory": "This execution will be removed from the automation history.",
     "deleteExecution": "Delete execution?",
-    "missingTeam": "Missing team",
+    "missingTeam": "Missing workspace",
     "never": "Never",
     "unknown": "Unknown"
   },
@@ -866,8 +868,8 @@ export const surfaceMessages = {
   },
   "rightWorkspacePanel": {
     "dropLink": "Drop link to open in sidebar",
-    "rightWorkspace": "Right workspace",
-    "rightWorkspaceTabs": "Right workspace tabs",
+    "rightWorkspace": "Right panel",
+    "rightWorkspaceTabs": "Right panel tabs",
     "scrollTabsLeft": "Scroll tabs left",
     "scrollTabsRight": "Scroll tabs right",
     "tabActions": "Tab actions",
@@ -879,9 +881,9 @@ export const surfaceMessages = {
     "closeTab": "Close tab",
     "closeOtherTabs": "Close other tabs",
     "closeAllTabs": "Close all tabs",
-    "openRightWorkspaceTab": "Open right workspace tab",
+    "openRightWorkspaceTab": "Open right panel tab",
     "newTab": "New tab",
-    "openAWorkspaceTab": "Open a workspace tab",
+    "openAWorkspaceTab": "Open a panel tab",
     "backlog": "Backlog",
     "review": "Review",
     "visualize": "Visualize",
@@ -1231,33 +1233,33 @@ export const surfaceMessages = {
     "unableToLoadSource": "Unable to load source."
   },
   "teamContextMenu": {
-    "teamActions": "Team actions",
+    "teamActions": "Workspace actions",
     "openInNewWindow": "Open in New Window",
     "editTeam": "Edit",
     "disconnect": "Disconnect",
-    "deleteTeam": "Delete Team",
+    "deleteTeam": "Delete Workspace",
     "closeTeam": "Close"
   },
   "teamDialog": {
     "connection": "Connection",
     "local": "Local",
-    "remoteTeam": "Remote team",
-    "createNewRemoteTeam": "Create new remote team",
+    "remoteTeam": "Remote workspace",
+    "createNewRemoteTeam": "Create new remote workspace",
     "name": "Name",
-    "enterTeamName": "Enter team name",
+    "enterTeamName": "Enter workspace name",
     "color": "Color",
-    "teamColor": "Team color",
+    "teamColor": "Workspace color",
     "cancel": "Cancel",
-    "editTeam": "Edit Team",
-    "createTeam": "Create Team",
+    "editTeam": "Edit Workspace",
+    "createTeam": "Create Workspace",
     "connect": "Connect",
     "save": "Save"
   },
   "teamRail": {
-    "teams": "Teams",
+    "teams": "Workspaces",
     "cockpit": "Cockpit",
     "backlog": "Backlog",
-    "createTeam": "Create team",
+    "createTeam": "Create workspace",
     "automations": "Automations",
     "muteSpokenAcknowledgments": "Mute spoken acknowledgments",
     "unmuteSpokenAcknowledgments": "Unmute spoken acknowledgments"
@@ -1323,12 +1325,12 @@ export const surfaceMessages = {
     "retryHistory": "Retry"
   },
   "team-close-confirmation": {
-    "deleteTeam": "Delete Team",
-    "closeTeam": "Close Team",
-    "cannotDeleteTeam": "Cannot delete team",
-    "onlyRemoteTeam": "{team} is the only team on {host}, so it can’t be deleted. Do you want to disconnect instead?",
-    "remoteTeamsUnavailable": "Could not check teams on the remote host.",
-    "remoteTeamNotFound": "This team could not be found on the remote host.",
+    "deleteTeam": "Delete Workspace",
+    "closeTeam": "Close Workspace",
+    "cannotDeleteTeam": "Cannot delete workspace",
+    "onlyRemoteTeam": "{team} is the only workspace on {host}, so it can’t be deleted. Do you want to disconnect instead?",
+    "remoteTeamsUnavailable": "Could not check workspaces on the remote host.",
+    "remoteTeamNotFound": "This workspace could not be found on the remote host.",
     "yes": "Yes"
   }
 } as const;

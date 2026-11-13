@@ -9,9 +9,9 @@ it('separates native login, cancellation, authentication and engine enablement',
   expect(wrapper.text()).toContain('Antigravity');
   expect(wrapper.text()).toContain('Not detected');
   expect(wrapper.findAll('button').some(button => button.text() === 'Connect')).toBe(false);
-  await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-  expect(wrapper.emitted('install')).toStrictEqual([[]]);
-  expect(wrapper.emitted('refresh')).toBeUndefined();
+  expect(wrapper.get('.provider-install-actions a').attributes('href')).toBe('https://antigravity.google/docs/getting-started?tab=cli');
+  expect(wrapper.get('.provider-install-actions code').text()).toBe('curl -fsSL https://antigravity.google/cli/install.sh | bash');
+  expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
   await wrapper.get('button[aria-label="Check again"]').trigger('click');
   expect(wrapper.emitted('refresh')).toEqual([[]]);
   expect(wrapper.emitted('connect')).toBeUndefined();

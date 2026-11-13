@@ -11,10 +11,10 @@ import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGro
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
 import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
-import { useBackendChoices } from './backend-selection';
-import { backendDisplayName } from '@workspace/core/backend-driver';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { defaultBackendCommands } from '@workspace/core/backend-commands';
+import { useProviderChoices } from './provider-selection';
+import { providerDisplayName } from '@workspace/core/provider-driver';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
@@ -129,7 +129,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
     () => workspaceGroups.value.map(group => `${group.id}:${group.sessions.map(session => session.agentId).join(',')}`).join('|'));
   const agentsById = computed(() => new Map(props.agents.map(agent => [agent.id, agent])));
-  const backendChoices = useBackendChoices();
+  const providerChoices = useProviderChoices();
   const contextMenuAgentId = ref<string | null>(null);
   const contextMenuMissionId = ref<string | null>(null);
   const contextMissionWorkspaces = computed(() => missionCreatedWorkspaces(props.missions?.find(mission => mission.id === contextMenuMissionId.value)));
@@ -146,24 +146,24 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   ));
   const canForkContextMenuAgent = computed(() => (
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession) &&
+    Boolean(contextMenuAgent.value.providerSession) &&
     (props.forkableAgentIds ?? []).includes(contextMenuAgent.value.id)
   ));
   const canCompressContextMenuAgent = computed(() => (
     canReplaceContextMenuConversation.value &&
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession)
+    Boolean(contextMenuAgent.value.providerSession)
   ));
   const canCompactContextMenuAgent = computed(() => (
     contextMenuAgent.value?.status.type === 'idle' &&
-    Boolean(contextMenuAgent.value.backendSession) &&
-    defaultBackendCommands(contextMenuAgent.value.backend).some(command => command.slashName === 'compact')
+    Boolean(contextMenuAgent.value.providerSession) &&
+    defaultProviderCommands(contextMenuAgent.value.provider).some(command => command.slashName === 'compact')
   ));
   const canReplaceContextMenuConversation = computed(() => {
     const agent = contextMenuAgent.value;
     return Boolean(agent && (props.summaryReplacementAgentIds
       ? props.summaryReplacementAgentIds.includes(agent.id)
-      : defaultBackendCapabilities(agent.backend).conversationReplaceWithSummary));
+      : defaultProviderCapabilities(agent.provider).scopedExecution === true));
   });
   const contextMenuAgentIsLocal = computed(() => {
     const agent = contextMenuAgent.value;
@@ -201,7 +201,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   ));
   const clientRepositoryOrderUpdate = useListReorderDrag<string>({
     itemIds: () => workspaceGroups.value
-      .filter((group) => group.kind === 'repository')
+      .filter(isRepositoryOrderGroup)
       .map((group) => group.id),
     onDrop: ({ draggedId, beforeId }) => {
       if (!props.teamId) return;
@@ -209,11 +209,11 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       const beforeRepository = beforeId === null
         ? null
         : workspaceGroups.value.find((group) => group.id === beforeId) ?? null;
-      if (repository?.kind !== 'repository' || !repository.repositoryKey) return;
+      if (!repository || !isRepositoryOrderGroup(repository)) return;
 
       emit('reorder-repositories', {
         teamId: props.teamId,
-        repositoryKey: repository.repositoryKey,
+        repositoryKey: repository.repositoryKey!,
         beforeRepositoryKey: beforeRepository?.repositoryKey ?? null,
       });
     },
@@ -226,9 +226,13 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       emit('reorder-feature', { branch, beforeBranch: workspaceGroups.value.find((group) => group.id === beforeId)?.branch ?? null });
     },
   });
-  /** Repositories and, in the worktree view, features are dragged to reorder; the default branch group stays first. */
+  /** Git repositories and plain folders share one reorderable list; activity groups and quick chats don't take part. */
+  function isRepositoryOrderGroup(group: WorkspaceSidebarGroup): boolean {
+    return (group.kind === 'repository' || group.kind === 'folder') && Boolean(group.repositoryKey);
+  }
+  /** Repositories, folders and, in the worktree view, features are dragged to reorder; the default branch group stays first. */
   function groupReorder(group: WorkspaceSidebarGroup) {
-    return group.kind === 'repository' ? clientRepositoryOrderUpdate : isFeatureGroup(group) ? clientFeatureOrderUpdate : null;
+    return isRepositoryOrderGroup(group) ? clientRepositoryOrderUpdate : isFeatureGroup(group) ? clientFeatureOrderUpdate : null;
   }
   function isFeatureGroup(group: WorkspaceSidebarGroup): boolean {
     return group.kind === 'worktree' && !group.protected && Boolean(group.branch);
@@ -573,9 +577,9 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     clientAgentOrderUpdate,
     selectAgent,
     openAgentMenu,
-    backendChoices,
+    providerChoices,
     agentsById,
-    backendDisplayName,
+    providerDisplayName,
     isPullRequestFinished,
     statusLabel,
     showQuickSwitchShortcut,

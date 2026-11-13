@@ -12,8 +12,8 @@ async function fixture() {
   const home = await mkdtemp(path.join(os.tmpdir(), 'review-report-'));
   homes.push(home);
   const agent: Agent = {
-    id: 'reviewer', name: 'Review', folder: '/repo', backend: 'claude',
-    backendDefaults: { kind: 'claude', model: 'sonnet', reasoningEffort: 'high' },
+    id: 'reviewer', name: 'Review', folder: '/repo', provider: 'claude',
+    providerDefaults: { kind: 'claude', model: 'sonnet', reasoningEffort: 'high' },
     status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
   };
   const session: CodeReviewSession = {
@@ -22,7 +22,7 @@ async function fixture() {
     activeRoundId: 'round-1', createdAt: 'start', updatedAt: 'end',
     automation: { enabled: true, state: 'completed', maxPriority: 'p2', maxRounds: 3, commits: ['abc123'] },
     rounds: [{ id: 'round-1', number: 1, status: 'completed', startedAt: 'start', completedAt: 'end',
-      reviewerSession: { kind: 'claude', sessionId: 'native-session', transport: 'stdio' },
+      reviewerSession: { kind: 'claude', conversationId: 'native-session', transport: 'stdio' },
       summary: 'Authorization verified. ```',
       findings: [{ id: 'finding-1', roundId: 'round-1', priority: 'p1', title: 'Check ownership', body: 'Missing authorization.',
         decision: { state: 'selected', decidedAt: 'start' }, discussion: [],

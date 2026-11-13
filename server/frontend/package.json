@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "node ../../scripts/typecheck.mjs vue --noEmit",
     "lint": "npm run typecheck && stylelint 'src/**/*.{css,vue}'",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"

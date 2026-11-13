@@ -1,5 +1,4 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { CodexConversationSnapshot } from '@codex-app-sdk/core/surface';
 import type { MainToRendererEvent } from '../contracts';
 import { applyMainEventToSnapshot, createInitialSnapshot } from '../snapshot';
 import { applyCoordinationEventToSnapshot } from '../snapshot-coordination-reducer';
@@ -14,7 +13,7 @@ import { applyRuntimeEventToSnapshot } from '../snapshot-runtime-reducer';
 import { applySubagentEventToSnapshot } from '../snapshot-subagent-reducer';
 
 const runtimeEventTypes = [
-  'backend.statusChanged',
+  'provider.statusChanged',
   'snapshot.updated',
   'account.rateLimitsUpdated',
   'workItem.assignmentUpdated',
@@ -47,20 +46,14 @@ const subagentEventTypes = [
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'subagent'>[];
 
 const rendererEventTypes = [
-  'cursor.conversationSnapshotChanged',
-  'cursor.conversationEventReceived',
   'conversation.shareChanged',
-  'antigravity.conversationSnapshotChanged',
-  'antigravity.conversationEventReceived',
+  'conversation.sessionSnapshot',
+  'conversation.sessionPatch',
   'provider.authenticationChanged',
   'client.connectionChanged',
   'remoteControl.statusChanged',
   'models.changed',
   'skills.changed',
-  'codex.conversationSnapshotChanged',
-  'codex.conversationEventReceived',
-  'claude.conversationSnapshotChanged',
-  'claude.conversationEventReceived',
   'client.markdownDisplayRequested',
   'client.celebrationRequested',
   'agentCreation.progress',
@@ -72,49 +65,14 @@ const rendererEventTypes = [
   'conversation.modeUpdated',
   'conversation.historyLoadFailed',
   'workspace.fileActivityDetected',
+  'turn.started',
+  'turn.completed',
+  'session.error',
+  'tool.updated',
+  'turn.output',
+  'diff.updated',
+  'file.activity',
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'renderer'>[];
-
-const codexConversationSnapshot = {
-  status: 'ready',
-  authentication: {
-    status: 'loaded',
-    account: null,
-    requiresOpenaiAuth: false,
-    error: null,
-    login: { status: 'idle', loginId: null, authUrl: null, error: null },
-  },
-  conversations: [],
-  activeConversationId: 'thread-1',
-  activeTurnId: null,
-  turnIds: [],
-  turns: [],
-  messages: [],
-  clientRequests: [],
-  answeredClientRequestIds: [],
-  approvals: [],
-  models: [],
-  modelCatalogStatus: 'loaded',
-  skills: [],
-  skillCatalogStatus: 'loaded',
-  plugins: [],
-  pluginCatalogStatus: 'loaded',
-  permissionProfiles: [],
-  approvalPresets: [],
-  approvalPreset: null,
-  selectedModelId: null,
-  selectedReasoningEffort: null,
-  selectedServiceTier: null,
-  planMode: false,
-  contextUsage: null,
-  goal: null,
-  turnGitDiff: null,
-  threadStatus: null,
-  rateLimits: null,
-  queuedPrompts: [],
-  busy: false,
-  historyLoading: false,
-  error: null,
-} satisfies CodexConversationSnapshot;
 
 const occurredAt = '2026-09-04T00:00:00.000Z';
 const base = { seq: 1, occurredAt } as const;
@@ -134,80 +92,17 @@ const rendererOnlyEvents = [
   {
     ...base,
     type: 'models.changed',
-    backend: 'codex',
+    provider: 'codex',
     payload: { models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] },
   },
   {
     ...base,
     type: 'skills.changed',
-    backend: 'codex',
+    provider: 'codex',
     payload: {
       cwd: null,
       status: 'loaded',
       skills: [{ name: 'test', path: '/skill', enabled: true }],
-    },
-  },
-  {
-    ...agent,
-    backend: 'codex',
-    threadId: 'thread-1',
-    type: 'codex.conversationSnapshotChanged',
-    payload: { revision: 1, snapshot: codexConversationSnapshot },
-  },
-  {
-    ...agent,
-    backend: 'codex',
-    threadId: 'thread-1',
-    type: 'codex.conversationEventReceived',
-    payload: {
-      revision: 2,
-      event: {
-        seq: 2,
-        occurredAt,
-        origin: 'notification',
-        type: 'message.delta',
-        conversationId: 'thread-1',
-        turnId: 'turn-1',
-        payload: { messageId: 'message-1', itemId: 'item-1', delta: 'Hello' },
-      },
-    },
-  },
-  {
-    ...agent,
-    backend: 'claude',
-    type: 'claude.conversationSnapshotChanged',
-    payload: {
-      revision: 1,
-      snapshot: {
-        agentId: 'agent-1',
-        sessionId: 'claude-session-1',
-        activeTurnId: null,
-        turnIds: [],
-        turns: [],
-        messages: [],
-        answeredClientRequestIds: [],
-        busy: false,
-        historyLoading: false,
-        historyState: { hasOlder: false, loadingOlder: false },
-        contextUsage: null,
-        plan: null,
-        error: null,
-      },
-    },
-  },
-  {
-    ...agent,
-    backend: 'claude',
-    type: 'claude.conversationEventReceived',
-    payload: {
-      revision: 2,
-      event: {
-        ...agent,
-        backend: 'claude',
-        turnId: 'turn-1',
-        type: 'message.delta',
-        payload: { delta: 'Hello' },
-      },
     },
   },
   {
@@ -226,7 +121,7 @@ const rendererOnlyEvents = [
     payload: {
       id: 'creation-1',
       state: 'running',
-      backend: 'codex',
+      provider: 'codex',
       repositoryName: 'repo',
       createWorktree: true,
       hasPrompt: true,
@@ -266,8 +161,8 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'codex',
-    threadId: 'thread-1',
+    provider: 'codex',
+    conversationId: 'thread-1',
     type: 'conversation.modeUpdated',
     payload: { mode: 'plan' },
   },
@@ -278,8 +173,8 @@ const rendererOnlyEvents = [
   },
   {
     ...agent,
-    backend: 'codex',
-    threadId: 'thread-1',
+    provider: 'codex',
+    conversationId: 'thread-1',
     turnId: 'turn-1',
     type: 'workspace.fileActivityDetected',
     payload: {

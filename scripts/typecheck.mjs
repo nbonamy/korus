@@ -2,13 +2,17 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceTypecheck } from './sdk-sources.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(process.cwd(), 'package.json'));
 const tools = createRequire(
   path.join(root, 'scripts/typecheck-tools/package.json'),
 );
-const [kind, ...args] = process.argv.slice(2);
+const [kind, ...originalArgs] = process.argv.slice(2);
+const selected = kind === 'stock' ? { args: originalArgs, cleanup() {} } : sourceTypecheck(root, originalArgs);
+const args = selected.args;
+process.on('exit', selected.cleanup);
 function execute(command, parameters, env = process.env) {
   const result = spawnSync(command, parameters, { stdio: 'inherit', env });
   if (result.error) throw result.error;
@@ -29,7 +33,7 @@ if (kind === 'stock') {
   }
   const stock = process.env.TYPECHECK_COMPILER === 'stock';
   if (kind === 'vue') {
-    process.argv.splice(2, 1);
+    process.argv.splice(2, process.argv.length - 2, ...args);
     require('vue-tsc').run(
       stock
         ? require.resolve('typescript/lib/tsc')

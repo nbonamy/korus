@@ -9,7 +9,7 @@
     >
       <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
         <el-menu-item v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
-          <BackendIcon v-if="destination.backend" :backend="destination.backend" monochrome />
+          <ProviderIcon v-if="destination.provider" :provider="destination.provider" monochrome />
           <component :is="destination.icon" v-else aria-hidden="true" />
           <span>{{ $t(destination.labelKey) }}</span>
         </el-menu-item>
@@ -21,13 +21,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { availableSettingsDestinations, type SettingsTab } from './settings-tabs';
-import type { AgentBackend } from '@workspace/core/contracts';
-import BackendIcon from './BackendIcon.vue';
+import type { HarnessProvider } from '@workspace/core/contracts';
+import ProviderIcon from './ProviderIcon.vue';
 import { appHostCapabilities } from '../platform-api';
 
 const props = defineProps<{
   activeTab: SettingsTab;
-  availableBackends?: AgentBackend[];
+  availableProviders?: HarnessProvider[];
 }>();
 
 const emit = defineEmits<{
@@ -39,7 +39,7 @@ const groups = [
   { id: 'agents', labelKey: 'surface.settingsSidebar.groupAgents' },
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
-const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.availableBackends ?? [] }));
+const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableProviders: props.availableProviders ?? [] }));
 function selectTab(tab: string): void {
   const destination = destinations.value.find(item => item.id === tab);
   if (destination) emit('select', destination.id);
@@ -90,7 +90,7 @@ function selectTab(tab: string): void {
 }
 
 .settings-sidebar :deep(.el-menu-item svg),
-.settings-sidebar :deep(.el-menu-item .backend-icon) {
+.settings-sidebar :deep(.el-menu-item .provider-icon) {
   flex: 0 0 auto;
   width: var(--icon-md);
   height: var(--icon-md);
@@ -101,7 +101,7 @@ function selectTab(tab: string): void {
   background: var(--color-surface-high);
 }
 
-.settings-sidebar :deep(.el-menu-item .backend-icon) {
+.settings-sidebar :deep(.el-menu-item .provider-icon) {
   transform: scale(1.15);
 }
 

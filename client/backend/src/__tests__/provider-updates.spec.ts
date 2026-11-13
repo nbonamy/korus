@@ -6,7 +6,7 @@ function setup() {
   const installation = { status: 'available' as 'available' | 'current' | 'manual', executable: '/bin/codex', version: '1.0.0', latestVersion: '1.1.0', method: 'npm' as const, channel: 'latest', identity: 'npm:/bin/codex:1.0.0', command: { file: '/bin/npm', args: ['install', '-g', '@openai/codex@1.1.0'] } };
   const inspect = vi.fn(async () => installation);
   const upgrade = vi.fn(async () => { installation.version = '1.1.0'; installation.status = 'current'; });
-  const restart = vi.fn(async (_backend, work: () => Promise<void>) => { await work(); });
+  const restart = vi.fn(async (_provider, work: () => Promise<void>) => { await work(); });
   const updates = new ProviderUpdates({ inspect, upgrade, withStoppedProvider: restart, busy: () => busy });
   return { updates, inspect, upgrade, restart, installation, setBusy: (value: boolean) => { busy = value; } };
 }
@@ -17,7 +17,7 @@ describe('provider upgrades', () => {
     const installation = { status: 'available' as 'available' | 'current', executable: '/agent', version: 'native-build-old', latestVersion: 'native-build-new', method: 'native' as const, identity: 'cursor-build', command: { file: '/agent', args: ['update'] } };
     const inspect = vi.fn(async () => installation);
     const upgrade = vi.fn(async () => { installation.version = installation.latestVersion; installation.status = 'current'; });
-    const stopped = vi.fn(async (_backend, work: () => Promise<void>) => { await work(); });
+    const stopped = vi.fn(async (_provider, work: () => Promise<void>) => { await work(); });
     const updates = new ProviderUpdates({ inspect, upgrade, busy: () => busy, withStoppedProvider: stopped });
     const status = await updates.get('cursor', true);
     expect(status).toMatchObject({ status: 'available', canUpgrade: true, installedVersion: installation.version });

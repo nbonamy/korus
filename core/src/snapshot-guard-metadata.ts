@@ -1,4 +1,6 @@
+import { isProviderCommandSummary, operationCapabilityFlags, subagentTranscriptKinds } from './capability-flags';
 import { isProviderSafetyReview } from './provider-safety-block';
+import { isProviderConversationRef } from '@korus-dev/multi-agent-sdk/contracts';
 import { isDesignWorkspace } from './design';
 import { isExecutionSelection } from './execution-selection';
 import { isPromptContent } from './snapshot-guard-collections';
@@ -15,7 +17,6 @@ import { isWorktreeInitializationState } from './worktree-initialization';
 import { isProviderConnection } from './contracts/provider-setup';
 import { isThreadFlags } from './thread-flags';
 import { isAppTextDescriptor } from './app-text';
-import { isApprovalPreset, isApprovalsReviewer } from './approval-presets';
 import { spokenAnnouncementVoices } from './contracts';
 import { isPlanReview } from './plan-review';
 import { isVisualization, isVisualizeSession } from './visualize';
@@ -30,7 +31,7 @@ import {
 } from './subagent-values';
 import {
   includes,
-  isAgentBackend,
+  isHarnessProvider,
   isArrayOf,
   isBoolean,
   isNullableNumber,
@@ -59,16 +60,15 @@ export function isSnapshotMetadata(value: unknown): value is Record<string, unkn
     isNullableString(value.activeTeamId) &&
     isNullableString(value.activeAgentId) &&
     optional(value, 'queuedPrompts', (candidate) => isArrayOf(candidate, isQueuedPrompt)) &&
-    isRecordMapOf(value.backendApprovals, (candidate) => isArrayOf(candidate, isBackendApprovalRequest)) &&
+    isRecordMapOf(value.providerApprovals, (candidate) => isArrayOf(candidate, isProviderApprovalRequest)) &&
     optional(value, 'agentRequests', (candidate) => isRecordMapOf(candidate, (requests) => isArrayOf(requests, isAgentRequest))) &&
     optional(value, 'clientPreferences', (candidate) => isRecordMapOf(candidate, isClientPreferences)) &&
     isRecordMapOf(value.agentGitStatuses, isAgentGitStatus) &&
     isRecordMapOf(value.turnGitDiffs, isTurnGitDiff) &&
     isRecordMapOf(value.subagentTrees, isSubagentTree) &&
-    isArrayOf(value.backendRuntimes, isBackendRuntimeStatus) &&
+    isArrayOf(value.providerRuntimes, isProviderRuntimeStatus) &&
     optional(value, 'providerConnections', candidate => isArrayOf(candidate, isProviderConnection)) &&
-    optional(value, 'accountRateLimits', isAccountRateLimits) &&
-    optional(value, 'backendAccountRateLimits', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, limits]) => isAgentBackend(backend) && isAccountRateLimits(limits))) &&
+    optional(value, 'providerAccountRateLimits', candidate => isRecord(candidate) && Object.entries(candidate).every(([provider, limits]) => isHarnessProvider(provider) && isAccountRateLimits(limits))) &&
     isWorkBacklog(value.workBacklog) &&
     isRemoteConnections(value.remoteConnections) &&
     isGeneralSettings(value.general) &&
@@ -79,7 +79,7 @@ export function isSnapshotMetadata(value: unknown): value is Record<string, unkn
 function isAgentRequest(value: unknown): boolean {
   if (!isRecord(value) || !isString(value.id) || !isString(value.conversationId)
     || !optional(value, 'turnId', isString) || !optional(value, 'itemId', isString)) return false;
-  if (value.kind === 'approval') return isBackendApprovalRequest(value.approval);
+  if (value.kind === 'approval') return isProviderApprovalRequest(value.approval);
   if (value.kind === 'toolConfirmation') {
     const confirmation = value.confirmation;
     return isRecord(confirmation)
@@ -135,9 +135,9 @@ function isAgent(value: unknown): boolean {
     isNullableString(value.folder) &&
     optional(value, 'workspace', isAgentWorkspaceIdentity) &&
     optional(value, 'worktreeInitialization', isWorktreeInitializationState) &&
-    isAgentBackend(value.backend) &&
-    optional(value, 'backendSession', isBackendSession) &&
-    optional(value, 'backendDefaults', isBackendDefaults) &&
+    isHarnessProvider(value.provider) &&
+    optional(value, 'providerSession', isProviderSession) &&
+    optional(value, 'providerDefaults', isProviderDefaults) &&
     optional(value, 'openInApplication', isOpenInApplication) &&
     optional(value, 'gitDiffTarget', isAgentGitDiffTarget) &&
     optional(value, 'contextUsage', isAgentContextUsage) &&
@@ -150,7 +150,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'autoResumePending', isBoolean) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
-    optional(value, 'designWorkspace', isDesignWorkspace) &&
+    optional(value, 'designWorkspaces', list => isArrayOf(list, isDesignWorkspace) && (list as unknown[]).length <= 20) &&
     optional(value, 'visualize', isVisualizeSession) &&
     optional(value, 'isRegistered', isBoolean) &&
     optional(value, 'mcpSessionId', isString) &&
@@ -213,44 +213,24 @@ function isAgentWorkspaceIdentity(value: unknown): boolean {
     optional(value, 'originUrl', isString);
 }
 
-function isBackendSession(value: unknown): boolean {
+function isProviderSession(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  if (value.kind === 'antigravity' || value.kind === 'cursor') return typeof value.sessionId === 'string';
-  if (value.kind === 'codex') return typeof value.threadId === 'string';
-  return value.kind === 'claude' &&
-    typeof value.sessionId === 'string' &&
-    includes(['stdio', 'websocket'], value.transport) &&
-    optional(value, 'transcriptSessionId', isString) &&
+  if (!isHarnessProvider(value.kind) || typeof value.conversationId !== 'string') return false;
+  return value.kind !== 'claude' || includes(['stdio', 'websocket'], value.transport) &&
+    optional(value, 'transcriptConversationId', isString) &&
     optional(value, 'transcriptFolder', isString) &&
     optional(value, 'serverUrl', isString) &&
     optional(value, 'model', isString) &&
     optional(value, 'reasoningEffort', isString);
 }
 
-function isBackendDefaults(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.kind === 'cursor') return optional(value, 'model', isString)
-    && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString)
-    && optional(value, 'reasoningEffort', isString) && optional(value, 'serviceTier', isNullableString);
-  if (value.kind === 'antigravity') return optional(value, 'model', isString)
-    && optional(value, 'userSelectedModel', isBoolean) && optional(value, 'permissionMode', isString);
-  if (value.kind === 'codex') {
-    return optional(value, 'model', isString) &&
-      optional(value, 'userSelectedModel', isBoolean) &&
-      optional(value, 'approvalPreset', isApprovalPreset) &&
-      optional(value, 'approvalPolicy', isString) &&
-      optional(value, 'approvalsReviewer', isApprovalsReviewer) &&
-      optional(value, 'sandboxMode', isString) &&
-      optional(value, 'reasoningEffort', isString) &&
-      optional(value, 'serviceTier', isNullableString);
-  }
-  return value.kind === 'claude' &&
-    optional(value, 'model', isString) &&
-    optional(value, 'userSelectedModel', isBoolean) &&
-    optional(value, 'reasoningEffort', isString) &&
-    optional(value, 'serviceTier', isNullableString) &&
-    optional(value, 'permissionMode', isString) &&
-    optional(value, 'thinking', isThinkingDefaults);
+function isProviderDefaults(value: unknown): boolean {
+  if (!isRecord(value) || !isHarnessProvider(value.kind)) return false;
+  // The same fields for every harness; only Claude adds its thinking budget.
+  return optional(value, 'model', isString) && optional(value, 'userSelectedModel', isBoolean)
+    && optional(value, 'reasoningEffort', isString) && optional(value, 'serviceTier', isNullableString)
+    && optional(value, 'permission', isString)
+    && (value.kind === 'claude' ? optional(value, 'thinking', isThinkingDefaults) : !('thinking' in value));
 }
 
 function isThinkingDefaults(value: unknown): boolean {
@@ -334,26 +314,19 @@ function isAutomationExecution(value: unknown): boolean {
     includes(['working', 'awaitingInput', 'completed', 'failed'], value.status) &&
     optional(value, 'agentId', isString) &&
     optional(value, 'agentName', isString) &&
-    optional(value, 'conversationRef', isBackendConversationRef) &&
+    optional(value, 'conversationRef', isProviderConversationRef) &&
     optional(value, 'error', isString);
 }
 
-function isBackendConversationRef(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.backend === 'codex') return typeof value.threadId === 'string';
-  return (value.backend === 'claude' || value.backend === 'antigravity' || value.backend === 'cursor') && isNullableString(value.folder) && typeof value.sessionId === 'string'
-    && (value.backend !== 'claude' || optional(value, 'subagentId', isString));
-}
-
-function isBackendRuntimeStatus(value: unknown): boolean {
+function isProviderRuntimeStatus(value: unknown): boolean {
   return isRecord(value) &&
-    isAgentBackend(value.backend) &&
+    isHarnessProvider(value.provider) &&
     includes(['notConfigured', 'starting', 'running', 'error'], value.status) &&
     optional(value, 'detail', isAppText) &&
-    optional(value, 'capabilities', isBackendCapabilities);
+    optional(value, 'capabilities', isProviderCapabilities);
 }
 
-function isBackendCapabilities(value: unknown): boolean {
+function isProviderCapabilities(value: unknown): boolean {
   return isRecord(value) &&
     optional(value, 'attachments', isBoolean) &&
     optional(value, 'models', isBoolean) &&
@@ -363,16 +336,19 @@ function isBackendCapabilities(value: unknown): boolean {
     optional(value, 'thinkingBudget', isBoolean) &&
     optional(value, 'planMode', (candidate) => includes(['native', 'prompted', 'unsupported'], candidate)) &&
     optional(value, 'goals', isBoolean) &&
+    optional(value, 'subagentTranscripts', (candidate) => includes(subagentTranscriptKinds, candidate)) &&
     optional(value, 'steerPrompt', isBoolean) &&
     optional(value, 'interrupt', isBoolean) &&
     optional(value, 'history', isBoolean) &&
     optional(value, 'conversationFork', isBoolean) &&
-    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare'].every((key) => optional(value, key, isBoolean)) &&
+    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage', ...operationCapabilityFlags].every((key) => optional(value, key, isBoolean)) &&
+    optional(value, 'login', (candidate) => isArrayOf(candidate, (method): method is 'browser' | 'deviceCode' => method === 'browser' || method === 'deviceCode')) &&
     optional(value, 'deleteTurn', isBoolean) &&
     optional(value, 'editTurn', isBoolean) &&
     optional(value, 'retryTurn', isBoolean) &&
     optional(value, 'approvals', isBoolean) &&
-    optional(value, 'approvalPresets', (candidate) => isArrayOf(candidate, isApprovalPreset)) &&
+    optional(value, 'approvalPresets', (candidate) => isArrayOf(candidate, isString)) &&
+    optional(value, 'commands', (candidate) => isArrayOf(candidate, isProviderCommandSummary)) &&
     optional(value, 'permissionModes', (candidate) => isArrayOf(candidate, isPermissionModeOption));
 }
 
@@ -384,7 +360,7 @@ function isPermissionModeOption(value: unknown): boolean {
     optional(value, 'dangerous', isBoolean);
 }
 
-function isBackendApprovalRequest(value: unknown): boolean {
+function isProviderApprovalRequest(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.id === 'string' &&
     includes(['command', 'file-change', 'permissions'], value.kind) &&
@@ -568,22 +544,22 @@ function isGeneralSettings(value: unknown): boolean {
     optional(value, 'cursorSteeringFallbackEnabled', isBoolean) &&
     (value.codexEnabled === undefined || typeof value.codexEnabled === 'boolean') &&
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
-    optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor') && isBoolean(enabled))) &&
+    optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([provider, enabled]) => isHarnessProvider(provider) && isBoolean(enabled))) &&
     optional(value, 'codeReviewInstructions', isString) &&
     optional(value, 'codeReviewDiscussWithOriginalThread', isBoolean) &&
     optional(value, 'missionInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
-      && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString) && optional(candidate, 'cursor', isString)) &&
+      && Object.entries(candidate).every(([provider, permission]) => isHarnessProvider(provider) && isString(permission))) &&
     optional(value, 'excludeLockfilesFromDiffs', isBoolean) &&
     optional(value, 'projectFlowEnabled', isBoolean) &&
     optional(value, 'githubStarPrompt', candidate => isRecord(candidate) && Number.isSafeInteger(candidate.sentPrompts) && (candidate.sentPrompts as number) >= 0 && (candidate.sentPrompts as number) <= 5 && isBoolean(candidate.dismissed)) &&
-    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, backend]) => host.trim().length > 0 && (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor'))) &&
+    optional(value, 'preferredProviders', candidate => isRecord(candidate) && Object.entries(candidate).every(([host, provider]) => host.trim().length > 0 && isHarnessProvider(provider))) &&
     optional(value, 'gitMergeCleanup', candidate => isRecord(candidate) && isBoolean(candidate.deleteWorktree) && isBoolean(candidate.deleteBranch)) &&
     optional(value, 'providerModelDefaults', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, selection]) =>
-      isExecutionSelection(selection) && selection.backend === backend)) &&
-    optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, home]) =>
-      (backend === 'codex' || backend === 'claude' || backend === 'antigravity' || backend === 'cursor') && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
+      isExecutionSelection(selection) && selection.provider === backend)) &&
+    optional(value, 'providerHomes', candidate => isRecord(candidate) && Object.entries(candidate).every(([provider, home]) =>
+      isHarnessProvider(provider) && isRecord(home) && isString(home.homePath) && isBoolean(home.isolated) && isBoolean(home.shareSkills))) &&
     typeof value.agentListCompact === 'boolean' &&
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)

@@ -2,9 +2,9 @@ import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot, CreateAgentInput } from '@workspace/core/contracts';
 import { agentHandoffBlocker, handoffInProgress, handoffNoteLimit, type AgentHandoff, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
-import { resolveAgentBackend } from '@workspace/core/agent-backends';
+import { resolveAgentProvider } from '@workspace/core/agent-providers';
 import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 
 type Options = {
   snapshot: AppSnapshot;
@@ -14,6 +14,7 @@ type Options = {
   assertReady(agent: Agent): Promise<void>;
   checkDelegates?(agent: Agent): Promise<void>;
   replaced?(source: Agent, target: Agent): Promise<void>;
+  abandoned?(source: Agent): void;
   retire(agent: Agent): Promise<void>;
   start(agent: Agent, prompt: string): Promise<void>;
 };
@@ -31,7 +32,7 @@ export class AgentHandoffService {
     if (existing) {
       if (JSON.stringify(existing.selection) !== JSON.stringify(input.selection) || existing.instructions !== input.instructions) return Promise.reject(new Error('Handoff request changed. Open Hand off again.'));
       if (previous) return previous;
-      return existing.phase === 'complete' ? Promise.resolve() : Promise.reject(new Error(existing.error ?? 'Handoff already in progress.'));
+      return existing.phase === 'complete' ? Promise.resolve() : Promise.reject(new Error(existing.phase === 'failed' ? 'The handoff did not finish.' : 'Handoff already in progress.'));
     }
     const operation = this.perform(sourceId, input);
     this.running.set(key, operation);
@@ -42,12 +43,20 @@ export class AgentHandoffService {
   async recover(): Promise<void> {
     let changed = false;
     for (const agent of this.options.snapshot.agents) {
+      const handoff = agent.handoff;
+      if (!handoff || handoff.phase === 'complete') continue;
+      if (!handoff.targetAgentId) { this.abandon(agent); changed = true; continue; }
       if (!handoffInProgress(agent)) continue;
-      agent.handoff!.phase = 'failed';
-      agent.handoff!.error = 'Handoff was interrupted. Check both conversations before continuing; the saved note has not been automatically resent.';
+      handoff.phase = 'failed';
       changed = true;
     }
     if (changed) await this.options.persist();
+  }
+
+  /** Without a replacement nothing changed, so the handoff leaves no trace and the next one starts over. */
+  private abandon(source: Agent): void {
+    delete source.handoff;
+    this.options.abandoned?.(source);
   }
 
   private async perform(sourceId: string, input: AgentHandoffInput): Promise<void> {
@@ -56,7 +65,7 @@ export class AgentHandoffService {
     if (!source) throw new Error('Source agent is no longer available.');
     const blocker = agentHandoffBlocker(snapshot, source);
     if (blocker) throw new Error(blocker);
-    resolveAgentBackend(snapshot, input.selection.backend);
+    resolveAgentProvider(snapshot, input.selection.provider);
     const sourceRef = conversationRefFromAgent(source);
     if (!sourceRef) throw new Error('Source conversation is unavailable.');
     const handoff: AgentHandoff = { ...input, sourceAgentId: sourceId, sourceTitle: source.conversationTitle ?? source.name ?? 'Agent', sourceRef, phase: 'preparing' };
@@ -65,7 +74,7 @@ export class AgentHandoffService {
       await this.options.assertReady(source);
       await this.options.persist();
       const note = (await this.options.requestNote(source, notePrompt(input))).trim();
-      if (!note || note.length > handoffNoteLimit) throw new Error('The handoff note is empty or exceeds 32,000 characters. The source has been kept.');
+      if (!note || note.length > handoffNoteLimit) throw new Error('The handoff note is empty or too long. This conversation is unchanged; try again.');
       // Completion alone is insufficient: an approval, queue or child may have appeared meanwhile.
       this.assertSourceAvailable(source);
       await this.options.assertReady(source);
@@ -99,8 +108,8 @@ export class AgentHandoffService {
       handoff.phase = 'complete';
       await this.options.persist();
     } catch (error) {
-      handoff.phase = 'failed';
-      handoff.error = error instanceof Error ? error.message : String(error);
+      if (handoff.targetAgentId) handoff.phase = 'failed';
+      else this.abandon(source);
       await this.options.persist().catch(() => undefined);
       throw error;
     }
@@ -115,7 +124,7 @@ export class AgentHandoffService {
 
 function notePrompt(input: AgentHandoffInput): string {
   return [
-    `The user is handing this work to a new ${backendDisplayName(input.selection.backend)} agent in the same workspace.`,
+    `The user is handing this work to a new ${providerDisplayName(input.selection.provider)} agent in the same workspace.`,
     'Write a self-contained handoff note as your final response, under 32,000 characters.',
     'Include the objective, user constraints and decisions, completed changes, verification evidence, relevant files, unfinished work, and the next action.',
     'Distinguish observed results from assumptions. Do not include secrets.',

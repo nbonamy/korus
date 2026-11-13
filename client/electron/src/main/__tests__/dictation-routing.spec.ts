@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from '../dictation-routing';
 
-vi.mock('@codex-app-sdk/electron', () => ({ startAppleSpeechSession: vi.fn(), startOpenAISpeechSession: vi.fn(), prepareOpenAISpeechSession: vi.fn() }));
+vi.mock('@korus-dev/agent-ui-sdk/electron', () => ({ startAppleSpeechSession: vi.fn(), startOpenAISpeechSession: vi.fn(), prepareOpenAISpeechSession: vi.fn() }));
 describe('dictation engine routing', () => {
   it('reads preferences per recording and supplies credentials only to OpenAI, retaining SDK session ownership', async () => {
     let engine = 'apple';

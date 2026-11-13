@@ -8,13 +8,13 @@ describe('snapshot subagent reducer', () => {
   it('builds and updates the current subagent tree from app-owned events', () => {
     const snapshot = createInitialSnapshot();
     const agentId = snapshot.agents[0].id;
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-root' };
+    snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-root' };
 
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       turnId: 'turn-1',
       type: 'subagent.operationChanged',
       payload: {
@@ -41,8 +41,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       turnId: 'turn-1',
       type: 'subagent.activityChanged',
       payload: {
@@ -63,8 +63,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 3,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       type: 'subagent.identityChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -103,8 +103,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 4,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-child',
+      provider: 'codex',
+      conversationId: 'thread-child',
       turnId: 'turn-child',
       type: 'subagent.activityChanged',
       payload: {
@@ -129,8 +129,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 5,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       type: 'subagent.identityChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -151,8 +151,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId,
-      backend: 'claude',
-      threadId: 'envelope-thread',
+      provider: 'claude',
+      conversationId: 'envelope-thread',
       type: 'subagent.operationChanged',
       payload: {
         rootConversationId: 'payload-root',
@@ -224,8 +224,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 1,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -239,8 +239,8 @@ describe('snapshot subagent reducer', () => {
     applyMainEventToSnapshot(snapshot, {
       seq: 2,
       agentId,
-      backend: 'codex',
-      threadId: 'thread-root',
+      provider: 'codex',
+      conversationId: 'thread-root',
       type: 'subagent.statusChanged',
       payload: {
         rootConversationId: 'thread-root',
@@ -266,7 +266,7 @@ describe('snapshot subagent reducer', () => {
       {
         seq: 1,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-root',
         type: 'subagent.operationChanged',
         payload: {
@@ -283,7 +283,7 @@ describe('snapshot subagent reducer', () => {
       {
         seq: 2,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-root',
         type: 'subagent.activityChanged',
         payload: {
@@ -300,7 +300,7 @@ describe('snapshot subagent reducer', () => {
       {
         seq: 3,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-root',
         type: 'subagent.identityChanged',
         payload: { rootConversationId: 'thread-root', conversationId: 42 },
@@ -309,7 +309,7 @@ describe('snapshot subagent reducer', () => {
       {
         seq: 4,
         agentId: 'agent-dina',
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-root',
         type: 'subagent.statusChanged',
         payload: { rootConversationId: 'thread-root', conversationId: 'thread-child', status: 'invalid' },
@@ -318,7 +318,7 @@ describe('snapshot subagent reducer', () => {
     ];
     const agentlessEvent = {
         seq: 5,
-        backend: 'codex',
+        provider: 'codex',
         threadId: 'thread-root',
         type: 'subagent.operationChanged',
         payload: {

@@ -7,9 +7,9 @@ const agent: Agent = {
   id: 'agent-dina',
   name: 'Dina',
   folder: '~/src/agent-workspace',
-  backend: 'codex',
-  backendDefaults: { kind: 'codex' },
-  backendSession: { kind: 'codex', threadId: 'thread-current' },
+  provider: 'codex',
+  providerDefaults: { kind: 'codex' },
+  providerSession: { kind: 'codex', conversationId: 'thread-current' },
   status: { type: 'idle' },
   createdAt: '2026-06-05T00:00:00.000Z',
   updatedAt: '2026-06-05T00:00:00.000Z',
@@ -22,7 +22,7 @@ const sessions: ConversationSummary[] = [
     updatedAt: '2026-06-10T09:30:00.000Z',
     messageCount: 12,
     storageState: 'active',
-    ref: { backend: 'codex', threadId: 'thread-current' },
+    ref: { provider: 'codex', conversationId: 'thread-current' },
   },
   {
     id: 'thread-old',
@@ -30,7 +30,7 @@ const sessions: ConversationSummary[] = [
     updatedAt: '2026-06-10T09:00:00.000Z',
     messageCount: 4,
     storageState: 'archived',
-    ref: { backend: 'codex', threadId: 'thread-old' },
+    ref: { provider: 'codex', conversationId: 'thread-old' },
   },
 ];
 
@@ -71,7 +71,7 @@ describe('ConversationHistoryDialog', () => {
     await flushPromises();
 
     expect(resumeConversation).toHaveBeenCalledWith('agent-dina', {
-      ref: { backend: 'codex', threadId: 'thread-old' },
+      ref: { provider: 'codex', conversationId: 'thread-old' },
       storageState: 'archived',
     });
     expect(wrapper.emitted('close')).toStrictEqual([[]]);

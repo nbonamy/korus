@@ -38,7 +38,7 @@ describe('FirstRunOnboardingGate', () => {
     const wrapper = mountGate({
       claudeDialogVisible: true,
       claudeAuthentication: { loggedIn: false, configDirectory: null },
-      providerSetup: [{ backend: 'claude', installed: true, isolated: false, shareSkills: true, locked: false, homePath: '/users/test/.claude' }],
+      providerSetup: [{ provider: 'claude', installed: true, isolated: false, shareSkills: true, locked: false, homePath: '/users/test/.claude' }],
     });
     await flushPromises();
     expect(wrapper.findAll('code').map(command => command.text())).toStrictEqual([

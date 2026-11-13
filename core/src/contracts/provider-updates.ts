@@ -1,7 +1,7 @@
-import type { AgentBackend } from '../contracts';
+import type { HarnessProvider } from '../contracts';
 
 export type ProviderUpdateStatus = {
-  backend: AgentBackend;
+  provider: HarnessProvider;
   status: 'unavailable' | 'manual' | 'current' | 'available' | 'waiting' | 'upgrading' | 'error';
   installedVersion?: string;
   latestVersion?: string;

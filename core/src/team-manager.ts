@@ -75,7 +75,7 @@ export function reorderTeamInSnapshot(snapshot: AppSnapshot, teamId: string, bef
 
 export function closeTeamInSnapshot(snapshot: AppSnapshot, teamId: string): Team | null {
   if (snapshot.teams.length <= 1) {
-    throw new Error('At least one team must remain open.');
+    throw new Error('At least one workspace must remain open.');
   }
 
   const team = snapshot.teams.find((candidate) => candidate.id === teamId);

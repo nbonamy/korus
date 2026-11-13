@@ -4,7 +4,7 @@ import { executionSelectionOverridesSchema } from '../execution-selection-schema
 import type { MissionArtifactReadResult, MissionArtifactWriteInput, MissionResultInput, MissionReviewFindingInput, MissionReviewFindingUpdateInput, MissionTicketDraftInput, MissionTicketDraftResult, MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionArtifactFile, MissionStage } from '@workspace/core/missions';
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentWorkspaceIdentity, AgentBackend, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
+import type { Agent, AgentWorkspaceIdentity, HarnessProvider, AgentStatus, AnnouncementPhase, CelebrationKind, CreateSourceWorktreeInput, SourceRepository, SourceWorktree, WorkBacklogAssignmentStatus } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { providerSafetyBlockMessage } from '@workspace/core/provider-safety-block';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
@@ -96,8 +96,6 @@ export type FinishTurnResponse = {
   success: true;
   status: null;
   flag?: ThreadFlagId;
-  announcement?: AnnouncementResponse;
-  celebration?: CelebrationResponse;
 };
 
 export type FinishTurnInput = {
@@ -344,6 +342,9 @@ export class AppMcpAgentCoordinator {
     return true;
   }
 
+  /** What finish_turn asked for, applied when the turn it ends completes. */
+  private readonly pendingFinish = new Map<string, { flag?: ThreadFlagId; suggestedPrompt?: string; announcement?: StatusAnnouncementInput; celebration: boolean }>();
+
   async finishTurn(agentId: string, input: FinishTurnInput = {}): Promise<FinishTurnResponse> {
     const agent = this.requireAgent(agentId);
     let flag = input.flag;
@@ -352,34 +353,43 @@ export class AppMcpAgentCoordinator {
         ? await this.resolveWorkspaceIdentity?.(agent.folder).catch(() => undefined) : undefined;
       if (workspace?.kind !== 'git' || !workspace.branch || workspace.branch !== workspace.defaultBranch) flag = undefined;
     }
-    const normalizedAnnouncement = input.announcement
+    const announcement = input.announcement
       ? this.normalizedAnnouncement({ phase: 'finish', text: input.announcement.text })
       : undefined;
     if (input.celebration && !this.onCelebrate) {
       throw new McpToolError('Celebrations are not available.');
     }
+    this.pendingFinish.set(agentId, {
+      ...(flag ? { flag } : {}),
+      ...(input.suggestedPrompt?.trim() ? { suggestedPrompt: input.suggestedPrompt.trim() } : {}),
+      ...(announcement ? { announcement } : {}),
+      celebration: Boolean(input.celebration),
+    });
+    return { success: true, status: null, ...(flag ? { flag } : {}) };
+  }
+
+  /** A new turn starts clean: nothing is left over from a finish that never completed. */
+  turnStarted(agentId: string): void {
+    this.pendingFinish.delete(agentId);
+  }
+
+  /** The turn ended: only a completed one applies what finish_turn asked for. */
+  async turnEnded(agentId: string, status: string, willRetry: boolean): Promise<void> {
+    if (willRetry) return;
+    const pending = this.pendingFinish.get(agentId);
+    this.pendingFinish.delete(agentId);
+    const agent = this.getAgents().find(candidate => candidate.id === agentId);
+    if (!pending || !agent || status !== 'completed') return;
     delete agent.statusText;
-    if (flag) agent.threadFlags = { [flag]: true };
-    const suggestedPrompt = input.suggestedPrompt?.trim();
-    if (suggestedPrompt) agent.suggestedPrompt = suggestedPrompt;
+    if (pending.flag) agent.threadFlags = { [pending.flag]: true };
+    if (pending.suggestedPrompt) agent.suggestedPrompt = pending.suggestedPrompt;
     else delete agent.suggestedPrompt;
     agent.updatedAt = this.now().toISOString();
     this.onAgentUpdated?.(agent);
-    const [announcement, celebration] = await Promise.all([
-      normalizedAnnouncement
-        ? this.onAnnounce!(agent, normalizedAnnouncement.phase, normalizedAnnouncement.text)
-        : undefined,
-      input.celebration
-        ? this.onCelebrate!(agent)
-        : undefined,
+    await Promise.allSettled([
+      pending.announcement ? this.onAnnounce?.(agent, pending.announcement.phase, pending.announcement.text) : undefined,
+      pending.celebration ? this.onCelebrate?.(agent) : undefined,
     ]);
-    return {
-      success: true,
-      status: null,
-      ...(flag ? { flag } : {}),
-      ...(announcement ? { announcement } : {}),
-      ...(celebration ? { celebration } : {}),
-    };
   }
 
   async displayMarkdown(agentId: string, input: DisplayMarkdownInput): Promise<DisplayMarkdownResponse> {
@@ -572,7 +582,7 @@ export class AppMcpAgentCoordinator {
       const { selection, ...settings } = { ...defaults, ...target };
       // A different provider uses its own defaults; never leak the shared model across providers.
       const sharedSelection = defaults.selection;
-      const mergedSelection = target.selection?.backend && target.selection.backend !== (sharedSelection?.backend ?? caller.backend)
+      const mergedSelection = target.selection?.provider && target.selection.provider !== (sharedSelection?.provider ?? caller.provider)
         ? target.selection : { ...sharedSelection, ...selection };
       try {
         const result = await this.createAgentTarget(agentId, { ...settings, selection: mergedSelection });
@@ -618,7 +628,7 @@ export class AppMcpAgentCoordinator {
       name: input.name?.trim(),
       prompt: input.prompt?.trim() || undefined,
       instructions: input.instructions?.trim() || undefined,
-      selection: executionSelectionOverridesSchema.parse({ ...input.selection, backend: input.selection?.backend ?? agent.backend }),
+      selection: executionSelectionOverridesSchema.parse({ ...input.selection, provider: input.selection?.provider ?? agent.provider }),
       repoPath: input.repoPath.trim(),
       createWorktree: input.createWorktree,
       startingContext: input.startingContext,

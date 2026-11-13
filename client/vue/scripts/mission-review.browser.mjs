@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -17,9 +18,9 @@ test('Mission review keeps actions visible and applies the implementation model 
     server: { host: '127.0.0.1', port: 0 },
     resolve: { alias: {
       '@workspace/core': path.join(root, 'core/src'),
-      '@codex-app-sdk/vue/styles.css': require.resolve('@codex-app-sdk/vue/styles.css'),
+      '@korus-dev/agent-ui-sdk/styles.css': require.resolve('@korus-dev/agent-ui-sdk/styles.css'),
     }, dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'mission-review-layout',
       configureServer(server) {
         server.middlewares.use('/mission-review-layout', (_req, res) => {
@@ -32,11 +33,11 @@ test('Mission review keeps actions visible and applies the implementation model 
         if (id !== '\0mission-review-fixture') return;
         return `
           import { createApp, h, computed } from 'vue';
-          import { backendChoicesKey } from '/client/vue/src/components/backend-selection.ts';
-          import { backendModelCatalogKey } from '/client/vue/src/components/backend-model-catalog.ts';
+          import { providerChoicesKey } from '/client/vue/src/components/backend-selection.ts';
+          import { providerModelCatalogKey } from '/client/vue/src/components/backend-model-catalog.ts';
           import ElementPlus from 'element-plus';
           import 'element-plus/dist/index.css';
-          import '@codex-app-sdk/vue/styles.css';
+          import '@korus-dev/agent-ui-sdk/styles.css';
           import '/client/vue/src/styles/variables.css';
           import '/client/vue/src/styles/theme.css';
           import '/client/vue/src/styles/base.css';
@@ -54,7 +55,7 @@ test('Mission review keeps actions visible and applies the implementation model 
             const run = mission.execution.runs.at(-1);
             run.stage = 'tickets';
             run.proposal.tickets = [{ title: 'Implement checkout', repositoryPath: '/repo', done: false }];
-            snapshot.agents.find(agent => agent.id === run.workerId).backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
+            snapshot.agents.find(agent => agent.id === run.workerId).providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
           }
           const delivery = new URLSearchParams(location.search).has('delivery');
           const worker = snapshot.agents[0];
@@ -80,8 +81,8 @@ test('Mission review keeps actions visible and applies the implementation model 
                 }),
               ])
             : h(MissionWorkspace, { mission, agents: snapshot.agents, executeMission: async input => { window.lastApproval = input; } }, { conversation: () => h('p', 'Fixture conversation') }) });
-          app.provide(backendChoicesKey, computed(() => ['codex', 'claude']));
-          app.provide(backendModelCatalogKey, { listModels: async () => [
+          app.provide(providerChoicesKey, computed(() => ['codex', 'claude']));
+          app.provide(providerModelCatalogKey, { listModels: async () => [
             { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
             { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
           ] });
@@ -174,7 +175,7 @@ test('Mission review keeps actions visible and applies the implementation model 
     if (process.env.MISSION_REVIEW_ARTIFACTS) await page.screenshot({ animations: 'disabled', path: path.join(process.env.MISSION_REVIEW_ARTIFACTS, 'parallel-implementation-dialog.png') });
     await dialog.getByRole('button', { name: 'Start', exact: true }).click();
     const approval = await page.evaluate(() => window.lastApproval);
-    assert.deepEqual(approval.implementationModel, { backend: 'codex', model: 'luna', reasoningEffort: 'low', serviceTier: null });
+    assert.deepEqual(approval.implementationModel, { provider: 'codex', model: 'luna', reasoningEffort: 'low', serviceTier: null });
     assert.equal(approval.parallelImplementation, true);
     assert.equal(approval.implementationMode, 'multiplePerRepository');
     if (process.env.MISSION_REVIEW_ARTIFACTS) {

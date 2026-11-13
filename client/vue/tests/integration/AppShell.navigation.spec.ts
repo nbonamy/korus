@@ -2,8 +2,8 @@ import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import type {
-  CodexNativeRendererApi,
-} from '@codex-app-sdk/vue';
+  NativeRendererApi,
+} from '@korus-dev/agent-ui-sdk';
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
@@ -42,7 +42,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   document.body.innerHTML = '';
   delete window.app;
-  delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
+  delete (window as Window & { agentUiHostCapabilities?: NativeRendererApi }).agentUiHostCapabilities;
 });
 
 describe('AppShell navigation and teams', () => {
@@ -341,7 +341,7 @@ describe('AppShell navigation and teams', () => {
 
   it('falls back when backend runtime status is missing', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.backendRuntimes = [];
+    snapshot.providerRuntimes = [];
     const wrapper = mount(AppShell, {
       props: {
         snapshot,
@@ -472,7 +472,7 @@ describe('AppShell navigation and teams', () => {
       expect(wrapper.find('[data-group-kind="repository"]').exists()).toBe(true);
       await wrapper.get('[aria-label="Cockpit"]').trigger('click');
       const sidebar = () => wrapper.get('.agent-sidebar');
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       expect(sidebar().findAll('[data-activity-group]').map(group => group.attributes('data-activity-group'))).toEqual(['attention', 'working', 'idle']);
       expect(sidebar().text()).toContain(firstMission.outcome);
       expect(sidebar().text()).toContain(otherMission.outcome);
@@ -487,19 +487,19 @@ describe('AppShell navigation and teams', () => {
       expect(wrapper.emitted('select-agent')?.at(-1)).toEqual([other.id]);
       selectAgent(snapshot, other.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
-      expect(wrapper.getComponent({ name: 'ConversationPane' }).props('agent').id).toBe(other.id);
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(other.id);
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       await sidebar().findAll('[data-group-kind="missions"] .agent-sidebar__agent').find(row => row.text().includes(otherMission.outcome))!.trigger('click');
       selectAgent(snapshot, worker.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: worker });
       expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
-      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All teams');
+      expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('All workspaces');
       expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
       await sidebar().get(`[data-reorder-id="${other.id}"]`).trigger('click');
       selectAgent(snapshot, other.id);
       await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
       expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
-      expect(wrapper.getComponent({ name: 'ConversationPane' }).props('agent').id).toBe(other.id);
+      expect(wrapper.getComponent({ name: 'AppConversationPane' }).props('agent').id).toBe(other.id);
       await wrapper.get('.team-rail [aria-label^="Other team"]').trigger('click');
       expect(sidebar().get('.agent-sidebar__header strong').text()).toBe('Other team');
       expect(sidebar().find('[data-activity-group]').exists()).toBe(false);
@@ -524,13 +524,120 @@ describe('AppShell navigation and teams', () => {
     expect(wrapper.find('.automation-welcome__button').exists()).toBe(true);
   });
 
+  it('returns to the previous team page when the rail automations button is clicked again', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Automations"]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get(`[aria-label="${product.defaultTeamName}"]`).attributes('aria-pressed')).toBe('true');
+  });
+
+  it('returns to the backlog when automations is toggled off after opening it from the backlog', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+
+    await wrapper.get('[aria-label="Backlog"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'BacklogView' }).exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Backlog"]').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('returns to the Mission when automations is toggled off after opening it from a Mission', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Ship work', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const wrapper = mountShell({ snapshot });
+    await wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
+
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
+  });
+
+  it('returns to the agent view when the remembered Mission disappears while automations is open', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'Ship work', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const wrapper = mountShell({ snapshot });
+    await wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+    await flushPromises();
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    snapshot.missions = snapshot.missions!.filter(candidate => candidate.id !== mission.id);
+    await wrapper.setProps({ snapshot: structuredClone(snapshot) });
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(true);
+  });
+
+  it('returns to the agent view when the active team changed while automations was open on a Mission', async () => {
+    const snapshot = createInitialSnapshot();
+    const other = { ...snapshot.agents[0]!, id: 'agent-other', teamId: 'team-other', name: 'Other Agent' };
+    snapshot.agents.push(other);
+    snapshot.teams.push({ id: 'team-other', name: 'Other Team', avatar: 'OT', color: '#46A857', agentIds: [other.id] });
+    const mission = createMission(snapshot, { outcome: 'Ship work', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const wrapper = mountShell({ snapshot });
+    await wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('select-mission', mission.id);
+    await flushPromises();
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    selectAgent(snapshot, other.id);
+    await wrapper.setProps({ snapshot: structuredClone(snapshot), activeAgent: other });
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(true);
+  });
+
+  it('returns to settings when automations is toggled off after opening it from settings', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+    await wrapper.getComponent({ name: 'AppShellNavigation' }).vm.$emit('open-settings');
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'SettingsView' }).exists()).toBe(true);
+
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    expect(wrapper.find('.automations-view').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'SettingsView' }).exists()).toBe(true);
+  });
+
+  it('keeps the automations page open when the command palette opens it while it is already open', async () => {
+    let command: (value: AppCommand) => void = () => {};
+    window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;
+    const wrapper = mountShell({ snapshot: createInitialSnapshot() });
+    await wrapper.get('[aria-label="Automations"]').trigger('click');
+
+    command({ type: 'open-command-palette' }); await nextTick();
+    await wrapper.get('.quick-open-dialog input').setValue('automations');
+    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter'); await flushPromises();
+
+    expect(wrapper.find('.automations-view').exists()).toBe(true);
+  });
+
   it('opens a automation execution conversation from the logs view', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.automations = [{
       id: 'automation-bugs',
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-app', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{
@@ -540,7 +647,7 @@ describe('AppShell navigation and teams', () => {
         completedAt: '2026-06-09T10:01:00.000Z',
         status: 'completed',
 
-        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { backend: 'codex', threadId: 'thread-jesse' },
+        agentId: 'agent-jesse', agentName: 'Jesse', conversationRef: { provider: 'codex', conversationId: 'thread-jesse' },
       }],
       createdAt: '2026-06-09T09:59:00.000Z',
       updatedAt: '2026-06-09T10:01:00.000Z',
@@ -568,7 +675,7 @@ describe('AppShell navigation and teams', () => {
     await wrapper.get('[aria-label="View conversation for automation-exec-1"]').trigger('click');
     await flushPromises();
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-jesse' }, 'agent-jesse');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-jesse' }, 'agent-jesse');
     expect(wrapper.emitted('select-agent')).toBeUndefined();
     expect(wrapper.find('.automations-view').exists()).toBe(true);
     expect(wrapper.find('.automation-execution-conversation-overlay').exists()).toBe(true);

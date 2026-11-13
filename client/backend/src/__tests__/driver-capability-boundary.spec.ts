@@ -1,29 +1,30 @@
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
-import { claudeBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { BackendDriverRpc, createBackendDriver } from '../driver-rpc';
+import { ProviderDriverRpc, createProviderDriver } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 
-const agent: Agent = { id: 'limited', name: 'Limited', folder: '/repo', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+const agent: Agent = { id: 'limited', name: 'Limited', folder: '/repo', provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 
 function fixture() {
-  const driver: AgentBackendDriver = {
-    backend: 'claude', getRuntimeStatus: () => ({ backend: 'claude', status: 'running' }),
-    getCapabilities: () => claudeBackendCapabilities,
+  const driver: AgentProviderDriver = {
+    provider: 'claude', getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
+    getCapabilities: () => claudeProviderCapabilities,
     sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
     onEvent: () => () => undefined, close: async () => undefined,
   };
-  return { driver, rpc: new BackendDriverRpc(new Map([['claude', driver]])) };
+  return { driver, rpc: new ProviderDriverRpc(new Map([['claude', driver]])) };
 }
 
 describe('unified driver capability boundary', () => {
   it('selects the Antigravity host explicitly and never creates Codex as a fallback', async () => {
-    const driver = createBackendDriver('antigravity');
+    const driver = createProviderDriver('antigravity');
     try {
-      expect(driver.backend).toBe('antigravity');
-      expect(driver.getCapabilities({ ...agent, backend: 'antigravity' })).toMatchObject({ goals: false, conversationFork: false });
+      expect(driver.provider).toBe('antigravity');
+      expect(driver.getCapabilities({ ...agent, provider: 'antigravity' })).toMatchObject({ goals: false, conversationFork: false });
     } finally { await driver.close(); }
   });
   it.each([
@@ -32,14 +33,13 @@ describe('unified driver capability boundary', () => {
     [backendMethods.driverConversationTitleUpdate, { title: 'title' }],
     [backendMethods.driverGoalUpdate, { objective: 'ship' }],
     [backendMethods.driverGoalClear, {}],
-    [backendMethods.driverApprovalPresetUpdate, { preset: 'full-access' }],
     [backendMethods.driverPermissionModeUpdate, { mode: 'default' }],
     [backendMethods.driverConversationLoad, {}],
     [backendMethods.driverConversationHistoryLoadOlder, {}],
     [backendMethods.driverConversationsList, {}],
-    [backendMethods.driverConversationResume, { target: { ref: { backend: 'claude', sessionId: 'session' } } }],
+    [backendMethods.driverConversationResume, { target: { ref: { provider: 'claude', conversationId: 'session' } } }],
     [backendMethods.driverConversationFork, { targetAgent: { ...agent, id: 'fork' } }],
-    [backendMethods.driverConversationSummaryGet, { ref: { backend: 'claude', sessionId: 'session' } }],
+    [backendMethods.driverConversationSummaryGet, { ref: { provider: 'claude', conversationId: 'session' } }],
     [backendMethods.driverPromptSteer, { prompt: 'change course' }],
     [backendMethods.driverTurnDelete, { turnId: 'turn' }],
     [backendMethods.driverTurnEdit, { turnId: 'turn', content: 'replacement' }],
@@ -73,6 +73,19 @@ describe('unified driver capability boundary', () => {
     await expect(rpc.handle(backendMethods.driverModelsList, { agent })).resolves.toStrictEqual([]);
     await expect(rpc.handle(backendMethods.driverSkillsList, { agent })).resolves.toStrictEqual([]);
     await expect(rpc.handle(backendMethods.driverConversationArchive, { agent })).resolves.toStrictEqual({ supported: false });
+  });
+
+  it('reports what a harness cannot do from its capabilities, so closing an agent never fails on a missing archive', async () => {
+    // The real driver has every operation; whether the harness offers one is a capability, not a missing method.
+    const claude = scriptedDriver('claude').driver; const cursor = scriptedDriver('cursor').driver;
+    const rpc = new ProviderDriverRpc(new Map([['claude', claude], ['cursor', cursor]]));
+    try {
+      const closing = { ...agent, providerSession: { kind: 'claude' as const, conversationId: 's', transport: 'stdio' as const } };
+      await expect(rpc.handle(backendMethods.driverConversationArchive, { agent: closing })).resolves.toStrictEqual({ supported: false });
+      const onCursor = { ...agent, provider: 'cursor' as const };
+      await expect(rpc.handle(backendMethods.driverConversationDelete, { agent: onCursor })).resolves.toStrictEqual({ supported: false });
+      await expect(rpc.handle(backendMethods.driverSkillsList, { agent: onCursor })).resolves.toStrictEqual([]);
+    } finally { await rpc.close(); }
   });
 
   it('rejects an unadvertised permission mode even when the operation exists', async () => {

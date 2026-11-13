@@ -22,11 +22,11 @@ import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
-import type { Agent, BackendConversationRef, SystemPermissionsStatus } from '@workspace/core/contracts';
+import type { Agent, ProviderConversationRef, SystemPermissionsStatus } from '@workspace/core/contracts';
 import { formatConversationTitle, shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
-import type { AgentBackendDriver, BackendSendResult } from '@workspace/core/backend-driver';
+import type { AgentProviderDriver, ProviderSendResult } from '@workspace/core/provider-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import { BackendDriverRpc, createBackendDriver, createDefaultBackendDrivers, type BackendDriverRegistryOptions } from './driver-rpc';
+import { ProviderDriverRpc, createProviderDriver, createDefaultProviderDrivers, type ProviderDriverRegistryOptions } from './driver-rpc';
 import { ProviderSetup } from './provider-setup';
 import { ProviderUpdates } from './provider-updates';
 import { ProviderUpdateRuntime } from './provider-update-runtime';
@@ -53,7 +53,7 @@ import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
 import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
 import { GitLabCliWorkProviderDriver } from './work-integrations/gitlab-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
-import { warnMain } from './log';
+import { logMain, warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
 import { AgentGitService } from './git/agent-git-service';
 import { PullRequestMonitor } from './git/pull-request-monitor';
@@ -88,6 +88,23 @@ export type DaemonRuntime = {
   stop(): Promise<void>;
 };
 
+/**
+ * Says when the daemon could not run anything for a while: work that blocks instead of waiting holds up every request,
+ * and nothing else in the log would show it. Returns how to stop watching.
+ */
+function watchEventLoop(): () => void {
+  const every = 200;
+  let last = Date.now();
+  const timer = setInterval(() => {
+    const now = Date.now(), blocked = now - last - every;
+    // A gap of minutes is the machine asleep, not the daemon at work.
+    if (blocked >= 500 && blocked < 60_000) logMain('daemon', 'blocked', { ms: blocked, until: new Date(now).toISOString() });
+    last = now;
+  }, every);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promise<DaemonRuntime> {
   const requirements = await loadRequirements(backendHomeDir());
   const computerUseAvailable = options.features?.computerUse !== false;
@@ -103,11 +120,11 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   }).catch(() => undefined); // Optional telemetry must never prevent normal startup.
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
-  const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
-    if (backend === 'codex') {
+  const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async provider => {
+    if (provider === 'codex') {
       pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
     }
-    await driverRpc.replaceDriver(backend, () => createBackendDriver(backend, { ...driverOptions, generalSettings: snapshot.general }));
+    await driverRpc.replaceDriver(provider, () => createProviderDriver(provider, { ...driverOptions, generalSettings: snapshot.general }));
   }, undefined, () => backupProviderSetup(snapshot));
   await providerSetup.initialize();
   let pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
@@ -160,7 +177,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     readHistory: agent => server.readTaskHistory(agent),
     onError: error => warnMain('tasks', 'transition failed', { message: String(error) }),
   });
-  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: agent => server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspace: agent.designWorkspace } }) });
+  const designService = new DesignService({ capture: embeddedBrowserAvailable ? input => options.requestClient<string>(backendMethods.clientDesignCapture, input) : undefined, snapshot, persist: () => saveBackendSnapshot(snapshot), publish: agent => server?.emitEvent({ agentId: agent.id, type: 'agent.updated', payload: { id: agent.id, designWorkspaces: agent.designWorkspaces } }) });
   const visualizeService = new VisualizeService({
     snapshot,
     generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'),
@@ -169,6 +186,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
   const pricing = new PricingCatalog({ cacheFile: path.join(backendHomeDir(), 'pricing.json') });
+  const stopWatchingEventLoop = watchEventLoop();
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, () => pricing.history);
   await localUsage.load({ interruptOpenExecutions: true });
   await pricing.start();
@@ -227,7 +245,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     resolveWorkspaceIdentity: (folder) => agentGitService.identity(folder),
     worktreeManager,
     agentCreation,
-    createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
+    createProject: (agentId, name, prompt, provider) => server.createProjectFromQuickChat(agentId, name, prompt, provider),
     startMission: (agentId, input) => server.startMissionFromAgent(agentId, input),
     gitDiff: (folder, target) => agentGitService.diff(folder, target as Exclude<typeof target, { type: 'turn' }>),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
@@ -239,7 +257,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       createDebugToolModuleProvider(options.features?.debugTools === true, (agentId, reason) => options.requestClient(backendMethods.clientDebugBackendRestart, { agentId, reason })),
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
-        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,
+        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/provider-driver').ProviderImageGenerationResult>,
       })),
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
@@ -250,7 +268,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     ],
   });
   const mcpServerUrl = await mcpService.start();
-  const driverOptions: BackendDriverRegistryOptions = {
+  const driverOptions: ProviderDriverRegistryOptions = {
     appMcpServerUrl: mcpServerUrl,
     hostedMcpServerUrls: () => mcpService.hostedMcpServerUrls(),
     generalSettings: snapshot.general,
@@ -268,53 +286,53 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       visualizeService.developerInstructions(),
     ].filter(Boolean).join('\n\n') || undefined,
   };
-  const backendDrivers = createDefaultBackendDrivers(driverOptions);
-  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend), requirements);
+  const providerDrivers = createDefaultProviderDrivers(driverOptions);
+  const driverRpc: ProviderDriverRpc = new ProviderDriverRpc(providerDrivers, worktreeManager, provider => server.requireConnectedEngine(provider), provider => providerUpdates.isUpdating(provider), requirements);
   const updater = new ProviderUpdateRuntime({
-    command: backend => backend === 'codex'
+    command: provider => provider === 'codex'
       ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
       : resolveClaudeLaunch().command,
     cursorHome: () => snapshot.general.providerHomes?.cursor,
     claudeHome: () => snapshot.general.providerHomes?.claude?.homePath ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude'),
   });
   const providerUpdates: ProviderUpdates = new ProviderUpdates({
-    inspect: backend => updater.inspect(backend),
+    inspect: provider => updater.inspect(provider),
     upgrade: installation => updater.upgrade(installation),
-    busy: backend => {
-      const agents = localProviderAgents(snapshot, backend);
+    busy: provider => {
+      const agents = localProviderAgents(snapshot, provider);
       const ids = new Set(agents.map(agent => agent.id));
-      return providerSetup.isChanging() || driverRpc.isBusy(backend)
+      return providerSetup.isChanging() || driverRpc.isBusy(provider)
         || agents.some(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput' || handoffInProgress(agent))
         || (snapshot.queuedPrompts ?? []).some(prompt => ids.has(prompt.agentId));
     },
-    withStoppedProvider: async (backend, work) => {
-      const agents = localProviderAgents(snapshot, backend).filter(agent => agent.backendSession);
-      const current = backendDrivers.get(backend)!;
+    withStoppedProvider: async (provider, work) => {
+      const agents = localProviderAgents(snapshot, provider).filter(agent => agent.providerSession);
+      const current = providerDrivers.get(provider)!;
       for (const agent of agents) await current.assertHandoffReady?.(agent);
-      await driverRpc.replaceDriver(backend, () => createBackendDriver(backend, { ...driverOptions, generalSettings: snapshot.general }), work);
+      await driverRpc.replaceDriver(provider, () => createProviderDriver(provider, { ...driverOptions, generalSettings: snapshot.general }), work);
       // Rehydrate the same sessions, never restart/reset the conversation identity.
-      const replacement = backendDrivers.get(backend)!;
+      const replacement = providerDrivers.get(provider)!;
       for (const agent of agents) await replacement.loadConversation?.(agent);
     },
   });
   const automationRunner = new AutomationRunner({
-    requireConnectedEngine: backend => server.requireConnectedEngine(backend),
+    requireConnectedEngine: provider => server.requireConnectedEngine(provider),
     getSnapshot: () => snapshot,
     notifySnapshotUpdated: () => server.emitEvent({
       type: 'snapshot.updated',
       payload: snapshot,
     }),
     saveSnapshot: () => saveBackendSnapshot(snapshot),
-    sendPrompt: (agentId, prompt) => new Promise<BackendConversationRef>((resolve, reject) => {
+    sendPrompt: (agentId, prompt) => new Promise<ProviderConversationRef>((resolve, reject) => {
       const agent = snapshot.agents.find(candidate => candidate.id === agentId);
       if (!agent || agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
         reject(new Error('The automation target is unavailable or busy.'));
         return;
       }
-      const driver = requireBackendDriver(backendDrivers, agent);
+      const driver = requireProviderDriver(providerDrivers, agent);
       mcpService.recordPromptInputMethod(agentId, 'typed');
       sendAgentPrompt(snapshot, driver, agentId, prompt, undefined, event => server.emitEvent(event), {
-        onBackendSessionUpdated: (_result, wasNewSession) => setNewConversationTitle(agent, driver, wasNewSession),
+        onProviderSessionUpdated: (_result, wasNewSession) => setNewConversationTitle(agent, driver, wasNewSession),
         onPromptStarted: result => resolve(conversationRefFromSendResult(agent, result)),
         onPromptFailed: reject,
       });
@@ -335,7 +353,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => automationRunner.runAll(),
   });
   scheduler.register({ id: 'provider-updates', intervalMs: 2_000, run: () => providerUpdates.tick() });
-  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: true, run: () => telemetryUpload!.tick() });
+  // The first upload re-checks every delivered hour, which is real work: it waits a minute, so starting up never pays for it.
+  if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: false, run: () => telemetryUpload!.tick() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
   scheduler.register({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true, run: () => cleanupPromptUploads(path.join(backendHomeDir(), 'companion'), {
     activeAgentIds: snapshot.agents.filter(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput').map(agent => agent.id),
@@ -478,6 +497,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      stopWatchingEventLoop();
       scheduler.stop();
       await telemetryUpload?.close();
       await pricing.stop();
@@ -492,15 +512,15 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   };
 }
 
-function requireBackendDriver(drivers: Map<Agent['backend'], AgentBackendDriver>, agent: Agent): AgentBackendDriver {
-  const driver = drivers.get(agent.backend);
+function requireProviderDriver(drivers: Map<Agent['provider'], AgentProviderDriver>, agent: Agent): AgentProviderDriver {
+  const driver = drivers.get(agent.provider);
   if (!driver) {
-    throw new Error(`Backend driver is not configured: ${agent.backend}`);
+    throw new Error(`Backend driver is not configured: ${agent.provider}`);
   }
   return driver;
 }
 
-function setNewConversationTitle(agent: Agent, driver: AgentBackendDriver, wasNewSession: boolean): void {
+function setNewConversationTitle(agent: Agent, driver: AgentProviderDriver, wasNewSession: boolean): void {
   if (!wasNewSession || !driver.setConversationTitle || !shouldSyncConversationTitleFromAgent(agent)) {
     return;
   }
@@ -514,6 +534,6 @@ function setNewConversationTitle(agent: Agent, driver: AgentBackendDriver, wasNe
   });
 }
 
-function conversationRefFromSendResult(agent: Agent, result: BackendSendResult): BackendConversationRef {
-  return conversationRefFromAgent({ ...agent, backendSession: result.backendSession })!;
+function conversationRefFromSendResult(agent: Agent, result: ProviderSendResult): ProviderConversationRef {
+  return conversationRefFromAgent({ ...agent, providerSession: result.providerSession })!;
 }

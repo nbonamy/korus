@@ -1,11 +1,11 @@
 import { applyExecutionSelection, executionSelectionForAgent, hasExecutionOverrides, resolveExecutionSelection } from './execution-selection';
 import type {
   Agent,
-  AgentBackend,
+  HarnessProvider,
   AgentStatus,
   AppSnapshot,
-  BackendDefaults,
-  BackendSession,
+  ProviderDefaults,
+  ProviderSessionData,
   CreateAgentInput,
   CreateQuickChatInput,
   DuplicateAgentOptions,
@@ -17,14 +17,15 @@ import { releaseRemovedAutomationTargetsInSnapshot } from './automation-manager'
 import { createEntityId, createUniqueEntityId, type IdGenerator } from './ids';
 import { workBacklogAssignmentFromWorkItem, workItemAssignmentKey, type WorkItemAssignmentSource } from './work-assignments';
 import { agentDisplayName } from './agent-display';
-import { canSelectAgentBackend, resolveAgentBackend } from './agent-backends';
+import { canSelectAgentProvider, resolveAgentProvider } from './agent-providers';
 import { seedTeamId } from './seed-ids';
-import { approvalBackendDefaultsWithPreset } from './approval-presets';
-import { workspaceSidebarGroupIdForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
+import { providerDefaultsWithPermission } from './approval-presets';
+import { workspaceSidebarGroupIdForAgent, workspaceSidebarOrderKeyForAgent, workspaceSidebarRepositoryKeyForAgent } from './workspace-sidebar';
+import { defaultHarnessProvider } from './provider-capabilities';
 
 export function createAgentFromInput(input: CreateAgentInput, createdAt = new Date().toISOString(), teamId = seedTeamId, id = createEntityId('agent')): Agent {
   const name = normalizedOptionalString(input.name) ?? null;
-  const backend = normalizedBackend(input.selection?.backend ?? input.backendDefaults?.kind);
+  const provider = normalizedProvider(input.selection?.provider ?? input.providerDefaults?.kind);
   const delegatedByAgentId = normalizedOptionalString(input.delegatedByAgentId);
 
   return {
@@ -34,8 +35,8 @@ export function createAgentFromInput(input: CreateAgentInput, createdAt = new Da
     name,
     avatar: normalizedOptionalString(input.avatar),
     folder: normalizedFolder(input.folder),
-    backend,
-    backendDefaults: normalizedBackendDefaults(input.backendDefaults, backend) ?? defaultBackendDefaults(backend),
+    provider: provider,
+    providerDefaults: normalizedProviderDefaults(input.providerDefaults, provider) ?? defaultProviderDefaults(provider),
     status: { type: 'idle' },
     createdAt,
     updatedAt: createdAt,
@@ -50,8 +51,8 @@ export function createAgentInSnapshot(
   options: { select?: boolean; afterAgentId?: string } = {},
 ): AppSnapshot {
   const agent = createAgentFromInput(input, createdAt, targetTeamId(snapshot, input.teamId), id);
-  if (!input.backendDefaults) applyProviderDefaults(snapshot, agent);
-  if (input.selection) agent.backendDefaults = backendDefaultsWithModel(agent, input.selection);
+  if (!input.providerDefaults) applyProviderDefaults(snapshot, agent);
+  if (input.selection) agent.providerDefaults = providerDefaultsWithModel(agent, input.selection);
   const source = options.afterAgentId
     ? snapshot.agents.find((candidate) => candidate.id === options.afterAgentId)
     : undefined;
@@ -67,9 +68,9 @@ export function createAgentInSnapshot(
 }
 
 export function createQuickChatInSnapshot(snapshot: AppSnapshot, input: CreateQuickChatInput, createdAt = new Date().toISOString(), id = createEntityId('agent'), options: { select?: boolean } = {}): AppSnapshot {
-  const agent = createAgentFromInput({ name: null, folder: '', ...(input.teamId ? { teamId: input.teamId } : {}), selection: { backend: resolveAgentBackend(snapshot, input.selection?.backend) } }, createdAt, targetTeamId(snapshot, input.teamId), id);
+  const agent = createAgentFromInput({ name: null, folder: '', ...(input.teamId ? { teamId: input.teamId } : {}), selection: { provider: resolveAgentProvider(snapshot, input.selection?.provider) } }, createdAt, targetTeamId(snapshot, input.teamId), id);
   applyProviderDefaults(snapshot, agent);
-  if (input.selection) agent.backendDefaults = backendDefaultsWithModel(agent, input.selection);
+  if (input.selection) agent.providerDefaults = providerDefaultsWithModel(agent, input.selection);
   agent.folder = null;
   agent.sessionKind = 'quickChat';
   return insertAgentInSnapshot(snapshot, agent, options.select);
@@ -80,19 +81,19 @@ export function updateAgentFromInput(snapshot: AppSnapshot, input: UpdateAgentIn
   if (!agent) {
     return null;
   }
-  if (input.selection?.backend !== undefined && input.selection?.backend !== agent.backend) {
-    const backend = resolveAgentBackend(snapshot, input.selection?.backend);
-    if (!canSelectAgentBackend(agent)) throw new Error('Backend can only be changed before the first prompt.');
-    agent.backend = backend;
-    agent.backendDefaults = defaultBackendDefaults(backend);
+  if (input.selection?.provider !== undefined && input.selection?.provider !== agent.provider) {
+    const backend = resolveAgentProvider(snapshot, input.selection?.provider);
+    if (!canSelectAgentProvider(agent)) throw new Error('Backend can only be changed before the first prompt.');
+    agent.provider = backend;
+    agent.providerDefaults = defaultProviderDefaults(backend);
     applyProviderDefaults(snapshot, agent);
     agent.updatedAt = updatedAt;
   }
   if (hasExecutionOverrides(input.selection)) {
-    agent.backendDefaults = backendDefaultsWithModel(agent, input.selection!);
+    agent.providerDefaults = providerDefaultsWithModel(agent, input.selection!);
     snapshot.general.providerModelDefaults = {
       ...snapshot.general.providerModelDefaults,
-      [agent.backend]: executionSelectionForAgent(agent),
+      [agent.provider]: executionSelectionForAgent(agent),
     };
   }
   if (input.name !== undefined) {
@@ -186,7 +187,7 @@ function insertAgentInSnapshot(snapshot: AppSnapshot, agent: Agent, select = tru
 }
 
 function targetTeamId(snapshot: AppSnapshot, teamId: string | undefined): string {
-  if (teamId && !snapshot.teams.some((team) => team.id === teamId)) throw new Error(`Team not found: ${teamId}`);
+  if (teamId && !snapshot.teams.some((team) => team.id === teamId)) throw new Error(`Workspace not found: ${teamId}`);
   // Legacy callers without a client context get only the stable default team.
   // Backend dispatch resolves the initiating client's explicit target first.
   return teamId ?? snapshot.teams[0]?.id ?? seedTeamId;
@@ -194,7 +195,7 @@ function targetTeamId(snapshot: AppSnapshot, teamId: string | undefined): string
 
 function clearAgentRuntimeState(agent: Agent): void {
   delete agent.hasSubmittedPrompt;
-  delete agent.backendSession;
+  delete agent.providerSession;
   delete agent.contextUsage;
   delete agent.plan;
   delete agent.planReview;
@@ -209,42 +210,33 @@ function clearAgentRuntimeState(agent: Agent): void {
   delete agent.statusText;
 }
 
-function normalizedBackend(value: AgentBackend | undefined): AgentBackend {
-  return value ?? 'codex';
+function normalizedProvider(value: HarnessProvider | undefined): HarnessProvider {
+  return value ?? defaultHarnessProvider;
 }
 
 function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
-  const selection = snapshot.general.providerModelDefaults?.[agent.backend];
+  const selection = snapshot.general.providerModelDefaults?.[agent.provider];
   if (selection) applyExecutionSelection(agent, selection);
   const approvals = snapshot.general.providerApprovalDefaults;
-  if (agent.backend === 'codex' && approvals?.codex) {
-    agent.backendDefaults = approvalBackendDefaultsWithPreset(agent.backendDefaults, approvals.codex);
-  } else if (agent.backend === 'claude' && approvals?.claude) {
-    agent.backendDefaults = { ...agent.backendDefaults, kind: 'claude', permissionMode: approvals.claude };
-  } else if (agent.backend === 'antigravity' && approvals?.antigravity) {
-    agent.backendDefaults = { ...agent.backendDefaults, kind: 'antigravity', permissionMode: approvals.antigravity };
-  } else if (agent.backend === 'cursor' && approvals?.cursor) {
-    agent.backendDefaults = { ...agent.backendDefaults, kind: 'cursor', permissionMode: approvals.cursor };
-  }
+  const permission = approvals?.[agent.provider];
+  if (permission) agent.providerDefaults = providerDefaultsWithPermission(agent.providerDefaults, agent.provider, permission);
 }
 
-function backendDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAgentInput['selection']>): BackendDefaults {
+function providerDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAgentInput['selection']>): ProviderDefaults {
   if (hasExecutionOverrides(selection)) applyExecutionSelection(agent, resolveExecutionSelection(executionSelectionForAgent(agent), selection));
-  return agent.backendDefaults!;
+  return agent.providerDefaults!;
 }
 
-function defaultBackendDefaults(backend: AgentBackend): Agent['backendDefaults'] {
-  return { kind: backend };
+function defaultProviderDefaults(provider: HarnessProvider): Agent['providerDefaults'] {
+  return { kind: provider };
 }
 
-function normalizedBackendDefaults(defaults: BackendDefaults | undefined, backend: AgentBackend): Agent['backendDefaults'] {
-  if (!defaults || defaults.kind !== backend) {
+function normalizedProviderDefaults(defaults: ProviderDefaults | undefined, provider: HarnessProvider): Agent['providerDefaults'] {
+  if (!defaults || defaults.kind !== provider) {
     return undefined;
   }
 
-  return defaults.kind === 'claude' && defaults.thinking
-    ? { ...defaults, thinking: { ...defaults.thinking } }
-    : { ...defaults };
+  return structuredClone(defaults);
 }
 
 function normalizedFolder(folder: string): string {
@@ -294,14 +286,14 @@ export function duplicateAgentInSnapshot(
     return null;
   }
 
-  const backend = options.selection?.backend === undefined ? source.backend : resolveAgentBackend(snapshot, options.selection.backend);
+  const backend = options.selection?.provider === undefined ? source.provider : resolveAgentProvider(snapshot, options.selection.provider);
   const duplicate = copiedAgent(snapshot, source, 'copy', createdAt, createId, options.name);
-  if (backend !== source.backend) {
-    duplicate.backend = backend;
-    duplicate.backendDefaults = defaultBackendDefaults(backend);
+  if (backend !== source.provider) {
+    duplicate.provider = backend;
+    duplicate.providerDefaults = defaultProviderDefaults(backend);
     applyProviderDefaults(snapshot, duplicate);
   }
-  if (options.selection) duplicate.backendDefaults = backendDefaultsWithModel(duplicate, options.selection);
+  if (options.selection) duplicate.providerDefaults = providerDefaultsWithModel(duplicate, options.selection);
   insertAgentAfterSource(snapshot, source, duplicate);
   if (options.select !== false) {
     snapshot.activeTeamId = duplicate.teamId ?? snapshot.activeTeamId;
@@ -313,13 +305,13 @@ export function duplicateAgentInSnapshot(
 export function forkAgentInSnapshot(
   snapshot: AppSnapshot,
   agentId: string,
-  backendSession: BackendSession,
+  providerSession: ProviderSessionData,
   createdAt = new Date().toISOString(),
   createId: IdGenerator = () => createEntityId('agent'),
 ): Agent | null {
   const forked = createForkedAgentDraft(snapshot, agentId, createdAt, createId);
   return forked
-    ? attachForkedAgentInSnapshot(snapshot, agentId, forked, backendSession)
+    ? attachForkedAgentInSnapshot(snapshot, agentId, forked, providerSession)
     : null;
 }
 
@@ -337,21 +329,21 @@ export function attachForkedAgentInSnapshot(
   snapshot: AppSnapshot,
   sourceAgentId: string,
   forked: Agent,
-  backendSession: BackendSession,
+  providerSession: ProviderSessionData,
   options: { select?: boolean } = {},
 ): Agent | null {
   const source = snapshot.agents.find((agent) => agent.id === sourceAgentId);
   if (!source) {
     return null;
   }
-  if (backendSession.kind !== source.backend || forked.backend !== source.backend) {
+  if (providerSession.kind !== source.provider || forked.provider !== source.provider) {
     throw new Error('Forked conversation backend does not match the source agent backend.');
   }
   if (snapshot.agents.some((agent) => agent.id === forked.id)) {
     throw new Error(`Forked agent already exists: ${forked.id}`);
   }
 
-  forked.backendSession = { ...backendSession };
+  forked.providerSession = { ...providerSession };
   insertAgentAfterSource(snapshot, source, forked);
   if (options.select !== false) {
     snapshot.activeTeamId = forked.teamId ?? snapshot.activeTeamId;
@@ -514,7 +506,7 @@ export function reorderRepositoryInTeam(
     const groupId = agent ? workspaceSidebarGroupIdForAgent(agent) : `missing:${agentId}`;
     const group = groups.get(groupId) ?? {
       agentIds: [],
-      repositoryKey: agent ? workspaceSidebarRepositoryKeyForAgent(agent) : null,
+      repositoryKey: agent ? workspaceSidebarOrderKeyForAgent(agent) : null,
     };
     group.agentIds.push(agentId);
     groups.set(groupId, group);
@@ -556,7 +548,7 @@ export function restartAgentConversation(snapshot: AppSnapshot, agentId: string,
 
   ensureAgentCanChange(agent, 'Agent must be idle before restarting.');
   delete snapshot.agentRequests?.[agentId];
-  delete snapshot.backendApprovals[agentId];
+  delete snapshot.providerApprovals[agentId];
   clearRuntimeState(agent);
   agent.status = { type: 'idle' };
   agent.updatedAt = updatedAt;
@@ -566,7 +558,7 @@ export function restartAgentConversation(snapshot: AppSnapshot, agentId: string,
 export function resumeAgentConversationInSnapshot(
   snapshot: AppSnapshot,
   agentId: string,
-  backendSession: BackendSession,
+  providerSession: ProviderSessionData,
   updatedAt = new Date().toISOString(),
 ): Agent | null {
   const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
@@ -575,14 +567,14 @@ export function resumeAgentConversationInSnapshot(
   }
 
   ensureAgentCanChange(agent, 'Agent must be idle before resuming a conversation.');
-  if (backendSession.kind !== agent.backend) {
+  if (providerSession.kind !== agent.provider) {
     throw new Error('Conversation backend does not match the agent backend.');
   }
 
   clearRuntimeState(agent);
-  agent.backendSession = { ...backendSession };
+  agent.providerSession = { ...providerSession };
   delete snapshot.agentRequests?.[agentId];
-  delete snapshot.backendApprovals[agentId];
+  delete snapshot.providerApprovals[agentId];
   agent.status = { type: 'idle' };
   agent.updatedAt = updatedAt;
   return agent;
@@ -641,7 +633,7 @@ export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Ag
   if (!agent) return null;
   releaseRemovedAutomationTargetsInSnapshot(snapshot);
   delete snapshot.agentRequests?.[agentId];
-  delete snapshot.backendApprovals[agentId];
+  delete snapshot.providerApprovals[agentId];
   snapshot.workBacklog.assignments = Object.fromEntries(
     Object.entries(snapshot.workBacklog.assignments)
       .filter(([, assignment]) => assignment.agentId !== agentId),
@@ -658,7 +650,7 @@ function ensureAgentCanChange(agent: Agent, message: string): void {
 
 function clearRuntimeState(agent: Agent): void {
   delete agent.hasSubmittedPrompt;
-  delete agent.backendSession;
+  delete agent.providerSession;
   delete agent.conversationTitle;
   delete agent.contextUsage;
   delete agent.plan;
@@ -703,8 +695,8 @@ function copiedAgent(
     avatar: source.avatar,
     folder: source.folder,
     ...(source.workspace ? { workspace: { ...source.workspace } } : {}),
-    backend: source.backend,
-    backendDefaults: source.backendDefaults ? { ...source.backendDefaults } : undefined,
+    provider: source.provider,
+    providerDefaults: source.providerDefaults ? { ...source.providerDefaults } : undefined,
     ...(source.openInApplication ? { openInApplication: source.openInApplication } : {}),
     status: { type: 'idle' },
     createdAt,

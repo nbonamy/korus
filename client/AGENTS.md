@@ -21,25 +21,30 @@ Vitest.
   routing envelope.
 - Backend-dependent features enter through app-owned contracts and the protocol first:
   extend a driver method or capability behind `daemon`, route Electron through
-  `BackendClient`, keep renderer components free of Codex/Claude branches.
+  `BackendClient`, and keep renderer components free of harness-specific branches:
+  they read capabilities, never a harness name.
 - Theme with semantic tokens and CSS variables; no hard-coded product colors.
 
-## Providers
+## Harnesses
 
-Codex and Claude Code run as provider drivers in `daemon`. Provider conversations
-stay provider-owned: `codex-app-sdk` owns the Codex snapshot, reducer, history, turn
-mutations and generic conversation UI, and Korus stores the thread reference,
-transports snapshots and events, and adds coordination metadata. Fix generic Codex
-behavior in the SDK; Codex product policy lives in the driver. `RendererMessage` is an
-app-owned DTO where explicitly needed, not a live transcript. New providers arrive as
-hosts behind `daemon`, not as a global transcript reducer. `CODEX_APP_SDK_SOURCE=1`
-links `../codex-app-sdk` (`CODEX_APP_SDK_SOURCE_ROOT` for another checkout).
+`daemon` runs agents through `multi-agent-sdk` drivers, one per harness, and Korus
+supports every harness the SDK does. Conversations stay harness-owned:
+`multi-agent-sdk` owns native session state, reducers, replicas and transport;
+`agent-ui-sdk` renders it. Korus stores the conversation reference, forwards neutral
+session events and snapshots, and adds coordination metadata. Product policy
+(permissions, instructions, MCP servers, workspaces, worktrees) lives in the daemon
+and is expressed through capabilities; harness behavior that is generic is fixed in
+the SDK stack, and raw Codex protocol problems belong to `codex-sdk`.
+`RendererMessage` is an app-owned DTO where explicitly needed, not a live transcript.
+A new harness is an SDK upgrade plus, at most, host policy: no new transcript reducer
+and no harness-named branch in the renderer. `SDK_LOCAL_SOURCE=1` links the sibling
+SDK source directories (`SDK_SOURCE_ROOT` selects their common parent).
 
 Optional telemetry is isolated by lint: only the local runtime composes the uploader,
 provider and pricing code cannot depend on it, and its endpoint is runtime config.
 
 Use the [provider integration checklist](../docs/provider-integration.md)
-for new providers and capability changes. Reuse shared coordination and UI; qualify
+for harness capability changes. Reuse shared coordination and UI; qualify
 native behavior independently from transport support.
 
 ## Packaging, Docs And Verify

@@ -2,13 +2,13 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from '../support/provisioning-host';
 import { computed } from 'vue';
 import { ElDialog, ElPopover, ElSelect, ElTabs, ElTabPane } from 'element-plus';
-import { backendChoicesKey } from '../../src/components/backend-selection';
-import { backendModelCatalogKey } from '../../src/components/backend-model-catalog';
+import { providerChoicesKey } from '../../src/components/provider-selection';
+import { providerModelCatalogKey } from '../../src/components/provider-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { createMission, type Mission } from '@workspace/core/missions';
 import type { MissionArtifactReadResult, MissionExecutionInput, MissionImplementationStartProgress, MissionRun } from '@workspace/core/mission-execution';
-import type { Agent, BackendModelOption, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, ProviderModelOption, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import MissionWorkspace from '../../src/components/MissionWorkspace.vue';
 import WorkspaceProvisioningProgressDialog from '../../src/components/WorkspaceProvisioningProgressDialog.vue';
 import MissionTicketBoard, { type MissionTicketComment } from '../../src/components/MissionTicketBoard.vue';
@@ -40,7 +40,7 @@ function missionWithRun(status: MissionRun['status'], proposal = false): Mission
 
 function mountWorkspace(mission: Mission, options: {
   attachTo?: HTMLElement;
-  models?: BackendModelOption[] | Partial<Record<Agent['backend'], BackendModelOption[]>>;
+  models?: ProviderModelOption[] | Partial<Record<Agent['provider'], ProviderModelOption[]>>;
   agents?: Agent[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: MissionArtifactReadResult['stage']) => Promise<MissionArtifactReadResult>;
@@ -52,8 +52,8 @@ function mountWorkspace(mission: Mission, options: {
   return mount(MissionWorkspace, {
     attachTo: options.attachTo,
     global: options.models ? { components: { ElPopover, ElTabs, ElTabPane }, stubs: { ElDialog }, provide: {
-      [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async (_agentId: string, backend: Agent['backend']) => Array.isArray(options.models) ? options.models : options.models?.[backend] ?? []) },
+      [providerChoicesKey as symbol]: computed(() => ['codex', 'claude']),
+      [providerModelCatalogKey as symbol]: { listModels: vi.fn(async (_agentId: string, provider: Agent['provider']) => Array.isArray(options.models) ? options.models : options.models?.[provider] ?? []) },
     } } : undefined,
     props: {
       mission: structuredClone(mission),
@@ -323,9 +323,9 @@ describe('MissionWorkspace', () => {
     mission.execution!.runs[0]!.stage = 'tickets';
     mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
     const agents = createInitialSnapshot().agents;
-    agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
+    agents[0]!.providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [], executeMission, models: { codex: [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
       { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ], claude: [{ id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] }] } });
@@ -344,7 +344,7 @@ describe('MissionWorkspace', () => {
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
-    const tabs = [...document.querySelectorAll('[role="tab"] [aria-label]')];
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
     expect(tabs.map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code']);
     const low = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low');
     expect(low).toBeDefined();
@@ -361,7 +361,7 @@ describe('MissionWorkspace', () => {
     const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(reopenedPicker.text()).toContain('Planner');
     await reopenedPicker.trigger('click'); await flushPromises();
-    document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
+    document.querySelector<HTMLElement>('[role="tab"][aria-label="Claude Code"]')!.click();
     await flushPromises();
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
     await flushPromises();
@@ -372,11 +372,11 @@ describe('MissionWorkspace', () => {
     await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
-      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
+      implementationModel: { provider: 'claude', model: 'sonnet', reasoningEffort: 'low', serviceTier: null },
       parallelImplementation: true, implementationMode: 'multiplePerRepository',
     });
     expect(() => structuredClone(executeMission.mock.calls[0]![0])).not.toThrow();
-    expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
+    expect(wrapper.props('agents')![0]!.providerDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await wrapper.setProps({ mission: { ...mission, stage: 'review' } });
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
@@ -408,10 +408,10 @@ describe('MissionWorkspace', () => {
     mission.execution!.runs[0]!.stage = 'tickets';
     mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }, { title: 'Invoices', repositoryPath: '/other', done: false }];
     const agents = createInitialSnapshot().agents;
-    agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
+    agents[0]!.providerDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
     const tiers = [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }];
-    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
+    const wrapper = mountWorkspace(mission, { attachTo: document.body, agents: [], executeMission, models: { codex: [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], serviceTiers: tiers },
       { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ] } });
@@ -431,7 +431,7 @@ describe('MissionWorkspace', () => {
     await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
-      implementationModel: { backend: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
+      implementationModel: { provider: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'ultrafast' },
       parallelImplementation: false, implementationMode: 'perRepository',
     });
     wrapper.unmount();

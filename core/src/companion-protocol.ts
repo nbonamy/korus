@@ -1,20 +1,15 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { AccountRateLimits, Agent, AgentBackend, AgentGitStatus, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
+import { withConversationId } from './legacy-fields';
+import type { AccountRateLimits, Agent, HarnessProvider, ProviderDefaults, AgentGitStatus, ModelFavorite, ProviderSessionData, Team } from './contracts';
+import { applySessionPatch, sessionConversationId, type SessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 
-// Existing companion and guest transports have not negotiated Cursor replicas.
-export function supportsCompanionBackend(backend: string): backend is Exclude<AgentBackend, 'cursor'> {
-  return backend === 'codex' || backend === 'claude' || backend === 'antigravity';
-}
-export function isCompanionConversationFrame(frame: ProviderConversationFrame): frame is Extract<ProviderConversationFrame, { backend: Exclude<AgentBackend, 'cursor'> }> {
-  return supportsCompanionBackend(frame.backend);
-}
-
-export const companionProtocol = '/workspace/companion/1.0.0';
-export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
-/** Gzip responses are negotiated separately so older paired apps keep their JSON framing. */
-export const companionCompressedProtocol = '/workspace/companion/2.0.0';
-export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/2.0.0';
+// Conversations travel as neutral session state; a phone speaking an earlier version fails to negotiate.
+export const companionProtocol = '/workspace/companion/3.0.0';
+export const companionUpdatesProtocol = '/workspace/companion-updates/3.0.0';
+/** Gzip responses are negotiated separately from plain JSON framing. */
+export const companionCompressedProtocol = '/workspace/companion/4.0.0';
+export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/4.0.0';
 export const companionDecodedResponseLimit = 128 * 1024 * 1024;
 /** Match the native app lock: quick app switches retain the authenticated connection. */
 export const companionBackgroundGraceMs = 5 * 60_000;
@@ -24,7 +19,7 @@ export const companionRequestTimeoutMs = 15_000;
 export const companionIdleTimeoutMs = 45_000;
 /** A backgrounded phone sends nothing, so the laptop waits out the grace period before calling a stream idle. */
 export const companionBackgroundIdleTimeoutMs = companionBackgroundGraceMs + companionIdleTimeoutMs;
-export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
+export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: CompanionConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;
 export const companionFrameLimit = 4 * 1024 * 1024;
@@ -35,12 +30,53 @@ export type CompanionTarget = { hostId: string; locationId: string; teamId: stri
 export type CompanionRequestReply = { target: CompanionTarget; id: string; conversationId: string; outcome: AgentRequestResponse['outcome'] };
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
 export type CompanionClosePreview = { target: CompanionTarget } & import('./agent-close').AgentClosePreview;
-export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
-const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
-/** A provider conversation frame is a full reset or one event after it; these two checks are the only definition of either. */
-export const isConversationFrame = (frame: { type: string }): boolean => conversationFrameType.test(frame.type);
-export const isConversationReset = (frame: ProviderConversationFrame): frame is CompanionReset =>
-  frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
+/** A conversation event that carries its own revision, which still applies when the global event sequence already covers it. */
+export const isConversationFrame = (frame: { type: string }): boolean =>
+  frame.type === 'conversation.sessionSnapshot' || frame.type === 'conversation.sessionPatch';
+
+/** Which stream a conversation frame belongs to: the provider conversation, and the session stream's identity. */
+export type CompanionConversationStream = { conversation: string | null; epoch: string };
+/** An agent's whole conversation as neutral session state, the base every patch applies to. */
+export type CompanionConversation = { type: 'conversation.sessionSnapshot'; agentId: string; provider: HarnessProvider; payload: CompanionConversationStream & { snapshot: SessionSnapshot } };
+export type CompanionConversationPatch = { type: 'conversation.sessionPatch'; agentId: string; provider: HarnessProvider; payload: CompanionConversationStream & { patch: SessionPatch } };
+/** A conversation on the companion wire: a snapshot to start from, or a patch that follows it. */
+export type CompanionConversationFrame = CompanionConversation | CompanionConversationPatch;
+export const isCompanionConversationFrame = (frame: { type: string }): frame is CompanionConversationFrame =>
+  frame.type === 'conversation.sessionSnapshot' || frame.type === 'conversation.sessionPatch';
+export const isCompanionConversation = (frame: { type: string }): frame is CompanionConversation => frame.type === 'conversation.sessionSnapshot';
+export const companionFrameRevision = (frame: CompanionConversationFrame): number =>
+  frame.type === 'conversation.sessionSnapshot' ? frame.payload.snapshot.revision : frame.payload.patch.revision;
+/** Only the conversation crosses to the phone, never the daemon's envelope around it. */
+export function companionConversationFrame<F extends CompanionConversationFrame>(event: F): F {
+  const { type, agentId, provider, payload } = event;
+  return { type, agentId, provider, payload } as F;
+}
+type StreamOf = { agentId: string; payload: CompanionConversationStream };
+export const sameCompanionStream = (a: StreamOf, b: StreamOf): boolean =>
+  a.agentId === b.agentId && a.payload.epoch === b.payload.epoch && a.payload.conversation === b.payload.conversation;
+/** The provider conversation an agent is attached to, as conversation frames name it. */
+export const companionConversationOf = (session: ProviderSessionData | null | undefined): string | null =>
+  !session ? null : sessionConversationId(session);
+/** A frame belongs to the conversation the agent is attached to; before it attaches, a new conversation can already report. */
+export function followsCompanionConversation(frame: CompanionConversationFrame, agent: Pick<Agent, 'id' | 'provider' | 'providerSession'>): boolean {
+  const attached = companionConversationOf(agent.providerSession);
+  return frame.agentId === agent.id && frame.provider === agent.provider
+    && (frame.payload.conversation === null || attached === null || frame.payload.conversation === attached);
+}
+
+/**
+ * The conversation after one more frame. A snapshot replaces it unless it is an older state of the same stream; a patch
+ * applies in revision order within its stream. Returns `current` itself when the frame is stale, and null when the
+ * stream broke (another stream's patch, a missed revision or an invalid patch): only a fresh snapshot continues it.
+ */
+export function followCompanionConversation(current: CompanionConversation | null, frame: CompanionConversationFrame): CompanionConversation | null {
+  const same = current !== null && sameCompanionStream(current, frame);
+  if (frame.type === 'conversation.sessionSnapshot') return same && frame.payload.snapshot.revision < current.payload.snapshot.revision ? current : companionConversationFrame(frame);
+  if (!same) return null;
+  if (frame.payload.patch.revision <= current.payload.snapshot.revision) return current;
+  try { return { ...current, payload: { ...current.payload, snapshot: applySessionPatch(current.payload.snapshot, frame.payload.patch) } }; }
+  catch { return null; }
+}
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** A ticket's progress as the desktop's implementation board shows it. */
@@ -70,19 +106,25 @@ export type CompanionMission = { id: string; teamId: string; outcome: string; st
   next?: 'review' | 'ship';
   review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+export type CompanionWorkspace = {
+  /**
+   * 2: the laptop takes one permission (`agent.permission.set`) and target keys that name the conversation
+   * `conversationId`. Laptops on earlier builds leave it out and take the former names.
+   */
+  dataModel?: number;
+  conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; providers?: Record<string, HarnessProvider[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
   /** Active-round finding counts, keyed by reviewer conversation; full findings stay on demand. */
   reviewFindings?: Record<string, number>;
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
   missionProgress?: CompanionMission[]; missionAgents?: Agent[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
-export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
+export type CompanionUsage = { provider: HarnessProvider; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
-export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; existingBranch?: string; worktree?: { branchName: string } };
+export type CompanionNewChat = { teamId: string; repositoryId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { provider: HarnessProvider }; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { backend: AgentBackend }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; selection: import('./contracts/execution').ExecutionSelectionOverrides & { provider: HarnessProvider }; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
 export type CompanionRepositoryProvider = 'github' | 'gitlab';
 /** Opaque selection bound to the owning daemon, host location and provider catalog. */
@@ -111,15 +153,59 @@ export type CompanionControlResult = { status: CompanionStatus; invitation?: Com
 export type CompanionRequest = { v: 1; id: string; method: string; args: unknown };
 export type CompanionResponse = { v: 1; id: string; result?: unknown; error?: string };
 
+/** The harnesses the phone app and the relay's Live Activity schema name; others show on the phone without an engine. */
+export const companionProviders = ['codex', 'claude', 'antigravity'] as const satisfies readonly HarnessProvider[];
+export type CompanionProvider = typeof companionProviders[number];
+/** The harnesses whose quotas shipped phone apps can label; others need negotiated labels and balances first. */
+export const companionQuotaProviders: readonly HarnessProvider[] = ['codex', 'claude'];
 /** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
 export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
-export function companionSessionId(agent: Agent): string | null {
-  const session = agent.backendSession;
-  if (!session) return null;
-  return JSON.stringify(session.kind === 'codex' ? { kind: session.kind, threadId: session.threadId } : { kind: session.kind, sessionId: session.sessionId });
+/** The companion wire format names a session's conversation `threadId` (Codex) or `sessionId`, as shipped phones read it. */
+const wireConversationField = (provider: HarnessProvider) => provider === 'codex' ? 'threadId' : 'sessionId';
+/** Session data for the phone: the conversation under both its current and its wire name. */
+export function withLegacyConversationId<T extends ProviderSessionData>(session: T): T {
+  return { ...session, [wireConversationField(session.kind)]: session.conversationId };
 }
-export function companionTarget(hostId: string, team: Team, agent: Agent): CompanionTarget {
-  return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent) };
+/** Shipped phones read the saved permission as `approvalPreset` (Codex) or `permissionMode`, so phone payloads carry both. */
+export function withLegacyPermission<T extends ProviderDefaults>(defaults: T): T {
+  if (defaults.permission === undefined) return defaults;
+  return { ...defaults, [defaults.kind === 'codex' ? 'approvalPreset' : 'permissionMode']: defaults.permission };
+}
+/** The data model this build speaks: see `CompanionWorkspace.dataModel`. */
+export const companionDataModel = 2;
+/**
+ * The key that names an agent's conversation in a target. `legacy` writes it under the former names, for the side
+ * that may be talking to a build before `companionDataModel` 2.
+ */
+export function companionSessionId(agent: Pick<Agent, 'providerSession'>, legacy = false): string | null {
+  const session = agent.providerSession;
+  if (!session) return null;
+  return JSON.stringify({ kind: session.kind, [legacy ? wireConversationField(session.kind) : 'conversationId']: session.conversationId });
+}
+export function companionTarget(hostId: string, team: Team, agent: Agent, legacy = false): CompanionTarget {
+  return { hostId, locationId: agent.remoteConnectionId ?? 'local', teamId: team.id, agentId: agent.id, sessionId: companionSessionId(agent, legacy) };
+}
+/** Whether a laptop takes the current data model; see `CompanionWorkspace.dataModel`. */
+export const speaksCurrentDataModel = (workspace: Pick<CompanionWorkspace, 'dataModel'>): boolean => (workspace.dataModel ?? 0) >= companionDataModel;
+/** The target a phone sends a laptop, with the key in the names that laptop takes. */
+export function companionTargetFor(workspace: Pick<CompanionWorkspace, 'dataModel'>, hostId: string, team: Team, agent: Agent): CompanionTarget {
+  return companionTarget(hostId, team, agent, !speaksCurrentDataModel(workspace));
+}
+/** Whether two target keys name the same conversation, whichever names each was written with. */
+export function sameCompanionSession(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const read = (key: string) => { try { const value = withConversationId(JSON.parse(key)) as { kind?: unknown; conversationId?: unknown }; return typeof value.kind === 'string' && typeof value.conversationId === 'string' ? `${value.kind}\u0000${value.conversationId}` : null; } catch { return null; } };
+  const left = read(a);
+  return left !== null && left === read(b);
+}
+/** Whether two targets address the same chat, whichever names their keys were written with. */
+export function sameCompanionTarget(a: CompanionTarget, b: CompanionTarget): boolean {
+  return a.hostId === b.hostId && a.locationId === b.locationId && a.teamId === b.teamId && a.agentId === b.agentId && sameCompanionSession(a.sessionId, b.sessionId);
+}
+/** How a laptop before `companionDataModel` 2 takes a permission change: Codex's as an approval preset, the others' as a permission mode. */
+export function legacyPermissionCall(provider: HarnessProvider, permission: string): { method: 'agent.approvalPreset.set'; input: { preset: string } } | { method: 'agent.permissionMode.set'; input: { mode: string } } {
+  return provider === 'codex' ? { method: 'agent.approvalPreset.set', input: { preset: permission } } : { method: 'agent.permissionMode.set', input: { mode: permission } };
 }
 /** App framing only. Cryptographic authentication and encryption are owned by Noise/libp2p. */
 export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit): Uint8Array {

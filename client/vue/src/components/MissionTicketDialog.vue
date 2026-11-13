@@ -140,6 +140,7 @@ import AnnotationPopup, {
 } from "./AnnotationPopup.vue";
 import AnnotationSendButton from "./AnnotationSendButton.vue";
 import MarkdownPanel from "./MarkdownPanel.vue";
+import { usePendingAnnotationHighlight } from "./use-pending-annotation-highlight";
 
 export type MissionTicketComment = {
   body: string;
@@ -190,6 +191,7 @@ const activeTarget = ref<{
 } | null>(null);
 const editingId = ref<string | null>(null);
 let commentId = 0;
+const pendingHighlight = usePendingAnnotationHighlight();
 
 watch(() => [props.modelValue, props.ticketKey], cancelComment);
 
@@ -216,6 +218,7 @@ function captureSelection(event: MouseEvent): void {
     event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   if (!documentElement?.contains(range.commonAncestorContainer)) return;
   const rangeRect = range.getBoundingClientRect();
+  pendingHighlight.hold(range);
   activeTarget.value = {
     quote: quote.length > 180 ? `${quote.slice(0, 177)}...` : quote,
     initialValue: "",
@@ -250,6 +253,7 @@ function saveComment(body: string): void {
 
 function editComment(comment: MissionTicketComment): void {
   if (props.disabled) return;
+  pendingHighlight.release();
   const dialog = document.querySelector<HTMLElement>(
     ".mission-ticket-dialog .el-dialog__footer",
   );
@@ -278,6 +282,7 @@ function removeComment(id: string): void {
 }
 
 function cancelComment(): void {
+  pendingHighlight.release();
   activeTarget.value = null;
   editingId.value = null;
 }

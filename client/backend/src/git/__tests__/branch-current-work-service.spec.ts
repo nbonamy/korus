@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, open, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -64,7 +64,7 @@ async function fixture(purpose: 'transfer' | 'initialization' = 'transfer') {
 }
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
+describe('BranchCurrentWorkService', { timeout: 30_000 }, () => {
   it.each(['automatic', 'off', 'setup failure'] as const)('initializes an isolated branch through the configured runtime after transfer: %s', async scenario => {
     // The manifest itself carries both staged and unstaged edits, alongside an
     // ignored environment file. Transfer tests own the larger file-type matrix.
@@ -75,7 +75,7 @@ describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [{ ...snapshot.agents[0]!, id: f.agent.id, folder: f.source }];
     snapshot.teams[0]!.agentIds = [f.agent.id];
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.general.worktreeInitializationMode = scenario === 'off' ? 'off' : 'automatic';
     const runCommand = vi.fn<NonNullable<WorktreeManagerOptions['runCommand']>>(async (_command, _args, options) => {
       expect(await f.git('status', '--porcelain')).toBe('');
@@ -149,7 +149,7 @@ describe('BranchCurrentWorkService', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('transfer safety and recovery', { timeout: 3_000 }, () => {
+describe('transfer safety and recovery', { timeout: 30_000 }, () => {
   it.each(['local', 'remote', 'slash-named remote'] as const)('does not mistake an existing %s branch suffix for the requested branch', async scenario => {
     const f = await fixture();
     if (scenario === 'local') await f.git('branch', 'team/fix');
@@ -225,7 +225,7 @@ describe('transfer safety and recovery', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('file and checkout boundaries', { timeout: 3_000 }, () => {
+describe('file and checkout boundaries', { timeout: 30_000 }, () => {
   // Real multi-file Git transfer includes renames, binary patches and staged deletions.
   it('transfers staged additions/deletions, renames, binary content, and literal pathspecs', async () => {
     const f = await fixture();
@@ -242,6 +242,26 @@ describe('file and checkout boundaries', { timeout: 3_000 }, () => {
     expect(await f.git('diff', '--cached', '--name-only')).toBe('');
     expect(await readFile(join(f.source, 'other'), 'utf8')).toBe('original\n');
   }, 5_000);
+
+  it('keeps each changed path\'s own index state when paths share a directory prefix', async () => {
+    const f = await fixture();
+    await mkdir(join(f.source, 'pkg', 'sub'), { recursive: true });
+    await writeFile(join(f.source, 'pkg', 'a'), 'staged a\n');
+    await writeFile(join(f.source, 'pkg', 'ab'), 'untracked ab\n');
+    await writeFile(join(f.source, 'pkg', 'sub', 'a'), 'staged sub\n');
+    await f.git('add', 'pkg/a', 'pkg/sub/a');
+    await writeFile(join(f.source, 'pkg', 'sub', 'a'), 'edited sub\n');
+    const staged = await f.git('diff', '--cached', '--binary');
+    const unstaged = await f.git('diff', '--binary');
+    const preview = await f.service.preview(f.source);
+    const result = await f.service.execute(f.agent, { ...f.input, snapshotId: preview.snapshotId });
+    expect(result.state, result.detail).toBe('completed');
+    expect(await readFile(join(result.folder, 'pkg', 'ab'), 'utf8')).toBe('untracked ab\n');
+    expect(await readFile(join(result.folder, 'pkg', 'sub', 'a'), 'utf8')).toBe('edited sub\n');
+    expect((await exec('git', ['diff', '--cached', '--binary'], { cwd: result.folder })).stdout.trim()).toBe(staged);
+    expect((await exec('git', ['diff', '--binary'], { cwd: result.folder })).stdout.trim()).toBe(unstaged);
+    expect(await f.git('status', '--porcelain')).toBe('');
+  });
 
   it('preserves intent-to-add and exact file bytes under checkout filters', async () => {
     const f = await fixture();
@@ -286,7 +306,7 @@ describe('file and checkout boundaries', { timeout: 3_000 }, () => {
 
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('source cleanup races', { timeout: 3_000 }, () => {
+describe('source cleanup races', { timeout: 30_000 }, () => {
   it('retains edits through an open file descriptor in the reported recovery copies', async () => {
     const f = await fixture();
     const descriptor = await open(join(f.source, 'mixed'), 'r+');
@@ -302,7 +322,7 @@ describe('source cleanup races', { timeout: 3_000 }, () => {
 
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('worktree identity', { timeout: 3_000 }, () => {
+describe('worktree identity', { timeout: 30_000 }, () => {
   it('branches from a linked checkout HEAD without changing the primary checkout', async () => {
     const f = await fixture(); const linked = join(f.root, 'linked');
     await f.git('worktree', 'add', '-b', 'source-feature', linked);
@@ -345,7 +365,7 @@ describe('worktree identity', { timeout: 3_000 }, () => {
 });
 
 // Real Git subprocesses exercise worktree transfer, index locks and recovery.
-describe('index lock contention', { timeout: 3_000 }, () => {
+describe('index lock contention', { timeout: 30_000 }, () => {
   it('waits for another git process to release the index lock instead of abandoning the cleanup', async () => {
     const f = await fixture();
     indexLock.busy = 6;

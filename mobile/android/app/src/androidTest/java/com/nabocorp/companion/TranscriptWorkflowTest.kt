@@ -39,9 +39,9 @@ class TranscriptWorkflowTest {
             }
             try {
                 assertTrue("Bundled transcript must register its native port", ready.await(20, TimeUnit.SECONDS))
-                val agent = json("id" to "android-transcript", "teamId" to "test", "name" to "Android transcript", "backend" to "codex", "status" to json("type" to "idle"), "readState" to json("revision" to 3, "readRevision" to 0))
+                val agent = json("id" to "android-transcript", "teamId" to "test", "name" to "Android transcript", "provider" to "codex", "status" to json("type" to "idle"), "readState" to json("revision" to 3, "readRevision" to 0))
                 val snapshot = json("messages" to JSONArray().put(json("id" to "message", "role" to "assistant", "status" to "complete", "parts" to JSONArray().put(json("type" to "text", "text" to "Android transcript verification")))), "turns" to JSONArray(), "activeTurnId" to null, "busy" to false)
-                val payload = json("agentId" to "android-transcript", "agent" to agent, "generation" to 7, "ready" to true, "peers" to JSONArray(), "history" to json("hasOlder" to false, "loadingOlder" to false, "failed" to false), "frame" to json("agentId" to "android-transcript", "backend" to "codex", "payload" to json("snapshot" to snapshot)))
+                val payload = json("agentId" to "android-transcript", "agent" to agent, "generation" to 7, "ready" to true, "peers" to JSONArray(), "history" to json("hasOlder" to false, "loadingOlder" to false, "failed" to false), "frame" to json("agentId" to "android-transcript", "provider" to "codex", "payload" to json("snapshot" to snapshot)))
                 scenario.onActivity {
                     page!!.presentConversation(contextOnly = false, payload.toString())
                     it.setContent { AndroidView(factory = { page!!.view }, modifier = Modifier.fillMaxSize()) }

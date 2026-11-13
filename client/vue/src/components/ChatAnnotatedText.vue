@@ -90,15 +90,6 @@ onBeforeUnmount(() => { if (focusTimer !== undefined) clearTimeout(focusTimer); 
 </script>
 
 <style scoped>
-:global(::highlight(chat-annotations)) {
-  background-color: var(--color-annotation-background);
-}
-
-:global(::highlight(chat-annotation-focus)) {
-  background-color: var(--color-annotation-focus);
-  color: var(--color-on-annotation-focus);
-}
-
 .chat-annotated-text {
   position: relative;
 }

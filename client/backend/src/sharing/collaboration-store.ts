@@ -1,9 +1,11 @@
 import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { renameProviderFields } from '../persistence/migrations';
 
 type Section = 'sharing' | 'guestJoins';
-type Document = { v: 1; sharing?: unknown; guestJoins?: unknown };
+/** Version 2 stores agent providers as `provider` instead of `backend`; version 1 is upgraded on read and rewritten on the next update. */
+type Document = { v: 2; sharing?: unknown; guestJoins?: unknown };
 const writes = new Map<string, Promise<void>>();
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
@@ -47,12 +49,13 @@ export class CollaborationStore {
       const file = await lstat(this.file);
       if (!file.isFile() || file.isSymbolicLink() || file.size > 32 * 1024 * 1024) throw new Error('Invalid collaboration file.');
       await chmod(this.file, 0o600);
-      const value: unknown = JSON.parse(await readFile(this.file, 'utf8'));
-      if (!record(value) || value.v !== 1 || Object.keys(value).some(key => !['v', 'sharing', 'guestJoins'].includes(key))
+      const stored: unknown = JSON.parse(await readFile(this.file, 'utf8'));
+      const value = record(stored) && stored.v === 1 ? { ...(renameProviderFields(stored) as Record<string, unknown>), v: 2 } : stored;
+      if (!record(value) || value.v !== 2 || Object.keys(value).some(key => !['v', 'sharing', 'guestJoins'].includes(key))
         || (value.sharing !== undefined && !record(value.sharing)) || (value.guestJoins !== undefined && !record(value.guestJoins))) throw new Error('Invalid collaboration state.');
       return value as Document;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { v: 1 };
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { v: 2 };
       throw error;
     }
   }

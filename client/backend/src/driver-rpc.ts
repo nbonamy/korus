@@ -1,43 +1,44 @@
+import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { isProviderSafetyReviewTarget } from '@workspace/core/provider-safety-block';
 import { randomUUID } from 'node:crypto';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type { PendingConversationPrompt } from '@workspace/core/pending-conversation-prompt';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { utilityImageAttachments } from './agents/utility-image-attachments';
-import { CursorHost } from './cursor/cursor-host';
+import { handOffConversation } from './agents/conversation-handoff';
+import { sessionHandoff } from './agents/prompts';
+import { createProviderDriver } from './harness-drivers';
 import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
-import { isAgentBackend } from '@workspace/core/contracts/shared';
+import { isHarnessProvider } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { expandMissionCommand } from './agents/mission-command';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
-import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { resolveBackendCoordinationPolicy, unsupportedBackendFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/backend-driver';
-import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
+import type { AgentProviderDriver, BackendEvent, ProviderSendResult } from '@workspace/core/provider-driver';
+import { resolveProviderCoordinationPolicy, unsupportedProviderFeature, utilityTaskComplexities, type UtilityTaskComplexity } from '@workspace/core/provider-driver';
+import type { Agent, HarnessProvider, AppGeneralSettings, AppPluginSettings, ProviderSessionData, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
 import { listAgentDirectory } from './agent-directory';
-import { ClaudeBackendDriver } from './claude/claude-driver';
-import { AntigravityHost } from './antigravity/antigravity-host';
-import { CodexBackendDriver } from './codex/codex-driver';
-import { CodexSurfaceAgentAdapter } from './codex/codex-surface-adapter';
+import { traceCodexDiagnostic } from './codex/diagnostics';
 import { codexConversationDefaults } from './codex/codex-model-defaults';
 import { resolveCodexLaunch } from './codex/codex-command';
-import { createCodexSurface } from '@codex-app-sdk/backend';
 import { listSourceBranches, listSourceWorktrees, suggestedSourceWorktreePath } from './git-worktrees';
 import { WorktreeManager } from './worktrees/worktree-manager';
-import { buildAppMcpConfigOverrides, buildAppThreadConfig } from './mcp/codex-config';
+import { buildAppMcpConfigOverrides } from './mcp/codex-config';
 import { backendCodexHomeDir } from './state';
 import { listSourceFolders } from './source-folders';
 import { detectSourceFolder, scanSourceRepositories } from './source-repositories';
 import { cloneSourceRepository } from './clone-source-repository';
 import { createSourceRepository } from './create-source-repository';
 import { filterRequiredModels, type Requirements } from './requirements';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
-export type BackendDriverRegistryOptions = {
+export type ProviderDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
   hostedMcpServerUrls?: () => Readonly<Record<string, string>>;
   generalSettings?: AppGeneralSettings;
@@ -47,92 +48,25 @@ export type BackendDriverRegistryOptions = {
   additionalDeveloperInstructions?: (agent: Agent) => string | undefined;
 };
 
-type AppLoadingStrategy = 'eager' | 'lazy';
-
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
 
-type AppSurfaceOptions = Parameters<typeof createCodexSurface>[0] & {
-  loadingStrategy?: AppLoadingStrategy;
-};
-
-export function createDefaultBackendDrivers(options: BackendDriverRegistryOptions = {}): Map<AgentBackend, AgentBackendDriver> {
+export function createDefaultProviderDrivers(options: ProviderDriverRegistryOptions = {}): Map<HarnessProvider, AgentProviderDriver> {
   // Retain hosts for saved history and cleanup even when their new-work release gate is off.
-  return new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(backend => [backend, createBackendDriver(backend, options)]));
+  return new Map(harnessProviders.map(provider => [provider, createProviderDriver(provider, options)]));
 }
 
-export function createBackendDriver(backend: AgentBackend, options: BackendDriverRegistryOptions = {}): AgentBackendDriver {
-  if (backend === 'cursor') return new CursorHost(options);
-  if (backend === 'antigravity') return new AntigravityHost(options);
-  if (backend === 'claude') return new ClaudeBackendDriver(undefined, undefined, {
-    appMcpServerUrl: options.appMcpServerUrl ?? null,
-    hostedMcpServerUrls: options.hostedMcpServerUrls,
-    pluginSettings: options.pluginSettings,
-    celebrationsEnabled: options.celebrationsEnabled,
-    additionalDeveloperInstructions: options.additionalDeveloperInstructions,
-  });
-  const codexSurface = createCodexSurface(appSurfaceOptions(options));
-  const codexSessionManager = new CodexSurfaceAgentAdapter(codexSurface);
-  return new CodexBackendDriver(codexSessionManager);
+export { createProviderDriver };
+
+/**
+ * Whether the agent's harness offers something. Every real driver has every operation, so support is read from the
+ * harness's capabilities, never from a missing method: a method check only says the driver object is complete.
+ */
+function offers(driver: AgentProviderDriver, agent: Agent, capability: keyof ReturnType<AgentProviderDriver['getCapabilities']>): boolean {
+  const value = (driver.getCapabilities(agent) as Record<string, unknown> | undefined)?.[capability];
+  return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== false && value !== 'unsupported';
 }
 
-export function appSurfaceOptions(options: BackendDriverRegistryOptions = {}): AppSurfaceOptions {
-  const generalSettings = options.getGeneralSettings?.() ?? options.generalSettings;
-  return {
-    autoSelectFirstConversation: false,
-    clientInfo: { name: 'workspace', title: product.name, version: '0.3.0' },
-    codexHome: generalSettings?.providerHomes?.codex?.homePath ?? backendCodexHomeDir(),
-    conversationDefaults: codexConversationDefaults,
-    loadingStrategy: 'lazy',
-    historyItemsView: 'summary',
-    originalHistoryImages: true,
-    originalHistoryUsage: true,
-    transport: {
-      ...resolveCodexLaunch(generalSettings?.codexBinaryPath),
-      configOverrides: buildAppMcpConfigOverrides(
-        options.pluginSettings?.() ?? generalSettings?.plugins,
-      ),
-    },
-    extensions: [{
-      configureConversation: async ({ extensionContext }) => {
-        const agent = reviewExtensionAgent(extensionContext) ?? (isAgent(extensionContext) ? extensionContext : null);
-        if (!agent) return {};
-        const reviewMcpServerUrl = reviewExtensionMcpUrl(extensionContext);
-        return buildAppThreadConfig(
-          agent,
-          reviewMcpServerUrl ?? options.appMcpServerUrl ?? null,
-          options.pluginSettings?.() ?? generalSettings?.plugins,
-          {
-            celebrationsEnabled: options.celebrationsEnabled?.() ?? generalSettings?.celebrationsEnabled,
-            developerInstructions: options.additionalDeveloperInstructions?.(agent),
-          },
-          reviewMcpServerUrl ? {} : options.hostedMcpServerUrls?.() ?? {},
-        );
-      },
-    }],
-  };
-}
-
-function isAgent(value: unknown): value is Agent {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return record.backend === 'codex' && typeof record.id === 'string' && (
-    typeof record.folder === 'string' || (record.folder === null && record.sessionKind === 'quickChat')
-  );
-}
-
-function reviewExtensionAgent(value: unknown): Agent | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const agent = (value as Record<string, unknown>).agent;
-  return isAgent(agent) ? agent : null;
-}
-
-function reviewExtensionMcpUrl(value: unknown): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const url = (value as Record<string, unknown>).reviewMcpServerUrl;
-  return typeof url === 'string' ? url : null;
-}
-
-export class BackendDriverRpc {
+export class ProviderDriverRpc {
   private readonly pendingPrompts = new Map<string, PendingConversationPrompt[]>();
   private closing = false;
 
@@ -151,20 +85,20 @@ export class BackendDriverRpc {
   }
   private readonly textGenerations = new Map<string, { controller: AbortController; done: Promise<void>; finish: () => void }>();
   private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
-  private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
+  private readonly unsubscribeRequestUsage = new Map<HarnessProvider, () => void>();
   private readonly usageListeners = new Set<(observation: ExecutionObservation) => void>();
-  private readonly unsubscribeUsage = new Map<AgentBackend, () => void>();
-  private bindUsage(backend: AgentBackend, driver: AgentBackendDriver): void {
-    this.unsubscribeRequestUsage.get(backend)?.();
-    this.unsubscribeRequestUsage.delete(backend);
-    if (driver.onRequestUsage) this.unsubscribeRequestUsage.set(backend, driver.onRequestUsage(observation => {
+  private readonly unsubscribeUsage = new Map<HarnessProvider, () => void>();
+  private bindUsage(provider: HarnessProvider, driver: AgentProviderDriver): void {
+    this.unsubscribeRequestUsage.get(provider)?.();
+    this.unsubscribeRequestUsage.delete(provider);
+    if (driver.onRequestUsage) this.unsubscribeRequestUsage.set(provider, driver.onRequestUsage(observation => {
       for (const listener of this.requestUsageListeners) {
         try { listener(observation); } catch { /* Observer isolation. */ }
       }
     }));
-    this.unsubscribeUsage.get(backend)?.();
-    this.unsubscribeUsage.delete(backend);
-    if (driver.onUsage) this.unsubscribeUsage.set(backend, driver.onUsage(observation => {
+    this.unsubscribeUsage.get(provider)?.();
+    this.unsubscribeUsage.delete(provider);
+    if (driver.onUsage) this.unsubscribeUsage.set(provider, driver.onUsage(observation => {
       for (const listener of this.usageListeners) {
         try { listener(observation); } catch { /* Observer isolation. */ }
       }
@@ -178,84 +112,90 @@ export class BackendDriverRpc {
     this.usageListeners.add(listener);
     return () => this.usageListeners.delete(listener);
   }
-  private readonly inFlight = new Map<AgentBackend, number>();
+  private readonly inFlight = new Map<HarnessProvider, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
-  private readonly unsubscribeDriverEvents = new Map<AgentBackend, () => void>();
+  private readonly unsubscribeDriverEvents = new Map<HarnessProvider, () => void>();
 
   constructor(
-    private readonly drivers: Map<AgentBackend, AgentBackendDriver>,
+    private readonly drivers: Map<HarnessProvider, AgentProviderDriver>,
     private readonly worktreeManager = new WorktreeManager(),
-    private readonly ensureConnected?: (backend: AgentBackend) => Promise<unknown>,
-    private readonly blocked: (backend: AgentBackend) => boolean = () => false,
+    private readonly ensureConnected?: (provider: HarnessProvider) => Promise<unknown>,
+    private readonly blocked: (provider: HarnessProvider) => boolean = () => false,
     private readonly requirements: Requirements = {},
   ) {
-    for (const [backend, driver] of drivers) { this.bindUsage(backend,driver); this.unsubscribeDriverEvents.set(backend, driver.onEvent((event) => this.emit(event))); }
+    for (const [provider, driver] of drivers) { this.bindUsage(provider,driver); this.unsubscribeDriverEvents.set(provider, driver.onEvent((event) => this.emit(event))); }
   }
 
-  async replaceDriver(backend: AgentBackend, create: () => AgentBackendDriver, maintenance?: () => Promise<void>): Promise<void> {
-    this.unsubscribeDriverEvents.get(backend)?.();
-    await this.drivers.get(backend)?.close();
+  async replaceDriver(provider: HarnessProvider, create: () => AgentProviderDriver, maintenance?: () => Promise<void>): Promise<void> {
+    this.unsubscribeDriverEvents.get(provider)?.();
+    await this.drivers.get(provider)?.close();
     try { await maintenance?.(); }
     finally {
       const driver = create();
-      this.drivers.set(backend, driver);
-      this.bindUsage(backend,driver);
-      this.unsubscribeDriverEvents.set(backend, driver.onEvent(event => this.emit(event)));
+      this.drivers.set(provider, driver);
+      this.bindUsage(provider,driver);
+      this.unsubscribeDriverEvents.set(provider, driver.onEvent(event => this.emit(event)));
     }
   }
 
-  isBusy(backend: AgentBackend): boolean { return (this.inFlight.get(backend) ?? 0) > 0; }
+  isBusy(provider: HarnessProvider): boolean { return (this.inFlight.get(provider) ?? 0) > 0; }
 
-  getCapabilities(agent: Agent) { return this.requireDriver(agent.backend).getCapabilities(agent); }
-  getCoordinationPolicy(backend: AgentBackend) { return resolveBackendCoordinationPolicy(this.drivers.get(backend)?.coordinationPolicy); }
+  getCapabilities(agent: Agent) { return this.requireDriver(agent.provider).getCapabilities(agent); }
+  providers(): HarnessProvider[] { return [...this.drivers.keys()]; }
+  getCoordinationPolicy(provider: HarnessProvider) { return resolveProviderCoordinationPolicy(this.drivers.get(provider)?.coordinationPolicy); }
 
   async refreshConversationContext(agent: Agent): Promise<void> {
-    const driver = this.requireDriver(agent.backend);
-    if (!agent.backendSession || !driver.releaseConversation || !driver.loadConversation) return;
+    const driver = this.requireDriver(agent.provider);
+    if (!agent.providerSession || !driver.releaseConversation || !driver.loadConversation) return;
     await driver.releaseConversation(agent.id);
     await driver.loadConversation(agent);
   }
 
-  private async requireNewWork(backend: AgentBackend): Promise<void> {
-    await this.ensureConnected?.(backend);
+  private async requireNewWork(provider: HarnessProvider): Promise<void> {
+    await this.ensureConnected?.(provider);
   }
 
   async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
-    const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
-    const backend = candidate === 'codex' || candidate === 'claude' || candidate === 'cursor' ? candidate : undefined;
-    if (backend) {
-      if (method !== backendMethods.driverTextCancel && this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-      this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
+    const candidate = record.provider ?? (isRecord(record.agent) ? record.agent.provider : undefined);
+    const provider = isHarnessProvider(candidate) ? candidate : undefined;
+    if (provider) {
+      if (method !== backendMethods.driverTextCancel && this.blocked(provider)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
+      this.inFlight.set(provider, (this.inFlight.get(provider) ?? 0) + 1);
     }
     try { return await this.dispatch(method, params, options.signal); }
-    finally { if (backend) this.inFlight.set(backend, (this.inFlight.get(backend) ?? 1) - 1); }
+    finally { if (provider) this.inFlight.set(provider, (this.inFlight.get(provider) ?? 1) - 1); }
   }
 
   private async dispatch(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
     switch (method) {
       case backendMethods.driverProviderAuthentication: {
         const record = requireRecord(params);
-        const backend = requireBackend(record.backend);
+        const backend = requireProvider(record.provider);
         const driver = this.requireDriver(backend);
         if (!driver.authenticate) throw new Error(`Authentication is unavailable for ${backend}.`);
         const action = record.action as import('@workspace/core/contracts/provider-setup').ProviderAuthenticationAction['action'];
         if (!this.getCoordinationPolicy(backend).authentication.actions.includes(action)) throw new Error('Invalid authentication action.');
-        return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
+        if (record.method !== undefined && record.method !== 'browser' && record.method !== 'deviceCode') throw new Error('Invalid authentication method.');
+        return driver.authenticate({
+          action,
+          ...(record.method === undefined ? {} : { method: record.method }),
+          ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }),
+        });
       }
       case backendMethods.driverBankedResetsGet: {
-        const driver = this.requireCodexDriver();
+        const driver = this.requireDriver(this.bankedResetsProvider());
         return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };
       }
       case backendMethods.driverBankedResetUse: {
         const input = requireRecord(params).input;
         if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
-        const driver = this.requireCodexDriver();
+        const driver = this.requireDriver(this.bankedResetsProvider());
         if (!driver.useBankedReset) throw new Error('Reset redemption is unsupported');
         return driver.useBankedReset(input);
       }
       case backendMethods.driverAccountRateLimitsGet: {
-        const driver = this.requireDriver(requireBackend(requireRecord(params).backend));
+        const driver = this.requireDriver(requireProvider(requireRecord(params).provider));
         return driver.getAccountRateLimits ? { supported: true, rateLimits: await driver.getAccountRateLimits() } : { supported: false };
       }
       case backendMethods.workspaceFilesList: {
@@ -266,16 +206,6 @@ export class BackendDriverRpc {
         const record = requireRecord(params);
         return listAgentDirectory(requireString(record.folder, 'folder'), record.input === undefined ? {} : requireRecord(record.input));
       }
-      case backendMethods.driverCodexAuthenticationGet:
-        return this.requireCodexDriver().getAuthentication();
-      case backendMethods.driverCodexLoginCancel:
-        return this.requireCodexDriver().cancelChatGptLogin(params ? requireString(requireRecord(params).loginId, 'loginId') : undefined);
-      case backendMethods.driverCodexChatGptDeviceCodeLoginStart:
-        return this.requireCodexDriver().startChatGptDeviceCodeLogin();
-      case backendMethods.driverCodexChatGptLoginStart:
-        return this.requireCodexDriver().startChatGptLogin();
-      case backendMethods.driverCodexLogout:
-        return this.requireCodexDriver().logout();
       case backendMethods.remoteControlStatusGet:
         return this.remoteControlOperation(params, 'getRemoteControlStatus')();
       case backendMethods.remoteControlEnable:
@@ -341,19 +271,17 @@ export class BackendDriverRpc {
         const job = { controller, done: new Promise<void>(resolve => { finish = resolve; }), finish: () => finish() };
         if (generationId) this.textGenerations.set(key, job);
         try {
-          await this.requireNewWork(agent.backend);
-          const driver = this.requireDriver(agent.backend);
-          if (!driver.generateText) throw unsupportedBackendFeature(agent, 'ephemeral text generation');
+          await this.requireNewWork(agent.provider);
+          const driver = this.requireDriver(agent.provider);
+          if (!driver.generateText || !offers(driver, agent, 'textGeneration')) throw unsupportedProviderFeature(agent, 'ephemeral text generation');
           if (record.complexity !== undefined && !utilityTaskComplexities.includes(record.complexity as UtilityTaskComplexity)) throw new Error('Invalid utility task complexity.');
           if (record.timeoutMs !== undefined && record.timeoutMs !== null) throw new Error('Invalid utility timeout.');
-          if (record.tools !== undefined && typeof record.tools !== 'boolean') throw new Error('Invalid utility tool flag.');
           controller.signal.throwIfAborted();
           const input = {
             ...(record.timeoutMs === null ? { timeoutMs: null } : {}),
             prompt: requireString(record.prompt, 'prompt'),
             cwd: requireString(record.cwd, 'cwd'),
             ...(record.complexity !== undefined ? { complexity: record.complexity as UtilityTaskComplexity } : {}),
-            ...(typeof record.tools === 'boolean' ? { tools: record.tools } : {}),
             ...(record.mcpServers !== undefined ? {mcpServers: utilityMcpServers(record.mcpServers)} : {}),
             ...(record.attachments !== undefined ? {attachments:await utilityImageAttachments(record.attachments)} : {}),
             ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
@@ -367,35 +295,35 @@ export class BackendDriverRpc {
       }
       case backendMethods.driverImageGenerate: {
         const { agent } = requireAgentParams(params);
-        if (agent.backend !== 'codex') throw new Error('Image generation requires the Codex driver.');
-        await this.requireNewWork('codex');
-        const driver = this.requireDriver('codex');
-        if (!driver.generateImage) throw unsupportedBackendFeature(agent, 'image generation');
+        if (!defaultProviderCapabilities(agent.provider).imageGeneration) throw unsupportedProviderFeature(agent, 'image generation');
+        await this.requireNewWork(agent.provider);
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.generateImage) throw unsupportedProviderFeature(agent, 'image generation');
         const record = requireRecord(params);
         return driver.generateImage(agent, { prompt: requireString(record.prompt, 'prompt'), cwd: requireString(record.cwd, 'cwd') }, signal);
       }
       case backendMethods.driverCodeReviewRun: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
+        await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
+        const driver = this.requireDriver(agent.provider);
         if (!driver.runCodeReview || !driver.getCapabilities(agent).codeReview) {
-          throw unsupportedBackendFeature(agent, 'code review');
+          throw unsupportedProviderFeature(agent, 'code review');
         }
         const input = {
           prompt: requireString(record.prompt, 'prompt'),
           cwd: requireString(record.cwd, 'cwd'),
           reviewMcpServerUrl: requireString(record.reviewMcpServerUrl, 'reviewMcpServerUrl'),
-          ...(record.reviewerSession ? { reviewerSession: record.reviewerSession as BackendSession } : {}),
+          ...(record.reviewerSession ? { reviewerSession: record.reviewerSession as ProviderSessionData } : {}),
         };
         return this.presentPrompt(agent, input.prompt, () => driver.runCodeReview!(agent, input));
       }
       case backendMethods.driverCodeReviewDispose: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.disposeCodeReview) throw unsupportedBackendFeature(agent, 'code review cleanup');
-        await driver.disposeCodeReview(agent, record.reviewerSession as BackendSession);
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.disposeCodeReview || !offers(driver, agent, 'codeReview')) throw unsupportedProviderFeature(agent, 'code review cleanup');
+        await driver.disposeCodeReview(agent, record.reviewerSession as ProviderSessionData);
         return null;
       }
       case backendMethods.driverPromptCommandHandle: {
@@ -405,30 +333,33 @@ export class BackendDriverRpc {
       }
       case backendMethods.driverPromptSend: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
+        await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
-        const driver = this.requireDriver(agent.backend);
+        const driver = this.requireDriver(agent.provider);
         const options = record.options as SendPromptOptions | undefined;
         return this.presentPrompt(agent, prompt, () => driver.sendPrompt(agent, prompt, options), options);
       }
       case backendMethods.driverConversationReplaceWithSummary: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.replaceConversationWithSummary) {
-          throw unsupportedBackendFeature(agent, 'session compression');
-        }
-        return driver.replaceConversationWithSummary(agent);
+        await this.requireNewWork(agent.provider);
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.executeScopedPrompt || driver.getCapabilities(agent).scopedExecution !== true) throw unsupportedProviderFeature(agent, 'session compression');
+        const current = await driver.loadConversation?.(agent);
+        if (current === undefined || current === null) throw new Error('Context must be idle before compressing its session.');
+        // Compressing is a handoff from this harness to itself: a fresh conversation for the same agent, seeded with a summary.
+        const source = agent.providerSession ? agent : { ...agent, providerSession: current };
+        const { providerSession } = await handOffConversation({ from: { driver, agent: source }, to: { driver, agent: { ...agent, providerSession: undefined } }, prompts: sessionHandoff, archiveSource: true });
+        return { providerSession };
       }
       case backendMethods.driverConversationTitleUpdate: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.setConversationTitle) {
-          throw unsupportedBackendFeature(agent, 'conversation titles');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.setConversationTitle || !offers(driver, agent, 'conversationTitle')) {
+          throw unsupportedProviderFeature(agent, 'conversation titles');
         }
         await driver.setConversationTitle(agent, requireString(record.title, 'title'));
         return null;
@@ -436,109 +367,108 @@ export class BackendDriverRpc {
       case backendMethods.driverGoalUpdate: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.setGoal) {
-          throw unsupportedBackendFeature(agent, 'goals');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.setGoal || !offers(driver, agent, 'goals')) {
+          throw unsupportedProviderFeature(agent, 'goals');
         }
         return driver.setGoal(agent, requireString(record.objective, 'objective'));
       }
       case backendMethods.driverGoalClear: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.clearGoal) {
-          throw unsupportedBackendFeature(agent, 'goals');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.clearGoal || !offers(driver, agent, 'goals')) {
+          throw unsupportedProviderFeature(agent, 'goals');
         }
         return driver.clearGoal(agent);
-      }
-      case backendMethods.driverApprovalPresetUpdate: {
-        const { agent } = requireAgentParams(params);
-        const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.setApprovalPreset) {
-          throw unsupportedBackendFeature(agent, 'approval presets');
-        }
-        return driver.setApprovalPreset(agent, record.preset as never);
       }
       case backendMethods.driverPermissionModeUpdate: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.setPermissionMode) {
-          throw unsupportedBackendFeature(agent, 'permission modes');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.setPermissionMode || !offers(driver, agent, 'permissionModes')) {
+          throw unsupportedProviderFeature(agent, 'permission modes');
         }
         const mode = requireString(record.mode, 'mode');
         const supportedModes = driver.getCapabilities(agent).permissionModes ?? [];
         if (!supportedModes.some((option) => option.id === mode)) {
-          throw new Error(`Unsupported permission mode for ${agent.backend}: ${mode}`);
+          throw new Error(`Unsupported permission mode for ${agent.provider}: ${mode}`);
         }
         return driver.setPermissionMode(agent, mode);
       }
       case backendMethods.driverConversationRelease: {
-        const { backend, agentId } = requireBackendAgentIdParams(params);
+        const { provider: backend, agentId } = requireProviderAgentIdParams(params);
         await this.requireDriver(backend).releaseConversation?.(agentId);
         return null;
       }
       case backendMethods.driverHandoffCheck: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.assertHandoffReady) throw unsupportedBackendFeature(agent, 'handoff readiness checks');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.assertHandoffReady) throw unsupportedProviderFeature(agent, 'handoff readiness checks');
         await driver.assertHandoffReady(agent);
         return null;
       }
       case backendMethods.driverConversationArchive: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.archiveAgentConversation) return { supported: false };
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.archiveAgentConversation || !offers(driver, agent, 'conversationArchive')) return { supported: false };
         await driver.archiveAgentConversation(agent);
+        return { supported: true };
+      }
+      case backendMethods.driverConversationUnarchive: {
+        const { agent } = requireAgentParams(params);
+        const driver = this.requireDriver(agent.provider);
+        const ref = conversationRefFromAgent(agent);
+        if (!ref || !driver.setConversationStorage || !offers(driver, agent, 'conversationArchive')) return { supported: false };
+        await driver.setConversationStorage(ref, 'active');
         return { supported: true };
       }
       case backendMethods.driverConversationDelete: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.deleteAgentConversation) return { supported: false };
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.deleteAgentConversation || !offers(driver, agent, 'conversationDelete')) return { supported: false };
         await driver.deleteAgentConversation(agent);
         return { supported: true };
       }
       case backendMethods.driverConversationsReconcile: {
         const record = requireRecord(params);
-        const backend = requireBackend(record.backend);
+        const provider = requireProvider(record.provider);
         const agents = Array.isArray(record.agents) ? record.agents.map((agent) => requireAgent(agent, 'agent')) : [];
-        await this.requireDriver(backend).reconcileConversations?.(agents);
+        await this.requireDriver(provider).reconcileConversations?.(agents);
         return null;
       }
       case backendMethods.driverInterrupt: {
         const { agent } = requireAgentParams(params);
         const expectedTurnId = requireRecord(params).expectedTurnId;
         return expectedTurnId === undefined
-          ? this.requireDriver(agent.backend).interrupt(agent)
-          : this.requireDriver(agent.backend).interrupt(agent, requireString(expectedTurnId, 'expectedTurnId'));
+          ? this.requireDriver(agent.provider).interrupt(agent)
+          : this.requireDriver(agent.provider).interrupt(agent, requireString(expectedTurnId, 'expectedTurnId'));
       }
       case backendMethods.driverAgentRequestRespond: {
         const record = requireRecord(params);
-        const backend = requireBackend(record.backend);
+        const provider = requireProvider(record.provider);
         if (!isAgentRequestResponse(record.response)) throw new Error('Invalid agent request response.');
-        await this.requireDriver(backend).respondToAgentRequest(record.response);
+        await this.requireDriver(provider).respondToAgentRequest(record.response);
         return null;
       }
       case backendMethods.driverConversationLoad: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.loadConversation) throw unsupportedBackendFeature(agent, 'conversation loading');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.loadConversation || !offers(driver, agent, 'history')) throw unsupportedProviderFeature(agent, 'conversation loading');
         return driver.loadConversation(agent);
       }
       case backendMethods.driverConversationTurnHistoryLoad: {
         const { agent } = requireAgentParams(params);
         const turnId = requireString(requireRecord(params).turnId, 'turnId');
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.loadTurnHistory) throw unsupportedBackendFeature(agent, 'turn history');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.loadTurnHistory || !offers(driver, agent, 'turnHistory')) throw unsupportedProviderFeature(agent, 'turn history');
         await driver.loadTurnHistory(agent, turnId);
         return null;
       }
       case backendMethods.driverConversationHistoryLoadOlder: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.loadOlderHistory) {
-          throw unsupportedBackendFeature(agent, 'demand-paged conversation history');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.loadOlderHistory || !offers(driver, agent, 'history')) {
+          throw unsupportedProviderFeature(agent, 'demand-paged conversation history');
         }
         return driver.loadOlderHistory(agent);
       }
@@ -546,31 +476,31 @@ export class BackendDriverRpc {
         const { agent } = requireAgentParams(params);
         const input = requireRecord(requireRecord(params).input);
         if (typeof input.sessionId !== 'string' || typeof input.contentId !== 'string' || !Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error('Invalid conversation content request.');
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.readConversationContent) throw unsupportedBackendFeature(agent, 'conversation content');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.readConversationContent || !offers(driver, agent, 'conversationContent')) throw unsupportedProviderFeature(agent, 'conversation content');
         return driver.readConversationContent(agent, { sessionId: input.sessionId, contentId: input.contentId, offset: input.offset as number });
       }
       case backendMethods.driverConversationsList: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.listConversations) throw unsupportedBackendFeature(agent, 'conversation listing');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.listConversations || !offers(driver, agent, 'conversationResume')) throw unsupportedProviderFeature(agent, 'conversation listing');
         return driver.listConversations(agent, record.input as ConversationListInput | undefined);
       }
       case backendMethods.driverConversationResume: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.resumeConversation) {
-          throw unsupportedBackendFeature(agent, 'conversation resume');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.resumeConversation || !offers(driver, agent, 'conversationResume')) {
+          throw unsupportedProviderFeature(agent, 'conversation resume');
         }
         return driver.resumeConversation(agent, record.target as ConversationResumeTarget);
       }
       case backendMethods.driverWorktreeConversationFork: {
         const { agent } = requireAgentParams(params);
         const targetAgent = requireAgent(requireRecord(params).targetAgent, 'targetAgent');
-        if (agent.backend !== targetAgent.backend) throw new Error('Native worktree forks require the same provider.');
-        const driver = this.requireDriver(agent.backend);
+        if (agent.provider !== targetAgent.provider) throw new Error('Native worktree forks require the same provider.');
+        const driver = this.requireDriver(agent.provider);
         return driver.forkWorktreeConversation ? driver.forkWorktreeConversation(agent, targetAgent) : null;
       }
       case backendMethods.driverConversationFork: {
@@ -578,9 +508,9 @@ export class BackendDriverRpc {
         const record = requireRecord(params);
         const targetAgent = requireAgent(record.targetAgent, 'targetAgent');
         const turnId = record.turnId === undefined ? undefined : requireString(record.turnId, 'turnId');
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.forkConversation) {
-          throw unsupportedBackendFeature(agent, 'conversation fork');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.forkConversation || !offers(driver, agent, 'conversationFork')) {
+          throw unsupportedProviderFeature(agent, 'conversation fork');
         }
         return turnId === undefined
           ? driver.forkConversation(agent, targetAgent)
@@ -589,28 +519,28 @@ export class BackendDriverRpc {
       case backendMethods.driverConversationMessagesGet: {
         const record = requireRecord(params);
         const ref = requireRecord(record.ref);
-        const backend = requireBackend(ref.backend);
-        const driver = this.requireDriver(backend);
+        const provider = requireProvider(ref.provider);
+        const driver = this.requireDriver(provider);
         if (!driver.readConversationMessages) {
-          throw new Error(`${backend} does not support reading conversation messages.`);
+          throw new Error(`${provider} does not support reading conversation messages.`);
         }
         return driver.readConversationMessages(record.ref as never, requireString(record.agentId, 'agentId'));
       }
       case backendMethods.driverConversationSummaryGet: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.readConversationSummary) throw unsupportedBackendFeature(agent, 'conversation summaries');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.readConversationSummary) throw unsupportedProviderFeature(agent, 'conversation summaries');
         return driver.readConversationSummary(agent, record.ref as never);
       }
       case backendMethods.driverPromptSteer: {
         const { agent } = requireAgentParams(params);
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
-        const driver = this.requireDriver(agent.backend);
+        const driver = this.requireDriver(agent.provider);
         if (!driver.steerPrompt || driver.getCapabilities(agent).steerPrompt === false) {
-          throw unsupportedBackendFeature(agent, 'prompt steering');
+          throw unsupportedProviderFeature(agent, 'prompt steering');
         }
-        await this.requireNewWork(agent.backend);
+        await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
@@ -623,19 +553,19 @@ export class BackendDriverRpc {
       case backendMethods.driverTurnDelete: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.deleteTurn) {
-          throw unsupportedBackendFeature(agent, 'turn deletion');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.deleteTurn || !offers(driver, agent, 'deleteTurn')) {
+          throw unsupportedProviderFeature(agent, 'turn deletion');
         }
         return driver.deleteTurn(agent, requireString(record.turnId, 'turnId'));
       }
       case backendMethods.driverTurnEdit: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
+        await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.editTurn) {
-          throw unsupportedBackendFeature(agent, 'turn editing');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.editTurn || !offers(driver, agent, 'editTurn')) {
+          throw unsupportedProviderFeature(agent, 'turn editing');
         }
         const turnId = requireString(record.turnId, 'turnId');
         const content = requireString(record.content, 'content');
@@ -643,40 +573,40 @@ export class BackendDriverRpc {
       }
       case backendMethods.driverTurnRetry: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
+        await this.requireNewWork(agent.provider);
         const record = requireRecord(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.retryTurn) {
-          throw unsupportedBackendFeature(agent, 'turn retry');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.retryTurn || !offers(driver, agent, 'retryTurn')) {
+          throw unsupportedProviderFeature(agent, 'turn retry');
         }
         return driver.retryTurn(agent, requireString(record.turnId, 'turnId'));
       }
       case backendMethods.driverTurnContinueInterrupted: {
         const { agent } = requireAgentParams(params);
-        await this.requireNewWork(agent.backend);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.continueInterruptedTurn) {
-          throw unsupportedBackendFeature(agent, 'interrupted turn continuation');
+        await this.requireNewWork(agent.provider);
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.continueInterruptedTurn || !offers(driver, agent, 'turnContinuation')) {
+          throw unsupportedProviderFeature(agent, 'interrupted turn continuation');
         }
         const review = requireRecord(params).safetyReview;
-        if (review !== undefined && (!isProviderSafetyReviewTarget(review) || agent.backend !== 'codex')) throw new Error('Invalid provider safety review.');
+        if (review !== undefined && (!isProviderSafetyReviewTarget(review) || !defaultProviderCapabilities(agent.provider).safetyReview)) throw new Error('Invalid provider safety review.');
         return review === undefined ? driver.continueInterruptedTurn(agent) : driver.continueInterruptedTurn(agent, review);
       }
       case backendMethods.driverModelsList: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        return filterRequiredModels(this.requirements, agent.backend, driver.listModels ? await driver.listModels(agent) : []);
+        const driver = this.requireDriver(agent.provider);
+        return filterRequiredModels(this.requirements, agent.provider, driver.listModels ? await driver.listModels(agent) : []);
       }
       case backendMethods.driverPluginsList: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.listPlugins) throw unsupportedBackendFeature(agent, 'plugins');
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.listPlugins || !offers(driver, agent, 'plugins')) throw unsupportedProviderFeature(agent, 'plugins');
         return driver.listPlugins(agent);
       }
       case backendMethods.driverSkillsList: {
         const { agent } = requireAgentParams(params);
-        const driver = this.requireDriver(agent.backend);
-        if (!driver.listSkills) return [];
+        const driver = this.requireDriver(agent.provider);
+        if (!driver.listSkills || !offers(driver, agent, 'skills')) return [];
         return requireRecord(params).forceReload === true ? driver.listSkills(agent, true) : driver.listSkills(agent);
       }
       case backendMethods.sourceFolderDetect:
@@ -726,22 +656,18 @@ export class BackendDriverRpc {
     }
   }
 
+  /** The harness whose account banks rate-limit resets. */
+  private bankedResetsProvider(): HarnessProvider {
+    return harnessProviders.find(provider => defaultProviderCapabilities(provider).bankedResets) ?? defaultHarnessProvider;
+  }
   private remoteControlOperation<Key extends 'getRemoteControlStatus' | 'enableRemoteControl' | 'disableRemoteControl' | 'startDevicePairing' | 'checkDevicePairing' | 'listPairedDevices' | 'revokePairedDevice'>(
     params: unknown, key: Key,
-  ): NonNullable<AgentBackendDriver[Key]> {
-    const backend = params === undefined ? 'codex' : requireBackend(requireRecord(params).backend ?? 'codex');
-    const driver = this.requireDriver(backend);
+  ): NonNullable<AgentProviderDriver[Key]> {
+    const provider = params === undefined ? defaultHarnessProvider : requireProvider(requireRecord(params).provider ?? defaultHarnessProvider);
+    const driver = this.requireDriver(provider);
     const operation = driver[key];
-    if (!operation) throw new Error(`${backend} does not support remote control (${key}).`);
-    return operation.bind(driver) as NonNullable<AgentBackendDriver[Key]>;
-  }
-
-  private requireCodexDriver(): CodexBackendDriver {
-    const driver = this.requireDriver('codex');
-    if (!(driver instanceof CodexBackendDriver)) {
-      throw new Error('Codex driver is not configured.');
-    }
-    return driver;
+    if (!operation) throw new Error(`${provider} does not support remote control (${key}).`);
+    return operation.bind(driver) as NonNullable<AgentProviderDriver[Key]>;
   }
 
   async close(): Promise<void> {
@@ -761,9 +687,9 @@ export class BackendDriverRpc {
     if (failure?.status === 'rejected') throw failure.reason;
   }
 
-  tryHandlePromptCommand(agent: Agent, prompt: string): Promise<BackendSendResult> | null {
+  tryHandlePromptCommand(agent: Agent, prompt: string): Promise<ProviderSendResult> | null {
     if (expandWorktreeDelegationCommand(prompt) !== null) return null;
-    return this.requireDriver(agent.backend).tryHandlePromptCommand?.(agent, prompt) ?? null;
+    return this.requireDriver(agent.provider).tryHandlePromptCommand?.(agent, prompt) ?? null;
   }
 
   onEvent(listener: (event: BackendEvent) => void): () => void {
@@ -773,18 +699,18 @@ export class BackendDriverRpc {
     };
   }
 
-  private requireDriver(backend: AgentBackend): AgentBackendDriver {
-    if (this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
-    const driver = this.drivers.get(backend);
+  private requireDriver(provider: HarnessProvider): AgentProviderDriver {
+    if (this.blocked(provider)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
+    const driver = this.drivers.get(provider);
     if (!driver) {
-      throw new Error(`Backend driver is not configured: ${backend}`);
+      throw new Error(`Backend driver is not configured: ${provider}`);
     }
     return driver;
   }
 
   private emit(event: BackendEvent): void {
     if (event.type === 'models.changed') {
-      event = { ...event, payload: { ...event.payload, models: filterRequiredModels(this.requirements, event.backend, event.payload.models) } };
+      event = { ...event, payload: { ...event.payload, models: filterRequiredModels(this.requirements, event.provider, event.payload.models) } };
     }
     for (const listener of this.listeners) {
       listener(event);
@@ -799,21 +725,21 @@ function requireAgentParams(params: unknown): { agent: Agent } {
 
 function requireAgent(value: unknown, label: string): Agent {
   const agent = requireRecord(value) as Agent;
-  requireBackend(agent.backend);
+  requireProvider(agent.provider);
   requireString(agent.id, `${label}.id`);
   return agent;
 }
 
-function requireBackendAgentIdParams(params: unknown): { backend: AgentBackend; agentId: string } {
+function requireProviderAgentIdParams(params: unknown): { provider: HarnessProvider; agentId: string } {
   const record = requireRecord(params);
   return {
-    backend: requireBackend(record.backend),
+    provider: requireProvider(record.provider),
     agentId: requireString(record.agentId, 'agentId'),
   };
 }
 
-function requireBackend(value: unknown): AgentBackend {
-  if (!isAgentBackend(value)) {
+function requireProvider(value: unknown): HarnessProvider {
+  if (!isHarnessProvider(value)) {
     throw new Error('Invalid backend.');
   }
   return value;

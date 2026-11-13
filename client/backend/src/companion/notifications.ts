@@ -1,10 +1,10 @@
 import { agentConversationId } from '@workspace/core/plan-review';
 import { createHash } from 'node:crypto';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { companionAgents, companionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
+
 
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
 export class CompanionNotifications {
@@ -35,10 +35,11 @@ export class CompanionNotifications {
       const request = event.payload.request;
       return request.kind !== 'question' || request.question.blocking;
     }
-    return providerConversationEventView(event).type === 'turn.completed';
+    return event.type === 'turn.completed';
   }
   create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
-    const view = providerConversationEventView(event);
+    const view = { type: event.type, agentId: event.agentId, turnId: event.turnId,
+      conversationId: event.conversationId, payload: event.payload };
     // Mission workers are not in the team's agent list, but a person still has to answer them.
     const agent = companionAgents(workspace).find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);
@@ -63,7 +64,8 @@ export class CompanionNotifications {
       if (!view.turnId && !turn?.id) return null;
     }
     if (kind !== 'read' && revision !== undefined && revision <= (agent.readState?.readRevision ?? -1)) return null;
-    const target = companionTarget(this.hostId, team, agent);
+    // Shipped phones compare this target with keys of their own, written under the former names.
+    const target = companionTarget(this.hostId, team, agent, true);
     const id = createHash('sha256').update(JSON.stringify([target, kind, identity])).digest('hex');
     if (this.seen.has(id)) return null;
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);

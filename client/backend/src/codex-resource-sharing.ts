@@ -154,3 +154,13 @@ async function isSymbolicLink(filePath: string): Promise<boolean> {
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
+
+/** How the daemon reads and changes Codex resource sharing, through provider setup when it manages homes. */
+export function codexResourceSharingAccess(providerSetup?: import('./provider-setup').ProviderSetup): {
+  configure: (input: SetCodexResourceSharingInput) => Promise<void>;
+  inspect: (enabled: boolean) => Promise<CodexResourceSharingStatus>;
+} {
+  return providerSetup
+    ? { configure: input => providerSetup.setResourceSharing('codex', input), inspect: () => providerSetup.getResourceSharingStatus('codex') }
+    : { configure: setCodexResourceSharing, inspect: getCodexResourceSharingStatus };
+}

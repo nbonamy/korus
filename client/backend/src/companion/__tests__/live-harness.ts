@@ -28,7 +28,7 @@ const snapshot = createEmptySnapshot();
 snapshot.general.providerEnabled = { codex: true, claude: false, antigravity: false };
 snapshot.sourceFolder = { path: root, initialized: true, recentRepoNames: [] };
 snapshot.teams = [{ id: 'team-native-check', name: 'Native acceptance', agentIds: ['agent-native-check'] }];
-snapshot.agents = [{ id: 'agent-native-check', name: 'Real provider', teamId: 'team-native-check', backend: 'codex', folder: root,
+snapshot.agents = [{ id: 'agent-native-check', name: 'Real provider', teamId: 'team-native-check', provider: 'codex', folder: root,
   status: { type: 'idle' }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
 snapshot.activeTeamId = snapshot.teams[0]!.id; snapshot.activeAgentId = snapshot.agents[0]!.id;
 await writeFile(path.join(home, 'state.json'), JSON.stringify(snapshot), { mode: 0o600 });
@@ -63,7 +63,7 @@ await writeFile(path.join(evidence, 'private-invitation.json'), JSON.stringify(i
 // An initial real laptop prompt establishes provider-owned conversation state before the phone subscribes.
 for (let attempt = 0; attempt < 100; attempt++) {
   const { snapshot } = await peer.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet);
-  if (snapshot.providerConnections?.some((provider) => provider.backend === 'codex' && provider.connected)) break;
+  if (snapshot.providerConnections?.some((provider) => provider.provider === 'codex' && provider.connected)) break;
   await new Promise<void>((resolve) => setTimeout(resolve, 200));
 }
 await peer.request(backendMethods.agentPromptSend, { agentId: 'agent-native-check', prompt: 'For a native mobile acceptance check, reply exactly READY. Do not invoke tools or change files.' });
@@ -74,7 +74,7 @@ const admin = createServer((request, response) => {
     if (request.url === '/status') {
       const result = await control({ action: 'status' });
       const state = await peer.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet);
-      response.end(JSON.stringify({ status: result.status, agents: state.snapshot.agents.map(({ id, status, backendSession }) => ({ id, status, backendSession })) }));
+      response.end(JSON.stringify({ status: result.status, agents: state.snapshot.agents.map(({ id, status, providerSession: providerSession }) => ({ id, status, providerSession: providerSession })) }));
     } else if (request.url === '/approve' && request.method === 'POST') {
       const pending = (await control({ action: 'status' })).status.pending[0];
       if (!pending) throw new Error('No pending phone');

@@ -4,8 +4,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { BackendDriverRpc } from '../../driver-rpc';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { ImageGenerationService } from '../../image-generation-service';
 import { createImageGenerationToolModuleProvider } from '../image-generation-tools';
 import { AppMcpService } from '../service';
@@ -19,17 +19,18 @@ describe('non-Codex image generation over MCP', () => {
     const root = path.join(folder, 'generated_images');
     await mkdir(root);
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0] = { ...snapshot.agents[0]!, backend: 'claude', folder, backendSession: { kind: 'claude', sessionId: 'original', transport: 'stdio' } };
-    snapshot.agents[1] = { ...snapshot.agents[1]!, backend: 'codex' };
-    const generateImage = vi.fn<NonNullable<AgentBackendDriver['generateImage']>>().mockResolvedValue({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] });
-    const driver: AgentBackendDriver = {
-      backend: 'codex', generateImage, getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(), sendPrompt: vi.fn(),
+    snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'claude', folder, providerSession: { kind: 'claude', conversationId: 'original', transport: 'stdio' } };
+    snapshot.agents[1] = { ...snapshot.agents[1]!, provider: 'codex' };
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    const generateImage = vi.fn<NonNullable<AgentProviderDriver['generateImage']>>().mockResolvedValue({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] });
+    const driver: AgentProviderDriver = {
+      provider: 'codex', generateImage, getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(), sendPrompt: vi.fn(),
       interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
     };
     const connected = vi.fn();
-    const rpc = new BackendDriverRpc(new Map([['codex', driver]]), undefined, connected);
+    const rpc = new ProviderDriverRpc(new Map([['codex', driver]]), undefined, connected);
     const images = new ImageGenerationService({ snapshot, generatedImagesRoot: root, defaultCwd: folder,
-      generate: (agent, input, signal) => rpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as ReturnType<NonNullable<AgentBackendDriver['generateImage']>> });
+      generate: (agent, input, signal) => rpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as ReturnType<NonNullable<AgentProviderDriver['generateImage']>> });
     const service = new AppMcpService({ snapshot, toolModuleProviders: [createImageGenerationToolModuleProvider(images)] });
     cleanups.push(() => service.stop());
     const url = await service.start();
@@ -48,7 +49,7 @@ describe('non-Codex image generation over MCP', () => {
 
   it('advertises only to non-Codex agents, invokes the Codex driver and returns an image with a unique saved path', async () => {
     const f = await setup();
-    const conversations = () => f.snapshot.agents.map(({ id, backend, backendSession, backendDefaults, folder }) => ({ id, backend, backendSession, backendDefaults, folder }));
+    const conversations = () => f.snapshot.agents.map(({ id, provider: backend, providerSession: providerSession, providerDefaults: providerDefaults, folder }) => ({ id, provider: backend, providerSession: providerSession, providerDefaults: providerDefaults, folder }));
     const before = structuredClone(conversations());
     expect((await f.request('tools/list', {})).tools.map((tool: { name: string }) => tool.name)).toContain('generate-image');
     expect((await f.request('tools/list', {}, f.snapshot.agents[1]!.id)).tools.map((tool: { name: string }) => tool.name)).not.toContain('generate-image');
@@ -67,7 +68,7 @@ describe('non-Codex image generation over MCP', () => {
     expect(path.dirname(file)).toBe(f.root);
     expect(await readFile(file, 'utf8')).toBe('image');
     expect(f.connected).toHaveBeenCalledWith('codex');
-    expect(f.generateImage).toHaveBeenCalledWith(expect.objectContaining({ id: f.snapshot.agents[0]!.id, backend: 'codex', backendSession: undefined }),
+    expect(f.generateImage).toHaveBeenCalledWith(expect.objectContaining({ id: f.snapshot.agents[0]!.id, provider: 'codex', providerSession: undefined }),
       { cwd: f.folder, prompt: 'A transparent flower' }, expect.any(AbortSignal));
     const next = await f.call({ prompt: 'Another flower' });
     expect(next.structuredContent.images[0].path).not.toBe(file);
@@ -75,6 +76,19 @@ describe('non-Codex image generation over MCP', () => {
     f.snapshot.general.providerEnabled = { codex: false };
     expect((await f.request('tools/list', {})).tools.map((tool: { name: string }) => tool.name)).not.toContain('generate-image');
     expect((await readSkill()).isError).toBe(true);
+  });
+
+  it('hides the image bridge while Codex is enabled but not connected', async () => {
+    const f = await setup();
+    const tools = async () => (await f.request('tools/list', {})).tools.map((tool: { name: string }) => tool.name);
+    f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: false, checking: false }];
+    expect(await tools()).not.toContain('generate-image');
+    expect((await f.call({ prompt: 'A flower' })).isError).toBe(true);
+    expect(f.generateImage).not.toHaveBeenCalled();
+    f.snapshot.providerConnections = undefined;
+    expect(await tools()).not.toContain('generate-image');
+    f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
+    expect(await tools()).toContain('generate-image');
   });
 
   it('rejects invalid arguments and failed or empty generations without creating image files', async () => {

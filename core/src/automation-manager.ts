@@ -1,7 +1,7 @@
-import { isAgentBackend } from './contracts/shared';
+import { isHarnessProvider } from './contracts/shared';
 import type { Agent, AppSnapshot, Automation, AutomationExecutionLogEntry, AutomationTarget, CreateAutomationInput, UpdateAutomationInput } from './contracts';
 import { createEntityId, type IdGenerator } from './ids';
-import { resolveAgentBackend } from './agent-backends';
+import { resolveAgentProvider } from './agent-providers';
 import { isExecutionSelectionOverrides } from './execution-selection';
 import { normalizeAutomationSchedule } from './automation-schedule';
 import { missionAgentIds } from './mission-attention';
@@ -11,7 +11,7 @@ export function isAutomationTarget(value: unknown): value is AutomationTarget {
   const target = value as Record<string, unknown>;
   if (target.kind === 'agent' || target.kind === 'quickChat') return typeof target.agentId === 'string' && Boolean(target.agentId.trim());
   return target.kind === 'newQuickChat' && typeof target.teamId === 'string' && Boolean(target.teamId.trim())
-    && isExecutionSelectionOverrides(target.selection) && isAgentBackend(target.selection.backend);
+    && isExecutionSelectionOverrides(target.selection) && isHarnessProvider(target.selection.provider);
 }
 
 export function canTargetAutomationAgent(snapshot: Pick<AppSnapshot, 'missions'>, agent: Agent): boolean {
@@ -33,7 +33,7 @@ function normalize(snapshot: AppSnapshot, input: CreateAutomationInput, staleTar
   let target: AutomationTarget;
   if (input.target.kind === 'newQuickChat') {
     const teamId = input.target.teamId.trim();
-    resolveAgentBackend(snapshot, input.target.selection.backend);
+    resolveAgentProvider(snapshot, input.target.selection.provider);
     target = { ...input.target, teamId, selection: { ...input.target.selection } };
   } else target = { kind: input.target.kind, agentId: input.target.agentId.trim() };
   // A schedule whose conversation is gone can still be switched off, never on or re-targeted to a missing one.

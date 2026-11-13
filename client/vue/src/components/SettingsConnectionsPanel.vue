@@ -173,10 +173,10 @@
           <el-checkbox :model-value="true" disabled>{{ product.name }}</el-checkbox>
           <el-checkbox
             v-for="engine in localEngines"
-            :key="engine.backend"
-            :model-value="selectedBackends.includes(engine.backend)"
-            @update:model-value="selectSetupBackend(engine.backend, Boolean($event))"
-          >{{ backendDisplayName(engine.backend) }}</el-checkbox>
+            :key="engine.provider"
+            :model-value="selectedBackends.includes(engine.provider)"
+            @update:model-value="selectSetupBackend(engine.provider, Boolean($event))"
+          >{{ providerDisplayName(engine.provider) }}</el-checkbox>
         </div>
       </div>
       <template #footer>
@@ -243,9 +243,9 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { product } from '@workspace/core/product';
-import { backendDisplayName } from '@workspace/core/backend-driver';
-import type { AgentBackend } from '@workspace/core/contracts';
-import { agentBackends } from '@workspace/core/contracts/shared';
+import { providerDisplayName } from '@workspace/core/provider-driver';
+import type { HarnessProvider } from '@workspace/core/contracts';
+import { harnessProviders } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 import { ElMessageBox } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
@@ -266,7 +266,7 @@ import FormSection from '../shared/form/FormSection.vue';
 const props = withDefaults(defineProps<{
   addSshConnection?: (input: AddSshConnectionInput) => Promise<void>;
   appVersion?: string;
-  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: AgentBackend[]) => Promise<void>;
+  checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean, backends?: HarnessProvider[]) => Promise<void>;
   connections?: RemoteConnection[];
   providerConnections?: ProviderConnection[];
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
@@ -325,8 +325,8 @@ const engineActivity = ref<Record<string, boolean>>({});
 const operationMode = ref<'inspect' | 'setup'>('inspect');
 const setupDialogVisible = ref(false);
 const setupConnection = ref<RemoteConnection | null>(null);
-const selectedBackends = ref<AgentBackend[]>([]);
-const localEngines = computed(() => agentBackends.flatMap(backend => props.providerConnections.filter(engine => engine.backend === backend && engine.installed)));
+const selectedBackends = ref<HarnessProvider[]>([]);
+const localEngines = computed(() => harnessProviders.flatMap(backend => props.providerConnections.filter(engine => engine.provider === backend && engine.installed)));
 
 function connectionBusy(connection: RemoteConnection): boolean {
   return connection.status === 'checking' || checkingConnectionId.value === connection.id;
@@ -341,8 +341,8 @@ function connectionActionLabel(connection: RemoteConnection): string {
   return translate(canUpgrade(connection) ? 'surface.settingsConnectionsPanel.upgrade' : 'surface.settingsConnectionsPanel.setUp');
 }
 
-function selectSetupBackend(backend: AgentBackend, selected: boolean): void {
-  selectedBackends.value = selected ? [...selectedBackends.value, backend] : selectedBackends.value.filter(value => value !== backend);
+function selectSetupBackend(provider: HarnessProvider, selected: boolean): void {
+  selectedBackends.value = selected ? [...selectedBackends.value, provider] : selectedBackends.value.filter(value => value !== provider);
 }
 
 function needsSetup(connection: RemoteConnection): boolean {
@@ -353,7 +353,7 @@ function needsSetup(connection: RemoteConnection): boolean {
 
 function offerSetup(connection: RemoteConnection): void {
   setupConnection.value = connection;
-  selectedBackends.value = localEngines.value.map(engine => engine.backend);
+  selectedBackends.value = localEngines.value.map(engine => engine.provider);
   setupDialogVisible.value = true;
 }
 
@@ -419,7 +419,7 @@ function runConnectionAction(connection: RemoteConnection): void {
   void checkConnection(connection.id, !canUpgrade(connection), canUpgrade(connection) ? [] : undefined);
 }
 
-async function checkConnection(connectionId: string, inspectOnly = true, backends?: AgentBackend[]): Promise<void> {
+async function checkConnection(connectionId: string, inspectOnly = true, backends?: HarnessProvider[]): Promise<void> {
   if (checkingConnectionId.value) return;
   checkingConnectionId.value = connectionId;
   operationMode.value = inspectOnly ? 'inspect' : 'setup';

@@ -1,8 +1,11 @@
 <template>
   <FormDialog class="agent-handoff-dialog" width="480px" :model-value="true" :title="t('handoff.submit')" @update:model-value="close">
-    <form id="agent-handoff-form" class="app-form-dialog agent-handoff-form" @submit.prevent="submitHandoff">
+    <GitOperationFeedback v-if="running" status="running" :title="t(`handoff.phase.${agent.handoff?.phase && agent.handoff.phase !== 'failed' && agent.handoff.phase !== 'complete' ? agent.handoff.phase : 'preparing'}`)" :detail="agent.name ?? agent.handoff?.sourceTitle">
+      <template #icon><SwitchHorizontalIcon /></template>
+    </GitOperationFeedback>
+    <form v-else id="agent-handoff-form" class="app-form-dialog agent-handoff-form" @submit.prevent="submitHandoff">
       <FormField :label="t('handoff.model')">
-        <BackendModelSelector v-model:selection="selection" :agent-id="agent.id" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" @loading="loadingModels = $event" />
+        <ProviderModelSelector v-model:selection="selection" :agent-id="agent.id" :remote-connection-id="agent.remoteConnectionId" :disabled="busy" @loading="loadingModels = $event" />
       </FormField>
       <FormField :label="t('handoff.instructions')" label-for="handoff-instructions">
         <el-input id="handoff-instructions" v-model="instructions" type="textarea" :rows="3" :maxlength="4000" :disabled="busy" :placeholder="t('handoff.optional')" />
@@ -10,33 +13,36 @@
       <p class="app-form-dialog__help agent-handoff-form__workspace" :title="agent.folder ?? undefined">{{ agent.folder }}</p>
       <p class="app-form-dialog__help">{{ t('handoff.permissions') }}</p>
       <el-alert v-if="blocker || error" :title="error || blocker || ''" type="error" :closable="false" />
-      <p v-if="busy" role="status">{{ t('handoff.preparing') }}</p>
       <details v-if="agent.handoff?.note">
         <summary>{{ t('handoff.savedNote') }}</summary>
-        <p v-if="agent.handoff.error">{{ agent.handoff.error }}</p>
         <pre class="handoff-note">{{ agent.handoff.note }}</pre>
         <button class="app-button app-button--tertiary" type="button" @click="openSource">{{ t('handoff.source') }}</button>
       </details>
     </form>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="close">{{ busy ? t('handoff.hide') : t('handoff.cancel') }}</button>
-      <button class="app-button app-button--primary" type="submit" form="agent-handoff-form" :disabled="busy || !!blocker || !selection || loadingModels">{{ t('handoff.submit') }}</button>
+      <button v-if="running" class="app-button app-button--secondary" type="button" @click="close">{{ t('common.runInBackground') }}</button>
+      <template v-else>
+        <button class="app-button app-button--tertiary" type="button" @click="close">{{ t('handoff.cancel') }}</button>
+        <button class="app-button app-button--primary" type="submit" form="agent-handoff-form" :disabled="!!blocker || !selection || loadingModels">{{ t('handoff.submit') }}</button>
+      </template>
     </template>
   </FormDialog>
   <AutomationExecutionConversationOverlay v-if="sourceVisible" :agent-name="agent.handoff?.sourceTitle ?? ''" :ticket="t('handoff.source')" :messages="sourceMessages" :loading="sourceLoading" :error="sourceError" @close="sourceVisible = false" />
 </template>
 
 <script setup lang="ts">
-import { provide, ref } from 'vue';
+import { computed, provide, ref } from 'vue';
 import { defaultExecutionSelection } from '@workspace/core/execution-selection';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentBackend, BackendConversationRef, BackendModelOption, ExecutionSelection, RendererMessage } from '@workspace/core/contracts';
-import type { AgentHandoffInput } from '@workspace/core/agent-handoff';
+import type { Agent, HarnessProvider, ProviderConversationRef, ProviderModelOption, ExecutionSelection, RendererMessage } from '@workspace/core/contracts';
+import { handoffInProgress, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import BackendModelSelector from './BackendModelSelector.vue';
-import { backendModelCatalogKey } from './backend-model-catalog';
-import { useBackendChoices } from './backend-selection';
+import { SwitchHorizontalIcon } from '../shared/icons/app-icons';
+import GitOperationFeedback from './GitOperationFeedback.vue';
+import ProviderModelSelector from './ProviderModelSelector.vue';
+import { providerModelCatalogKey } from './provider-model-catalog';
+import { useProviderChoices } from './provider-selection';
 import AutomationExecutionConversationOverlay from './AutomationExecutionConversationOverlay.vue';
 
 const props = defineProps<{
@@ -44,18 +50,20 @@ const props = defineProps<{
   pendingOperationId?: string;
   blocker?: string | null;
   submit: (agentId: string, input: AgentHandoffInput) => Promise<void>;
-  listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
-  readMessages?: (ref: BackendConversationRef, agentId: string) => Promise<RendererMessage[]>;
+  listModels: (agentId: string, provider: HarnessProvider) => Promise<ProviderModelOption[]>;
+  readMessages?: (ref: ProviderConversationRef, agentId: string) => Promise<RendererMessage[]>;
 }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 const operationId = props.pendingOperationId ?? crypto.randomUUID();
-const choices = useBackendChoices(() => props.agent.remoteConnectionId);
-const initialBackend = choices.value.find(choice => choice !== props.agent.backend) ?? choices.value[0];
+const choices = useProviderChoices(() => props.agent.remoteConnectionId);
+const initialBackend = choices.value.find(choice => choice !== props.agent.provider) ?? choices.value[0];
 const selection = ref<ExecutionSelection | undefined>(initialBackend ? defaultExecutionSelection(initialBackend) : undefined);
-provide(backendModelCatalogKey, { listModels: async (agentId, backend) => agentId ? await props.listModels(agentId, backend) : [] });
+provide(providerModelCatalogKey, { listModels: async (agentId, backend) => agentId ? await props.listModels(agentId, backend) : [] });
 const instructions = ref('');
 const busy = ref(false);
+// Once started, the handoff is the dialog's own work: it shows its progress, not the blocker it causes itself.
+const running = computed(() => busy.value || handoffInProgress(props.agent));
 const error = ref('');
 const loadingModels = ref(false);
 

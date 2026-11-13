@@ -8,9 +8,7 @@ import { LinearWorkProviderDriver } from '../../work-integrations/linear-driver'
 import { GitHubWorkProviderDriver } from '../../work-integrations/github-driver';
 import { HostedMcpGateway } from '../hosted-mcp-gateway';
 import { AppMcpService } from '../service';
-import { appSurfaceOptions } from '../../driver-rpc';
-import { ClaudeBackendDriver } from '../../claude/claude-driver';
-import { ClaudeAgentSdkTransport } from '../../claude/agent-sdk-transport';
+import { codexOptions } from '../../__tests__/support/codex-options';
 import { createQueryHarness } from '../../claude/__tests__/sdk-query-fixture';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
@@ -114,8 +112,8 @@ describe('Linear hosted MCP through daemon', () => {
 
   it('uses live integration state for Codex configuration and rejects cached URLs after disconnect', async () => {
     const { snapshot, manager, service, url, post, upstream, seed } = await setup();
-    const options = appSurfaceOptions({ appMcpServerUrl: url, hostedMcpServerUrls: () => service.hostedMcpServerUrls() });
-    const configure = () => options.extensions![0]!.configureConversation!({ extensionContext: snapshot.agents[0] } as never);
+    const options = codexOptions({ appMcpServerUrl: url, hostedMcpServerUrls: () => service.hostedMcpServerUrls() });
+    const configure = () => options.configure(snapshot.agents[0]!);
     const enabled = await configure();
     expect(enabled.config).toMatchObject({
       'mcp_servers.linear.url': `${new URL(url).origin}/mcp/providers/linear?agentId=${snapshot.agents[0]!.id}`,
@@ -140,30 +138,32 @@ describe('Linear hosted MCP through daemon', () => {
   it('supplies credential-free Linear URLs to new and resumed Claude SDK sessions using live connection state', async () => {
     const { snapshot, service, url, manager, seed } = await setup();
     const sdk = createQueryHarness();
-    const agent = { ...snapshot.agents[0]!, backend: 'claude' as const, backendSession: undefined };
+    // A resumed conversation also starts a non-persisting probe query; the turn is the one that persists.
+    const turns = () => sdk.options.map((options, queryIndex) => ({ options, queryIndex })).filter(({ options }) => options.persistSession !== false);
+    const agent = { ...snapshot.agents[0]!, provider: 'claude' as const, providerSession: undefined };
     for (const [index, connected] of [true, false, true].entries()) {
       if (!connected) await manager.disconnect('linear');
       if (index === 2) { await seed('linear'); await manager.hydrateConnections(); }
-      const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), async () => null, {
+      const driver = sdk.driver({
         appMcpServerUrl: url, hostedMcpServerUrls: () => service.hostedMcpServerUrls(),
       });
       const approvalIds: string[] = [];
       driver.onEvent((event) => {
-        if (event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'approval.requested') {
-          approvalIds.push(event.payload.event.payload.id);
+        if (event.type === 'agentRequest.created' && event.payload.request.kind !== 'question') {
+          approvalIds.push(event.payload.request.id);
         }
       });
       try {
-        const currentAgent = index === 0 ? agent : { ...agent, backendSession: { kind: 'claude' as const, sessionId: 'persisted-session', transport: 'stdio' as const } };
+        const currentAgent = index === 0 ? agent : { ...agent, providerSession: { kind: 'claude' as const, conversationId: 'persisted-session', transport: 'stdio' as const } };
         const send = driver.sendPrompt(currentAgent, 'Read ENG-12');
-        await vi.waitFor(() => expect(sdk.options).toHaveLength(index + 1));
-        const options = sdk.options[index]!;
+        await vi.waitFor(() => expect(turns()).toHaveLength(index + 1));
+        const { options, queryIndex } = turns()[index]!;
         expect(options.mcpServers?.github).toStrictEqual({ type: 'http', url: `${new URL(url).origin}/mcp/providers/github?agentId=${agent.id}` });
         if (connected) expect(options.mcpServers?.linear).toStrictEqual({ type: 'http', url: `${new URL(url).origin}/mcp/providers/linear?agentId=${agent.id}` });
         else expect(options.mcpServers).not.toHaveProperty('linear');
         if (index > 0) expect(options.resume).toBe('persisted-session');
         expect(JSON.stringify(options.mcpServers)).not.toMatch(/secret|refresh|Bearer/);
-        sdk.emit({ type: 'system', subtype: 'init', session_id: 'persisted-session' }, index);
+        sdk.emit({ type: 'system', subtype: 'init', session_id: 'persisted-session' }, queryIndex);
         await send;
         const canUseTool = options.canUseTool!;
         const context = (requestId: string) => ({ signal: new AbortController().signal, toolUseID: requestId, requestId });
@@ -177,7 +177,7 @@ describe('Linear hosted MCP through daemon', () => {
           await driver.respondToAgentRequest({ id: requestId, outcome: { kind: 'decision', decision: 'deny' } });
           await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
         }
-        sdk.emit({ type: 'result', subtype: 'success', session_id: 'persisted-session', is_error: false }, index);
+        sdk.emit({ type: 'result', subtype: 'success', session_id: 'persisted-session', is_error: false }, queryIndex);
       } finally { await driver.close(); }
     }
   });

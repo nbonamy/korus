@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBackendDriver } from '@workspace/core/backend-driver';
-import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
-import { BackendDriverRpc } from '../driver-rpc';
+import { ProviderDriverRpc } from '../driver-rpc';
 import {
   createTestSnapshot,
   readyRemoteConnection,
@@ -19,7 +19,7 @@ describe('AppBackendServer', () => {
       enabled: true,
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [{
@@ -29,17 +29,17 @@ describe('AppBackendServer', () => {
         status: 'completed',
         completedAt: '2026-06-15T01:30:48.802Z',
 
-        agentId: 'agent-cleaned-up', agentName: 'Cleaned Up', conversationRef: { backend: 'codex', threadId: 'thread-cleaned-up' },
+        agentId: 'agent-cleaned-up', agentName: 'Cleaned Up', conversationRef: { provider: 'codex', conversationId: 'thread-cleaned-up' },
       }],
     }];
     const messages = [createTextMessage('user-thread-cleaned-up-user-1', 'agent-cleaned-up', 'done')];
     const readConversationMessages = vi.fn().mockResolvedValue(messages);
-    const driver: AgentBackendDriver = {
-      backend: 'codex',
-      getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
-      getCapabilities: () => codexBackendCapabilities,
-      sendPrompt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
-      interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'thread-test' } }),
+    const driver: AgentProviderDriver = {
+      provider: 'codex',
+      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
+      getCapabilities: () => codexProviderCapabilities,
+      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
+      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
       respondToAgentRequest: async () => undefined,
       readConversationMessages,
       onEvent: () => () => undefined,
@@ -49,23 +49,23 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       pid: 123,
       snapshot,
-      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     });
 
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'messages',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-cleaned-up', ref: { backend: 'codex', threadId: 'thread-cleaned-up' } },
+      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', conversationId: 'thread-cleaned-up' } },
     })).resolves.toMatchObject({ result: messages });
     await expect(server.handleMessage({
       jsonrpc: '2.0',
       id: 'unknown-ref',
       method: 'agent/conversation/messages/get',
-      params: { agentId: 'agent-cleaned-up', ref: { backend: 'codex', threadId: 'thread-unknown' } },
+      params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', conversationId: 'thread-unknown' } },
     })).resolves.toMatchObject({ error: { message: 'Conversation reference is not available.' } });
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ backend: 'codex', threadId: 'thread-cleaned-up' }, 'agent-cleaned-up');
+    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-cleaned-up' }, 'agent-cleaned-up');
     await server.close();
   });
 
@@ -79,7 +79,7 @@ describe('AppBackendServer', () => {
       id: 'automation-remote',
       name: 'Remote bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
       executionLog: [],
@@ -119,7 +119,7 @@ describe('AppBackendServer', () => {
     });
     const location = { kind: 'remote' as const, remoteConnectionId: 'connection-devbox' };
     const createInput = {
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-remote', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };
@@ -270,7 +270,7 @@ describe('AppBackendServer', () => {
     const input = {
       name: 'GitHub bugs',
       enabled: true,
-      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { backend: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
+      prompt: 'Check tasks', target: { kind: 'newQuickChat' as const, teamId: 'team-test', selection: { provider: 'codex' as const, model: null, reasoningEffort: null, serviceTier: null } },
 
       schedule: { intervalMinutes: 60 },
     };

@@ -1,11 +1,12 @@
 import type { AgentPaneSetup, WindowSetup } from '@workspace/core/windows';
+import { isDesignTab } from '@workspace/core/design';
 import { isRightWorkspaceBrowserTab, type RightWorkspaceTab } from './right-workspace';
 import type { AgentRightWorkspaceState } from './use-right-workspace-state';
 
 // Tabs that carry nothing but where to look: they can be opened again anywhere. Tabs holding a file, a diff,
 // an image, a plan or a subagent conversation depend on content only their window has, so they stay behind.
 const portableTabs = new Set<string>(['gitLog', 'simulator', 'visualize', 'design', 'review', 'backlog', 'browser', 'files']);
-const isPortableTab = (tab: string): boolean => portableTabs.has(tab) || tab.startsWith('browser:');
+const isPortableTab = (tab: string): boolean => portableTabs.has(tab) || tab.startsWith('browser:') || isDesignTab(tab);
 
 /** What each agent has open in this window that is worth bringing to another window or back after a relaunch. */
 export function exportWorkspaceSetup(workspaces: Readonly<Record<string, AgentRightWorkspaceState>>): WindowSetup {

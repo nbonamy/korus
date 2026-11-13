@@ -50,6 +50,9 @@
         "src/companion/__tests__/live-harness.ts",
         "src/companion/__tests__/desktop-guest-owner.ts",
         "src/telemetry/__tests__/desktop-stack-workflow.ts"
+      ],
+      "ignoreDependencies": [
+        "@anthropic-ai/claude-agent-sdk"
       ]
     },
     "client/cli": {
@@ -93,6 +96,9 @@
       "entry": [
         "src/main.ts",
         "src/__tests__/report-fixture.ts"
+      ],
+      "ignoreDependencies": [
+        "vue-tsc"
       ]
     }
   }

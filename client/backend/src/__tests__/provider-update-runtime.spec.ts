@@ -12,7 +12,7 @@ function fixture(resolved: string, options: Partial<ConstructorParameters<typeof
   const fetchText = vi.fn(async () => JSON.stringify({ version: '1.2.0' }));
   const read = vi.fn(async () => JSON.stringify({ name: '@openai/codex' }));
   const realpath = vi.fn(async (file: string) => file === '/tools/bin/npm' ? '/tools/lib/node_modules/npm/bin/npm-cli.js' : file.startsWith('/tools/lib/') ? file : resolved);
-  const runtime = new ProviderUpdateRuntime({ command: backend => backend, claudeHome: () => '/user/.claude', ...options }, {
+  const runtime = new ProviderUpdateRuntime({ command: provider => provider, claudeHome: () => '/user/.claude', ...options }, {
     home: '/user', platform: 'darwin',
     resolve: command => command === '/tools/bin/node' ? command : command === 'npm' ? '/tools/bin/npm' : command === 'brew' ? '/brew/bin/brew' : `/user/.local/bin/${command}`,
     realpath,
@@ -62,12 +62,28 @@ describe('installed provider updates', () => {
     await f.runtime.upgrade(installation);
     expect(f.run).toHaveBeenLastCalledWith('/user/.local/bin/agent', ['update'], 300_000, expect.objectContaining({ NO_OPEN_BROWSER: '1' }));
   });
-  it('rejects Antigravity updates before probing another provider or looking up packages', async () => {
-    const f = fixture('/tools/lib/node_modules/@anthropic-ai/claude-code/cli.js');
-    await expect(f.runtime.inspect('antigravity')).rejects.toThrow('Antigravity updates are managed externally');
-    expect(f.run).not.toHaveBeenCalled();
-    expect(f.read).not.toHaveBeenCalled();
-    expect(f.fetchText).not.toHaveBeenCalled();
+  it.each([
+    { installed: '1.5.6', latest: '1.5.7', status: 'available' },
+    { installed: '1.5.7', latest: '1.5.7', status: 'current' },
+    { installed: '1.6.0', latest: '1.5.7', status: 'current' },
+    { installed: 'nightly', latest: '1.5.7', status: 'manual' },
+  ])('compares the installed Antigravity CLI $installed with the latest release $latest: $status', async ({ installed, latest, status }) => {
+    const f = fixture('/user/.local/bin/agy');
+    f.run.mockImplementation(async (_file, args) => args[0] === '--version' ? `${installed}\n` : '');
+    f.fetchText.mockResolvedValue(JSON.stringify({ version: latest, url: 'https://example.invalid/cli.tar.gz', sha512: 'x' }));
+    const installation = await f.runtime.inspect('antigravity');
+    expect(installation).toMatchObject({ status, provider: 'antigravity', method: 'native', executable: '/user/.local/bin/agy', version: installed, latestVersion: latest });
+    // The release list is the one the CLI's own installer reads, for this machine's platform.
+    expect(f.fetchText).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/\/manifests\/darwin_(arm64|amd64)\.json$/));
+    if (status === 'available') {
+      expect(installation.command).toStrictEqual({ file: '/user/.local/bin/agy', args: ['update'] });
+      await f.runtime.upgrade(installation);
+      expect(f.run).toHaveBeenLastCalledWith('/user/.local/bin/agy', ['update'], 300_000);
+    } else expect(installation.command).toBeUndefined();
+  });
+  it('reports Antigravity as unavailable when its CLI is not installed, without looking anything up', async () => {
+    const f = new ProviderUpdateRuntime({ command: provider => provider, claudeHome: () => '/user/.claude' }, { home: '/user', platform: 'darwin', resolve: () => null, run: vi.fn(), read: vi.fn(), fetchText: vi.fn(), realpath: vi.fn() });
+    expect(await f.inspect('antigravity')).toMatchObject({ status: 'unavailable', method: 'manual' });
   });
   it('checks and upgrades npm through its owning Node instead of the packaged Node on PATH', async () => {
     const f = fixture('/tools/lib/node_modules/@openai/codex/bin/codex.js');
@@ -139,12 +155,12 @@ describe('installed provider updates', () => {
     expect(f.run).toHaveBeenLastCalledWith('/user/.local/bin/codex', ['update'], 300_000, { CODEX_HOME: '/user/.codex' });
   });
 
-  it.each(['codex', 'claude'] as const)('keeps a custom %s wrapper manual and preserves the registry fallback', async backend => {
+  it.each(['codex', 'claude'] as const)('keeps a custom %s wrapper manual and preserves the registry fallback', async provider => {
     const f = fixture('/user/scripts/codex-wrapper');
     f.read.mockResolvedValue(JSON.stringify({ autoUpdatesChannel: 'stable' }));
-    const installation = await f.runtime.inspect(backend);
+    const installation = await f.runtime.inspect(provider);
     expect(installation).toMatchObject({ status: 'available', latestVersion: '1.2.0', method: 'manual', command: undefined });
-    expect(f.fetchText).toHaveBeenCalledWith(`https://registry.npmjs.org/${backend === 'codex' ? '@openai/codex' : '@anthropic-ai/claude-code'}/latest`);
+    expect(f.fetchText).toHaveBeenCalledWith(`https://registry.npmjs.org/${provider === 'codex' ? '@openai/codex' : '@anthropic-ai/claude-code'}/latest`);
   });
 
   it('reports registry failures instead of claiming the installed provider is current', async () => {

@@ -3,11 +3,15 @@ import type { Agent } from '@workspace/core/contracts';
 import type { CompanionWorkspace } from '../companion-port';
 import { reconcileWorkspace } from '../workspace-reconcile';
 
-const agent = (id: string, statusText = 'idle'): Agent => ({ id, teamId: 'team', name: id, folder: null, backend: 'codex', status: { type: 'idle' }, statusText, createdAt: '', updatedAt: '' });
+const agent = (id: string, statusText = 'idle'): Agent => ({ id, teamId: 'team', name: id, folder: null, provider: 'codex', status: { type: 'idle' }, statusText, createdAt: '', updatedAt: '' });
 const workspace = (agents: Agent[], extra: Partial<CompanionWorkspace> = {}): CompanionWorkspace => ({ teams: [{ id: 'team', name: 'Team', agentIds: agents.map((a) => a.id) }], agents, repositoryIcons: { '/r': 'A' }, ...extra });
 const copy = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value));
 
 describe('keeping the workspace stable across repeated updates', () => {
+  it('reads the conversation of agents from laptops on earlier builds', () => {
+    const laptop = workspace([{ ...agent('a'), providerSession: { kind: 'codex', threadId: 't1' } as never }]);
+    expect(reconcileWorkspace(workspace([]), laptop).agents[0]!.providerSession).toEqual({ kind: 'codex', conversationId: 't1' });
+  });
   it('returns the very same workspace when the laptop repeats itself', () => {
     const previous = workspace([agent('a'), agent('b')]);
     expect(reconcileWorkspace(previous, copy(previous))).toBe(previous);
@@ -30,9 +34,9 @@ describe('keeping the workspace stable across repeated updates', () => {
     expect(reconcileWorkspace(previous, workspace([agent('b'), agent('a')])).agents.map((a) => a.id)).toEqual(['b', 'a']);
   });
   it('keeps the optional parts the laptop sends only sometimes', () => {
-    const previous = workspace([agent('a')], { backends: { team: ['codex'] }, modelFavorites: [] });
+    const previous = workspace([agent('a')], { providers: { team: ['codex'] }, modelFavorites: [] });
     const same = reconcileWorkspace(previous, copy(previous));
     expect(same).toBe(previous);
-    expect(reconcileWorkspace(previous, { ...copy(previous), backends: { team: ['codex', 'claude'] } }).backends).toEqual({ team: ['codex', 'claude'] });
+    expect(reconcileWorkspace(previous, { ...copy(previous), providers: { team: ['codex', 'claude'] } }).providers).toEqual({ team: ['codex', 'claude'] });
   });
 });

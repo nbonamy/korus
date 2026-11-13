@@ -30,7 +30,7 @@ afterEach(() => vi.useRealTimers());
 
 it("warns for enabled providers whose driver does not report tokens", async () => {
   setElectronTestClient({ getUsage: vi.fn(async () => ({ recordedSince: 1, retainedSince: 1, rows: [], daily: [] })) });
-  const connection = { backend: "cursor" as const, installed: true, connected: false, checking: false, enabled: true };
+  const connection = { provider: "cursor" as const, installed: true, connected: false, checking: false, enabled: true };
   const wrapper = mount(SettingsView, { props: { activeTab: "usage", settings: defaultThemeSettings, generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: false } }, providerConnections: [connection] } });
   await flushPromises();
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -47,11 +47,11 @@ it("warns for enabled providers whose driver does not report tokens", async () =
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   await wrapper.setProps({
     generalSettings: { ...defaultGeneralSettings, providerEnabled: { claude: true } },
-    providerConnections: [{ ...connection, backend: "claude" }],
-    backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: false } }],
+    providerConnections: [{ ...connection, provider: "claude" }],
+    providerRuntimes: [{ provider: "claude", status: "running", capabilities: { reportsTokens: false } }],
   });
   expect(warning().text()).toBe("Claude Code turns are reported, but token usage and cost are unavailable.");
-  await wrapper.setProps({ backendRuntimes: [{ backend: "claude", status: "running", capabilities: { reportsTokens: true } }] });
+  await wrapper.setProps({ providerRuntimes: [{ provider: "claude", status: "running", capabilities: { reportsTokens: true } }] });
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   wrapper.unmount();
 });

@@ -1,6 +1,4 @@
-import { emptyCursorSnapshot } from '../cursor-conversation-replica';
 import { product } from '../product';
-import { emptyAntigravitySnapshot } from '../antigravity-conversation-replica';
 import { approvalAgentRequest, approvalOutcome } from '@workspace/core/agent-request';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AppBackendEvent as RpcAppBackendEvent } from '../backend-protocol/rpc';
@@ -101,33 +99,28 @@ function createFixtures(): EventFixtures {
   const agent = { ...base, agentId: 'agent-1' };
   const codexThread = {
     ...agent,
-    backend: 'codex' as const,
+    provider: 'codex' as const,
     threadId: 'thread-1',
   };
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
+    'turn.started': { ...base, type: 'turn.started', agentId: 'agent-1', provider: 'claude', turnId: 'turn-1', conversationId: 'session-1', payload: {} },
+    'turn.completed': { ...base, type: 'turn.completed', agentId: 'agent-1', provider: 'claude', turnId: 'turn-1', payload: { status: 'failed', error: { message: 'Limit', rateLimit: { resumeAt: 1 } }, willRetry: false } },
+    'session.error': { ...base, type: 'session.error', agentId: 'agent-1', provider: 'claude', payload: { error: { message: 'Broken' }, willRetry: true } },
+    'tool.updated': { ...base, type: 'tool.updated', agentId: 'agent-1', provider: 'claude', payload: { tool: { id: 'tool-1', kind: 'command', status: 'running' } } },
+    'turn.output': { ...base, type: 'turn.output', agentId: 'agent-1', provider: 'claude', payload: {} },
+    'diff.updated': { ...base, type: 'diff.updated', agentId: 'agent-1', provider: 'claude', payload: {} },
+    'file.activity': { ...base, type: 'file.activity', agentId: 'agent-1', provider: 'claude', payload: { path: '/repo/a', action: 'edit', status: 'completed' } },
+    'conversation.sessionSnapshot': { ...base, type: 'conversation.sessionSnapshot', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1', epoch: 'e1',
+      snapshot: { revision: 2, state: { messages: [], busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null } } } },
+    'conversation.sessionPatch': { ...base, type: 'conversation.sessionPatch', agentId: 'agent-1', provider: 'claude', payload: { conversation: 'session-1', epoch: 'e1',
+      patch: { revision: 3, ops: [{ op: 'set', key: 'busy', value: true }] } } },
     'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: {
       active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'ready',
       proposals: [{ id: 'proposal-1', handle: 'a'.repeat(32), identity: 'guest-1', name: 'Guest', discriminator: '1234abcd', text: '2026-10-29T13:19:32.126Z', status: 'pending', createdAt: occurredAt, messageId: 'message-1', turnId: 'turn-1' }],
       authors: [{ messageId: 'message-1', identity: 'guest-1', name: 'Guest', discriminator: '1234abcd' }],
     } },
-    'cursor.conversationSnapshotChanged': {
-      ...base, type: 'cursor.conversationSnapshotChanged', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
-      payload: { revision: 1, snapshot: emptyCursorSnapshot('agent-1', 'session-1') },
-    },
-    'cursor.conversationEventReceived': {
-      ...base, type: 'cursor.conversationEventReceived', agentId: 'agent-1', backend: 'cursor', backendSessionId: 'session-1',
-      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
-    },
-    'antigravity.conversationSnapshotChanged': {
-      ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
-      payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
-    },
-    'antigravity.conversationEventReceived': {
-      ...base, type: 'antigravity.conversationEventReceived', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
-      payload: { revision: 2, event: { agentId: 'agent-1', sessionId: 'session-1', turnId: 'turn-1', occurredAt: base.occurredAt, type: 'turn.started', payload: { turn: { id: 'turn-1' } } } },
-    },
     'provider.authenticationChanged': {
       ...base, type: 'provider.authenticationChanged',
       payload: { kind: 'claude', connected: false, state: { loggedIn: false } },
@@ -136,11 +129,11 @@ function createFixtures(): EventFixtures {
       ...base, agentId: 'agent-1', type: 'plan.reviewResolved',
       payload: { reviewId: 'review-1', resolution: 'accept' },
     },
-    'backend.statusChanged': {
+    'provider.statusChanged': {
       ...base,
-      type: 'backend.statusChanged',
-      backend: 'codex',
-      payload: { backend: 'codex', status: 'running' },
+      type: 'provider.statusChanged',
+      provider: 'codex',
+      payload: { provider: 'codex', status: 'running' },
     },
     'snapshot.updated': {
       ...base,
@@ -150,7 +143,7 @@ function createFixtures(): EventFixtures {
     'account.rateLimitsUpdated': {
       ...base,
       type: 'account.rateLimitsUpdated',
-      backend: 'codex',
+      provider: 'codex',
       payload: { rateLimits: {
         limitId: null,
         limitName: null,
@@ -170,124 +163,17 @@ function createFixtures(): EventFixtures {
     'models.changed': {
       ...base,
       type: 'models.changed',
-      backend: 'codex',
+      provider: 'codex',
       payload: { models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] },
     },
     'skills.changed': {
       ...base,
       type: 'skills.changed',
-      backend: 'codex',
+      provider: 'codex',
       payload: {
         cwd: null,
         status: 'loaded',
         skills: [{ name: 'test', path: '/skill', enabled: true }],
-      },
-    },
-    'codex.conversationSnapshotChanged': {
-      ...codexThread,
-      type: 'codex.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: {
-          status: 'ready',
-          authentication: {
-            status: 'loaded', account: null, requiresOpenaiAuth: false,
-            error: null, login: { status: 'idle', loginId: null, authUrl: null, error: null },
-          },
-          conversations: [],
-          activeConversationId: 'thread-1',
-          activeTurnId: null,
-          turnIds: [],
-          turns: [],
-          messages: [],
-          historyLoading: false,
-          historyState: { loadingStrategy: 'eager', hasOlder: false, loadingOlder: false, fullyLoaded: true },
-          clientRequests: [],
-          answeredClientRequestIds: [],
-          approvals: [],
-          models: [],
-          modelCatalogStatus: 'loaded',
-          skills: [],
-          skillCatalogStatus: 'loaded',
-          plugins: [],
-          pluginCatalogStatus: 'loaded',
-          permissionProfiles: [],
-          approvalPresets: [],
-          approvalPreset: null,
-          selectedModelId: null,
-          selectedReasoningEffort: null,
-          selectedServiceTier: null,
-          planMode: false,
-          contextUsage: null,
-          goal: null,
-          turnGitDiff: null,
-          threadStatus: null,
-          rateLimits: null,
-          queuedPrompts: [],
-          busy: false,
-          error: null,
-        },
-      },
-    },
-    'codex.conversationEventReceived': {
-      ...codexThread,
-      type: 'codex.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 7,
-          occurredAt,
-          origin: 'notification',
-          type: 'message.delta',
-          conversationId: 'thread-1',
-          turnId: 'turn-1',
-          payload: {
-            messageId: 'message-1',
-            itemId: 'item-1',
-            delta: 'Hello',
-          },
-        },
-      },
-    },
-    'claude.conversationSnapshotChanged': {
-      ...agent,
-      backend: 'claude',
-      type: 'claude.conversationSnapshotChanged',
-      payload: {
-        revision: 1,
-        snapshot: {
-          agentId: 'agent-1',
-          sessionId: 'claude-session-1',
-          activeTurnId: null,
-          turnIds: [],
-          turns: [],
-          messages: [],
-          answeredClientRequestIds: [],
-          busy: false,
-          historyLoading: false,
-          historyState: { hasOlder: false, loadingOlder: false },
-          contextUsage: null,
-          plan: null,
-          error: null,
-        },
-      },
-    },
-    'claude.conversationEventReceived': {
-      ...agent,
-      backend: 'claude',
-      type: 'claude.conversationEventReceived',
-      payload: {
-        revision: 2,
-        event: {
-          seq: 2,
-          occurredAt,
-          agentId: 'agent-1',
-          backend: 'claude',
-          backendSessionId: 'claude-session-1',
-          turnId: 'turn-1',
-          type: 'message.delta',
-          payload: { delta: 'Hello' },
-        },
       },
     },
     'client.markdownDisplayRequested': {
@@ -312,7 +198,7 @@ function createFixtures(): EventFixtures {
       payload: {
         id: 'creation-1',
         state: 'running',
-        backend: 'codex',
+        provider: 'codex',
         repositoryName: 'repo',
         createWorktree: false,
         createProject: true,
@@ -390,7 +276,7 @@ function createFixtures(): EventFixtures {
     },
     'conversation.goalUpdated': {
       ...agent,
-      threadId: 'thread-1',
+      conversationId: 'thread-1',
       type: 'conversation.goalUpdated',
       payload: { goal: {
         threadId: 'thread-1',
@@ -515,7 +401,7 @@ describe(`${product.name} backend event decoder`, () => {
     const event = createFixtures()['account.rateLimitsUpdated'];
     expect(decodeAppBackendEvent(event)).toStrictEqual(event);
     const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: false, unlimited: false, usedUsd: 0, limitUsd: 0, remainingUsd: 0 } };
-    const frame = { ...event, backend: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
+    const frame = { ...event, provider: 'cursor', payload: { rateLimits: { ...event.payload.rateLimits, billing } } };
     expect(decodeAppBackendEvent(frame)).toStrictEqual(frame);
     for (const invalid of [{ ...billing, includedBalanceUsd: 'private' }, { ...billing, onDemand: { ...billing.onDemand, usedUsd: -1 } }, { ...billing, onDemand: { ...billing.onDemand, enabled: 'false' } }]) {
       expect(() => decodeAppBackendEvent({ ...frame, payload: { rateLimits: { ...frame.payload.rateLimits, billing: invalid } } })).toThrow();
@@ -523,11 +409,11 @@ describe(`${product.name} backend event decoder`, () => {
   });
   it('decodes Cursor identity, session and authentication in app-owned envelopes', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = 'cursor';
-    snapshot.agents[0]!.backendSession = { kind: 'cursor', sessionId: 'cursor-session' };
-    snapshot.agents[0]!.backendDefaults = { kind: 'cursor', permissionMode: 'allowlist' };
+    snapshot.agents[0]!.provider = 'cursor';
+    snapshot.agents[0]!.providerSession = { kind: 'cursor', conversationId: 'cursor-session' };
+    snapshot.agents[0]!.providerDefaults = { kind: 'cursor', permission: 'allowlist' };
     const authentication = { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor' } } as const;
-    snapshot.providerConnections = [{ backend: 'cursor', installed: false, connected: false, checking: false, authentication }];
+    snapshot.providerConnections = [{ provider: 'cursor', installed: false, connected: false, checking: false, authentication }];
     const event = { seq: 1, occurredAt, type: 'snapshot.updated', payload: snapshot };
     expect(decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).toStrictEqual(event);
     const authEvent = { seq: 2, occurredAt, type: 'provider.authenticationChanged', payload: authentication };
@@ -578,7 +464,7 @@ describe(`${product.name} backend event decoder`, () => {
               name: 'report.txt',
               mimeType: 'text/plain',
             },
-          ], planMode: true, skills: [{ name: 'review', path: '/skills/review/SKILL.md' }], inputMethod: 'dictated', recordUserMessage: false, backendOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review/SKILL.md' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
+          ], planMode: true, skills: [{ name: 'review', path: '/skills/review/SKILL.md' }], inputMethod: 'dictated', recordUserMessage: false, providerOptions: { kind: 'codex', skills: [{ name: 'review', path: '/skills/review/SKILL.md' }] }, selection: { model: null, reasoningEffort: 'high', serviceTier: null } },
       },
     };
     const claudePrompt = {
@@ -588,7 +474,7 @@ describe(`${product.name} backend event decoder`, () => {
         text: 'Use extended thinking',
         options: {
           inputMethod: 'typed',
-          backendOptions: {
+          providerOptions: {
             kind: 'claude',
             thinkingBudgetTokens: 8_000,
             permissionMode: null,
@@ -612,7 +498,7 @@ describe(`${product.name} backend event decoder`, () => {
         retryAt: '2026-09-04T12:01:00.000Z',
       },
     };
-    const richApproval: import('../contracts').BackendApprovalRequest = {
+    const richApproval: import('../contracts').ProviderApprovalRequest = {
       id: 'approval-permissions',
       kind: 'permissions',
       conversationId: 'thread-1',
@@ -648,104 +534,6 @@ describe(`${product.name} backend event decoder`, () => {
     expect(decodeAppBackendEvent(resolved)).toBe(resolved);
   });
 
-  it('accepts populated provider conversation snapshot frames', () => {
-    const fixtures = createFixtures();
-    const codexFrame = structuredClone(
-      fixtures['codex.conversationSnapshotChanged'],
-    );
-    codexFrame.payload.snapshot.activeTurnId = 'turn-1';
-    codexFrame.payload.snapshot.turnIds = ['turn-1'];
-    codexFrame.payload.snapshot.turns = [{
-      id: 'turn-1',
-      status: 'inProgress',
-      error: null,
-      willRetry: false,
-      startedAt: occurredAt,
-      completedAt: null,
-      durationMs: null,
-    }];
-    codexFrame.payload.snapshot.messages = [message];
-    codexFrame.payload.snapshot.busy = true;
-    codexFrame.payload.snapshot.historyLoading = true;
-    codexFrame.payload.snapshot.historyState = {
-      loadingStrategy: 'lazy',
-      hasOlder: true,
-      loadingOlder: true,
-      fullyLoaded: false,
-    };
-
-    const claudeFrame = structuredClone(
-      fixtures['claude.conversationSnapshotChanged'],
-    );
-    claudeFrame.payload.snapshot.sessionId = 'claude-session-1';
-    claudeFrame.payload.snapshot.activeTurnId = 'turn-1';
-    claudeFrame.payload.snapshot.turnIds = ['turn-1'];
-    claudeFrame.payload.snapshot.turns = [{
-      id: 'turn-1',
-      status: 'interrupted',
-      error: null,
-      willRetry: false,
-      startedAt: occurredAt,
-      completedAt: occurredAt,
-      durationMs: 10,
-    }];
-    claudeFrame.payload.snapshot.messages = [
-      { ...message, role: 'user' },
-      message,
-      { ...message, id: 'message-system', role: 'system' },
-    ];
-    claudeFrame.payload.snapshot.contextUsage = usage;
-    claudeFrame.payload.snapshot.plan = {
-      threadId: 'claude-session-1',
-      turnId: 'turn-1',
-      kind: 'execution',
-      status: 'inProgress',
-      explanation: 'Verify the change',
-      steps: [{ step: 'Run tests', status: 'inProgress' }],
-      markdown: '- [ ] Run tests',
-      updatedAt: occurredAt,
-    };
-    claudeFrame.payload.snapshot.error = 'Interrupted by user';
-
-    expect(decodeAppBackendEvent(codexFrame)).toBe(codexFrame);
-    expect(decodeAppBackendEvent(claudeFrame)).toBe(claudeFrame);
-  });
-
-  it('accepts provider event frames with all optional routing context', () => {
-    const fixtures = createFixtures();
-    const codexFixture = fixtures['codex.conversationEventReceived'];
-    const codexFrame = {
-      ...codexFixture,
-      payload: {
-        ...codexFixture.payload,
-        event: {
-          ...codexFixture.payload.event,
-          origin: 'action',
-          turnId: 'turn-1',
-        },
-      },
-    };
-
-    const claudeFrame = structuredClone(
-      fixtures['claude.conversationEventReceived'],
-    );
-    claudeFrame.payload.event.backendSessionId = 'claude-session-1';
-    claudeFrame.payload.event.threadId = 'claude-session-1';
-    claudeFrame.payload.event.turnId = 'turn-1';
-
-    expect(decodeAppBackendEvent(codexFrame)).toBe(codexFrame);
-    expect(decodeAppBackendEvent(claudeFrame)).toBe(claudeFrame);
-  });
-
-  it('rejects a Claude event routed under a different agent', () => {
-    const event = createFixtures()['claude.conversationEventReceived'];
-
-    expect(() => decodeAppBackendEvent({
-      ...event,
-      agentId: 'agent-other',
-    })).toThrow('$.payload.event.agentId: expected the outer agent id');
-  });
-
   it('accepts valid full snapshot and client-state side channels', () => {
     const event = createFixtures()['snapshot.updated'];
     const withSideChannels = {
@@ -759,14 +547,6 @@ describe(`${product.name} backend event decoder`, () => {
     };
 
     expect(decodeAppBackendEvent(withSideChannels)).toBe(withSideChannels);
-  });
-
-  it('rejects a Codex event routed under a different conversation', () => {
-    const event = createFixtures()['codex.conversationEventReceived'];
-    expect(() => decodeAppBackendEvent({
-      ...event,
-      threadId: 'thread-other',
-    })).toThrow('$.payload.event.conversationId: expected the outer thread id');
   });
 
   it.each([

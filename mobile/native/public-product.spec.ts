@@ -9,7 +9,7 @@ describe('mobile public product metadata', () => {
 
   it.each(['ios', 'android'])('ships public repository metadata in the %s web bundle', async platform => {
     vi.stubEnv('COMPANION_PLATFORM', platform);
-    vi.stubEnv('CODEX_APP_SDK_SOURCE', '0');
+    vi.stubEnv('SDK_LOCAL_SOURCE', '0');
     const directory = await mkdtemp(path.join(__dirname, '.public-product-'));
     try {
       const entry = path.join(directory, 'entry.js');

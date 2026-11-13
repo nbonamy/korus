@@ -15,7 +15,7 @@ import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
 import { stubElectronTestWindow } from '../../../tests/support/client';
 import '../../styles/base.css';
 
-const agent = { id: 'agent-1', name: 'Dina', avatar: 'DI', folder: '/repo/worktree', backend: 'codex', backendDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
+const agent = { id: 'agent-1', name: 'Dina', avatar: 'DI', folder: '/repo/worktree', provider: 'codex', providerDefaults: { kind: 'codex' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' } as Agent;
 const status: AgentGitStatus = { folder: agent.folder!, branch: 'feature/demo', ahead: 2, behind: 0, changedFiles: 2, addedLines: 4, removedLines: 1, hasUntracked: false, state: 'dirty', updatedAt: '' };
 const workflow: AgentGitWorkflow = { repository: 'owner/repo', folder: agent.folder!, isLinkedWorktree: true, baseBranch: 'main', branch: 'feature/demo', detached: false, remote: 'origin', remoteUrl: 'git@github.com:owner/repo.git', upstream: 'origin/feature/demo', ahead: 2, behind: 0, stagedAddedLines: 4, stagedRemovedLines: 1, unstagedAddedLines: 2, unstagedRemovedLines: 0, untrackedAddedLines: 3, untrackedRemovedLines: 0, files: [{ path: 'a.ts', indexStatus: ' ', worktreeStatus: 'M' }, { path: 'new.ts', indexStatus: '?', worktreeStatus: '?' }], stagedFiles: [], unstagedFiles: ['a.ts', 'new.ts'], githubConnected: true };
 const inlineTeleport = { props: ['to', 'disabled'], template: '<slot />' };
@@ -335,10 +335,10 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
   });
 
-  it.each(['codex', 'claude', 'antigravity'] as const)('generates an editable %s commit message from the selected scopes', async backend => {
+  it.each(['codex', 'claude', 'antigravity'] as const)('generates an editable %s commit message from the selected scopes', async provider => {
     const pendingGeneration = deferred<{ kind: 'commit'; message: string }>();
     const generateMessage = vi.fn(() => pendingGeneration.promise);
-    const wrapper = mountControl({ generateMessage, agent: { ...agent, backend, backendDefaults: { kind: backend } } });
+    const wrapper = mountControl({ generateMessage, agent: { ...agent, provider: provider, providerDefaults: { kind: provider } } });
     await flushPromises();
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__primary').trigger('click');
@@ -1296,7 +1296,7 @@ describe('GitWorkflowControl', () => {
 
   it('hides draft generation when the host does not provide it', async () => {
     const wrapper = mountControl({
-      agent: { ...agent, backend: 'claude', backendDefaults: { kind: 'claude' } },
+      agent: { ...agent, provider: 'claude', providerDefaults: { kind: 'claude' } },
       generateMessage: undefined,
     });
     await flushPromises();

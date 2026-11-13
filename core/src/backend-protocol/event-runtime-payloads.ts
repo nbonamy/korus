@@ -1,7 +1,6 @@
-import { isCursorEvent, isCursorSnapshot } from '../cursor-conversation-guards';
+import { operationCapabilityFlags, subagentTranscriptKinds } from '../capability-flags';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
-import { isAntigravityEvent, isAntigravitySnapshot } from '../antigravity-conversation-guards';
 import { isProviderAuthentication } from '../contracts/provider-setup';
 import { isAppTextDescriptor } from '../app-text';
 import { isAccountRateLimits } from '../snapshot-guard-collections';
@@ -18,6 +17,7 @@ import {
   expectString,
   type EventValueValidator,
 } from './event-validation';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 function expectAppText(value: unknown, path: string): void {
   if (typeof value !== 'string' && !isAppTextDescriptor(value)) {
@@ -27,7 +27,7 @@ function expectAppText(value: unknown, path: string): void {
   }
 }
 
-function expectBackendCapabilities(value: unknown, path: string): void {
+function expectProviderCapabilities(value: unknown, path: string): void {
   expectRecord(value, path);
   const booleans = [
     'attachments',
@@ -41,19 +41,23 @@ function expectBackendCapabilities(value: unknown, path: string): void {
     'interrupt',
     'history',
     'conversationFork',
-    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'conversationReplaceWithSummary', 'remoteControl', 'conversationShare',
+    'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'remoteControl', 'conversationShare', ...operationCapabilityFlags,
     'deleteTurn',
     'editTurn',
     'retryTurn',
     'approvals',
   ];
   booleans.forEach((key) => expectOptional(value, key, path, expectBoolean));
+  expectOptional(value, 'subagentTranscripts', path, (candidate, candidatePath) => expectLiteral(candidate, subagentTranscriptKinds, candidatePath));
   expectOptional(value, 'planMode', path, (candidate, candidatePath) => {
     expectLiteral(
       candidate,
       ['native', 'prompted', 'unsupported'],
       candidatePath,
     );
+  });
+  expectOptional(value, 'commands', path, (candidate, candidatePath) => {
+    expectArray(candidate, candidatePath, (item, itemPath) => expectRecord(item, itemPath));
   });
   expectOptional(value, 'approvalPresets', path, (candidate, candidatePath) => {
     expectArray(candidate, candidatePath, (item, itemPath) => {
@@ -75,16 +79,16 @@ function expectBackendCapabilities(value: unknown, path: string): void {
   });
 }
 
-function expectBackendRuntimeStatus(value: unknown, path: string): void {
+function expectProviderRuntimeStatus(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
+  expectLiteral(value.provider, harnessProviders, `${path}.provider`);
   expectLiteral(
     value.status,
     ['notConfigured', 'starting', 'running', 'error'],
     `${path}.status`,
   );
   expectOptional(value, 'detail', path, expectAppText);
-  expectOptional(value, 'capabilities', path, expectBackendCapabilities);
+  expectOptional(value, 'capabilities', path, expectProviderCapabilities);
 }
 
 function expectConnectionState(value: unknown, path: string): void {
@@ -180,7 +184,7 @@ function expectModel(value: unknown, path: string): void {
       expectNullable(candidate, candidatePath, expectString),
   );
   expectOptional(value, 'isDefault', path, expectBoolean);
-  expectOptional(value, 'capabilities', path, expectBackendCapabilities);
+  expectOptional(value, 'capabilities', path, expectProviderCapabilities);
   expectOptional(value, 'providerMetadata', path, expectRecord);
 }
 
@@ -222,7 +226,7 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
   expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
-  expectLiteral(value.backend, ['codex', 'claude', 'antigravity', 'cursor'], `${path}.backend`);
+  expectLiteral(value.provider, harnessProviders, `${path}.provider`);
   expectString(value.repositoryName, `${path}.repositoryName`);
   expectBoolean(value.createWorktree, `${path}.createWorktree`);
   expectOptional(value, 'createProject', path, expectBoolean);
@@ -305,123 +309,59 @@ function expectId(value: unknown, path: string): void {
   expectString(value.id, `${path}.id`);
 }
 
-function expectCodexConversationSnapshot(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectString(value.activeConversationId, `${path}.activeConversationId`);
-  expectArray(value.turnIds, `${path}.turnIds`, expectString);
-  expectArray(value.turns, `${path}.turns`, (turn, turnPath) => {
-    expectRecord(turn, turnPath);
-    expectString(turn.id, `${turnPath}.id`);
-    expectLiteral(turn.status, ['completed', 'interrupted', 'failed', 'inProgress'], `${turnPath}.status`);
-  });
-  expectArray(value.messages, `${path}.messages`, (message, messagePath) => {
-    expectRecord(message, messagePath);
-    expectString(message.id, `${messagePath}.id`);
-    expectLiteral(message.role, ['user', 'assistant'], `${messagePath}.role`);
-    expectArray(message.parts, `${messagePath}.parts`, expectRecord);
-  });
-  expectNullable(value.activeTurnId, `${path}.activeTurnId`, expectString);
-  expectArray(value.turnIds, `${path}.turnIds`, expectString);
-  expectBoolean(value.busy, `${path}.busy`);
-  expectBoolean(value.historyLoading, `${path}.historyLoading`);
-  expectRecord(value.historyState, `${path}.historyState`);
-  expectBoolean(value.historyState.hasOlder, `${path}.historyState.hasOlder`);
-  expectBoolean(value.historyState.loadingOlder, `${path}.historyState.loadingOlder`);
-}
 
-function expectCodexConversationEvent(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectNumber(value.seq, `${path}.seq`);
-  expectString(value.occurredAt, `${path}.occurredAt`);
-  expectLiteral(value.origin, ['action', 'notification', 'lifecycle'], `${path}.origin`);
-  expectString(value.type, `${path}.type`);
-  expectString(value.conversationId, `${path}.conversationId`);
-  expectOptional(value, 'turnId', path, expectString);
-  expectRecord(value.payload, `${path}.payload`);
-}
 
-function expectClaudeConversationSnapshot(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectString(value.agentId, `${path}.agentId`);
-  expectNullable(value.sessionId, `${path}.sessionId`, expectString);
-  expectNullable(value.activeTurnId, `${path}.activeTurnId`, expectString);
-  expectArray(value.turns, `${path}.turns`, (turn, turnPath) => {
-    expectRecord(turn, turnPath);
-    expectString(turn.id, `${turnPath}.id`);
-    expectLiteral(turn.status, ['inProgress', 'completed', 'interrupted', 'failed'], `${turnPath}.status`);
-  });
-  expectArray(value.messages, `${path}.messages`, (message, messagePath) => {
-    expectRecord(message, messagePath);
-    expectString(message.id, `${messagePath}.id`);
-    expectString(message.agentId, `${messagePath}.agentId`);
-    expectLiteral(message.role, ['user', 'assistant', 'system'], `${messagePath}.role`);
-    expectArray(message.parts, `${messagePath}.parts`, expectRecord);
-  });
-  expectArray(value.answeredClientRequestIds, `${path}.answeredClientRequestIds`, expectString);
-  expectBoolean(value.busy, `${path}.busy`);
-  expectNullable(value.contextUsage, `${path}.contextUsage`, expectRecord);
-  expectNullable(value.plan, `${path}.plan`, expectRecord);
-  expectNullable(value.error, `${path}.error`, expectString);
-}
 
-function expectClaudeConversationEvent(value: unknown, path: string): void {
-  expectRecord(value, path);
-  expectNumber(value.seq, `${path}.seq`);
-  expectString(value.occurredAt, `${path}.occurredAt`);
-  expectString(value.agentId, `${path}.agentId`);
-  expectLiteral(value.backend, ['claude'], `${path}.backend`);
-  expectLiteral(value.type, [
-    'history.prepended',
-    'turn.historyUpdated',
-    'message.replaced',
-    'context.usageUpdated',
-    'turn.started',
-    'turn.proposedPlanDelta',
-    'turn.proposedPlanCompleted',
-    'turn.executionPlanUpdated',
-    'turn.completed',
-    'context.compactionStarted',
-    'context.compactionCompleted',
-    'message.delta',
-    'message.userSubmitted',
-    'item.started',
-    'item.updated',
-    'approval.requested',
-    'toolInput.requested',
-    'clientRequest.resolved',
-    'error',
-  ], `${path}.type`);
-  expectOptional(value, 'backendSessionId', path, expectString);
-  expectOptional(value, 'threadId', path, expectString);
-  expectOptional(value, 'turnId', path, expectString);
-  expectRecord(value.payload, `${path}.payload`);
-}
 
 export const runtimePayloadValidators = {
-  'cursor.conversationSnapshotChanged': (value, path) => {
+  'conversation.sessionSnapshot': (value, path) => {
     expectRecord(value, path);
-    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorSnapshot(value.snapshot)) throw new Error('Invalid Cursor conversation snapshot.');
+    expectNullable(value.conversation, `${path}.conversation`, expectString);
+    expectString(value.epoch, `${path}.epoch`);
+    expectRecord(value.snapshot, `${path}.snapshot`);
+    if (!Number.isSafeInteger(value.snapshot.revision) || Number(value.snapshot.revision) < 0) throw new Error('Invalid conversation session revision.');
+    expectRecord(value.snapshot.state, `${path}.snapshot.state`);
+    expectArray(value.snapshot.state.messages, `${path}.snapshot.state.messages`, expectRecord);
   },
-  'cursor.conversationEventReceived': (value, path) => {
+  'conversation.sessionPatch': (value, path) => {
     expectRecord(value, path);
-    if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 1 || !isCursorEvent(value.event)) throw new Error('Invalid Cursor conversation event.');
+    expectNullable(value.conversation, `${path}.conversation`, expectString);
+    expectString(value.epoch, `${path}.epoch`);
+    expectRecord(value.patch, `${path}.patch`);
+    if (!Number.isSafeInteger(value.patch.revision) || Number(value.patch.revision) < 1) throw new Error('Invalid conversation session revision.');
+    expectArray(value.patch.ops, `${path}.patch.ops`, expectRecord);
   },
-  'antigravity.conversationSnapshotChanged': (value, path) => {
+  // Conversation activity relayed between daemons.
+  'turn.started': expectRecord,
+  'turn.output': expectRecord,
+  'diff.updated': expectRecord,
+  'turn.completed': (value, path) => {
     expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    if (!isAntigravitySnapshot(value.snapshot)) throw new Error('Invalid Antigravity conversation snapshot.');
+    expectString(value.status, `${path}.status`);
+    if (typeof value.willRetry !== 'boolean') throw new Error('Invalid turn completion.');
   },
-  'antigravity.conversationEventReceived': (value, path) => {
+  'session.error': (value, path) => {
     expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    if (!isAntigravityEvent(value.event)) throw new Error('Invalid Antigravity conversation event.');
+    expectRecord(value.error, `${path}.error`);
+    expectString(value.error.message, `${path}.error.message`);
+  },
+  'tool.updated': (value, path) => {
+    expectRecord(value, path);
+    expectRecord(value.tool, `${path}.tool`);
+    expectString(value.tool.id, `${path}.tool.id`);
+    expectLiteral(value.tool.status, ['running', 'completed', 'failed'], `${path}.tool.status`);
+  },
+  'file.activity': (value, path) => {
+    expectRecord(value, path);
+    expectString(value.action, `${path}.action`);
+    expectString(value.status, `${path}.status`);
   },
   'provider.authenticationChanged': (value, path) => {
     if (!isProviderAuthentication(value)) {
       throw new Error(`Invalid ${product.name} backend event at ${path}: expected provider authentication.`);
     }
   },
-  'backend.statusChanged': expectBackendRuntimeStatus,
+  'provider.statusChanged': expectProviderRuntimeStatus,
   'snapshot.updated': expectAppSnapshot,
   'account.rateLimitsUpdated': expectRateLimits,
   'remoteControl.statusChanged': expectDevicePairingStatus,
@@ -434,26 +374,6 @@ export const runtimePayloadValidators = {
     expectNullable(value.cwd, `${path}.cwd`, expectString);
     expectLiteral(value.status, ['loaded'], `${path}.status`);
     expectArray(value.skills, `${path}.skills`, expectSkill);
-  },
-  'codex.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectCodexConversationSnapshot(value.snapshot, `${path}.snapshot`);
-  },
-  'codex.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectCodexConversationEvent(value.event, `${path}.event`);
-  },
-  'claude.conversationSnapshotChanged': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectClaudeConversationSnapshot(value.snapshot, `${path}.snapshot`);
-  },
-  'claude.conversationEventReceived': (value, path) => {
-    expectRecord(value, path);
-    expectNumber(value.revision, `${path}.revision`);
-    expectClaudeConversationEvent(value.event, `${path}.event`);
   },
   'client.markdownDisplayRequested': expectSidePanelMarkdown,
   'plan.reviewResolved': (value, path) => {

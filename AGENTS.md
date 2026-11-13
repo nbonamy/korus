@@ -11,10 +11,11 @@ native conversation and artifact rendering, plus a mobile companion, a hosted
 telemetry collector and the public website. Stack: TypeScript throughout, Vue 3 and
 Element Plus for UI, Electron Forge for packaging, Vitest for tests.
 
-Core product surfaces: **Teams** (top-level grouping), **Agents** (named teammates
-with folders, backend sessions and status), **Conversation** (native chat, tool
-calls, approvals, plans, diffs) and **Artifacts** (document, plan, diff, git and file
-panes beside the conversation).
+Core product surfaces: **Workspaces** (top-level grouping; the code and the wire
+protocol still call them `team`), **Agents** (named teammates with folders,
+harness sessions and status), **Conversation** (native chat, tool calls, approvals,
+plans, diffs) and **Artifacts** (document, plan, diff, git and file panes beside
+the conversation).
 
 ## Repository Map
 
@@ -45,6 +46,36 @@ protocol types). On the desktop, Electron main is the adapter, `daemon`
 (`client/backend`) owns backends, providers, persistence and filesystem access, and
 the renderer owns visual state. See [client/AGENTS.md](client/AGENTS.md) and
 [docs/architecture.md](docs/architecture.md).
+
+## Agents And The SDK Stack
+
+Korus is built on a chain of SDKs, each owning one layer:
+
+`codex-sdk` → `multi-agent-sdk` → `agent-ui-sdk` → Korus
+
+- `codex-sdk`: the Codex app-server protocol and transports, nothing else.
+- `multi-agent-sdk`: one interface to any agent harness (Codex, Claude Code, Cursor,
+  Antigravity, ...): the neutral driver contract, native adapters, session and
+  conversation state, capabilities, catalogs and MCP operations.
+- `agent-ui-sdk`: the Vue conversation UI (pane, composer, model and harness picker,
+  approvals, requests), driven by capabilities and neutral session state.
+- Korus: the product on top: workspaces, agent coordination, persistence, worktrees,
+  Missions, review, remote hosts and the mobile companion.
+
+Korus supports every harness `multi-agent-sdk` supports, and never codes to a
+specific one. A new harness arrives as an SDK upgrade, not as Korus code: no
+agent-named branches, fields or special cases in `core`, the daemon, the renderer or
+mobile. Differences between harnesses surface as capabilities, models, settings and
+events of the common contract. In code `provider` is the name of a harness id.
+Existing agent-specific code is debt to move into the SDKs, not a pattern to extend.
+`npm run lint` fails when shared code names a harness outside setup, persistence, the
+phone wire format and the capability table.
+
+When Korus needs something the abstraction does not offer, change the SDK and consume
+it, rather than working around it here. The lead agent coordinates that work with the
+agents owning each SDK: send a concrete contract request (what Korus needs, not how
+to build it), then adopt the new version. A change at any layer is released down the
+chain in order, each SDK pinned exactly by the next; `prepare-release` has the steps.
 
 ## Mobile API Compatibility
 
@@ -99,8 +130,11 @@ Use the Node 26 reference toolchain (`.nvmrc`, `package.json`). Keep build outpu
 generated bindings and packaged resources separate from source. Packaging and
 signing are in [client/AGENTS.md](client/AGENTS.md).
 
-**SDK.** Dev builds run the `~/src/codex-app-sdk` source (`CODEX_APP_SDK_SOURCE=1`), so
-SDK changes are live: never cite publishing or the pinned version outside release prep.
+**SDK.** npm dependencies use the `@korus-dev` scope. `SDK_LOCAL_SOURCE=1` in
+`.env` enables local runtime source; `SDK_SOURCE_ROOT` selects the directory
+containing `codex-sdk`, `multi-agent-sdk` and `agent-ui-sdk`, defaulting to the
+parent directory. Build local dependencies before typechecking their declarations.
+SDK publication is a separate action owned by the SDK maintainers.
 
 ## Project Skills
 

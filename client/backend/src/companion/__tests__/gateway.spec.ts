@@ -1,10 +1,11 @@
+import type { Agent } from '@workspace/core/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { CompanionGateway, companionAgentMethods, type GatewayState } from '../gateway';
 import { companionSessionId, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
-import type { BackendSkillSummary } from '@workspace/core/contracts';
+import type { ProviderSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
-import { codexSdkFixture, sdkAgent, sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { codexSdkFixture, sdkAgent } from '../../codex/__tests__/sdk-host-fixture';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import { ConversationSource } from '../conversation-source';
 import { AgentConversationService } from '../../agents/agent-conversation-service';
@@ -12,27 +13,31 @@ import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 const workspace: CompanionWorkspace = {
   teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'] }],
-  agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
-    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', remoteConnectionId: 'ssh-host', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
+  agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', provider: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
+    { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', remoteConnectionId: 'ssh-host', folder: '/private', provider: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
 };
 const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
+const sessionState = (messages: unknown[] = [], extra: Record<string, unknown> = {}) => ({ messages, busy: false, activeTurnId: null, turns: [], requests: [], error: null, title: null, goal: null, contextUsage: null, plan: null, ...extra });
+/** An agent's conversation as the daemon publishes it: neutral session state on one stream. */
+const conversationOf = (agentId: string, provider: string, conversation: string | null, messages: unknown[] = [], extra: Record<string, unknown> = {}, revision = 1) =>
+  ({ type: 'conversation.sessionSnapshot' as const, agentId, provider, payload: { conversation, epoch: 'epoch', snapshot: { revision, state: sessionState(messages, extra) } } }) as import('@workspace/core/companion-protocol').CompanionConversation;
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
   return gateway.request(peerId, 'pair.claim', { code: normalizePairingCode(shown)!, name }) as Promise<{ pendingId: string; state: string }>;
 }
 function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { registerLiveActivity: vi.fn(async (_peerId: string, _registration: unknown) => {}), onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadTurnHistory: vi.fn(async (_agentId: string, _turnId: string) => {}), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (_agentId: string, _input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { registerLiveActivity: vi.fn(async (_peerId: string, _registration: unknown) => {}), onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadTurnHistory: vi.fn(async (_agentId: string, _turnId: string) => {}), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/provider-driver').ProviderHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async (_agentId: string, _input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
     previewFile: vi.fn(async (_id: string, path: string) => ({ path, kind: 'text' as const, size: 12, content: 'current source' })),
     renameAgent: vi.fn(async () => {}), readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
-    skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
+    skills: vi.fn(async (): Promise<ProviderSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     readReview: vi.fn(async () => ({ target, session: null })), reviewAction: vi.fn(async () => {}),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), duplicateAgent: vi.fn(async () => 'duplicate'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
-    closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), duplicateAgent: vi.fn(async () => 'duplicate'), setProvider: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setPermission: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now, autoAcceptCode);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
@@ -44,24 +49,23 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
-  it.each([false, true])('keeps released phone subscriptions readable while a published Codex reset is still saving (safety findings: %s)', async (withFindings) => {
+  it.each([false, true])('keeps phone subscriptions readable while a published snapshot is still saving (safety findings: %s)', async (withFindings) => {
     const f = fixture(); await f.pair();
     const app = createTestSnapshot();
-    const agent = { ...workspace.agents[0]!, backendSession: { kind: 'codex' as const, threadId: 'thread' } };
+    const agent = { ...workspace.agents[0]!, providerSession: { kind: 'codex' as const, conversationId: 'thread' } };
     app.agents = [agent];
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [agent] });
-    const phoneTarget = { ...target, sessionId: JSON.stringify(agent.backendSession) };
-    const frame = { type: 'codex.conversationSnapshotChanged' as const, agentId: agent.id, backend: 'codex' as const,
-      threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', withFindings ? {
-        turnIds: ['blocked'], turns: [{ id: 'blocked', status: 'failed', willRetry: false,
-          startedAt: null, completedAt: null, durationMs: null,
-          error: { message: 'Provider stopped this turn', additionalDetails: null, codexErrorInfo: 'misalignmentPolicyViolation',
-            misalignment: { errorType: 'reviewable', detailedExplanation: 'Provider findings', steer: null, reviewTarget: null } } }],
-      } : {}) } };
+    const phoneTarget = { ...target, sessionId: companionSessionId({ providerSession: agent.providerSession } as Agent) };
+    const frame = conversationOf(agent.id, 'codex', 'thread', [], withFindings ? {
+      turns: [{ id: 'blocked', status: 'failed', willRetry: false,
+        startedAt: null, completedAt: null, durationMs: null,
+        error: { message: 'Provider stopped this turn', additionalDetails: null, codexErrorInfo: 'misalignmentPolicyViolation',
+          misalignment: { errorType: 'reviewable', detailedExplanation: 'Provider findings', steer: null, reviewTarget: null } } }],
+    } : {});
     let finishSave!: () => void;
     const saving = new Promise<void>(resolve => { finishSave = resolve; });
     let source!: ConversationSource;
-    const driverRequest = vi.fn(async () => { source.observe(frame); return agent.backendSession; });
+    const driverRequest = vi.fn(async () => { source.observe({ ...frame, occurredAt: 'now' } as AppBackendEvent); return agent.providerSession; });
     const service = new AgentConversationService({ getSnapshot: () => app, driverRequest,
       applyEvent: event => source.observe({ ...event, seq: 2, occurredAt: 'now' } as AppBackendEvent),
       persistSnapshot: async () => { await saving; return app; },
@@ -84,14 +88,18 @@ describe('companion authorization gateway', () => {
     for (const result of results) {
       if (result.status !== 'fulfilled') throw new Error('Subscription failed');
       const decoded = JSON.parse(JSON.stringify(result.value));
-      expect(decoded.payload.snapshot.turns.map((turn: { id: string; status: string; error: { message: string } | null }) =>
+      expect(decoded.payload.snapshot.state.turns.map((turn: { id: string; status: string; error: { message: string } | null }) =>
         ({ id: turn.id, status: turn.status, error: turn.error?.message ?? null }))).toStrictEqual(
         withFindings ? [{ id: 'blocked', status: 'failed', error: 'Provider stopped this turn' }] : []);
     }
     expect(driverRequest).toHaveBeenCalledOnce();
+    // The followed conversation answers again without another provider read, until a failed load forgets it.
+    expect(JSON.parse(JSON.stringify(await f.gateway.request('phone', 'conversation.subscribe', phoneTarget)))).toStrictEqual(frame);
+    expect(driverRequest).toHaveBeenCalledOnce();
+    source.observe({ type: 'conversation.historyLoadFailed', agentId: agent.id, occurredAt: 'now', payload: {} } as unknown as AppBackendEvent);
     driverRequest.mockRejectedValueOnce(new Error('History unavailable'));
     await expect(f.gateway.request('phone', 'conversation.subscribe', phoneTarget)).rejects.toThrow('unavailable');
-    driverRequest.mockImplementationOnce(async () => { source.observe(frame); return agent.backendSession; });
+    driverRequest.mockImplementationOnce(async () => { source.observe({ ...frame, occurredAt: 'now' } as AppBackendEvent); return agent.providerSession; });
     expect(JSON.parse(JSON.stringify(await f.gateway.request('phone', 'conversation.subscribe', phoneTarget)))).toStrictEqual(frame);
   });
   it('keeps the released phone snapshot response unchanged when desktop feature labels are persisted', async () => {
@@ -125,7 +133,7 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'conversation.turn.load', input)).rejects.toThrow();
     expect(f.port.loadTurnHistory).not.toHaveBeenCalled();
     await f.pair();
-    const frame = { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [] } } };
+    const frame = conversationOf('agent', 'codex', null);
     f.port.conversation.mockResolvedValue(frame);
     expect(await f.gateway.request('phone', 'conversation.turn.load', input)).toStrictEqual(frame);
     expect(f.port.loadTurnHistory).toHaveBeenCalledExactlyOnceWith('agent', 'historical-turn');
@@ -214,9 +222,9 @@ describe('companion authorization gateway', () => {
   });
   it('reads only images referenced by the current conversation and rechecks the grant after reading', async () => {
     const f = fixture(); await f.pair();
-    f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', payload: { snapshot: { messages: [
+    f.port.conversation.mockResolvedValue(conversationOf('agent', 'codex', null, [
       { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](</tmp/phone shot.png>)' }] },
-    ] } } });
+    ]));
     const input = { target, path: '/tmp/phone shot.png' };
     expect(await f.gateway.request('phone', 'conversation.image.read', input)).toStrictEqual({ dataUrl: 'data:image/png;base64,cG5n' });
     expect(f.port.readImage).toHaveBeenCalledExactlyOnceWith('agent', input.path);
@@ -229,11 +237,22 @@ describe('companion authorization gateway', () => {
     await f.gateway.revoke('phone'); release();
     await expect(loading).rejects.toThrow('not authorized');
   });
+  it('speaks the current data model and takes targets named either way', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'thread-1' } }] });
+    expect(await f.gateway.request('phone', 'snapshot.get', {})).toMatchObject({ dataModel: 2 });
+    await f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","conversationId":"thread-1"}' });
+    // Shipped phones write the key under the former names.
+    await f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","threadId":"thread-1"}' });
+    expect(f.port.interrupt).toHaveBeenCalledTimes(2);
+    await expect(f.gateway.request('phone', 'agent.interrupt', { ...target, sessionId: '{"kind":"codex","conversationId":"other"}' })).rejects.toThrow('stale');
+  });
+
   it('serves referenced embedded images through the existing build 97 image request without granting other content', async () => {
     const f = fixture(); await f.pair();
     const sessionId = 'image-session'; const contentId = 'a'.repeat(64);
     const reference = `conversation-image:${sessionId}:${contentId}`;
-    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: sessionId } }] });
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: sessionId } }] });
     const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: sessionId }) };
     // Reading a thumbnail must not reload history: overlapping reloads can leave
     // the companion snapshot unavailable, even though the provider owns the image.
@@ -397,7 +416,7 @@ describe('companion authorization gateway', () => {
     await f.pair();
     await expect(f.gateway.request('phone', 'agent.goal.set', { target: { ...target, sessionId: 'stale' }, objective: null })).rejects.toThrow('stale');
     await expect(f.gateway.request('phone', 'agent.goal.set', { target, objective: '  ' })).rejects.toThrow();
-    f.port.workspace.mockResolvedValueOnce({ ...workspace, agents: [{ ...workspace.agents[0]!, backend: 'antigravity' }] });
+    f.port.workspace.mockResolvedValueOnce({ ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'antigravity' }] });
     await expect(f.gateway.request('phone', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('unavailable');
     expect(f.port.changeGoal).not.toHaveBeenCalled();
     f.port.workspace.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return workspace; });
@@ -408,7 +427,7 @@ describe('companion authorization gateway', () => {
   it('binds review setup and launch to the original conversation and rechecks a revoked grant after discovery', async () => {
     const f = fixture(); await f.pair();
     const setup = { target, branch: null, baseRef: null, uncommitted: true, branchChanges: false, currentThread: false, activeReview: false, reviewerAgentId: null,
-      agentBackend: 'codex' as const, backend: 'codex' as const, backends: ['codex' as const], models: [] };
+      agentProvider: 'codex' as const, provider: 'codex' as const, providers: ['codex' as const], models: [] };
     f.port.reviewSetup.mockResolvedValue(setup);
     expect(await f.gateway.request('phone', 'agent.review.setup', { target })).toStrictEqual(setup);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
@@ -429,23 +448,24 @@ describe('companion authorization gateway', () => {
     await f.gateway.request('phone', 'conversation.read', { target, revision: 2 });
     expect(f.port.markRead).toHaveBeenCalledExactlyOnceWith('agent', 2);
   });
-  it('returns a Claude page directly and checks content reads again after revocation or session changes', async () => {
+  it('answers an older page with the conversation that includes it, and checks content reads again after revocation or session changes', async () => {
     const f = fixture();
-    const backendSession = { kind: 'claude' as const, sessionId: 'claude-session', transport: 'stdio' as const };
-    const claudeWorkspace = { ...workspace, agents: [{ ...workspace.agents[0]!, backend: 'claude' as const, backendSession }] };
+    const providerSession = { kind: 'claude' as const, conversationId: 'claude-session', transport: 'stdio' as const };
+    const claudeWorkspace = { ...workspace, agents: [{ ...workspace.agents[0]!, provider: 'claude' as const, providerSession: providerSession }] };
     f.port.workspace.mockResolvedValue(claudeWorkspace);
-    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'claude', sessionId: backendSession.sessionId }) };
-    const frame: NonNullable<import('@workspace/core/backend-driver').BackendHistoryLoadResult['frame']> = { type: 'claude.conversationEventReceived', agentId: 'agent', backend: 'claude', seq: 2, occurredAt: '', payload: { revision: 2, event: { seq: 2, occurredAt: '', backend: 'claude', agentId: 'agent', backendSessionId: backendSession.sessionId, type: 'history.prepended', payload: { messages: [], hasOlder: false } } } };
-    f.port.loadOlderHistory.mockResolvedValue({ frame, hasOlder: false });
-    const input = { sessionId: backendSession.sessionId, contentId: 'a'.repeat(64), offset: 0 };
+    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'claude', sessionId: providerSession.conversationId }) };
+    const frame = conversationOf('agent', 'claude', providerSession.conversationId, [{ id: 'older', role: 'user', parts: [] }], {}, 2);
+    f.port.loadOlderHistory.mockResolvedValue({ hasOlder: false });
+    f.port.conversation.mockResolvedValue(frame);
+    const input = { sessionId: providerSession.conversationId, contentId: 'a'.repeat(64), offset: 0 };
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('authorized');
     await f.pair();
     expect(await f.gateway.request('phone', 'conversation.loadOlder', currentTarget)).toStrictEqual({ frame, hasOlder: false });
-    expect(f.port.conversation).not.toHaveBeenCalled();
+    expect(f.port.loadOlderHistory).toHaveBeenCalledBefore(f.port.conversation);
     expect(await f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).toStrictEqual({ data: 'e30=', totalBytes: 2, nextOffset: null });
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input: { ...input, offset: -1 } })).rejects.toThrow();
     f.port.readConversationContent.mockImplementationOnce(async () => {
-      f.port.workspace.mockResolvedValue({ ...claudeWorkspace, agents: [{ ...claudeWorkspace.agents[0]!, backendSession: { ...backendSession, sessionId: 'new' } }] });
+      f.port.workspace.mockResolvedValue({ ...claudeWorkspace, agents: [{ ...claudeWorkspace.agents[0]!, providerSession: { ...providerSession, conversationId: 'new' } }] });
       return { data: 'e30=', totalBytes: 2, nextOffset: null };
     });
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('stale');
@@ -518,7 +538,7 @@ describe('companion authorization gateway', () => {
 
   it('lets the phone work with a mission worker like any agent, but not restructure it', async () => {
     const f = fixture();
-    const worker = { id: 'worker', name: 'Worker', teamId: 'team', folder: '/private', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '' };
+    const worker = { id: 'worker', name: 'Worker', teamId: 'team', folder: '/private', provider: 'codex' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '' };
     const workerTarget = { ...target, agentId: 'worker' };
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     f.port.workspace.mockResolvedValue({ ...workspace, missionAgents: [worker], agentRequests: { worker: [question] } });
@@ -532,7 +552,7 @@ describe('companion authorization gateway', () => {
     await f.gateway.request('phone', 'agent.interrupt', workerTarget);
     expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('worker');
     for (const [method, args] of [['agent.rename', { target: workerTarget, name: 'Mine' }], ['agent.restart', workerTarget], ['agent.close', { target: workerTarget }],
-      ['agent.backend.set', { target: workerTarget, backend: 'claude' }], ['agent.duplicate', { target: workerTarget, backend: 'codex' }]] as const) {
+      ['agent.provider.set', { target: workerTarget, provider: 'claude' }], ['agent.duplicate', { target: workerTarget, provider: 'codex' }]] as const) {
       await expect(f.gateway.request('phone', method, args)).rejects.toThrow('read-only');
     }
     expect(f.port.restart).not.toHaveBeenCalled();
@@ -618,11 +638,11 @@ describe('companion authorization gateway', () => {
 
   it.each([
     ['answers a request', 'agent.request.respond', 'respondRequest'],
-    ['changes the engine', 'agent.backend.set', 'setBackend'],
+    ['changes the engine', 'agent.provider.set', 'setProvider'],
   ] as const)('never %s for a device revoked during any workspace read', async (_name, method, effect) => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
-    const current = { ...workspace, backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
-    const args = method === 'agent.request.respond' ? { target, id: 'q', conversationId: 'conversation', outcome: { kind: 'cancelled' } } : { target, backend: 'claude' };
+    const current = { ...workspace, providers: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
+    const args = method === 'agent.request.respond' ? { target, id: 'q', conversationId: 'conversation', outcome: { kind: 'cancelled' } } : { target, provider: 'claude' };
     for (const revokedOnRead of [1, 2, 3]) {
       const f = fixture(); await f.pair();
       let reads = 0; let revoked = false;
@@ -636,11 +656,11 @@ describe('companion authorization gateway', () => {
   });
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
-    const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadTurnHistory' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview' | 'readReview' | 'reviewAction'; read?: true; agent?: object };
+    const claude = { provider: 'claude' as const, providerSession: { kind: 'claude' as const, conversationId: 'session' } };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'previewFile' | 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadTurnHistory' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setPermission' | 'changeGoal' | 'setProvider' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview' | 'readReview' | 'reviewAction'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'agent.rename': { args: t => ({ target: t, name: 'Renamed' }), effect: 'renameAgent' },
-      'agent.duplicate': { args: t => ({ target: t, backend: 'claude' }), effect: 'duplicateAgent' },
+      'agent.duplicate': { args: t => ({ target: t, provider: 'claude' }), effect: 'duplicateAgent' },
       'agent.git.diff': { args: t => ({ target: t, scope: { type: 'uncommitted' } }), effect: 'gitDiff', read: true },
       'agent.file.preview': { args: t => ({ target: t, input: { path: 'src/one.ts' } }), effect: 'previewFile', read: true },
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
@@ -654,14 +674,15 @@ describe('companion authorization gateway', () => {
       'skills.list': { args: (t) => t, effect: 'skills', read: true },
       'plugins.list': { args: (t) => t, effect: 'plugins', read: true },
       'models.list': { args: (t) => t, effect: 'models', read: true },
-      'agent.model.select': { args: (t) => ({ target: t, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }), effect: 'selectModel' },
+      'agent.model.select': { args: (t) => ({ target: t, selection: { provider: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }), effect: 'selectModel' },
       'agent.interrupt': { args: (t) => t, effect: 'interrupt' },
-      'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setApprovalPreset' },
-      'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermissionMode' },
+      'agent.permission.set': { args: (t) => ({ target: t, permission: 'full-access' }), effect: 'setPermission' },
+      'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setPermission' },
+      'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermission' },
       'agent.goal.set': { args: (t) => ({ target: t, objective: 'Ship' }), effect: 'changeGoal' },
       'agent.queuedPrompt.steer': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
       'agent.queuedPrompt.delete': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
-      'agent.backend.set': { args: (t) => ({ target: t, backend: 'claude' }), effect: 'setBackend' },
+      'agent.provider.set': { args: (t) => ({ target: t, provider: 'claude' }), effect: 'setProvider' },
       'agent.restart': { args: (t) => t, effect: 'restart' },
       'agent.close.preview': { args: (t) => t, effect: 'closePreview', read: true },
       'agent.close': { args: (t) => ({ target: t }), effect: 'close' },
@@ -673,9 +694,9 @@ describe('companion authorization gateway', () => {
     function ready(row: Row) {
       const f = fixture();
       const agent = { ...workspace.agents[0]!, ...row.agent };
-      const current = { ...workspace, queuedPrompts: [{ id: 'queued', agentId: 'agent', text: 'Next instruction' }], agents: [agent, workspace.agents[1]!], backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
+      const current = { ...workspace, queuedPrompts: [{ id: 'queued', agentId: 'agent', text: 'Next instruction' }], agents: [agent, workspace.agents[1]!], providers: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
       f.port.workspace.mockResolvedValue(current);
-      f.port.conversation.mockResolvedValue({ type: `${agent.backend}.conversationSnapshotChanged`, backend: agent.backend, agentId: 'agent', payload: { snapshot: { messages: [{ id: 'shot', parts: [{ type: 'text', text: '[Shot](/tmp/shot.png)' }] }] } } });
+      f.port.conversation.mockResolvedValue(conversationOf('agent', agent.provider, null, [{ id: 'shot', parts: [{ type: 'text', text: '[Shot](/tmp/shot.png)' }] }]));
       return { f, current, target: { ...target, sessionId: companionSessionId(agent) } };
     }
     it('has a stale, revoked and mid-read case for each operation the gateway binds to a target', () => {
@@ -703,7 +724,7 @@ describe('companion authorization gateway', () => {
   });
   it('renames only the authorized target and rejects empty, oversized or extra fields', async () => {
     const f = fixture(); await f.pair();
-    for (const input of [{ name: '  ' }, { name: 'a'.repeat(201) }, { name: 'Valid', backend: 'claude' }]) {
+    for (const input of [{ name: '  ' }, { name: 'a'.repeat(201) }, { name: 'Valid', provider: 'claude' }]) {
       await expect(f.gateway.request('phone', 'agent.rename', { target, ...input })).rejects.toThrow();
     }
     expect(f.port.renameAgent).not.toHaveBeenCalled();
@@ -739,7 +760,7 @@ describe('companion authorization gateway', () => {
   });
   it('loads earlier history only for an approved current target and returns the authoritative conversation', async () => {
     const f = fixture();
-    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', payload: { snapshot: { messages: [] } } };
+    const frame = conversationOf('agent', 'codex', null);
     f.port.conversation.mockResolvedValue(frame);
     await expect(f.gateway.request('phone', 'conversation.loadOlder', target)).rejects.toThrow('authorized');
     await f.pair();
@@ -849,25 +870,26 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     expect(await f.gateway.request('phone', 'models.list', target)).toStrictEqual({ models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] });
     expect(f.port.models).toHaveBeenCalledExactlyOnceWith('agent');
-    await f.gateway.request('phone', 'agent.model.select', { target, selection: { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } });
-    expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    await f.gateway.request('phone', 'agent.model.select', { target, selection: { provider: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } });
+    expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { provider: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
     // Build 97 sends the selection fields at the top level.
     await f.gateway.request('phone', 'agent.model.select', { target, model: 'legacy', reasoningEffort: null, serviceTier: 'fast' });
-    expect(f.port.selectModel).toHaveBeenLastCalledWith('agent', { backend: 'codex', model: 'legacy', reasoningEffort: null, serviceTier: 'fast' });
+    expect(f.port.selectModel).toHaveBeenLastCalledWith('agent', { provider: 'codex', model: 'legacy', reasoningEffort: null, serviceTier: 'fast' });
     await expect(f.gateway.request('phone', 'models.list', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { target, extra: 1, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, selection: { provider: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { target, extra: 1, selection: { provider: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } })).rejects.toThrow();
     await expect(f.gateway.request('stranger', 'models.list', target)).rejects.toThrow('authorized');
   });
   it('lets the phone stop an agent and change its permissions, only for agents the laptop shows', async () => {
     const f = fixture(); await f.pair();
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
     await f.gateway.request('phone', 'agent.interrupt', target);
-    await f.gateway.request('phone', 'agent.approvalPreset.set', { target, preset: 'full-access' });
+    await f.gateway.request('phone', 'agent.permission.set', { target, permission: 'full-access' });
+    // Shipped phones still name the permission a preset or a mode.
+    await f.gateway.request('phone', 'agent.approvalPreset.set', { target, preset: 'approve-for-me' });
     await f.gateway.request('phone', 'agent.permissionMode.set', { target: remote, mode: 'acceptEdits' });
     expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('agent');
-    expect(f.port.setApprovalPreset).toHaveBeenCalledExactlyOnceWith('agent', 'full-access');
-    expect(f.port.setPermissionMode).toHaveBeenCalledExactlyOnceWith('remote-agent', 'acceptEdits');
+    expect(f.port.setPermission.mock.calls).toStrictEqual([['agent', 'full-access'], ['agent', 'approve-for-me'], ['remote-agent', 'acceptEdits']]);
     await expect(f.gateway.request('phone', 'agent.interrupt', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.interrupt', target)).rejects.toThrow('authorized');
     for (const [method, args] of [['agent.approvalPreset.set', { preset: 'x' }], ['agent.permissionMode.set', { mode: 'x' }]] as const) {
@@ -878,26 +900,26 @@ describe('companion authorization gateway', () => {
   });
   it('never applies an agent command to a conversation that replaced the one the phone saw', async () => {
     const f = fixture(); await f.pair();
-    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'] } });
+    f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'claude'] } });
     const old = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'replaced' }) };
     const commands: [string, object][] = [
       ['agent.interrupt', old], ['models.list', old],
-      ['agent.model.select', { target: old, selection: { backend: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }],
+      ['agent.model.select', { target: old, selection: { provider: 'codex', model: 'gpt', reasoningEffort: null, serviceTier: null } }],
       ['agent.approvalPreset.set', { target: old, preset: 'full-access' }], ['agent.permissionMode.set', { target: old, mode: 'acceptEdits' }],
-      ['agent.backend.set', { target: old, backend: 'claude' }],
+      ['agent.provider.set', { target: old, provider: 'claude' }],
       ['agent.review.start', { target: old, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } }],
     ];
     for (const [method, args] of commands) await expect(f.gateway.request('phone', method, args)).rejects.toThrow('stale');
-    for (const port of [f.port.interrupt, f.port.models, f.port.selectModel, f.port.setApprovalPreset, f.port.setPermissionMode, f.port.setBackend, f.port.startReview]) expect(port).not.toHaveBeenCalled();
+    for (const port of [f.port.interrupt, f.port.models, f.port.selectModel, f.port.setPermission, f.port.setProvider, f.port.startReview]) expect(port).not.toHaveBeenCalled();
   });
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();
-    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { backend: 'claude', model: 'review-model', reasoningEffort: 'high' } };
+    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false }, selection: { provider: 'claude', model: 'review-model', reasoningEffort: 'high' } };
     await f.gateway.request('phone', 'agent.review.start', { target, input: { ...input, selection: undefined, ...input.selection } });
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.review.start', { target, input })).rejects.toThrow('authorized');
-    for (const bad of [{ ...input, cwd: '/private' }, { ...input, scope: { ...input.scope, cwd: '/private' } }, { ...input, automation: { ...input.automation, cwd: '/private' } }, { ...input, model: 'x'.repeat(201) }, { ...input, reasoningEffort: 'x'.repeat(41) }, { ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
+    for (const bad of [{ ...input, cwd: '/private' }, { ...input, scope: { ...input.scope, cwd: '/private' } }, { ...input, automation: { ...input.automation, cwd: '/private' } }, { ...input, model: 'x'.repeat(201) }, { ...input, reasoningEffort: 'x'.repeat(41) }, { ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, provider: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
       await expect(f.gateway.request('phone', 'agent.review.start', { target, input: bad })).rejects.toThrow();
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };
@@ -907,7 +929,7 @@ describe('companion authorization gateway', () => {
   });
   it('forwards composer options with a prompt and treats different options as a different command', async () => {
     const f = fixture(); await f.pair();
-    const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { planMode: true, selection: { backend: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } } };
+    const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { planMode: true, selection: { provider: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: null } } };
     await f.gateway.request('phone', 'prompt.submit', command);
     expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, 'Plan it', 'mobile:phone', command.options);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, planMode: false } })).rejects.toThrow('reused');
@@ -935,20 +957,22 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [large, large] })).rejects.toThrow('Attachment too large');
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: 'AA=' }] })).rejects.toThrow();
   });
-  it('rejects a provider reset for another live session, even if it has the selected agent ID', async () => {
+  it('rejects a conversation for another live session, even if it has the selected agent ID', async () => {
     const f = fixture(); await f.pair();
-    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: 'current-thread' } }] });
-    f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'other-thread', payload: { snapshot: {} } });
+    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, providerSession: { kind: 'codex', conversationId: 'current-thread' } }] });
+    f.port.conversation.mockResolvedValue(conversationOf('agent', 'codex', 'other-thread'));
     await expect(f.gateway.request('phone', 'conversation.subscribe', { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'current-thread' }) })).rejects.toThrow('session mismatch');
   });
-  it('serves a Claude conversation whose session id was rebound mid-conversation', async () => {
+  it('serves the conversation an agent is attached to, or one before the session names it, for any provider', async () => {
     const f = fixture(); await f.pair();
-    const claude = { ...workspace.agents[1]!, backendSession: { kind: 'claude', sessionId: 'resumed-session' } } as unknown as typeof workspace.agents[number];
+    const claude = { ...workspace.agents[1]!, providerSession: { kind: 'claude', conversationId: 'resumed-session' } } as unknown as typeof workspace.agents[number];
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [workspace.agents[0]!, claude] });
-    f.port.conversation.mockResolvedValue({ type: 'claude.conversationSnapshotChanged', agentId: 'remote-agent', backend: 'claude', payload: { revision: 4, snapshot: { sessionId: 'forked-session', messages: [] } } });
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: JSON.stringify({ kind: 'claude', sessionId: 'resumed-session' }) };
-    expect(await f.gateway.request('phone', 'conversation.subscribe', remote)).toMatchObject({ payload: { revision: 4 } });
-    f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', agentId: 'remote-agent', backend: 'claude', payload: { revision: 5, snapshot: {} } });
+    f.port.conversation.mockResolvedValue(conversationOf('remote-agent', 'claude', 'resumed-session', [], {}, 4));
+    expect(await f.gateway.request('phone', 'conversation.subscribe', remote)).toMatchObject({ payload: { snapshot: { revision: 4 } } });
+    f.port.conversation.mockResolvedValue(conversationOf('remote-agent', 'claude', null, [], {}, 5));
+    expect(await f.gateway.request('phone', 'conversation.subscribe', remote)).toMatchObject({ payload: { snapshot: { revision: 5 } } });
+    f.port.conversation.mockResolvedValue(conversationOf('remote-agent', 'codex', 'resumed-session', [], {}, 6));
     await expect(f.gateway.request('phone', 'conversation.subscribe', remote)).rejects.toThrow('session mismatch');
   });
   it('admits concurrent retries once and reconciles accepted delivery across process restart', async () => {
@@ -1022,43 +1046,43 @@ describe('companion authorization gateway', () => {
     const repositoryId = opaquePath('/code/repo');
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] },
+      f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] },
         agents: [{ ...workspace.agents[0]!, workspace: repository }, { ...workspace.agents[1]!, workspace: { ...repository, repositoryRoot: '/srv/remote', primaryWorktreeRoot: '/srv/remote', repositoryName: 'remote-repo' } }] });
       return f;
     }
     const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
     it('creates in the default checkout or in a new worktree, with real paths the phone never saw', async () => {
       const f = await ready();
-      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
-      expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', selection: { backend: 'claude' }, repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, provider: 'claude' }) as { creationId: string };
+      expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', selection: { provider: 'claude' }, repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
       await settled();
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'created' });
-      await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, worktree: { branchName: 'feature/login' }, selection: { backend: 'codex' } });
-      expect(f.port.createChat).toHaveBeenLastCalledWith(expect.objectContaining({ selection: { backend: 'codex' }, worktree: { branchName: 'feature/login' } }));
+      await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, worktree: { branchName: 'feature/login' }, selection: { provider: 'codex' } });
+      expect(f.port.createChat).toHaveBeenLastCalledWith(expect.objectContaining({ selection: { provider: 'codex' }, worktree: { branchName: 'feature/login' } }));
     });
     it('places a chat of a remote team on its own laptop', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'claude' } });
+      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { provider: 'claude' } });
       expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'ssh-host', repositoryRoot: '/srv/remote' }));
     });
     it.each([
       ['an unknown repository', { repositoryId: 'nope' }],
       ['a repository of another team', { teamId: 'remote-team' }],
       ['an unknown team', { teamId: 'ghost' }],
-      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { backend: 'codex' } }],
-      ['an unsupported engine', { backend: 'other' }],
+      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote', 'ssh-host'), selection: { provider: 'codex' } }],
+      ['an unsupported engine', { provider: 'other' }],
       ...['', '-rf', '../x', 'a..b', 'a b', 'a/', 'x.lock', 'a//b', '/abs'].map((branchName): [string, object] => [`the branch ${JSON.stringify(branchName)}`, { worktree: { branchName } }]),
       ['an extra field', { folder: '/etc' }],
     ] satisfies [string, object][])('rejects %s', async (_name: string, change: object) => {
       const f = await ready();
-      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' }, ...change })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { provider: 'claude' }, ...change })).rejects.toThrow();
       expect(f.port.createChat).not.toHaveBeenCalled();
     });
     it('needs a paired phone, reports a failure, and answers only the phone that started it', async () => {
       const f = await ready();
-      await expect(f.gateway.request('stranger', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } })).rejects.toThrow('authorized');
+      await expect(f.gateway.request('stranger', 'agent.create', { teamId: 'team', repositoryId, selection: { provider: 'claude' } })).rejects.toThrow('authorized');
       f.port.createChat.mockRejectedValueOnce(new Error('Branch exists'));
-      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } }) as { creationId: string };
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { provider: 'claude' } }) as { creationId: string };
       await settled();
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'error', error: 'Branch exists' });
       await expect(f.gateway.request('stranger', 'agent.create.status', { creationId })).rejects.toThrow('authorized');
@@ -1067,77 +1091,84 @@ describe('companion authorization gateway', () => {
     it('caps the creations a phone runs at once', async () => {
       const f = await ready();
       f.port.createChat.mockImplementation(() => new Promise(() => {}));
-      for (let index = 0; index < 3; index++) await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } });
-      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { backend: 'claude' } })).rejects.toThrow('Too many');
+      for (let index = 0; index < 3; index++) await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { provider: 'claude' } });
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, selection: { provider: 'claude' } })).rejects.toThrow('Too many');
     });
   });
   describe('choosing the engine of an empty chat', () => {
     async function ready(change: object = {}) {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'] }, agents: [{ ...workspace.agents[0]!, ...change }, workspace.agents[1]!] });
+      f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'claude'] }, agents: [{ ...workspace.agents[0]!, ...change }, workspace.agents[1]!] });
       return f;
     }
     it('switches an agent that has not started yet', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.backend.set', { target, backend: 'claude' });
-      expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
+      await f.gateway.request('phone', 'agent.provider.set', { target, provider: 'claude' });
+      expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
+    });
+    it('switches to an engine this laptop lists even when released phones never named it', async () => {
+      const f = fixture(); await f.pair();
+      f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'cursor'] }, agents: [{ ...workspace.agents[0]! }, workspace.agents[1]!] });
+      await f.gateway.request('phone', 'agent.provider.set', { target, provider: 'cursor' });
+      expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('agent', 'cursor');
+      await expect(f.gateway.request('phone', 'agent.provider.set', { target, provider: 'antigravity' })).rejects.toThrow('not available');
     });
     it.each([
-      ['a chat that already has a conversation', { backendSession: { kind: 'codex', threadId: 'thread' } }, 'claude'],
+      ['a chat that already has a conversation', { providerSession: { kind: 'codex', conversationId: 'thread' } }, 'claude'],
       ['a chat that has sent a prompt', { hasSubmittedPrompt: true }, 'claude'],
       ['a chat that is working', { status: { type: 'working' } }, 'claude'],
       ['an engine the laptop cannot use', {}, 'antigravity'],
-    ])('refuses %s', async (_name, change, backend) => {
+    ])('refuses %s', async (_name, change, provider) => {
       const f = await ready(change);
-      const current = 'backendSession' in change ? { ...target, sessionId: JSON.stringify(change.backendSession) } : target;
-      await expect(f.gateway.request('phone', 'agent.backend.set', { target: current, backend })).rejects.toThrow();
-      await expect(f.gateway.request('phone', 'agent.backend.set', { target: { ...target, agentId: 'ghost' }, backend: 'claude' })).rejects.toThrow('stale');
-      expect(f.port.setBackend).not.toHaveBeenCalled();
+      const current = 'providerSession' in change ? { ...target, sessionId: companionSessionId({ providerSession: change.providerSession } as Agent) } : target;
+      await expect(f.gateway.request('phone', 'agent.provider.set', { target: current, provider: provider })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.provider.set', { target: { ...target, agentId: 'ghost' }, provider: 'claude' })).rejects.toThrow('stale');
+      expect(f.port.setProvider).not.toHaveBeenCalled();
     });
     it('needs a paired phone', async () => {
       const f = fixture();
-      await expect(f.gateway.request('stranger', 'agent.backend.set', { target, backend: 'claude' })).rejects.toThrow('authorized');
+      await expect(f.gateway.request('stranger', 'agent.provider.set', { target, provider: 'claude' })).rejects.toThrow('authorized');
     });
   });
   it('authorizes remote engine switches and duplicates against their owning host', async () => {
     const f = fixture(); await f.pair();
-    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex'], 'remote-team': ['codex'], 'ssh-host': ['claude'] } });
+    f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex'], 'remote-team': ['codex'], 'ssh-host': ['claude'] } });
     const remote = { ...target, locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent' };
-    await f.gateway.request('phone', 'agent.backend.set', { target: remote, backend: 'claude' });
-    await f.gateway.request('phone', 'agent.duplicate', { target: remote, backend: 'claude' });
-    expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
+    await f.gateway.request('phone', 'agent.provider.set', { target: remote, provider: 'claude' });
+    await f.gateway.request('phone', 'agent.duplicate', { target: remote, provider: 'claude' });
+    expect(f.port.setProvider).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
     expect(f.port.duplicateAgent).toHaveBeenCalledExactlyOnceWith('remote-agent', 'claude');
-    for (const method of ['agent.backend.set', 'agent.duplicate']) {
-      await expect(f.gateway.request('phone', method, { target: remote, backend: 'codex' })).rejects.toThrow('not available');
+    for (const method of ['agent.provider.set', 'agent.duplicate']) {
+      await expect(f.gateway.request('phone', method, { target: remote, provider: 'codex' })).rejects.toThrow('not available');
     }
-    expect(f.port.setBackend).toHaveBeenCalledOnce();
+    expect(f.port.setProvider).toHaveBeenCalledOnce();
     expect(f.port.duplicateAgent).toHaveBeenCalledOnce();
   });
   describe('starting a quick chat', () => {
     async function ready() {
       const f = fixture(); await f.pair();
-      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] } });
+      f.port.workspace.mockResolvedValue({ ...workspace, providers: { team: ['codex', 'claude'], 'remote-team': ['claude'], 'ssh-host': ['claude'] } });
       return f;
     }
     it('creates one for a team and reports it like any other new chat', async () => {
       const f = await ready();
-      const { creationId } = await f.gateway.request('phone', 'agent.quickChat.create', { teamId: 'team', backend: 'claude' }) as { creationId: string };
-      expect(f.port.createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'team', backend: 'claude' });
+      const { creationId } = await f.gateway.request('phone', 'agent.quickChat.create', { teamId: 'team', provider: 'claude' }) as { creationId: string };
+      expect(f.port.createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'team', provider: 'claude' });
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'quick' });
     });
     it.each([
-      ['an unknown team', { teamId: 'ghost', backend: 'claude' }],
-      ['an engine the team cannot use', { teamId: 'remote-team', backend: 'codex' }],
-      ['an unsupported engine', { teamId: 'team', backend: 'other' }],
-      ['an extra field', { teamId: 'team', backend: 'claude', folder: '/etc' }],
+      ['an unknown team', { teamId: 'ghost', provider: 'claude' }],
+      ['an engine the team cannot use', { teamId: 'remote-team', provider: 'codex' }],
+      ['an unsupported engine', { teamId: 'team', provider: 'other' }],
+      ['an extra field', { teamId: 'team', provider: 'claude', folder: '/etc' }],
     ])('refuses %s', async (_name, input) => {
       const f = await ready();
       await expect(f.gateway.request('phone', 'agent.quickChat.create', input)).rejects.toThrow();
       expect(f.port.createQuickChat).not.toHaveBeenCalled();
     });
     it('needs a paired phone', async () => {
-      await expect(fixture().gateway.request('stranger', 'agent.quickChat.create', { teamId: 'team', backend: 'claude' })).rejects.toThrow('authorized');
+      await expect(fixture().gateway.request('stranger', 'agent.quickChat.create', { teamId: 'team', provider: 'claude' })).rejects.toThrow('authorized');
     });
   });
 });
@@ -1152,62 +1183,37 @@ it('preserves released review requests and forwards explicit commit consent for 
   expect(f.port.reviewAction).toHaveBeenLastCalledWith('agent', consent);
 });
 
-it('keeps released three-provider snapshots, live updates and admission usable in a workspace containing Cursor', async () => {
+it('lists, streams and admits Cursor agents like every other provider', async () => {
   vi.useFakeTimers();
   const f = fixture(); await f.pair();
-  const agents = ['codex','claude','antigravity','cursor'].map(backend => ({...workspace.agents[0]!,id:backend,backend,backendSession:backend === 'codex' ? {kind:'codex',threadId:backend} : backend === 'claude' ? {kind:'claude',sessionId:backend,transport:'stdio'} : {kind:backend,sessionId:backend}})) as CompanionWorkspace['agents'];
-  const mixed: CompanionWorkspace = {teams:[{id:'team',name:'Team',agentIds:agents.map(agent=>agent.id)}],agents,backends:{team:['codex','claude','antigravity','cursor']},modelFavorites:[{backend:'cursor',modelId:'private-cursor-model',reasoningEffort:null,serviceTier:null}],agentRequests:{cursor:[]},queuedPrompts:[{id:'q',agentId:'cursor',text:'private-cursor-prompt'}]};
-  mixed.missionAgents = [{...agents[3]!,id:'cursor-worker'}];
-  mixed.missionProgress = [{id:'mission',teamId:'team',outcome:'Work',stage:'implementation',status:'active',startedAt:'now',updatedAt:'now',revision:1,leadAgentId:'cursor',tickets:[{number:1,title:'Work',state:'running',agentId:'cursor-worker'}]}];
-  mixed.reviewFindings = {cursor:1};
+  const providers = ['codex','claude','antigravity','cursor'];
+  const agents = providers.map(provider => ({...workspace.agents[0]!,id:provider,provider: provider,providerSession:provider === 'codex' ? { kind: 'codex',conversationId:provider} : provider === 'claude' ? { kind: 'claude',conversationId:provider,transport:'stdio'} : { kind: provider,conversationId:provider}})) as CompanionWorkspace['agents'];
+  const mixed: CompanionWorkspace = {teams:[{id:'team',name:'Team',agentIds:agents.map(agent=>agent.id)}],agents,providers:{team:['codex','claude','antigravity','cursor']},modelFavorites:[{provider:'cursor',modelId:'cursor-model',reasoningEffort:null,serviceTier:null}],agentRequests:{cursor:[]},queuedPrompts:[{id:'q',agentId:'cursor',text:'cursor prompt'}]};
   f.port.workspace.mockResolvedValue(mixed);
+  f.port.conversation.mockImplementation(async (id: string) => conversationOf(id, id, id));
   let listener!: (event: AppBackendEvent)=>void;
   const gateway = new CompanionGateway('host',f.saved(),{...f.port,onEvent(next){listener=next;return()=>{};}});
   const emitted: import('@workspace/core/companion-protocol').CompanionUpdate[] = [];
   const subscription = gateway.subscribe('phone',value=>{emitted.push(value);},()=>{});
-  // This baseline deliberately knows only the released wire providers, independently of current shared types.
-  const legacyProviders = ['codex','claude','antigravity'];
-  const readable = (value: CompanionWorkspace) => {
-    expect(value.agents.map(agent=>agent.backend)).toStrictEqual(legacyProviders);
-    expect(value.teams[0]!.agentIds).toStrictEqual(legacyProviders);
-    expect(value.backends?.team).toStrictEqual(legacyProviders);
-    expect(value.modelFavorites).toStrictEqual([]);
-    expect(value.agentRequests).not.toHaveProperty('cursor');
-    expect(value.queuedPrompts).toStrictEqual([]);
-    expect(value.missionAgents).toStrictEqual([]);
-    expect(value.missionProgress?.[0]).not.toHaveProperty('leadAgentId');
-    expect(value.missionProgress?.[0]?.tickets[0]).not.toHaveProperty('agentId');
-    expect(value.reviewFindings).not.toHaveProperty('cursor');
-  };
   try {
-    readable(await subscription.request('snapshot.get',{}) as CompanionWorkspace);
-    mixed.agents[0]!.name = 'Updated Codex';
-    listener({type:'agent.updated',agentId:'codex',payload:{name:'Updated Codex'}} as AppBackendEvent);
-    await vi.advanceTimersByTimeAsync(50);
-    const update = emitted.find(value=>value.type === 'workspace');
-    expect(update?.type).toBe('workspace');
-    if (update?.type === 'workspace') readable(update.workspace);
-    for (const agent of agents) {
-      const requestTarget = {...target,agentId:agent.id,sessionId:companionSessionId(agent)};
-      if (agent.backend === 'cursor') {
-        await expect(gateway.request('phone','conversation.subscribe',{target:requestTarget})).rejects.toThrow();
-        await expect(gateway.request('phone','agent.rename',{target:requestTarget,name:'Forbidden'})).rejects.toThrow();
-      } else await gateway.request('phone','agent.rename',{target:requestTarget,name:'Renamed'});
-    }
-    expect(f.port.renameAgent).toHaveBeenCalledTimes(3);
-    for (const id of legacyProviders) expect(f.port.renameAgent).toHaveBeenCalledWith(id,'Renamed');
-    expect(f.port.conversation).not.toHaveBeenCalled();
-    expect(f.port.createChat).not.toHaveBeenCalled();
+    const listed = await subscription.request('snapshot.get',{}) as CompanionWorkspace;
+    expect(listed.agents.map(agent=>agent.provider)).toStrictEqual(providers);
+    expect(listed.providers?.team).toStrictEqual(providers);
+    expect(listed.modelFavorites).toHaveLength(1);
+    expect(listed.queuedPrompts).toStrictEqual([{id:'q',agentId:'cursor',text:'cursor prompt'}]);
+    const cursorTarget = {...target,agentId:'cursor',sessionId:companionSessionId(agents[3]!)};
+    await subscription.request('conversation.subscribe',cursorTarget);
+    listener({type:'conversation.sessionPatch',agentId:'cursor',provider:'cursor',occurredAt:'now',payload:{conversation:'cursor',epoch:'epoch',patch:{revision:2,ops:[{op:'set',key:'busy',value:true}]}}} as AppBackendEvent);
+    expect(emitted.filter(value=>value.type === 'conversation').map(value=>value.type === 'conversation' && value.frame.type)).toStrictEqual(['conversation.sessionSnapshot','conversation.sessionPatch']);
+    for (const agent of agents) await gateway.request('phone','agent.rename',{target:{...target,agentId:agent.id,sessionId:companionSessionId(agent)},name:'Renamed'});
+    expect(f.port.renameAgent).toHaveBeenCalledTimes(4);
   } finally {subscription.close();vi.useRealTimers();}
 });
 
-it('rejects Cursor chat creation before provider admission when a released workspace omits backend availability', async () => {
+it('creates a Cursor chat on the phone', async () => {
   const f = fixture(); await f.pair();
-  f.port.workspace.mockResolvedValue({...workspace,agents:[{...workspace.agents[0]!,workspace:{kind:'git',folder:'/repo',repositoryRoot:'/repo',primaryWorktreeRoot:'/repo',repositoryName:'Synthetic',branch:'main',isLinkedWorktree:false,updatedAt:''}}]});
-  const input = {teamId:'team',repositoryId:opaquePath('/repo'),selection:{backend:'cursor'}};
-  await expect(f.gateway.request('phone','agent.create',input)).rejects.toThrow();
-  expect(f.port.createChat).not.toHaveBeenCalled();
-  await f.gateway.request('phone','agent.create',{...input,selection:{backend:'codex'}});
+  f.port.workspace.mockResolvedValue({...workspace,providers:{team:['codex','cursor']},agents:[{...workspace.agents[0]!,workspace:{kind:'git',folder:'/repo',repositoryRoot:'/repo',primaryWorktreeRoot:'/repo',repositoryName:'Synthetic',branch:'main',isLinkedWorktree:false,updatedAt:''}}]});
+  await f.gateway.request('phone','agent.create',{teamId:'team',repositoryId:opaquePath('/repo'),selection:{provider:'cursor'}});
   await vi.waitFor(()=>expect(f.port.createChat).toHaveBeenCalledTimes(1));
-  expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({selection:{backend:'codex'}}));
+  expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({selection:{provider:'cursor'}}));
 });

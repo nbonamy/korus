@@ -1,4 +1,5 @@
 import type { ChatTextSelection } from './use-chat-text-annotations';
+import './annotation-highlights.css';
 
 // The text slot is owned by Korus; SDK markup and message DOM are not inspected.
 export function captureChatTextAnchor(selection: ChatTextSelection | null): ChatTextSelection | null {
@@ -65,11 +66,15 @@ export function textRange(content: HTMLElement, text: string, start?: number): R
   return null;
 }
 
-// One highlight paints the ranges from all mounted conversation panes. Owners
-// release their ranges on removal or unmount so detached DOM is never retained.
+// One highlight paints the ranges from every annotation surface (conversation panes,
+// ticket and plan editors). Owners release their ranges on removal or unmount so
+// detached DOM is never retained.
 const highlightedRanges = new Map<symbol, { ranges: readonly Range[]; focusedRanges: readonly Range[] }>();
+export function annotationHighlightsSupported(): boolean {
+  return typeof CSS !== 'undefined' && !!CSS.highlights && typeof Highlight !== 'undefined';
+}
 export function updateChatTextHighlights(owner: symbol, ranges: readonly Range[], focusedRanges: readonly Range[] = []): void {
-  if (typeof CSS === 'undefined' || !CSS.highlights || typeof Highlight === 'undefined') return;
+  if (!annotationHighlightsSupported()) return;
   if (ranges.length || focusedRanges.length) highlightedRanges.set(owner, { ranges, focusedRanges });
   else highlightedRanges.delete(owner);
   const all = [...highlightedRanges.values()];

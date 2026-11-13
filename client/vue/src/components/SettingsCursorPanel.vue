@@ -1,9 +1,9 @@
 <template>
   <SettingsPanelFrame :title="$t('cursor.name')" title-id="settings-cursor-title">
-    <SettingsEngineConnectionRow backend="cursor" :capabilities="setupCapabilities" :installed="installed" :title="$t('cursor.name')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :pending="pending" :error="error || nativeState?.error" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
+    <SettingsEngineConnectionRow provider="cursor" :capabilities="setupCapabilities" :installed="installed" :title="$t('cursor.name')" :authentication="authentication" :connected="connected" :enabled="enabled" :set-enabled="setEnabled" :busy="busy" :pending="pending" :error="error || nativeState?.error" @install="emit('install')" @refresh="emit('refresh')" @connect="emit('connect')" @disconnect="emit('disconnect')" @cancel="emit('cancel')">
+      <ProviderUpdateRow provider="cursor" :enabled="installed" :remote-connection-id="remoteConnectionId" />
       <FormRow :title="$t('engineSetup.title')" :description="nativeState?.homePath || $t('cursor.existingHome')" />
       <FormRow v-if="nativeState?.team" :title="$t('cursor.team')" :description="nativeState.team" />
-      <ProviderUpdateRow backend="cursor" :enabled="installed" :remote-connection-id="remoteConnectionId" />
     </SettingsEngineConnectionRow>
     <FormSection v-if="connected && enabled !== false && !remoteConnectionId" :title="$t('cursor.billing')" title-id="settings-cursor-billing-title">
       <template #actions>
@@ -24,7 +24,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { AccountBilling } from '@workspace/core/contracts/backend';
+import type { AccountBilling } from '@workspace/core/contracts/provider';
 import { isAccountBilling } from '@workspace/core/snapshot-guard-collections';
 import { appApi } from '../platform-api';
 import type { ProviderSetupCapabilities, ProviderAuthentication } from '@workspace/core/contracts/provider-setup';

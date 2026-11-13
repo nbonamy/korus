@@ -1,13 +1,14 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import type { CodexAuthentication, CodexChatGptDeviceCodeLogin, AppApi, RemoteConnection } from '@workspace/core/contracts';
+import type { CodexAuthentication, AppApi, RemoteConnection } from '@workspace/core/contracts';
+import { providerAuthenticationState, type AuthenticationLogin } from '@workspace/core/contracts/provider-setup';
 import { appApi } from '../platform-api';
 
-export type RemoteCodexAuthApi = Pick<AppApi,
-  'getCodexAuthentication' | 'startCodexChatGptDeviceCodeLogin' | 'cancelCodexChatGptLogin'>;
+export type RemoteCodexAuthApi = Pick<AppApi, 'authenticateProvider'>;
+type DeviceCodeLogin = Extract<AuthenticationLogin, { method: 'deviceCode' }>;
 
 export function useRemoteCodexAuthentication(connection: () => RemoteConnection, api: () => RemoteCodexAuthApi | undefined = () => appApi) {
   const authentication = ref<CodexAuthentication | null>(null);
-  const login = ref<CodexChatGptDeviceCodeLogin | null>(null);
+  const login = ref<DeviceCodeLogin | null>(null);
   const busy = ref(false);
   const error = ref('');
   let revision = 0;
@@ -15,8 +16,8 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
   const connected = computed(() => Boolean(authentication.value && (authentication.value.account || !authentication.value.requiresOpenaiAuth)));
 
   function clearTimer() { if (timer) clearTimeout(timer); timer = undefined; }
-  function cancelPending(id: string, pending: CodexChatGptDeviceCodeLogin | null) {
-    if (pending) void api()?.cancelCodexChatGptLogin(id, pending.loginId).catch(() => undefined);
+  function cancelPending(id: string, pending: DeviceCodeLogin | null) {
+    if (pending) void api()?.authenticateProvider('codex', 'cancel', { remoteConnectionId: id, loginId: pending.id }).catch(() => undefined);
   }
 
   async function refresh(expectedRevision = revision): Promise<void> {
@@ -24,7 +25,7 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     if (!client || connection().status !== 'ready') return;
     const id = connection().id;
     try {
-      const state = await client.getCodexAuthentication(id);
+      const state = providerAuthenticationState(await client.authenticateProvider('codex', 'check', { remoteConnectionId: id }), 'codex');
       if (expectedRevision !== revision) return;
       authentication.value = state;
       error.value = state.login.error ?? '';
@@ -50,7 +51,8 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     busy.value = true;
     error.value = '';
     try {
-      const pending = await client.startCodexChatGptDeviceCodeLogin(id);
+      const { login: pending } = await client.authenticateProvider('codex', 'login', { method: 'deviceCode', remoteConnectionId: id });
+      if (pending?.method !== 'deviceCode') throw new Error('Codex did not start a device-code login.');
       if (expectedRevision !== revision) { cancelPending(id, pending); return; }
       login.value = pending;
       await refresh(expectedRevision);
@@ -73,7 +75,7 @@ export function useRemoteCodexAuthentication(connection: () => RemoteConnection,
     clearTimer();
     busy.value = true;
     try {
-      const state = await client.cancelCodexChatGptLogin(connection().id, login.value.loginId);
+      const state = providerAuthenticationState(await client.authenticateProvider('codex', 'cancel', { remoteConnectionId: connection().id, loginId: login.value.id }), 'codex');
       if (expectedRevision !== revision) return;
       authentication.value = state;
       login.value = null;

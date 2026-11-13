@@ -114,7 +114,7 @@ function statusLabel(delivery: MissionDelivery): string {
   return t('missions.shipPending');
 }
 async function recordDelivery(repositoryPath: string, result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }): Promise<void> {
-  // Merges are recorded by the backend before cleanup can unmount this control.
+  // Merges are recorded by the provider before cleanup can unmount this control.
   if (result.kind === 'merge') return;
   errors[repositoryPath] = '';
   try {

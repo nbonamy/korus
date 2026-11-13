@@ -1,11 +1,11 @@
-import { supportsCompanionBackend } from './companion-protocol';
-import type { AgentBackend } from './contracts';
+import type { HarnessProvider } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
 import { agentDisplayName } from './agent-display';
+import { companionProviders } from './companion-protocol';
 
 /** A separate, opt-in APNs channel; ordinary notification tokens cannot authorize it. */
 export const companionLiveActivityProtocol = '/workspace/companion-live-activity/1.0.0';
-export type WorkActivityAgent = { id: string; name: string; backend?: AgentBackend; startedAt?: number; status: 'idle' | 'working' | 'approval' | 'question' | 'waiting' | 'error'; detail: string };
+export type WorkActivityAgent = { id: string; name: string; provider?: HarnessProvider; startedAt?: number; status: 'idle' | 'working' | 'approval' | 'question' | 'waiting' | 'error'; detail: string };
 export type WorkActivityState = { hostName?: string; active?: number; running: number; attention: number; agents: WorkActivityAgent[]; more: number };
 export type LiveActivityRegistration = { token: string; environment: 'development' | 'production';
   authorization?: { expiresAt: number; signature: string } } & ({ kind: 'start' } | { kind: 'update'; instanceId: string });
@@ -16,10 +16,12 @@ export function liveActivityAuthorizationMessage(relayId: string, hostId: string
     registration.kind, registration.kind === 'update' ? registration.instanceId : null, registration.token, registration.environment, expiresAt]));
 }
 
+/** Any agent on a harness outside the relay's Live Activity schema shows without an engine badge. */
+const liveActivityProviders = new Set<HarnessProvider>(companionProviders);
 /** Count each agent once across teams and Mission workers, without exposing conversation content. */
 export function workActivityState(workspace: CompanionWorkspace, previous?: WorkActivityState, observedAt?: number): WorkActivityState {
   const teams = new Set(workspace.teams.map(team => team.id));
-  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => supportsCompanionBackend(agent.backend) && agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
+  const agents = new Map([...workspace.agents, ...workspace.missionAgents ?? []].filter(agent => agent.teamId !== undefined && teams.has(agent.teamId)).map(agent => [agent.id, agent]));
   let running = 0; let attention = 0;
   const rows: WorkActivityAgent[] = [];
   const bounded = (text: string, limit: number) => Array.from(text.replace(/[\r\n\t]/gu, ' ').trim()).slice(0, limit).join('');
@@ -30,7 +32,7 @@ export function workActivityState(workspace: CompanionWorkspace, previous?: Work
     const status: WorkActivityAgent['status'] | undefined = requests.length ? requests.some(request => request.kind !== 'question') ? 'approval' : 'question'
       : agent.status.type === 'awaitingInput' ? 'waiting' : agent.status.type === 'error' ? 'error' : agent.status.type === 'working' ? 'working' : previous?.agents.some(row => row.id === agent.id) ? 'idle' : undefined;
     const startedAt = status && status !== 'idle' ? previous?.agents.find(row => row.id === agent.id)?.startedAt ?? observedAt : undefined;
-    if (status) rows.push({ id: agent.id, name: bounded(agentDisplayName(agent), 80), backend: agent.backend, ...(startedAt ? { startedAt } : {}), status,
+    if (status) rows.push({ id: agent.id, name: bounded(agentDisplayName(agent), 80), ...(liveActivityProviders.has(agent.provider) ? { provider: agent.provider } : {}), ...(startedAt ? { startedAt } : {}), status,
       detail: status === 'working' ? bounded(agent.statusText || 'Working', 100)
         : { idle: 'Idle', approval: 'Needs your approval', question: 'Has a question', waiting: 'Waiting for input', error: 'Needs attention' }[status] });
   }

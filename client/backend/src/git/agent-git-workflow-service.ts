@@ -1,8 +1,9 @@
+import { commitMessageInstructions, pullRequestInstructions } from '../agents/prompts';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { closeAgentInSnapshot, updateAgentFolder } from '@workspace/core/agent-manager';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { realpath } from 'node:fs/promises';
-import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import { agentGitBackendMethods, backendMethods, type AgentGitBackendMethod } from '@workspace/core/backend-protocol/methods';
 import { repositoryPeersForAgent, requireAgentFolder } from '@workspace/core/agent-folder';
 import type {
@@ -309,7 +310,7 @@ export class AgentGitWorkflowService {
         agent,
         cwd: folder,
         prompt: `Write a commit message for these selected changes.\n\n${source.context}`,
-        developerInstructions: ['Return a git commit message. By default use one concise, imperative subject and follow the repository convention when evident. Do not add Markdown fences or explanations.', this.options.getSnapshot().general.commitMessageInstructions].filter(Boolean).join('\n\n'),
+        developerInstructions: commitMessageInstructions(this.options.getSnapshot().general.commitMessageInstructions),
         outputSchema: commitMessageOutputSchema,
       });
       return parseGeneratedGitMessage(generated, 'commit');
@@ -322,7 +323,7 @@ export class AgentGitWorkflowService {
         agent,
         cwd: folder,
         prompt: `Draft a ${requestName} title and body for the changes from ${source.baseRef ?? 'the base branch'} to the current branch.\n\n${source.context}`,
-        developerInstructions: [`Return a concise ${requestName} title and a useful Markdown body describing the outcome, important implementation details, and testing when supported by the supplied context. Do not invent facts.`, this.options.getSnapshot().general.pullRequestInstructions].filter(Boolean).join('\n\n'),
+        developerInstructions: pullRequestInstructions(requestName, this.options.getSnapshot().general.pullRequestInstructions),
         outputSchema: pullRequestMessageOutputSchema,
       });
       return parseGeneratedGitMessage(generated, 'pullRequest');

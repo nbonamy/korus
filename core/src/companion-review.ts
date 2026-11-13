@@ -1,4 +1,4 @@
-import type { AgentBackend } from './contracts';
+import type { HarnessProvider } from './contracts';
 import type { CompanionTarget } from './companion-protocol';
 import type { CodeReviewPreferences, CodeReviewStartInput } from './code-review';
 
@@ -13,9 +13,9 @@ export type CompanionReviewSetup = {
   currentThread: boolean;
   activeReview: boolean;
   reviewerAgentId: string | null;
-  agentBackend: AgentBackend;
-  backend: AgentBackend;
-  backends: AgentBackend[];
+  agentProvider: HarnessProvider;
+  provider: HarnessProvider;
+  providers: HarnessProvider[];
   models: { id: string; name: string; efforts: string[]; tiers?: { id: string; name: string }[] }[];
   preferences?: CodeReviewPreferences;
 };

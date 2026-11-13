@@ -8,7 +8,7 @@ struct WorkActivityAttributes: ActivityAttributes {
         let name: String
         let status: String
         let detail: String
-        var backend: String? = nil
+        var provider: String? = nil
         var startedAt: Double? = nil
     }
     struct ContentState: Codable, Hashable {

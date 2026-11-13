@@ -9,7 +9,7 @@ describe('TeamDialog', () => {
   it('renders the Skwad-style create team layout and disables save until named', () => {
     const wrapper = mountDialog();
 
-    expect(wrapper.get('.app-dialog__title').text()).toBe('Create Team');
+    expect(wrapper.get('.app-dialog__title').text()).toBe('Create Workspace');
     expect(wrapper.find('.app-dialog__subtitle').exists()).toBe(false);
     expect(wrapper.findAll('.app-form-dialog__field')).toHaveLength(2);
     expect(wrapper.text()).toContain('Name');
@@ -21,7 +21,7 @@ describe('TeamDialog', () => {
       'Name',
       'Color',
     ]);
-    expect(wrapper.get('#team-dialog-name').attributes('placeholder')).toBe('Enter team name');
+    expect(wrapper.get('#team-dialog-name').attributes('placeholder')).toBe('Enter workspace name');
     expect(wrapper.findAll('.team-dialog__color')).toHaveLength(teamColors.length);
     expect(wrapper.find('.team-dialog__preview').exists()).toBe(false);
     expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
@@ -60,7 +60,7 @@ describe('TeamDialog', () => {
       updateTeam,
     });
 
-    expect(wrapper.get('.app-dialog__title').text()).toBe('Edit Team');
+    expect(wrapper.get('.app-dialog__title').text()).toBe('Edit Workspace');
     expect((wrapper.get('#team-dialog-name').element as HTMLInputElement).value).toBe(`${product.name}`);
 
     await wrapper.get('#team-dialog-name').setValue('Skwad Core');
@@ -76,13 +76,13 @@ describe('TeamDialog', () => {
   });
 
   it('keeps the dialog open and shows create errors', async () => {
-    const createTeam = vi.fn().mockRejectedValue(new Error('Team color is invalid.'));
+    const createTeam = vi.fn().mockRejectedValue(new Error('Workspace color is invalid.'));
     const wrapper = mountDialog({ createTeam });
 
     await wrapper.get('#team-dialog-name').setValue('Broken Team');
     await saveButton(wrapper).trigger('click');
 
-    expect(wrapper.text()).toContain('Team color is invalid.');
+    expect(wrapper.text()).toContain('Workspace color is invalid.');
     expect(wrapper.emitted('close')).toBeUndefined();
   });
 });
@@ -116,7 +116,7 @@ function mountDialog(overrides: Partial<{
   });
 }
 
-function saveButton(wrapper: ReturnType<typeof mountDialog>, label = 'Create Team') {
+function saveButton(wrapper: ReturnType<typeof mountDialog>, label = 'Create Workspace') {
   const button = wrapper.findAll('button').find((candidate) => candidate.text() === label);
   if (!button) {
     throw new Error(`${label} button not found`);

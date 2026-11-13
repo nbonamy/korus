@@ -1,11 +1,10 @@
-import { supportsCompanionBackend } from './companion-protocol';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import type { Agent, AgentWorkspaceIdentity, AppSnapshot, BackendDefaults, Team } from './contracts';
-import type { CompanionGitStatus, CompanionMission, CompanionMissionReview, CompanionMissionTicketState, CompanionReviewFinding, CompanionWorkspace } from './companion-protocol';
+import type { Agent, AgentWorkspaceIdentity, AppSnapshot, ProviderDefaults, Team } from './contracts';
+import { withLegacyConversationId, withLegacyPermission, type CompanionGitStatus, type CompanionMission, type CompanionMissionReview, type CompanionMissionTicketState, type CompanionReviewFinding, type CompanionWorkspace } from './companion-protocol';
 import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
-import { enabledAgentBackends, providerConnectionsForHost } from './agent-backends';
+import { enabledAgentProviders, providerConnectionsForHost } from './agent-providers';
 import { repositoryIconForAgent } from './workspace-sidebar';
 import { missionLeadAgentId } from './mission-attention';
 import { missionImplementationBusy } from './mission-execution';
@@ -19,14 +18,12 @@ export function opaquePath(value: string, remoteConnectionId?: string): string {
 }
 
 /** The composer's last model and permission choice; never sandbox paths or approval policies. */
-function projectDefaults(defaults: BackendDefaults): BackendDefaults {
+function projectDefaults(defaults: ProviderDefaults): ProviderDefaults {
   const { kind, model, reasoningEffort } = defaults;
-  const serviceTier = defaults.kind !== 'antigravity' ? defaults.serviceTier : undefined;
-  const approvalPreset = defaults.kind === 'codex' ? defaults.approvalPreset : undefined;
-  const permissionMode = defaults.kind === 'codex' ? undefined : defaults.permissionMode;
-  return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    ...(serviceTier === undefined ? {} : { serviceTier }), ...(approvalPreset === undefined ? {} : { approvalPreset }),
-    ...(permissionMode === undefined ? {} : { permissionMode }) } as BackendDefaults;
+  const serviceTier = 'serviceTier' in defaults ? defaults.serviceTier : undefined;
+  const permission = defaults.permission;
+  return withLegacyPermission({ kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(serviceTier === undefined ? {} : { serviceTier }), ...(permission === undefined ? {} : { permission }) } as ProviderDefaults);
 }
 
 function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?: string): AgentWorkspaceIdentity {
@@ -36,60 +33,34 @@ function projectWorkspace(workspace: AgentWorkspaceIdentity, remoteConnectionId?
     primaryWorktreeRoot: opaquePath(workspace.primaryWorktreeRoot, remoteConnectionId), branch, ...(defaultBranch === undefined ? {} : { defaultBranch }), isLinkedWorktree, updatedAt };
 }
 
-/** Keep unnegotiated clients on their existing provider set, including indirect references. */
-export function supportedCompanionWorkspace(source: CompanionWorkspace): CompanionWorkspace {
-  const hidden = new Set([...source.agents, ...source.missionAgents ?? []].filter(agent => !supportsCompanionBackend(agent.backend)).map(agent => agent.id));
-  const visible = (id: string) => !hidden.has(id);
-  const records = <T>(value: Record<string, T>) => Object.fromEntries(Object.entries(value).filter(([id]) => visible(id)));
-  return {
-    ...source,
-    teams: source.teams.map(team => ({...team, agentIds: team.agentIds.filter(visible)})),
-    agents: source.agents.filter(agent => visible(agent.id)),
-    ...(source.missionAgents ? {missionAgents: source.missionAgents.filter(agent => visible(agent.id))} : {}),
-    ...(source.missionProgress ? {missionProgress: source.missionProgress.map(mission => {
-      const {leadAgentId, tickets, ...rest} = mission;
-      return {...rest, ...(leadAgentId && visible(leadAgentId) ? {leadAgentId} : {}), tickets: tickets.map(ticket => {
-        const {agentId, ...fields} = ticket;
-        return {...fields, ...(agentId && visible(agentId) ? {agentId} : {})};
-      })};
-    })} : {}),
-    ...(source.backends ? {backends: Object.fromEntries(Object.entries(source.backends).map(([host, backends]) => [host, backends.filter(supportsCompanionBackend)]))} : {}),
-    ...(source.modelFavorites ? {modelFavorites: source.modelFavorites.filter(favorite => supportsCompanionBackend(favorite.backend))} : {}),
-    ...(source.agentRequests ? {agentRequests: records(source.agentRequests)} : {}),
-    ...(source.gitStatuses ? {gitStatuses: records(source.gitStatuses)} : {}),
-    ...(source.reviewFindings ? {reviewFindings: records(source.reviewFindings)} : {}),
-    ...(source.queuedPrompts ? {queuedPrompts: source.queuedPrompts.filter(prompt => visible(prompt.agentId))} : {}),
-  };
-}
 
 /**
  * What a paired phone sees of the laptop: enough to rebuild the desktop sidebar (repositories,
  * branch and conversation titles, repository icons) without paths, remotes or provider internals.
  */
-export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
-  source = supportedCompanionWorkspace(source);
+export function projectCompanionWorkspace(source: CompanionWorkspace & { repositoryIcons?: Readonly<Record<string, string>> }): Required<Omit<CompanionWorkspace, 'gitStatuses' | 'conversationSync' | 'dataModel'>> & Pick<CompanionWorkspace, 'gitStatuses' | 'conversationSync'> {
   const teams = source.teams.map(({ id, name, avatar, agentIds }): Team => ({ id, name, avatar, agentIds }));
   const repositoryIcons: Record<string, string> = {};
   const projectAgent = (agent: Agent): Agent => {
     const workspace = agent.workspace ? projectWorkspace(agent.workspace, agent.remoteConnectionId) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
-    const { id, teamId, remoteConnectionId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
-    return { id, teamId, ...(remoteConnectionId ? { remoteConnectionId } : {}), name, avatar, backend,
-      backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
+    const { id, teamId, remoteConnectionId, name, avatar, provider: backend, providerSession: providerSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, providerDefaults: providerDefaults, hasSubmittedPrompt } = agent;
+    return { id, teamId, ...(remoteConnectionId ? { remoteConnectionId } : {}), name, avatar, provider: backend,
+      providerSession: providerSession && withLegacyConversationId(providerSession.kind === 'claude' ? { kind: providerSession.kind, conversationId: providerSession.conversationId, transport: providerSession.transport } : providerSession),
       ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
       ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),
       ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
       status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder, remoteConnectionId) : null,
-      ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
+      ...(providerDefaults ? { providerDefaults: projectDefaults(providerDefaults) } : {}) };
   };
   const inTeams = (agent: Agent) => teams.some((team) => team.id === agent.teamId);
   const agents = source.agents.filter(inTeams).map(projectAgent);
   const missionAgents = (source.missionAgents ?? []).filter(inTeams).map(projectAgent);
   const missionProgress = (source.missionProgress ?? []).filter((mission) => teams.some((team) => team.id === mission.teamId));
   const reviewFindings = Object.fromEntries(agents.flatMap(agent => source.reviewFindings?.[agent.id] === undefined ? [] : [[agent.id, source.reviewFindings[agent.id]]]));
-  return { ...(source.gitStatuses ? { gitStatuses: Object.fromEntries(agents.flatMap(agent => source.gitStatuses?.[agent.id] ? [[agent.id, projectGitStatus(source.gitStatuses[agent.id]!)]] : [])) } : {}), teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], backends: source.backends ?? {}, agentRequests: Object.fromEntries([...agents, ...missionAgents].map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])), missionProgress, missionAgents,
+  return { ...(source.gitStatuses ? { gitStatuses: Object.fromEntries(agents.flatMap(agent => source.gitStatuses?.[agent.id] ? [[agent.id, projectGitStatus(source.gitStatuses[agent.id]!)]] : [])) } : {}), teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], providers: source.providers ?? {}, agentRequests: Object.fromEntries([...agents, ...missionAgents].map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])), missionProgress, missionAgents,
     reviewFindings, queuedPrompts: (source.queuedPrompts ?? []).filter(prompt => agents.some(agent => agent.id === prompt.agentId)).map(({ id, agentId, text }) => ({ id, agentId, text })) };
 }
 
@@ -175,10 +146,10 @@ export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agen
     const review = agent.codeReview;
     return review && review.status !== 'finished' ? [[agent.id, review.rounds.find(round => round.id === review.activeRoundId)?.findings.length ?? 0]] : [];
   }));
-  return supportedCompanionWorkspace({ ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
-    reviewFindings, backends: Object.fromEntries([
-      ...snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: snapshot.providerConnections ?? [] })] as const),
-      ...(snapshot.remoteConnections?.connections ?? []).map((connection) => [connection.id, enabledAgentBackends({ providerConnections: providerConnectionsForHost({ ...snapshot, remoteConnections: snapshot.remoteConnections } as AppSnapshot, connection.id) })] as const),
+  return ({ ...(gitStatuses ? { gitStatuses } : {}), missionProgress: missions, missionAgents: snapshot.agents.filter((agent) => ticketWorkerIds.has(agent.id)), queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
+    reviewFindings, providers: Object.fromEntries([
+      ...snapshot.teams.map((team) => [team.id, enabledAgentProviders({ providerConnections: snapshot.providerConnections ?? [] })] as const),
+      ...(snapshot.remoteConnections?.connections ?? []).map((connection) => [connection.id, enabledAgentProviders({ providerConnections: providerConnectionsForHost({ ...snapshot, remoteConnections: snapshot.remoteConnections } as AppSnapshot, connection.id) })] as const),
     ]) });
 }
 

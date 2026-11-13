@@ -1,6 +1,8 @@
 import { nextTick } from 'vue';
+import { conversation, textMessage } from './support/conversation';
 import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
+import * as composerSettings from '../composer-settings';
 import { createEngine, type EngineEvent, type EngineState, type EnginePort } from '../engine';
 import { createSelectionStore } from '../selection-store';
 import type { CompanionHistoryPage, CompanionSession, CompanionWorkspace } from '../companion-port';
@@ -160,14 +162,14 @@ describe('companion engine', () => {
       }
     } finally { engine.dispose(); vi.useRealTimers(); }
   });
-  it.each(['claude', 'codex'] as const)('routes %s content as separate chunks and rejects responses after selection changes', async backend => {
+  it.each(['claude', 'codex'] as const)('routes %s content as separate chunks and rejects responses after selection changes', async provider => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
     let finish!: (value: typeof chunk) => void;
     const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      workspace.agents[0] = { ...workspace.agents[0]!, backend, backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'session' } : { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      workspace.agents[0] = { ...workspace.agents[0]!, provider: provider, providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'session' } : { kind: 'claude', conversationId: 'session', transport: 'stdio' } };
       return { ...session, getWorkspace: async () => workspace, readConversationContent };
     };
     const { engine, events } = open(connector);
@@ -350,7 +352,7 @@ describe('companion engine', () => {
       workspace ??= { ...await session.getWorkspace(),
         teams: [{ id: 'demo-team', name: 'First', agentIds: ['demo-agent'] }, { id: 'second-team', name: 'Second', agentIds: ['demo-reviewer'] }],
         agents: (await session.getWorkspace()).agents.map(agent => ({ ...agent, teamId: agent.id === 'demo-reviewer' ? 'second-team' : 'demo-team' })),
-        backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } };
+        providers: { 'demo-team': ['codex'], 'second-team': ['codex'] } };
       return { ...session, getWorkspace, sendPrompt, createQuickChat,
         loadConversation: async agentId => { loadConversation(agentId); return session.loadConversation(agentId); },
         onUpdate(listener) { update = listener; return () => {}; } };
@@ -377,8 +379,8 @@ describe('companion engine', () => {
       expect(getWorkspace).toHaveBeenCalledTimes(1);
       await first.engine.dispatch({ type: 'send', text: 'For the second team' });
       expect(sendPrompt.mock.calls[0]?.[0]).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer' });
-      await first.engine.dispatch({ type: 'newQuickChat', backend: 'codex' });
-      expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', backend: 'codex' });
+      await first.engine.dispatch({ type: 'newQuickChat', provider: 'codex' });
+      expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', provider: 'codex' });
       expect(await store.read('demo-laptop')).toEqual({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true });
     } finally { first.engine.dispose(); }
     const restored = open(connector, store);
@@ -407,7 +409,7 @@ describe('companion engine', () => {
         agents: workspace.agents.map(agent => agent.id !== 'demo-reviewer' ? agent : { ...agent, teamId: 'second-team', workspace: {
           kind: 'git' as const, folder: '/second/repo', repositoryRoot: '/second/repo', primaryWorktreeRoot: '/second/repo',
           repositoryName: 'Second repo', branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: agent.updatedAt,
-        } }), backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } }) };
+        } }), providers: { 'demo-team': ['codex'], 'second-team': ['codex'] } }) };
     };
     const { engine, latest } = open(connector);
     try {
@@ -415,8 +417,8 @@ describe('companion engine', () => {
       await engine.dispatch({ type: 'loadBranches', repositoryId: '/second/repo' });
       expect(listBranches).toHaveBeenCalledExactlyOnceWith('second-team', '/second/repo');
       expect(latest()).toMatchObject({ teamId: 'demo-team', allTeams: true });
-      await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
-      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', existingBranch: 'main', selection: { backend: 'codex' } });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', provider: 'codex', existingBranch: 'main' });
+      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', existingBranch: 'main', selection: { provider: 'codex' } });
       expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
     } finally { engine.dispose(); }
   });
@@ -684,7 +686,7 @@ describe('companion engine', () => {
       const session = await connect(id);
       return { ...session, loadTurnHistory, getWorkspace: async () => {
         const workspace = await session.getWorkspace();
-        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
       } };
     };
     const { engine, events } = open(connector);
@@ -693,7 +695,7 @@ describe('companion engine', () => {
     expect(loadTurnHistory).toHaveBeenCalledExactlyOnceWith('demo-agent', 'old-turn');
     expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'details', agentId: 'demo-agent' });
     const mismatched = (await (await connect('demo-laptop')).loadConversation('demo-agent'))!;
-    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, threadId: 'different-thread' } as typeof mismatched);
+    loadTurnHistory.mockResolvedValueOnce({ ...mismatched, payload: { ...mismatched.payload, conversation: 'different-thread' } });
     await engine.dispatch({ type: 'loadTurnHistory', requestId: 'wrong-session', agentId: 'demo-agent', turnId: 'old-turn' });
     expect(events.at(-1)).toMatchObject({ type: 'turnHistory', requestId: 'wrong-session', error: expect.any(String) });
     loadTurnHistory.mockRejectedValueOnce(new Error('offline'));
@@ -892,29 +894,25 @@ describe('companion engine', () => {
       for (const serviceTier of ['fast', null]) {
         await engine.dispatch({ type: 'composer', change: { serviceTier } });
         expect(latest().composer.serviceTier).toBe(serviceTier);
-        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, backend: 'codex' });
+        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, provider: 'codex' });
         await engine.dispatch({ type: 'send', text: 'Continue' });
         expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier }) }));
       }
     } finally { engine.dispose(); }
   });
-  describe('a prompt Claude has not published yet', () => {
-    // Claude publishes the prompt on the next read; the phone has to show it before that.
+  describe('a prompt the laptop has not published yet', () => {
+    // A provider can publish the prompt only after it accepts it; the phone has to show it before that.
     function claude(published: { texts: string[] }, sendPrompt: () => Promise<void> = async () => {}) {
       const connector = createDemoConnector(); const original = connector.connect;
       connector.connect = async (id) => {
         const session = await original(id); const workspace = await session.getWorkspace();
         return { ...session, sendPrompt,
-          getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, backend: 'claude' as const })) }),
-          loadConversation: async (agentId) => ({ type: 'claude.conversationSnapshotChanged', seq: 1, occurredAt: '2026-01-01T00:00:00Z', agentId, backend: 'claude', payload: { revision: 1, snapshot: {
-            agentId, sessionId: 's', activeTurnId: null, turnIds: [], turns: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false },
-            contextUsage: null, plan: null, error: null,
-            messages: published.texts.map((text, index) => ({ id: `m${index}`, agentId, role: 'user' as const, status: 'complete' as const, createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text' as const, text }] })),
-          } } }) };
+          getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, provider: 'claude' as const })) }),
+          loadConversation: async (agentId) => conversation(agentId, { provider: 'claude', conversation: 's', messages: published.texts.map((text, index) => textMessage(`m${index}`, 'user', text)) }) };
       };
       return connector;
     }
-    const texts = (events: EngineEvent[]) => { const last = events.filter((event) => event.type === 'conversation').at(-1); return last?.type === 'conversation' && last.frame && 'messages' in last.frame.payload.snapshot ? last.frame.payload.snapshot.messages.map((message) => message.parts.map((part) => part.type === 'text' ? part.text : '').join('')) : []; };
+    const texts = (events: EngineEvent[]) => { const last = events.filter((event) => event.type === 'conversation').at(-1); return last?.type === 'conversation' && last.frame ? last.frame.payload.snapshot.state.messages.map((message) => message.parts.map((part) => part.type === 'text' ? part.text : '').join('')) : []; };
     async function opened(published: { texts: string[] }, sendPrompt?: () => Promise<void>) {
       const harness = open(claude(published, sendPrompt));
       await harness.engine.start(); await harness.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await harness.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
@@ -926,7 +924,7 @@ describe('companion engine', () => {
       await engine.dispatch({ type: 'send', text: '$review', options: { content } });
       expect(texts(events)).toEqual(['Earlier', 'Review']);
       const shown = events.filter(event => event.type === 'conversation').at(-1);
-      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
+      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.state.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
       published.texts.push('Review');
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
       expect(texts(events)).toEqual(['Earlier', 'Review']);
@@ -962,7 +960,7 @@ describe('companion engine', () => {
         return { ...session, getWorkspace: async () => {
           const workspace = await session.getWorkspace();
           const agent = workspace.agents.find(agent => agent.id === 'demo-agent')!;
-          return { ...workspace, backends: { 'demo-team': ['codex' as const], box: ['claude' as const] }, agents: [
+          return { ...workspace, providers: { 'demo-team': ['codex' as const], box: ['claude' as const] }, agents: [
             ...workspace.agents,
             { ...agent, id: 'remote-agent', remoteConnectionId: 'box', folder: '/remote/repo',
               workspace: { kind: 'git' as const, folder: '/remote/repo', repositoryRoot: '/remote/repo', primaryWorktreeRoot: '/remote/repo', repositoryName: 'remote', branch: 'main', isLinkedWorktree: false, updatedAt: '' } },
@@ -973,16 +971,16 @@ describe('companion engine', () => {
       try {
         await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
         await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['codex'], repositoryBackends: { '/remote/repo': ['claude'] } });
+        expect(latest()).toMatchObject({ providers: ['codex'], conversationProviders: ['codex'], repositoryProviders: { '/remote/repo': ['claude'] } });
         await engine.dispatch({ type: 'selectAgent', id: 'remote-agent' });
-        expect(latest()).toMatchObject({ backends: ['codex'], conversationBackends: ['claude'], repositoryBackends: { '/remote/repo': ['claude'] } });
+        expect(latest()).toMatchObject({ providers: ['codex'], conversationProviders: ['claude'], repositoryProviders: { '/remote/repo': ['claude'] } });
       } finally { engine.dispose(); }
     });
     function withCreation(createChat: NonNullable<Awaited<ReturnType<ReturnType<typeof createDemoConnector>['connect']>>['createChat']>) {
       const connector = createDemoConnector(); const original = connector.connect;
       connector.connect = async (id) => {
         const session = await original(id);
-        return { ...session, createChat, getWorkspace: async () => ({ ...await session.getWorkspace(), backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] } }) };
+        return { ...session, createChat, getWorkspace: async () => ({ ...await session.getWorkspace(), providers: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] } }) };
       };
       return connector;
     }
@@ -994,9 +992,9 @@ describe('companion engine', () => {
     it('offers the team\'s engines, then opens the chat the laptop made', async () => {
       const createChat = vi.fn(async () => 'demo-reviewer');
       const { engine, latest } = await opened(createChat);
-      expect(latest()).toMatchObject({ backends: ['codex', 'claude'], chatCreation: 'idle' });
-      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'claude', branchName: 'feature' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', worktree: { branchName: 'feature' }, selection: { backend: 'claude' } });
+      expect(latest()).toMatchObject({ providers: ['codex', 'claude'], chatCreation: 'idle' });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', provider: 'claude', branchName: 'feature' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', worktree: { branchName: 'feature' }, selection: { provider: 'claude' } });
       expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
       engine.dispose();
     });
@@ -1011,31 +1009,30 @@ describe('companion engine', () => {
           loadConversation: (agentId) => agentId === 'new-chat' ? empty : session.loadConversation(agentId),
           getWorkspace: async () => {
             const workspace = await session.getWorkspace();
-            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
-              agents: [...workspace.agents, ...(created ? [{ ...workspace.agents[0]!, id: 'new-chat', backend: 'claude' as const, backendSession: undefined, sessionKind: 'quickChat' as const, hasSubmittedPrompt: false }] : [])] };
+            return { ...workspace, providers: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
+              agents: [...workspace.agents, ...(created ? [{ ...workspace.agents[0]!, id: 'new-chat', provider: 'claude' as const, providerSession: undefined, sessionKind: 'quickChat' as const, hasSubmittedPrompt: false }] : [])] };
           } };
       };
       const { engine, latest, events } = open(connector);
       try {
         await engine.start();
         await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
-        const creating = engine.dispatch({ type: 'newQuickChat', backend: 'claude' });
+        const creating = engine.dispatch({ type: 'newQuickChat', provider: 'claude' });
         await vi.waitFor(() => expect(latest()).toMatchObject({ agentId: 'new-chat', loading: true }));
         expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: false, frame: null });
         finishLoad(null); await creating;
-        expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', backend: 'claude' });
+        expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', provider: 'claude' });
         expect(latest()).toMatchObject({ agentId: 'new-chat', chatCreation: 'idle', loading: false, canSend: true });
         // Context-only updates cannot acknowledge painting to the native loading overlay.
-        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: true, frame: null,
-          engines: { current: 'claude', choices: ['codex', 'claude'] } });
+        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: true, frame: null });
       } finally { engine.dispose(); }
     });
     it('uses the default checkout without a branch, reports a failure and lets it be dismissed', async () => {
       const createChat = vi.fn<Parameters<typeof withCreation>[0]>().mockRejectedValueOnce(new Error('Branch exists'));
       const { engine, latest } = await opened(createChat);
       const before = latest().agentId;
-      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'codex' });
-      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', selection: { backend: 'codex' } });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', provider: 'codex' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', selection: { provider: 'codex' } });
       expect(latest()).toMatchObject({ chatCreation: 'failed', agentId: before });
       await engine.dispatch({ type: 'dismissNewChat' });
       expect(latest().chatCreation).toBe('idle');
@@ -1043,45 +1040,76 @@ describe('companion engine', () => {
     });
   });
   describe('choosing the engine of an empty chat', () => {
-    function withBackends(setBackend: (agentId: string, backend: string) => Promise<void>, started = false) {
+    function withProviders(setProvider: (agentId: string, provider: string) => Promise<void>, started = false) {
       const connector = createDemoConnector(); const original = connector.connect; let backend = 'codex';
       connector.connect = async (id) => {
         const session = await original(id);
-        return { ...session, loadConversation: async () => null, setBackend: async (agentId, next) => { await setBackend(agentId, next); backend = next; },
+        return { ...session, loadConversation: async () => null, setProvider: async (agentId, next) => { await setProvider(agentId, next); backend = next; },
           listModels: async () => [{ id: `${backend}-model`, model: `${backend}-model`, displayName: `${backend} model`, isDefault: true, hidden: false, supportedReasoningEfforts: [] } as never],
           getWorkspace: async () => { const workspace = await session.getWorkspace();
-            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
-              agents: workspace.agents.map((agent) => ({ ...agent, backend: backend as 'codex' | 'claude', ...(started ? { hasSubmittedPrompt: true } : {}) })) }; } };
+            return { ...workspace, providers: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
+              agents: workspace.agents.map((agent) => ({ ...agent, provider: backend as 'codex' | 'claude', ...(started ? { hasSubmittedPrompt: true } : {}) })) }; } };
       };
       return connector;
     }
     it('offers the choice before the first prompt and applies it', async () => {
-      const setBackend = vi.fn(async () => {});
-      const { engine, latest, events } = open(withBackends(setBackend));
+      const setProvider = vi.fn(async () => {});
+      const { engine, latest, events } = open(withProviders(setProvider));
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      expect(latest()).toMatchObject({ backend: 'codex', canSelectBackend: true });
-      await engine.dispatch({ type: 'backend', backend: 'claude' });
-      expect(setBackend).toHaveBeenCalledWith('demo-agent', 'claude');
-      expect(latest()).toMatchObject({ backend: 'claude', agentId: 'demo-agent' });
+      expect(latest()).toMatchObject({ provider: 'codex', canSelectProvider: true });
+      await engine.dispatch({ type: 'provider', provider: 'claude' });
+      expect(setProvider).toHaveBeenCalledWith('demo-agent', 'claude');
+      expect(latest()).toMatchObject({ provider: 'claude', agentId: 'demo-agent' });
       // The old engine's models must not stay selectable for the new one.
       await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
-      expect(shown(events)).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
+      expect(latest()).toMatchObject({ canSelectProvider: true, provider: 'claude', conversationProviders: ['codex', 'claude'] });
+      engine.dispose();
+    });
+    it('swaps the engine in one step: the chat never reads as loading or unready on the way', async () => {
+      const { engine, latest, states } = open(withProviders(async () => {}));
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await vi.waitFor(() => expect(latest().conversationReady).toBe(true));
+      const before = states().length;
+      await engine.dispatch({ type: 'provider', provider: 'claude' });
+      const during = states().slice(before);
+      expect(during.length).toBeGreaterThan(0);
+      expect(during.every(state => state.conversationReady && !state.loading && !state.refreshing)).toBe(true);
+      expect(during.at(-1)).toMatchObject({ provider: 'claude' });
+      // Nothing shows the new engine before the transcript for it is ready, and the old one is never shown again.
+      const providers = during.map(state => state.provider);
+      expect(providers.slice(providers.indexOf('claude')).every(provider => provider === 'claude')).toBe(true);
+      engine.dispose();
+    });
+    it('shows the choice at once, says the models are loading, and lands with the new engine\'s models in one step', async () => {
+      let release = () => {};
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const { engine, latest, states } = open(withProviders(async () => { await gate; }));
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await vi.waitFor(() => expect(latest().models.map(model => model.id)).toEqual(['codex-model']));
+      const switching = engine.dispatch({ type: 'provider', provider: 'claude' });
+      // The laptop has not answered yet: the phone already shows the choice and a loading model menu.
+      expect(latest()).toMatchObject({ provider: 'codex', switchingProvider: 'claude', modelsLoading: true });
+      release(); await switching;
+      expect(latest()).toMatchObject({ provider: 'claude', switchingProvider: null, modelsLoading: false });
+      expect(latest().models.map(model => model.id)).toEqual(['claude-model']);
+      // The new engine and its models arrive together, never one without the other.
+      expect(states().filter(state => state.provider === 'claude').every(state => state.models.map(model => model.id).join() === 'claude-model')).toBe(true);
       engine.dispose();
     });
     it('ignores a model list that arrives late from the engine it replaced', async () => {
       const connector = createDemoConnector(); const original = connector.connect; let backend = 'codex'; let release = () => {};
       connector.connect = async (id) => {
         const session = await original(id); let first = true;
-        return { ...session, loadConversation: async () => null, setBackend: async (_agent, next) => { backend = next; },
+        return { ...session, loadConversation: async () => null, setProvider: async (_agent, next) => { backend = next; },
           listModels: async () => { const asked = backend; const model = { id: `${asked}-model`, model: `${asked}-model`, displayName: asked, isDefault: true, hidden: false, supportedReasoningEfforts: [] } as never;
             if (first) { first = false; await new Promise<void>((resolve) => { release = resolve; }); }
             return [model]; },
           getWorkspace: async () => { const workspace = await session.getWorkspace();
-            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] }, agents: workspace.agents.map((agent) => ({ ...agent, backend: backend as 'codex' | 'claude' })) }; } };
+            return { ...workspace, providers: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] }, agents: workspace.agents.map((agent) => ({ ...agent, provider: backend as 'codex' | 'claude' })) }; } };
       };
       const { engine, latest } = open(connector);
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      await engine.dispatch({ type: 'backend', backend: 'claude' });
+      await engine.dispatch({ type: 'provider', provider: 'claude' });
       await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
       release();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1089,14 +1117,14 @@ describe('companion engine', () => {
       engine.dispose();
     });
     it('hides the choice once a prompt was sent, and reports a refusal', async () => {
-      const started = open(withBackends(async () => {}, true));
+      const started = open(withProviders(async () => {}, true));
       await started.engine.start(); await started.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await started.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      expect(started.latest().canSelectBackend).toBe(false);
+      expect(started.latest().canSelectProvider).toBe(false);
       started.engine.dispose();
-      const refused = open(withBackends(async () => { throw new Error('no'); }));
+      const refused = open(withProviders(async () => { throw new Error('no'); }));
       await refused.engine.start(); await refused.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await refused.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      await refused.engine.dispatch({ type: 'backend', backend: 'claude' });
-      expect(refused.latest()).toMatchObject({ backend: 'codex', error: 'mobile.errors.commandFailed' });
+      await refused.engine.dispatch({ type: 'provider', provider: 'claude' });
+      expect(refused.latest()).toMatchObject({ provider: 'codex', error: 'mobile.errors.commandFailed' });
       refused.engine.dispose();
     });
   });
@@ -1120,7 +1148,7 @@ it('uses acknowledged transcript checkpoints for warm agent switching and recove
   const extended: import('../companion-port').CompanionConnector = { ...connector,
     cachedConversation: value => cache?.peek(value), conversationUpdates: (value, since) => cache?.updates(value, since) ?? null,
     async connect(id) {
-      const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
       cache = new ConversationCache(async (_method, value) => { cache.receive((await session.loadConversation(value.agentId))!); }, () => {});
       return { ...session, getWorkspace: async () => workspace, cachedConversation: id => cache.peek(target(id)), loadConversation: id => cache.select(target(id)) };
     },
@@ -1154,4 +1182,15 @@ it('renames a paired laptop and shows the new name, leaving it alone when the na
     await engine.dispatch({ type: 'renameLaptop', laptopId: 'someone-else', name: 'Other' });
     expect(shownName()).toBe('Work Mac');
   } finally { engine.dispose(); }
+});
+
+it('uses a permission identity when an option has no provider-authored label', () => {
+  const original = composerSettings.composerCapabilitiesFor;
+  const capabilities = vi.spyOn(composerSettings, 'composerCapabilitiesFor').mockImplementation((...args) => ({
+    ...original(...args), permissionModes: [{ id: 'future-mode' }, { id: 'acceptEdits', label: 'Accept edits as you go' }, { id: 'full-access', label: { key: 'permissions.approval.fullAccess.label' }, dangerous: true }],
+  }));
+  const { engine, latest } = open();
+  try { expect(latest().permissions.options).toStrictEqual([{ id: 'future-mode', label: 'Future mode', dangerous: false },
+    { id: 'acceptEdits', label: 'Accept edits as you go', dangerous: false }, { id: 'full-access', label: 'Full access', dangerous: true }]); }
+  finally { engine.dispose(); capabilities.mockRestore(); }
 });

@@ -1,7 +1,7 @@
 <template>
   <section class="plan-review-section">
     <header class="plan-review-section__heading">
-      <div v-if="section.heading" class="codex-markdown" v-html="section.heading" />
+      <div v-if="section.heading" class="agent-ui-markdown" v-html="section.heading" />
       <span v-else>{{ section.title }}</span>
       <button
         ref="commentButton"
@@ -16,7 +16,7 @@
     </header>
     <div class="plan-review-section__body" @mouseup="selectText">
       <template v-for="(block, index) in section.blocks" :key="index">
-        <div v-if="'html' in block" class="codex-markdown" v-html="block.html" />
+        <div v-if="'html' in block" class="agent-ui-markdown" v-html="block.html" />
         <PlanChoiceGroup
           v-else-if="'choice' in block"
           :group="block.choice"
@@ -46,7 +46,7 @@
         :model-value="comment.body"
         :open="target?.id === comment.id"
         :disabled="disabled"
-        @edit="target = comment"
+        @edit="editComment(comment)"
         @close="close"
         @update:model-value="emit('comment', { ...comment, body: $event })"
       />
@@ -61,6 +61,7 @@ import type { PlanMarkdownSection, PlanMarkdownDiagram } from './plan-markdown';
 import { MessageIcon } from '../shared/icons/app-icons';
 import PlanCommentEditor from './PlanCommentEditor.vue';
 import PlanChoiceGroup from './PlanChoiceGroup.vue';
+import { usePendingAnnotationHighlight } from './use-pending-annotation-highlight';
 import VisualizationView from './VisualizationView.vue';
 const props = defineProps<{
   section: PlanMarkdownSection;
@@ -73,6 +74,7 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const editorId = useId();
+const pendingHighlight = usePendingAnnotationHighlight();
 const target = ref<PlanReviewDraft['comments'][number] | null>(null);
 const commentButton = ref<HTMLButtonElement>();
 let activeCommentButton: HTMLButtonElement | undefined;
@@ -91,6 +93,7 @@ function commentLabel(comment: PlanReviewDraft['comments'][number]) {
 }
 function toggleComment(event: MouseEvent, diagram?: PlanMarkdownDiagram) {
   if (props.disabled) return;
+  pendingHighlight.release();
   activeCommentButton = event.currentTarget as HTMLButtonElement;
   const id = diagram?.id ?? props.section.id;
   target.value =
@@ -113,6 +116,7 @@ function selectText(event: MouseEvent) {
     !(event.currentTarget as Element).contains(selection.getRangeAt(0).commonAncestorContainer)
   )
     return;
+  pendingHighlight.hold(selection.getRangeAt(0));
   target.value = {
     id: crypto.randomUUID(),
     sectionId: props.section.id,
@@ -121,7 +125,12 @@ function selectText(event: MouseEvent) {
   };
   selection.removeAllRanges();
 }
+function editComment(comment: PlanReviewDraft['comments'][number]) {
+  pendingHighlight.release();
+  target.value = comment;
+}
 async function close() {
+  pendingHighlight.release();
   target.value = null;
   await nextTick();
   (activeCommentButton ?? commentButton.value)?.focus();

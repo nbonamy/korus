@@ -13,18 +13,18 @@ describe('SettingsView', () => {
   it('applies provider setup capabilities to settings without provider-specific customization rules', async () => {
     const customizeProvider = vi.fn();
     const installProvider = vi.fn();
-    const setup = { backend: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
+    const setup = { provider: 'claude' as const, installed: true, isolated: false, shareSkills: false, homePath: '/claude', locked: false,
       capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, allowControllerInstall: true } } };
     const wrapper = mount(SettingsView, { props: { activeTab: 'claude-code', settings: defaultThemeSettings,
       generalSettings: defaultGeneralSettings, claudeConnected: true, providerSetup: [setup], customizeProvider, installProvider,
-      providerConnections: [{ backend: 'claude', installed: true, connected: true, checking: false }],
+      providerConnections: [{ provider: 'claude', installed: true, connected: true, checking: false }],
     } });
     await flushPromises();
     expect(wrapper.text()).not.toContain('Customize');
     await wrapper.setProps({ providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, homeSelection: true } }] });
     await wrapper.findAll('button').find(button => button.text() === 'Customize')!.trigger('click');
     expect(customizeProvider).toHaveBeenCalledExactlyOnceWith('claude');
-    await wrapper.setProps({ providerConnections: [{ backend: 'claude', installed: false, connected: false, checking: false }],
+    await wrapper.setProps({ providerConnections: [{ provider: 'claude', installed: false, connected: false, checking: false }],
       providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, installation: { managed: true } } }] });
     await wrapper.get('[aria-label="Install Claude Code"]').trigger('click');
     expect(installProvider).toHaveBeenCalledExactlyOnceWith('claude');
@@ -38,7 +38,7 @@ describe('SettingsView', () => {
     const wrapper = mount(SettingsView, { props: {
       activeTab: 'cursor', settings: defaultThemeSettings,
       generalSettings: { ...defaultGeneralSettings, providerEnabled: { cursor: false } },
-      providerConnections: [{ backend: 'cursor', installed: true, connected: true, enabled: false, checking: false,
+      providerConnections: [{ provider: 'cursor', installed: true, connected: true, enabled: false, checking: false,
         authentication: { kind: 'cursor', connected: true, state: { loggedIn: true, homePath: '/cursor', version: '2026.10.22-27dcf5f', supported: true } } }],
       setProviderEnabled, connectCursor, customizeProvider,
     }, global: { components: { ElSwitch } } });
@@ -50,7 +50,7 @@ describe('SettingsView', () => {
     expect(customizeProvider).not.toHaveBeenCalled();
     await wrapper.get('[role="switch"][aria-label="Enable Cursor"]').trigger('click'); await flushPromises();
     expect(setProviderEnabled).toHaveBeenCalledWith('cursor', true);
-    await wrapper.setProps({ providerConnections: [{ backend: 'cursor', installed: true, connected: false, checking: false,
+    await wrapper.setProps({ providerConnections: [{ provider: 'cursor', installed: true, connected: false, checking: false,
       authentication: { kind: 'cursor', connected: false, state: { loggedIn: false, homePath: '/cursor', supported: false, error: 'Update Cursor CLI to 2026.10.08 or newer.' } } }] });
     expect(wrapper.text()).toContain('Update Cursor CLI to 2026.10.08');
     wrapper.unmount();
@@ -60,7 +60,7 @@ describe('SettingsView', () => {
     const billing = { includedBalanceUsd: '15.00', onDemand: { enabled: true, unlimited: false, usedUsd: 1, limitUsd: 50, remainingUsd: 49 } };
     const getProviderUsage = vi.fn().mockResolvedValue({ billing });
     setElectronTestClient({ getProviderUsage });
-    const connections = (email: string) => [{ backend: 'cursor' as const, installed: true, connected: true, checking: false,
+    const connections = (email: string) => [{ provider: 'cursor' as const, installed: true, connected: true, checking: false,
       authentication: { kind: 'cursor' as const, connected: true, state: { loggedIn: true, homePath: '/cursor', account: { type: 'subscription' as const, email } } } }];
     const wrapper = mount(SettingsView, { props: { activeTab: 'cursor', settings: defaultThemeSettings,
       generalSettings: defaultGeneralSettings, providerConnections: connections('first@example.test') } });
@@ -132,11 +132,11 @@ describe('SettingsView', () => {
   // Full rendered skill installation, provider synchronization and recovery workflow.
   // Installs packs, synchronizes providers and exercises error recovery through the full settings view.
   it('installs a featured skill, offers whole packs, syncs providers and keeps failures visible', async () => {
-    const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ backend: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
+    const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ provider: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { provider: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
     const nativeGuidelines = { ...personal, name: 'web-design-guidelines', providers: personal.providers.map(provider => ({ ...provider, status: 'installed' as const })) };
     const system = { ...personal, name: 'system-tool', builtIn: true };
     const initial: SkillManagerState = { skills: [personal, nativeGuidelines, system], providers: ['codex', 'claude'], curated: curatedSkills, issues: [] };
-    const skill = { name: 'security-audit', managed: true, description: 'Security audit', source: 'https://github.com/cloudflare/security-audit-skill', revision: 'a'.repeat(40), providers: [{ backend: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }] };
+    const skill = { name: 'security-audit', managed: true, description: 'Security audit', source: 'https://github.com/cloudflare/security-audit-skill', revision: 'a'.repeat(40), providers: [{ provider: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }] };
     const installed = { ...initial, skills: [...initial.skills, skill] };
     const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(installed)
       .mockResolvedValueOnce({ ...installed, issues: ['Claude: existing personal skill was preserved'] })
@@ -224,7 +224,7 @@ describe('SettingsView', () => {
   });
 
   it('labels where a skill came from and opens a skill right away while its document loads', async () => {
-    const providers = [{ backend: 'codex' as const, path: '/codex/skills/built-in-browser', status: 'installed' as const }];
+    const providers = [{ provider: 'codex' as const, path: '/codex/skills/built-in-browser', status: 'installed' as const }];
     const base = { description: 'Browser pane', managed: false, providers };
     const initial: SkillManagerState = {
       skills: [{ ...base, name: 'built-in-browser', builtIn: true }, { ...base, name: 'notes' }, { ...base, name: 'imagegen', builtIn: true }, { ...base, name: 'copied', origin: 'synced' }],
@@ -260,7 +260,7 @@ describe('SettingsView', () => {
   });
 
   it('shows a skill as its name, description and rendered Markdown instead of raw front matter', async () => {
-    const providers = [{ backend: 'codex' as const, path: '/codex/skills/review', status: 'installed' as const }];
+    const providers = [{ provider: 'codex' as const, path: '/codex/skills/review', status: 'installed' as const }];
     const initial: SkillManagerState = { skills: [{ name: 'review', description: 'Review a change.', managed: false, providers }], providers: ['codex'], curated: curatedSkills, issues: [] };
     const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce({ ...initial, document: { name: 'review', files: [{ providers: ['codex'], content: '---\nname: review\ndescription: Review a change.\nlicense: MIT\n---\n# Steps\n\nRead the **diff** first.\n' }] } });
     setElectronTestClient({ manageSkills });
@@ -281,7 +281,7 @@ describe('SettingsView', () => {
   });
 
   it('shows a spinner on the skill that is being deleted', async () => {
-    const providers = [{ backend: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }];
+    const providers = [{ provider: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }];
     const skills = ['notes', 'other'].map(name => ({ name, description: name, managed: false, providers }));
     const initial: SkillManagerState = { skills, providers: ['codex'], curated: curatedSkills, issues: [] };
     let finishRemove!: (state: SkillManagerState) => void;
@@ -314,7 +314,7 @@ describe('SettingsView', () => {
     await wrapper.get('[aria-label="Skill source"]').setValue('https://github.com/example/skills');
     await agents().vm.$emit('update:modelValue', ['codex']);
     await wrapper.get('#skill-source-form').trigger('submit'); await flushPromises();
-    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: 'https://github.com/example/skills', backends: ['codex'] });
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: 'https://github.com/example/skills', providers: ['codex'] });
     await wrapper.findAll('button').find(button => button.text() === 'Install skill')!.trigger('click'); await flushPromises();
     expect(agents().props('modelValue')).toEqual(['codex', 'claude']);
     await wrapper.get('[aria-label="Skill source"]').setValue('https://github.com/example/skills');
@@ -324,7 +324,7 @@ describe('SettingsView', () => {
   });
 
   it('syncs just one personal skill from its menu, with a spinner on that row, and offers it for no built-in skill', async () => {
-    const providers = [{ backend: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/notes', status: 'missing' as const }];
+    const providers = [{ provider: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }, { provider: 'claude' as const, path: '/claude/skills/notes', status: 'missing' as const }];
     const skills = [{ name: 'notes', description: 'Notes', managed: false, providers }, { name: 'imagegen', description: 'Images', managed: false, builtIn: true, providers }];
     const initial: SkillManagerState = { skills, providers: ['codex', 'claude'], curated: curatedSkills, issues: [] };
     let finishSync!: (state: SkillManagerState) => void;
@@ -348,7 +348,7 @@ describe('SettingsView', () => {
   });
 
   it('offers Refresh and an icon-only Uninstall for what Korus installed, and removes exactly the skills a pack recorded', async () => {
-    const skill = (name: string, extra = {}) => ({ name, description: name, managed: true, source: 'https://github.com/mattpocock/skills', revision: 'a'.repeat(40), providers: [{ backend: 'codex' as const, path: `/codex/skills/${name}`, status: 'installed' as const }], ...extra });
+    const skill = (name: string, extra = {}) => ({ name, description: name, managed: true, source: 'https://github.com/mattpocock/skills', revision: 'a'.repeat(40), providers: [{ provider: 'codex' as const, path: `/codex/skills/${name}`, status: 'installed' as const }], ...extra });
     const installed: SkillManagerState = { skills: [skill('tdd'), skill('triage'), skill('mine', { managed: false })], providers: ['codex'], curated: curatedSkills, issues: [], installs: { 'matt-pocock': ['tdd', 'triage', 'long-gone'] } };
     const manageSkills = vi.fn().mockResolvedValueOnce(installed).mockResolvedValueOnce(installed).mockResolvedValueOnce({ ...installed, skills: [skill('mine', { managed: false })], installs: {} });
     const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('confirm' as never);
@@ -370,7 +370,7 @@ describe('SettingsView', () => {
   });
 
   it('does not offer Refresh for a skill Korus did not install', async () => {
-    const providers = [{ backend: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }];
+    const providers = [{ provider: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }];
     const initial: SkillManagerState = { skills: [{ name: 'security-audit', description: 'Mine', managed: false, providers }], providers: ['codex'], curated: curatedSkills, issues: [] };
     setElectronTestClient({ manageSkills: vi.fn().mockResolvedValue(initial) });
     const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
@@ -466,14 +466,14 @@ describe('SettingsView', () => {
     } });
     expect(wrapper.text()).not.toContain('Antigravity');
     expect(wrapper.text()).toContain('Accessibility');
-    await wrapper.setProps({ providerConnections: [{ backend: 'antigravity', installed: false, connected: false, checking: false }] });
+    await wrapper.setProps({ providerConnections: [{ provider: 'antigravity', installed: false, connected: false, checking: false }] });
     expect(wrapper.get('.engine-hero__copy strong').text()).toBe('Antigravity');
-    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
-    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.get('.provider-install-actions a').attributes('href')).toBe('https://antigravity.google/docs/getting-started?tab=cli');
+    expect(installProvider).not.toHaveBeenCalled();
     await wrapper.get('button[aria-label="Check again"]').trigger('click');
     expect(refreshProvider).toHaveBeenCalledWith('antigravity');
     expect(connectAntigravity).not.toHaveBeenCalled();
-    await wrapper.setProps({ providerConnections: [{ backend: 'antigravity', installed: true, connected: false, checking: false }] });
+    await wrapper.setProps({ providerConnections: [{ provider: 'antigravity', installed: true, connected: false, checking: false }] });
     await wrapper.findAll('button').find(button => button.text() === 'Connect')!.trigger('click');
     expect(connectAntigravity).toHaveBeenCalledOnce();
     const agentGroup = wrapper.findAll('.el-menu-item-group').find(group => group.get('.el-menu-item-group__title').text() === 'Agents')!;
@@ -529,7 +529,7 @@ describe('SettingsView', () => {
     expect(menuItems.find(item => item.text() === 'Projects')!.find('.tabler-icon-folders').exists()).toBe(true);
     for (const label of ['Codex', 'Claude Code']) {
       const item = menuItems.find((item) => item.text() === label)!;
-      const icon = item.get('.backend-icon');
+      const icon = item.get('.provider-icon');
       expect(getComputedStyle(icon.element).transform).toBe('scale(1.15)');
       for (const color of ['rgb(120, 120, 120)', 'rgb(220, 220, 220)']) {
         (item.element as HTMLElement).style.color = color;
@@ -557,7 +557,7 @@ describe('SettingsView', () => {
         settings: defaultThemeSettings,
         generalSettings: defaultGeneralSettings,
         connectCodex, connectClaude, setProviderEnabled, disconnectProvider,
-        providerConnections: (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: false, checking: false })),
+        providerConnections: (['codex', 'claude'] as const).map(provider => ({ provider: provider, installed: true, connected: false, checking: false })),
       },
     });
 
@@ -588,11 +588,11 @@ describe('SettingsView', () => {
   it.each([
     ['codex', 'codex', 'https://learn.chatgpt.com/docs/codex/cli#getting-started'],
     ['claude-code', 'claude', 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code'],
-  ] as const)('offers installation documentation and detection in %s settings', async (activeTab, backend, url) => {
+  ] as const)('offers installation documentation and detection in %s settings', async (activeTab, provider, url) => {
     const refreshProvider = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsView, { props: {
       activeTab, settings: defaultThemeSettings, generalSettings: defaultGeneralSettings, refreshProvider,
-      providerConnections: [{ backend, installed: false, connected: false, checking: false }],
+      providerConnections: [{ provider: provider, installed: false, connected: false, checking: false }],
     } });
     expect(wrapper.get('.engine-hero').text()).toContain('Not detected');
     expect(wrapper.get('.engine-hero a').attributes('href')).toBe(url);
@@ -604,8 +604,8 @@ describe('SettingsView', () => {
     expect(getComputedStyle(refresh.element).color).toBe(getComputedStyle(wrapper.get('.engine-hero a').element).color);
     expect(wrapper.findAll('button').some(button => button.text() === 'Connect')).toBe(false);
     await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Check again')!.trigger('click');
-    expect(refreshProvider).toHaveBeenCalledExactlyOnceWith(backend);
-    await wrapper.setProps({ providerConnections: [{ backend, installed: true, connected: false, checking: false }] });
+    expect(refreshProvider).toHaveBeenCalledExactlyOnceWith(provider);
+    await wrapper.setProps({ providerConnections: [{ provider: provider, installed: true, connected: false, checking: false }] });
     expect(wrapper.find('.engine-hero a').exists()).toBe(false);
     expect(wrapper.findAll('button').some(button => button.text() === 'Connect')).toBe(true);
     wrapper.unmount();

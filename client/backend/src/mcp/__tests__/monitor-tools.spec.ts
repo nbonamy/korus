@@ -81,7 +81,7 @@ it('exposes monitors only to local backends without native support, scopes owner
   expect(
     (await call({ action: 'list' })).structuredContent.monitors[0].state,
   ).not.toBe('running');
-  owner.backend = 'claude';
+  owner.provider = 'claude';
   expect(
     (await request(owner.id, 'tools/list', {})).tools.some(
       (tool: { name: string }) => tool.name === 'korus-monitor',
@@ -91,9 +91,9 @@ it('exposes monitors only to local backends without native support, scopes owner
 
 it('retains completion events while busy, delivers to the owning idle agent, and discards events on Stop', async () => {
   const { vi } = await import('vitest');
-  const { BackendDriverRpc } = await import('../../driver-rpc');
-  const { codexBackendCapabilities } =
-    await import('@workspace/core/backend-capabilities');
+  const { ProviderDriverRpc } = await import('../../driver-rpc');
+  const { codexProviderCapabilities } =
+    await import('@workspace/core/provider-capabilities');
   const snapshot = createInitialSnapshot();
   const owner = snapshot.agents[0]!;
   owner.folder = process.cwd();
@@ -101,14 +101,14 @@ it('retains completion events while busy, delivers to the owning idle agent, and
   const sendPrompt = vi
     .fn()
     .mockResolvedValue({
-      backendSession: { kind: 'codex', threadId: 'monitor-thread' },
+      providerSession: { kind: 'codex', conversationId: 'monitor-thread' },
       turnId: 'monitor-turn',
     });
-  const driver: import('@workspace/core/backend-driver').AgentBackendDriver = {
-    backend: 'codex',
-    getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+  const driver: import('@workspace/core/provider-driver').AgentProviderDriver = {
+    provider: 'codex',
+    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
     getCapabilities: () => ({
-      ...codexBackendCapabilities,
+      ...codexProviderCapabilities,
       steerPrompt: false,
     }),
     sendPrompt,
@@ -119,7 +119,7 @@ it('retains completion events while busy, delivers to the owning idle agent, and
   };
   const service = new AppMcpService({ snapshot, toolModuleProviders: ({ monitors }) => [monitors] });
   services.push(service);
-  service.setDriverRpc(new BackendDriverRpc(new Map([['codex', driver]])));
+  service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', driver]])));
   const url = await service.start();
   const call = async (args: unknown) => {
     const response = await fetch(`${url}?agentId=${owner.id}`, {

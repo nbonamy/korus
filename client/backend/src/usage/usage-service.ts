@@ -1,4 +1,4 @@
-import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
+import type { Agent, BackendPublishedEvent } from "@workspace/core/contracts";
 import type {
   ExecutionObservation,
   RequestObservation,
@@ -14,39 +14,7 @@ import {
   type SealedTelemetryBody,
 } from "@workspace/core/telemetry";
 import { repositoryIdentityOf, resolveRepositoryRoots } from "./repository-identity";
-import { providerConversationEventView } from "@workspace/core/provider-conversation-event";
 /** Tool calls an event reports as running or finished, however the provider surfaces them. */
-function toolStates(view: {
-  type: string;
-  payload?: unknown;
-}): [string, boolean][] {
-  const payload = (view.payload ?? {}) as Record<string, any>;
-  const state = (part: {
-    id?: unknown;
-    status?: unknown;
-  }): [string, boolean][] =>
-    typeof part?.id === "string" && typeof part.status === "string"
-      ? [[part.id, part.status === "running"]]
-      : [];
-  if (
-    view.type === "tool.started" ||
-    view.type === "tool.completed" ||
-    view.type === "item.started"
-  )
-    return state(payload.toolPart ?? {});
-  if (view.type === "tool.updated" || view.type === "item.updated") {
-    const update =
-      view.type === "item.updated" ? payload : (payload.update ?? {});
-    return typeof update.itemId === "string" &&
-      typeof update.status === "string"
-      ? [[update.itemId, update.status === "running"]]
-      : [];
-  }
-  const parts = payload.message?.parts;
-  return Array.isArray(parts)
-    ? parts.flatMap((part) => (part?.type === "tool" ? state(part) : []))
-    : [];
-}
 /** Records numeric observations in the owning daemon's local ledger. */
 export class UsageService {
   private chain: Promise<void> = Promise.resolve();
@@ -60,26 +28,17 @@ export class UsageService {
     private readonly agents: () => readonly Agent[] = () => [],
   ) {}
   /** Feeds the turn clock from the one stream every provider's events pass through. */
-  observeEvent(event: MainToRendererEvent): void {
+  observeEvent(event: BackendPublishedEvent): void {
     const agentId = event.agentId;
     if (!agentId) return;
     if (event.type === "agent.statusChanged") {
-      const status = (event.payload as { type?: string }).type;
+      const status = event.payload.type;
       if (status === "awaitingInput") this.clock.wait(agentId, true);
       else if (status === "working") this.clock.wait(agentId, false);
       return;
     }
-    const view = providerConversationEventView(event);
-    if (
-      view.type === "message.delta" ||
-      (view.type === "message.upsert" && assistantOutput(view.payload)) ||
-      view.type === "plan.delta" ||
-      view.type === "tool.started" ||
-      view.type === "item.started"
-    )
-      this.clock.output(agentId);
-    for (const [id, running] of toolStates(view))
-      this.clock.tool(agentId, id, running);
+    if (event.type === "turn.output") this.clock.output(agentId);
+    if (event.type === "tool.updated") this.clock.tool(agentId, event.payload.tool.id, event.payload.tool.status === "running");
   }
   beginPrompt(agentId: string): object | null {
     const agent = this.agent(agentId);
@@ -193,12 +152,3 @@ export class UsageService {
   }
 }
 
-function assistantOutput(payload: unknown): boolean {
-  if (!payload || typeof payload !== 'object' || !('message' in payload)) return false;
-  const message = payload.message;
-  return !!message && typeof message === 'object' && 'role' in message && message.role === 'assistant'
-    && 'parts' in message && Array.isArray(message.parts) && message.parts.some(part =>
-      part && ((part.type === 'text' && typeof part.text === 'string' && part.text.length > 0)
-        || (part.type === 'reasoning' && typeof part.summary === 'string' && part.summary.length > 0)
-        || part.type === 'tool'));
-}

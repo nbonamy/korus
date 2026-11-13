@@ -76,7 +76,7 @@ describe('banked resets settings', () => {
   it('retains details on sparse quota events and invalidates them across connection and account events', async () => {
     api.getBankedResets.mockResolvedValueOnce(ready('1', [credit])).mockResolvedValueOnce(ready('2', null)).mockResolvedValueOnce(ready('0', []));
     const wrapper = render(); await flushPromises();
-    client.emit({ seq: 1, type: 'account.rateLimitsUpdated', backend: 'codex', occurredAt: '', payload: { rateLimits: { limitId: null, limitName: null, primary: null, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null } } });
+    client.emit({ seq: 1, type: 'account.rateLimitsUpdated', provider: 'codex', occurredAt: '', payload: { rateLimits: { limitId: null, limitName: null, primary: null, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null } } });
     await flushPromises(); expect(wrapper.text()).toContain('Bonus'); expect(api.getBankedResets).toHaveBeenCalledOnce();
     client.emit({ seq: 2, type: 'client.connectionChanged', occurredAt: '', payload: { status: 'reconnecting' } });
     await flushPromises(); expect(wrapper.text()).not.toContain('Bonus'); expect(wrapper.text()).toContain('Reconnect');

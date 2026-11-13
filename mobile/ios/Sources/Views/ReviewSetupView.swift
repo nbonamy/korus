@@ -22,7 +22,7 @@ struct ReviewSetupView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var choices = ReviewChoices()
     @State private var loaded = false
-    @State private var loadedBackend = ""
+    @State private var loadedProvider = ""
 
     private var busy: Bool { app.reviewState.status == .loading || app.reviewState.status == .starting }
 
@@ -71,9 +71,9 @@ struct ReviewSetupView: View {
         }
         .onChange(of: app.reviewState, initial: true) { _, state in
             guard state.status == .ready, let setup = state.setup else { return }
-            if !loaded || loadedBackend != setup.backend {
+            if !loaded || loadedProvider != setup.provider {
                 choices.load(setup, initial: !loaded)
-                loaded = true; loadedBackend = setup.backend
+                loaded = true; loadedProvider = setup.provider
             }
         }
     }
@@ -94,14 +94,14 @@ struct ReviewSetupView: View {
             } header: { Text("Reviewer") }
             if choices.thread == "independent" {
                 Section {
-                    Picker("Engine", selection: $choices.backend) {
-                        ForEach(setup.backends, id: \.self) { Text($0.capitalized).tag($0) }
+                    Picker("Engine", selection: $choices.provider) {
+                        ForEach(setup.providers, id: \.self) { Text($0.capitalized).tag($0) }
                     }
-                    .onChange(of: choices.backend) { _, backend in
-                        if backend != setup.backend { app.command("loadReview", ["backend": backend]) }
+                    .onChange(of: choices.provider) { _, provider in
+                        if provider != setup.provider { app.command("loadReview", ["provider": provider]) }
                     }
                     Picker("Model", selection: $choices.model) {
-                        Text(setup.backend == setup.agentBackend ? "Current Model" : "Default Model").tag("")
+                        Text(setup.provider == setup.agentProvider ? "Current Model" : "Default Model").tag("")
                         ForEach(setup.models) { Text($0.name).tag($0.id) }
                     }
                     .onChange(of: choices.model) { _, _ in
@@ -146,7 +146,7 @@ struct ReviewSetupView: View {
                 Section {
                     Text(app.reviewState.status == .unknown ? "Couldn’t confirm whether the review started. Refresh its status before trying again." : "Couldn’t load reviewer models. Check your connection and retry.")
                         .foregroundStyle(.secondary)
-                    Button("Refresh") { app.command("loadReview", ["backend": choices.backend]) }
+                    Button("Refresh") { app.command("loadReview", ["provider": choices.provider]) }
                 }
             }
         }

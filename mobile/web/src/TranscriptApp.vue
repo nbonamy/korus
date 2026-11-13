@@ -17,13 +17,6 @@
       :empty-headline="repository ? `Chat in ${repository.repositoryName}` : undefined"
       :empty-subhead="repository?.branch ?? ''"
     >
-      <template v-if="engines" #empty-actions>
-        <div class="engine-picker" role="radiogroup" aria-label="Engine">
-          <button v-for="choice in engines.choices" :key="choice" type="button" role="radio" class="engine-picker__option"
-            :class="{ 'engine-picker__option--selected': choice === engines.current }" :aria-checked="choice === engines.current"
-            @click="chooseEngine(choice)">{{ engineName(choice) }}</button>
-        </div>
-      </template>
     </ConversationPane>
     </ImagePreviewScope>
   </div>
@@ -33,18 +26,18 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, nextTick, provide, reactive, shallowRef } from 'vue';
-import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from '@codex-app-sdk/vue';
+import { createConversationPaneController, provideHostCapabilities, type ConversationPaneState } from '@korus-dev/agent-ui-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { providerBlockFor } from '../../src/provider-block';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
-import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
+import { providerChoicesKey } from '@workspace/vue/components/provider-selection';
 import type { CompanionConversation, CompanionHistoryState } from '../../src/companion-port';
 import { handler } from './native';
 import FilePreviewPane from './FilePreviewPane.vue';
 import { createTranscriptFiles } from './transcript-files';
 import { TranscriptReplicas } from '../../src/transcript-replica';
-import type { ProviderConversationFrame } from '@workspace/core/contracts';
+import { companionConversationOf, type CompanionConversationFrame } from '@workspace/core/companion-protocol';
 import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
 
 const frame = shallowRef<CompanionConversation | null>(null);
@@ -55,12 +48,11 @@ const ready = shallowRef(false);
 const files = createTranscriptFiles({ readContent: readConversationContent, agentId: () => agent.value?.id,
   revision: () => JSON.stringify([agent.value?.readState?.revision, agent.value?.updatedAt]),
   post: event => { void handler('transcript').postMessage(JSON.stringify(event)); } });
-const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
 const insets = reactive({ top: 0, bottom: 0, leading: 0, trailing: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
-provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
+provide(providerChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.provider))]));
 
-const messages = computed(() => frame.value?.payload.snapshot.messages ?? []);
+const messages = computed(() => frame.value?.payload.snapshot.state.messages ?? []);
 const repository = computed(() => agent.value?.workspace?.kind === 'git' ? agent.value.workspace : null);
 const imageLoading = shallowRef(false);
 let imageOpenEpoch = 0;
@@ -86,7 +78,7 @@ function setImage(json: string) {
 const imageCacheScope = shallowRef('');
 // The pool survives thread switches; changing its host/engine owner disposes it.
 const ImagePreviewScope = defineComponent({ setup(_props, { slots }) {
-  provideCodexHostCapabilities({
+  provideHostCapabilities({
   capabilities: { attachments: false, clipboard: false, externalLinks: true, transcription: false },
   readImagePreview: readImage,
   async copyToClipboard(content) { await navigator.clipboard.writeText(content.text); },
@@ -113,7 +105,7 @@ function loadTurnHistory(turnId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { turnRequests.delete(requestId); reject(new Error('Turn details request timed out.')); }, 60_000);
-    turnRequests.set(requestId, { agentId, session: JSON.stringify(agent.value?.backendSession), resolve, reject, timer });
+    turnRequests.set(requestId, { agentId, session: JSON.stringify(agent.value?.providerSession), resolve, reject, timer });
     void handler('transcript').postMessage(JSON.stringify({ type: 'loadTurnHistory', requestId, agentId, turnId }));
   });
 }
@@ -127,13 +119,13 @@ function readConversationContent(agentId: string, input: ConversationContentInpu
 }
 
 /** Read-only: the native app owns the composer and every interaction; this page only renders the conversation. */
-const controller = createCodexConversationPaneController({
-  state: computed<CodexConversationPaneState>(() => {
-    const snapshot = frame.value?.payload.snapshot;
+const controller = createConversationPaneController({
+  state: computed<ConversationPaneState>(() => {
+    const state = frame.value?.payload.snapshot.state;
     return {
-      identity: { conversationKey: agent.value?.id ?? null, messages: snapshot?.messages ?? [], turns: snapshot?.turns, activeTurnId: snapshot?.activeTurnId, busy: snapshot?.busy ?? false, disabled: true },
+      identity: { conversationKey: agent.value?.id ?? null, messages: state?.messages ?? [], turns: state?.turns, activeTurnId: state?.activeTurnId, busy: state?.busy ?? false, disabled: true },
       history: { loading: false, hasOlder: history.value.hasOlder && !history.value.failed, loadingOlder: history.value.loadingOlder },
-      thread: { approvals: [], clientRequests: [], answeredClientRequestIds: new Set<string>(), queuedPrompts: snapshot && 'queuedPrompts' in snapshot ? snapshot.queuedPrompts : [], contextUsage: snapshot && 'contextUsage' in snapshot ? snapshot.contextUsage : null },
+      thread: { approvals: [], clientRequests: [], answeredClientRequestIds: new Set<string>(), queuedPrompts: [], contextUsage: state?.contextUsage ?? null },
       composer: { state: { text: '', selectionStart: 0, selectionEnd: 0 } },
       capabilities: { models: false, skills: false, reasoningEffort: false, serviceTier: false, planMode: false, goals: false, steerPrompt: false, interrupt: false, history: true,
         deleteTurn: false, editTurn: false, retryTurn: false, approvals: false, approvalPresets: [] },
@@ -174,11 +166,6 @@ const controller = createCodexConversationPaneController({
   },
 });
 
-const engineNames: Record<string, string> = { codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity' };
-const engineName = (id: string) => engineNames[id] ?? id;
-function chooseEngine(backend: string) {
-  if (backend !== engines.value?.current) void handler('transcript').postMessage(JSON.stringify({ type: 'backend', backend }));
-}
 
 function loadOlder() {
   if (!agent.value || history.value.loadingOlder || !history.value.hasOlder) return;
@@ -186,17 +173,17 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
-type Context = { engineInstance?: string; imageCacheScope?: string | null; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+type Context = { engineInstance?: string; imageCacheScope?: string | null; agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState };
 // The pane only needs the names of the agents a message may mention.
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
 function applyContext(message: Context) {
   imageCacheScope.value = message.imageCacheScope === undefined ? message.engineInstance ?? '' : message.imageCacheScope ?? '';
-  if (!message.ready || agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession) || (fileGeneration !== message.generation)) files.reset();
+  if (!message.ready || agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.providerSession) !== JSON.stringify(message.agent?.providerSession) || (fileGeneration !== message.generation)) files.reset();
   fileGeneration = message.generation;
-  if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession)) { ++imageOpenEpoch; imageLoading.value = false; }
+  if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.providerSession) !== JSON.stringify(message.agent?.providerSession)) { ++imageOpenEpoch; imageLoading.value = false; }
   agent.value = message.agent; agents.value = peerAgents(message.peers);
-  ready.value = message.ready ?? false; engines.value = message.engines ?? null;
+  ready.value = message.ready ?? false;
   history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
 }
 
@@ -216,11 +203,11 @@ window.companionTranscript = {
   closeFile: files.close,
   setImage,
   async setTransfer(json: string) {
-    const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
+    const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: CompanionConversationFrame[] };
     bindEngine(message);
     if (message.generation < generation) return null;
     generation = message.generation;
-    if (!message.agent || message.frames.some(frame => frame.agentId !== message.agentId || frame.backend !== message.agent?.backend)) return { needsReset: true, identity: message.identity };
+    if (!message.agent || message.frames.some(frame => frame.agentId !== message.agentId || frame.provider !== message.agent?.provider)) return { needsReset: true, identity: message.identity };
     const cached = replicas.apply(message.identity, message.checkpoint, message.frames);
     if (!cached) return { needsReset: true, identity: message.identity };
     const revision = ++presentation;
@@ -236,7 +223,7 @@ window.companionTranscript = {
       const pending = turnRequests.get(message.requestId);
       if (!pending) return;
       turnRequests.delete(message.requestId); clearTimeout(pending.timer);
-      if (message.error || message.agentId !== pending.agentId || agent.value?.id !== pending.agentId || JSON.stringify(agent.value.backendSession) !== pending.session) pending.reject(new Error(message.error ?? 'Conversation changed.'));
+      if (message.error || message.agentId !== pending.agentId || agent.value?.id !== pending.agentId || JSON.stringify(agent.value.providerSession) !== pending.session) pending.reject(new Error(message.error ?? 'Conversation changed.'));
       else pending.resolve();
       return;
     }
@@ -247,7 +234,7 @@ window.companionTranscript = {
     if (!pending) return;
     contentRequests.delete(reply.requestId); clearTimeout(pending.timer);
     if (reply.agentId !== pending.agentId || reply.sessionId !== pending.sessionId || reply.agentId !== agent.value?.id
-      || reply.sessionId !== (agent.value.backendSession?.kind === 'codex' ? agent.value.backendSession.threadId : agent.value.backendSession?.kind === 'claude' ? agent.value.backendSession.sessionId : null) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
+      || reply.sessionId !== companionConversationOf(agent.value.providerSession) || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
     else pending.resolve(reply.chunk);
   },
   async setConversation(json) {
@@ -270,7 +257,7 @@ window.companionTranscript = {
     const message = JSON.parse(json) as Context;
     if (message.engineInstance && message.engineInstance !== engineInstance) return null;
     if (message.agentId !== currentAgentId || (message.generation !== undefined && message.generation < generation)) return null;
-    if (JSON.stringify(message.agent?.backendSession) !== JSON.stringify(agent.value?.backendSession)) return null;
+    if (JSON.stringify(message.agent?.providerSession) !== JSON.stringify(agent.value?.providerSession)) return null;
     const revision = presentation;
     applyContext(message);
     if (!message.ready || !message.agent) return null;
@@ -297,7 +284,7 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
 .transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); background: var(--color-surface-lowest); }
 .transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
 /* Keep secondary transcript text legible at a phone's viewing distance. */
-.transcript, .transcript :where(.codex-chat-theme) {
+.transcript, .transcript :where(.agent-ui-theme) {
   --font-size-12: 14px;
   --font-size-13: 15px;
   --font-size-13-5: 15.5px;
@@ -305,18 +292,12 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
   --font-size-15: 17px;
   --line-height-20: 24px;
 }
-.transcript .codex-workbench-layout__footer { display: none; }
-.transcript--blocked .codex-workbench-layout__footer { display: block; }
+.transcript .agent-ui-workbench-layout__footer { display: none; }
+.transcript--blocked .agent-ui-workbench-layout__footer { display: block; }
 /* Give the larger mobile text room without widening user bubbles. */
-.transcript .codex-markdown.chat-user-text { padding-block: 10px; }
+.transcript .agent-ui-markdown.chat-user-text { padding-block: 10px; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */
-.transcript .codex-conversation-pane__messages { --codex-scroll-to-bottom-offset: var(--space-12); }
-/* The shared empty state frames its actions as a card; the engine control stands on its own. */
-.transcript .conversation-pane__empty-actions { width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+.transcript .agent-ui-conversation-pane__messages { --agent-ui-scroll-to-bottom-offset: var(--space-12); }
 .transcript .conversation-pane__empty h1 { margin: 0; line-height: 1.15; overflow-wrap: anywhere; }
 .transcript .conversation-pane__empty p { margin: 0; line-height: 1.4; overflow-wrap: anywhere; color: var(--color-text-muted); }
-/* A segmented control under the empty chat's title: the selected engine is raised, the others recede. */
-.engine-picker { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--color-surface-base); }
-.engine-picker__option { appearance: none; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 15px; font-weight: 500; padding: 8px 16px; border-radius: 999px; transition: background 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
-.engine-picker__option--selected { background: var(--color-surface-lowest); color: var(--color-text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14); }
 </style>

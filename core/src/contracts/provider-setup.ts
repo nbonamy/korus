@@ -1,17 +1,25 @@
-import type { AgentBackend, ClaudeAuthentication, CodexAuthentication } from '../contracts';
+import type { HarnessProvider } from '../contracts';
+import { isHarnessProvider } from '@korus-dev/multi-agent-sdk/contracts';
 
-export type ProviderAuthenticationAction = { action: 'check' | 'cancel' | 'logout' | 'login'; loginId?: string };
+export type { ProviderAuthenticationAction, ProviderAuthentication, AuthenticationLogin, AuthenticationLoginMethod } from '@korus-dev/multi-agent-sdk';
+import type { AuthenticationLoginMethod, ProviderAuthentication, ProviderDefaults } from '@korus-dev/multi-agent-sdk';
 
-/** App-owned authentication metadata, cached only for the life of the host. */
-export type ProviderAuthentication =
-  | { kind: 'codex'; connected: boolean; state: CodexAuthentication }
-  | { kind: 'claude'; connected: boolean; state: ClaudeAuthentication }
-  | { kind: 'cursor'; connected: boolean; state: { loggedIn: boolean; homePath: string; version?: string; supported?: boolean; error?: string; account?: { type: 'subscription'; email?: string }; team?: string } }
-  | { kind: 'antigravity'; connected: boolean; state: { loggedIn: boolean; homePath: string } };
+/** Where and how an authentication action runs; `method` picks the login flow, `loginId` names the login to cancel. */
+export type ProviderAuthenticationOptions = { method?: AuthenticationLoginMethod; loginId?: string; remoteConnectionId?: string };
+/** Codex's own sign-in state, as its sign-in screens read it. */
+export type CodexAuthentication = Extract<ProviderAuthentication, { kind: 'codex' }>['state'];
+export type CodexAccount = NonNullable<CodexAuthentication['account']>;
+
+/** A provider's own sign-in state, for the setup screen that asked that provider. */
+export function providerAuthenticationState<Kind extends keyof ProviderAuthenticationStates>(authentication: ProviderAuthentication, kind: Kind): ProviderAuthenticationStates[Kind] {
+  if (authentication.kind !== kind) throw new Error(`Expected ${kind} authentication, received ${authentication.kind}.`);
+  return authentication.state as ProviderAuthenticationStates[Kind];
+}
+type ProviderAuthenticationStates = { [Authentication in ProviderAuthentication as Authentication['kind']]: Authentication['state'] };
 
 /** Runtime observation, never persisted as an enable/disable preference. */
 export type ProviderConnection = {
-  backend: AgentBackend;
+  provider: HarnessProvider;
   installed: boolean;
   connected: boolean;
   /** Missing on older snapshots means enabled. Disabling never logs out. */
@@ -24,11 +32,11 @@ export type ProviderConnection = {
 export function isProviderConnection(value: unknown): value is ProviderConnection {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
-  return (candidate.backend === 'codex' || candidate.backend === 'claude' || candidate.backend === 'antigravity' || candidate.backend === 'cursor')
+  return isHarnessProvider(candidate.provider)
     && typeof candidate.installed === 'boolean' && typeof candidate.connected === 'boolean'
     && typeof candidate.checking === 'boolean' && (candidate.enabled === undefined || typeof candidate.enabled === 'boolean')
     && (candidate.error === undefined || typeof candidate.error === 'string')
-    && (candidate.authentication === undefined || (isProviderAuthentication(candidate.authentication) && candidate.authentication.kind === candidate.backend));
+    && (candidate.authentication === undefined || (isProviderAuthentication(candidate.authentication) && candidate.authentication.kind === candidate.provider));
 }
 
 export function isProviderAuthentication(value: unknown): value is ProviderAuthentication {
@@ -77,20 +85,20 @@ export type ProviderSetupCapabilities = {
 };
 
 /** Static registration also preserves setup behavior with older daemons lacking metadata. */
-const providerSetupDefaults: Record<AgentBackend, ProviderSetupCapabilities> = {
+const providerSetupDefaults: Record<HarnessProvider, ProviderSetupCapabilities> = {
   codex: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://learn.chatgpt.com/docs/codex/cli#getting-started' } },
   claude: { homeSelection: true, skillSharing: true, installation: { managed: false, allowControllerInstall: true, instructionsUrl: 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code' } },
-  antigravity: { homeSelection: true, skillSharing: true, installation: { managed: true } },
+  antigravity: { homeSelection: true, skillSharing: true, installation: { managed: false, instructionsUrl: 'https://antigravity.google/docs/getting-started?tab=cli', command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash' } },
   cursor: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } },
 };
 
-export function resolveProviderSetupCapabilities(backend: AgentBackend, observed?: ProviderSetupCapabilities, automated = false): ProviderSetupCapabilities {
-  const policy = observed ?? providerSetupDefaults[backend];
+export function resolveProviderSetupCapabilities(provider: HarnessProvider, observed?: ProviderSetupCapabilities, automated = false): ProviderSetupCapabilities {
+  const policy = observed ?? providerSetupDefaults[provider];
   return { ...policy, installation: { ...policy.installation, managed: policy.installation.managed || (automated && policy.installation.allowControllerInstall === true) } };
 }
 
 export type ProviderSetupStatus = ProviderHomeSettings & {
-  backend: AgentBackend;
+  provider: HarnessProvider;
   installed: boolean;
   locked: boolean;
   affectedAgentIds?: string[];

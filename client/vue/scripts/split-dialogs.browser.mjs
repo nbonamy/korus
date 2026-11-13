@@ -1,3 +1,4 @@
+import { sdkSourcePlugin } from '../../../vite.sdk-aliases.ts';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ test('split workspace dialogs cover peer headers and dividers and remain dismiss
     configFile: false, root, logLevel: 'error',
     server: { host: '127.0.0.1', port: 0 },
     resolve: { alias: { '@workspace/core': path.join(root, 'core/src') }, dedupe: ['vue'] },
-    plugins: [vue(), {
+    plugins: [sdkSourcePlugin, vue(), {
       name: 'split-dialog-fixture',
       configureServer(server) {
         server.middlewares.use('/split-dialogs', (_req, res) => {
@@ -58,7 +59,7 @@ test('split workspace dialogs cover peer headers and dividers and remain dismiss
             h(Grid, { layout, panes, focusedPaneId: 0 }, {
               header: ({ agentId }) => h(Header, {}, () => [
                 h('strong', { class: 'workspace-header__title' }, agentId),
-                h(Git, { agent: { id: agentId, name: agentId, folder: '/repo', backend: 'codex', status: { type: 'idle' } },
+                h(Git, { agent: { id: agentId, name: agentId, folder: '/repo', provider: 'codex', status: { type: 'idle' } },
                   getWorkflow: async () => workflow, commitChanges: async () => workflow }),
                 h(Runs, { agent: { id: agentId, folder: '/repo' }, hostLabel: 'Local host' }),
               ]),

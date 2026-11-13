@@ -1,7 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import NewSourceWorktreeDialog from '../NewSourceWorktreeDialog.vue';
-import { provideBackendChoices } from '../backend-selection';
+import { provideProviderChoices } from '../provider-selection';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { RemoteConnection, SourceBranch, SourceRepository, WorkItem } from '@workspace/core/contracts';
@@ -14,7 +14,7 @@ const source = { repositoryName: 'korus', repositoryRoot: '/Users/me/src/korus',
 
 function setup(remoteRepositories: SourceRepository[], clone?: (input: unknown) => Promise<SourceRepository>) {
   const snapshot = createInitialSnapshot();
-  snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+  snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
   snapshot.remoteConnections.connections = [connection('devbox')];
   const listSourceBranches = vi.fn(async (_root: string, host?: string) => host ? [{ name: 'main', isDefault: true, worktreePath: '/home/me/src/korus' }] : localBranches);
   const listSourceRepositories = vi.fn(async (host?: string) => host ? remoteRepositories : [checkout('/Users/me/src/korus')]);
@@ -35,19 +35,19 @@ function setup(remoteRepositories: SourceRepository[], clone?: (input: unknown) 
 describe('repository session host choice', () => {
   it.each([true, false])('uses the remote engine through worktree reuse with local engine available=%s', async localAvailable => {
     const { session, snapshot, createAgent } = setup([]);
-    snapshot.providerConnections = localAvailable ? [{ backend: 'codex', installed: true, connected: true, checking: false }] : [];
-    snapshot.remoteConnections.connections[0]!.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = localAvailable ? [{ provider: 'codex', installed: true, connected: true, checking: false }] : [];
+    snapshot.remoteConnections.connections[0]!.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
     await session.openWorktree({ repositoryName: 'korus', repositoryRoot: '/remote/repo', remoteConnectionId: 'devbox' });
     const wrapper = mount(defineComponent({ setup() {
-      provideBackendChoices(() => snapshot, () => undefined);
+      provideProviderChoices(() => snapshot, () => undefined);
       return () => h('div', [
         h(NewSourceWorktreeDialog, { visible: true, repo: { name: 'korus', path: '/remote/repo', worktrees: [] }, remoteConnectionId: 'devbox',
-          backend: session.backend.value, 'onUpdate:backend': value => { session.backend.value = value; },
+          provider: session.provider.value, 'onUpdate:provider': value => { session.provider.value = value; },
           branches: [{ name: 'existing', isDefault: true, worktreePath: '/remote/existing' }],
           chooseDestination: async () => null, suggestDestination: async () => '/remote/existing',
           createWorktree: async () => ({ name: 'existing', path: '/remote/existing' }), onCreated: session.createFromWorktree }),
-        h(NewSourceWorktreeDialog, { visible: false, repo: null, backend: session.backend.value,
-          'onUpdate:backend': value => { session.backend.value = value; }, chooseDestination: async () => null,
+        h(NewSourceWorktreeDialog, { visible: false, repo: null, provider: session.provider.value,
+          'onUpdate:provider': value => { session.provider.value = value; }, chooseDestination: async () => null,
           suggestDestination: async () => '', createWorktree: async () => ({ name: '', path: '' }) }),
       ]);
     } }));
@@ -59,9 +59,9 @@ describe('repository session host choice', () => {
       await create().trigger('click');
       await create().trigger('click');
       await flushPromises();
-      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/remote/existing', remoteConnectionId: 'devbox', selection: { backend: 'claude' } }));
+      expect(createAgent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ folder: '/remote/existing', remoteConnectionId: 'devbox', selection: { provider: 'claude' } }));
       await session.openWorktree(source);
-      expect(session.backend.value).toBe(localAvailable ? 'codex' : undefined);
+      expect(session.provider.value).toBe(localAvailable ? 'codex' : undefined);
     } finally { wrapper.unmount(); }
   });
   it('removes original-host sessions and catalog identity before looking up a missing checkout, and rejects stale submissions', async () => {

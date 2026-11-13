@@ -1,5 +1,5 @@
 import type { Agent } from '@workspace/core/contracts';
-import type { BackendEvent } from '@workspace/core/backend-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import {
   agentConversationId,
   isPlanReviewDraft,

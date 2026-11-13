@@ -4,7 +4,7 @@ import type { SkillProviderLocation } from '@workspace/core/skill-manager';
 import { skillMetadata } from './skill-metadata';
 
 type SkillOrigin = 'synced';
-export type DiscoveredSkill = { name: string; description: string; backend: SkillProviderLocation['backend']; path: string; builtIn: boolean; origin?: SkillOrigin };
+export type DiscoveredSkill = { name: string; description: string; provider: SkillProviderLocation['provider']; path: string; builtIn: boolean; origin?: SkillOrigin };
 
 /** Discover native skills without modifying their instructions or linked sources. */
 export async function discoverSkills(locations: SkillProviderLocation[], issues: string[]): Promise<DiscoveredSkill[]> {
@@ -25,20 +25,20 @@ export async function discoverSkills(locations: SkillProviderLocation[], issues:
           const synced = await syncedSource(folder, metadata.name);
           // Skills bundled with an app are built-in whether they ship in `.system` or arrive through the Claude app's sync.
           const builtIn = synced === 'anthropic' || [folder, canonical, await realpath(file)].some(value => value.split(path.sep).includes('.system'));
-          skills.push({ ...metadata, backend: location.backend, path: folder, builtIn, ...(synced === 'other' ? { origin: 'synced' as const } : {}) });
+          skills.push({ ...metadata, provider: location.provider, path: folder, builtIn, ...(synced === 'other' ? { origin: 'synced' as const } : {}) });
           return;
         }
       }
       for (const entry of (await readdir(folder, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (visited.size >= 2000) { issues.push(`${location.backend}: some skills were omitted because the directory exceeds the discovery limit.`); break; }
+        if (visited.size >= 2000) { issues.push(`${location.provider}: some skills were omitted because the directory exceeds the discovery limit.`); break; }
         // Hidden folders (trash, caches) are not installed skills; only `.system` holds bundled ones.
         if (entry.name === '.git' || entry.name === 'node_modules' || (entry.name.startsWith('.') && entry.name !== '.system') || !(entry.isDirectory() || entry.isSymbolicLink())) continue;
         try { await visit(path.join(folder, entry.name), depth + 1); }
-        catch (error) { if (!missing(error)) issues.push(`${location.backend}: ${error instanceof Error ? error.message : String(error)}`); }
+        catch (error) { if (!missing(error)) issues.push(`${location.provider}: ${error instanceof Error ? error.message : String(error)}`); }
       }
     }
     try { await visit(location.directory, 0); }
-    catch (error) { if (!missing(error)) issues.push(`${location.backend}: ${error instanceof Error ? error.message : String(error)}`); }
+    catch (error) { if (!missing(error)) issues.push(`${location.provider}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   return skills;
 }

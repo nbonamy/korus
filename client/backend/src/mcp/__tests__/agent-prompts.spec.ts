@@ -17,7 +17,7 @@ describe('appDeveloperInstructions', () => {
     expect(instructions).not.toContain('korus-computer-use');
     expect(instructions).not.toContain('User delegation controls:');
     expect(instructions).not.toContain('generate-image');
-    const claudeInstructions = appDeveloperInstructions({ ...agent, backend: 'claude' });
+    const claudeInstructions = appDeveloperInstructions({ ...agent, provider: 'claude' });
     expect(claudeInstructions).toContain('generate-image');
     expect(claudeInstructions).toContain('korus-imagegen');
     expect(claudeInstructions).toContain('$imagegen');

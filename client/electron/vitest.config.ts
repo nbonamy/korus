@@ -1,13 +1,18 @@
+import { sdkSourceAliases } from '../../vite.sdk-aliases';
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@workspace/core': path.resolve(__dirname, '../../core/src'),
-    },
+    alias: [
+      { find: '@workspace/core', replacement: path.resolve(__dirname, '../../core/src') },
+      ...sdkSourceAliases,
+    ],
   },
   test: {
+    // Keep SDK host adapters in Vitest's graph so Electron mocks apply to
+    // installed packages as well as sibling source checkouts.
+    server: { deps: { inline: [/@korus-dev\/agent-ui-sdk/] } },
     testTimeout: 2_500,
     hookTimeout: 2_500,
     environment: 'jsdom',

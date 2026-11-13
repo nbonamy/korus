@@ -13,6 +13,7 @@ import {
   expectStringArray,
   type EventValueValidator,
 } from './event-validation';
+import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 function expectPromptAttachment(value: unknown, path: string): void {
   expectRecord(value, path);
@@ -60,9 +61,9 @@ function expectSendPromptOptions(value: unknown, path: string): void {
     expectLiteral(candidate, ['typed', 'dictated'], candidatePath),
   );
   expectOptional(value, 'recordUserMessage', path, expectBoolean);
-  expectOptional(value, 'backendOptions', path, (candidate, candidatePath) => {
+  expectOptional(value, 'providerOptions', path, (candidate, candidatePath) => {
     expectRecord(candidate, candidatePath);
-    expectLiteral(candidate.kind, ['codex', 'claude', 'antigravity', 'cursor'], `${candidatePath}.kind`);
+    expectLiteral(candidate.kind, harnessProviders, `${candidatePath}.kind`);
     if (candidate.kind === 'codex') {
       ['reasoningEffort', 'serviceTier'].forEach((key) => {
         expectOptional(candidate, key, candidatePath, (item, itemPath) =>
@@ -89,7 +90,7 @@ function expectSendPromptOptions(value: unknown, path: string): void {
   });
 }
 
-function expectBackendApproval(value: unknown, path: string): void {
+function expectProviderApproval(value: unknown, path: string): void {
   expectRecord(value, path);
   ['id', 'conversationId', 'itemId', 'title'].forEach((key) =>
     expectString(value[key], `${path}.${key}`),
@@ -190,7 +191,7 @@ export const conversationPayloadValidators = {
     expectOptional(request, 'turnId', `${path}.request`, expectString);
     expectOptional(request, 'itemId', `${path}.request`, expectString);
     expectLiteral(request.kind, ['approval', 'question', 'toolConfirmation'], `${path}.request.kind`);
-    if (request.kind === 'approval') expectBackendApproval(request.approval, `${path}.request.approval`);
+    if (request.kind === 'approval') expectProviderApproval(request.approval, `${path}.request.approval`);
     if (request.kind === 'question') {
       expectRecord(request.question, `${path}.request.question`);
       expectString(request.question.itemId, `${path}.request.question.itemId`);

@@ -8,15 +8,15 @@ struct UsageState: Decodable, Equatable {
     var visibleProviders: [Provider] { providers.filter { $0.failed || !$0.rows.isEmpty } }
 
     struct Provider: Decodable, Equatable, Identifiable {
-        let backend: String
+        let provider: String
         let limits: Limits?
         let failed: Bool
-        var id: String { backend }
+        var id: String { provider }
         var name: String {
-            switch backend {
+            switch provider {
             case "codex": "Codex"
             case "claude": "Claude"
-            default: backend.capitalized
+            default: provider.capitalized
             }
         }
         var rows: [Row] {
@@ -27,6 +27,8 @@ struct UsageState: Decodable, Equatable {
 
     struct Limits: Decodable, Equatable { let primary: Window?; let secondary: Window? }
     struct Window: Decodable, Equatable {
+        /// Names what the window limits when an engine has several of the same duration.
+        var label: String? = nil
         let usedPercent: Double?
         let windowDurationMins: Int?
         let resetsAt: Double?
@@ -36,6 +38,7 @@ struct UsageState: Decodable, Equatable {
         let window: Window
         let fallback: String
         var label: String {
+            if let name = window.label?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
             guard let duration = window.windowDurationMins, duration > 0 else { return fallback }
             if duration == 10_080 { return "Weekly" }
             return duration % 60 == 0 ? "\(duration / 60)h" : "\(duration)m"

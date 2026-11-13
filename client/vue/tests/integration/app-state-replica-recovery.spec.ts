@@ -3,20 +3,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { useAppState } from '../../src/app-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AppSnapshot, BackendApprovalRequest, AppApi, MainToRendererEvent } from '@workspace/core/contracts';
+import type { AppSnapshot, ProviderApprovalRequest, AppApi, MainToRendererEvent } from '@workspace/core/contracts';
 import { clearConfetti } from '../../src/shared/confetti/use-confetti';
 import { stubElectronTestWindow } from '../support/client';
 import { clearFirstRunOnboardingStage } from '../../src/onboarding-session';
 import { deferred } from '../support/app-state-test-harness';
-import { codexConversationSnapshot } from '../support/codex-conversation-fixtures';
+import { sessionSnapshotEvent, sessionState } from '../support/conversation-fixtures';
 
 describe('useAppState', () => {
   it('restores the original composer and next prompt options when a completed reviewer disappears', async () => {
     const initial = createInitialSnapshot();
     const owner = initial.agents[0]!;
-    owner.backendDefaults = { kind: 'codex', model: 'gpt-6-astra', reasoningEffort: 'high', userSelectedModel: true };
-    delete owner.backendSession;
-    const reviewer = { ...owner, id: 'reviewer', backend: 'claude' as const, backendDefaults: { kind: 'claude' as const, model: 'sonnet', reasoningEffort: 'high' as const, userSelectedModel: true } };
+    owner.providerDefaults = { kind: 'codex', model: 'gpt-6-astra', reasoningEffort: 'high', userSelectedModel: true };
+    delete owner.providerSession;
+    const reviewer = { ...owner, id: 'reviewer', provider: 'claude' as const, providerDefaults: { kind: 'claude' as const, model: 'sonnet', reasoningEffort: 'high' as const, userSelectedModel: true } };
     initial.agents.push(reviewer);
     initial.teams[0]!.agentIds.push(reviewer.id);
     initial.activeAgentId = reviewer.id;
@@ -28,7 +28,7 @@ describe('useAppState', () => {
     const sendPrompt = vi.fn().mockResolvedValue(completed);
     stubElectronTestWindow({ app: {
       getSnapshot: vi.fn().mockResolvedValue(initial),
-      listBackendModels: vi.fn(async id => {
+      listProviderModels: vi.fn(async id => {
         const model = id === reviewer.id ? 'sonnet' : 'gpt-6-astra';
         return [{ id: model, model, displayName: model, supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] }];
       }),
@@ -38,13 +38,13 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     expect(state.selectedModelId.value).toBe('sonnet');
-    receive({ seq: 1, source: 'backend', occurredAt: '2026-10-05T13:43:29.750Z', type: 'snapshot.updated', payload: completed });
+    receive({ seq: 1, source: 'provider', occurredAt: '2026-10-05T13:43:29.750Z', type: 'snapshot.updated', payload: completed });
     await vi.waitFor(() => expect(state.selectedModelId.value).toBe('gpt-6-astra'));
     expect(state.activeAgent.value?.id).toBe(owner.id);
     expect(state.selectedReasoningEffort.value).toBe('high');
     await state.sendAgentPrompt(owner.id, 'Continue');
     expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(owner.id, 'Continue', expect.objectContaining({ selection: { model: 'gpt-6-astra', reasoningEffort: 'high' } }));
-    receive({ seq: 2, source: 'backend', occurredAt: '2026-10-05T13:44:00.000Z', type: 'snapshot.updated', payload: createEmptySnapshot() });
+    receive({ seq: 2, source: 'provider', occurredAt: '2026-10-05T13:44:00.000Z', type: 'snapshot.updated', payload: createEmptySnapshot() });
     expect(state.activeAgent.value).toBeNull();
     expect(state.selectedModelId.value).toBeNull();
     expect(state.selectedReasoningEffort.value).toBeNull();
@@ -118,7 +118,7 @@ describe('useAppState', () => {
   it('restores the selected agent when the desktop backend connects after the renderer starts', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     const getSnapshotState = vi.fn()
       .mockRejectedValueOnce(new Error('daemon snapshot is not available.'))
       .mockResolvedValue({
@@ -175,7 +175,7 @@ describe('useAppState', () => {
         onEvent,
       } satisfies Partial<AppApi>,
     });
-    const approval: BackendApprovalRequest = {
+    const approval: ProviderApprovalRequest = {
       id: 'approval-during-load',
       kind: 'command',
       conversationId: 'thread-dina',
@@ -189,8 +189,8 @@ describe('useAppState', () => {
     listeners[0]?.({
       seq: 1,
       agentId: 'agent-dina',
-      backend: 'codex',
-      threadId: 'thread-dina',
+      provider: 'codex',
+      conversationId: 'thread-dina',
       type: 'agentRequest.created',
       payload: { request: approvalAgentRequest(approval) },
       occurredAt: '2026-06-05T00:00:01.000Z',
@@ -198,7 +198,7 @@ describe('useAppState', () => {
     snapshotLoad.resolve(createInitialSnapshot());
     await load;
 
-    expect(state.activeBackendApprovals.value).toStrictEqual([approval]);
+    expect(state.activeProviderApprovals.value).toStrictEqual([approval]);
   });
 
   it('adopts snapshots from explicit main event snapshot fields', async () => {
@@ -344,12 +344,12 @@ describe('useAppState', () => {
     stubElectronTestWindow({ app: { getSnapshotState, onEvent: vi.fn(listener => { receive = listener; return () => {}; }) } });
     const state = useAppState();
     await state.loadSnapshot();
-    const progress = { id: 'create-worker', backend: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
-    receive({ seq: 1, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: 'running', phase: 'creatingAgent' } });
+    const progress = { id: 'create-worker', provider: 'codex' as const, repositoryName: 'korus', createWorktree: false, hasPrompt: true };
+    receive({ seq: 1, source: 'provider', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: 'running', phase: 'creatingAgent' } });
     expect(state.agentCreationProgresses.value).toMatchObject([{ state: 'running' }]);
-    receive({ seq: 3, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agent.statusChanged', payload: { type: 'working' } });
+    receive({ seq: 3, source: 'provider', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agent.statusChanged', payload: { type: 'working' } });
     await vi.waitFor(() => expect(getSnapshotState).toHaveBeenCalledTimes(2));
-    receive({ seq: 4, source: 'backend', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: terminal, agentId: 'worker' } });
+    receive({ seq: 4, source: 'provider', occurredAt: '', agentId: snapshot.activeAgentId!, type: 'agentCreation.progress', payload: { ...progress, state: terminal, agentId: 'worker' } });
     repair.resolve({ snapshot: structuredClone(snapshot), lastBackendEventSeq: 4, connection: { status: 'connected' } });
     await vi.waitFor(() => expect(state.agentCreationProgresses.value).toMatchObject([{ id: 'create-worker', state: terminal }]));
   });
@@ -376,7 +376,7 @@ describe('useAppState', () => {
     await state.selectAgent('agent-jesse');
     listeners[0]?.({
       seq: 3,
-      source: 'backend',
+      source: 'provider',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
       payload: { type: 'working' },
@@ -389,7 +389,7 @@ describe('useAppState', () => {
 
   it('shows the shell before persisted history hydration completes', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     const hydration = deferred<AppSnapshot>();
     const loadConversationHistory = vi.fn().mockReturnValue(hydration.promise);
     const selectAgent = vi.fn();
@@ -419,14 +419,13 @@ describe('useAppState', () => {
 
     expect(state.isLoading.value).toBe(false);
     expect(state.isHydratingActiveAgentHistory.value).toBe(true);
-    receive({ seq: 1, occurredAt: '', type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent-dina', threadId: 'thread-persisted',
-      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    receive(sessionSnapshotEvent('agent-dina', sessionState(), { seq: 1, conversation: 'thread-persisted' }));
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);
   });
 
   it('adopts runtime metadata returned by startup history hydration', async () => {
     const cachedSnapshot = createInitialSnapshot();
-    cachedSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-persisted' };
+    cachedSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     cachedSnapshot.agents[0].status = { type: 'working' };
     const reconciledSnapshot = structuredClone(cachedSnapshot);
     reconciledSnapshot.agents[0].status = { type: 'idle' };
@@ -451,18 +450,16 @@ describe('useAppState', () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0] = {
       ...remoteSnapshot.agents[0],
-      backend: 'claude',
-      backendSession: {
-        kind: 'claude',
-        sessionId: 'claude-session-existing',
+      provider: 'claude',
+      providerSession: { kind: 'claude',
+        conversationId: 'claude-session-existing',
         transport: 'stdio',
       },
-      backendDefaults: { kind: 'claude', model: 'haiku' },
+      providerDefaults: { kind: 'claude', model: 'haiku' },
     };
     const hydratedSnapshot = structuredClone(remoteSnapshot);
-    hydratedSnapshot.agents[0].backendSession = {
-      kind: 'claude',
-      sessionId: 'claude-session-existing',
+    hydratedSnapshot.agents[0].providerSession = { kind: 'claude',
+      conversationId: 'claude-session-existing',
       transport: 'stdio',
       model: 'claude-sonnet-5',
       reasoningEffort: 'xhigh',
@@ -472,7 +469,7 @@ describe('useAppState', () => {
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
         loadConversationHistory,
-        listBackendModels: vi.fn().mockResolvedValue([
+        listProviderModels: vi.fn().mockResolvedValue([
           { id: 'haiku', model: 'haiku', displayName: 'Haiku', isDefault: true },
           {
             id: 'sonnet',
@@ -535,13 +532,12 @@ describe('useAppState', () => {
   it('replays a missing first history frame after an event gap, even without a cached conversation', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'dropped-initial-frame' };
+    agent.providerSession = { kind: 'codex', conversationId: 'dropped-initial-frame' };
     let receive!: (event: MainToRendererEvent) => void;
     const getSnapshotState = vi.fn().mockResolvedValueOnce({ snapshot, lastBackendEventSeq: 0, connection: { status: 'connected' } })
       .mockResolvedValue({ snapshot, lastBackendEventSeq: 3, connection: { status: 'connected' } });
     const loadConversationHistory = vi.fn(async (_agentId: string, options?: { recovery?: boolean }) => {
-      if (options?.recovery) receive({ seq: 4, occurredAt: '', backend: 'codex', type: 'codex.conversationSnapshotChanged', agentId: agent.id,
-        threadId: 'dropped-initial-frame', payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+      if (options?.recovery) receive(sessionSnapshotEvent(agent.id, sessionState(), { seq: 4, conversation: 'dropped-initial-frame' }));
       return snapshot;
     });
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory,
@@ -549,14 +545,14 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
     expect(state.isHydratingActiveAgentHistory.value).toBe(true);
-    receive({ seq: 3, occurredAt: '', source: 'backend', type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, name: agent.name } });
+    receive({ seq: 3, occurredAt: '', source: 'provider', type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, name: agent.name } });
     await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledWith(agent.id, { recovery: true }));
     expect(state.isHydratingActiveAgentHistory.value).toBe(false);
   });
 
   it('loads persisted thread metadata without hydration when the preload bridge cannot hydrate agents', async () => {
     const remoteSnapshot = createInitialSnapshot();
-    remoteSnapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-persisted' };
+    remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };
     stubElectronTestWindow({
       app: {
         getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
@@ -567,6 +563,6 @@ describe('useAppState', () => {
     const state = useAppState();
     await state.loadSnapshot();
 
-    expect(state.activeAgent.value?.backendSession).toStrictEqual({ kind: 'codex', threadId: 'thread-persisted' });
+    expect(state.activeAgent.value?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-persisted' });
   });
 });

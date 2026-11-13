@@ -213,13 +213,13 @@
                 :connection="rowHost(session)"
               />
               <span
-                v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
+                v-if="!session.shared && providerChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
-                :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-                :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+                :aria-label="providerDisplayName(agentsById.get(session.agentId)!.provider)"
+                :title="providerDisplayName(agentsById.get(session.agentId)!.provider)"
               >
-                <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
+                <ProviderIcon :provider="agentsById.get(session.agentId)!.provider" monochrome />
               </span>
 
               <span
@@ -273,7 +273,7 @@ import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, FoldersIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
-import BackendIcon from './BackendIcon.vue';
+import ProviderIcon from './ProviderIcon.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import ActivityAgentRow from './ActivityAgentRow.vue';
@@ -318,9 +318,9 @@ const {
   activityIndicator,
   selectAgent,
   openAgentMenu,
-  backendChoices,
+  providerChoices,
   rowHost,
-  backendDisplayName,
+  providerDisplayName,
   pullRequestAttentionLabel,
   minWidth,
   maxWidth,

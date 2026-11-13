@@ -90,7 +90,7 @@ function registerCollaborationTools(
     } : {}),
   }, () => coordinator.setStatus(callerAgentId, status, announcement)));
 
-  const finishTurnDescription = 'Required once as the last tool action before the final response. Clears status and requests optional completion effects. Offer work_proposed after a feature/design discussion identifies concrete separate work, even without approval to carry it out; the user chooses Continue, Delegate, Create Mission or Discard. A proposal does not authorize agents, Missions or starting work and must not replace work the user already requested here. Use ready_for_review for complete validated uncommitted work.';
+  const finishTurnDescription = 'Required once as the last tool action before the final response. Requests the thread flag, suggested prompt, announcement and celebration; they take effect when the turn actually completes, after your final response. Offer work_proposed after a feature/design discussion identifies concrete separate work, even without approval to carry it out; the user chooses Continue, Delegate, Create Mission or Discard. A proposal does not authorize agents, Missions or starting work and must not replace work the user already requested here. Use ready_for_review for complete validated uncommitted work.';
   const finishTurnEffectsSchema = {
     suggestedPrompt: z.string().trim().min(1).max(240).optional().describe('Useful next request in the user’s voice; placeholder only, never submitted. Omission clears the previous hint.'),
     announcement: z.object({

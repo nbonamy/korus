@@ -14,9 +14,9 @@ import { missionAgentIds } from '@workspace/core/mission-attention';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { resolveAgentBackend } from '@workspace/core/agent-backends';
-import type { AgentBackendDriver, BackendConversationForkResult, BackendEvent, BackendGoalResult, BackendSendResult } from '@workspace/core/backend-driver';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { resolveAgentProvider } from '@workspace/core/agent-providers';
+import type { AgentProviderDriver, ProviderConversationForkResult, BackendEvent, ProviderGoalResult, ProviderSendResult } from '@workspace/core/provider-driver';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type {
   Agent,
   AnnouncementPhase,
@@ -24,7 +24,7 @@ import type {
   AppSnapshot, CelebrationKind,
   CreateAgentInput,
   CreateSourceWorktreeInput,
-  BackendDefaults,
+  ProviderDefaults,
   BackendPublishedEvent,
   SpokenAnnouncementRequest,
   SpokenAnnouncementQueueResult,
@@ -35,12 +35,11 @@ import type {
   WorkBacklogAssignmentStatus
 } from '@workspace/core/contracts';
 import { updateAgentWorkspace, updateWorkItemAssignmentInSnapshot } from '@workspace/core/agent-manager';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { listSourceWorktrees } from '../git-worktrees';
 import { scanSourceRepositories } from '../source-repositories';
 import { WorktreeManager } from '../worktrees/worktree-manager';
 import { createWorktreeInitializationToolModuleProvider } from './worktree-initialization-tools';
-import type { BackendDriverRpc } from '../driver-rpc';
+import type { ProviderDriverRpc } from '../driver-rpc';
 import { AppMcpAgentCoordinator, McpAgentCreationError, McpToolError, type AnnouncementResponse, type CelebrationResponse, type DisplayMarkdownInput, type DisplayMarkdownResponse, type McpCreateAgentInput, type McpCreateAgentResponse, type MissionToolPort, type UpdateWorkItemResponse } from './agent-coordinator';
 import { agentMessagesPrompt, type MessageInfo } from './agent-prompts';
 import { AppMcpHttpServer } from './http-server';
@@ -61,13 +60,14 @@ import { warnMain } from '../log';
 import type { DurableTaskService } from '../agents/durable-task-service';
 import type { RemoteWorkerRequest } from '@workspace/core/remote-collaboration';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { sessionConversationId } from '@korus-dev/multi-agent-sdk/contracts';
 
 const maxMarkdownBytes = 2 * 1024 * 1024;
 
 export type AppMcpServiceOptions = {
   getCollaborationAgents?: () => Agent[];
   createRemoteWorker?: (caller: Agent, input: McpCreateAgentInput & { teamId?: string }, intendedId?: string, assignmentPrompt?: string, userInstructions?: Agent['delegationUserInstructions']) => Promise<Agent>;
-  sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean, planMode?: boolean) => Promise<BackendSendResult>;
+  sendRemotePrompt?: (agent: Agent, prompt: string, goal?: boolean, planMode?: boolean) => Promise<ProviderSendResult>;
   sendRemoteMessage?: (agent: Agent, prompt: string, messageId: string) => Promise<{ accepted: true }>;
   resolveDelegationParent?: (id: string) => string;
   forwardCollaboration?: (agentId: string, name: string, args: Record<string, unknown>) => Promise<CallToolResult | undefined>;
@@ -111,7 +111,7 @@ export class AppMcpService {
   private readonly worktreeManager: WorktreeManager;
   private readonly queueSpokenAnnouncement?: AppMcpServiceOptions['queueSpokenAnnouncement'];
   private eventSink: ((event: BackendEvent) => void) | null = null;
-  private driverRpc: BackendDriverRpc | null = null;
+  private driverRpc: ProviderDriverRpc | null = null;
   private readonly queuedMessageIds = new Set<string>();
   private readonly remoteMessageDeliveries = new Set<string>();
   private readonly remoteMessageRetries = new Map<string, ReturnType<typeof setTimeout>>();
@@ -187,7 +187,7 @@ export class AppMcpService {
       this.coordinator.sendMessage(owner, owner, `<context>\n[Monitor event]\n${details}\n</context>\n\nMonitor ${state}: ${name}.`);
       return true;
     });
-    const monitorTools = createMonitorToolModuleProvider({ agents: () => this.snapshot.agents, capabilities: agent => this.driverRpc?.getCapabilities(agent) ?? defaultBackendCapabilities(agent.backend), monitors: this.monitors });
+    const monitorTools = createMonitorToolModuleProvider({ agents: () => this.snapshot.agents, capabilities: agent => this.driverRpc?.getCapabilities(agent) ?? defaultProviderCapabilities(agent.provider), monitors: this.monitors });
     this.server = new AppMcpHttpServer({
       forwardCollaboration: options.forwardCollaboration,
       coordinator: this.coordinator,
@@ -210,7 +210,7 @@ export class AppMcpService {
     });
   }
 
-  setDriverRpc(driverRpc: BackendDriverRpc): void {
+  setDriverRpc(driverRpc: ProviderDriverRpc): void {
     this.driverRpc = driverRpc;
   }
 
@@ -219,14 +219,15 @@ export class AppMcpService {
   }
 
   handleBackendEvent(event: BackendPublishedEvent): void {
-    const view = providerConversationEventView(event);
     if (event.agentId) void this.monitors.flush(event.agentId);
-    if (event.agentId && view.type === 'turn.completed') {
+    if (event.type === 'turn.started') this.coordinator.turnStarted(event.agentId);
+    if (event.type === 'turn.completed') {
       this.coordinator.clearStatus(event.agentId);
+      void this.coordinator.turnEnded(event.agentId, event.payload.status, event.payload.willRetry);
       // User-entered delegation controls belong to the turn they were submitted for.
       const owner = this.snapshot.agents.find(agent => agent.id === event.agentId);
-      if (owner && event.backend && view.conversationId && view.turnId) {
-        completeUserDelegationTurn(owner, { backend: event.backend, conversationId: view.conversationId, turnId: view.turnId });
+      if (owner && event.conversationId) {
+        completeUserDelegationTurn(owner, { provider: event.provider, conversationId: event.conversationId, turnId: event.turnId });
       }
     }
     if (event.type === 'agent.promptDequeued') {
@@ -251,7 +252,7 @@ export class AppMcpService {
       agent.id === request.localCallerId && agent.id === request.caller.id && agent.teamId === request.teamId
       && !agent.remoteConnectionId && this.snapshot.teams.some(team => team.id === request.teamId && team.collaborationOwnerId === request.ownerId)) : undefined;
     if (request.localCallerId && !localCaller) throw new McpToolError('The delegation parent is not a member of this controlled team.');
-    const caller = localCaller ?? { ...request.caller, backendSession: undefined };
+    const caller = localCaller ?? { ...request.caller, providerSession: undefined };
     const response = await this.createAgentFromMcp(caller, {
       ...request.input, remoteConnectionId: undefined, task: undefined, prompt: undefined, instructions: undefined, teamId: request.teamId,
     }, request.agentId, request.assignmentPrompt, request.userInstructions);
@@ -320,8 +321,8 @@ export class AppMcpService {
     if (agent.status.type === 'working' && this.driverRpc.getCapabilities(agent).steerPrompt) {
       try {
         const prompt = agentMessagesPrompt(messages);
-        const result = await this.driverRpc.handle(backendMethods.driverPromptSteer, { agent, prompt }) as BackendSendResult;
-        agent.backendSession = result.backendSession;
+        const result = await this.driverRpc.handle(backendMethods.driverPromptSteer, { agent, prompt }) as ProviderSendResult;
+        agent.providerSession = result.providerSession;
         this.coordinator.markMessagesRead(messages.map((message) => message.id));
         this.emitDequeuedMessages(agentId, messages.map((message) => message.id));
         this.emitSnapshotUpdated(agent.id);
@@ -340,13 +341,13 @@ export class AppMcpService {
     this.recordPromptInputMethod(agent.id, 'typed');
     sendAgentPrompt(
       this.snapshot,
-      this.backendDriverForAgent(agent),
+      this.providerDriverForAgent(agent),
       agent.id,
       agentMessagesPrompt(messages),
       undefined,
       (event) => this.emit(event),
       {
-        onBackendSessionUpdated: () => this.emitSnapshotUpdated(agent.id),
+        onProviderSessionUpdated: () => this.emitSnapshotUpdated(agent.id),
         onPromptFailed: () => this.emitQueuedMessages(agentId, messages, true),
         onPromptStarted: () => {
           this.coordinator.markMessagesRead(messages.map((message) => message.id));
@@ -411,12 +412,12 @@ export class AppMcpService {
     });
   }
 
-  private backendDriverForAgent(agent: Agent): AgentBackendDriver {
+  private providerDriverForAgent(agent: Agent): AgentProviderDriver {
     return {
-      backend: agent.backend,
-      getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
+      provider: agent.provider,
+      getRuntimeStatus: () => ({ provider: agent.provider, status: 'running' }),
       getCapabilities: currentAgent => this.requireDriverRpc().getCapabilities(currentAgent),
-      setGoal: (currentAgent, objective) => this.requireDriverRpc().handle(backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<BackendGoalResult>,
+      setGoal: (currentAgent, objective) => this.requireDriverRpc().handle(backendMethods.driverGoalUpdate, { agent: currentAgent, objective }) as Promise<ProviderGoalResult>,
       tryHandlePromptCommand: (currentAgent, prompt) => (
         this.requireDriverRpc().tryHandlePromptCommand(currentAgent, prompt)
       ),
@@ -425,13 +426,13 @@ export class AppMcpService {
           agent: currentAgent,
           prompt,
           ...(options ? { options } : {}),
-        }) as Promise<BackendSendResult>
+        }) as Promise<ProviderSendResult>
       ),
-      forkWorktreeConversation: (currentAgent, targetAgent) => this.requireDriverRpc().handle(backendMethods.driverWorktreeConversationFork, { agent: currentAgent, targetAgent }) as Promise<BackendConversationForkResult | null>,
-      interrupt: (currentAgent) => this.requireDriverRpc().handle(backendMethods.driverInterrupt, { agent: currentAgent }) as Promise<BackendSendResult>,
+      forkWorktreeConversation: (currentAgent, targetAgent) => this.requireDriverRpc().handle(backendMethods.driverWorktreeConversationFork, { agent: currentAgent, targetAgent }) as Promise<ProviderConversationForkResult | null>,
+      interrupt: (currentAgent) => this.requireDriverRpc().handle(backendMethods.driverInterrupt, { agent: currentAgent }) as Promise<ProviderSendResult>,
       respondToAgentRequest: async (response) => {
         await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, {
-          backend: agent.backend,
+          provider: agent.provider,
           response,
         });
       },
@@ -440,7 +441,7 @@ export class AppMcpService {
     };
   }
 
-  private requireDriverRpc(): BackendDriverRpc {
+  private requireDriverRpc(): ProviderDriverRpc {
     if (!this.driverRpc) {
       throw new Error('Backend driver RPC is not configured.');
     }
@@ -579,8 +580,8 @@ export class AppMcpService {
     if (input.planMode && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when planMode is true' };
     if (input.goal && !prompt && !assignmentPrompt) return { success: false, message: 'prompt is required when goal is true' };
     if ((input.goal || input.planMode) && !input.remoteConnectionId) {
-      const backend = resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend);
-      const target = { ...caller, id: intendedId ?? '', backend, backendSession: undefined, backendDefaults: delegatedBackendDefaults(caller, input) };
+      const provider = resolveAgentProvider(this.snapshot, input.selection?.provider ?? caller.provider);
+      const target = { ...caller, id: intendedId ?? '', provider: provider, providerSession: undefined, providerDefaults: delegatedProviderDefaults(caller, input) };
       const capabilities = this.requireDriverRpc().getCapabilities(target);
       if (input.goal && !capabilities.goals) return { success: false, message: 'This backend does not support goals.' };
       if (input.planMode && capabilities.planMode === 'unsupported') return { success: false, message: 'This backend does not support Plan mode.' };
@@ -608,7 +609,7 @@ export class AppMcpService {
         ...(input.goal ? { goal: true } : {}),
         ...(input.planMode ? { planMode: true } : {}),
         ...(userInstructions ? { delegationUserInstructions: userInstructions } : {}),
-        backend: input.selection?.backend ?? caller.backend, specification: input,
+        provider: input.selection?.provider ?? caller.provider, specification: input,
         workspace: {
           ...(input.remoteConnectionId ? { remoteConnectionId: input.remoteConnectionId } : {}),
           repositoryPath: input.repoPath,
@@ -646,7 +647,7 @@ export class AppMcpService {
     const progressId = `agent-creation-${randomUUID()}`;
     const progress = {
       id: progressId,
-      backend: resolveAgentBackend(this.snapshot, input.selection?.backend ?? caller.backend),
+      provider: resolveAgentProvider(this.snapshot, input.selection?.provider ?? caller.provider),
       repositoryName: fileBasename(repoPath),
       createWorktree: input.createWorktree === true,
       ...(branchName ? { branchName } : {}),
@@ -681,11 +682,11 @@ export class AppMcpService {
         });
       }
 
-      const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: this.options.resolveDelegationParent?.(caller.id) ?? caller.id, teamId: input.teamId ?? caller.teamId, selection: { backend: progress.backend } };
+      const createInput: CreateAgentInput = { name: input.name?.trim() || null, folder, delegatedByAgentId: this.options.resolveDelegationParent?.(caller.id) ?? caller.id, teamId: input.teamId ?? caller.teamId, selection: { provider: progress.provider } };
       createdAgent = this.agentCreation.create(createInput, { select: false, ...(intendedId ? { id: intendedId } : {}) });
       if (userInstructions && (prompt || assignmentPrompt)) createdAgent.delegationUserInstructions = { ...userInstructions };
       // Creation applies the target provider's saved model and approval policy first.
-      createdAgent.backendDefaults = { ...createdAgent.backendDefaults, ...delegatedBackendDefaults(caller, input) };
+      createdAgent.providerDefaults = { ...createdAgent.providerDefaults, ...delegatedProviderDefaults(caller, input) };
       if (this.resolveWorkspaceIdentity) {
         const workspace = await this.resolveWorkspaceIdentity(folder);
         updateAgentWorkspace(this.snapshot, createdAgent.id, workspace, workspace.updatedAt);
@@ -743,11 +744,11 @@ export class AppMcpService {
   private async prepareDelegationContext(caller: Agent, worker: Agent, input: McpCreateAgentInput): Promise<DelegationContext> {
     const requested = input.startingContext ?? this.snapshot.general.worktreeDelegationStartingContext ?? 'handoff';
     if (requested === 'handoff') return { requested, effective: 'handoff' };
-    if (caller.backend !== worker.backend) return { requested, effective: 'handoff', reason: 'cross-provider' };
+    if (caller.provider !== worker.provider) return { requested, effective: 'handoff', reason: 'cross-provider' };
     if (caller.remoteConnectionId !== worker.remoteConnectionId) return { requested, effective: 'handoff', reason: 'unavailable' };
-    const driver = this.backendDriverForAgent(worker);
+    const driver = this.providerDriverForAgent(worker);
     if (!driver.forkWorktreeConversation) return { requested, effective: 'handoff', reason: 'unsupported' };
-    if (!caller.backendSession) return { requested, effective: 'handoff', reason: 'unavailable' };
+    if (!caller.providerSession) return { requested, effective: 'handoff', reason: 'unavailable' };
     let result;
     try {
       result = await driver.forkWorktreeConversation(caller, worker);
@@ -757,16 +758,15 @@ export class AppMcpService {
       return { requested, effective: 'handoff', reason: 'unavailable' };
     }
     if (!result) return { requested, effective: 'handoff', reason: 'unsupported' };
-    const source = caller.backendSession;
-    const session = result.backendSession;
-    const sameConversation = session.kind === 'codex' && source.kind === 'codex' ? session.threadId === source.threadId
-      : session.kind !== 'codex' && source.kind !== 'codex' && session.sessionId === source.sessionId;
-    if (session.kind !== worker.backend || sameConversation || result.activeTurnId) throw new Error('Native delegation did not create an independent idle worker conversation.');
-    worker.backendSession = session;
+    const source = caller.providerSession;
+    const session = result.providerSession;
+    const sameConversation = session.kind === source.kind && sessionConversationId(session) === sessionConversationId(source);
+    if (session.kind !== worker.provider || sameConversation || result.activeTurnId) throw new Error('Native delegation did not create an independent idle worker conversation.');
+    worker.providerSession = session;
     return { requested, effective: 'conversation' };
   }
 
-  private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<BackendSendResult> {
+  private startAgentWithPrompt(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<ProviderSendResult> {
     if (agent.remoteConnectionId) {
       if (!this.options.sendRemotePrompt) return Promise.reject(new McpToolError('Remote prompt submission is unavailable.'));
       return this.options.sendRemotePrompt(agent, prompt, goal, planMode === true);
@@ -775,14 +775,14 @@ export class AppMcpService {
       this.recordPromptInputMethod(agent.id, 'typed');
       sendAgentPrompt(
         this.snapshot,
-        this.backendDriverForAgent(agent),
+        this.providerDriverForAgent(agent),
         agent.id,
         prompt,
         { planMode: planMode === true },
         (event) => this.emit(event),
         {
           goal,
-          onBackendSessionUpdated: () => this.emitSnapshotUpdated(agent.id),
+          onProviderSessionUpdated: () => this.emitSnapshotUpdated(agent.id),
           onPromptFailed: reject,
           onPromptStarted: result => resolve(result),
         },
@@ -804,12 +804,12 @@ export class AppMcpService {
   }
 }
 
-function delegatedBackendDefaults(caller: Agent, input: McpCreateAgentInput): BackendDefaults {
-  const backend = input.selection?.backend ?? caller.backend;
-  const target = { backend, backendDefaults: undefined as BackendDefaults | undefined };
-  const base = caller.backend === backend ? executionSelectionForAgent(caller) : defaultExecutionSelection(backend);
+function delegatedProviderDefaults(caller: Agent, input: McpCreateAgentInput): ProviderDefaults {
+  const provider = input.selection?.provider ?? caller.provider;
+  const target = { provider: provider, providerDefaults: undefined as ProviderDefaults | undefined };
+  const base = caller.provider === provider ? executionSelectionForAgent(caller) : defaultExecutionSelection(provider);
   applyExecutionSelection(target, resolveExecutionSelection(base, input.selection));
-  return target.backendDefaults!;
+  return target.providerDefaults!;
 }
 
 async function readAgentMarkdownFile(filePath: string): Promise<string> {

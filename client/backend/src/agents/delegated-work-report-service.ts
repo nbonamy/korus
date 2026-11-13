@@ -1,7 +1,6 @@
 import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 
 const defaultTimeoutMs = 90_000;
 
@@ -114,13 +113,12 @@ export class DelegatedWorkReportService {
     const pending = this.pending.get(event.agentId);
     if (!pending) return;
 
-    const conversationEvent = providerConversationEventView(event);
-    if (conversationEvent.type === 'error') {
+    if (event.type === 'session.error') {
       this.complete(event.agentId, null);
       return;
     }
-    if (conversationEvent.type !== 'turn.completed') return;
-    void this.completeFromConversation(event.agentId, conversationEvent.turnId, pending);
+    if (event.type !== 'turn.completed') return;
+    void this.completeFromConversation(event.agentId, event.turnId, pending);
   }
 
   close(): void {

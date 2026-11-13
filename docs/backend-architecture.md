@@ -32,9 +32,9 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   A controller-provided installer needs an explicit grant; local installation
   support alone does not grant remote installation. Shared controls consume this
   policy, with registered compatibility defaults for older daemons.
-  Authentication enters through the optional `AgentBackendDriver.authenticate`
+  Authentication enters through the optional `AgentProviderDriver.authenticate`
   capability; the server caches the app-owned result and never interprets
-  credentials or probes provider CLIs itself. `AgentBackendDriver.coordinationPolicy`
+  credentials or probes provider CLIs itself. `AgentProviderDriver.coordinationPolicy`
   declares authentication freshness and enablement, permission-default scope and
   rollback storage semantics. Shared coordination follows resolved policy rather
   than provider names. Settings changes refresh published capabilities from live
@@ -912,8 +912,7 @@ not prove GUI installation, login or a full agent turn on a clean machine: do th
 acceptance check before promoting the first release for an OS. Windows installers
 are **unsigned** (SmartScreen warnings are expected; no certificate prerequisite).
 The selected provider runtimes are separately installed prerequisites, as are
-Git/GitHub tools. Antigravity requires the paired ACP runtime/harness described
-above, not an editor or CLI installation alone.
+Git/GitHub tools. Antigravity requires its CLI (`agy`) 1.5.1 or later.
 
 ## GitHub desktop releases
 

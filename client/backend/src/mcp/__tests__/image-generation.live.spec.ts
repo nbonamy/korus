@@ -2,13 +2,12 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { createCodexSurface } from '@codex-app-sdk/backend';
-import type { BackendImageGenerationResult } from '@workspace/core/backend-driver';
+import type { ProviderImageGenerationResult } from '@workspace/core/provider-driver';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import { appSurfaceOptions, BackendDriverRpc } from '../../driver-rpc';
-import { CodexBackendDriver } from '../../codex/codex-driver';
-import { CodexSurfaceAgentAdapter } from '../../codex/codex-surface-adapter';
+import { ProviderDriverRpc } from '../../driver-rpc';
+import { createCodexDriver } from '../../harness-drivers';
+import type { HarnessAgentDriver } from '../../harness-agent-driver';
 import { ImageGenerationService } from '../../image-generation-service';
 import { createImageGenerationToolModuleProvider } from '../image-generation-tools';
 import { AppMcpService } from '../service';
@@ -20,22 +19,21 @@ it.skipIf(process.env.KORUS_IMAGE_GENERATION_LIVE !== '1')('returns a native Lun
   const home = path.join(root, 'codex-home');
   const snapshot = createInitialSnapshot();
   const caller = snapshot.agents[0]!;
-  caller.backend = 'claude';
-  caller.backendSession = undefined;
+  caller.provider = 'claude';
+  caller.providerSession = undefined;
   caller.folder = root;
   snapshot.general.providerHomes = { codex: { isolated: true, shareSkills: false, homePath: home } };
   const originalShared = process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
   process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON = '0';
-  let driver: CodexBackendDriver | undefined;
+  let driver: HarnessAgentDriver | undefined;
   let mcp: AppMcpService | undefined;
   try {
     await mkdir(home, { mode: 0o700 });
     await copyFile(path.join(os.homedir(), '.korus', 'codex-home', 'auth.json'), path.join(home, 'auth.json'));
-    const surface = createCodexSurface(appSurfaceOptions({ generalSettings: snapshot.general }));
-    driver = new CodexBackendDriver(new CodexSurfaceAgentAdapter(surface));
-    const rpc = new BackendDriverRpc(new Map([['codex', driver]]));
+    driver = createCodexDriver({ generalSettings: snapshot.general });
+    const rpc = new ProviderDriverRpc(new Map([['codex', driver]]));
     const images = new ImageGenerationService({ snapshot, generatedImagesRoot: path.join(home, 'generated_images'), defaultCwd: root,
-      generate: (agent, input, signal) => rpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<BackendImageGenerationResult> });
+      generate: (agent, input, signal) => rpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<ProviderImageGenerationResult> });
     mcp = new AppMcpService({ snapshot, toolModuleProviders: [createImageGenerationToolModuleProvider(images)] });
     const url = await mcp.start();
     const response = await fetch(`${url}?agentId=${caller.id}`, { method: 'POST',
@@ -50,8 +48,8 @@ it.skipIf(process.env.KORUS_IMAGE_GENERATION_LIVE !== '1')('returns a native Lun
     const bytes = Buffer.from(image.data!, 'base64');
     expect(bytes.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(await readFile(result.structuredContent!.images[0]!.path)).toEqual(bytes);
-    expect(caller.backend).toBe('claude');
-    expect(caller.backendSession).toBeUndefined();
+    expect(caller.provider).toBe('claude');
+    expect(caller.providerSession).toBeUndefined();
     expect(rpc.isBusy('codex')).toBe(false);
     const artifacts = path.resolve(import.meta.dirname, '../../../../../.app-dev/image-generation');
     await mkdir(artifacts, { recursive: true });

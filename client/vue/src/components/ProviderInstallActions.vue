@@ -1,7 +1,7 @@
 <template>
   <span class="provider-install-actions">
     <code v-if="installation.command">{{ installation.command }}</code>
-    <button v-if="installation.managed" type="button" :aria-label="$t('auth.installNamedProvider', { provider: backendDisplayName(backend) })" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+    <button v-if="installation.managed" type="button" :aria-label="$t('auth.installNamedProvider', { provider: providerDisplayName(provider) })" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
       <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
       {{ $t('auth.installProvider') }}
     </button>
@@ -15,15 +15,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ElIcon } from 'element-plus';
-import type { AgentBackend } from '@workspace/core/contracts';
-import { backendDisplayName } from '@workspace/core/backend-driver';
+import type { HarnessProvider } from '@workspace/core/contracts';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { resolveProviderSetupCapabilities, type ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
 import { appPlatformActions } from '../platform-api';
 import { RefreshIcon } from '../shared/icons/app-icons';
 
-const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean; automated?: boolean; capabilities?: ProviderSetupCapabilities }>();
+const props = defineProps<{ provider: HarnessProvider; busy?: boolean; disabled?: boolean; automated?: boolean; capabilities?: ProviderSetupCapabilities }>();
 const emit = defineEmits<{ refresh: []; install: [] }>();
-const installation = computed(() => resolveProviderSetupCapabilities(props.backend, props.capabilities, props.automated).installation);
+const installation = computed(() => resolveProviderSetupCapabilities(props.provider, props.capabilities, props.automated).installation);
 </script>
 
 <style scoped>

@@ -56,14 +56,14 @@ export class ClientPreferencesService {
       if (options.select !== false) selectAgent(snapshot, id);
     } else if (method === backendMethods.clientNavigationSelectTeam) {
       const id = string(params.teamId);
-      if (!snapshot.teams.some((team) => team.id === id)) throw new Error(`Team not found: ${id}`);
+      if (!snapshot.teams.some((team) => team.id === id)) throw new Error(`Workspace not found: ${id}`);
       selectTeam(snapshot, id);
     } else if (method === backendMethods.clientAgentOrderUpdate) {
       if (!reorderAgentInTeam(snapshot, string(input?.teamId), string(input?.agentId), input?.beforeAgentId == null ? null : string(input.beforeAgentId))) throw new Error('Agent reorder target not found.');
     } else if (method === backendMethods.clientRepositoryOrderUpdate) {
       if (!reorderRepositoryInTeam(snapshot, string(input?.teamId), string(input?.repositoryKey), input?.beforeRepositoryKey == null ? null : string(input.beforeRepositoryKey))) throw new Error('Repository reorder target not found.');
     } else if (method === backendMethods.clientTeamOrderUpdate) {
-      if (!reorderTeamInSnapshot(snapshot, string(input?.teamId), input?.beforeTeamId == null ? null : string(input.beforeTeamId))) throw new Error('Team reorder target not found.');
+      if (!reorderTeamInSnapshot(snapshot, string(input?.teamId), input?.beforeTeamId == null ? null : string(input.beforeTeamId))) throw new Error('Workspace reorder target not found.');
     } else if (method === backendMethods.clientAgentExternalApplicationUpdate) {
       const application = string(params.application);
       if (!['vscode', 'finder', 'terminal', 'iterm2', 'ghostty', 'xcode', 'android-studio', 'jetbrains'].includes(application)) throw new Error('Invalid external application.');

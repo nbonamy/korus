@@ -88,7 +88,7 @@ describe('companion state', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const initial = await session.getWorkspace();
-      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: agent.id } })) };
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: agent.id } })) };
       return { ...session, getWorkspace: async () => workspace,
         onUpdate: listener => { update = listener; return () => {}; },
         loadConversation: async agentId => delayed ? new Promise(resolve => { finish = resolve; }) : session.loadConversation(agentId) };
@@ -99,13 +99,13 @@ describe('companion state', () => {
       const old = state.conversation.value!;
       delayed = true;
       workspace = { ...workspace,
-        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' ? agent : change === 'location' ? { ...agent, remoteConnectionId: 'new-host' } : { ...agent, backendSession: change === 'reset' ? undefined : { kind: 'codex', threadId: 'replacement' } }) };
+        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' ? agent : change === 'location' ? { ...agent, remoteConnectionId: 'new-host' } : { ...agent, providerSession: change === 'reset' ? undefined : { kind: 'codex', conversationId: 'replacement' } }) };
       update(workspace, null);
       expect(state.conversation.value).toBeNull();
       expect(state.canSend.value).toBe(false);
       update(workspace, old);
       expect(state.conversationReady.value).toBe(false);
-      const next = change === 'reset' ? null : { ...old, threadId: change === 'replacement' ? 'replacement' : old.threadId } as CompanionConversation;
+      const next = change === 'reset' ? null : { ...old, payload: { ...old.payload, conversation: change === 'replacement' ? 'replacement' : old.payload.conversation } } as CompanionConversation;
       finish(next);
       await vi.waitFor(() => expect(state.conversationReady.value).toBe(true));
       expect(state.conversation.value).toStrictEqual(next);
@@ -119,20 +119,20 @@ describe('companion state', () => {
     let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
     let workspace!: CompanionWorkspace;
     let accept!: () => void;
-    const setApprovalPreset = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
+    const setPermission = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
     connector.connect = async id => {
       const session = await connect(id); workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, onUpdate: listener => { update = listener; return () => {}; } };
+      return { ...session, getWorkspace: async () => workspace, setPermission, onUpdate: listener => { update = listener; return () => {}; } };
     };
     const state = createCompanionState(connector);
-    const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendDefaults: { kind: 'codex' as const, approvalPreset: preset as 'ask-for-approval' | 'full-access' } })) });
+    const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerDefaults: { kind: 'codex' as const, permission: preset } })) });
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
-      const changing = state.setApprovalPreset('ask-for-approval');
-      expect(state.permissions.value?.approvalPreset).toBe('ask-for-approval');
+      const changing = state.setPermission('ask-for-approval');
+      expect(state.permission.value).toBe('ask-for-approval');
       workspace = policy('ask-for-approval'); update(workspace, null); accept(); await changing;
       workspace = policy('full-access'); update(workspace, null);
-      expect(state.permissions.value?.approvalPreset).toBe('full-access');
+      expect(state.permission.value).toBe('full-access');
     } finally { state.dispose(); }
   });
 
@@ -309,7 +309,7 @@ describe('companion state', () => {
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       const original = state.conversation.value;
-      expect(original?.payload.snapshot.messages.length).toBeGreaterThan(0);
+      expect(original?.payload.snapshot.state.messages.length).toBeGreaterThan(0);
       loadConversation.mockRejectedValueOnce(new Error('History response interrupted'));
       state.disconnect(); await state.reconnect();
       expect(state.conversation.value).toEqual(original);
@@ -331,7 +331,7 @@ describe('companion state', () => {
       connector.connect = async (id) => {
         const session = await connect(id);
         const workspace = await session.getWorkspace();
-        return { ...session, getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: 'replacement' } })) }),
+        return { ...session, getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: 'replacement' } })) }),
           loadConversation: async () => { throw new Error('Unavailable'); } };
       };
       await state.reconnect();
@@ -449,7 +449,7 @@ describe('companion state', () => {
     state.updateDraft({ text: 'Summarize', selectionStart: 9, selectionEnd: 9 });
     await Promise.all([state.submit('Summarize'), state.submit('Summarize')]);
     expect(state.draft.value.text).toBe('');
-    expect(state.conversation.value?.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(1);
+    expect(state.conversation.value?.payload.snapshot.state.messages.filter((m) => m.role === 'user')).toHaveLength(1);
     state.dispose();
   });
 
@@ -527,7 +527,7 @@ describe('companion state', () => {
       await vi.waitFor(() => expect(state.models.value).toHaveLength(2));
       expect(state.composerSettings.value).toMatchObject({ model: { id: 'fast' }, reasoningEffort: 'medium', planMode: false });
       state.updateComposerSettings({ modelId: 'deep' });
-      expect(selectModel).toHaveBeenCalledExactlyOnceWith('demo-agent', { model: 'deep-1', reasoningEffort: 'high', serviceTier: null, backend: 'codex' });
+      expect(selectModel).toHaveBeenCalledExactlyOnceWith('demo-agent', { model: 'deep-1', reasoningEffort: 'high', serviceTier: null, provider: 'codex' });
       state.updateComposerSettings({ planMode: true });
       expect(selectModel).toHaveBeenCalledTimes(1);
       await state.submit('Do it');
@@ -551,18 +551,18 @@ describe('companion state', () => {
       await vi.waitFor(() => expect(state.models.value).toHaveLength(4));
       state.updateComposerSettings({ modelId: 'shared' });
       expect(state.composerSettings.value?.reasoningEffort).toBe('high');
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'shared', reasoningEffort: 'high', serviceTier: null, backend: 'codex' });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'shared', reasoningEffort: 'high', serviceTier: null, provider: 'codex' });
       state.updateComposerSettings({ modelId: 'other' });
       expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'other', reasoningEffort: 'medium', serviceTier: null, backend: 'codex' });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'other', reasoningEffort: 'medium', serviceTier: null, provider: 'codex' });
       await state.submit('Do it');
       expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { planMode: false, selection: { model: 'other', reasoningEffort: 'medium' } });
       state.updateComposerSettings({ modelId: 'none' });
       expect(state.composerSettings.value?.reasoningEffort).toBeNull();
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'none', reasoningEffort: null, serviceTier: null, backend: 'codex' });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'none', reasoningEffort: null, serviceTier: null, provider: 'codex' });
       state.updateComposerSettings({ modelId: 'first' });
       expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
-      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'first', reasoningEffort: 'medium', serviceTier: null, backend: 'codex' });
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'first', reasoningEffort: 'medium', serviceTier: null, provider: 'codex' });
     } finally { state.dispose(); }
   });
   it('sends a prompt to the session it was written for, even if the session is replaced while the draft is saved', async () => {
@@ -573,7 +573,7 @@ describe('companion state', () => {
     connector.connect = async id => {
       const session = await connect(id);
       const initial = await session.getWorkspace();
-      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: 'original' } })) };
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: 'original' } })) };
       return { ...session, sendPrompt, getWorkspace: async () => workspace, onUpdate: listener => { update = listener; return () => {}; } };
     };
     let saving: (() => void) | undefined; let hold = false;
@@ -585,7 +585,7 @@ describe('companion state', () => {
       const sent = state.submit('Ship it');
       await vi.waitFor(() => expect(saving).toBeDefined());
       hold = false;
-      workspace = { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: 'replacement' } })) };
+      workspace = { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex', conversationId: 'replacement' } })) };
       update(workspace, null);
       saving!();
       await sent;
@@ -608,25 +608,27 @@ describe('companion state', () => {
   it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
     let workspace!: CompanionWorkspace;
-    const setApprovalPreset = vi.fn(async () => {
-      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, backendDefaults: { kind: 'codex', approvalPreset: 'full-access' } } : agent) };
+    const setPermission = vi.fn(async (_agentId: string, permission: string) => {
+      if (permission !== 'full-access') throw new Error('refused');
+      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, providerDefaults: { kind: 'codex', permission } } : agent) };
     });
-    const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
+    const interrupt = vi.fn(async () => {});
     connector.connect = async (id) => {
       const session = await original(id); workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, setPermissionMode, interrupt };
+      return { ...session, getWorkspace: async () => workspace, setPermission, interrupt };
     };
     const state = createCompanionState(connector);
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
-      expect(state.permissions.value).toStrictEqual({ approvalPreset: null, permissionMode: null });
-      state.setApprovalPreset('full-access');
-      expect(state.permissions.value!.approvalPreset).toBe('full-access');
-      expect(setApprovalPreset).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
-      state.setPermissionMode('acceptEdits');
-      expect(state.permissions.value!.permissionMode).toBe('acceptEdits');
-      await vi.waitFor(() => expect(state.permissions.value!.permissionMode).toBeNull());
-      expect(state.permissions.value!.approvalPreset).toBe('full-access');
+      expect(state.permission.value).toBeNull();
+      await state.setPermission('full-access');
+      expect(state.permission.value).toBe('full-access');
+      expect(setPermission).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
+      const refused = state.setPermission('acceptEdits');
+      expect(state.permission.value).toBe('acceptEdits');
+      // Refused: the phone shows the permission the laptop keeps.
+      await refused;
+      expect(state.permission.value).toBe('full-access');
       state.interrupt();
       expect(interrupt).toHaveBeenCalledExactlyOnceWith('demo-agent');
     } finally { state.dispose(); }
@@ -658,7 +660,7 @@ it('shows a stale cached conversation immediately but separates its paint genera
   let cached: CompanionConversation | null;
   connector.connect = async id => {
     const session = await connect(id); const base = await session.getWorkspace();
-    current = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+    current = { ...base, agents: base.agents.map(agent => ({ ...agent, providerSession: { kind: 'codex' as const, conversationId: agent.id } })) };
     return { ...session, getWorkspace: async () => current, onUpdate: listener => { publish = listener; return () => {}; }, cachedConversation: () => cached, isConversationCurrent: () => !stale,
       async loadConversation(id) {
         if (stale) return new Promise<CompanionConversation | null>(resolve => { finish = resolve; });

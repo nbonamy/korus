@@ -45,7 +45,7 @@ onMounted(load);
   flex: 0 0 auto;
   /* Match the SDK composer footer, including its reserved scrollbar gutter. */
   width: calc(100% - var(--space-16) * 2 - var(--space-4));
-  max-width: var(--codex-conversation-content-width, 860px);
+  max-width: var(--agent-ui-conversation-content-width, 860px);
   align-self: center;
   margin: 0 var(--space-4) var(--space-6) 0;
   border: 1px solid var(--color-border);

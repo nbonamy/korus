@@ -34,8 +34,8 @@ for (const [directory, area] of areas) {
       ts.ScriptTarget.Latest,
       true,
     );
-    for (const specifier of moduleSpecifiers(source)) {
-      const forbidden = forbiddenImport(area, file, specifier);
+    for (const { specifier, typeOnly } of moduleSpecifiers(source)) {
+      const forbidden = forbiddenImport(area, file, specifier, typeOnly);
       if (forbidden)
         violations.push(
           `${path.relative(root, file)}: ${specifier} (${forbidden})`,
@@ -103,26 +103,32 @@ async function sourceFiles(directory) {
 
 function moduleSpecifiers(source) {
   const specifiers = [];
+  const add = (specifier, node) => {
+    const named = node.importClause?.namedBindings ?? node.exportClause;
+    const typeOnly = Boolean(node.isTypeOnly || node.importClause?.isTypeOnly || ts.isImportTypeNode(node)
+      || (named?.elements?.length && named.elements.every(element => element.isTypeOnly)));
+    specifiers.push({ specifier, typeOnly });
+  };
   function visit(node) {
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier &&
       ts.isStringLiteralLike(node.moduleSpecifier)
     ) {
-      specifiers.push(node.moduleSpecifier.text);
+      add(node.moduleSpecifier.text, node);
     } else if (
       ts.isImportEqualsDeclaration(node) &&
       ts.isExternalModuleReference(node.moduleReference) &&
       node.moduleReference.expression &&
       ts.isStringLiteralLike(node.moduleReference.expression)
     ) {
-      specifiers.push(node.moduleReference.expression.text);
+      add(node.moduleReference.expression.text, node);
     } else if (
       ts.isImportTypeNode(node) &&
       ts.isLiteralTypeNode(node.argument) &&
       ts.isStringLiteralLike(node.argument.literal)
     ) {
-      specifiers.push(node.argument.literal.text);
+      add(node.argument.literal.text, node);
     } else if (
       ts.isCallExpression(node) &&
       node.arguments.length === 1 &&
@@ -131,7 +137,7 @@ function moduleSpecifiers(source) {
         (ts.isIdentifier(node.expression) &&
           node.expression.text === "require"))
     ) {
-      specifiers.push(node.arguments[0].text);
+      add(node.arguments[0].text, node);
     }
     ts.forEachChild(node, visit);
   }
@@ -173,7 +179,27 @@ function checkTelemetryCalls(node, file) {
   visit(node);
 }
 
-function forbiddenImport(area, file, specifier) {
+function forbiddenImport(area, file, specifier, typeOnly = false) {
+  const runtimeDiscovery = file === path.join(root, 'core/src/runtime-discovery.ts') && isPackage(specifier, '@korus-dev/multi-agent-sdk/runtime');
+  // Node-only entries: the root factory and the testing doubles. `/renderer` and `/prompt` are safe everywhere.
+  const consumerRuntime = !typeOnly && (specifier === '@korus-dev/multi-agent-sdk' || isPackage(specifier, '@korus-dev/multi-agent-sdk/testing'));
+  const providerRuntime = [
+    "@korus-dev/codex-sdk", "@korus-dev/multi-agent-sdk/backend", "@korus-dev/multi-agent-sdk/providers",
+    "@korus-dev/multi-agent-sdk/acp", "@korus-dev/multi-agent-sdk/tools",
+  ].some((name) => isPackage(specifier, name)) || consumerRuntime;
+  if (["core", "renderer", "mobile", "console"].includes(area) && isPackage(specifier, "@korus-dev/multi-agent-sdk/runtime") && file !== path.join(root, "core/src/runtime-discovery.ts")) return `${area} cannot import trusted SDK runtime discovery`;
+  const nativeHostRuntime = [
+    "@korus-dev/multi-agent-sdk/computer-use", "@korus-dev/agent-ui-sdk/electron",
+    "@korus-dev/agent-ui-sdk/speech", "@korus-dev/agent-ui-sdk/browser/electron",
+  ].some((name) => isPackage(specifier, name));
+  if (["core", "renderer", "mobile", "console"].includes(area)
+      && (providerRuntime || nativeHostRuntime) && !runtimeDiscovery) {
+    // Keep the more specific core UI diagnostic for the existing entry points.
+    if (!(area === "core" && isPackage(specifier, "@korus-dev/agent-ui-sdk")))
+      return `${area} cannot import trusted SDK runtimes`;
+  }
+  if (["electron-main", "preload"].includes(area) && providerRuntime)
+    return "Electron main must use the daemon protocol, not backend implementations";
   const relative = path.relative(root, file).split(path.sep).join("/");
   const hostedBackend = path.join(root, "server/backend/src");
   const target = specifier.startsWith(".")
@@ -318,8 +344,8 @@ function forbiddenImport(area, file, specifier) {
       "@workspace/backend",
       "@workspace/electron",
       "@workspace/web",
-      "@codex-app-sdk/backend",
-      "@codex-app-sdk/electron",
+      "@korus-dev/multi-agent-sdk/codex",
+      "@korus-dev/agent-ui-sdk/electron",
       "@anthropic-ai/claude-agent-sdk",
     ];
     const forbiddenSource =
@@ -340,15 +366,22 @@ function forbiddenImport(area, file, specifier) {
     }
   }
   if (area === "core") {
+    // A single UI package also exports portable host contracts. Permit only
+    // these leaf modules, never its renderer or trusted runtime entry points.
+    const portableUiContract = [
+      "@korus-dev/agent-ui-sdk/host",
+      "@korus-dev/agent-ui-sdk/browser",
+      "@korus-dev/agent-ui-sdk/documents",
+    ].includes(specifier);
     if (
       [
         "electron",
         "vue",
         "@vue",
-        "@codex-app-sdk/electron",
-        "@codex-app-sdk/vue",
-        "@codex-app-sdk/web",
-      ].some((name) => isPackage(specifier, name))
+        "@korus-dev/agent-ui-sdk/electron",
+        "@korus-dev/agent-ui-sdk",
+        "@korus-dev/multi-agent-sdk/web",
+      ].some((name) => isPackage(specifier, name)) && !portableUiContract
     ) {
       return "core cannot depend on desktop or UI packages";
     }
@@ -366,7 +399,7 @@ function forbiddenImport(area, file, specifier) {
     area === "electron-main" &&
     ([
       "@workspace/backend",
-      "@codex-app-sdk/backend",
+      "@korus-dev/multi-agent-sdk/codex",
       "@anthropic-ai/claude-agent-sdk",
     ].some((name) => isPackage(specifier, name)) ||
       (specifier.startsWith(".") &&
@@ -416,7 +449,7 @@ function isTelemetryProjection(file) {
 }
 
 function isPackage(specifier, name) {
-  return specifier === name || specifier.startsWith(`${name}/`);
+  return specifier === name || specifier === `${name}.js` || specifier.startsWith(`${name}/`);
 }
 
 function isFileSystemImport(specifier) {

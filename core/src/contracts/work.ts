@@ -1,4 +1,4 @@
-import type { BackendConversationRef } from './conversation';
+import type { ProviderConversationRef } from './conversation';
 import type { AppText } from './shared';
 
 import type { WorkProviderKind } from '../work-providers';
@@ -151,7 +151,7 @@ export type WorkItem = {
 export type AutomationTarget =
   | { kind: 'agent'; agentId: string }
   | { kind: 'quickChat'; agentId: string }
-  | { kind: 'newQuickChat'; teamId: string; selection: import('./execution').ExecutionSelectionOverrides & Pick<import('./execution').ExecutionSelection, 'backend'> };
+  | { kind: 'newQuickChat'; teamId: string; selection: import('./execution').ExecutionSelectionOverrides & Pick<import('./execution').ExecutionSelection, 'provider'> };
 
 export type AutomationSchedule = { intervalMinutes: number } | { rrule: string; timeZone: string };
 
@@ -165,7 +165,7 @@ export type AutomationExecutionLogEntry = {
   status: AutomationExecutionStatus;
   agentId?: string;
   agentName?: string;
-  conversationRef?: BackendConversationRef;
+  conversationRef?: ProviderConversationRef;
   error?: string;
 };
 

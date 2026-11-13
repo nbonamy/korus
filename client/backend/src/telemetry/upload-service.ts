@@ -47,6 +47,8 @@ type Options = {
   now?: () => number;
   random?: () => number;
   fetch?: typeof fetch;
+  /** Waits between two projections; tests supply their own. */
+  rest?: (ms: number) => Promise<void>;
 };
 const startOfDay = (day: string) => Date.parse(`${day}T00:00:00Z`);
 const sameOwner = (a: Binding | null, b: Binding | null) =>
@@ -148,8 +150,22 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     this.stopped = true;
     ++this.generation;
     this.attempt?.abort();
+    this.wake?.();
     await this.working;
     await this.storage;
+  }
+  private wake: (() => void) | null = null;
+  /**
+   * A pause between two projections. Each one is a blocking read of the usage ledger, so a backlog is worked through at
+   * about a quarter of full speed: the daemon stays as quick as usual while it runs. Closing ends the pause at once.
+   */
+  private rest(ms: number): Promise<void> {
+    if (this.options.rest) return this.options.rest(ms);
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); if (this.wake === done) this.wake = null; resolve(); };
+      const timer = setTimeout(done, ms);
+      this.wake = done;
+    });
   }
   private now(): number {
     return this.options.now?.() ?? Date.now();
@@ -280,6 +296,7 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
     await this.persist();
     let pending = this.store.days.filter(row => row.status === "pending").length;
     let deferred = false;
+    let projectionMs: number | null = null;
     const currentHour = Math.floor(this.now() / HOUR) * HOUR;
     const priority = (row: Report) => {
       if (row.hour !== undefined && startOfDay(row.day) + row.hour * HOUR === currentHour) return 0;
@@ -299,7 +316,11 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         // A missing retained source bucket is not evidence of zero usage.
         if (row.status === "done" && !observed.has(`${row.day}/${row.hour}`)) continue;
         row.checkedAt = this.now();
+        // A backlog of hours must not hold the daemon, nor slow it down: rest three times as long as the last projection took.
+        if (projectionMs !== null) await this.rest(Math.max(150, Math.ceil(projectionMs * 3)));
+        if (!this.valid(generation)) return;
         let sealed: SealedTelemetryBody;
+        const projecting = performance.now();
         try {
           sealed = await this.options.usage.previewTelemetry(
             { installId: this.store.owner!.installId, day: row.day, ...(row.hour !== undefined ? {hour:row.hour} : {}) },
@@ -310,8 +331,10 @@ export class TelemetryUploadService implements TelemetryDeliveryPort {
         } catch {
           // Keep this bucket retryable; one unavailable projection must not
           // prevent delivery of independent hours. Never replace it with zero.
+          projectionMs = performance.now() - projecting;
           continue;
         }
+        projectionMs = performance.now() - projecting;
         if (!this.valid(generation)) return;
         if (!this.reportEligible(row)) {
           this.prune();

@@ -10,17 +10,17 @@ const services: DurableTaskService[] = [];
 afterEach(() => { for (const service of services.splice(0)) service.close(); });
 
 function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Promise<RendererMessage[]>, resolveAgentId?: (id: string) => string) {
-  const parent = createAgentFromInput({ folder: '/repo', name: 'parent', selection: { backend: 'codex' } });
+  const parent = createAgentFromInput({ folder: '/repo', name: 'parent', selection: { provider: 'codex' } });
   if (saved[0]) parent.id = saved[0].parentAgentId;
   const agents: Agent[] = [parent];
   let disk = structuredClone(saved);
   const save = vi.fn(async (tasks: DelegatedTask[]) => { disk = structuredClone(tasks); });
   const send = vi.fn(async (agent: Agent, _prompt: string) => {
     agent.status = { type: 'working' };
-    agent.backendSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+    agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     const turnId = `turn-${agent.id}`;
     event(agent.id, 'turn.started', turnId);
-    return { backendSession: agent.backendSession, turnId };
+    return { providerSession: agent.providerSession, turnId };
   });
   const interrupt = vi.fn(async () => undefined);
   const onError = vi.fn();
@@ -30,12 +30,12 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
     service.handleEvent({ agentId, type, turnId, payload } as BackendPublishedEvent);
   }
   const provision = vi.fn(async (task: DelegatedTask) => {
-    const worker = createAgentFromInput({ folder: '/repo/worker', name: 'worker', selection: { backend: 'codex' } });
+    const worker = createAgentFromInput({ folder: '/repo/worker', name: 'worker', selection: { provider: 'codex' } });
     worker.id = task.workerAgentId;
     agents.push(worker);
     return worker;
   });
-  const create = (requestId = 'request-1') => service.create(parent, { requestId, task: { title: 'Fix bug', doneWhen: 'Regression passes' }, prompt: 'Fix the bug', backend: 'codex', specification: { prompt: 'Fix the bug', requestId } }, provision);
+  const create = (requestId = 'request-1') => service.create(parent, { requestId, task: { title: 'Fix bug', doneWhen: 'Regression passes' }, prompt: 'Fix the bug', provider: 'codex', specification: { prompt: 'Fix the bug', requestId } }, provision);
   const finish = (task: DelegatedTask, outcome = 'completed', turn = task.acceptance!.turnId) => {
     agents.find(agent => agent.id === task.workerAgentId)!.status = { type: 'idle' };
     event(task.workerAgentId, 'turn.completed', turn, { status: outcome });
@@ -58,7 +58,7 @@ describe('durable assignment lifecycle', () => {
     aliases[oldId] = replacement.id;
     expect(f.service.list(replacement.id, [task.id])[0]!.parentAgentId).toBe(oldId);
     expect(() => f.service.list('unrelated', [task.id])).toThrow('not owned');
-    const retried = await f.service.create(replacement, { requestId: 'request-1', task: task.assignment, prompt: 'Fix the bug', backend: 'codex', specification: { prompt: 'Fix the bug', requestId: 'request-1' } }, f.provision);
+    const retried = await f.service.create(replacement, { requestId: 'request-1', task: task.assignment, prompt: 'Fix the bug', provider: 'codex', specification: { prompt: 'Fix the bug', requestId: 'request-1' } }, f.provision);
     expect(retried.id).toBe(task.id);
     expect(f.provision).toHaveBeenCalledOnce();
     f.event(replacement.id, 'turn.started', 'user-turn');
@@ -75,7 +75,7 @@ describe('durable assignment lifecycle', () => {
     expect(f.provision).toHaveBeenCalledOnce();
     expect(f.send).toHaveBeenCalledOnce();
     expect(f.disk()[0]!.acceptance?.turnId).toBe(first.acceptance?.turnId);
-    await expect(f.service.create(f.parent, { requestId: 'request-1', task: first.assignment, prompt: 'Different', backend: 'codex', specification: { prompt: 'different' } }, f.provision)).rejects.toThrow('different assignment');
+    await expect(f.service.create(f.parent, { requestId: 'request-1', task: first.assignment, prompt: 'Different', provider: 'codex', specification: { prompt: 'different' } }, f.provision)).rejects.toThrow('different assignment');
     expect(f.provision).toHaveBeenCalledOnce();
   });
 
@@ -144,7 +144,7 @@ describe('durable assignment lifecycle', () => {
   it('rejects a result after replacing the worker conversation', async () => {
     const f = fixture();
     const task = await f.create();
-    f.agents[1]!.backendSession = { kind: 'codex', threadId: 'replacement' };
+    f.agents[1]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     await expect(f.service.complete(task.workerAgentId, result)).rejects.toThrow('conversation changed');
   });
 
@@ -285,9 +285,9 @@ describe('durable assignment lifecycle', () => {
     saved[0]!.delivery!.state = 'sending';
     const readHistory = vi.fn(async () => [{ role: 'user', turnId: 'accepted-parent-turn', parts: [{ type: 'text', text: format === 'hidden' ? f.send.mock.calls[1]![1] : `${product.name} task results (${saved[0]!.delivery!.id}). Delivered result` }] }] as RendererMessage[]);
     const recovered = fixture(saved, readHistory);
-    recovered.parent.backendSession = { kind: 'codex', threadId: 'parent-thread' };
+    recovered.parent.providerSession = { kind: 'codex', conversationId: 'parent-thread' };
     await recovered.service.recover();
-    expect(recovered.disk()[0]!.delivery).toEqual({ id: saved[0]!.delivery!.id, state: 'accepted', acceptance: { backendSession: { kind: 'codex', threadId: 'parent-thread' }, turnId: 'accepted-parent-turn' } });
+    expect(recovered.disk()[0]!.delivery).toEqual({ id: saved[0]!.delivery!.id, state: 'accepted', acceptance: { providerSession: { kind: 'codex', conversationId: 'parent-thread' }, turnId: 'accepted-parent-turn' } });
     expect(recovered.send).not.toHaveBeenCalled();
   });
 
@@ -315,7 +315,7 @@ describe('durable assignment lifecycle', () => {
     const recovered = fixture(saved, async () => [{ role: 'user', turnId: 'accepted-worker-turn', parts: [{ type: 'text', text: format === 'hidden' ? sentPrompt : legacyPrompt }] }] as RendererMessage[]);
     recovered.agents.push(f.agents[1]!);
     await recovered.service.recover();
-    expect(recovered.disk()[0]!.acceptance).toStrictEqual({ backendSession: f.agents[1]!.backendSession, turnId: 'accepted-worker-turn' });
+    expect(recovered.disk()[0]!.acceptance).toStrictEqual({ providerSession: f.agents[1]!.providerSession, turnId: 'accepted-worker-turn' });
     expect(recovered.disk()[0]!.state).toBe('interrupted');
     expect(recovered.send).not.toHaveBeenCalled();
   });

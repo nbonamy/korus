@@ -55,3 +55,8 @@ server/backend/dist/
 
 # Standalone terminal CLI package
 client/cli/dist/
+
+.sdk-typecheck-*/
+
+# Claude Code local settings
+.claude/settings.local.json

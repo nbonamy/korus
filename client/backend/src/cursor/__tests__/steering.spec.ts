@@ -6,10 +6,10 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { defaultGeneralSettings } from '@workspace/core/settings';
 import type { Agent } from '@workspace/core/contracts';
-import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
-import { BackendDriverRpc, createBackendDriver } from '../../driver-rpc';
+import type { AgentProviderDriver, BackendEvent, ProviderSendResult } from '@workspace/core/provider-driver';
+import { ProviderDriverRpc, createProviderDriver } from '../../driver-rpc';
 
-let root: string, host: AgentBackendDriver, rpc: BackendDriverRpc, agent: Agent;
+let root: string, host: AgentProviderDriver, rpc: ProviderDriverRpc, agent: Agent;
 let enabled: boolean | undefined, events: BackendEvent[];
 const preflight = vi.fn();
 beforeEach(async () => {
@@ -29,38 +29,38 @@ beforeEach(async () => {
   await writeFile(path.join(root, 'agent'), `#!${process.execPath}\nrequire(${JSON.stringify(path.join(root, 'fixture.cjs'))});\n`);
   await chmod(path.join(root, 'agent'), 0o700);
   await writeFile(path.join(root, 'version'), '2026.11.05-86047df');
-  agent = { ...createInitialSnapshot().agents[0]!, id: 'steering', backend: 'cursor', backendDefaults: { kind: 'cursor' }, backendSession: undefined, folder: root };
+  agent = { ...createInitialSnapshot().agents[0]!, id: 'steering', provider: 'cursor', providerDefaults: { kind: 'cursor' }, providerSession: undefined, folder: root };
   enabled = undefined; events = []; preflight.mockReset();
-  host = createBackendDriver('cursor', { getGeneralSettings: () => ({ ...defaultGeneralSettings, cursorSteeringFallbackEnabled: enabled }) });
+  host = createProviderDriver('cursor', { getGeneralSettings: () => ({ ...defaultGeneralSettings, cursorSteeringFallbackEnabled: enabled }) });
   host.onEvent(event => events.push(event));
-  rpc = new BackendDriverRpc(new Map([['cursor', host]]), undefined, preflight);
+  rpc = new ProviderDriverRpc(new Map([['cursor', host]]), undefined, preflight);
 });
 afterEach(async () => { await rpc.close(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 async function wire(): Promise<Record<string, any>[]> {
   return (await readFile(path.join(root, 'wire.jsonl'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
-const completed = () => events.filter(event => event.type === 'cursor.conversationEventReceived' && event.payload.event.type === 'turn.completed');
+const completed = () => events.filter(event => event.type === 'turn.completed');
 async function start() {
-  const result = await rpc.handle('driver/prompt/send', { agent, prompt: 'wait' }) as BackendSendResult;
-  agent.backendSession = result.backendSession;
+  const result = await rpc.handle('driver/prompt/send', { agent, prompt: 'wait' }) as ProviderSendResult;
+  agent.providerSession = result.providerSession;
   await vi.waitFor(async () => expect((await wire()).filter(call => call.fixture === 'prompt-admission')).toHaveLength(1));
   return result;
 }
-const steer = (options?: unknown) => rpc.handle('driver/prompt/steer', { agent, prompt: 'Correction', expectedSessionId: companionSessionId(agent), options }) as Promise<BackendSendResult>;
+const steer = (options?: unknown) => rpc.handle('driver/prompt/steer', { agent, prompt: 'Correction', expectedSessionId: companionSessionId(agent), options }) as Promise<ProviderSendResult>;
 
 describe('opt-in Cursor interrupt-and-resend steering', () => {
   it('uses construction settings when no live general-settings getter is supplied', async () => {
     await rpc.close();
-    host = createBackendDriver('cursor', { generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: true } });
-    rpc = new BackendDriverRpc(new Map([['cursor', host]]));
+    host = createProviderDriver('cursor', { generalSettings: { ...defaultGeneralSettings, cursorSteeringFallbackEnabled: true } });
+    rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     expect(rpc.getCapabilities(agent).steerPrompt).toBe(true);
     expect(await wire()).toStrictEqual([]);
   });
   it.each([undefined, false])('rejects disabled steering before preflight or native work (enabled=%s)', async value => {
     enabled = value;
     if (value === undefined) {
-      await rpc.close(); host = createBackendDriver('cursor');
-      rpc = new BackendDriverRpc(new Map([['cursor', host]]), undefined, preflight);
+      await rpc.close(); host = createProviderDriver('cursor');
+      rpc = new ProviderDriverRpc(new Map([['cursor', host]]), undefined, preflight);
     }
     expect(rpc.getCapabilities(agent).steerPrompt).toBe(false);
     expect(host.getRuntimeStatus().capabilities?.steerPrompt).toBe(false);
@@ -97,7 +97,7 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     await writeFile(path.join(root, 'context.txt'), 'ATTACHMENT_MARKER');
     const next = await steer({ attachments: [{ type: 'file', path: path.join(root, 'context.txt'), name: 'context.txt' }], selection: { model: 'composer-2.5' }, planMode: true });
     await vi.waitFor(() => expect(completed()).toHaveLength(2));
-    expect(next.backendSession).toStrictEqual(first.backendSession);
+    expect(next.providerSession).toStrictEqual(first.providerSession);
     expect(next.turnId).not.toBe(first.turnId);
     const calls = await wire(), methods = calls.map(call => call.method).filter(Boolean);
     expect(methods.filter(method => method === 'session/new')).toHaveLength(1);
@@ -106,13 +106,13 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     const prompts = calls.filter(call => call.method === 'session/prompt');
     expect(prompts).toHaveLength(2);
     expect(JSON.stringify(prompts[1].params.prompt)).toContain('ATTACHMENT_MARKER');
-    expect(calls.filter(call => call.method === 'session/set_config_option').map(call => call.params)).toEqual(expect.arrayContaining([{ sessionId: first.backendSession.kind === 'cursor' ? first.backendSession.sessionId : '', configId: 'model', value: 'composer-2.5' }, { sessionId: first.backendSession.kind === 'cursor' ? first.backendSession.sessionId : '', configId: 'mode', value: 'plan' }]));
+    expect(calls.filter(call => call.method === 'session/set_config_option').map(call => call.params)).toEqual(expect.arrayContaining([{ sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.conversationId : '', configId: 'model', value: 'composer-2.5' }, { sessionId: first.providerSession.kind === 'cursor' ? first.providerSession.conversationId : '', configId: 'mode', value: 'plan' }]));
     await host.loadConversation!(agent);
-    const frame = events.filter(event => event.type === 'cursor.conversationSnapshotChanged').at(-1);
-    if (frame?.type !== 'cursor.conversationSnapshotChanged') throw new Error('Missing snapshot');
-    expect(frame.payload.snapshot.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'completed']);
-    expect(JSON.stringify(frame.payload.snapshot.messages)).toContain('context.txt');
-    expect(JSON.stringify(frame.payload.snapshot.messages)).not.toContain('LATE');
+    const frame = events.filter(event => event.type === 'conversation.sessionSnapshot').at(-1);
+    if (frame?.type !== 'conversation.sessionSnapshot') throw new Error('Missing snapshot');
+    expect(frame.payload.snapshot.state.turns.map(turn => turn.status)).toStrictEqual(['interrupted', 'completed']);
+    expect(JSON.stringify(frame.payload.snapshot.state.messages)).toContain('context.txt');
+    expect(JSON.stringify(frame.payload.snapshot.state.messages)).not.toContain('LATE');
     enabled = false;
     expect(rpc.getCapabilities(agent).steerPrompt).toBe(false);
     expect(host.getRuntimeStatus().capabilities?.steerPrompt).toBe(false);
@@ -126,8 +126,10 @@ describe('opt-in Cursor interrupt-and-resend steering', () => {
     await vi.waitFor(async () => expect((await wire()).some(call => call.fixture === 'fence-held')).toBe(true));
     await expect(steer()).rejects.toThrow(/steer|operation/i);
     if (change === 'opt-out') enabled = false;
-    if (change === 'session') agent.backendSession = { kind: 'cursor', sessionId: 'different-session' };
+    if (change === 'session') agent.providerSession = { kind: 'cursor', conversationId: 'different-session' };
     if (change === 'workspace') agent.folder = path.dirname(root);
+    // The daemon tells the driver when an agent's record changed; an operation in flight then sees the new values.
+    if (change === 'session' || change === 'workspace') host.agentChanged!(agent);
     if (change === 'release') await host.releaseConversation!(agent.id);
     if (change === 'close') await host.close();
     if (change === 'account') {

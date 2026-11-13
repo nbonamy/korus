@@ -1,11 +1,18 @@
 import type { CompanionWorkspace } from './companion-port';
+import { withLegacyAgentFields } from '@workspace/core/legacy-fields';
+
+type Agents = CompanionWorkspace['agents'];
+/** Laptops on earlier builds carry an agent's conversation and permission under former names. */
+const fromLaptop = (agents: Agents): Agents => agents.map(agent => withLegacyAgentFields(agent as never) as typeof agent);
+
 
 /**
  * The laptop repeats its whole workspace on every update. Parts that did not change keep their previous
  * objects (and an unchanged workspace is the previous one), so nothing derived from them is recomputed or resent.
  */
-export function reconcileWorkspace(previous: CompanionWorkspace, next: CompanionWorkspace): CompanionWorkspace {
-  if (previous === next) return previous;
+export function reconcileWorkspace(previous: CompanionWorkspace, received: CompanionWorkspace): CompanionWorkspace {
+  if (previous === received) return previous;
+  const next = { ...received, agents: fromLaptop(received.agents), ...(received.missionAgents ? { missionAgents: fromLaptop(received.missionAgents) } : {}) };
   const same = <Value>(old: Value, current: Value): Value => (old === current || JSON.stringify(old) === JSON.stringify(current) ? old : current);
   const items = <Item extends { id: string }>(old: readonly Item[] | undefined, current: readonly Item[]): readonly Item[] => {
     const known = new Map((old ?? []).map((item) => [item.id, item]));
@@ -14,7 +21,7 @@ export function reconcileWorkspace(previous: CompanionWorkspace, next: Companion
   };
   const merged = { ...next, teams: items(previous.teams, next.teams) as CompanionWorkspace['teams'], agents: items(previous.agents, next.agents) as CompanionWorkspace['agents'],
     ...(next.missionAgents ? { missionAgents: items(previous.missionAgents, next.missionAgents) as CompanionWorkspace['agents'] } : {}) };
-  for (const key of ['repositoryIcons', 'modelFavorites', 'agentRequests', 'backends', 'missionProgress'] as const) {
+  for (const key of ['repositoryIcons', 'modelFavorites', 'agentRequests', 'providers', 'missionProgress'] as const) {
     if (key in next && key in previous) (merged as Record<string, unknown>)[key] = same(previous[key], next[key]);
   }
   const keys = new Set([...Object.keys(previous), ...Object.keys(merged)]) as Set<keyof CompanionWorkspace>;

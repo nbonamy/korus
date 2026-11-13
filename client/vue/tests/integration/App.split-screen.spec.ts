@@ -5,10 +5,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { installBackendFixture } from '../support/backend-fixture';
 import { windowState } from '../../src/window-state';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';
-import {
-  codexConversationSnapshot,
-  codexTextMessage,
-} from '../support/codex-conversation-fixtures';
+import { sessionSnapshotEvent, sessionState, textMessage } from '../support/conversation-fixtures';
 
 vi.mock('../../src/shared/confetti/canvas-celebration', () => ({ launchCanvasCelebration: vi.fn() }));
 
@@ -29,7 +26,7 @@ describe('split-screen conversations', () => {
   it.each(['Backlog', 'Automations', 'Settings'])('drops celebrations while %s covers the selected agent, without replaying them later', async surface => {
     const snapshot = createInitialSnapshot();
     snapshot.general.providerOnboardingComplete = true;
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const agentId = snapshot.activeAgentId!;
     const { api, emit, emitAppCommand } = installBackendFixture(snapshot);
     api.selectAgent.mockResolvedValue(snapshot);
@@ -61,7 +58,7 @@ describe('split-screen conversations', () => {
   it('celebrates an unfocused visible split pane, but not a hidden pane or window', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.general.providerOnboardingComplete = true;
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { emit } = installBackendFixture(snapshot);
     const wrapper = mount(App, { attachTo: document.body });
     const visibility = vi.spyOn(document, 'visibilityState', 'get');
@@ -135,7 +132,7 @@ describe('split-screen conversations', () => {
     const [first, second] = snapshot.agents;
     for (const agent of [first!, second!]) {
       agent.folder = `/workspace/${agent.id}`;
-      agent.backendSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+      agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     }
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async id => ({
@@ -145,11 +142,9 @@ describe('split-screen conversations', () => {
     let finishPreview!: (result: { kind: 'text'; path: string; content: string; size: number }) => void;
     api.previewAgentFile.mockImplementation(() => new Promise(resolve => { finishPreview = resolve; }));
     api.loadConversationHistory.mockImplementation(async id => {
-      emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: id, threadId: `thread-${id}`,
-        payload: { revision: 1, snapshot: codexConversationSnapshot([
-          codexTextMessage(`links-${id}`, 'assistant', `[Readme](</workspace/${id}/README.md>) [Example](https://example.com)`),
-        ], { activeConversationId: `thread-${id}` }) },
-      });
+      emit(sessionSnapshotEvent(id, sessionState({
+        messages: [textMessage(`links-${id}`, 'assistant', `[Readme](</workspace/${id}/README.md>) [Example](https://example.com)`, { agentId: id })],
+      }), { conversation: `thread-${id}` }));
       return snapshot;
     });
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -173,7 +168,7 @@ describe('split-screen conversations', () => {
       await wrapper.findAll('.agent-sidebar__agent').find(row => row.text().includes(first!.name!))!.trigger('click');
       await flushPromises();
       // Split panes share sidebar visibility; reopen it if the other pane left it closed.
-      if (!firstWorkspace.isVisible()) await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+      if (!firstWorkspace.isVisible()) await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
       expect(firstWorkspace.isVisible()).toBe(true);
       expect(wrapper.get('a[href="https://example.com"]').isVisible()).toBe(true);
     } finally { wrapper.unmount(); open.mockRestore(); }
@@ -181,7 +176,7 @@ describe('split-screen conversations', () => {
 
   it('resizes both dividers without replacing composers and restores each team workspace after a restart', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const [first, second] = snapshot.agents;
     const originalTeam = snapshot.teams[0]!;
     const otherAgent = { ...first!, id: 'other-agent', teamId: 'other-team', name: 'Other' };
@@ -294,7 +289,7 @@ describe('split-screen conversations', () => {
 
   it('keeps slash review instructions scoped to the sending pane and clears them when its tab closes', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const { api } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async id => ({
       ...snapshot, activeAgentId: id,
@@ -344,7 +339,7 @@ describe('split-screen conversations', () => {
   ] as const)('focuses navigation in %s (leave before history completes: %s) without stealing pane-control focus', async (layout, leaveBeforeLoad) => {
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
-    second!.backendSession = { kind: 'codex', threadId: 'cold-thread' };
+    second!.providerSession = { kind: 'codex', conversationId: 'cold-thread' };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot, activeAgentId: id,
@@ -355,8 +350,7 @@ describe('split-screen conversations', () => {
     api.loadConversationHistory.mockImplementation(async (id) => {
       if (id === second!.id) {
         await coldHistory;
-        emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: second!.id,
-          threadId: 'cold-thread', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'cold-thread' }) } });
+        emit(sessionSnapshotEvent(second!.id, sessionState(), { conversation: 'cold-thread' }));
       }
       return snapshot;
     });
@@ -422,8 +416,8 @@ describe('split-screen conversations', () => {
       expect(header.text()).toContain(agent.statusText);
       expect(header.text()).toContain(`+${11 + index}`);
     }
-    expect(wrapper.findAll('[aria-label="Toggle right workspace"]')).toHaveLength(1);
-    const toggle = panes[toggleIndex]!.get('[aria-label="Toggle right workspace"]');
+    expect(wrapper.findAll('[aria-label="Toggle right panel"]')).toHaveLength(1);
+    const toggle = panes[toggleIndex]!.get('[aria-label="Toggle right panel"]');
     // This fixed-position control operates on focus, not the pane containing it.
     await toggle.trigger('pointerdown');
     await toggle.trigger('focusin');
@@ -440,10 +434,10 @@ describe('split-screen conversations', () => {
     await panes[1]!.get('.agent-header').trigger('pointerdown');
     await flushPromises();
     expect(wrapper.get('.agent-split-grid__pane--focused').attributes('data-agent-id')).toBe(second!.id);
-    expect(panes[toggleIndex]!.get('[aria-label="Toggle right workspace"]').attributes('aria-pressed')).toBe('true');
+    expect(panes[toggleIndex]!.get('[aria-label="Toggle right panel"]').attributes('aria-pressed')).toBe('true');
     const emptyWorkspace = wrapper.findAll('.app-shell__right-workspace').filter(panel => panel.isVisible());
     expect(emptyWorkspace).toHaveLength(1);
-    expect(emptyWorkspace[0]!.get('[aria-label="Open a workspace tab"]').isVisible()).toBe(true);
+    expect(emptyWorkspace[0]!.get('[aria-label="Open a panel tab"]').isVisible()).toBe(true);
     expect(emptyWorkspace[0]!.findAll('[role="tab"]')).toHaveLength(0);
     if (layout === 'Vertical Split') {
       await panes[1]!.get('[aria-label="Open repository diff"]').trigger('click');
@@ -504,7 +498,7 @@ describe('split-screen conversations', () => {
     expect(getComputedStyle(wrapper.get('.app-shell__conversations').element).position).toBe('relative');
     expect(getComputedStyle(wrapper.get('.app-shell__layout-control').element).position).toBe('absolute');
     expect(getComputedStyle(layoutButton.element).width).toBe('24px');
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await chooseLayout(wrapper, '4-Pane Split');
     await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
     expect(
@@ -514,7 +508,7 @@ describe('split-screen conversations', () => {
     ).toHaveLength(0);
     expect(
       wrapper
-        .get('[aria-label="Toggle right workspace"]')
+        .get('[aria-label="Toggle right panel"]')
         .attributes('disabled'),
     ).toBeDefined();
     expect(wrapper.findAll('.agent-split-grid__pane')[3]!.find('[aria-label="Run Git action"]').exists()).toBe(false);
@@ -536,7 +530,7 @@ describe('split-screen conversations', () => {
       });
     snapshot.teams[0]!.agentIds = agents.map((agent) => agent.id);
     for (const agent of agents)
-      agent.backendSession = { kind: 'codex', threadId: `thread-${agent.id}` };
+      agent.providerSession = { kind: 'codex', conversationId: `thread-${agent.id}` };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot,
@@ -544,36 +538,19 @@ describe('split-screen conversations', () => {
       teams: snapshot.teams.map((team) => ({ ...team, activeAgentId: id })),
     }));
     api.loadConversationHistory.mockImplementation(async (id) => {
-      emit({
-        type: 'codex.conversationSnapshotChanged',
-        backend: 'codex',
-        agentId: id,
-        threadId: `thread-${id}`,
-        payload: {
-          revision: 1,
-          snapshot: codexConversationSnapshot(
-            [
-              codexTextMessage(
-                `message-${id}`,
-                'assistant',
-                `Conversation ${id}`,
-                `turn-${id}`,
-              ),
-            ],
-            {
-              activeConversationId: `thread-${id}`,
-              turnIds: [`turn-${id}`],
-              executionPlan: {
-                turnId: `turn-${id}`,
-                explanation: `Plan for ${id}`,
-                steps: [{ step: `Work for ${id}`, status: 'inProgress' }],
-                markdown: '',
-                updatedAt: '2026-09-28T00:00:00Z',
-              },
-            },
-          ),
+      emit(sessionSnapshotEvent(id, sessionState({
+        messages: [textMessage(`message-${id}`, 'assistant', `Conversation ${id}`, { agentId: id, turnId: `turn-${id}` })],
+        plan: {
+          threadId: `thread-${id}`,
+          turnId: `turn-${id}`,
+          kind: 'execution',
+          status: 'inProgress',
+          explanation: `Plan for ${id}`,
+          steps: [{ step: `Work for ${id}`, status: 'inProgress' }],
+          markdown: '',
+          updatedAt: '2026-09-28T00:00:00Z',
         },
-      });
+      }), { conversation: `thread-${id}` }));
       return snapshot;
     });
     const wrapper = mount(App, {
@@ -597,7 +574,7 @@ describe('split-screen conversations', () => {
     );
     await wrapper.get('.conversation-plan__close').trigger('click');
     expect(wrapper.find('.conversation-plan').exists()).toBe(false);
-    await wrapper.get('[aria-label="Toggle right workspace"]').trigger('click');
+    await wrapper.get('[aria-label="Toggle right panel"]').trigger('click');
     await flushPromises();
     expect(
       wrapper
@@ -640,7 +617,7 @@ describe('split-screen conversations', () => {
 
   it('keeps draft shortcuts, submissions and late completions tied to their pane rather than the latest focus', async () => {
     const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const [first, second] = snapshot.agents;
     const { api, emitAppCommand } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
@@ -704,7 +681,7 @@ describe('split-screen conversations', () => {
   it('does not interrupt the only generating background agent when Escape is pressed in the focused idle pane', async () => {
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
-    first!.backendSession = { kind: 'codex', threadId: 'background-thread' };
+    first!.providerSession = { kind: 'codex', conversationId: 'background-thread' };
     const { api, emit } = installBackendFixture(snapshot);
     api.selectAgent.mockImplementation(async (id) => ({
       ...snapshot,
@@ -716,31 +693,18 @@ describe('split-screen conversations', () => {
       attachTo: document.body,
     });
     await flushPromises();
-    emit({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: first!.id, threadId: 'background-thread',
-      payload: { revision: 1, snapshot: codexConversationSnapshot([]) } });
+    emit(sessionSnapshotEvent(first!.id, sessionState(), { conversation: 'background-thread', revision: 1 }));
     await flushPromises();
     await chooseLayout(wrapper, 'Vertical Split');
     const editor = wrapper.findAll('[contenteditable="true"]')[1]!;
     (editor.element as HTMLElement).focus();
     await flushPromises();
     const historyLoads = api.loadConversationHistory.mock.calls.length;
-    emit({
-      type: 'codex.conversationSnapshotChanged',
-      backend: 'codex',
-      agentId: first!.id,
-      threadId: 'background-thread',
-      payload: {
-        revision: 1,
-        snapshot: codexConversationSnapshot(
-          [codexTextMessage('working', 'assistant', 'Working')],
-          {
-            busy: true,
-            activeTurnId: 'turn',
-            activeConversationId: 'background-thread',
-          },
-        ),
-      },
-    });
+    emit(sessionSnapshotEvent(first!.id, sessionState({
+      messages: [textMessage('working', 'assistant', 'Working', { agentId: first!.id, turnId: 'turn', status: 'streaming' })],
+      busy: true,
+      activeTurnId: 'turn',
+    }), { conversation: 'background-thread', revision: 2 }));
     await flushPromises();
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
@@ -756,66 +720,5 @@ describe('split-screen conversations', () => {
         .get('.agent-split-grid__pane--focused')
         .attributes('data-agent-id'),
     ).toBe(second!.id);
-  });
-
-  it('applies a model favorite to its own pane and sends that configuration', async () => {
-    const snapshot = createInitialSnapshot();
-    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
-    const second = snapshot.agents[1]!;
-    snapshot.general.modelFavorites = [
-      {
-        backend: 'codex',
-        modelId: 'test-model',
-        reasoningEffort: 'high',
-        serviceTier: null,
-      },
-    ];
-    const { api } = installBackendFixture(snapshot);
-    api.selectAgent.mockImplementation(async (id) => ({
-      ...snapshot,
-      activeAgentId: id,
-      teams: snapshot.teams.map((team) => ({ ...team, activeAgentId: id })),
-    }));
-    api.listBackendModels.mockResolvedValue([
-      {
-        id: 'test-model',
-        model: 'test-model',
-        displayName: 'Test model',
-        isDefault: true,
-        supportedReasoningEfforts: [
-          { reasoningEffort: 'medium', description: '' },
-          { reasoningEffort: 'high', description: '' },
-        ],
-        defaultReasoningEffort: 'medium',
-      },
-    ]);
-    api.sendPrompt.mockResolvedValue(snapshot);
-    const wrapper = mount(App, {
-      attachTo: document.body,
-    });
-    await flushPromises();
-    await chooseLayout(wrapper, 'Vertical Split');
-    const pane = wrapper.findAll('.agent-split-grid__pane')[1]!;
-    await pane.trigger('pointerdown');
-    await flushPromises();
-    await pane.get('[aria-label="Model and reasoning"]').trigger('click');
-    const favorite = pane
-      .findAll('[role="menuitem"]')
-      .find(
-        (item) =>
-          item.text().includes('Test model') && item.text().includes('High'),
-      );
-    expect(favorite).toBeDefined();
-    await favorite!.trigger('click');
-    const editor = pane.get('[contenteditable="true"]');
-    editor.element.textContent = 'Use my favorite';
-    await editor.trigger('input');
-    await pane.get('[aria-label="Send prompt"]').trigger('click');
-    await flushPromises();
-    expect(api.sendPrompt).toHaveBeenCalledWith(
-      second.id,
-      'Use my favorite',
-      expect.objectContaining({ selection: { model: 'test-model', reasoningEffort: 'high' } }),
-    );
   });
 });

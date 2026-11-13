@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
-import { createClaudeConversationReplica, type ClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
+import { applySessionPatch, type SessionSnapshot } from '@korus-dev/multi-agent-sdk/contracts';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { MissionExecutionService } from '../../mission-execution-service';
 import { MissionService } from '../../mission-service';
@@ -11,9 +11,7 @@ import { FileMissionArtifactStore } from '../../mission-artifact-store';
 import { missionStageSkills } from '../../bundled-skills/catalog';
 import { createMission } from '@workspace/core/missions';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
-import { BackendDriverRpc } from '../../driver-rpc';
-import { ClaudeBackendDriver } from '../claude-driver';
-import { ClaudeAgentSdkTransport } from '../agent-sdk-transport';
+import { ProviderDriverRpc } from '../../driver-rpc';
 import { createQueryHarness } from './sdk-query-fixture';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
@@ -31,20 +29,20 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
     const root = await mkdtemp(path.join(tmpdir(), 'korus-mission-handoff-'));
     const snapshot = createInitialSnapshot();
     snapshot.general.claudeCodeEnabled = true;
-    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
-    snapshot.agents[0]!.backend = 'claude';
-    snapshot.agents[0]!.backendDefaults = { kind: 'claude', model: 'sonnet' };
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.agents[0]!.provider = 'claude';
+    snapshot.agents[0]!.providerDefaults = { kind: 'claude', model: 'sonnet' };
     const sdk = createQueryHarness();
     const events: AppBackendEvent[] = [];
-    let conversation: ClaudeConversationReplica | undefined;
+    let conversation: SessionSnapshot | undefined, conversationId: string | null = null;
     let service!: MissionExecutionService;
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), undefined, {
+    const driver = sdk.driver({
       homeDir: root,
       appMcpServerUrl: 'http://mission.test/mcp',
       additionalDeveloperInstructions: agent => service.developerInstructionsForAgent(agent.id),
     });
     const artifactsStore = new FileMissionArtifactStore(async () => root);
-    const rpc = new BackendDriverRpc(new Map([['claude', driver]]));
+    const rpc = new ProviderDriverRpc(new Map([['claude', driver]]));
     service = new MissionExecutionService({
       snapshot, missions: new MissionService(snapshot, async () => {}), publish: async () => {},
       ensureMissionHome: async () => root,
@@ -57,7 +55,7 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       refreshConversationContext: agent => rpc.refreshConversationContext(agent),
       continueStage: async (id, prompt) => {
         const agent = snapshot.agents.find(candidate => candidate.id === id)!;
-        agent.backendSession = (await driver.sendPrompt(agent, prompt)).backendSession;
+        agent.providerSession = (await driver.sendPrompt(agent, prompt)).providerSession;
       },
       startRemediation: async () => { throw new Error('No review in this scenario'); },
       interrupt: agent => driver.interrupt(agent),
@@ -67,11 +65,9 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       const fullEvent = { ...event, seq: events.length + 1, occurredAt: new Date().toISOString() };
       events.push(fullEvent);
       applyMainEventToSnapshot(snapshot, fullEvent);
-      if (event.type === 'claude.conversationSnapshotChanged') conversation = createClaudeConversationReplica(event.payload.snapshot);
-      if (event.type === 'claude.conversationEventReceived') {
-        conversation?.apply(event.payload.event);
-        if (event.payload.event.type === 'turn.completed' && event.agentId) completions.push(service.agentFinished(event.agentId, event.payload.event.turnId));
-      }
+      if (event.type === 'conversation.sessionSnapshot') { conversation = event.payload.snapshot; conversationId = event.payload.conversation; }
+      if (event.type === 'conversation.sessionPatch' && conversation) conversation = applySessionPatch(conversation, event.payload.patch);
+      if (event.type === 'turn.completed') completions.push(service.agentFinished(event.agentId, event.turnId));
     });
     const current = () => snapshot.missions![0]!;
     const sessionId = 'mission-handoff-session';
@@ -88,7 +84,7 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       const sending = driver.sendPrompt(lead, 'Shape the requirements');
       await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
       sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
-      lead.backendSession = (await sending).backendSession;
+      lead.providerSession = (await sending).providerSession;
       await service.writeArtifact(lead.id, { stage: 'requirements', content: '# Requirements\nChoose configuration.' });
       const artifacts = structuredClone(current().artifacts);
       artifacts.requirements = { problem: 'Configuration choices', acceptance: 'The user can settle open choices' };
@@ -124,7 +120,7 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
         expect(lead.status.type).toBe(approvalState);
         expect(sdk.inputs).toHaveLength(1);
         if (existingQuestion) {
-          expect(conversation?.getSnapshot().answeredClientRequestIds).not.toContain('requirements-question');
+          expect(conversation?.state.answeredClientRequestIds).not.toContain('requirements-question');
           await answer('requirements-question');
           await expect(existingQuestion).resolves.toStrictEqual(allowed);
         }
@@ -153,23 +149,24 @@ it.each(['idle', 'working', 'awaitingInput', 'cancelled'] as const)(
       const question = ask('tickets-question', ticketsQueryIndex);
       await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: 'agentRequest.created', payload: { request: expect.objectContaining({ id: 'tickets-question', kind: 'question' }) } })));
       expect(lead.status.type).toBe('awaitingInput');
-      expect(conversation?.getSnapshot()).toMatchObject({ busy: true, sessionId });
-      expect(conversation?.getSnapshot().messages.some(message => message.parts.some(part => (
+      expect(conversation?.state).toMatchObject({ busy: true });
+      expect(conversationId).toBe(sessionId);
+      expect(conversation?.state.messages.some(message => message.parts.some(part => (
         part.type === 'tool' && part.metadata?.requestId === 'tickets-question'
       )))).toBe(true);
       await answer('tickets-question');
       await expect(question).resolves.toStrictEqual(allowed);
       sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false }, ticketsQueryIndex);
       await vi.waitFor(() => expect(lead.status.type).toBe('idle'));
-      expect(conversation?.getSnapshot().answeredClientRequestIds).toContain('tickets-question');
-      expect(conversation?.getSnapshot()).toMatchObject({ busy: false, activeTurnId: null });
+      expect(conversation?.state.answeredClientRequestIds).toContain('tickets-question');
+      expect(conversation?.state).toMatchObject({ busy: false, activeTurnId: null });
     } finally {
       try {
         const evidenceDir = process.env.MISSION_HANDOFF_EVIDENCE_DIR;
         if (evidenceDir) {
           await mkdir(evidenceDir, { recursive: true });
           await writeFile(path.join(evidenceDir, `${scenario}.json`), JSON.stringify({
-            mission: current(), events, conversation: conversation?.getSnapshot(),
+            mission: current(), events, conversation: conversation?.state,
             inputs: sdk.inputs, queries: sdk.options.map(options => ({ resume: options.resume, systemPrompt: options.systemPrompt })),
           }, null, 2));
         }

@@ -1,7 +1,7 @@
-import type { Agent, AgentBackend, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AppSnapshot, BackendPublishedEvent } from '@workspace/core/contracts';
 import type { AgentRequest, AgentRequestResponse } from '@workspace/core/agent-request';
 
-export type AgentRequestOwner = { kind: 'driver'; backend: AgentBackend; remoteConnectionId?: string };
+export type AgentRequestOwner = { kind: 'driver'; provider: HarnessProvider; remoteConnectionId?: string };
 
 export type AgentRequestRegistryOptions = {
   getSnapshot: () => AppSnapshot;
@@ -83,8 +83,8 @@ export class AgentRequestRegistry {
     const ownerAgent = event.agentId
       ? snapshot.agents.find((agent) => agent.id === event.agentId)
       : undefined;
-    const backend = event.backend ?? ownerAgent?.backend;
-    if (!backend) return;
+    const provider = event.provider ?? ownerAgent?.provider;
+    if (!provider) return;
     const key = JSON.stringify([event.agentId, requestId]);
     this.requests.set(key, event.payload.request);
     this.agents.set(key, event.agentId);
@@ -93,7 +93,7 @@ export class AgentRequestRegistry {
       ?? (ownerAgent ? this.options.remoteConnectionIdForAgent(ownerAgent) : null);
     this.owners.set(key, {
       kind: 'driver',
-      backend,
+      provider: provider,
       ...(remoteConnectionId ? { remoteConnectionId } : {}),
     });
   }

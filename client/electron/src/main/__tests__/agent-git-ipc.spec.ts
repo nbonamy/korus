@@ -13,17 +13,17 @@ describe('agent Git IPC', () => {
         handlers.set(registeredChannel, handler);
       }),
     } as unknown as Parameters<typeof registerAgentGitIpcHandlers>[0];
-    const backend = {
+    const provider = {
       request: vi.fn().mockResolvedValue({ target: { type: 'staged' }, diff: 'staged diff', sections: [], summary: { addedLines: 1, removedLines: 0, changedFiles: 1 } }),
     } as unknown as AppBackendClientPort;
-    registerAgentGitIpcHandlers(ipc, () => backend);
+    registerAgentGitIpcHandlers(ipc, () => provider);
 
     const handler = handlers.get(ipcChannels.getAgentGitDiff);
     expect(handler).toBeDefined();
     await expect(handler?.({}, 'agent-1', { type: 'staged' })).resolves.toStrictEqual({
       target: { type: 'staged' }, diff: 'staged diff', sections: [], summary: { addedLines: 1, removedLines: 0, changedFiles: 1 },
     });
-    expect(backend.request).toHaveBeenCalledWith(backendMethods.agentGitDiffGet, {
+    expect(provider.request).toHaveBeenCalledWith(backendMethods.agentGitDiffGet, {
       agentId: 'agent-1',
       target: { type: 'staged' },
     });
@@ -63,10 +63,10 @@ describe('agent Git IPC', () => {
   it('routes cancellation with its generation identity', async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const ipc = { handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler) } as unknown as Parameters<typeof registerAgentGitIpcHandlers>[0];
-    const backend = { request: vi.fn().mockResolvedValue(undefined) } as unknown as ReturnType<Parameters<typeof registerAgentGitIpcHandlers>[1]>;
-    registerAgentGitIpcHandlers(ipc, () => backend);
+    const provider = { request: vi.fn().mockResolvedValue(undefined) } as unknown as ReturnType<Parameters<typeof registerAgentGitIpcHandlers>[1]>;
+    registerAgentGitIpcHandlers(ipc, () => provider);
     await handlers.get(ipcChannels.cancelAgentGitMessage)!({}, 'agent-1', 'generation-1');
-    expect(backend.request).toHaveBeenCalledWith(backendMethods.agentGitMessageCancel, { agentId: 'agent-1', generationId: 'generation-1' });
+    expect(provider.request).toHaveBeenCalledWith(backendMethods.agentGitMessageCancel, { agentId: 'agent-1', generationId: 'generation-1' });
   });
 
   it.each([
@@ -95,15 +95,15 @@ describe('agent Git IPC', () => {
         handlers.set(registeredChannel, handler);
       }),
     } as unknown as Parameters<typeof registerAgentGitIpcHandlers>[0];
-    const backend = {
+    const provider = {
       request: vi.fn().mockResolvedValue(result ?? true),
     } as unknown as AppBackendClientPort;
-    registerAgentGitIpcHandlers(ipc, () => backend);
+    registerAgentGitIpcHandlers(ipc, () => provider);
 
     const handler = handlers.get(channel);
     expect(handler).toBeDefined();
     await expect(handler?.({}, 'agent-1', ...inputArguments)).resolves.toBe(result);
-    expect(backend.request).toHaveBeenCalledWith(method, {
+    expect(provider.request).toHaveBeenCalledWith(method, {
       agentId: 'agent-1',
       ...(inputArguments.length > 0 ? { input: inputArguments[0] } : {}),
     });
@@ -119,12 +119,12 @@ describe('agent Git IPC', () => {
         handlers.set(registeredChannel, handler);
       }),
     } as unknown as Parameters<typeof registerAgentGitIpcHandlers>[0];
-    const backend = {
+    const provider = {
       request: vi.fn().mockRejectedValue(Object.assign(new Error('Commit your work first.'), {
         data: { kind: 'appError', code: 'git.pullRequestChangesRequired' },
       })),
     } as unknown as AppBackendClientPort;
-    registerAgentGitIpcHandlers(ipc, () => backend);
+    registerAgentGitIpcHandlers(ipc, () => provider);
 
     const handler = handlers.get(channel);
     const input = channel === ipcChannels.generateAgentGitMessage

@@ -21,7 +21,7 @@ function setup(auto = false) {
   const cancel = vi.fn().mockResolvedValue(undefined);
   const updateSettings = vi.fn(async (input: UpdateSettingsInput) => { Object.assign(snapshot.general, input.general); return snapshot; });
   stubElectronTestWindow({ app: { generateAgentGitMessage: generate, cancelAgentGitMessage: cancel, saveRepositoryVisualization: save, updateSettings } });
-  const wrapper = mount(GitReviewPanel, { props: { agent: { id: 'a', backend: 'claude', folder: '/repo' } as never,
+  const wrapper = mount(GitReviewPanel, { props: { agent: { id: 'a', provider: 'claude', folder: '/repo' } as never,
     panel: { kind: 'gitDiff', title: 'Changes', diff, state: 'idle' } }, global: {
       provide: { [diffVizSettingsKey as symbol]: () => snapshot.general }, stubs: { GitDiffVizCanvas: canvas, GitDiffVizMermaid: canvas },
     } });

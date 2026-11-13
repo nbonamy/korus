@@ -19,6 +19,49 @@ const content: DesignContent = {
 let directory: string | undefined;
 afterEach(async () => { if (directory) await rm(directory, { recursive: true, force: true }); directory = undefined; });
 
+const withLogo = (logo: object, css?: string): DesignContent => ({
+  ...content, artboards: [{ ...content.artboards[0]!, ...(css ? { css } : {}), root: { ...content.artboards[0]!.root, children: [...content.artboards[0]!.root.children!, logo as never] } }],
+});
+it('starts a new design after the current one is deleted', async () => {
+  const snapshot = createInitialSnapshot();
+  const agentId = snapshot.agents[0].id;
+  const service = new DesignService({ snapshot, persist: async () => undefined, publish: () => undefined });
+  const run = (request: DesignRequest) => service.execute(agentId, request);
+  await run({ type: 'open' });
+  await run({ type: 'create', content });
+  await run({ type: 'delete' });
+  expect(snapshot.agents[0].designWorkspaces).toBeUndefined();
+  await run({ type: 'open' });
+  const created = await run({ type: 'create', content: { ...content, title: 'Second' } });
+  expect(created.workspace.document).toMatchObject({ revision: 1, content: { title: 'Second' } });
+});
+
+it('keeps several designs side by side, each addressed by its id', async () => {
+  const snapshot = createInitialSnapshot();
+  const agentId = snapshot.agents[0].id;
+  const service = new DesignService({ snapshot, persist: async () => undefined, publish: () => undefined });
+  const run = (request: DesignRequest) => service.execute(agentId, request);
+  await run({ type: 'open' });
+  const first = (await run({ type: 'create', content })).workspace.document!.id;
+  const second = (await run({ type: 'create', content: { ...content, title: 'Second' } })).workspace.document!.id;
+  expect((await run({ type: 'read' })).designs).toStrictEqual([{ id: first, title: 'Launch', revision: 1 }, { id: second, title: 'Second', revision: 1 }]);
+  const edited = await run({ type: 'edit', designId: second, expectedRevision: 1, edits: [{ type: 'text', nodeId: 'heading', text: 'Changed' }] });
+  expect(edited.workspace.document).toMatchObject({ id: second, revision: 2 });
+  await run({ type: 'delete', designId: first });
+  expect((await run({ type: 'read' })).designs).toStrictEqual([{ id: second, title: 'Second', revision: 2 }]);
+});
+
+it('names the path and the rule of a rejected design', async () => {
+  const snapshot = createInitialSnapshot();
+  const agentId = snapshot.agents[0].id;
+  const service = new DesignService({ snapshot, persist: async () => undefined, publish: () => undefined });
+  const run = (request: DesignRequest) => service.execute(agentId, request);
+  await run({ type: 'open' });
+  await expect(run({ type: 'create', content: withLogo({ id: 'logo', tag: 'span' }, '.mark { background: url(a.png); }') })).rejects.toThrow('artboards[0].css: url() is not allowed');
+  await expect(run({ type: 'create', content: withLogo({ id: 'logo', tag: 'script' }) })).rejects.toThrow('artboards[0].root.children[2] (logo): tag "script" is not allowed');
+  await expect(run({ type: 'create', content: withLogo({ id: 'logo', tag: 'img', attributes: { src: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' } }) })).rejects.toThrow('artboards[0].root.children[2] (logo).attributes.src: only raster data URIs are allowed');
+});
+
 // Generated controls must mutate authored styles without losing manual edits;
 // invalid values, stale revisions and copied/removed targets are owner boundaries.
 it('preserves generated tweaks, manual content and recovery across agent edits and reload', async () => {
@@ -118,7 +161,7 @@ it('persists prototype actions and maintains their targets through copy, removal
   const saved = (await run({ type: 'read' })).workspace;
   expect(designNodes(saved.document!.content).find(node => node.id === 'cta')!.interaction).toBeUndefined();
   await edit([{ type: 'interaction', nodeId: 'cta', interaction: null }]);
-  expect(designNodes((await store.load()).agents[0].designWorkspace!.document!.content).find(node => node.id === 'cta')!.interaction).toBeUndefined();
+  expect(designNodes((await store.load()).agents[0].designWorkspaces![0]!.document!.content).find(node => node.id === 'cta')!.interaction).toBeUndefined();
 });
 
 // Structural editing can lose authored identity, break target references or create
@@ -188,7 +231,7 @@ it('edits layers without losing manual content, linked targets or recovery acros
   expect(nodes.find(node => node.id === 'toggle')!.toggleTargetId).toBeUndefined();
   expect(nodes.find(node => node.id === copiedToggle.id)!.toggleTargetId).toBe(copiedDetails.id);
   expect(saved.document!.content.comments[0].nodeId).toBe('heading');
-  expect((await store.load()).agents[0].designWorkspace!.document!.content).toStrictEqual(saved.document!.content);
+  expect((await store.load()).agents[0].designWorkspaces![0]!.document!.content).toStrictEqual(saved.document!.content);
 });
 
 // Owner-boundary regression: manual edits, targeted agent edits and recovery must
@@ -198,7 +241,7 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
   const store = new AppStateStore(directory);
   const snapshot = createInitialSnapshot();
   const agentId = snapshot.agents[0].id;
-  snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'original' };
+  snapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'original' };
   let service = new DesignService({ capture: async () => 'data:image/png;base64,YQ==', snapshot, persist: () => store.save(snapshot), publish: () => undefined });
   const run = (request: DesignRequest) => service.execute(agentId, request);
   await run({ type: 'open' });
@@ -235,16 +278,15 @@ it('preserves user changes through agent edits, reload, undo, checkpoint recover
   expect(exported.handoff).toContain('Keep this headline');
   expect(exported.html).not.toContain('Another version');
   await writeFile(path.join(directory, 'acceptance.html'), exported.html!);
-  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
-  await expect(run({ type: 'create', content })).rejects.toThrow('already');
-  delete reloaded.agents[0].backendSession;
+  expect((await store.load()).agents[0].designWorkspaces![0]).toStrictEqual(exported.workspace);
+  delete reloaded.agents[0].providerSession;
   await expect(run({ type: 'read' })).resolves.toMatchObject({ workspace: { document: { revision: 6 } } });
   const resumed = await run({ type: 'comment', expectedRevision: 6, nodeId: 'heading', text: 'Continue from my saved design.' });
   expect(resumed.workspace.conversationRef).toBeNull();
-  reloaded.agents[0].backendSession = { kind: 'codex', threadId: 'recovered-session' };
+  reloaded.agents[0].providerSession = { kind: 'codex', conversationId: 'recovered-session' };
   await run({ type: 'edit', expectedRevision: 7, edits: [{ type: 'text', nodeId: 'cta', text: 'Recovered agent edit' }] });
   expect((await run({ type: 'read' })).workspace.document!.content.artboards[0].root.children![0].text).toBe('Written by me');
-  reloaded.agents[0].backendSession = { kind: 'codex', threadId: 'different' };
+  reloaded.agents[0].providerSession = { kind: 'codex', conversationId: 'different' };
   await expect(run({ type: 'edit', expectedRevision: 7, edits: [{ type: 'text', nodeId: 'cta', text: 'Wrong conversation' }] })).rejects.toThrow('conversation');
 });
 
@@ -345,7 +387,7 @@ it('branches independent artboards, retains legacy metadata and recovers explora
   expect(exported.html).not.toContain('Different direction');
   expect(exported.handoff).toContain('Editorial hierarchy');
   expect(exported.handoff).not.toContain('Chosen direction:');
-  expect((await store.load()).agents[0].designWorkspace).toStrictEqual(exported.workspace);
+  expect((await store.load()).agents[0].designWorkspaces![0]).toStrictEqual(exported.workspace);
 });
 
 // The client owns undo and redo; the daemon only accepts the earlier content it is handed.
