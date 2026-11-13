@@ -23,7 +23,7 @@
       </span>
     </el-option>
   </el-select>
-  <button v-else-if="choices.length === 0" class="app-button app-button--tertiary" type="button" @click="connectEngine">{{ t('engineConnection.required') }}</button>
+  <button v-else-if="choices.length === 0" class="app-button app-button--tertiary" type="button" @click="connectEngine()">{{ t('engineConnection.required') }}</button>
 </template>
 
 <script setup lang="ts">

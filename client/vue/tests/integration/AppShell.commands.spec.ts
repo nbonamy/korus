@@ -240,6 +240,27 @@ describe('AppShell dialogs and commands', () => {
     wrapper.unmount();
   });
 
+  it('offers to connect the engine of an agent whose connection dropped and opens Settings from it', async () => {
+    let command: (value: AppCommand) => void = () => {};
+    window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }), onEvent: vi.fn(() => vi.fn()) } as Partial<AppApi> as AppApi;
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.provider = 'claude';
+    snapshot.agents[0]!.providerDefaults = { kind: 'claude' };
+    snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
+    const providerLabel = 'Claude Code';
+    const wrapper = mountRealShell({ snapshot, realConversationPane: true });
+    try {
+      await flushPromises();
+      command({ type: 'debug-disconnected-engine', enabled: true });
+      await flushPromises();
+      const connect = wrapper.findAll('button').find(button => button.text().includes('Connect or enable an engine'));
+      await connect!.trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.settings-view').exists()).toBe(true);
+      expect(wrapper.get('.engine-hero').text()).toContain(providerLabel);
+    } finally { wrapper.unmount(); }
+  });
+
   it.each([
     { provider: 'codex' as const, command: 'delegate' },
     { provider: 'claude' as const, command: 'worktree' },

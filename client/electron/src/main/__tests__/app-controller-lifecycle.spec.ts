@@ -672,6 +672,7 @@ describe('controller desktop lifecycle', () => {
 
   it.each([
     { get: 'getDebugMissingEngines', set: 'setDebugMissingEngines', type: 'debug-missing-engines' },
+    { get: 'getDebugDisconnectedEngine', set: 'setDebugDisconnectedEngine', type: 'debug-disconnected-engine' },
     { get: 'getDebugProviderUpgrades', set: 'setDebugProviderUpgrades', type: 'debug-provider-upgrades' },
     { get: 'getDebugReviewUncommitted', set: 'setDebugReviewUncommitted', type: 'debug-review-uncommitted' },
   ] as const)('keeps $type client-only, resets it on reload, and rejects it in packaged builds', ({ get, set, type }) => {

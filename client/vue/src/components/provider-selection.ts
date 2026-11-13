@@ -9,7 +9,7 @@ export const providerChoicesKey: InjectionKey<ComputedRef<HarnessProvider[]>> = 
 type ProviderSwitch = ReturnType<typeof provideProviderSwitch>;
 const providerSwitchKey: InjectionKey<ProviderSwitch> = Symbol('backendSwitch');
 export const backendSnapshotKey: InjectionKey<() => AppSnapshot> = Symbol('backendSnapshot');
-const connectEngineKey: InjectionKey<() => void> = Symbol('connectEngine');
+const connectEngineKey: InjectionKey<(provider?: HarnessProvider) => void> = Symbol('connectEngine');
 const backendHostKey: InjectionKey<() => { host: string; connections: ProviderConnection[] } | null> = Symbol('backendHost');
 
 export function provideProviderSwitch(update: (id: string, provider: HarnessProvider) => Promise<void>) {
@@ -33,13 +33,13 @@ export function useProviderSwitch() {
   return inject(providerSwitchKey, undefined);
 }
 
-export function provideProviderChoices(snapshot: () => AppSnapshot, connect: () => void = () => undefined): void {
+export function provideProviderChoices(snapshot: () => AppSnapshot, connect: (provider?: HarnessProvider) => void = () => undefined): void {
   provide(backendSnapshotKey, snapshot);
-  provide(connectEngineKey, connect);
+  provide(connectEngineKey, provider => connect(provider));
   provide(providerChoicesKey, computed(() => enabledAgentProviders({ providerConnections: providerConnectionsForHost(snapshot()) })));
 }
 
-export function useConnectEngine(): () => void {
+export function useConnectEngine(): (provider?: HarnessProvider) => void {
   return inject(connectEngineKey, () => undefined);
 }
 

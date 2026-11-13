@@ -724,6 +724,7 @@ export type AppCommand =
   | { type: 'debug-open-visualize' }
   | { type: 'debug-open-markdown' }
   | { type: 'debug-missing-engines'; enabled: boolean }
+  | { type: 'debug-disconnected-engine'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
   | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' | 'conflicts' }

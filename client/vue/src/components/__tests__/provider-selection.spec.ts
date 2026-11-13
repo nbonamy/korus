@@ -81,3 +81,15 @@ describe('host-scoped manual engine selection', () => {
     expect(model.value).toBe(backend);
   });
 });
+
+describe('connecting an engine from the selector', () => {
+  it('opens settings without handing the click to the callback', async () => {
+    const connect = vi.fn();
+    const wrapper = mount(defineComponent({ setup() {
+      provideProviderChoices(() => createEmptySnapshot(), connect);
+      return () => h(ProviderSelector);
+    } }));
+    await wrapper.find('button').trigger('click');
+    expect(connect).toHaveBeenCalledWith(undefined);
+  });
+});

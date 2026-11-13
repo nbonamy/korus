@@ -158,6 +158,10 @@ const settingsDestinations: readonly SettingsDestination[] = [
     aliases: "ssh remote hosts servers",
   },
 ];
+export function settingsTabForProvider(provider: HarnessProvider): SettingsTab | undefined {
+  return settingsDestinations.find(destination => destination.provider === provider)?.id;
+}
+
 export function availableSettingsDestinations(context: {
   embeddedBrowser?: boolean;
   appshots: boolean;

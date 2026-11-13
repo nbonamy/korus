@@ -181,6 +181,17 @@ describe('app menu', () => {
     expect(item().checked).toBe(false);
   });
 
+  it('shows the disconnected-engine preview as a checked toggle in UI Previews', () => {
+    let enabled = false;
+    const cb = callbacks();
+    cb.getDebugDisconnectedEngine = () => enabled;
+    cb.setDebugDisconnectedEngine = value => { enabled = value; };
+    const item = () => nestedMenuItem(buildAppMenuTemplate(cb, { debugMode: true }), 'Debug', 'UI Previews', 'Disconnected Agent Engine')!;
+    expect(item()).toMatchObject({ type: 'checkbox', checked: false, enabled: true });
+    item().click!({ checked: true } as never, undefined, {} as never);
+    expect(item().checked).toBe(true);
+  });
+
   it('shows upgrade simulation as a checked toggle in Backends', () => {
     let enabled = false;
     const cb = callbacks();
@@ -598,6 +609,7 @@ describe('app menu', () => {
       'Markdown',
       'Image Annotation',
       'GitHub Star Reminder',
+      'Disconnected Agent Engine',
       'Worktree Initialization',
       'Worktree Initialization Indicator',
       'Pull Request Progress',
@@ -625,6 +637,7 @@ describe('app menu', () => {
       'Markdown',
       'Image Annotation',
       'GitHub Star Reminder',
+      'Disconnected Agent Engine',
       'separator',
       'Worktree Initialization',
       'Worktree Initialization Indicator',

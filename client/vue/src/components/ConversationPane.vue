@@ -124,7 +124,7 @@
         </div>
       </template>
       <template #before-composer>
-        <button v-if="agent && !providerChoices.includes(agent.provider)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
+        <button v-if="agent && !providerChoices.includes(agent.provider)" class="app-button app-button--tertiary" type="button" @click="connectEngine(agent.provider)">
           {{ t('engineConnection.required') }}
         </button>
         <div v-if="draftPickerOpen" class="conversation-pane__draft-anchor">

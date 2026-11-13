@@ -49,6 +49,7 @@ type AppShellCommandOptions = {
     setDebugMissingEngines: (enabled: boolean) => void;
     setDebugProviderUpgrades: (enabled: boolean) => void;
     setDebugReviewUncommitted: (enabled: boolean) => void;
+    setDebugDisconnectedEngine: (enabled: boolean) => void;
     duplicateAgent: (agentId: string) => void;
     editAgent: (agentId: string) => void;
     forkAgent: (agentId: string) => void;
@@ -248,6 +249,10 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
     if (command.type === 'debug-provider-upgrades') {
       options.actions.setDebugProviderUpgrades(command.enabled);
+      return;
+    }
+    if (command.type === 'debug-disconnected-engine') {
+      options.actions.setDebugDisconnectedEngine(command.enabled);
       return;
     }
     if (command.type === 'debug-review-uncommitted') {

@@ -38,6 +38,8 @@ export type AppMenuCallbacks = {
   injectDebugCodeReview?: (scenario: DebugCodeReviewScenario) => void;
   isDebugThreadFlagSet?: (id: ThreadFlagId) => boolean;
   setDebugThreadFlag?: (id: ThreadFlagId, value: boolean) => void;
+  getDebugDisconnectedEngine?: () => boolean;
+  setDebugDisconnectedEngine?: (enabled: boolean) => void;
   getDebugMissingEngines?: () => boolean;
   setDebugMissingEngines?: (enabled: boolean) => void;
   getDebugProviderUpgrades?: () => boolean;
@@ -50,7 +52,7 @@ export type AppMenuCallbacks = {
   toggleDeveloperTools(): void;
 };
 
-type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'showWorkspace' | 'listWindows' | 'focusWindow' | 'cycleWindow' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
+type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'restartBackend' | 'checkForUpdates' | 'installUpdate' | 'capturePerformanceProfile' | 'newWindow' | 'showWorkspace' | 'listWindows' | 'focusWindow' | 'cycleWindow' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugDisconnectedEngine' | 'setDebugDisconnectedEngine' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
 const editMenuId = 'app-edit-menu';
 
 /** The application menu is shared by every window, so its commands go to whichever window is current. */
@@ -92,6 +94,8 @@ export function installAppMenu(host: AppMenuWindow, options: AppMenuInstallOptio
     injectDebugCodeReview: options.injectDebugCodeReview,
     isDebugThreadFlagSet: options.isDebugThreadFlagSet,
     setDebugThreadFlag: options.setDebugThreadFlag,
+    getDebugDisconnectedEngine: options.getDebugDisconnectedEngine,
+    setDebugDisconnectedEngine: options.setDebugDisconnectedEngine,
     getDebugMissingEngines: options.getDebugMissingEngines,
     setDebugMissingEngines: options.setDebugMissingEngines,
     getDebugProviderUpgrades: options.getDebugProviderUpgrades,
@@ -371,6 +375,13 @@ function buildDebugUiPreviews(callbacks: AppMenuCallbacks): MenuItemConstructorO
     {
       label: 'GitHub Star Reminder',
       click: () => callbacks.sendAppCommand({ type: 'debug-github-star-reminder' }),
+    },
+    {
+      label: 'Disconnected Agent Engine',
+      type: 'checkbox',
+      checked: callbacks.getDebugDisconnectedEngine?.() ?? false,
+      enabled: Boolean(callbacks.setDebugDisconnectedEngine),
+      click: item => callbacks.setDebugDisconnectedEngine?.(item.checked),
     },
     { type: 'separator' },
     {

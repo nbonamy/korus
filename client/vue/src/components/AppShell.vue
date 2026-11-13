@@ -745,7 +745,7 @@ import SettingsView from './SettingsView.vue';
 import { telemetryNoticeReadyKey } from './use-telemetry-consent';
 import FirstRunOnboardingGate from './FirstRunOnboardingGate.vue';
 import CodexResourceSharingMigrationDialog from './CodexResourceSharingMigrationDialog.vue';
-import type { SettingsTab } from './settings-tabs';
+import { settingsTabForProvider, type SettingsTab } from './settings-tabs';
 import {
   type ConversationLink,
   type ConversationPaneActions,
@@ -1143,7 +1143,7 @@ provide(computerUseLockKey, {
   setHold: hold => props.updateSettings({ general: { plugins: { computerUseLockHold: hold } } }).catch(error => { ElMessage.error(localizedErrorMessage(error, t)); }),
 });
 provide(generalPreferencesKey, createGeneralPreferences(() => props.snapshot.general, general => props.updateSettings({ general })));
-provideProviderChoices(() => props.snapshot, openSettings);
+provideProviderChoices(() => debugDisconnectedEngine.value ? withDisconnectedAgentEngine(props.snapshot) : props.snapshot, provider => openSettings(provider && settingsTabForProvider(provider)));
 const reviewSettings = useCodeReviewSettings();
 provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.snapshot.general.codeReviewDefaults });
 provide(diffVizSettingsKey, () => props.snapshot.general);
@@ -1554,6 +1554,11 @@ const telemetryNoticeReady = computed(() => {
 provide(telemetryNoticeReadyKey, telemetryNoticeReady);
 // Debug previews project display state only; onboarding and live agents retain real connections.
 const debugMissingEngines = ref(false);
+const debugDisconnectedEngine = ref(false);
+function withDisconnectedAgentEngine(snapshot: AppSnapshot): AppSnapshot {
+  const provider = currentAgent.value?.provider;
+  return { ...snapshot, providerConnections: snapshot.providerConnections?.map(engine => engine.provider === provider ? { ...engine, connected: false } : engine) };
+}
 const debugProviderUpgrades = ref(false);
 provide(providerUpdatePreviewKey, debugProviderUpgrades);
 const debugReviewUncommitted = ref(false);
@@ -2562,6 +2567,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     openDebugImageAnnotation,
     openDebugOperationProgress,
     setDebugMissingEngines: enabled => { debugMissingEngines.value = enabled; },
+    setDebugDisconnectedEngine: enabled => { debugDisconnectedEngine.value = enabled; },
     setDebugProviderUpgrades: enabled => { debugProviderUpgrades.value = enabled; },
     setDebugReviewUncommitted: enabled => { debugReviewUncommitted.value = enabled; },
     openFileQuick: () => { fileQuickOpenVisible.value = true; },

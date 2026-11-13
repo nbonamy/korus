@@ -61,7 +61,7 @@ type SpokenAnnouncementQueuePort = Pick<SpokenAnnouncementQueue, 'dispose' | 'qu
 type ClientEventInput<Event extends MainToRendererEvent = MainToRendererEvent> = Event extends MainToRendererEvent
   ? Omit<Event, 'seq' | 'source' | 'occurredAt'>
   : never;
-type DebugFlags = { missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
+type DebugFlags = { disconnectedEngine?: boolean; missingEngines?: boolean; providerUpgrades?: boolean; reviewUncommitted?: boolean };
 type PendingBrowserOpen = {
   agentId: string;
   browserId: string;
@@ -2002,7 +2002,7 @@ export class AppController {
     });
   }
 
-  private debugMenuOptions(): Pick<AppMenuCallbacks, 'restartBackend' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
+  private debugMenuOptions(): Pick<AppMenuCallbacks, 'restartBackend' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugDisconnectedEngine' | 'setDebugDisconnectedEngine' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'> {
     return {
       restartBackend: () => {
         if (!this.debugBackendRestartPending) void this.requestDebugBackendRestart().catch(error => this.reportDebugBackendRestartError(error));
@@ -2021,6 +2021,11 @@ export class AppController {
       setDebugMissingEngines: enabled => {
         if (app.isPackaged) return;
         this.setDebugFlag('missingEngines', 'debug-missing-engines', enabled);
+      },
+      getDebugDisconnectedEngine: () => this.currentDebugFlags().disconnectedEngine === true,
+      setDebugDisconnectedEngine: enabled => {
+        if (app.isPackaged) return;
+        this.setDebugFlag('disconnectedEngine', 'debug-disconnected-engine', enabled);
       },
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
@@ -2081,7 +2086,7 @@ export class AppController {
     return (window && this.debugFlags.get(window)) || {};
   }
 
-  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines', enabled: boolean): void {
+  private setDebugFlag(flag: keyof DebugFlags, type: 'debug-provider-upgrades' | 'debug-review-uncommitted' | 'debug-missing-engines' | 'debug-disconnected-engine', enabled: boolean): void {
     const window = this.windows.focused();
     if (!window) return;
     this.debugFlags.set(window, { ...this.debugFlags.get(window), [flag]: enabled });
