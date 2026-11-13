@@ -188,7 +188,7 @@ describe('AgentSidebar sessions', () => {
     expect(document.body.textContent).toContain('Organize agents by');
     const menu = document.body.querySelector('[role="menu"][aria-label="Organize agents by"]')!;
     const options = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
-    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Activity', 'Repository', 'Worktree']);
+    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Activity', 'Project', 'Worktree']);
     expect(options.every(option => option.querySelector('svg'))).toBe(true);
     expect(options[0]!.querySelectorAll('svg')).toHaveLength(1);
     expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
@@ -208,7 +208,7 @@ describe('AgentSidebar sessions', () => {
     expect(view.attributes('aria-expanded')).toBe('false');
     await view.trigger('click');
     await vi.waitFor(() => expect(view.attributes('aria-expanded')).toBe('true'));
-    [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'Repository')!.click();
+    [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'Project')!.click();
     await flushPromises();
     await wrapper.setProps({ teamName: 'Research' });
     expect(wrapper.get('.agent-sidebar__header strong').text()).toBe('Research');
@@ -495,12 +495,12 @@ describe('AgentSidebar sessions', () => {
       expect(wrapper.find('button[aria-label="Sort idle agents"]').exists()).toBe(false);
       await choose('Agent view', 'Activity');
       expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);
-      await choose('Sort idle agents', 'Repository');
+      await choose('Sort idle agents', 'Project');
       expect(idleIds()).toStrictEqual(['old', 'middle', 'latest']);
       expect(wrapper.get('[data-activity-group="working"] [data-reorder-id]').attributes('data-reorder-id')).toBe('working');
       await choose('Sort idle agents', 'Recent activity');
       expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);
-      await choose('Sort idle agents', 'Repository');
+      await choose('Sort idle agents', 'Project');
       await wrapper.setProps({ teamId: 'idle-two' });
       await choose('Agent view', 'Activity');
       expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);

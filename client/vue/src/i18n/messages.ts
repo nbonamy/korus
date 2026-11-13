@@ -643,7 +643,7 @@ export const messages = {
       sortIdle: 'Sort idle agents',
       sortIdleBy: 'Sort idle agents by',
       recentActivity: 'Recent activity',
-      repository: 'Repository',
+      repository: 'Project',
       activity: 'Activity',
       worktree: 'Worktree',
       activityGroups: { attention: 'Needs input', recent: 'Done', working: 'Working', idle: 'Idle' },
