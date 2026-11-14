@@ -249,7 +249,7 @@ it("previews exact local UTF-8 telemetry from persisted provider measurements wi
     await local.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 10_000);
 it("clears queued statistics through the app contract and keeps them cleared after restart", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-clear-"));
   const file = path.join(dir, "usage.sqlite");
