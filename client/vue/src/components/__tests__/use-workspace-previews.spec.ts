@@ -78,6 +78,13 @@ describe('workspace diff queries', () => {
     expect(state.workspace.workspaceFor(state.snapshot.activeAgentId).gitReviewPanel).toBeNull();
   });
 
+  it('keeps the files left out of a diff as too large with the loaded review', async () => {
+    const omittedFiles = [{ path: 'generated.json', addedLines: 10_000, removedLines: 0 }];
+    const state = setup(vi.fn().mockResolvedValue({ ...result, omittedFiles }));
+    await state.previews.openAgentGitDiff(state.agent.id);
+    expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).toMatchObject({ state: 'idle', omittedFiles });
+  });
+
   it('ignores an older request failure after a newer target has loaded', async () => {
     let reject!: (error: Error) => void;
     const query = vi.fn<() => Promise<AgentGitDiff>>()

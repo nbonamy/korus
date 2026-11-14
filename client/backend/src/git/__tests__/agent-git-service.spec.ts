@@ -396,6 +396,32 @@ describe('agent git service parsers', () => {
     expect(runGit).toHaveBeenCalledWith('/new-repo', ['diff', '--no-ext-diff', '--']);
   });
 
+  it('keeps only the header of a huge untracked file and lists it as omitted with its real line counts', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'git-huge-file-'));
+    const exec = promisify(execFile);
+    const run = (args: string[]) => exec('git', args, { cwd: folder });
+    try {
+      await run(['init', '--initial-branch=main']);
+      await writeFile(join(folder, 'main.ts'), 'old\n');
+      await run(['add', '.']);
+      await run(['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture']);
+      await writeFile(join(folder, 'main.ts'), 'new\n');
+      await writeFile(join(folder, 'generated.json'), Array.from({ length: 10_000 }, (_, index) => `{"row":${index}}`).join('\n') + '\n');
+
+      const result = await new AgentGitService().diff(folder, { type: 'uncommitted' });
+
+      expect(result.summary).toMatchObject({ changedFiles: 2, addedLines: 10_001, removedLines: 1 });
+      expect(result.diff).toContain('+new');
+      expect(result.diff).toContain('+++ b/generated.json');
+      expect(result.omittedFiles).toStrictEqual([{ path: 'generated.json', addedLines: 10_000, removedLines: 0 }]);
+      expect(result.diff).not.toContain('@@ -0,0');
+      expect(result.diff).not.toContain('"row":9999');
+      expect(result.sections.map(section => section.diff).join('')).not.toContain('"row":9999');
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
   it('appends diffs for untracked files', async () => {
     const runGit = vi.fn(async (_folder: string, args: string[]) => {
       if (args[0] === 'ls-files') {

@@ -35,6 +35,8 @@ export type SidePanelGitDiffState = SidePanelBaseState & {
   target?: import('@workspace/core/contracts').AgentGitDiffTarget;
   summary?: import('@workspace/core/contracts').AgentGitDiffSummary;
   diff: string;
+  /** Files whose patch was left out as too large; the diff keeps only their headers. */
+  omittedFiles?: import('@workspace/core/contracts').AgentGitDiffOmittedFile[];
   sections?: AgentGitDiffSection[];
   /** Set when the diff was opened from a file type row: that group alone starts expanded. */
   focusKind?: import('@workspace/core/file-kind').FileKind;

@@ -262,6 +262,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
         ...gitReviewPanel(agent.folder, 'idle', null, result.target),
         ...focus,
         diff: result.diff,
+        ...(result.omittedFiles ? { omittedFiles: result.omittedFiles } : {}),
         summary: result.summary,
         sections: result.sections,
       };

@@ -46,14 +46,14 @@
         <RefreshIcon aria-hidden="true" />
       </button>
     </header>
-    <GitDiffPreviewPanel :diff="diff" :state="state" :error="error" :group-by-kind="groupByKind" />
+    <GitDiffPreviewPanel :diff="diff" :omitted-files="omittedFiles" :state="state" :error="error" :group-by-kind="groupByKind" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentGitDiff, AgentGitDiffTarget, AgentGitStatus, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, AgentGitDiff, AgentGitDiffOmittedFile, AgentGitDiffTarget, AgentGitStatus, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
 import { FolderIcon, RefreshIcon } from '../shared/icons/app-icons';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
@@ -84,6 +84,7 @@ const target = ref<'branch' | 'uncommitted'>('branch');
 const groupByKind = ref(true);
 const selectedRepositoryPath = ref('');
 const diff = ref('');
+const omittedFiles = ref<AgentGitDiffOmittedFile[]>([]);
 const state = ref<'idle' | 'loading' | 'error'>('idle');
 const error = ref<string | null>(null);
 let request = 0;
@@ -125,6 +126,7 @@ async function refresh(): Promise<void> {
   const repository = selectedRepository.value;
   if (!repository?.agent) {
     diff.value = '';
+    omittedFiles.value = [];
     error.value = t('missions.reviewRepositoryAgentUnavailable');
     state.value = 'error';
     return;
@@ -140,6 +142,7 @@ async function refresh(): Promise<void> {
     );
     if (current !== request) return;
     diff.value = result.diff;
+    omittedFiles.value = result.omittedFiles ?? [];
     state.value = 'idle';
   } catch (cause) {
     if (current !== request) return;

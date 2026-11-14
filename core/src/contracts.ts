@@ -114,6 +114,7 @@ export type {
   AgentGitBranchInput,
   AgentGitCommitInput,
   AgentGitDiff,
+  AgentGitDiffOmittedFile,
   AgentGitCommitSummary,
   AgentGitDiffCatalog,
   AgentGitDiffSummary,

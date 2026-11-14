@@ -60,11 +60,19 @@ export type AgentGitDiffSection = {
   diff: string;
 };
 
+/** A file whose patch was left out of `diff` as too large to show; its header stays, with git's own counts here. */
+export type AgentGitDiffOmittedFile = {
+  path: string;
+  addedLines: number;
+  removedLines: number;
+};
+
 export type AgentGitDiff = {
   target: AgentGitDiffTarget;
   summary: AgentGitDiffSummary;
   diff: string;
   sections: AgentGitDiffSection[];
+  omittedFiles?: AgentGitDiffOmittedFile[];
 };
 
 export type AgentGitFile = {

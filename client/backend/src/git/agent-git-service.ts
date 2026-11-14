@@ -1,4 +1,5 @@
 import { realpath, rm } from 'node:fs/promises';
+import { elideLargePatches } from './large-patch';
 import { fileRepositoryKey, gitRepositoryKey } from '@workspace/core/repository-key';
 import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
 import { summarizeLockfiles } from '@workspace/core/diff-lockfiles';
@@ -158,6 +159,17 @@ export class AgentGitService {
   }
 
   async diff(folder: string, target: Exclude<AgentGitDiffTarget, { type: 'turn' }> = { type: 'uncommitted' }): Promise<AgentGitDiff> {
+    const result = await this.readDiff(folder, target);
+    const { diff, omitted } = elideLargePatches(result.diff);
+    return {
+      ...result,
+      diff,
+      sections: result.sections.map(section => ({ ...section, diff: elideLargePatches(section.diff).diff })),
+      ...(omitted.length ? { omittedFiles: omitted } : {}),
+    };
+  }
+
+  private async readDiff(folder: string, target: Exclude<AgentGitDiffTarget, { type: 'turn' }>): Promise<AgentGitDiff> {
     if (target.type === 'branch') {
       const workflow = await this.workflow(folder);
       if (!workflow.branch) throw new Error('Check out a branch before viewing branch changes.');

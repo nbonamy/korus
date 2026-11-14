@@ -5,7 +5,7 @@
   </DiffPreviewPanel>
 </template>
 <script setup lang="ts">
-import { DiffPreviewPanel, type CodeAnnotationInput } from '@korus-dev/agent-ui-sdk';
+import { DiffPreviewPanel, type CodeAnnotationInput, type DiffOmittedFile } from '@korus-dev/agent-ui-sdk';
 import { translate } from '../i18n';
 import { computed, nextTick, ref } from 'vue';
 import { useGeneralPreferences } from '../general-preferences';
@@ -13,6 +13,8 @@ import type { FileKind } from '@workspace/core/file-kind';
 import GitDiffTreemap from './GitDiffTreemap.vue';
 const props = withDefaults(defineProps<{
   diff: string;
+  /** Files whose patch is a header only because it was too large to load. */
+  omittedFiles?: readonly DiffOmittedFile[];
   view?: 'diff' | 'map';
   collapseAllSignal?: number;
   error?: string | null;
