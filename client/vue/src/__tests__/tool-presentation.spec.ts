@@ -36,6 +36,13 @@ describe(`${product.name} tool presentation`, () => {
     expect(presentAppTool(call, translate)).toBeUndefined();
   });
 
+  it('shows the title Korus handed over with its own tool icon', () => {
+    const call = context('computer-use-click', { app: 'Safari' });
+    call.metadata = { ...call.metadata, displayTitle: 'Clicked First Name in Safari' };
+
+    expect(presentAppTool(call, translate)).toStrictEqual({ icon: DeviceDesktopIcon, title: 'Clicked First Name in Safari' });
+  });
+
   it.each([
     ['close-agent', UsersIcon, 'Closed agent'],
     ['restart-backend', DeviceDesktopIcon, 'Requested backend restart'],
