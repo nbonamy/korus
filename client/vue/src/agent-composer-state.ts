@@ -276,7 +276,8 @@ export function createAgentComposerState(options: {
     const source = appApi;
     const agent = agentId ? snapshot().agents.find((candidate) => candidate.id === agentId) : null;
     const initial = agentId ? configuration(agentId) : null;
-    if (!agent || !source?.listProviderPlugins || !capabilitiesForAgent(agent).plugins) {
+    // Korus lists its own plugins for every harness, so this never waits for the harness to offer plugins.
+    if (!agent || !source?.listProviderPlugins) {
       if (initial) {
         initial.plugins = [];
       }

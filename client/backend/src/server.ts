@@ -73,6 +73,7 @@ import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgen
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { isInstructionEngine, readEngineInstructions, saveEngineInstructions } from './engine-instructions';
+import { composePluginCatalog } from './app-plugins';
 import { SkillManager } from './skill-manager';
 import { defaultHarnessProvider, defaultProviderCapabilities, previousConversationStorage } from '@workspace/core/provider-capabilities';
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
@@ -164,6 +165,8 @@ export type AppBackendServerOptions = {
   configureCodexResourceSharing?: (input: SetCodexResourceSharingInput) => Promise<void>;
   inspectCodexResourceSharing?: (enabled: boolean) => Promise<CodexResourceSharingStatus>;
   inspectPluginStatus?: () => Promise<AppPluginStatus>;
+  /** Whether Korus's own Computer Use is on and usable here, so it is offered as a plugin. */
+  computerUsePluginAvailable?: () => boolean;
   agentGitService?: AgentGitService;
   delegatedWorkReports?: DelegatedWorkReportPort;
   onPromptStarting?: (agentId: string, options?: SendPromptOptions) => void;
@@ -2664,7 +2667,12 @@ export class AppBackendServer {
       }
       case backendMethods.agentPluginsList: {
         const agentId = requireAgentId(message.params);
-        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentPluginsList, { agentId }, (agent) => this.handleAgentDriverRequest(agent, backendMethods.driverPluginsList, { agent }));
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentPluginsList, { agentId }, async (agent) => {
+          const native = defaultProviderCapabilities(agent.provider).plugins
+            ? await this.handleAgentDriverRequest(agent, backendMethods.driverPluginsList, { agent }) as import('@workspace/core/contracts').ProviderPluginSummary[]
+            : [];
+          return composePluginCatalog(native, { computerUse: this.options.computerUsePluginAvailable?.() === true });
+        });
       }
       case backendMethods.agentSkillsList: {
         const agentId = requireAgentId(message.params);

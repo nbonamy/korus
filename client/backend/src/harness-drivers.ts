@@ -10,6 +10,7 @@ import { AgentRegistry, HarnessAgentDriver, type DriverPolicy } from './harness-
 import { agentScopedMcpUrl, appMcpUrlForAgent, buildAppMcpConfigOverrides, buildAppThreadExtras } from './mcp/codex-config';
 import { appDeveloperInstructions } from './mcp/agent-prompts';
 import { promptWithSelectedReferences } from './agents/prompt-content';
+import { isAppPlugin } from '@workspace/core/app-plugins';
 import { utilityTextModel } from './agents/utility-text-model';
 import { utilityMcpServers } from './diagram-icons/utility-mcp';
 import { plainTextGenerationPrompt } from './agents/prompts';
@@ -29,12 +30,13 @@ const realHarness: HarnessFactory = (provider, options) => createHarness(provide
 const planOnly = '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.';
 
 /** App identity, instructions and MCP wiring shared by every provider. */
-function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'trustedMcpServerName' | 'instructions' | 'mcpServers' | 'log'> {
+function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'isAppPlugin' | 'trustedMcpServerName' | 'instructions' | 'mcpServers' | 'log'> {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   return {
     client: { name: product.mcpServerName, title: product.name, metadataDirectory: 'korus-sessions', temporaryDirectory: 'korus-tmp' },
     stateDirectory: backendHomeDir,
     formatPrompt: promptWithSelectedReferences,
+    isAppPlugin,
     trustedMcpServerName: product.mcpServerName,
     instructions: (context, { planMode }) => {
       const agent = agents.get(context.id);

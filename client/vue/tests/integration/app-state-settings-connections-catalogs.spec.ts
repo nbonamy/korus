@@ -552,6 +552,28 @@ describe('useAppState', () => {
     expect(sendPrompt).toHaveBeenCalledWith('agent-dina', 'use the selected model', { planMode: false, selection: { model: 'gpt-5.1-codex-fast', reasoningEffort: 'low', serviceTier: null } });
   });
 
+  it('loads the plugin list for a harness that offers no plugins of its own, so Korus can list its plugins there', async () => {
+    const remoteSnapshot = createInitialSnapshot();
+    remoteSnapshot.agents.find(agent => agent.id === 'agent-dina')!.provider = 'claude';
+    const korusPlugin = { id: 'korus-computer-use', name: 'computer-use', displayName: 'Computer Use', enabled: true };
+    const listProviderPlugins = vi.fn().mockResolvedValue([korusPlugin]);
+    stubElectronTestWindow({
+      app: {
+        getSnapshot: vi.fn().mockResolvedValue(remoteSnapshot),
+        listProviderPlugins,
+        listProviderSkills: vi.fn().mockResolvedValue([]),
+        onEvent: vi.fn(),
+      } satisfies Partial<AppApi>,
+    });
+
+    const state = useAppState();
+    await state.loadSnapshot();
+    await state.loadProviderSkills('agent-dina');
+    await vi.waitFor(() => expect(state.providerPlugins.value).toStrictEqual([korusPlugin]));
+
+    expect(listProviderPlugins).toHaveBeenCalledWith('agent-dina');
+  });
+
   it('loads skills on demand and sends selected skill references in prompt options', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const updatedSnapshot = createInitialSnapshot();
