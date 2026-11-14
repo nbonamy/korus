@@ -25,6 +25,7 @@ type ComputerUseCommand =
   | 'press_key'
   | 'request_screen_capture'
   | 'scroll'
+  | 'select_option'
   | 'select_text'
   | 'set_value'
   | 'screenshot'
@@ -84,7 +85,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   server.registerTool('computer-use-get-app-state', {
     description: 'Read selected-window AX state (full/diff), optional screenshot and waitForText. Read-only menu-bar inspection needs no window ID. In code mode, chain known steps in one exec.',
     inputSchema: appStateInputSchema,
-  }, (arguments_) => arguments_.accessibilityScope === 'menu_bar'
+  }, ({ label: _label, ...arguments_ }) => arguments_.accessibilityScope === 'menu_bar'
     ? observeAppState(computerUse, arguments_)
     : computerUseWindowAppStateResult(computerUse, arguments_));
 
@@ -119,15 +120,34 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => executeWindowTargeted(computerUse, 'press_key', arguments_));
 
   server.registerTool('computer-use-type-text', {
-    description: 'Type into an indexed editable control with internal focus verification. replace=true replaces contents; submit=true presses Return. In code mode, chain known steps in one exec.',
+    description: 'Type into an indexed editable control with focus verification. replace=true replaces contents; submit=true presses Return. click_before=true clicks element_index first, so no separate click call. In code mode, chain known steps in one exec.',
     inputSchema: z.strictObject({
       ...windowTargetSchema,
       element_index: z.number().int().nonnegative().optional(),
+      label: labelSchema,
+      click_before: z.boolean().optional().describe('Click element_index first. Requires element_index.'),
       replace: z.boolean().optional(),
       submit: z.boolean().optional(),
       text: z.string().max(100_000),
     }),
-  }, (arguments_) => executeWindowTargeted(computerUse, 'type_text', arguments_));
+  }, (arguments_) => typeText(computerUse, arguments_));
+
+  server.registerTool('computer-use-fill-form', {
+    description: 'Fill several controls in one call: text fields are typed; checked sets a checkbox or radio to a state (clicking only if it differs); option chooses a dropdown item by title; value sets a slider or settable control. Stops at the first failure. observe returns the state after the last field.',
+    inputSchema: z.strictObject({
+      ...windowTargetSchema,
+      fields: z.array(z.strictObject({
+        element_index: z.number().int().nonnegative(),
+        label: labelSchema,
+        text: z.string().max(100_000).optional().describe('Text to type.'),
+        checked: z.boolean().optional().describe('Wanted state of a checkbox or radio.'),
+        option: z.string().min(1).max(500).optional().describe('Dropdown option title. Read the dropdown with rootElementIndex to list them.'),
+        value: z.string().max(100_000).optional().describe('Value to set on a slider or other settable control.'),
+        replace: z.boolean().optional(),
+        submit: z.boolean().optional(),
+      }).refine((field) => [field.text, field.checked, field.option, field.value].filter((value) => value !== undefined).length === 1, { message: 'give exactly one of text, checked, option or value' })).min(1).max(30),
+    }),
+  }, (arguments_) => fillForm(computerUse, arguments_));
 
   server.registerTool('computer-use-paste', {
     description: 'Paste plain text, Markdown, or HTML into a running app while preserving the existing pasteboard when possible.',
@@ -202,6 +222,10 @@ const accessibilityScopeSchema = z.enum(['application', 'menu_bar']).optional()
 const windowIdSchema = z.number().int().positive()
   .describe('Session-local window ID returned by computer-use-list-windows.');
 
+/** What the person sees in the activity row ("Clicked First Name"); the helper never receives it. */
+const labelSchema = z.string().trim().min(1).max(120).optional()
+  .describe('Control name shown to the user, e.g. "First Name".');
+
 const windowTargetSchema = {
   ...optionalAppSchema,
   window_id: windowIdSchema,
@@ -224,11 +248,12 @@ const appStateOptionsSchema = {
   maxDepth: z.number().int().positive().max(30).optional(),
   maxNodes: z.number().int().positive().max(10_000).optional(),
   maxTextCharacters: z.number().int().positive().max(100_000).optional(),
-  rootElementIndex: z.number().int().nonnegative().optional(),
+  rootElementIndex: z.number().int().nonnegative().optional().describe('Read only this element and its children. On a dropdown its line lists options=A|B|C.'),
 };
 
 const appStateInputSchema = z.strictObject({
   ...appStateOptionsSchema,
+  label: labelSchema,
   accessibilityScope: accessibilityScopeSchema,
   window_id: windowIdSchema.optional().describe('Required for application scope; omit only for read-only menu_bar inspection.'),
 }).refine((input) => input.accessibilityScope === 'menu_bar' || input.window_id !== undefined, {
@@ -258,6 +283,7 @@ const semanticSelectorSchema = z.strictObject({
 
 const actionTargetSchema = {
   ...windowTargetSchema,
+  label: labelSchema,
   accessibilityScope: accessibilityScopeSchema,
   element_index: z.number().int().nonnegative().optional(),
   selector: semanticSelectorSchema.optional()
@@ -268,6 +294,7 @@ const actionTargetSchema = {
 
 const indexedTargetSchema = {
   ...windowTargetSchema,
+  label: labelSchema,
   accessibilityScope: accessibilityScopeSchema,
   element_index: z.number().int().nonnegative().optional(),
 };
@@ -288,7 +315,7 @@ async function executeWindowTargeted(
 ): Promise<CallToolResult> {
   const invalid = invalidWindowIdResult(arguments_);
   if (invalid) return invalid;
-  const { observe, ...actionArguments } = arguments_;
+  const { observe, label: _label, ...actionArguments } = arguments_;
   if (!observe) return execute(computerUse, command, actionArguments);
   try {
     const delivered = await computerUse.execute({ command, arguments: actionArguments });
@@ -301,6 +328,98 @@ async function executeWindowTargeted(
     return { ...observation, structuredContent: { ...observation.structuredContent, actionResult, actionDelivered: true } };
   } catch (error) {
     return errorToolResult(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const windowTargetFields = ['app', 'bundleIdentifier', 'path', 'pid', 'window_id'] as const;
+
+function windowTarget(arguments_: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(windowTargetFields.flatMap(field => arguments_[field] === undefined ? [] : [[field, arguments_[field]]]));
+}
+
+/** Delivers one helper command and returns why it failed, or null when it went through. */
+async function deliver(computerUse: ComputerUseClient, command: ComputerUseCommand, arguments_: Record<string, unknown>): Promise<string | null> {
+  try {
+    const delivered = await computerUse.execute({ command, arguments: arguments_ });
+    if (isFailure(delivered)) return computerUseFailureMessage(delivered);
+    const result = isSuccess(delivered) ? delivered.result : delivered;
+    return record(result)?.success === false ? String(record(result)?.error ?? 'Action failed.') : null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function typeText(computerUse: ComputerUseClient, arguments_: Record<string, unknown>): Promise<CallToolResult> {
+  const { click_before: clickBefore, ...input } = arguments_;
+  if (!clickBefore) return executeWindowTargeted(computerUse, 'type_text', input);
+  const invalid = invalidWindowIdResult(input);
+  if (invalid) return invalid;
+  if (typeof input.element_index !== 'number') return errorToolResult('invalid_request: click_before needs the element_index of the control to click.');
+  const failure = await deliver(computerUse, 'click', { ...windowTarget(input), element_index: input.element_index });
+  if (failure) return errorToolResult(`click before typing failed: ${failure}`);
+  return executeWindowTargeted(computerUse, 'type_text', input);
+}
+
+type FormField = { checked?: boolean; element_index: number; label?: string; option?: string; replace?: boolean; submit?: boolean; text?: string; value?: string };
+
+async function fillForm(computerUse: ComputerUseClient, arguments_: Record<string, unknown>): Promise<CallToolResult> {
+  const invalid = invalidWindowIdResult(arguments_);
+  if (invalid) return invalid;
+  const target = windowTarget(arguments_);
+  const fields = (arguments_.fields ?? []) as FormField[];
+  for (const [index, field] of fields.entries()) {
+    const failure = await fillField(computerUse, target, field);
+    if (failure) return errorToolResult(`fill_form: field ${index + 1} of ${fields.length} (${field.label ?? `#${field.element_index}`}) failed, ${index} filled: ${failure}`);
+  }
+  const actionResult = { filled: fields.length, total: fields.length };
+  if (!arguments_.observe) return structuredToolResult(actionResult);
+  const observation = await observeAppState(computerUse, { ...target, includeScreenshot: false, ...record(arguments_.observe) });
+  return { ...observation, structuredContent: { ...observation.structuredContent, actionResult, actionDelivered: true } };
+}
+
+/** One field of a form: a value, a dropdown option, a checkbox or radio state, or text, whichever the field carries. */
+function fillField(computerUse: ComputerUseClient, target: Record<string, unknown>, field: FormField): Promise<string | null> {
+  if (field.value !== undefined) return deliver(computerUse, 'set_value', { ...target, element_index: field.element_index, value: field.value });
+  if (field.option !== undefined) return deliver(computerUse, 'select_option', { ...target, element_index: field.element_index, option: field.option });
+  if (field.checked !== undefined) return checkField(computerUse, target, field);
+  return typeField(computerUse, target, field);
+}
+
+/** Targeted typing focuses the control itself, so a text field needs no click first. */
+function typeField(computerUse: ComputerUseClient, target: Record<string, unknown>, field: FormField): Promise<string | null> {
+  return deliver(computerUse, 'type_text', {
+    ...target,
+    element_index: field.element_index,
+    text: field.text ?? '',
+    ...(field.replace === undefined ? {} : { replace: field.replace }),
+    ...(field.submit === undefined ? {} : { submit: field.submit }),
+  });
+}
+
+/** Sets a checkbox or radio to the state asked for. A click toggles a checkbox and selects a radio, so it only happens when needed. */
+async function checkField(computerUse: ComputerUseClient, target: Record<string, unknown>, field: FormField): Promise<string | null> {
+  const before = await controlState(computerUse, target, field.element_index);
+  if (typeof before === 'string') return before;
+  if (before.checked === field.checked) return null;
+  if (before.radio && field.checked === false) return 'a radio button cannot be unchecked; choose another one in its group';
+  const failure = await deliver(computerUse, 'click', { ...target, element_index: field.element_index });
+  if (failure) return failure;
+  const after = await controlState(computerUse, target, field.element_index);
+  if (typeof after === 'string') return after;
+  return after.checked === field.checked ? null : `still ${after.checked ? 'checked' : 'unchecked'} after the click`;
+}
+
+/** The checked state of one checkbox, radio or switch, from its line of the observation (`value=on` or `value=off`). */
+async function controlState(computerUse: ComputerUseClient, target: Record<string, unknown>, elementIndex: number): Promise<{ checked: boolean; radio: boolean } | string> {
+  try {
+    const delivered = await computerUse.execute({ command: 'get_app_state', arguments: { ...target, rootElementIndex: elementIndex, maxDepth: 0, includeScreenshot: false, disableDiff: true } });
+    if (isFailure(delivered)) return computerUseFailureMessage(delivered);
+    const text = record(isSuccess(delivered) ? delivered.result : delivered)?.text;
+    const line = typeof text === 'string' ? text.split('\n').find((candidate) => /\bvalue=(on|off)\b/.test(candidate)) : undefined;
+    if (!line) return 'could not read the on/off state of this control; is it a checkbox or radio button?';
+    return { checked: /\bvalue=on\b/.test(line), radio: /\bradio button\b/.test(line) };
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 

@@ -27,6 +27,7 @@ const computerUseCommands = [
   'paste',
   'set_value',
   'select_text',
+  'select_option',
   'scroll',
   'drag',
   'perform_secondary_action',
