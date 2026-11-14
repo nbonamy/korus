@@ -506,6 +506,44 @@ Open <http://127.0.0.1:4174/videos/diff-review.html>. The MP4 and WebVTT track a
 `videos/local/exports/korus-diff-review.mp4` and `korus-diff-review.vtt`; the
 tracked thumbnail is `videos/assets/diff-review-thumbnail.png`.
 
+### Recorded multitasking demo
+
+`videos/multitasking.html` previews a single conversation, a split window, a
+separate support workspace, and a camera pullback revealing two monitors, each
+with a vertically split window. The 74-second edit includes the series intro/outro, Calm American narration, measured English
+captions and click spotlights. Conversations and agent activity are fictional;
+window and pane interactions use the installed desktop UI.
+
+`node videos/multitasking-session.mjs --refresh` creates the separately identified
+`Korus Multitasking Demo.app` and an isolated profile from the installed release.
+It does not copy account credentials or call a live coding model. Close an
+existing demo instance before resetting. Its ownership manifest and loopback
+window-geometry control port are in `.app-dev/multitasking-film/environment.json`.
+
+Before recording, minimize unrelated windows. Start with one pane, choose a
+vertical split, answer the API question, then open Customer support using its
+workspace context menu. Split that window and collapse the sidebars. Finish with
+the support window filling the frame. The edit pulls back from that capture to
+two authored monitor frames, one per workspace. Capture the clean area at
+logical x=64, y=33, 1600×900; exclude the menu bar, Dock and recorder HUD. Retina source cropping is
+specified in `videos/multitasking-recording.json`; normalize it to 1600×900,
+30 fps as `videos/local/multitasking/raw.mp4`.
+
+The checked continuous voice take and its alignment/provenance belong under
+`videos/local/multitasking/voice/american-male/`. Preparing the edit maps measured capture targets onto the edited timeline,
+ends control spotlights before the action changes the UI, and adds pauses
+without speech synthesis:
+
+```bash
+node videos/multitasking-prepare.mjs
+npm run render --prefix videos/remotion -- --recording multitasking
+```
+
+The MP4 and captions are `videos/local/exports/korus-multitasking.mp4` and
+`korus-multitasking.vtt`. Thumbnail artwork is
+`videos/assets/multitasking-thumbnail.png`. The preview is a separate artifact;
+it does not publish the video or change the homepage.
+
 ## Conversation sharing product film
 
 `videos/sharing-film.html` shows two Korus windows side by side: the conversation

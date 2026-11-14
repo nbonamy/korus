@@ -2,6 +2,13 @@
 export const FPS = 24;
 export const recordedFilms = [
   {
+    id: "multitasking",
+    title: "Multitasking",
+    width: 1600,
+    height: 900,
+    fps: 30,
+  },
+  {
     id: "diff-review",
     title: "Diff review",
     width: 1600,

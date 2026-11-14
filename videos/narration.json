@@ -303,6 +303,53 @@
           "text": "Work together. Keep control. In Korus."
         }
       ]
+    },
+    {
+      "id": "multitasking",
+      "title": "Multitasking",
+      "duration": 74,
+      "cues": [
+        {
+          "start": 3,
+          "end": 10,
+          "text": "I'm getting a checkout feature ready to ship. One conversation keeps the task, decisions, and progress together."
+        },
+        {
+          "start": 11,
+          "end": 19,
+          "text": "The frontend and API need to move together. I split the window and answer the question that's blocking the work."
+        },
+        {
+          "start": 20,
+          "end": 28,
+          "text": "I collapse the sidebar to give both conversations more room. The agents keep working while I focus on their responses."
+        },
+        {
+          "start": 29,
+          "end": 35,
+          "text": "Then a user reports a sign-in problem. I don't have to lose my place in the feature."
+        },
+        {
+          "start": 36,
+          "end": 43,
+          "text": "I open the support workspace in its own window. The checkout agents keep running in the first one."
+        },
+        {
+          "start": 44,
+          "end": 50,
+          "text": "I can split this window as well, keeping the fix and its independent review together."
+        },
+        {
+          "start": 52,
+          "end": 60,
+          "text": "With two monitors, I can keep one workspace on each screen. Feature work on one, support on the other."
+        },
+        {
+          "start": 61,
+          "end": 68,
+          "text": "Two priorities. Four conversations. I decide what needs my attention. Korus keeps the work organized."
+        }
+      ]
     }
   ]
 }

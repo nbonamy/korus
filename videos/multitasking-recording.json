@@ -1,0 +1,307 @@
+{
+  "id": "multitasking",
+  "title": [
+    "Two priorities.",
+    "Keep your place."
+  ],
+  "endingTitle": [
+    "Your work. Your layout.",
+    "Keep moving with Korus."
+  ],
+  "subtitle": "Multitasking with Korus",
+  "duration": 74,
+  "video": "local/multitasking/raw.mp4",
+  "audio": "local/multitasking/narration.wav",
+  "captions": "local/exports/korus-multitasking.vtt",
+  "captureCrop": {
+    "x": 128,
+    "y": 66,
+    "width": 3200,
+    "height": 1800
+  },
+  "narrationStarts": [
+    3,
+    11,
+    20,
+    29,
+    36,
+    44,
+    52,
+    61
+  ],
+  "narrationSpeed": 0.8,
+  "scenes": [
+    {
+      "start": 0,
+      "duration": 2.5,
+      "card": "opening"
+    },
+    {
+      "start": 2.5,
+      "duration": 9.5,
+      "sourceStart": 0.1,
+      "freeze": true
+    },
+    {
+      "start": 12,
+      "duration": 3,
+      "sourceStart": 0.5
+    },
+    {
+      "start": 15,
+      "duration": 2,
+      "sourceStart": 4
+    },
+    {
+      "start": 17,
+      "duration": 3,
+      "sourceStart": 8
+    },
+    {
+      "start": 20,
+      "duration": 3,
+      "sourceStart": 19
+    },
+    {
+      "start": 23,
+      "duration": 10,
+      "sourceStart": 30,
+      "freeze": true
+    },
+    {
+      "start": 33,
+      "duration": 2,
+      "sourceStart": 31
+    },
+    {
+      "start": 35,
+      "duration": 1,
+      "sourceStart": 38.5,
+      "freeze": true
+    },
+    {
+      "start": 36,
+      "duration": 3,
+      "sourceStart": 39.5
+    },
+    {
+      "start": 39,
+      "duration": 5,
+      "sourceStart": 48
+    },
+    {
+      "start": 44,
+      "duration": 3,
+      "sourceStart": 58
+    },
+    {
+      "start": 47,
+      "duration": 22,
+      "sourceStart": 68,
+      "freeze": true
+    },
+    {
+      "start": 69,
+      "duration": 5,
+      "card": "ending"
+    }
+  ],
+  "clicks": [
+    {
+      "time": 12.3,
+      "x": 0.9874999999999999,
+      "y": 0.07333333333333333
+    },
+    {
+      "time": 13.15,
+      "x": 0.9040625,
+      "y": 0.14555555555555555
+    },
+    {
+      "time": 21.700000000000003,
+      "x": 0.18,
+      "y": 0.02666666666666667
+    },
+    {
+      "time": 34.5,
+      "x": 0.0175,
+      "y": 0.24388888888888888
+    },
+    {
+      "time": 37,
+      "x": 0.07625,
+      "y": 0.27
+    },
+    {
+      "time": 45.5,
+      "x": 0.9874999999999999,
+      "y": 0.07333333333333333
+    },
+    {
+      "time": 46.3,
+      "x": 0.9040625,
+      "y": 0.14555555555555555
+    }
+  ],
+  "focusAreas": [
+    {
+      "start": 11.5,
+      "duration": 0.68,
+      "bounds": {
+        "x": 0.98,
+        "y": 0.06,
+        "width": 0.015,
+        "height": 0.02666666666666667
+      }
+    },
+    {
+      "start": 20.500000000000004,
+      "duration": 1.08,
+      "bounds": {
+        "x": 0.1725,
+        "y": 0.013333333333333334,
+        "width": 0.015,
+        "height": 0.02666666666666667
+      }
+    },
+    {
+      "start": 33.4,
+      "duration": 0.9800000000000001,
+      "bounds": {
+        "x": 0.00625,
+        "y": 0.22444444444444445,
+        "width": 0.0225,
+        "height": 0.03888888888888889
+      }
+    },
+    {
+      "start": 35.8,
+      "duration": 1.08,
+      "bounds": {
+        "x": 0.020625,
+        "y": 0.25333333333333335,
+        "width": 0.11125,
+        "height": 0.03333333333333333
+      }
+    },
+    {
+      "start": 44.6,
+      "duration": 0.78,
+      "bounds": {
+        "x": 0.98,
+        "y": 0.06,
+        "width": 0.015,
+        "height": 0.02666666666666667
+      }
+    },
+    {
+      "start": 15.3,
+      "duration": 1.4,
+      "bounds": {
+        "x": 0.619375,
+        "y": 0.22555555555555556,
+        "width": 0.340625,
+        "height": 0.04777777777777778
+      }
+    }
+  ],
+  "monitorReveal": {
+    "start": 51,
+    "settle": 3,
+    "end": 69,
+    "leftSource": 30,
+    "rightSource": 68
+  },
+  "voiceDirectory": "local/multitasking/voice/american-male",
+  "actionCues": [
+    {
+      "id": "feature-layout",
+      "sourceTime": 0.8,
+      "bounds": {
+        "x": 1568,
+        "y": 54,
+        "width": 24,
+        "height": 24
+      },
+      "lead": 0.8
+    },
+    {
+      "id": "feature-vertical-split",
+      "sourceTime": 1.65,
+      "bounds": {
+        "x": 1407,
+        "y": 123,
+        "width": 79,
+        "height": 16
+      }
+    },
+    {
+      "id": "collapse-sidebar",
+      "sourceTime": 20.7,
+      "bounds": {
+        "x": 276,
+        "y": 12,
+        "width": 24,
+        "height": 24
+      },
+      "lead": 1.2
+    },
+    {
+      "id": "support-context-menu",
+      "sourceTime": 32.5,
+      "bounds": {
+        "x": 10,
+        "y": 202,
+        "width": 36,
+        "height": 35
+      },
+      "lead": 1.1
+    },
+    {
+      "id": "open-support-window",
+      "sourceTime": 40.5,
+      "bounds": {
+        "x": 33,
+        "y": 228,
+        "width": 178,
+        "height": 30
+      },
+      "lead": 1.2
+    },
+    {
+      "id": "support-layout",
+      "sourceTime": 59.5,
+      "bounds": {
+        "x": 1568,
+        "y": 54,
+        "width": 24,
+        "height": 24
+      },
+      "lead": 0.9
+    },
+    {
+      "id": "support-vertical-split",
+      "sourceTime": 60.3,
+      "bounds": {
+        "x": 1407,
+        "y": 123,
+        "width": 79,
+        "height": 16
+      }
+    }
+  ],
+  "regionCues": [
+    {
+      "id": "api-clarification",
+      "start": 15.3,
+      "duration": 1.4,
+      "bounds": {
+        "x": 991,
+        "y": 203,
+        "width": 545,
+        "height": 43
+      },
+      "measurement": "Vision OCR of raw source at 4 seconds: both question lines; excludes the completion footer."
+    }
+  ]
+}

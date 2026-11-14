@@ -9,6 +9,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { MonitorReveal, type MonitorRevealSpec } from "./monitor-reveal";
 
 export type RecordedScene = {
   start: number;
@@ -50,6 +51,7 @@ export type RecordedFilmProps = {
   }[];
   video: string;
   audio: string;
+  monitorReveal?: MonitorRevealSpec;
 };
 
 const RecordedVisuals = (
@@ -396,6 +398,11 @@ export const RecordedFilm = (props: RecordedFilmProps) => {
             strokeWidth="2"
           />
         </svg>
+      ) : null}
+      {props.monitorReveal &&
+      frame / fps >= props.monitorReveal.start &&
+      frame / fps < props.monitorReveal.end ? (
+        <MonitorReveal video={props.video} reveal={props.monitorReveal} />
       ) : null}
       <Html5Audio src={staticFile(props.audio)} />
     </AbsoluteFill>
