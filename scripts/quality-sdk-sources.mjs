@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { installedCopies, installPacked } from './install-packed-sdks.mjs';
+import { installedCopies, installPacked, missingDependencies } from './install-packed-sdks.mjs';
 
 const names = ['codex-sdk', 'multi-agent-sdk', 'agent-ui-sdk'];
 const url = name => `https://github.com/Korus-Dev/${name}.git`;
@@ -34,11 +34,18 @@ if (process.argv[2] === 'resolve') {
   const packs = path.join(root, 'packs');
   mkdirSync(packs, { recursive: true });
   const workspaces = JSON.parse(readFileSync('package.json', 'utf8')).workspaces;
+  const tarballs = new Map();
+  const added = new Set();
   for (const name of names) {
     const folder = path.join(root, name);
     run('npm', ['ci', '--no-audit', '--no-fund'], folder);
     run('npm', ['run', 'build'], folder);
-    const tarball = path.join(packs, execFileSync('npm', ['pack', '--silent', '--pack-destination', packs], { cwd: folder, encoding: 'utf8' }).trim().split('\n').pop());
+    tarballs.set(name, path.join(packs, execFileSync('npm', ['pack', '--silent', '--pack-destination', packs], { cwd: folder, encoding: 'utf8' }).trim().split('\n').pop()));
+    for (const spec of missingDependencies(process.cwd(), JSON.parse(readFileSync(path.join(folder, 'package.json'), 'utf8')).dependencies)) added.add(spec);
+  }
+  // Dependencies come first: npm would otherwise reset the SDK folders to the versions the lockfile records.
+  if (added.size) run('npm', ['install', '--no-save', '--no-audit', '--no-fund', '--ignore-scripts', ...added], process.cwd());
+  for (const [name, tarball] of tarballs) {
     const copies = installedCopies(process.cwd(), `@korus-dev/${name}`, workspaces);
     if (!copies.length) throw new Error(`@korus-dev/${name} is not installed; run npm ci first.`);
     for (const copy of copies) installPacked(tarball, copy);

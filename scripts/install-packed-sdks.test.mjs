@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { installedCopies, installPacked } from './install-packed-sdks.mjs';
+import { installedCopies, installPacked, missingDependencies } from './install-packed-sdks.mjs';
 
 test('a packed SDK replaces every installed copy, hoisted or nested in a workspace, with its built files', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'packed-sdks-'));
@@ -31,6 +31,19 @@ test('a packed SDK replaces every installed copy, hoisted or nested in a workspa
       assert.equal(readFileSync(path.join(installed(workspace), 'dist/index.js'), 'utf8'), 'built');
       assert.equal(existsSync(path.join(installed(workspace), 'stale.js')), false);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('only dependencies the project does not have are installed, and sibling SDKs never are', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'missing-deps-'));
+  try {
+    mkdirSync(path.join(root, 'node_modules/zod'), { recursive: true });
+    writeFileSync(path.join(root, 'node_modules/zod/package.json'), '{}');
+
+    assert.deepEqual(missingDependencies(root, { zod: '^4.0.0', 'image-size': '^2.0.2', '@korus-dev/codex-sdk': '0.167.1' }), ['image-size@^2.0.2']);
+    assert.deepEqual(missingDependencies(root, undefined), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

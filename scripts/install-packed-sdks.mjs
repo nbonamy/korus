@@ -15,3 +15,10 @@ export function installedCopies(projectRoot, packageName, workspaces) {
     .map(workspace => path.join(projectRoot, workspace, 'node_modules', packageName))
     .filter(copy => fs.existsSync(path.join(copy, 'package.json')));
 }
+
+/** `name@range` for each dependency of a packed SDK that the project has not installed, such as one added since its release. */
+export function missingDependencies(projectRoot, dependencies = {}) {
+  return Object.entries(dependencies)
+    .filter(([name]) => !name.startsWith('@korus-dev/') && !fs.existsSync(path.join(projectRoot, 'node_modules', name, 'package.json')))
+    .map(([name, range]) => `${name}@${range}`);
+}
