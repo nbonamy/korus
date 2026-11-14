@@ -51,6 +51,22 @@ describe('GitWorkflowControl', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it.each([
+    ['GitHub', { remoteUrl: 'git@github.com:owner/repo.git' }, 'https://github.com/owner/repo'],
+    ['GitLab', { repositoryProvider: 'gitlab' as const, remoteUrl: 'ssh://git@gitlab.example.com:2222/group/sub/repo.git' }, 'https://gitlab.example.com/group/sub/repo'],
+  ])('opens the repository on %s from the first Git menu entry', async (name, overrides, url) => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mountControl({ getWorkflow: async () => ({ ...workflow, ...overrides }) });
+    try {
+      await flushPromises();
+      await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      const first = bodyAll('[role="menuitem"]')[0]!;
+      expect(first.text()).toBe(`Open on ${name}`);
+      await first.trigger('click');
+      expect(open).toHaveBeenCalledExactlyOnceWith(url, '_blank', 'noopener,noreferrer');
+    } finally { wrapper.unmount(); }
+  });
+
   it('opens the existing GitLab MR instead of another creation form after a fresh lookup', async () => {
     const url = 'https://gitlab.com/group/sub/repo/-/merge_requests/7';
     const openExternal = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -482,6 +498,7 @@ describe('GitWorkflowControl', () => {
     expect(bodyAll('[role="menuitem"], [role="separator"]').map((item) =>
       item.attributes('role') === 'separator' ? '---' : item.text(),
     )).toStrictEqual([
+      'Open on GitHub',
       'Git log',
       '---',
       'Revert',

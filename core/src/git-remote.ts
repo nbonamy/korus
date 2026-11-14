@@ -48,6 +48,27 @@ export function cloneUrlForRemote(value: string): string | undefined {
   }
 }
 
+/** The page a remote's repository lives at on its host, from any clone URL: `git@host:org/repo.git`, `ssh://git@host:22/org/repo` or `https://host/org/repo.git`. */
+export function repositoryWebUrl(value: string): string | undefined {
+  const safeRemote = sanitizeGitRemoteUrl(value);
+  if (!safeRemote || /^[A-Za-z]:[\\/]/.test(value.trim())) return undefined;
+  const scpLike = safeRemote.match(/^([^/:\s]+):(.+)$/u);
+  if (scpLike && !safeRemote.includes('://')) return webUrl(scpLike[1], scpLike[2]);
+  try {
+    const url = new URL(safeRemote);
+    // An SSH or git port is not a web port.
+    return webUrl(url.protocol === 'http:' || url.protocol === 'https:' ? url.host : url.hostname, url.pathname);
+  } catch {
+    return undefined;
+  }
+}
+
+function webUrl(host: string, path: string): string | undefined {
+  const cleanHost = host.trim().toLocaleLowerCase();
+  const cleanPath = cleanRemotePath(path);
+  return cleanHost && cleanPath ? `https://${cleanHost}/${cleanPath}` : undefined;
+}
+
 export function canonicalGitRemoteIdentity(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;

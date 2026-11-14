@@ -411,6 +411,7 @@ import { ElMessage } from 'element-plus';
 import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitOperationProgress, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
 import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitLabIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi, appPlatformActions } from '../platform-api';
+import { repositoryWebUrl } from '@workspace/core/git-remote';
 import { localizedErrorMessage } from '../i18n/errors';
 import { useGeneralPreferences } from '../general-preferences';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -669,7 +670,17 @@ const prEnabled = computed(() => currentBranchAvailable.value && !integrationBra
 const updateEnabled = computed(() => Boolean(props.updateFromBase && workflow.value?.isLinkedWorktree && workflow.value.baseBranch && currentBranchAvailable.value));
 const pullEnabled = computed(() => Boolean(props.pullBranch && workflow.value?.upstream && currentBranchAvailable.value));
 const firstEnabledAction = computed(() => (commitEnabled.value ? 'commit' : pushEnabled.value ? 'push' : mergeEnabled.value && !mergeUnavailable.value ? 'merge' : prEnabled.value ? 'create-pr' : null));
+/** The repository's page on GitHub or GitLab, when the remote is one of them. */
+const repositoryWeb = computed(() => {
+  const remote = workflow.value?.remoteUrl;
+  const url = remote ? repositoryWebUrl(remote) : undefined;
+  if (!url) return null;
+  const host = new URL(url).hostname;
+  const provider = workflow.value?.repositoryProvider ?? (host === 'github.com' ? 'github' : host === 'gitlab.com' ? 'gitlab' : undefined);
+  return provider ? { url, provider } : null;
+});
 const menuItems = computed<AppMenuItem[]>(() => [
+  ...(repositoryWeb.value ? [{ id: 'open-web', type: 'action' as const, label: translate(`repositoryWeb.${repositoryWeb.value.provider}`), icon: repositoryWeb.value.provider === 'gitlab' ? GitLabIcon : GitHubIcon }] : []),
   { id: 'log', type: 'action', label: translate('gitLog.menu'), icon: ClockHour8Icon },
   { id: 'separator-log', type: 'separator' },
   { id: 'revert', type: 'action', label: translate('surface.gitWorkflowControl.revert'), icon: ArrowBackUpIcon, disabled: !props.revertChanges || !commitEnabled.value },
@@ -850,6 +861,7 @@ async function refreshPullRequestWorkflow(onError: (message: string) => void): P
 async function selectAction(action: string): Promise<void> {
   if (busy.value) return;
   menuOpen.value = false;
+  if (action === 'open-web') { if (repositoryWeb.value) void appPlatformActions.openExternal?.(repositoryWeb.value.url); return; }
   if (action === 'log') { emit('open-git-log'); return; }
   if (action === 'revert' && props.revertChanges && commitEnabled.value) {
     revertIncludeUntracked.value = false;
