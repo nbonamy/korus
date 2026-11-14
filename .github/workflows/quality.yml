@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.list.outputs.matrix }}
+      sdk-revisions: ${{ steps.sdks.outputs.revisions }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -24,7 +25,14 @@ jobs:
       - id: list
         run: |
           node -e 'const { workspaces } = require("./package.json"); console.log("matrix=" + JSON.stringify({ include: workspaces.map(workspace => ({ workspace, artifact: workspace.replaceAll("/", "-") })) }));' >> "$GITHUB_OUTPUT"
+      - name: Resolve SDK main commits for this run
+        id: sdks
+        run: |
+          revisions=$(node scripts/quality-sdk-sources.mjs resolve)
+          echo "revisions=$revisions" >> "$GITHUB_OUTPUT"
+          echo "SDK source commits: $revisions" >> "$GITHUB_STEP_SUMMARY"
   checks:
+    needs: workspaces
     name: Lint and script checks
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -33,6 +41,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check out and build SDK sources
+        run: node scripts/quality-sdk-sources.mjs prepare
+        env:
+          SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
       - run: npm run release-notes:check
       - run: npm run lint
       - run: npm run test:scripts
@@ -49,6 +61,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check out and build SDK sources
+        run: node scripts/quality-sdk-sources.mjs prepare
+        env:
+          SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
       - name: Install the browser the workspace's browser tests drive
         if: matrix.workspace == 'client/vue' || matrix.workspace == 'server/frontend'
         run: npx playwright install --with-deps chromium
@@ -65,6 +81,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
   cli-integration:
+    needs: workspaces
     name: CLI integration tests
     runs-on: macos-latest
     timeout-minutes: 15
@@ -73,6 +90,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Check out and build SDK sources
+        run: node scripts/quality-sdk-sources.mjs prepare
+        env:
+          SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.0.0'
