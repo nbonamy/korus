@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.57.0",
+  "currentVersion": "0.57.1",
   "releases": [
+    {
+      "version": "0.57.1",
+      "releasedAt": "2026-11-14",
+      "sourceSha256": "cecb3d797e3d2e367eeb50c800a3e5124df3bb1847cdd8432a6cd4ab9a0b8e94",
+      "markdown": "### New features\n\n- **Computer Use plugin:** Pick Computer Use from the @ suggestions in any engine. It replaces the entries Codex adds itself.\n- **Image rulers:** Add vertical and horizontal rulers (X and Y) in the image annotation editor. Measurements stop at them, and Shift turns a measure or ruler tool the other way. Rulers appear in the image sent to the agent.\n- **Personalization:** Edit the instructions of every connected agent, including Antigravity.\n- **Open on GitHub or GitLab:** Open a repository's page from the Git menu.\n- **Installer clean-up:** After installing from the DMG, Korus offers to eject it and move the installer to the Trash.\n\n### Improvements and fixes\n\n- **Large diffs:** Files with a very large diff show \"Diff too large to be shown\" with their real line counts instead of freezing the app.\n- **Designs:** Fixed designs opening at 0.1% zoom after restarting with the right panel closed."
+    },
     {
       "version": "0.57.0",
       "releasedAt": "2026-11-13",

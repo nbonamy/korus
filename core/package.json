@@ -1,6 +1,6 @@
 {
   "name": "@workspace/core",
-  "version": "0.57.0",
+  "version": "0.57.1",
   "description": "Platform-neutral Application product contracts and state primitives.",
   "private": true,
   "type": "module",
@@ -19,8 +19,8 @@
     "test:watch": "vitest watch"
   },
   "devDependencies": {
-    "@korus-dev/agent-ui-sdk": "0.27.2",
-    "@korus-dev/multi-agent-sdk": "0.27.2",
+    "@korus-dev/agent-ui-sdk": "0.27.3",
+    "@korus-dev/multi-agent-sdk": "0.27.3",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "4.1.8",
     "typescript": "^6.0.3",

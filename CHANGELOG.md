@@ -4,6 +4,21 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.57.1] - 2026-11-14
+
+### New features
+
+- **Computer Use plugin:** Pick Computer Use from the @ suggestions in any engine. It replaces the entries Codex adds itself.
+- **Image rulers:** Add vertical and horizontal rulers (X and Y) in the image annotation editor. Measurements stop at them, and Shift turns a measure or ruler tool the other way. Rulers appear in the image sent to the agent.
+- **Personalization:** Edit the instructions of every connected agent, including Antigravity.
+- **Open on GitHub or GitLab:** Open a repository's page from the Git menu.
+- **Installer clean-up:** After installing from the DMG, Korus offers to eject it and move the installer to the Trash.
+
+### Improvements and fixes
+
+- **Large diffs:** Files with a very large diff show "Diff too large to be shown" with their real line counts instead of freezing the app.
+- **Designs:** Fixed designs opening at 0.1% zoom after restarting with the right panel closed.
+
 ## [0.57.0] - 2026-11-13
 
 ### New features
