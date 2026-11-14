@@ -1,7 +1,7 @@
 import type { AgentGitDiffOmittedFile } from '@workspace/core/contracts';
 
 /** The most changed lines (added plus removed) of one file whose patch Korus hands to the diff view. */
-export const largePatchLineLimit = 3000;
+const largePatchLineLimit = 3000;
 
 /**
  * Drops the hunks of every file that changed more than `limit` lines, keeping its header, and lists those files with
