@@ -39,7 +39,7 @@
           :settings="generalSettings"
           :update-settings="updateSettings"
         />
-        <SettingsPersonalizationPanel v-else-if="activeTab === 'personalization'" />
+        <SettingsPersonalizationPanel v-else-if="activeTab === 'personalization'" :engines="personalizationEngines" />
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
           :setup-capabilities="providerSetup?.find(setup => setup.provider === 'codex')?.capabilities"
@@ -316,6 +316,13 @@ const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [
   .filter(engine => (props.providerRuntimes?.find(runtime => runtime.provider === engine.provider)?.capabilities?.reportsTokens
     ?? defaultProviderCapabilities(engine.provider).reportsTokens) === false)
   .map(engine => providerDisplayName(engine.provider)));
+
+/** One Personalization entry per connected engine that reads an instructions file. */
+const personalizationEngines = computed(() => (props.providerConnections ?? [])
+  .filter(engine => engine.connected && engine.enabled !== false && props.generalSettings.providerEnabled?.[engine.provider] !== false)
+  .filter(engine => (props.providerRuntimes?.find(runtime => runtime.provider === engine.provider)?.capabilities?.personalInstructions
+    ?? defaultProviderCapabilities(engine.provider).personalInstructions) === true)
+  .map(engine => engine.provider));
 
 const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.provider === 'antigravity') ? 'general' : props.activeTab);
 const busyIntegrationProviders = ref<WorkProviderKind[]>([]);

@@ -3,6 +3,7 @@ import type { ProviderConnection } from './contracts/provider-setup';
 import { codexHarnessCapabilities as nativecodex, claudeHarnessCapabilities as nativeclaude, cursorHarnessCapabilities as nativecursor, antigravityHarnessCapabilities as nativeantigravity } from '@korus-dev/multi-agent-sdk/contracts';
 export const codexProviderCapabilities: ProviderCapabilities = {
   ...nativecodex,
+  personalInstructions: true,
   codeReview: true,
   planReview: true,
   conversationShare: true,
@@ -14,6 +15,7 @@ export const codexProviderCapabilities: ProviderCapabilities = {
 };
 export const claudeProviderCapabilities: ProviderCapabilities = {
   ...nativeclaude,
+  personalInstructions: true,
   codeReview: true,
   planReview: true,
   conversationShare: true,
@@ -48,6 +50,7 @@ export const claudeProviderCapabilities: ProviderCapabilities = {
 };
 export const antigravityProviderCapabilities: ProviderCapabilities = {
   ...nativeantigravity,
+  personalInstructions: true,
   codeReview: true,
   planReview: true,
   conversationShare: true,

@@ -3424,7 +3424,7 @@ export class AppBackendServer {
         const input = requireRecord(requireRecord(message.params).input);
         if (!isInstructionEngine(input.engine)) throw new Error('Unknown instruction engine.');
         if (typeof input.text !== 'string') throw new Error('Invalid instruction text.');
-        await saveEngineInstructions({ engine: input.engine, text: input.text, all: input.all as boolean | undefined, confirmed: input.confirmed === true }, this.snapshot.general.providerHomes);
+        await saveEngineInstructions({ engine: input.engine, text: input.text, all: input.all as boolean | undefined, confirmed: input.confirmed === true, ...(Array.isArray(input.engines) ? { engines: input.engines.map(engine => { if (!isInstructionEngine(engine)) throw new Error('Unknown instruction engine.'); return engine; }) } : {}) }, this.snapshot.general.providerHomes);
         return createAppRpcResult(message.id, null);
       }
       case backendMethods.settingsCodexResourceSharingGet:

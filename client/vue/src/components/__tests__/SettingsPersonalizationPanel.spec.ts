@@ -5,7 +5,7 @@ import SettingsPersonalizationPanel from '../SettingsPersonalizationPanel.vue';
 afterEach(() => vi.useRealTimers());
 function render() {
   const api = { readEngineInstructions: vi.fn().mockImplementation(async engine => ({ text: engine + ' rules', path: '/' + engine })), saveEngineInstructions: vi.fn().mockResolvedValue(undefined) };
-  return { api, wrapper: mount(SettingsPersonalizationPanel, { props: { api } }) };
+  return { api, wrapper: mount(SettingsPersonalizationPanel, { props: { api, engines: ['codex', 'claude', 'antigravity'] } }) };
 }
 it('autosaves and flushes the original engine before switching', async () => {
   vi.useFakeTimers();
@@ -47,7 +47,7 @@ it('requires confirmation for replacement and preserves autosave ordering', asyn
   expect(wrapper.find('[role="status"]').exists()).toBe(false);
   expect(api.saveEngineInstructions.mock.calls).toEqual([
     [{ engine: 'codex', text: 'Shared' }],
-    [{ engine: 'codex', text: 'Shared', all: true, confirmed: true }],
+    [{ engine: 'codex', text: 'Shared', all: true, confirmed: true, engines: ['codex', 'claude', 'antigravity'] }],
   ]);
 });
 it('keeps the current engine and unsaved edits after a failed write', async () => {
@@ -59,4 +59,17 @@ it('keeps the current engine and unsaved edits after a failed write', async () =
   expect(api.readEngineInstructions).toHaveBeenCalledTimes(1);
   expect(wrapper.get('[role="alert"]').text()).toBe('Read only');
   expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('Unsaved');
+});
+it('lists one entry per connected engine and edits the selected one', async () => {
+  const { api, wrapper } = render(); await flushPromises();
+  expect(wrapper.findAllComponents({ name: 'ElOption' }).map(option => option.props('label'))).toEqual(['Codex', 'Claude', 'Antigravity']);
+  wrapper.getComponent(ElSelect).vm.$emit('update:modelValue', 'antigravity'); await flushPromises();
+  expect(api.readEngineInstructions).toHaveBeenLastCalledWith('antigravity');
+  expect(wrapper.find('.settings-personalization__path').text()).toBe('/antigravity');
+});
+it('moves to a listed engine when the one being edited disconnects', async () => {
+  const { api, wrapper } = render(); await flushPromises();
+  await wrapper.setProps({ engines: ['claude', 'antigravity'] }); await flushPromises();
+  expect(api.readEngineInstructions).toHaveBeenLastCalledWith('claude');
+  expect(wrapper.find('.settings-personalization__path').text()).toBe('/claude');
 });

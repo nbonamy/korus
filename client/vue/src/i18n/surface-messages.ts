@@ -87,6 +87,7 @@ export const conversationMessages = {
     "personalizationHint": `Edits the selected engine's instruction file on this host. If you use an existing setup, other apps share this file. Changes apply when sessions start or resume, and project instructions still apply.`,
     "engine": "Engine",
     "saveAll": "Save to all",
+    "noEngines": "Connect an agent to edit its instructions.",
     "overwrite": "Replace",
     "overwriteBoth": "This will replace developer instructions for all agents. Do you want to continue?"
   },
