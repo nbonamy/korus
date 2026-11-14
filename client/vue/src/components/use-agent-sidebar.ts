@@ -420,6 +420,16 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     if (agentId) emit('delete-repository', agentId);
   }
 
+  /** The pinned overview entry belongs to the whole repository; any of its agents can open it. */
+  function projectOverviewActive(group: WorkspaceSidebarGroup): boolean {
+    return Boolean(props.activeOverviewAgentId && group.sessions.some(session => session.agentId === props.activeOverviewAgentId));
+  }
+
+  function openProjectOverview(group: WorkspaceSidebarGroup): void {
+    const agentId = group.sessions[0]?.agentId;
+    if (agentId) emit('open-project-overview', agentId);
+  }
+
   function openAgentMenu(agentId: string, event: MouseEvent): void {
     contextMenuFeature.value = null;
     contextMenuRepositoryAgentId.value = null;
@@ -592,6 +602,8 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     contextMenuRepositoryAgentId,
     repositoryMenuItems,
     deleteContextRepository,
+    projectOverviewActive,
+    openProjectOverview,
     contextMenuMissionId,
     deleteContextMission,
     openContextMissionWindow,

@@ -75,6 +75,8 @@
     <AppShellNavigation
       ref="navigation"
       :active-mission-id="activeHost === 'mission' ? selectedMissionId : null"
+      :active-overview-agent-id="overviewVisible ? overviewAgentId : null"
+      :project-flow-enabled="projectFlowEnabled"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
@@ -89,6 +91,7 @@
       @reorder-feature="reorderFeature"
       @delete-feature="showFeatureDialog('delete', $event)"
       @delete-repository="repositoryDeletionAgentId = $event"
+      @open-project-overview="openProjectOverview"
       @select-mission="selectMission"
       :active-team="activeTeam"
       :active-team-agents="activeTeamAgents"
@@ -273,6 +276,16 @@
         :work-providers="cockpitBacklogState.providers.value"
         @select-work-provider="cockpitBacklogState.selectProvider"
         @select-agent="selectAgentFromBacklog"
+      />
+      <ProjectOverviewView
+        v-else-if="overviewVisible && overviewAgentId"
+        :key="overviewPreview?.id ?? overviewAgentId"
+        :reads="overviewPreview?.reads"
+        :agent-id="overviewAgentId"
+        :activity-key="overviewActivityKey"
+        :sidebar-collapsed="agentSidebarCollapsed || compactViewport"
+        @expand-sidebar="expandSidebar"
+        @select-agent="selectAgentFromShell"
       />
       <AgentWorkspace
         v-else
@@ -693,6 +706,9 @@ import NewProjectDialog from './NewProjectDialog.vue';
 import { preferredProviderChoices, provideProviderChoices, provideProviderSwitch } from './provider-selection';
 import { createGeneralPreferences, generalPreferencesKey } from '../general-preferences';
 import BacklogView from './BacklogView.vue';
+import ProjectOverviewView from './ProjectOverviewView.vue';
+import { debugProjectOverviewReads } from './debug-project-overview';
+import type { ProjectOverviewReads } from './use-project-overview';
 import ConversationHistoryDialog from './ConversationHistoryDialog.vue';
 import AgentHandoffDialog from './AgentHandoffDialog.vue';
 import { agentHandoffBlocker, type AgentHandoffInput } from '@workspace/core/agent-handoff';
@@ -1134,7 +1150,7 @@ type PendingMissionReviewDiscussion = {
   finding: import('@workspace/core/missions').MissionReviewFinding;
 };
 
-type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings';
+type AppSurface = 'mission' | 'agent' | 'backlog' | 'automations' | 'settings' | 'overview';
 provide(computerUseLockKey, {
   state: computed(() => {
     const plugins = props.snapshot.general.plugins;
@@ -1953,7 +1969,8 @@ watch(windowTitle, (title) => { document.title = title; }, { immediate: true });
 watch(
   [compactViewport, activeHost],
   ([compact, surface]) => {
-    if (compact && surface !== 'agent' && !missionWindow.value) activeHost.value = 'agent';
+    // An open project overview fits a narrow window, so it stays; other full-pane surfaces give way to conversations.
+    if (compact && surface !== 'agent' && surface !== 'overview' && !missionWindow.value) activeHost.value = 'agent';
   },
   { immediate: true },
 );
@@ -2498,6 +2515,32 @@ const pendingNewAgentWorktreeBranchName = computed(() => (
 const isAgentEmpty = computed(() => activeTeamAgents.value.length === 0);
 const cockpitVisible = computed(() => cockpitScope.value && (activeHost.value === 'agent' || activeHost.value === 'mission'));
 const backlogVisible = computed(() => activeHost.value === 'backlog');
+// The project overview is opened from one agent of a repository and leaves with that agent.
+const overviewAgentId = ref<string | null>(null);
+const overviewVisible = computed(() => activeHost.value === 'overview');
+const overviewActivityKey = computed(() => props.snapshot.agents.map(agent => `${agent.id}:${agent.status.type}`).join('|'));
+// Debug → UI Previews → Flow Initialization: the page on scripted reads, so every loading state can be seen.
+const overviewPreview = shallowRef<{ id: string; reads: ProjectOverviewReads } | null>(null);
+function openProjectOverview(agentId: string): void {
+  if (!projectFlowEnabled.value) return;
+  overviewPreview.value = null;
+  overviewAgentId.value = agentId;
+  activeHost.value = 'overview';
+}
+function previewFlowInitialization(): void {
+  const agent = currentAgent.value;
+  const name = agent?.workspace?.kind === 'git' ? agent.workspace.repositoryName : null;
+  overviewPreview.value = { id: `flow-preview-${Date.now()}`, reads: debugProjectOverviewReads(name || 'agent-workspace') };
+  overviewAgentId.value = agent?.id ?? 'flow-preview';
+  activeHost.value = 'overview';
+}
+watch(overviewVisible, (visible) => { if (!visible) overviewPreview.value = null; });
+// Switching Flow off closes a Flow page that is open; the Debug preview reads nothing and stays available.
+const projectFlowEnabled = computed(() => props.snapshot.general.projectFlowEnabled === true);
+watch(projectFlowEnabled, (enabled) => { if (!enabled && overviewVisible.value && !overviewPreview.value) activeHost.value = 'agent'; });
+watch(() => overviewVisible.value && !overviewPreview.value && !props.snapshot.agents.some(agent => agent.id === overviewAgentId.value), (gone) => {
+  if (gone) activeHost.value = 'agent';
+});
 const automationsVisible = computed(() => activeHost.value === 'automations');
 const settingsVisible = computed(() => activeHost.value === 'settings');
 async function setEngineEnabled(provider: HarnessProvider, enabled: boolean) {
@@ -2731,6 +2774,10 @@ function openDebugOperationProgress(
     previewWorktreeInitialization(currentAgent.value);
     return;
   }
+  if (kind === 'flowInitialization') {
+    previewFlowInitialization();
+    return;
+  }
   if (kind === 'worktreeInitialization') {
     startDebugAgentCreationProgress();
     return;
@@ -2817,7 +2864,7 @@ function clearDebugAgentCreationTimers(): void {
 }
 
 onBeforeUnmount(clearDebugAgentCreationTimers);
-const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeHost.value === 'mission') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
+const showAgentSidebar = computed(() => (isAgentWorkspaceVisible.value || activeHost.value === 'mission' || activeHost.value === 'overview') && (compactViewport.value || !agentSidebarCollapsed.value) && (props.snapshot.teams.length > 0 || !!props.snapshot.missions?.length));
 const editingAgent = computed(() => (
   editingAgentId.value ? props.snapshot.agents.find((agent) => agent.id === editingAgentId.value) ?? null : null
 ));

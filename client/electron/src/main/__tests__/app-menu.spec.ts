@@ -612,6 +612,7 @@ describe('app menu', () => {
       'Disconnected Agent Engine',
       'Worktree Initialization',
       'Worktree Initialization Indicator',
+      'Flow Initialization',
       'Pull Request Progress',
       'Merge Progress',
       'Merge Conflicts',
@@ -641,6 +642,7 @@ describe('app menu', () => {
       'separator',
       'Worktree Initialization',
       'Worktree Initialization Indicator',
+      'Flow Initialization',
       'Pull Request Progress',
       'Merge Progress',
       'Merge Conflicts',
@@ -691,6 +693,8 @@ describe('app menu', () => {
     expect(debugCallbacks.sendAppCommand).toHaveBeenLastCalledWith({
       type: 'debug-operation-progress', kind: 'conflicts',
     });
+    clickNestedItem(debugMenu, 'Debug', 'UI Previews', 'Flow Initialization');
+    expect(debugCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'debug-operation-progress', kind: 'flowInitialization' });
 
     expect(debugCallbacks.reload).toHaveBeenCalledOnce();
     expect(debugCallbacks.toggleDeveloperTools).toHaveBeenCalledOnce();

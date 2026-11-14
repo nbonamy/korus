@@ -497,6 +497,8 @@ export type SavedPromptDraft = {
 
 export type AppGeneralSettings = {
   excludeLockfilesFromDiffs?: boolean;
+  /** Shows a Flow page for each project; off unless switched on. */
+  projectFlowEnabled?: boolean;
   git?: import('./git-preferences').GitSettings;
   commitMessageInstructions: string;
   pullRequestInstructions: string;
@@ -730,7 +732,7 @@ export type AppCommand =
   | { type: 'debug-disconnected-engine'; enabled: boolean }
   | { type: 'debug-provider-upgrades'; enabled: boolean }
   | { type: 'debug-review-uncommitted'; enabled: boolean }
-  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'pullRequest' | 'merge' | 'conflicts' }
+  | { type: 'debug-operation-progress'; kind: 'worktreeInitialization' | 'worktreeIndicator' | 'flowInitialization' | 'pullRequest' | 'merge' | 'conflicts' }
   | { type: 'edit-active-agent' }
   | { type: 'new-team' }
   | { type: 'open-agent-composer'; agentId?: string; prompt?: string; submit?: boolean }
@@ -920,6 +922,13 @@ export type AppApi = {
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
   previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
   branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
+  /**
+   * A read-only picture of the repository an agent works in. Routed to the host that owns the agent.
+   * `wait` answers once those sources land, the rest as loading; every source when omitted.
+   */
+  getProjectOverview(agentId: string, wait?: import('./project-overview').ProjectOverviewOuterSource[]): Promise<import('./project-overview').ProjectOverview>;
+  /** Rewrites the narrative when the project has moved since it was written; answers the overview either way. */
+  refreshProjectNarrative(agentId: string): Promise<import('./project-overview').ProjectOverview>;
   getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;
   getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
   getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;

@@ -1030,12 +1030,42 @@ describe('mission navigation', () => {
   });
 });
 
-it('offers repository deletion from the repository header context menu', async () => {
+it('offers repository deletion, and only that, from the repository header context menu', async () => {
   const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: [agents[0]!], activeAgentId: agents[0]!.id, teamName: 'Team' } });
   try {
     await wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
-    const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.trim() === 'Delete repository');
-    expect(action).toBeDefined(); action!.click(); await flushPromises();
+    const items = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    expect(items.map(button => button.textContent?.trim())).toStrictEqual(['Delete repository']);
+    items[0]!.click(); await flushPromises();
     expect(wrapper.emitted('delete-repository')).toStrictEqual([[agents[0]!.id]]);
   } finally { wrapper.unmount(); }
+});
+
+it('pins a project overview entry first in each repository, above its branches, and marks it while open', async () => {
+  const wrapper = mount(AgentSidebar, { props: { agents: [agents[0]!], activeAgentId: agents[0]!.id, teamName: 'Team' } });
+  const group = () => wrapper.get('[data-group-kind="repository"]');
+  // Flow is off until it is switched on in Settings.
+  expect(group().find('[data-entry="project-overview"]').exists()).toBe(false);
+  await wrapper.setProps({ projectFlowEnabled: true });
+  const entry = () => group().get('[data-entry="project-overview"]');
+  const agentRow = () => group().get('.agent-sidebar__agent');
+  // First in the repository's rows, before its branches.
+  expect(group().get('.agent-sidebar__group-rows').element.firstElementChild!.contains(entry().element)).toBe(true);
+  expect(entry().text()).toBe('Flow');
+  expect(entry().attributes('aria-pressed')).toBe('false');
+  expect(agentRow().classes()).toContain('agent-sidebar__agent--active');
+
+  await entry().trigger('click');
+  expect(wrapper.emitted('open-project-overview')).toStrictEqual([[agents[0]!.id]]);
+
+  // While the overview is open it is the selected entry, not the agent it was opened from.
+  await wrapper.setProps({ activeAgentId: null, activeOverviewAgentId: agents[0]!.id });
+  expect(entry().attributes('aria-pressed')).toBe('true');
+  expect(entry().classes()).toContain('agent-sidebar__overview-entry--active');
+  expect(agentRow().classes()).not.toContain('agent-sidebar__agent--active');
+
+  // Collapsing the repository hides it with its branches.
+  await group().get('.agent-sidebar__workspace-label').trigger('click');
+  await wrapper.setProps({ collapsedRepositoryKeys: wrapper.emitted<[string[]]>('update-collapsed-repositories')!.at(-1)![0] });
+  expect(entry().isVisible()).toBe(false);
 });

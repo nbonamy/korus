@@ -121,6 +121,11 @@
           :settings="settings"
           :update-settings="updateSettings"
         />
+        <SettingsProjectsPanel
+          v-else-if="activeTab === 'projects'"
+          :settings="generalSettings"
+          :update-settings="updateSettings"
+        />
         <SettingsAppshotsPanel
           v-else-if="activeTab === 'appshots' && appHostCapabilities.appshots"
           :settings="generalSettings.appshots"
@@ -183,6 +188,7 @@ import UsagePanel from './UsagePanel.vue';
 import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
+import SettingsProjectsPanel from './SettingsProjectsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
 import SettingsCursorPanel from './SettingsCursorPanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';

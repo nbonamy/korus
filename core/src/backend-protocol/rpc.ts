@@ -164,6 +164,9 @@ export type AppBackendRequestMap = {
     params: undefined;
     result: ClientState;
   };
+  /** `wait` names the outer sources to answer after; every source when omitted, the repository alone when empty. */
+  [backendMethods.projectOverviewGet]: { params: { agentId: string; wait?: import('../project-overview').ProjectOverviewOuterSource[] }; result: import('../project-overview').ProjectOverview };
+  [backendMethods.projectNarrativeRefresh]: { params: { agentId: string }; result: import('../project-overview').ProjectOverview };
   [backendMethods.agentGitLogGet]: {
     params: { agentId: string; input?: import('../contracts').AgentGitLogInput };
     result: import('../contracts').AgentGitLogPage;

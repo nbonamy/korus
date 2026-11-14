@@ -4,7 +4,7 @@ import type { AgentGitPullRequest, GlobalWorkItemQuery, SourceBranch, WorkItem, 
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { product } from '@workspace/core/product';
 import { runtimeGitLabOAuthClientId } from '../runtime-config';
-import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
+import { requireWorkProviderToken, type WorkProviderBacklogActivity, type WorkProviderBacklogItem, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver, type WorkProviderOpenPullRequest, type WorkProviderPipelineRun, type WorkProviderPullRequestActivity } from './types';
 
 const ORIGIN = 'https://gitlab.com';
 const API = `${ORIGIN}/api/v4`;
@@ -248,6 +248,65 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
         title: /^(draft|wip):/i.test(title) ? title : `Draft: ${title}`, description: input.body }),
     });
     return gitlabRequest(await this.requestJson(response), path);
+  }
+
+  async listBacklogActivity(credential: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderBacklogActivity> {
+    const endpoint = `${API}/projects/${encodeURIComponent(projectPath(repositoryId))}`;
+    const url = new URL(`${endpoint}/issues`);
+    url.search = new URLSearchParams({ updated_after: since, order_by: 'updated_at', sort: 'desc', scope: 'all', per_page: '100' }).toString();
+    const [issues, projectDetails] = await Promise.all([this.json(credential, url.href), this.json(credential, endpoint).catch(() => null)]);
+    if (!Array.isArray(issues)) throw new Error('GitLab returned an invalid issues response.');
+    return {
+      open: record(projectDetails) && Number.isInteger(projectDetails.open_issues_count) ? projectDetails.open_issues_count as number : null,
+      items: issues.flatMap((issue): WorkProviderBacklogItem[] => record(issue) && Number.isInteger(issue.iid) && typeof issue.title === 'string'
+        && typeof issue.created_at === 'string' && typeof issue.updated_at === 'string'
+        ? [{
+          id: `#${issue.iid}`, title: issue.title, state: issue.state === 'closed' ? 'closed' : 'open', createdAt: issue.created_at, updatedAt: issue.updated_at,
+          ...(typeof issue.closed_at === 'string' ? { closedAt: issue.closed_at } : {}),
+        }]
+        : []),
+    };
+  }
+
+  async listPullRequestActivity(credential: WorkProviderCredential, repositoryId: string): Promise<WorkProviderPullRequestActivity> {
+    const path = projectPath(repositoryId);
+    const requests = (state: 'opened' | 'merged', size: string) => {
+      const url = new URL(`${API}/projects/${encodeURIComponent(path)}/merge_requests`);
+      url.search = new URLSearchParams({ state, scope: 'all', order_by: 'updated_at', sort: 'desc', per_page: size }).toString();
+      return this.json(credential, url.href);
+    };
+    const [open, merged] = await Promise.all([requests('opened', '100'), requests('merged', '50')]);
+    if (!Array.isArray(open) || !Array.isArray(merged)) throw new Error('GitLab returned an invalid merge request response.');
+    const prefix = `${ORIGIN}/${path}/-/merge_requests/`;
+    return {
+      // A fork's branch can share a name with this checkout's branch; only same-project requests are its own.
+      open: open.flatMap((value): WorkProviderOpenPullRequest[] => record(value) && Number.isInteger(value.iid) && nonempty(value.source_branch)
+        && typeof value.created_at === 'string' && value.web_url === `${prefix}${value.iid}` && value.source_project_id === value.target_project_id
+        ? [{ number: value.iid as number, url: value.web_url, branch: value.source_branch, draft: value.draft === true, approved: null, conflicts: typeof value.has_conflicts === 'boolean' ? value.has_conflicts : null, openedAt: value.created_at }]
+        : []),
+      mergeTimesMs: merged.flatMap(value => {
+        const duration = record(value) && typeof value.created_at === 'string' && typeof value.merged_at === 'string' ? Date.parse(value.merged_at) - Date.parse(value.created_at) : Number.NaN;
+        return Number.isFinite(duration) && duration >= 0 ? [duration] : [];
+      }),
+    };
+  }
+
+  async listPipelineRuns(credential: WorkProviderCredential, repositoryId: string, since: string): Promise<WorkProviderPipelineRun[]> {
+    const url = new URL(`${API}/projects/${encodeURIComponent(projectPath(repositoryId))}/pipelines`);
+    url.search = new URLSearchParams({ updated_after: since, order_by: 'updated_at', sort: 'desc', per_page: '100' }).toString();
+    const pipelines = await this.json(credential, url.href);
+    if (!Array.isArray(pipelines)) throw new Error('GitLab returned an invalid pipelines response.');
+    return pipelines.flatMap((value): WorkProviderPipelineRun[] => {
+      if (!record(value) || !Number.isInteger(value.id) || !nonempty(value.ref) || typeof value.created_at !== 'string') return [];
+      const status = value.status === 'success' ? 'passed' : value.status === 'failed' ? 'failed'
+        : value.status === 'canceled' || value.status === 'skipped' ? 'cancelled' : 'running';
+      return [{ id: String(value.id), branch: value.ref, status, at: value.created_at }];
+    });
+  }
+
+  private async json(credential: WorkProviderCredential, url: string): Promise<unknown> {
+    const response = await this.api(credential, url);
+    try { return await response.json(); } catch { throw new Error('GitLab returned an invalid response.'); }
   }
 
   private async requestJson(response: Response): Promise<unknown> {

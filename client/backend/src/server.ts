@@ -134,6 +134,7 @@ export type AppBackendServerOptions = {
   };
   requestCollaborationController?: (input: RemoteCollaborationCall) => Promise<unknown>;
   runProfiles?: RunProfileService;
+  projectOverview?: Pick<import('./project-overview/project-overview-service').ProjectOverviewService, 'get' | 'refreshNarrative'>;
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
@@ -1655,6 +1656,17 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.projectOverviewGet:
+      case backendMethods.projectNarrativeRefresh: {
+        const params = requireRecord(message.params);
+        return this.routeAgentResultRequest(message.id, requireString(params.agentId, 'agentId'), message.method, params, (agent) => {
+          const overview = this.options.projectOverview;
+          if (!overview) throw new Error('The project overview is unavailable on this host.');
+          return message.method === backendMethods.projectOverviewGet ? overview.get(agent, projectOverviewGetOptions(params.wait)) : overview.refreshNarrative(agent, (engine, request) => (
+            this.handleAgentDriverRequest(engine, backendMethods.driverTextGenerate, { agent: engine, ...request })
+          ));
+        });
+      }
       case backendMethods.collaborationTaskAccess: {
         const params = requireRecord(message.params);
         const team = this.snapshot.teams.find(team => team.id === params.teamId && team.collaborationOwnerId === params.ownerId);
@@ -5369,4 +5381,14 @@ function remoteControlStatusFromUnknown(value: unknown): DevicePairingStatus | n
   if (typeof record.installationId === 'string') status.installationId = record.installationId;
   if (record.environmentId === null || typeof record.environmentId === 'string') status.environmentId = record.environmentId;
   return status;
+}
+
+const projectOverviewWaitSources = new Set(['backlog', 'pullRequests', 'pipelines']);
+/** The outer sources a staged overview read waits for; every source when none are named. */
+function projectOverviewGetOptions(wait: unknown): import('./project-overview/project-overview-service').ProjectOverviewGetOptions {
+  if (wait === undefined) return {};
+  if (!Array.isArray(wait) || !wait.every(source => typeof source === 'string' && projectOverviewWaitSources.has(source))) {
+    throw new Error('wait must list backlog, pullRequests or pipelines.');
+  }
+  return { wait: wait as ('backlog' | 'pullRequests' | 'pipelines')[] };
 }

@@ -42,6 +42,7 @@ export {
   IconSeparatorHorizontal as SeparatorHorizontalIcon,
   IconSeparatorVertical as SeparatorVerticalIcon,
   IconArrowsSort as ArrowsSortIcon,
+  IconBrandJira as BrandJiraIcon,
   IconBrandOpenai as BrandOpenaiIcon,
   IconBrandSpeedtest as BrandSpeedTest,
   IconBolt as BoltIcon,

@@ -1,3 +1,8 @@
+import { ProjectOverviewGitReader } from './project-overview/git-reader';
+import { ProjectNarrativeStore } from './project-overview/narrative-store';
+import { ProjectToolConfigFile } from './project-overview/tool-links';
+import { product } from '@workspace/core/product';
+import { ProjectOverviewService, projectNarrativeHostEngines } from './project-overview/project-overview-service';
 import { cleanupPromptUploads } from './companion/uploads';
 import { DesignService } from './design-service';
 import { createDesignToolModuleProvider } from './mcp/design-tools';
@@ -392,6 +397,19 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    projectOverview: new ProjectOverviewService({
+      git: new ProjectOverviewGitReader(),
+      sessions: (repository, since) => localUsage.sessions(repository, since),
+      agents: () => snapshot.agents,
+      hostEngines: () => projectNarrativeHostEngines(snapshot.providerConnections),
+      narratives: new ProjectNarrativeStore(path.join(backendHomeDir(), 'project-overviews.json')),
+      tools: new ProjectToolConfigFile(product.homeDirectory),
+      outerLoop: {
+        backlog: (repositoryId, since) => workIntegrations.backlogActivity(repositoryId, since),
+        pullRequests: repositoryId => workIntegrations.pullRequestActivity(repositoryId),
+        pipelines: (repositoryId, since) => workIntegrations.pipelineRuns(repositoryId, since),
+      },
+    }),
     worktreeInitializationForFolder: folder => worktreeManager.getInitializationState(folder),
     initializeWorktree: async (repositoryPath, folder) => {
       await worktreeManager.initializeWorktree(repositoryPath, folder, { backgroundInitialization: true });

@@ -1196,6 +1196,44 @@ describe('AppShell dialogs and commands', () => {
     expect(localStorage.getItem(key)).toBe(saved);
   });
 
+  it('previews Flow loading from scripted reads, one tool at a time and then the narrative, without reading the project', async () => {
+    vi.useFakeTimers();
+    let listener!: (command: AppCommand) => void;
+    window.app = {
+      onAppCommand: vi.fn(next => { listener = next; return () => {}; }),
+      onEvent: vi.fn(() => vi.fn()),
+    } as Partial<AppApi> as AppApi;
+    const wrapper = mountShell({ snapshot: createInitialSnapshot() });
+    const loading = () => wrapper.findAll('.project-flow__station--loading').map(item => item.attributes('data-station'));
+    try {
+      await nextTick();
+      listener({ type: 'debug-operation-progress', kind: 'flowInitialization' });
+      await nextTick();
+      expect(wrapper.find('.project-overview').exists()).toBe(true);
+      expect(loading()).toStrictEqual(['backlog', 'building', 'review', 'ci', 'shipped']);
+      expect(wrapper.findAll('.project-progress__step').map(step => step.attributes('data-state'))).toStrictEqual(['active', 'pending', 'pending', 'pending']);
+
+      // The repository answers first, then each tool on its own, then the narrative is written.
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(loading()).toStrictEqual(['backlog', 'building', 'review', 'ci']);
+      expect(wrapper.findAll('.project-flow__note')[0]!.text()).toBe('Asking GitLab for issues…');
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(loading()).toStrictEqual(['backlog', 'review', 'ci']);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(loading()).toStrictEqual(['backlog']);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(loading()).toStrictEqual([]);
+      expect(wrapper.findAll('.project-progress__step').map(step => step.attributes('data-state'))).toStrictEqual(['done', 'done', 'done', 'active']);
+      expect(wrapper.find('.project-narrative__lead').exists()).toBe(false);
+      // Until the narrative names its workstreams, all work is other work.
+      expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Other work']);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(wrapper.findAll('.project-flow__legend li').map(item => item.text())).toStrictEqual(['Search engine', 'Export pipeline', 'Other work']);
+      expect(wrapper.get('.project-narrative__lead strong').text()).toBe('agent-workspace');
+      expect(wrapper.find('.project-progress').exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
+
   it('previews background worktree initialization without changing the agent or running setup', async () => {
     vi.useFakeTimers();
     let listener!: (command: AppCommand) => void;

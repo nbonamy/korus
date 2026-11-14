@@ -42,7 +42,9 @@
       :mission-agents="snapshot.agents"
       :forkable-agent-ids="forkableAgentIds"
       :summary-replacement-agent-ids="summaryReplacementAgentIds"
-      :active-agent-id="activeMissionId ? null : currentAgent?.id ?? null"
+      :active-agent-id="activeMissionId || activeOverviewAgentId ? null : currentAgent?.id ?? null"
+      :active-overview-agent-id="activeOverviewAgentId ?? null"
+      :project-flow-enabled="projectFlowEnabled"
       :missions="teamMissions"
       :active-mission-id="activeMissionId"
       :mission-creation-error="missionCreationError"
@@ -56,6 +58,7 @@
       @reorder-feature="$emit('reorder-feature', $event)"
       @delete-feature="$emit('delete-feature', $event)"
       @delete-repository="$emit('delete-repository', $event)"
+      @open-project-overview="$emit('open-project-overview', $event)"
       @delete-mission="$emit('delete-mission', $event)"
       @open-mission-window="$emit('open-mission-window', $event)"
       @create-agent-in-mission-worktree="$emit('create-agent-in-mission-worktree', $event)"
@@ -143,6 +146,8 @@ type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: st
 
 const props = defineProps<{
   activeMissionId?: string | null;
+  activeOverviewAgentId?: string | null;
+  projectFlowEnabled?: boolean;
   missionCreationError?: string;
   missionCreationPending?: boolean;
   phoneScope?: boolean;
@@ -197,6 +202,7 @@ const emit = defineEmits<{
   'reorder-feature': [feature: { branch: string; beforeBranch: string | null }];
   'delete-feature': [feature: { branch: string; label: string }];
   'delete-repository': [agentId: string];
+  'open-project-overview': [agentId: string];
   'select-mission': [id: string];
   'duplicate-agent': [agentId: string];
   'open-agent-window': [agentId: string];

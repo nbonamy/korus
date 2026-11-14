@@ -16,6 +16,8 @@ export function registerAgentGitIpcHandlers(
   ipc.handle(ipcChannels.pruneAgentGit, (_event, agentId, input) => (
     requestAppBackend(getBackendClient(), backendMethods.agentGitPrune, { agentId, input })
   ));
+  ipc.handle(ipcChannels.getProjectOverview, (_event, agentId, wait) => requestAppBackend(getBackendClient(), backendMethods.projectOverviewGet, wait === undefined ? { agentId } : { agentId, wait }));
+  ipc.handle(ipcChannels.refreshProjectNarrative, (_event, agentId) => requestAppBackend(getBackendClient(), backendMethods.projectNarrativeRefresh, { agentId }));
   ipc.handle(ipcChannels.getAgentGitLog, (_event, agentId, input) => requestAppBackend(getBackendClient(), backendMethods.agentGitLogGet, { agentId, input }));
   ipc.handle(ipcChannels.getAgentGitLogCommit, (_event, agentId, input) => requestAppBackend(getBackendClient(), backendMethods.agentGitLogCommitGet, { agentId, input }));
   ipc.handle(ipcChannels.getAgentGitLogFile, (_event, agentId, input) => requestAppBackend(getBackendClient(), backendMethods.agentGitLogFileGet, { agentId, input }));

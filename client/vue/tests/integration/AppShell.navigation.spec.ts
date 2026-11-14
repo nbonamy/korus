@@ -13,6 +13,7 @@ import { selectAgent } from '@workspace/core/agent-manager';
 import type { AppApi, AppCommand, Agent, UpdateSettingsInput, WorkSource } from '@workspace/core/contracts';
 import { useConfetti } from '../../src/shared/confetti/use-confetti';
 
+import { setElectronTestClient } from '../support/client';
 import {
   mountShell as mountRealShell,
   pointerEvent,
@@ -85,6 +86,57 @@ describe('AppShell navigation and teams', () => {
     await wrapper.get('.chat-composer__send').trigger('click');
 
     expect(wrapper.emitted('interrupt-agent')).toStrictEqual([[]]);
+  });
+
+  it('opens the project overview from its pinned repository entry beside the sidebar and leaves it when an agent is selected', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.projectFlowEnabled = true;
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/work/korus';
+    agent.workspace = { kind: 'git', folder: '/work/korus', repositoryName: 'korus', repositoryRoot: '/work/korus', primaryWorktreeRoot: '/work/korus', branch: 'main', isLinkedWorktree: false, updatedAt: '2026-11-11T00:00:00Z' };
+    const absent = { status: 'notConnected' as const, count: null, note: null, marks: [], stuck: [] };
+    const getProjectOverview = vi.fn(async () => ({
+      generatedAt: new Date().toISOString(),
+      lookback: { days: null, since: new Date().toISOString() },
+      toolLinks: {},
+      repository: { name: 'korus', branch: 'main', baseBranch: 'main' },
+      sources: { git: 'available' as const, backlog: 'notConnected' as const, pullRequests: 'notConnected' as const, pipelines: 'notConnected' as const },
+      narrative: { status: 'unavailable' as const, reason: 'quiet' as const },
+      flow: {
+        stations: [
+          { kind: 'backlog' as const, ...absent }, { kind: 'building' as const, status: 'available' as const, count: 0, note: 0, marks: [], stuck: [] },
+          { kind: 'review' as const, ...absent }, { kind: 'ci' as const, ...absent }, { kind: 'shipped' as const, status: 'available' as const, count: 0, note: null, marks: [], stuck: [] },
+        ],
+        links: [{ to: 'building' as const, tokens: [] }, { to: 'review' as const, tokens: [] }, { to: 'ci' as const, tokens: [] }, { to: 'shipped' as const, tokens: [] }],
+        constraint: null,
+      },
+    }));
+    setElectronTestClient({ getProjectOverview, refreshProjectNarrative: vi.fn() });
+    const wrapper = mount(AppShell, { attachTo: document.body, props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
+
+    const overviewEntry = () => wrapper.get('[data-group-kind="repository"] [data-entry="project-overview"]');
+    await overviewEntry().trigger('click');
+    await flushPromises();
+
+    expect(getProjectOverview).toHaveBeenCalledExactlyOnceWith(agent.id, []);
+    expect(wrapper.get('.project-overview h1').text()).toBe('korus');
+    expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    // The pinned entry is the selection while the overview is open, not the agent it was opened from.
+    expect(overviewEntry().attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-group-kind="repository"] .agent-sidebar__repository-agent.agent-sidebar__agent--active').exists()).toBe(false);
+
+    await wrapper.get('[data-group-kind="repository"] .agent-sidebar__repository-agent').trigger('click');
+    expect(wrapper.find('.project-overview').exists()).toBe(false);
+
+    // Switching Flow off removes its entries and closes an open Flow page.
+    await overviewEntry().trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.project-overview').exists()).toBe(true);
+    await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, projectFlowEnabled: false } } });
+    await flushPromises();
+    expect(wrapper.find('.project-overview').exists()).toBe(false);
+    expect(wrapper.find('[data-entry="project-overview"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('forwards agent selection from the sidebar', async () => {

@@ -226,6 +226,20 @@
         </header>
 
         <div class="agent-sidebar__group-rows">
+          <div v-if="group.kind === 'repository' && projectFlowEnabled && !phoneScope && !featureOnly" class="agent-sidebar__agent-row">
+            <button
+              v-show="!isWorkspaceCollapsed(group)"
+              class="agent-sidebar__overview-entry"
+              :class="{ 'agent-sidebar__overview-entry--active': projectOverviewActive(group) }"
+              type="button"
+              data-entry="project-overview"
+              :aria-pressed="projectOverviewActive(group)"
+              @click="openProjectOverview(group)"
+            >
+              <ChartBarIcon class="agent-sidebar__overview-icon" aria-hidden="true" />
+              <strong class="agent-sidebar__overview-title" :class="{ 'agent-sidebar__overview-title--active': projectOverviewActive(group) }">{{ t('projectOverview.open') }}</strong>
+            </button>
+          </div>
           <div
             v-for="session in group.sessions"
             :key="session.agentId"
@@ -333,7 +347,7 @@ import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, ChartBarIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import ProviderIcon from './ProviderIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
@@ -373,11 +387,14 @@ const {
   quickChatGroup,
   phoneScope,
   featureOnly,
+  projectFlowEnabled,
   missions,
   missionCreationPending,
   missionCreationError,
   missionsCollapsed,
   activeMissionId,
+  projectOverviewActive,
+  openProjectOverview,
   attentionOf,
   openMissionMenu,
   missionStatusLabel,
@@ -424,6 +441,22 @@ const {
 <style scoped>
 .agent-sidebar__host {
   margin-left: var(--space-6);
+}
+
+.agent-sidebar__overview-title {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-sidebar__overview-icon {
+  width: var(--agent-sidebar-workspace-icon-size, 16px);
+  height: var(--agent-sidebar-workspace-icon-size, 16px);
+  color: var(--color-primary);
+  stroke-width: 1.8;
+  justify-self: center;
 }
 
 .agent-sidebar__workspace-group > .agent-sidebar__group-rows {
