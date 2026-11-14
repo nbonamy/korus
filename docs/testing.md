@@ -357,8 +357,11 @@ Tag pushes do not trigger it. It owns lint/typechecks, the full suite under
 coverage, script tests, and retained coverage reports.
 Quality resolves each SDK repository's `main` commit once per run, records the
 revisions in the run summary, and checks out those same commits for every validation
-job. SDKs are installed and built in dependency order before validation runs with
-`SDK_LOCAL_SOURCE=1`; `SDK_SOURCE_ROOT` points to the runner's temporary checkouts.
+job. Each SDK is built and packed as it would be published, and the tarball replaces
+the pinned package in `node_modules`, so validation loads prebuilt files like a
+release does. Aliasing to SDK sources (`SDK_LOCAL_SOURCE`) is for local development:
+on a runner it transforms the SDK's source files in every test file and pushes tight
+test timeouts over their limit.
 The README badge combines covered and total statement counts
 from every declared workspace. Only successful Quality runs for the current `main` commit
 publish coverage badge data to the separate `badges` branch; PRs have no publication authority.

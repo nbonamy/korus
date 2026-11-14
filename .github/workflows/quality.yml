@@ -41,7 +41,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Check out and build SDK sources
+      - name: Install the SDKs' latest main builds
         run: node scripts/quality-sdk-sources.mjs prepare
         env:
           SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
@@ -61,7 +61,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Check out and build SDK sources
+      - name: Install the SDKs' latest main builds
         run: node scripts/quality-sdk-sources.mjs prepare
         env:
           SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
@@ -90,7 +90,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Check out and build SDK sources
+      - name: Install the SDKs' latest main builds
         run: node scripts/quality-sdk-sources.mjs prepare
         env:
           SDK_REVISIONS: ${{ needs.workspaces.outputs.sdk-revisions }}
