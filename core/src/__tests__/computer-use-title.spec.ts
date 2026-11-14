@@ -21,4 +21,17 @@ describe('computerUseTitle', () => {
     expect(computerUseTitle('computer-use-get-app-state', { app: 'Safari', rootElementIndex: 58, label: 'Full Name' }, undefined, 'completed')).toBe('Inspected Full Name in Safari');
     expect(computerUseTitle('computer-use-get-app-state', { app: 'Safari', rootElementIndex: 58 }, undefined, 'completed')).toBe('Inspected control #58 in Safari');
   });
+
+  it('names a control the model did not label from the control the helper reports having acted on', () => {
+    const args = { app: 'Safari', element_index: 120 };
+    const reported = (target: Record<string, unknown>) => ({ structuredContent: { target } });
+
+    expect(computerUseTitle('computer-use-click', args, undefined, 'running')).toBe('Clicking control #120 in Safari');
+    expect(computerUseTitle('computer-use-click', args, reported({ title: 'First Name' }), 'completed')).toBe('Clicked First Name in Safari');
+    expect(computerUseTitle('computer-use-type-text', args, reported({ title: '', description: 'Email address' }), 'completed')).toBe('Entered text in Email address in Safari');
+    expect(computerUseTitle('computer-use-get-app-state', { ...args, rootElementIndex: 120 }, reported({ title: 'Preferred Resolution' }), 'completed')).toBe('Inspected Preferred Resolution in Safari');
+    // The model's own label wins, and a very long name is cut.
+    expect(computerUseTitle('computer-use-click', { ...args, label: 'Submit' }, reported({ title: 'First Name' }), 'completed')).toBe('Clicked Submit in Safari');
+    expect(computerUseTitle('computer-use-click', args, reported({ title: 'x'.repeat(100) }), 'completed')).toBe(`Clicked ${'x'.repeat(39)}… in Safari`);
+  });
 });

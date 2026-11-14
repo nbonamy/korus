@@ -45,7 +45,7 @@ function target(tool: string, args: Record<string, unknown>, result: unknown): s
   const x = finiteNumber(args.x);
   const y = finiteNumber(args.y);
   // The name the model gave the control reads better than its element number.
-  const label = firstString(args.label);
+  const label = firstString(args.label) ?? reportedControlName(result);
 
   switch (tool) {
     case 'computer-use-click':
@@ -101,6 +101,16 @@ function target(tool: string, args: Record<string, unknown>, result: unknown): s
     default:
       return app;
   }
+}
+
+/** The name of the control the helper says it acted on, so a call without a label still reads well once it is done. */
+function reportedControlName(result: unknown): string | undefined {
+  for (const payload of nestedResultRecords(result)) {
+    const target = isRecord(payload.target) ? payload.target : undefined;
+    const name = target ? firstString(target.title, target.description) : undefined;
+    if (name) return name.length > 40 ? `${name.slice(0, 39)}…` : name;
+  }
+  return undefined;
 }
 
 function appTarget(args: Record<string, unknown>, result: unknown): string {
