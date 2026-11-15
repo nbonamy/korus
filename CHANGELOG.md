@@ -4,6 +4,19 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.57.2] - 2026-11-14
+
+### New features
+
+- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.
+- **Control names:** Activity rows name the control an agent worked on, such as "Clicked First Name in Safari".
+- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.
+- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.
+
+### Improvements and fixes
+
+- **Questions:** An answered Claude question keeps its answers when the conversation is shown again.
+
 ## [0.57.1] - 2026-11-14
 
 ### New features

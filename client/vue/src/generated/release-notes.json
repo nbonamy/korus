@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.57.1",
+  "currentVersion": "0.57.2",
   "releases": [
+    {
+      "version": "0.57.2",
+      "releasedAt": "2026-11-14",
+      "sourceSha256": "8295c00cd8dfdff35bfa6cc5ca4aded683eff199f47b54b248d951e55c8163ee",
+      "markdown": "### New features\n\n- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.\n- **Control names:** Activity rows name the control an agent worked on, such as \"Clicked First Name in Safari\".\n- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.\n- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.\n\n### Improvements and fixes\n\n- **Questions:** An answered Claude question keeps its answers when the conversation is shown again."
+    },
     {
       "version": "0.57.1",
       "releasedAt": "2026-11-14",
