@@ -15,7 +15,7 @@ function setup({ dirty = [], untracked = [], remoteHead = head, tagSha = '', pub
   let current;
   const gh = args => {
     calls.push(args);
-    if (args[0] === 'api' && args[1] === 'repos/nbonamy/korus') return JSON.stringify({ default_branch: 'main' });
+    if (args[0] === 'api' && args[1] === 'repos/Korus-Dev/korus') return JSON.stringify({ default_branch: 'main' });
     if (args[0] === 'api' && args[1].includes('/actions/runs/42/jobs')) return JSON.stringify({ jobs: current.jobs });
     if (args[0] === 'api' && args[1].endsWith('/actions/runs/42')) {
       current = queue.length > 1 ? queue.shift() : queue[0];
@@ -25,7 +25,7 @@ function setup({ dirty = [], untracked = [], remoteHead = head, tagSha = '', pub
       if (published === undefined) throw Object.assign(new Error('failed'), { stderr: 'release not found' });
       return JSON.stringify({ isDraft: !published });
     }
-    if (args[0] === 'workflow') return url ? 'https://github.com/nbonamy/korus/actions/runs/42\n' : '';
+    if (args[0] === 'workflow') return url ? 'https://github.com/Korus-Dev/korus/actions/runs/42\n' : '';
     if (args[0] === 'run' && args[1] === 'list') return JSON.stringify([{ databaseId: 42, createdAt: new Date().toISOString() }]);
     if (args[0] === 'run' && args.includes('--log-failed')) return 'boom';
     return '';

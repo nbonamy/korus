@@ -17,16 +17,16 @@ function fakeMirrorToken(t) {
 
 test('source repository metadata may omit permissions for the workflow token', t => {
   fakeMirrorToken(t);
-  const repositories = ['Korus-Dev/korus', 'nbonamy/korus'];
+  const repositories = ['fixture/korus-releases', 'Korus-Dev/korus'];
   const run = (_command, args) => JSON.stringify({ private: false, default_branch: 'main',
-    ...(args[1].endsWith('Korus-Dev/korus') ? { permissions: { push: true } } : {}) });
+    ...(args[1].endsWith('fixture/korus-releases') ? { permissions: { push: true } } : {}) });
   assert.equal(checkReleaseRepositories(repositories, run).size, 2);
 });
 
 test('destination preflight still rejects private repositories and an unwritable mirror', t => {
   fakeMirrorToken(t);
-  assert.throws(() => checkReleaseRepositories(['nbonamy/korus'], () => JSON.stringify({ private: true })), /Public release write access/);
-  assert.throws(() => checkReleaseRepositories(['Korus-Dev/korus'], () => JSON.stringify({ private: false, permissions: { push: false } })), /Public release write access/);
+  assert.throws(() => checkReleaseRepositories(['Korus-Dev/korus'], () => JSON.stringify({ private: true })), /Public release write access/);
+  assert.throws(() => checkReleaseRepositories(['fixture/korus-releases'], () => JSON.stringify({ private: false, permissions: { push: false } })), /Public release write access/);
 });
 
 // Publication policy against a fake gh, not proof of GitHub Actions or network behavior.
@@ -119,7 +119,7 @@ function mirrored(t) {
     if (originalToken === undefined) delete process.env.DESKTOP_RELEASE_TOKEN;
     else process.env.DESKTOP_RELEASE_TOKEN = originalToken;
   });
-  const repositories = ['Korus-Dev/korus', 'nbonamy/korus'];
+  const repositories = ['fixture/korus-releases', 'Korus-Dev/korus'];
   const releases = new Map();
   const calls = [];
   let fail = '';
@@ -152,31 +152,31 @@ test('the same verified installers are staged in both repositories before either
   assert.deepEqual(uploads.map(call => call.repo), f.repositories);
   assert.ok(f.calls.findIndex(call => call.verb === 'edit') > f.calls.findLastIndex(call => call.verb === 'upload'));
   const creates = f.calls.filter(call => call.verb === 'create');
-  assert.ok(creates.find(call => call.repo === 'nbonamy/korus').args.includes('--verify-tag'));
-  assert.ok(creates.find(call => call.repo === 'Korus-Dev/korus').args.includes('--target'));
-  assert.ok(!creates.find(call => call.repo === 'Korus-Dev/korus').args.includes('--verify-tag'));
+  assert.ok(creates.find(call => call.repo === 'Korus-Dev/korus').args.includes('--verify-tag'));
+  assert.ok(creates.find(call => call.repo === 'fixture/korus-releases').args.includes('--target'));
+  assert.ok(!creates.find(call => call.repo === 'fixture/korus-releases').args.includes('--verify-tag'));
 });
 
 test('a failed mirror upload leaves both releases as drafts', async t => {
-  const f = mirrored(t); f.failOnce('nbonamy/korus:upload');
+  const f = mirrored(t); f.failOnce('Korus-Dev/korus:upload');
   await assert.rejects(f.publish(), /connection lost/);
   assert.ok([...f.releases.values()].every(release => release.isDraft));
   assert.ok(!f.calls.some(call => call.verb === 'edit'));
 });
 
 test('a partial publication resumes without replacing already published assets', async t => {
-  const f = mirrored(t); f.failOnce('nbonamy/korus:edit');
+  const f = mirrored(t); f.failOnce('Korus-Dev/korus:edit');
   await assert.rejects(f.publish(), /connection lost/);
-  assert.equal(f.releases.get('Korus-Dev/korus').isDraft, false);
+  assert.equal(f.releases.get('fixture/korus-releases').isDraft, false);
   await f.publish();
   assert.ok([...f.releases.values()].every(release => !release.isDraft));
-  assert.equal(f.calls.filter(call => call.repo === 'Korus-Dev/korus' && call.verb === 'upload').length, 1);
+  assert.equal(f.calls.filter(call => call.repo === 'fixture/korus-releases' && call.verb === 'upload').length, 1);
 });
 
 test('a published mirror with different bytes blocks recovery without modifying it', async t => {
-  const f = mirrored(t); f.failOnce('nbonamy/korus:edit');
+  const f = mirrored(t); f.failOnce('Korus-Dev/korus:edit');
   await assert.rejects(f.publish(), /connection lost/);
-  f.releases.get('Korus-Dev/korus').assets[0].digest = 'sha256:wrong';
+  f.releases.get('fixture/korus-releases').assets[0].digest = 'sha256:wrong';
   f.calls.length = 0;
   await assert.rejects(f.publish(), /do not match/);
   assert.ok(!f.calls.some(call => ['create', 'upload', 'edit'].includes(call.verb)));
@@ -202,5 +202,5 @@ test('each repository uses its own workflow credential', async t => {
   process.env.GITHUB_ACTIONS = 'true'; process.env.GH_TOKEN = 'source-token'; process.env.DESKTOP_RELEASE_TOKEN = 'mirror-token';
   const f = mirrored(t);
   await f.publish();
-  for (const call of f.calls) assert.equal(call.token, call.repo === 'nbonamy/korus' ? 'source-token' : 'mirror-token');
+  for (const call of f.calls) assert.equal(call.token, call.repo === 'Korus-Dev/korus' ? 'source-token' : 'mirror-token');
 });
