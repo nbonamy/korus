@@ -1289,6 +1289,10 @@ export class AppBackendServer {
     await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent });
   }
 
+  independentReviewMcpServerUrl(agent: Agent): string | undefined {
+    return this.codeReviews?.independentMcpServerUrl(agent);
+  }
+
   private async disposeAndReleaseReviewConversation(agent: Agent, retainConversation = false): Promise<void> {
     if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') {
       await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }).catch(() => undefined);

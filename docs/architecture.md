@@ -960,8 +960,11 @@ target and reviewer agents) plus an opaque reviewer session reference.
   conversation is never disposed.
 - New independent reviewers follow their source agent in each client's saved order;
   an explicit user reorder takes precedence.
-- Codex review rounds wait for their matching terminal turn event without a fixed
-  duration limit; elapsed time alone does not fail an active review.
+- Review rounds wait for the harness run to finish without a fixed duration limit;
+  elapsed time alone does not fail an active review.
+- Independent reviewers use their own agent's normal conversation, with the
+  restricted review MCP endpoint configured before history loading or a review
+  prompt. Current-thread reviews use a scoped execution in the existing conversation.
 - Independent reviews start in a fresh conversation and retain it between rounds;
   every round receives the cumulative ledger (all prior skips, fixes and decisions)
   in a `<context>` block.

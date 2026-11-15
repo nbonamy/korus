@@ -451,7 +451,8 @@ it.each([false, true])('persists shutdown observations before closing the ledger
 });
 
 it('routes request observations through usage/get with cost coverage and clears them through usage/clear', async () => {
-  const local = new UsageLedger(':memory:');
+  const at = Date.parse('2026-10-16T00:00:00Z');
+  const local = new UsageLedger(':memory:', () => at);
   await local.load();
   const usage = new UsageService(local, () => undefined);
   let observe!: (event: ExecutionObservation) => void;
@@ -464,7 +465,7 @@ it('routes request observations through usage/get with cost coverage and clears 
   } as unknown as ProviderDriverRpc;
   const server = new AppBackendServer({ version: 'test', snapshot: createTestSnapshot(), usage, driverRpc: driver });
   const call = (method: string) => server.handleMessage({ jsonrpc: '2.0', id: 1, method, params: {} });
-  const event = { provider: 'codex' as const, agentId: 'a', sessionId: 's', turnId: 't', model: 'gpt-6-sol', at: Date.now() };
+  const event = { provider: 'codex' as const, agentId: 'a', sessionId: 's', turnId: 't', model: 'gpt-6-sol', at };
   try {
     observe({ ...event, phase: 'started' });
     request({ ...event, requestId: 'r', revision: 0, status: 'final', apiProvider: 'openai', modality: 'text', cacheMode: 'implicit',

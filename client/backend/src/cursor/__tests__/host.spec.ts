@@ -50,7 +50,7 @@ describe('Cursor ACP host transport boundary', () => {
     state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const mcp = new AppMcpService({ snapshot: state });
     const url = await mcp.start();
-    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url });
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url, reviewMcpServerUrl: reviewer => review.independentMcpServerUrl(reviewer) });
     const rpc = new ProviderDriverRpc(new Map([['cursor', host]]));
     const creation = new AgentCreationService(state);
     const checkpoint = { head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'fixture' };
@@ -155,7 +155,7 @@ describe('Cursor ACP host transport boundary', () => {
     state.general.providerEnabled = { cursor: true }; state.general.cursorSteeringFallbackEnabled = true;
     state.providerConnections = [{ provider: 'cursor', installed: true, connected: true, checking: false }];
     const mcp = new AppMcpService({ snapshot: state }); const url = await mcp.start();
-    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url, getGeneralSettings: () => state.general });
+    await host.close(); host = createProviderDriver('cursor', { appMcpServerUrl: url, getGeneralSettings: () => state.general, reviewMcpServerUrl: reviewer => server.independentReviewMcpServerUrl(reviewer) });
     const usage: import('@workspace/core/usage').ExecutionObservation[] = [];
     host.onEvent(event => events.push(event)); host.onUsage!(event => usage.push(event));
     let persisted: ReturnType<typeof persistedStateFromSnapshot> | undefined;
@@ -175,8 +175,10 @@ describe('Cursor ACP host transport boundary', () => {
         await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('failed'));
         expect(reviewer.codeReview?.rounds[0]?.error).toMatch(/Unknown Cursor model/);
         expect((await wire()).filter(call => call.method === 'session/prompt')).toHaveLength(1);
-        const retry = await host.runCodeReview!(reviewer, { prompt: 'Retry inspection', cwd: root, reviewerSession: reviewer.providerSession, reviewMcpServerUrl: 'http://127.0.0.1:1234/review' });
-        expect(retry.text).toBe('Hello Cursor');
+        await rm(path.join(root, 'hold-review'));
+        await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/codeReview/start', params: { agentId: reviewer.id, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
+        await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
+        expect(reviewer.codeReview?.rounds[0]).toMatchObject({ summary: 'Review turn complete.', inspectionCompletion: { findingCount: 1 } });
       } else {
         await steer('STEER_REVIEW_WAIT');
         expect(reviewer.provider).toBe('cursor');

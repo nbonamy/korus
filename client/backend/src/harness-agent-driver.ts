@@ -50,8 +50,8 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   private readonly scopes = new Map<string, Session>();
   /** The scope an agent is running right now, which steering, interrupts and answers address instead of its own conversation. */
   private readonly running = new Map<string, Session>();
-  /** The scoped run each agent has in flight, settled once it has fully unwound. */
-  private readonly scopedRuns = new Map<string, Promise<void>>();
+  /** The awaited review or scoped run, settled once it has fully unwound. */
+  private readonly activeRuns = new Map<string, Promise<void>>();
   /** Every scope open under an agent, released with it. */
   private readonly agentScopes = new Map<string, Set<Session>>();
   /** Scopes whose events stay out of the agent's conversation. */
@@ -260,10 +260,10 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   }
   async interrupt(agent: Agent, expectedTurnId?: string) {
     const session = await this.target(agent);
-    const run = this.scopedRuns.get(agent.id);
+    const run = this.activeRuns.get(agent.id);
     const admission = await this.harness.interrupt(session, expectedTurnId);
     const providerSession = this.admittedData(session) ?? agent.providerSession!;
-    // The harness acknowledges an interrupt before a scope's run has closed down its conversation. The caller may put
+    // The harness acknowledges an interrupt before the run has closed down its conversation. The caller may put
     // that conversation away next, so wait for the run; a run that will not stop is not waited on forever.
     if (run) await Promise.race([run, new Promise(resolve => setTimeout(resolve, 10_000))]);
     return { providerSession, ...(admission.turnId ? { turnId: admission.turnId } : {}) };
@@ -414,10 +414,13 @@ export class HarnessAgentDriver implements AgentProviderDriver {
 
   executeScopedPrompt(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
     const run = this.unless(agent, 'scoped execution', () => this.runScoped(agent, input));
-    const settled = run.then(() => undefined, () => undefined);
-    this.scopedRuns.set(agent.id, settled);
-    void settled.then(() => { if (this.scopedRuns.get(agent.id) === settled) this.scopedRuns.delete(agent.id); });
+    this.trackRun(agent.id, run);
     return run;
+  }
+  private trackRun(agentId: string, run: Promise<unknown>): void {
+    const settled = run.then(() => undefined, () => undefined);
+    this.activeRuns.set(agentId, settled);
+    void settled.then(() => { if (this.activeRuns.get(agentId) === settled) this.activeRuns.delete(agentId); });
   }
   private async runScoped(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['executeScopedPrompt']>>[1]) {
     const parent = await this.session(agent);
@@ -464,11 +467,29 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     this.agentScopes.get(agent.id)?.delete(scope);
   }
   async runCodeReview(agent: Agent, input: ProviderCodeReviewInput): Promise<ProviderCodeReviewResult> {
+    if (agent.codeReview?.threadMode === 'independent') {
+      if (this.activeRuns.has(agent.id)) throw new Error('A review is already running.');
+      const session = await this.session(agent);
+      if (input.reviewerSession) this.harness.syncSession(session, { data: input.reviewerSession });
+      const run = this.harness.run(session, input.prompt);
+      this.trackRun(agent.id, run.result);
+      const result = await run.result;
+      if (result.status !== 'completed') throw new Error(result.error?.message ?? `Review ${result.status}.`);
+      const text = result.messages.filter(message => message.role === 'assistant')
+        .flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('\n').trim();
+      return { text, reviewerSession: this.dataOf(session) };
+    }
     const result = await this.executeScopedPrompt(agent, { prompt: input.prompt, cwd: input.cwd, ...(input.reviewerSession ? { session: input.reviewerSession } : {}),
       scope: (this.policy.reviewScope?.(input.reviewMcpServerUrl) ?? { id: input.reviewMcpServerUrl }) as never });
     return { text: result.text, reviewerSession: result.session };
   }
-  disposeCodeReview(agent: Agent, session: ProviderSessionData) { return this.disposeScopedSession(agent, session); }
+  async disposeCodeReview(agent: Agent, data: ProviderSessionData): Promise<void> {
+    if (agent.codeReview?.threadMode !== 'independent') return this.disposeScopedSession(agent, data);
+    const session = await this.session({ ...agent, providerSession: data });
+    const capabilities = this.getCapabilities(agent);
+    if (capabilities.conversationArchive) await this.harness.archiveConversation(session);
+    else if (capabilities.conversationDelete) await this.harness.deleteConversation(session);
+  }
 
   onEvent(listener: (event: BackendEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   onUsage(listener: NonNullable<AgentProviderDriver['onUsage']> extends (l: infer L) => unknown ? L : never) { this.usageListeners.add(listener as never); return () => { this.usageListeners.delete(listener as never); }; }

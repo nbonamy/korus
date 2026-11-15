@@ -5,6 +5,9 @@ import type { AgentProviderDriver, ProviderCodeReviewResult } from '@workspace/c
 import type { Agent } from '@workspace/core/contracts';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
+import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
+import type { Run, RunResult } from '@korus-dev/multi-agent-sdk';
+import { AgentRegistry, HarnessAgentDriver } from '../harness-agent-driver';
 import { createTestSnapshot } from './server-test-fixtures';
 import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-tool-registry';
 
@@ -229,9 +232,10 @@ describe('AppBackendServer code review workflow', () => {
     await server.close();
   });
 
-  it.each(['codex', 'claude', 'antigravity'] as const)('retains %s review conversations through review again and finish', async (provider) => {
+  it.each(['codex', 'claude', 'cursor', 'antigravity'] as const)('retains %s review conversations through review again and finish', async (provider) => {
     const snapshot = createTestSnapshot();
     snapshot.providerConnections?.push({ provider: 'antigravity', installed: true, connected: true, checking: false });
+    snapshot.providerConnections?.push({ provider: 'cursor', installed: true, connected: true, checking: false });
     const owner: Agent = {
       id: 'agent-owner',
       teamId: snapshot.teams[0]!.id,
@@ -253,7 +257,7 @@ describe('AppBackendServer code review workflow', () => {
     let activeHandlers: ReviewToolHandlers | null = null;
     let findingId = '';
     let reviewRun = 0;
-    const runCodeReview = vi.fn(async (_agent, input) => {
+    const performReview = vi.fn(async (_agent, input) => {
       reviewRun += 1;
       if (!activeHandlers) throw new Error('Missing review tool context.');
       if (reviewRun === 1) {
@@ -271,13 +275,9 @@ describe('AppBackendServer code review workflow', () => {
       }
       return {
         text: '',
-        reviewerSession: input.reviewerSession ?? (provider === 'codex'
-          ? { kind: 'codex' as const, conversationId: `review-thread-${reviewRun}` }
-          : provider === 'claude' ? { kind: 'claude' as const, conversationId: `review-thread-${reviewRun}`, transport: 'stdio' as const }
-          : { kind: 'antigravity' as const, conversationId: `review-thread-${reviewRun}` }),
+        reviewerSession: input.reviewerSession ?? { kind: provider, conversationId: `review-thread-${reviewRun}`, ...(provider === 'claude' ? { transport: 'stdio' } : {}) },
       };
     });
-    const disposeCodeReview = vi.fn().mockResolvedValue(undefined);
     snapshot.general.worktreeDelegationStartingContext = 'conversation';
     snapshot.general.worktreeDelegationInstructions = 'Saved delegation directions must not enter an independent review.';
     const forkWorktreeConversation = vi.fn();
@@ -286,21 +286,28 @@ describe('AppBackendServer code review workflow', () => {
     const saveCodeReviewReport = vi.fn().mockResolvedValue('/reports/review.md');
     const releaseConversation = vi.fn();
     const sendAgentMessage = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: provider,
-      getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
-      getCapabilities: () => defaultProviderCapabilities(provider),
-      runCodeReview,
-      forkWorktreeConversation,
-      disposeCodeReview,
-      ...(provider === 'codex' ? { archiveAgentConversation } : {}),
-      releaseConversation,
-      sendPrompt: vi.fn(),
-      interrupt: vi.fn(),
-      respondToAgentRequest: vi.fn(),
-      onEvent: () => () => undefined,
-      close: vi.fn(),
-    };
+    const { harness, script } = createScriptedHarness(provider);
+    // Script the public SDK boundary; the workflow exercises the real Korus adapter.
+    // Both SDK execution APIs are supported so this test does not prescribe session layout.
+    script.on('executeScopedPrompt', (async (context: { providerSession?: Agent['providerSession'] }, input: { prompt: string }) => {
+      const result = await performReview(context, { ...input, reviewerSession: context.providerSession });
+      return { text: result.text, session: result.reviewerSession };
+    }) as never);
+    vi.spyOn(harness, 'run').mockImplementation((session, prompt) => {
+      let data; try { data = harness.getSessionData(session).data; } catch { /* Not admitted yet. */ }
+      const result: Promise<RunResult> = performReview(null, { prompt, reviewerSession: data }).then(reply => {
+        harness.syncSession(session, { data: reply.reviewerSession });
+        return { session, turnId: 'review-turn', status: 'completed', error: null, messages: [] };
+      });
+      return { session, admission: Promise.resolve({ session, turnId: 'review-turn' }), result,
+        events: { async *[Symbol.asyncIterator]() {} }, steer: vi.fn(), interrupt: vi.fn() } satisfies Run;
+    });
+    const driver = new HarnessAgentDriver(provider, harness, { agents: new AgentRegistry() });
+    const runCodeReview = vi.spyOn(driver, 'runCodeReview');
+    const disposeCodeReview = vi.spyOn(driver, 'disposeCodeReview');
+    vi.spyOn(driver, 'forkWorktreeConversation').mockImplementation(forkWorktreeConversation);
+    if (provider === 'codex') vi.spyOn(driver, 'archiveAgentConversation').mockImplementation(archiveAgentConversation);
+    vi.spyOn(driver, 'releaseConversation').mockImplementation(releaseConversation);
     let context = 0;
     const server = new AppBackendServer({
       version: 'test',
@@ -361,8 +368,7 @@ describe('AppBackendServer code review workflow', () => {
     await vi.waitFor(() => expect(session.status).toBe('readyToFinish'));
 
     expect(runCodeReview).toHaveBeenNthCalledWith(2, reviewer, expect.objectContaining({
-      reviewerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'review-thread-1' }
-        : provider === 'claude' ? { kind: 'claude', conversationId: 'review-thread-1', transport: 'stdio' } : { kind: 'antigravity', conversationId: 'review-thread-1' },
+      reviewerSession: { kind: provider, conversationId: 'review-thread-1', ...(provider === 'claude' ? { transport: 'stdio' } : {}) },
     }));
     expect(round.findings[0]!.remediation.state).toBe('fixed');
 

@@ -265,6 +265,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const mcpServerUrl = await mcpService.start();
   const driverOptions: ProviderDriverRegistryOptions = {
     appMcpServerUrl: mcpServerUrl,
+    reviewMcpServerUrl: agent => server?.independentReviewMcpServerUrl(agent),
     hostedMcpServerUrls: () => mcpService.hostedMcpServerUrls(),
     generalSettings: snapshot.general,
     pluginSettings,
