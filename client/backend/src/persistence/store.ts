@@ -169,7 +169,7 @@ export class AppStateStore {
       settingsText = serializeStoreFile(raw);
       await writeFileAtomically(this.absolute(settingsFile), settingsText);
     }
-    // TODO(remove-after: 2026-11-30): Remove settings.repositoryIcons import and retirement; retain the client projection. https://github.com/nbonamy/korus/issues/74
+    // TODO(remove-after: 2026-11-30): Remove settings.repositoryIcons import and retirement; retain the client projection. https://github.com/Korus-Dev/korus/issues/74
     const legacyIcons = raw.settings.repositoryIcons as Record<string, string> | undefined;
     const icons = await this.repositories.icons(legacyIcons);
     if (legacyIcons !== undefined) {

@@ -261,7 +261,7 @@ export class CompanionManager {
         return JSON.parse(await readFile(file, 'utf8')) as Saved;
       };
       try { saved = await read(path.join(this.home, 'companions.json')); }
-      // TODO(remove-after: 2026-11-30): Remove the legacy fallback and migrated-source retirement below. https://github.com/nbonamy/korus/issues/74
+      // TODO(remove-after: 2026-11-30): Remove the legacy fallback and migrated-source retirement below. https://github.com/Korus-Dev/korus/issues/74
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         saved = await read(path.join(this.directory, 'state.json'));
