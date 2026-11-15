@@ -67,9 +67,9 @@ describe('worktree remote deletion choices', () => {
 
 describe('repository web URL', () => {
   it.each([
-    ['git@github.com:nbonamy/korus.git', 'https://github.com/nbonamy/korus'],
-    ['github.com:nbonamy/korus', 'https://github.com/nbonamy/korus'],
-    ['https://github.com/nbonamy/korus.git', 'https://github.com/nbonamy/korus'],
+    ['git@github.com:owner/repo.git', 'https://github.com/owner/repo'],
+    ['github.com:owner/repo', 'https://github.com/owner/repo'],
+    ['https://github.com/owner/repo.git', 'https://github.com/owner/repo'],
     ['https://user:secret@gitlab.com/group/sub/project.git', 'https://gitlab.com/group/sub/project'],
     ['ssh://git@gitlab.example.com:2222/group/project.git', 'https://gitlab.example.com/group/project'],
     ['https://gitlab.example.com:8443/group/project.git', 'https://gitlab.example.com:8443/group/project'],

@@ -20,7 +20,6 @@ describe('mobile public product metadata', () => {
       const context: { mobileProduct?: { repository: string; repositoryUrl: string } } = {};
       for (const output of outputs) if ('output' in output) for (const chunk of output.output) {
         if (chunk.type !== 'chunk') continue;
-        expect(chunk.code).not.toContain('nbonamy/korus');
         runInNewContext(chunk.code, context);
       }
       expect(context.mobileProduct?.repository).toBe('Korus-Dev/korus');

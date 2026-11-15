@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { expect, it, vi } from 'vitest';
 import RepositoryDeleteDialog from '../RepositoryDeleteDialog.vue';
 
-it.each(['nbonamy/korus-test', 'local-project'])('requires the exact confirmation name %s and retains failures for retry', async name => {
+it.each(['owner/repo', 'local-project'])('requires the exact confirmation name %s and retains failures for retry', async name => {
   const preview = { repositoryPath: '/src/project', confirmationName: name, paths: ['/src/project', '/src/project-topic'], agents: [{ id: 'agent', name: 'Builder' }], fingerprint: 'version-1' };
   const remove = vi.fn().mockRejectedValueOnce(new Error('Folder is busy')).mockResolvedValue(undefined);
   const wrapper = mount(RepositoryDeleteDialog, { props: { agentId: 'agent', loadPreview: vi.fn().mockResolvedValue(preview), removeRepository: remove } });

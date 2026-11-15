@@ -8,9 +8,9 @@ import type { RemoteConnection, SourceBranch, SourceRepository, WorkItem } from 
 import { useRepositorySession } from '../use-repository-session';
 
 const connection = (id: string): RemoteConnection => ({ id, kind: 'ssh', name: id, host: id, status: 'ready', sourceFolderPath: '/home/me/src', createdAt: '', updatedAt: '' });
-const checkout = (path: string): SourceRepository => ({ name: 'korus', path, remoteIdentity: 'github.com/nbonamy/korus', worktrees: [] });
+const checkout = (path: string): SourceRepository => ({ name: 'korus', path, remoteIdentity: 'github.com/owner/repo', worktrees: [] });
 const localBranches: SourceBranch[] = [{ name: 'main', isDefault: true, worktreePath: '/Users/me/src/korus' }, { name: 'feature', isDefault: false, worktreePath: '/Users/me/src/korus-feature' }];
-const source = { repositoryName: 'korus', repositoryRoot: '/Users/me/src/korus', originUrl: 'github.com:nbonamy/korus.git' };
+const source = { repositoryName: 'korus', repositoryRoot: '/Users/me/src/korus', originUrl: 'github.com:owner/repo.git' };
 
 function setup(remoteRepositories: SourceRepository[], clone?: (input: unknown) => Promise<SourceRepository>) {
   const snapshot = createInitialSnapshot();
@@ -78,7 +78,7 @@ describe('repository session host choice', () => {
     expect(session.modelAgentId.value).toBeUndefined();
     resolve([]); await changing;
     expect(session.assignmentSessions.value).toStrictEqual([]);
-    const item: WorkItem = { provider: 'github', id: 'issue', sourceId: 'nbonamy/korus', sourceName: 'korus', kind: 'issue', number: 1,
+    const item: WorkItem = { provider: 'github', id: 'issue', sourceId: 'owner/repo', sourceName: 'korus', kind: 'issue', number: 1,
       title: 'Fix', url: '', state: 'open', labels: [], assignees: [], createdAt: '', updatedAt: '' };
     await session.startWork({ destination: 'existing', agentId: agent.id, item, action: 'fix' });
     await session.customizeWork({ destination: 'existing', agentId: agent.id, item });
@@ -127,12 +127,12 @@ describe('repository session host choice', () => {
       notifyError: vi.fn(), prefillWorkItemForAgent: vi.fn(), startWorkItemInExistingSession: vi.fn(), suggestSourceWorktreePath: async () => '',
     });
     expect(session).toBeDefined();
-    await withItems.open({ ...source, workSource: { provider: 'github', id: 'nbonamy/korus', name: 'korus', fullName: 'nbonamy/korus', url: 'https://github.com/nbonamy/korus' } });
-    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('nbonamy/korus', undefined, 'github');
+    await withItems.open({ ...source, workSource: { provider: 'github', id: 'owner/repo', name: 'korus', fullName: 'owner/repo', url: 'https://github.com/owner/repo' } });
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('owner/repo', undefined, 'github');
     await withItems.changeHost('devbox');
     expect(loadWorkItems).toHaveBeenCalledOnce();
     expect(withItems.workItems.value).toHaveLength(1);
-    expect(withItems.workSourceId.value).toBe('nbonamy/korus');
+    expect(withItems.workSourceId.value).toBe('owner/repo');
   });
 
   it('flags a machine without the repository and shows nothing as checked out there', async () => {
@@ -149,19 +149,19 @@ describe('repository session host choice', () => {
     await session.open(source);
     await session.changeHost('devbox');
     await session.createForSourceBranch({ name: 'feature', isDefault: false });
-    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: 'git@github.com:nbonamy/korus.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: 'git@github.com:owner/repo.git', remoteConnectionId: 'devbox', reuseExisting: true });
     expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/me/src/korus', remoteConnectionId: 'devbox', repositorySession: { existingBranch: 'feature' } }));
   });
 
   it.each(['catalog', 'checkout'] as const)('finds and clones a repository opened from its %s without an explicit origin', async entry => {
     const { session, cloneRepository, createAgent } = setup([]);
     await session.open({ repositoryName: source.repositoryName, repositoryRoot: source.repositoryRoot,
-      ...(entry === 'catalog' ? { workSource: { provider: 'github' as const, id: 'nbonamy/korus', name: 'korus', fullName: 'nbonamy/korus', url: 'https://github.com/nbonamy/korus' } } : {}),
+      ...(entry === 'catalog' ? { workSource: { provider: 'github' as const, id: 'owner/repo', name: 'korus', fullName: 'owner/repo', url: 'https://github.com/owner/repo' } } : {}),
     });
     await session.changeHost('devbox');
     expect(session.hostCheckout.value?.state).toBe('missing');
     await session.createForSourceBranch({ name: 'feature', isDefault: false });
-    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: entry === 'catalog' ? 'https://github.com/nbonamy/korus' : 'https://github.com/nbonamy/korus.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: entry === 'catalog' ? 'https://github.com/owner/repo' : 'https://github.com/owner/repo.git', remoteConnectionId: 'devbox', reuseExisting: true });
     expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/me/src/korus', remoteConnectionId: 'devbox' }));
   });
 
