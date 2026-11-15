@@ -5,7 +5,8 @@ import { webSockets } from '@libp2p/websockets';
 import { circuitRelayServer, circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import type { Libp2pOptions } from 'libp2p';
-import { companionResponseLimit, companionUpdatesProtocol, encodeCompanionFrame, readCompanionFrames } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionResponseLimit, companionUpdatesProtocol, encodeCompanionFrame, readCompanionFrames } from '@workspace/core/companion-protocol';
+import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { conversation, textMessage } from './support/conversation';
 import { cryptoFixture } from './apple-crypto-fixture';
 import { createRelayConnector } from '../relay-connector';
@@ -47,6 +48,30 @@ describe('Apple companion over a real relay', () => {
       return native.call(command);
     } } } } });
     try {
+      await relay.handle(companionRendezvousProtocol, stream => {
+        const run = (async () => {
+          for await (const raw of readCompanionFrames(stream)) {
+            expect(raw).toStrictEqual({ code: 'K7QDM2XP' });
+            stream.send(encodeCompanionFrame({ hostId }));
+            await stream.close();
+            break;
+          }
+        })();
+        serving.add(run); void run.finally(() => serving.delete(run));
+      });
+      await desktop.handle(companionProtocol, stream => {
+        const run = (async () => {
+          for await (const raw of readCompanionFrames(stream)) {
+            const call = raw as { id: string; method: string; args: unknown };
+            const result = call.method === 'pair.claim' ? { pendingId: 'pending-phone' }
+              : call.method === 'pair.status' ? { state: 'approved', grant: {}, hostName: 'Fixture laptop' } : {};
+            stream.send(encodeCompanionFrame({ v: 1, id: call.id, result }));
+            await stream.close();
+            break;
+          }
+        })();
+        serving.add(run); void run.finally(() => serving.delete(run));
+      }, { runOnLimitedConnection: true });
       await desktop.handle(companionUpdatesProtocol, stream => {
         stream.maxWriteBufferLength = companionResponseLimit + 4;
         let seq = 0;
@@ -64,6 +89,11 @@ describe('Apple companion over a real relay', () => {
         serving.add(run); void run.finally(() => serving.delete(run));
       }, { runOnLimitedConnection: true });
       await connector.initialize!();
+      await connector.suspend!();
+      await connector.registerLiveActivity!(hostId, null);
+      const pending = vi.fn();
+      expect(await connector.pair!('K7QD-M2XP', 'Phone', pending)).toBe(hostId);
+      expect(pending).toHaveBeenCalledExactlyOnceWith();
       const session = await connector.connect(hostId);
       session.onDisconnect(() => { failures.push('disconnected'); });
       expect(await session.getWorkspace()).toStrictEqual(workspace);

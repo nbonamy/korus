@@ -193,6 +193,51 @@ describe('native relay host adapter', () => {
       expect(transport.requests.at(-1)).toMatchObject({ method: 'liveActivity.register', args: null });
     } finally { await connector.dispose!(); }
   });
+  it('can pair again after an idle ActivityKit registration suspends its transport', async () => {
+    const connector = createRelayConnector(vault(), host.relay);
+    try {
+      await pairWith(connector);
+      // Token refresh can finish on the connection screen, without an open session.
+      await connector.registerLiveActivity!(host.hostId, null);
+      const pending = vi.fn();
+      await expect(connector.pair!(host.shown, 'Phone', pending)).resolves.toBe(host.hostId);
+      expect(pending).toHaveBeenCalledExactlyOnceWith();
+      expect(transport.requests.filter(call => call.method === 'pair.claim')).toHaveLength(2);
+    } finally { await connector.dispose!(); }
+  });
+  it('does not let a late background ActivityKit reply suspend a foreground pairing', async () => {
+    const connector = createRelayConnector(vault(), host.relay);
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    let stalled = false;
+    let registration: Promise<void> | undefined;
+    try {
+      await pairWith(connector); await connector.suspend!();
+      const stopped = transport.stop.mock.calls.length;
+      const dial = transport.dial.getMockImplementation()!;
+      transport.dial.mockImplementation(async (...args) => {
+        const stream = await dial(...args);
+        let token = false;
+        return { ...stream, send(frame: Uint8Array) {
+          token = (new CompanionFrameDecoder().push(frame)[0] as { method?: string }).method === 'liveActivity.register';
+          return stream.send(frame);
+        }, async *[Symbol.asyncIterator]() {
+          if (token) { stalled = true; await waiting; }
+          yield* stream;
+        } };
+      });
+      registration = connector.registerLiveActivity!(host.hostId, null);
+      await vi.waitFor(() => expect(stalled).toBe(true));
+      await expect(pairWith(connector)).resolves.toBe(host.hostId);
+      release(); await registration;
+      expect(transport.stop).toHaveBeenCalledTimes(stopped);
+      const pairingReply = transport.response;
+      transport.response = (method, args) => method === 'snapshot.get' ? { teams: [], agents: [] } : pairingReply(method, args);
+      const session = await connector.connect(host.hostId);
+      try { expect(await session.getWorkspace()).toMatchObject({ teams: [], agents: [] }); }
+      finally { session.close(); }
+    } finally { release(); await registration?.catch(() => {}); await connector.dispose!(); }
+  });
   it('registers a phone token and accepts attention only from the paired laptop identity', async () => {
     const connector = createRelayConnector(vault(), host.relay);
     await pairWith(connector);
