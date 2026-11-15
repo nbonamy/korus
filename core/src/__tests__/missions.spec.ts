@@ -48,6 +48,20 @@ describe('missions', () => {
     expect(mission.artifacts).toStrictEqual(workflow.createArtifacts());
     expect(findMissionWorkflow('unknown')).toBeUndefined();
   });
+
+  it('reloads a large backlog with deep dependencies while rejecting cycles and missing blockers', () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, createInput(snapshot, 'Large backlog'));
+    mission.artifacts.tickets = Array.from({ length: 10_000 }, (_, index) => ({
+      title: `Ticket ${index}`, repositoryPath: '/repo', done: false,
+      dependsOn: index < 9_999 ? [index + 1] : [],
+    }));
+    expect(decodeAppSnapshot(snapshot)?.value.missions).toStrictEqual([mission]);
+    mission.artifacts.tickets[9_999]!.dependsOn = [0];
+    expect(isMission(mission)).toBe(false);
+    mission.artifacts.tickets[9_999]!.dependsOn = [10_000];
+    expect(isMission(mission)).toBe(false);
+  });
   it('rejects malformed input, stale writers, dangling agents, and invalidated earlier gates without mutation', () => {
     const snapshot = createInitialSnapshot();
     for (const input of [null, { outcome: ' ', workflowType: 'shapeAndShipFeature' }, { outcome: 'x', workflowType: 'unknown' }]) expect(() => createMission(snapshot, input)).toThrow();

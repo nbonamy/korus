@@ -31,6 +31,7 @@ export type MissionReviewFinding = {
 export type MissionArtifacts = {
   requirements: { problem: string; acceptance: string };
   tickets: MissionTicket[];
+  /** Cumulative ticket evidence. Individual reports are bounded when submitted. */
   implementation: { changes: string; tests: string };
   review: { summary: string; pullRequestUrl: string; findings?: MissionReviewFinding[] };
 };

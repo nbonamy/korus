@@ -91,7 +91,7 @@ function registerMissionTools(
       body: z.string().trim().min(1).max(100000),
       repositoryPath: z.string().trim().min(1),
       reference: z.string().trim().min(1).max(100000).optional(),
-      blockedByTicketIds: z.array(z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/)).max(200).optional(),
+      blockedByTicketIds: z.array(z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/)).optional(),
     },
   }, input => loggedToolResult('upsert-mission-ticket', { callerAgentId, ticketId: input.ticketId }, () => coordinator.upsertMissionTicket(callerAgentId, input)));
 
@@ -103,8 +103,8 @@ function registerMissionTools(
       implementation: z.object({ changes: z.string().trim().min(1).max(100000), tests: z.string().trim().min(1).max(100000) }).optional(),
       artifacts: z.object({
         requirements: z.object({ problem: z.string().max(100000), acceptance: z.string().max(100000) }),
-        tickets: z.array(z.object({ id: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(), title: z.string().max(100000), body: z.string().max(100000).optional(), repositoryPath: z.string().trim().min(1).optional(), done: z.boolean(), reference: z.string().min(1).max(100000).optional(), dependsOn: z.array(z.number().int().nonnegative()).max(200).optional() })).max(200),
-        implementation: z.object({ changes: z.string().max(100000), tests: z.string().max(100000) }),
+        tickets: z.array(z.object({ id: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(), title: z.string().max(100000), body: z.string().max(100000).optional(), repositoryPath: z.string().trim().min(1).optional(), done: z.boolean(), reference: z.string().min(1).max(100000).optional(), dependsOn: z.array(z.number().int().nonnegative()).optional() })),
+        implementation: z.object({ changes: z.string(), tests: z.string() }),
         review: z.object({ summary: z.string().max(100000), pullRequestUrl: z.string().max(100000) }),
       }).optional(),
     },

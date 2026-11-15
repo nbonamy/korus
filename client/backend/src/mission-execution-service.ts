@@ -118,7 +118,7 @@ export class MissionExecutionService {
         return { ...ticket, status: ticket.done ? 'accepted' : run?.status ?? (missionTicketReady(mission.artifacts.tickets, index) ? 'ready' : 'blocked'),
           blockedByTicketIds: (ticket.dependsOn ?? []).map(blocker => mission.artifacts.tickets[blocker]?.id),
           ...(run ? { runId: run.id, workerId: run.workerId } : {}) };
-      }), runs: mission.execution?.runs };
+      }), runs: mission.execution?.runs.map(({ proposal: _proposal, draftTickets: _draftTickets, draftTicketsBaseHash: _draftTicketsBaseHash, ...run }) => run) };
   }
 
   async execute(input: MissionExecutionInput, leadAgentId?: string): Promise<void> {
@@ -689,7 +689,9 @@ export class MissionExecutionService {
         if (run.stage !== 'review' && !workflow.stageReady(run.stage, proposal)) throw new Error('The stage result is incomplete.');
       }
       if (!isMissionArtifacts(proposal)) throw new Error('Mission evidence is too large. Submit a concise report with references.');
-      run.proposal = proposal; run.summary = input.summary.trim(); run.status = 'awaitingReview'; run.finishedAt = new Date().toISOString();
+      // Ticket results are accepted below and retain their own evidence; only user-reviewed stages need a proposal snapshot.
+      if (run.stage !== 'implementation') run.proposal = proposal;
+      run.summary = input.summary.trim(); run.status = 'awaitingReview'; run.finishedAt = new Date().toISOString();
       delete run.error;
       if (run.stage === 'implementation') {
         implementationCompleted = this.acceptImplementationResult(mission, run);
