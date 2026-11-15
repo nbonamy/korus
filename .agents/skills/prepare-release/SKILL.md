@@ -31,38 +31,58 @@ continue during preparation. Coordinate real server compatibility dependencies
 when a desktop change needs them; unrelated dirty server files alone are not a
 deployment dependency. Builds use the pushed commit, never the local dirty files.
 
-## Publish and consume the SDK chain first
+## Publish and consume required SDK releases first
 
 The release dependency chain is:
 
 `@korus-dev/codex-sdk` → `@korus-dev/multi-agent-sdk` →
 `@korus-dev/agent-ui-sdk` → Korus.
 
-A release at any SDK stage requires new releases of every downstream SDK before
-Korus consumes the result. For example, a Codex SDK change requires a Codex SDK
-release, a Multi SDK release pinned to that version, a UI SDK release pinned to
-that Multi version, and a Korus release consuming those versions. A UI-only change
-starts at the UI SDK; it does not require releases of unchanged upstream SDKs.
-Each repository has its own version; do not assume SDK versions match.
+The chain determines dependency order, not a mandatory publication cascade.
+Publish an SDK only to ship its own changes or change its published dependency
+contract. Inspect the **published package's** `dependencies` and
+`peerDependencies`, not only the sibling checkout's version or devDependencies:
+
+- A downstream SDK with an exact runtime dependency needs a release to adopt a
+  different upstream version.
+- An unchanged downstream SDK whose peer range accepts the new upstream version
+  can keep its existing published release. A devDependency pin records what its
+  checkout builds/tests against; changing that pin alone does not require an npm
+  release. Do not narrow a compatible peer range just to force a cascade.
+- Downstream code changes or a peer range that excludes the selected upstream
+  version require a downstream release, after validation against that version.
+
+For example, Multi 0.28.2 can be consumed with existing UI 0.27.4 because UI's
+published peer range `^0.27.1 || ^0.28.0` accepts it. Publish Multi, update Korus's
+exact Multi pin, and retain UI 0.27.4. A Codex change requires a Multi release
+when Multi must update its exact Codex dependency; assess UI's peer compatibility
+separately. Each repository has its own version; never assume SDK versions match.
 
 1. Apply the desktop release scope above. Record unrelated changes and warn;
    resolve uncommitted desktop inputs before preparing release metadata.
 2. Identify the intended changes in `codex-sdk`, `multi-agent-sdk` and
    `agent-ui-sdk`. Compare each source commit with npm's published version and
-   `gitHead`; the locked version or a working local build is not proof it ships.
-   Find the earliest changed SDK in the chain and include every downstream stage,
-   even when its only change is the upstream dependency pin. Resolve unfinished
-   or ambiguous SDK scope with Nicolas before proceeding.
+   `gitHead`; when npm omits `gitHead`, use the published package's npm provenance
+   attestation, matching its package digest and source commit. A local version,
+   Git tag, successful publish workflow or working build is not proof the package
+   is installable from npm. Documentation/tooling-only commits do not require an
+   SDK release for Korus. Determine which SDKs actually need publication from
+   their shipped changes and published dependency contracts. Reuse compatible
+   published peers. Resolve unfinished or ambiguous scope with Nicolas first.
 3. Obtain approval for any SDK publication not already authorized. Coordinate
    with each repository's active owner rather than running competing releases.
-   Release in dependency order using each repository's required gates. At each
-   downstream stage, install the newly published upstream version with an exact
-   normal npm dependency, validate against that installed package, then publish a
-   new version. Verify publication and commit provenance before moving to the next
-   stage. Never reuse an existing downstream release that still pins the old
-   upstream version, and never republish an existing version.
+   Publish only required releases, in dependency order, using each repository's
+   required gates. For a downstream release, install the published upstream
+   version with an exact normal npm pin in the appropriate dependency section,
+   preserving compatible peer ranges, and validate before publishing. For a
+   reused peer-compatible release, validate the selected installed combination
+   through the existing release checks; do not bump or publish that SDK just to
+   refresh its devDependency. Verify registry availability and commit provenance
+   before using a new version; npm processing may continue after a successful
+   workflow. Never republish an existing version.
 4. Verify all three selected `@korus-dev` SDK versions are available from npm,
-   cover the intended commits, and declare the expected upstream versions.
+   cover the intended changes, and have compatible published runtime dependency
+   and peer constraints. Unchanged compatible SDK versions may remain selected.
    Install the selected versions in every consuming Korus workspace using normal
    `npm install --save-exact` commands, preserving dependencies versus
    devDependencies (`--save-dev` for core's SDK devDependencies). Derive the

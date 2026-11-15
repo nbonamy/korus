@@ -4,6 +4,19 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.57.3] - 2026-11-15
+
+### New features
+
+- **Backlog:** Filter the repository list by organization.
+
+### Improvements and fixes
+
+- **Missions:** Run larger backlogs without ticket-count or accumulated-evidence limits, with smaller scheduling responses and preserved history.
+- **Code reviews:** Fixed loading older messages and attachment previews in independent code reviews.
+- **Controls:** Removed unwanted focus outlines from buttons, fields and menus.
+- **Analytics:** Updated model pricing.
+
 ## [0.57.2] - 2026-11-14
 
 ### New features

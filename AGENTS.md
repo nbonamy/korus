@@ -74,8 +74,9 @@ phone wire format and the capability table.
 When Korus needs something the abstraction does not offer, change the SDK and consume
 it, rather than working around it here. The lead agent coordinates that work with the
 agents owning each SDK: send a concrete contract request (what Korus needs, not how
-to build it), then adopt the new version. A change at any layer is released down the
-chain in order, each SDK pinned exactly by the next; `prepare-release` has the steps.
+to build it), then adopt the new version. Release changed SDKs in dependency order;
+an unchanged SDK with a compatible peer range does not need another release.
+Korus pins its selected published SDK versions exactly; `prepare-release` has the steps.
 
 ## Mobile API Compatibility
 

@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.57.2",
+  "currentVersion": "0.57.3",
   "releases": [
+    {
+      "version": "0.57.3",
+      "releasedAt": "2026-11-15",
+      "sourceSha256": "713d5bc53df137cb94c706ad3e9d8e44bca7db6bea14d9a04b4f19786ca5a65d",
+      "markdown": "### New features\n\n- **Backlog:** Filter the repository list by organization.\n\n### Improvements and fixes\n\n- **Missions:** Run larger backlogs without ticket-count or accumulated-evidence limits, with smaller scheduling responses and preserved history.\n- **Code reviews:** Fixed loading older messages and attachment previews in independent code reviews.\n- **Controls:** Removed unwanted focus outlines from buttons, fields and menus.\n- **Analytics:** Updated model pricing."
+    },
     {
       "version": "0.57.2",
       "releasedAt": "2026-11-14",
