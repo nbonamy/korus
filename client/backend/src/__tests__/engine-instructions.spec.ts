@@ -37,4 +37,21 @@ describe('engine instruction files', () => {
     expect((await readEngineInstructions('codex', providerHomes)).text).toBe('');
     await expect(readEngineInstructions('../bad' as never, providerHomes)).rejects.toThrow('Unknown');
   });
+  it('reads and saves Antigravity personalization in its Gemini home, and writes only the engines it is asked to', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'app-antigravity-instructions-')); homes.push(home);
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('CLAUDE_CONFIG_DIR', path.join(home, '.claude'));
+    const providerHomes = { codex: { homePath: path.join(home, '.codex'), isolated: false, shareSkills: true } };
+    const file = path.join(home, '.gemini/GEMINI.md');
+    expect(await readEngineInstructions('antigravity', providerHomes)).toEqual({ path: file, text: '' });
+    await saveEngineInstructions({ engine: 'antigravity', text: 'Antigravity only' }, providerHomes);
+    expect(await readFile(file, 'utf8')).toBe('Antigravity only');
+
+    await saveEngineInstructions({ engine: 'codex', text: 'Shared', all: true, confirmed: true, engines: ['codex', 'antigravity'] }, providerHomes);
+    expect((await readEngineInstructions('codex', providerHomes)).text).toBe('Shared');
+    expect((await readEngineInstructions('antigravity', providerHomes)).text).toBe('Shared');
+    expect((await readEngineInstructions('claude', providerHomes)).text).toBe('');
+    await expect(saveEngineInstructions({ engine: 'codex', text: 'No', all: true, confirmed: true, engines: ['codex', 'cursor'] }, providerHomes)).rejects.toThrow('Unknown');
+    expect((await readEngineInstructions('codex', providerHomes)).text).toBe('Shared');
+  });
 });

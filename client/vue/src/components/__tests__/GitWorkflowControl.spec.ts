@@ -51,6 +51,22 @@ describe('GitWorkflowControl', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it.each([
+    ['GitHub', { remoteUrl: 'git@github.com:owner/repo.git' }, 'https://github.com/owner/repo'],
+    ['GitLab', { repositoryProvider: 'gitlab' as const, remoteUrl: 'ssh://git@gitlab.example.com:2222/group/sub/repo.git' }, 'https://gitlab.example.com/group/sub/repo'],
+  ])('opens the repository on %s from the first Git menu entry', async (name, overrides, url) => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mountControl({ getWorkflow: async () => ({ ...workflow, ...overrides }) });
+    try {
+      await flushPromises();
+      await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      const first = bodyAll('[role="menuitem"]')[0]!;
+      expect(first.text()).toBe(`Open on ${name}`);
+      await first.trigger('click');
+      expect(open).toHaveBeenCalledExactlyOnceWith(url, '_blank', 'noopener,noreferrer');
+    } finally { wrapper.unmount(); }
+  });
+
   it('opens the existing GitLab MR instead of another creation form after a fresh lookup', async () => {
     const url = 'https://gitlab.com/group/sub/repo/-/merge_requests/7';
     const openExternal = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -387,6 +403,27 @@ describe('GitWorkflowControl', () => {
     expect(pushBranch).toHaveBeenCalledTimes(2);
   });
 
+  it.each([false, true])('offers an initial push without upstream tracking and shows its actual destination (fork=%s)', async fork => {
+    const firstPush = { ...workflow, upstream: undefined, ahead: 0,
+      ...(fork ? { existingPullRequest: { number: 87, title: 'Work', url: 'https://github.com/owner/repo/pull/87',
+        draft: false, state: 'open', headSha: 'head', head: { repository: 'github.com/contributor/repo', branch: 'contributor-topic' } } } : {}),
+    };
+    const pushBranch = vi.fn(async () => workflow);
+    const wrapper = mountControl({ getWorkflow: async () => firstPush, pushBranch });
+    try {
+      await flushPromises();
+      await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      const pushItem = bodyAll('[role="menuitem"]').find(item => item.text() === 'Push')!;
+      expect(pushItem.attributes('aria-disabled')).not.toBe('true');
+      await pushItem.trigger('click'); await flushPromises();
+      expect(wrapper.find('.git-workflow-control__push-destination').text()).toBe(fork ? 'github.com/contributor/repo:contributor-topic' : 'origin/feature/demo');
+      expect(wrapper.find('.git-workflow-control__push-count').text()).toBe('feature/demo');
+      expect(pushBranch).not.toHaveBeenCalled();
+      await submitButton(wrapper, 'Push').trigger('click');
+      expect(pushBranch).toHaveBeenCalledExactlyOnceWith(agent.id, { confirmed: true });
+    } finally { wrapper.unmount(); }
+  });
+
   it('confirms a push before showing progress and passive success', async () => {
     const pendingPush = deferred<AgentGitWorkflow>();
     const pushBranch = vi.fn(() => pendingPush.promise);
@@ -461,6 +498,7 @@ describe('GitWorkflowControl', () => {
     expect(bodyAll('[role="menuitem"], [role="separator"]').map((item) =>
       item.attributes('role') === 'separator' ? '---' : item.text(),
     )).toStrictEqual([
+      'Open on GitHub',
       'Git log',
       '---',
       'Revert',

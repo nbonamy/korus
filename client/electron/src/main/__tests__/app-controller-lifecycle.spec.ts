@@ -826,6 +826,8 @@ describe('controller desktop lifecycle', () => {
 
   it('installs a packaged Mac app before creating backend resources or taking the single-instance lock', async () => {
     vi.stubGlobal('process', Object.create(process, { platform: { value: 'darwin' } }));
+    const directory = await mkdtemp(path.join(tmpdir(), 'desktop-install-'));
+    native.dataDirectory = directory;
     vi.mocked(app.isInApplicationsFolder).mockReturnValue(false);
     vi.mocked(app.whenReady).mockResolvedValue(undefined);
     vi.mocked(app.moveToApplicationsFolder).mockReturnValue(true);
@@ -840,6 +842,13 @@ describe('controller desktop lifecycle', () => {
     expect(native.maintenance).not.toHaveBeenCalled();
     expect(native.createWindow).not.toHaveBeenCalled();
     expect(app.quit).not.toHaveBeenCalled(); // Electron owns the successful relaunch.
+    try {
+      // The relaunched copy offers to eject the disk image the install came from.
+      await expect(readFile(path.join(directory, 'pending-installer-eject.json'), 'utf8')).resolves.toBe(JSON.stringify({ diskImage: '/Volumes/Install' }));
+    } finally {
+      native.dataDirectory = '/test/data';
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it.each(['cancel', 'error'] as const)('stops startup after installation %s', async (outcome) => {

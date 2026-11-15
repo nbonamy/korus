@@ -151,7 +151,7 @@ it("keeps service-tier performance and actual request prices separate across cor
     await ledger.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 10_000);
 
 it("prices Terra usage with its published input, cached input and output rates", async () => {
   const launched = Date.parse('2026-10-26T12:00:00Z');

@@ -17,24 +17,25 @@
         <div class="image-annotation-dialog__header-main">
           <h2 class="app-dialog__title">{{ title }}</h2>
           <div class="image-annotation-dialog__toolbar" role="toolbar" :aria-label="$t('surface.imageAnnotationDialog.imageAnnotationTools')">
-            <el-tooltip
-              v-for="item in tools"
-              :key="item.id"
-              :content="toolTooltip(item)"
-              placement="bottom"
-              :show-after="300"
-            >
-              <button
-                class="image-annotation-dialog__tool"
-                :class="{ 'image-annotation-dialog__tool--active': activeTool === item.id }"
-                type="button"
-                :aria-label="item.label"
-                :aria-pressed="activeTool === item.id"
-                @click="selectTool(item.id)"
+            <template v-for="item in tools" :key="item.id">
+              <span v-if="item.separated" class="image-annotation-dialog__toolbar-separator" aria-hidden="true" />
+              <el-tooltip
+                :content="toolTooltip(item)"
+                placement="bottom"
+                :show-after="300"
               >
-                <component :is="item.icon" aria-hidden="true" />
-              </button>
-            </el-tooltip>
+                <button
+                  class="image-annotation-dialog__tool"
+                  :class="{ 'image-annotation-dialog__tool--active': currentTool === item.id }"
+                  type="button"
+                  :aria-label="item.label"
+                  :aria-pressed="currentTool === item.id"
+                  @click="selectTool(item.id)"
+                >
+                  <component :is="item.icon" aria-hidden="true" />
+                </button>
+              </el-tooltip>
+            </template>
             <span class="image-annotation-dialog__toolbar-separator" aria-hidden="true" />
             <div class="image-annotation-dialog__toolbar-group" role="group" :aria-label="$t('surface.imageAnnotationDialog.imageScale')">
               <el-tooltip :content="$t('dynamic.annotation.retinaHint')" placement="bottom" :show-after="300">
@@ -105,7 +106,7 @@
           <div
             ref="stage"
             class="image-annotation-dialog__stage"
-            :class="`image-annotation-dialog__stage--${activeTool}`"
+            :class="`image-annotation-dialog__stage--${currentTool}`"
             :style="stageStyle"
           >
             <img
@@ -189,7 +190,7 @@
           class="app-button app-button--secondary"
           type="button"
           :aria-label="$t('surface.imageAnnotationDialog.clearImageAnnotations')"
-          :disabled="annotations.length === 0 || saving"
+          :disabled="(annotations.length === 0 && rulers.length === 0) || saving"
           @click="clearAnnotations"
         >{{ $t('surface.imageAnnotationDialog.clear') }}</button>
         <button
@@ -216,6 +217,8 @@ import {
   ArrowsVerticalIcon,
   Circle,
   RectangleIcon,
+  SeparatorHorizontalIcon,
+  SeparatorVerticalIcon,
   X,
 } from '../shared/icons/app-icons';
 import AnnotationPopup, { type AnnotationPopupAnchor } from './AnnotationPopup.vue';
@@ -224,11 +227,13 @@ import {
   annotationPixelLength,
   defaultImageAnnotationPalette,
   drawImageAnnotations,
+  drawImageRulers,
   isDrawableAnnotation,
   measurementAnnotation,
   type ImageAnnotation,
   type ImageAnnotationPalette,
   type ImageAnnotationPoint,
+  type ImageRuler,
   type SavedImageAnnotations,
   type ImageAnnotationTool,
 } from './image-annotation';
@@ -258,10 +263,14 @@ const emit = defineEmits<{
   save: [payload: ImageAnnotationSavePayload];
 }>();
 
+type EditorTool = ImageAnnotationTool | 'ruler-vertical' | 'ruler-horizontal';
+
 type ToolItem = {
   icon: Component;
-  id: ImageAnnotationTool;
+  id: EditorTool;
   label: string;
+  /** Starts a new group in the toolbar. */
+  separated?: boolean;
   shortcut: string;
 };
 
@@ -271,6 +280,8 @@ const tools: ToolItem[] = [
   { id: 'rectangle', label: translate('surface.imageAnnotationDialog.rectangle'), shortcut: 'r', icon: RectangleIcon },
   { id: 'measure-horizontal', label: translate('surface.imageAnnotationDialog.measureHorizontalGap'), shortcut: 'h', icon: ArrowsHorizontalIcon },
   { id: 'measure-vertical', label: translate('surface.imageAnnotationDialog.measureVerticalGap'), shortcut: 'v', icon: ArrowsVerticalIcon },
+  { id: 'ruler-vertical', label: translate('surface.imageAnnotationDialog.verticalRuler'), shortcut: 'x', icon: SeparatorVerticalIcon, separated: true },
+  { id: 'ruler-horizontal', label: translate('surface.imageAnnotationDialog.horizontalRuler'), shortcut: 'y', icon: SeparatorHorizontalIcon },
 ];
 
 const dialogBody = ref<HTMLElement | null>(null);
@@ -278,8 +289,13 @@ const workspace = ref<HTMLElement | null>(null);
 const stage = ref<HTMLElement | null>(null);
 const image = ref<HTMLImageElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
-const activeTool = ref<ImageAnnotationTool>('arrow');
+const activeTool = ref<EditorTool>('arrow');
+/** Pressing Shift turns the selected measure or ruler tool the other way until another tool is chosen. */
+const turned = ref(false);
+const currentTool = computed<EditorTool>(() => turned.value ? turnedTool(activeTool.value) : activeTool.value);
 const annotations = ref<ImageAnnotation[]>([]);
+/** Rulers live in image pixels, so they follow the image when the canvas padding changes. */
+const rulers = ref<ImageRuler[]>([]);
 const draft = ref<ImageAnnotation | null>(null);
 const imageData = ref<ImageData | null>(null);
 const imageReady = ref(false);
@@ -300,6 +316,7 @@ const activeComment = ref<{
   placement: 'above' | 'below';
 } | null>(null);
 let annotationId = 0;
+let rulerId = 0;
 let imageLoadTimer: ReturnType<typeof setTimeout> | null = null;
 let failedImageSource: string | null = null;
 
@@ -403,9 +420,11 @@ function focusDialog(): void {
 
 function resetEditor(): void {
   annotations.value = props.initialAnnotations.map((annotation) => offsetAnnotation(annotation, canvasPadding.value));
+  rulers.value = [];
   draft.value = null;
   activeComment.value = null;
   activeTool.value = 'arrow';
+  turned.value = false;
   drawing.value = false;
   imageReady.value = false;
   saving.value = false;
@@ -517,8 +536,9 @@ function captureImageData(): void {
   }
 }
 
-function selectTool(tool: ImageAnnotationTool): void {
+function selectTool(tool: EditorTool): void {
   activeTool.value = tool;
+  turned.value = false;
   drawing.value = false;
   refreshMeasurementPreview();
   canvas.value?.focus();
@@ -537,8 +557,12 @@ function startDrawing(event: PointerEvent): void {
   if (activeComment.value) return;
   const point = imagePoint(event);
   if (!point) return;
-  if (isMeasurementTool(activeTool.value) && !isInsideImage(point)) return;
+  if ((isMeasurementTool(currentTool.value) || isRulerTool(currentTool.value)) && !isInsideImage(point)) return;
   hoverPoint.value = point;
+  if (isRulerTool(currentTool.value)) {
+    toggleRuler(point, currentTool.value);
+    return;
+  }
   drawing.value = true;
   canvas.value?.setPointerCapture?.(event.pointerId);
   draft.value = createDraft(point, annotations.value.length + 1);
@@ -557,7 +581,7 @@ function continueDrawing(event: PointerEvent): void {
 
   const current = draft.value;
   if (!current) return;
-  draft.value = isMeasurementTool(activeTool.value)
+  draft.value = isMeasurementTool(currentTool.value)
     ? createDraft(point, current.number, current.id)
     : { ...current, end: point };
   renderCanvas();
@@ -623,7 +647,7 @@ function finishDrawing(event: PointerEvent): void {
 
 function leaveCanvas(): void {
   hoverPoint.value = null;
-  if (!drawing.value && isMeasurementTool(activeTool.value)) {
+  if (!drawing.value && (isMeasurementTool(currentTool.value) || isRulerTool(currentTool.value))) {
     draft.value = null;
     renderCanvas();
   }
@@ -632,7 +656,7 @@ function leaveCanvas(): void {
 function createDraft(point: ImageAnnotationPoint, number: number, existingId?: string): ImageAnnotation {
   if (number > 0 && !existingId) annotationId += 1;
   const id = existingId ?? (number > 0 ? `image-annotation-${annotationId}` : 'image-annotation-preview');
-  if (isMeasurementTool(activeTool.value)) {
+  if (isMeasurementTool(currentTool.value)) {
     const imagePoint = {
       x: point.x - canvasPadding.value,
       y: point.y - canvasPadding.value,
@@ -640,9 +664,10 @@ function createDraft(point: ImageAnnotationPoint, number: number, existingId?: s
     const measurement = measurementAnnotation(
       imageData.value,
       imagePoint,
-      activeTool.value,
+      currentTool.value,
       imageSize.value.width,
       imageSize.value.height,
+      rulers.value,
     );
     return {
       id,
@@ -659,7 +684,7 @@ function createDraft(point: ImageAnnotationPoint, number: number, existingId?: s
       },
     };
   }
-  return { id, number, comment: '', tool: activeTool.value, start: point, end: point };
+  return { id, number, comment: '', tool: currentTool.value as ImageAnnotationTool, start: point, end: point };
 }
 
 function isInsideImage(point: ImageAnnotationPoint): boolean {
@@ -672,7 +697,7 @@ function isInsideImage(point: ImageAnnotationPoint): boolean {
 
 function refreshMeasurementPreview(): void {
   if (drawing.value) return;
-  draft.value = isMeasurementTool(activeTool.value)
+  draft.value = isMeasurementTool(currentTool.value)
     && hoverPoint.value
     && isInsideImage(hoverPoint.value)
     && !activeComment.value
@@ -696,16 +721,58 @@ function renderCanvas(): void {
   const element = canvas.value;
   const context = element?.getContext('2d');
   if (!element || !context) return;
+  const palette = canvasPalette();
+  context.clearRect(0, 0, element.width, element.height);
+  const ghost = rulerGhost();
+  drawImageRulers(context, ghost ? [...rulers.value, ghost] : rulers.value, {
+    width: imageSize.value.width,
+    height: imageSize.value.height,
+    padding: canvasPadding.value,
+    palette,
+  });
   drawImageAnnotations(
     context,
     draft.value ? [...annotations.value, draft.value] : annotations.value,
     {
+      clear: false,
       width: element.width,
       height: element.height,
-      palette: canvasPalette(),
+      palette,
       pixelRatio: pixelRatio.value,
     },
   );
+}
+
+/** The ruler a click would add: it follows the cursor, and is absent where a click would remove one. */
+function rulerGhost(): ImageRuler | null {
+  const tool = currentTool.value;
+  const point = hoverPoint.value;
+  if (!isRulerTool(tool) || !point || !isInsideImage(point) || rulerAt(point, tool)) return null;
+  return { id: 'image-ruler-preview', ...rulerFor(point, tool) };
+}
+
+function rulerFor(point: ImageAnnotationPoint, tool: 'ruler-vertical' | 'ruler-horizontal'): Omit<ImageRuler, 'id'> {
+  return tool === 'ruler-vertical'
+    ? { axis: 'vertical', position: Math.round(point.x - canvasPadding.value) }
+    : { axis: 'horizontal', position: Math.round(point.y - canvasPadding.value) };
+}
+
+/** An existing ruler of the tool's axis within a few screen pixels of the point. */
+function rulerAt(point: ImageAnnotationPoint, tool: 'ruler-vertical' | 'ruler-horizontal'): ImageRuler | undefined {
+  const target = rulerFor(point, tool);
+  const tolerance = 5 / (imageScale.value * zoom.value);
+  return rulers.value.find(ruler => ruler.axis === target.axis && Math.abs(ruler.position - target.position) <= tolerance);
+}
+
+function toggleRuler(point: ImageAnnotationPoint, tool: 'ruler-vertical' | 'ruler-horizontal'): void {
+  const existing = rulerAt(point, tool);
+  if (existing) {
+    rulers.value = rulers.value.filter(ruler => ruler.id !== existing.id);
+  } else {
+    rulerId += 1;
+    rulers.value = [...rulers.value, { id: `image-ruler-${rulerId}`, ...rulerFor(point, tool) }];
+  }
+  refreshMeasurementPreview();
 }
 
 function canvasPalette(): ImageAnnotationPalette {
@@ -803,6 +870,7 @@ function undoLastAnnotation(): void {
 
 function clearAnnotations(): void {
   annotations.value = [];
+  rulers.value = [];
   activeComment.value = null;
   refreshMeasurementPreview();
 }
@@ -825,6 +893,12 @@ async function saveAnnotatedImage(): Promise<void> {
       imageSize.value.width,
       imageSize.value.height,
     );
+    drawImageRulers(context, rulers.value, {
+      width: imageSize.value.width,
+      height: imageSize.value.height,
+      padding: canvasPadding.value,
+      palette: canvasPalette(),
+    });
     drawImageAnnotations(context, annotations.value, {
       clear: false,
       width: output.width,
@@ -859,6 +933,12 @@ function handleKeyDown(event: KeyboardEvent): void {
     return;
   }
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  if (event.key === 'Shift') {
+    // Handled once even though the body and the window both listen.
+    event.preventDefault();
+    if (!event.repeat) turnTool();
+    return;
+  }
   if (event.key === 'Tab' && cursorPixel.value) {
     event.preventDefault();
     void copyCursorColor();
@@ -905,6 +985,22 @@ function handleWindowKeyDown(event: KeyboardEvent): void {
   handleKeyDown(event);
 }
 
+function turnedTool(tool: EditorTool): EditorTool {
+  switch (tool) {
+    case 'measure-horizontal': return 'measure-vertical';
+    case 'measure-vertical': return 'measure-horizontal';
+    case 'ruler-vertical': return 'ruler-horizontal';
+    case 'ruler-horizontal': return 'ruler-vertical';
+    default: return tool;
+  }
+}
+
+function turnTool(): void {
+  if (turnedTool(activeTool.value) === activeTool.value) return;
+  turned.value = !turned.value;
+  refreshMeasurementPreview();
+}
+
 function toolLabel(tool: ImageAnnotationTool): string {
   return tools.find((candidate) => candidate.id === tool)?.label ?? 'Annotation';
 }
@@ -913,7 +1009,11 @@ function toolTooltip(tool: ToolItem): string {
   return `${tool.label} (${tool.shortcut.toUpperCase()})`;
 }
 
-function isMeasurementTool(tool: ImageAnnotationTool): tool is 'measure-horizontal' | 'measure-vertical' {
+function isRulerTool(tool: EditorTool): tool is 'ruler-vertical' | 'ruler-horizontal' {
+  return tool === 'ruler-vertical' || tool === 'ruler-horizontal';
+}
+
+function isMeasurementTool(tool: EditorTool): tool is 'measure-horizontal' | 'measure-vertical' {
   return tool === 'measure-horizontal' || tool === 'measure-vertical';
 }
 
@@ -1181,7 +1281,9 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 .image-annotation-dialog__stage--arrow .image-annotation-dialog__canvas,
 .image-annotation-dialog__stage--oval .image-annotation-dialog__canvas,
-.image-annotation-dialog__stage--rectangle .image-annotation-dialog__canvas {
+.image-annotation-dialog__stage--rectangle .image-annotation-dialog__canvas,
+.image-annotation-dialog__stage--ruler-vertical .image-annotation-dialog__canvas,
+.image-annotation-dialog__stage--ruler-horizontal .image-annotation-dialog__canvas {
   cursor: crosshair;
 }
 

@@ -1,6 +1,6 @@
 import { fileRepositoryKey, gitRepositoryKey } from '../repository-key';
 import { describe, expect, it } from 'vitest';
-import { cloneUrlForRemote, matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
+import { cloneUrlForRemote, matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, repositoryWebUrl, sanitizeGitRemoteUrl } from '../git-remote';
 
 describe('git remote identity', () => {
   it('builds unambiguous Git and file metadata keys including Windows and escaped paths', () => {
@@ -62,5 +62,19 @@ describe('worktree remote deletion choices', () => {
     [undefined, 'origin/main', 'main', undefined],
   ])('offers only a matching tracked branch (%s, %s)', (branch, upstream, baseBranch, expected) => {
     expect(matchingBranchUpstream(branch, upstream, baseBranch)).toBe(expected);
+  });
+});
+
+describe('repository web URL', () => {
+  it.each([
+    ['git@github.com:nbonamy/korus.git', 'https://github.com/nbonamy/korus'],
+    ['github.com:nbonamy/korus', 'https://github.com/nbonamy/korus'],
+    ['https://github.com/nbonamy/korus.git', 'https://github.com/nbonamy/korus'],
+    ['https://user:secret@gitlab.com/group/sub/project.git', 'https://gitlab.com/group/sub/project'],
+    ['ssh://git@gitlab.example.com:2222/group/project.git', 'https://gitlab.example.com/group/project'],
+    ['https://gitlab.example.com:8443/group/project.git', 'https://gitlab.example.com:8443/group/project'],
+    ['git@GitHub.com:Org/Repo.git/', 'https://github.com/Org/Repo'],
+  ])('opens %s at %s', (remote, expected) => {
+    expect(repositoryWebUrl(remote)).toBe(expected);
   });
 });

@@ -60,11 +60,19 @@ export type AgentGitDiffSection = {
   diff: string;
 };
 
+/** A file whose patch was left out of `diff` as too large to show; its header stays, with git's own counts here. */
+export type AgentGitDiffOmittedFile = {
+  path: string;
+  addedLines: number;
+  removedLines: number;
+};
+
 export type AgentGitDiff = {
   target: AgentGitDiffTarget;
   summary: AgentGitDiffSummary;
   diff: string;
   sections: AgentGitDiffSection[];
+  omittedFiles?: AgentGitDiffOmittedFile[];
 };
 
 export type AgentGitFile = {
@@ -81,6 +89,8 @@ export type AgentGitPullRequest = {
   headSha: string;
   state: 'open' | 'merged' | 'closed';
   mergedAt?: string;
+  /** Source repository and branch, which can belong to a contributor's fork. */
+  head?: { repository: string; branch: string };
 };
 
 export type AgentPullRequestTracking = AgentGitPullRequest & {
@@ -193,11 +203,14 @@ export type AgentGitLogInput = {
   limit?: number;
   cursor?: { head: string; offset: number; search: string };
 };
+/** What a commit changed, for its line in the history. Absent when git reports no diff (merges) or could not be asked. */
+export type AgentGitLogStats = { files: number; additions: number; deletions: number };
 export type AgentGitLogCommit = {
   sha: string;
   subject: string;
   author: string;
   date: string;
+  stats?: AgentGitLogStats;
 };
 export type AgentGitLogPage = {
   repository: string;

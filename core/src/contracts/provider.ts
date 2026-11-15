@@ -7,6 +7,8 @@ export type ProviderCapabilities = HarnessCapabilities & {
   codeReview?: boolean;
   planReview?: boolean;
   conversationShare?: boolean;
+  /** The harness reads a global instructions file that Korus can edit in Personalization. */
+  personalInstructions?: boolean;
 };
 export type ProviderRuntimeStatus = Omit<HarnessRuntimeStatus, 'capabilities'> & {
   capabilities?: Partial<ProviderCapabilities>;

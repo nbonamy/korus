@@ -341,7 +341,7 @@ function isProviderCapabilities(value: unknown): boolean {
     optional(value, 'interrupt', isBoolean) &&
     optional(value, 'history', isBoolean) &&
     optional(value, 'conversationFork', isBoolean) &&
-    ['reportsTokens', 'codeReview', 'planReview', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage', ...operationCapabilityFlags].every((key) => optional(value, key, isBoolean)) &&
+    ['reportsTokens', 'codeReview', 'planReview', 'personalInstructions', 'questions', 'plugins', 'conversationArchive', 'conversationResume', 'remoteControl', 'conversationShare', 'realtime', 'accountUsage', ...operationCapabilityFlags].every((key) => optional(value, key, isBoolean)) &&
     optional(value, 'login', (candidate) => isArrayOf(candidate, (method): method is 'browser' | 'deviceCode' => method === 'browser' || method === 'deviceCode')) &&
     optional(value, 'deleteTurn', isBoolean) &&
     optional(value, 'editTurn', isBoolean) &&

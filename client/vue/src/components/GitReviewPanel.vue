@@ -9,6 +9,7 @@
       v-model:view="previewView"
       :collapse-all-signal="collapseAllSignal"
       :diff="visibleDiff"
+      :omitted-files="panel.omittedFiles"
       :error="panel.error"
       :expand-all-signal="expandAllSignal"
       :focus-kind="panel.focusKind"

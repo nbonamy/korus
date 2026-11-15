@@ -9,6 +9,7 @@ const host = vi.hoisted(() => ({
   userData: '', packaged: false, registered: false, windows: [] as unknown[], loadError: null as Error | null,
   loading: null as Promise<void> | null,
   setDockIcon: vi.fn(),
+  clipboard: { text: '', url: '' },
   register: vi.fn((_accelerator: string, _callback: () => void) => true), unregister: vi.fn(), openExternal: vi.fn(),
 }));
 vi.mock('electron', () => ({
@@ -17,8 +18,9 @@ vi.mock('electron', () => ({
   screen: { getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }] },
   globalShortcut: { register: host.register, unregister: host.unregister, isRegistered: () => host.registered },
   shell: { openExternal: host.openExternal },
+  clipboard: { readText: () => host.clipboard.text, readBookmark: () => ({ title: '', url: host.clipboard.url }) },
   BrowserWindow: class extends EventEmitter {
-    webContents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn(), send: vi.fn() });
+    webContents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn(), send: vi.fn(), insertText: vi.fn() });
     bounds = { x: 120, y: 80, width: 1280, height: 800 };
     maximized = false;
     focused = false;
@@ -46,7 +48,7 @@ function openWindow() {
   return createMainWindow() as unknown as EventEmitter & {
     bounds: { x: number; y: number; width: number; height: number };
     maximized: boolean; focused: boolean; options: Record<string, unknown>;
-    webContents: EventEmitter & { setWindowOpenHandler: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn> };
+    webContents: EventEmitter & { setWindowOpenHandler: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn>; insertText: ReturnType<typeof vi.fn> };
     maximize: ReturnType<typeof vi.fn>; show: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>; loadFile: ReturnType<typeof vi.fn>;
     setBackgroundColor: ReturnType<typeof vi.fn>;
@@ -242,6 +244,23 @@ describe('main window lifecycle', () => {
     expect(warnMain).toHaveBeenCalledWith('window', expect.any(String), expect.objectContaining({ detail: expect.any(String) }));
     window.emit('ready-to-show');
     expect(window.show).toHaveBeenCalledOnce();
+  });
+
+  it('pastes a copied link that has no plain text, which Chromium cannot paste by itself', () => {
+    const window = openWindow();
+    const paste = { type: 'keyDown', meta: true, key: 'v' };
+    host.clipboard = { text: '', url: 'korus://share/0e007b7a-a33b-4b2b-af3b-182ee6630eed' };
+    const event = { preventDefault: vi.fn() };
+    window.webContents.emit('before-input-event', event, paste);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(window.webContents.insertText).toHaveBeenCalledExactlyOnceWith('korus://share/0e007b7a-a33b-4b2b-af3b-182ee6630eed');
+
+    window.webContents.insertText.mockClear();
+    host.clipboard = { text: 'plain text', url: 'https://example.test' };
+    const ordinary = { preventDefault: vi.fn() };
+    window.webContents.emit('before-input-event', ordinary, paste);
+    expect(ordinary.preventDefault).not.toHaveBeenCalled();
+    expect(window.webContents.insertText).not.toHaveBeenCalled();
   });
 
   it('consumes app shortcuts at the native input boundary while leaving ordinary typing alone', () => {

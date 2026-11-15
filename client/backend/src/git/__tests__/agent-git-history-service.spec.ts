@@ -46,6 +46,19 @@ describe('branch-scoped Git history', () => {
     await expect(history.list(folder, { cursor: first.nextCursor })).rejects.toThrow(/changed/i);
   });
 
+  it('lists each commit with its changed files and added and removed lines', async () => {
+    const { folder, commit, history } = await fixture();
+    await commit('root', 'file.txt', 'a\nb\nc\n');
+    await commit('edit', 'file.txt', 'a\nB\nc\nd\n');
+    await commit('two files', 'other.txt', 'x\n');
+    const { commits } = await history.list(folder);
+    expect(commits.map(c => [c.subject, c.stats])).toStrictEqual([
+      ['two files', { files: 1, additions: 1, deletions: 0 }],
+      ['edit', { files: 1, additions: 2, deletions: 1 }],
+      ['root', { files: 1, additions: 3, deletions: 0 }],
+    ]);
+  });
+
   it('returns root and first-parent merge changes, binary statistics, exact unusual paths, and bounded file diffs', async () => {
     const { folder, git, commit, history } = await fixture();
     const path = 'tab\tline\nfile.txt';

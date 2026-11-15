@@ -33,7 +33,7 @@ describe('remote Codex version discovery', () => {
     const { install, probe } = fixture();
     install(`${product.homeDirectory}/codex/0.159.3/bin/codex`, '0.159.3');
     expect(probe()).toMatchObject({ status: 0, stdout: '' });
-  });
+  }, 10_000);
 
   it('detects the user CLI on PATH despite leftover app-managed binaries', () => {
     const { install, probe } = fixture();

@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox, ElTabs, ElTabPane, ElPopover, ElDialog, ElSwitch } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsView from '../../src/components/SettingsView.vue';
+import SettingsPersonalizationPanel from '../../src/components/SettingsPersonalizationPanel.vue';
 import type { AppApi } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultThemeSettings } from '@workspace/core/settings';
 import { configureAppClient } from '../../src/platform-api';
@@ -28,6 +29,19 @@ describe('SettingsView', () => {
       providerSetup: [{ ...setup, capabilities: { ...setup.capabilities, installation: { managed: true } } }] });
     await wrapper.get('[aria-label="Install Claude Code"]').trigger('click');
     expect(installProvider).toHaveBeenCalledExactlyOnceWith('claude');
+    wrapper.unmount();
+  });
+
+  it('offers Personalization one entry for each connected engine that reads an instructions file', async () => {
+    const connection = (provider: 'codex' | 'claude' | 'cursor' | 'antigravity', connected: boolean) => ({ provider, installed: true, connected, checking: false });
+    const wrapper = mount(SettingsView, { props: { activeTab: 'personalization', settings: defaultThemeSettings, generalSettings: defaultGeneralSettings,
+      providerConnections: [connection('codex', true), connection('claude', false), connection('cursor', true), connection('antigravity', true)] } });
+    await flushPromises();
+    const panel = wrapper.getComponent(SettingsPersonalizationPanel);
+    // Claude is not connected, and Cursor has no instructions file to edit.
+    expect(panel.props('engines')).toEqual(['codex', 'antigravity']);
+    await wrapper.setProps({ providerConnections: [connection('codex', true), connection('claude', true), connection('cursor', true), connection('antigravity', true)] });
+    expect(panel.props('engines')).toEqual(['codex', 'claude', 'antigravity']);
     wrapper.unmount();
   });
 

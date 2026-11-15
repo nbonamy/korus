@@ -1,7 +1,25 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.56.0",
+  "currentVersion": "0.57.2",
   "releases": [
+    {
+      "version": "0.57.2",
+      "releasedAt": "2026-11-14",
+      "sourceSha256": "7ffa46e3e1212767ef4d6f2d8c631f31a7b9c511a6f4c6faa2cdf50b35f62a0f",
+      "markdown": "### New features\n\n- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.\n- **Control names:** Activity rows name the control an agent worked on, such as \"Clicked First Name in Safari\".\n- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.\n- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.\n- **Agent wake-ups:** A Claude conversation shows what the agent says when it wakes itself, for example when a background job finishes after its turn ended.\n\n### Improvements and fixes\n\n- **Questions:** An answered Claude question keeps its answers when the conversation is shown again."
+    },
+    {
+      "version": "0.57.1",
+      "releasedAt": "2026-11-14",
+      "sourceSha256": "cecb3d797e3d2e367eeb50c800a3e5124df3bb1847cdd8432a6cd4ab9a0b8e94",
+      "markdown": "### New features\n\n- **Computer Use plugin:** Pick Computer Use from the @ suggestions in any engine. It replaces the entries Codex adds itself.\n- **Image rulers:** Add vertical and horizontal rulers (X and Y) in the image annotation editor. Measurements stop at them, and Shift turns a measure or ruler tool the other way. Rulers appear in the image sent to the agent.\n- **Personalization:** Edit the instructions of every connected agent, including Antigravity.\n- **Open on GitHub or GitLab:** Open a repository's page from the Git menu.\n- **Installer clean-up:** After installing from the DMG, Korus offers to eject it and move the installer to the Trash.\n\n### Improvements and fixes\n\n- **Large diffs:** Files with a very large diff show \"Diff too large to be shown\" with their real line counts instead of freezing the app.\n- **Designs:** Fixed designs opening at 0.1% zoom after restarting with the right panel closed."
+    },
+    {
+      "version": "0.57.0",
+      "releasedAt": "2026-11-13",
+      "sourceSha256": "dfce849b1c09cb4746d791ecc407182b89fb55fabe46317799b1493e5a46ec31",
+      "markdown": "### New features\n\n- **Workspaces:** Teams are now called workspaces throughout the app, the documentation and the mobile apps.\n- **Engine and model picker:** Choose the engine, model, reasoning effort and speed from one picker above the composer, on desktop, iOS and Android. Model favorites are gone for now.\n- **Annotations:** Requirement and ticket comments are numbered and highlighted in the text, share one compact row you can edit or delete, and save with Enter (Shift+Enter for a new line). Approving a mission with unsent comments asks for confirmation first.\n- **Git history:** Each commit shows how many lines it added and removed, with a copy button next to its hash.\n- **Designs:** Keep several designs per agent, with inline SVG and a design skill that agents can use.\n- **Undo close agent:** Bring a closed agent back from the toast that appears when you close it.\n- **Antigravity:** Run on the Antigravity CLI installed on your Mac, with its permission modes and thinking levels, and see its version and upgrade option in Settings.\n- **Compress sessions:** Compress a long conversation on every engine.\n- **Cursor and Antigravity on mobile:** Pick Cursor on the phone and see Cursor and Antigravity usage.\n- **Claude reasoning:** Claude's thinking appears inline in the conversation, and long Claude conversations open from the end of their history, much faster.\n\n### Improvements and fixes\n\n- **Link paste:** Paste a copied link that has no text version into the composer and the join-by-invite dialog.\n- **Copy buttons:** The check mark returns to the copy icon after a moment, everywhere.\n- **Connect prompt:** Selecting an engine that is not connected opens that engine's settings.\n- **Handoffs:** Give the handoff note five minutes, show its progress, let a failed handoff start over, and keep handoffs of local agents working when a linked host is down.\n- **Pull requests:** Keep fork pull request associations and push to the source branch.\n- **Sidebar:** Drag plain folders to reorder them like repositories, and the repository sidebar mode is now called Project.\n- **Automations:** Turn Automations off from the rail and return to the page you were on.\n- **Empty chats:** Swap an empty chat's engine without the screen flickering.\n- **Empty repositories:** Show the branch name instead of a git status message.\n- **Telemetry:** Wait a minute after launch for the first upload and rest between batches so a backlog never slows the app.\n- **Compatibility:** Agents and workspaces saved by this version are not readable by older builds of Korus. Shipped phones keep working."
+    },
     {
       "version": "0.56.0",
       "releasedAt": "2026-11-09",

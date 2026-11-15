@@ -19,15 +19,16 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import { textRange, updateChatTextHighlights } from './chat-text-anchor';
 
-const props = defineProps<{ messageKey: string; focusRequest?: { id: string } | null; annotations: readonly (ChatTextAnnotation & { number: number })[] }>();
+/** A passage in this text: chat annotations and requirement comments both fit. */
+export type AnnotatedPassage = { id: string; text: string; comment: string; number: number; textStart?: number; textBlockIndex?: number };
+const props = defineProps<{ messageKey: string; focusRequest?: { id: string } | null; annotations: readonly AnnotatedPassage[] }>();
 const emit = defineEmits<{ edit: [id: string] }>();
 const { t } = useI18n();
 const root = ref<HTMLElement | null>(null);
 const content = ref<HTMLElement | null>(null);
-const markers = ref<{ annotation: ChatTextAnnotation & { number: number }; x: number; y: number }[]>([]);
+const markers = ref<{ annotation: AnnotatedPassage; x: number; y: number }[]>([]);
 const focusedAnnotationId = ref<string | null>(null);
 let focusTimer: ReturnType<typeof setTimeout> | undefined;
 const highlightOwner = Symbol('chat-annotation-highlight');
@@ -38,7 +39,8 @@ function measure(): void {
   if (!props.annotations.length) { markers.value = []; updateChatTextHighlights(highlightOwner, []); return; }
   const blocks = [...(root.value.closest('.conversation-pane')?.querySelectorAll<HTMLElement>('[data-chat-annotation-message]') ?? [])]
     .filter(candidate => candidate.dataset.chatAnnotationMessage === props.messageKey);
-  const index = blocks.indexOf(root.value);
+  // Outside a conversation there is one block: the text itself.
+  const index = blocks.length ? blocks.indexOf(root.value) : 0;
   const bounds = root.value.getBoundingClientRect();
   const ranges: Range[] = [];
   const focusedRanges: Range[] = [];

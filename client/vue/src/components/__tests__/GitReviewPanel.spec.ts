@@ -82,6 +82,17 @@ describe('GitReviewPanel', () => {
     expect(wrapper.find('svg.tabler-icon-brand-github').exists()).toBe(false);
     wrapper.unmount();
   });
+  it('shows a file whose patch was left out as too large, with its real counts and no hunk', () => {
+    const header = ['diff --git a/generated.json b/generated.json', 'new file mode 100644', '--- /dev/null', '+++ b/generated.json'].join('\n');
+    const wrapper = mount(GitReviewPanel, { props: { agent: { id: 'a', folder: '/repo' } as never, gitStatus: { folder: '/repo' } as never,
+      panel: { kind: 'gitDiff', title: 'Review', diff: `${diff}\n${header}`, omittedFiles: [{ path: 'generated.json', addedLines: 10000, removedLines: 0 }], state: 'idle', error: null } } });
+    const text = wrapper.text();
+    expect(text).toContain('Diff too large to be shown');
+    expect(text).toContain('+10000');
+    expect(text).not.toContain('No textual hunks.');
+    expect(wrapper.findAll('.git-diff-preview-panel__line')).toHaveLength(3);
+    wrapper.unmount();
+  });
   it('shows repository context, totals, and every file diff', async () => {
     const wrapper = mount(GitReviewPanel, {
       props: {

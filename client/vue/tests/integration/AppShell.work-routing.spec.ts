@@ -1086,6 +1086,7 @@ describe('AppShell work routing', () => {
     });
     const resolvedItem = { ...listedItem, branchName: 'feature/paginated-cockpit' };
     const loadWorkItems = vi.fn().mockResolvedValue([resolvedItem]);
+    const createAgentGitBranch = vi.fn().mockResolvedValue({});
     const createSourceWorktree = vi.fn().mockResolvedValue({
       name: 'feature-paginated-cockpit',
       path: '/Users/nbonamy/src/agent-workspace-feature-paginated-cockpit',
@@ -1108,6 +1109,7 @@ describe('AppShell work routing', () => {
       assignWorkItemAction,
       createAgent,
       createSourceWorktree,
+      createAgentGitBranch,
       loadWorkItems,
       sourceRepositories: [{
         name: 'agent-workspace',
@@ -1127,9 +1129,10 @@ describe('AppShell work routing', () => {
       kind: 'pullRequest',
       state: 'all',
     });
-    expect(createSourceWorktree).toHaveBeenCalledWith({
-      repoPath: '/Users/nbonamy/src/agent-workspace',
-      branchName: 'feature/paginated-cockpit',
+    expect(createSourceWorktree).not.toHaveBeenCalled();
+    expect(createAgentGitBranch).toHaveBeenCalledExactlyOnceWith('agent-pr-38', {
+      name: 'feature/paginated-cockpit', createWorktree: true,
+      pullRequestNumber: 38, requestRepository: 'nbonamy/agent-workspace', confirmed: true,
     });
     expect(assignWorkItemAction).toHaveBeenCalledWith(expect.objectContaining({ item: resolvedItem }));
   });

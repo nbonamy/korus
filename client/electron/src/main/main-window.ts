@@ -1,10 +1,11 @@
-import { app, BrowserWindow, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
+import { app, BrowserWindow, clipboard, nativeTheme, screen, shell, type BrowserWindowConstructorOptions, type Rectangle } from 'electron';
 import { closeSync, fstatSync, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isBrowserGuestPartition } from '@workspace/core/browser-guest';
 import { product } from '@workspace/core/product';
 import { desktopIconPath } from './desktop-identity';
 import { appCommandFromInput } from './app-shortcuts';
+import { linkToPaste } from './link-paste';
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
 import type { WindowFrame } from './window-layout';
@@ -111,6 +112,12 @@ export function createMainWindow(placement: WindowPlacement = {}): BrowserWindow
     logRendererConsole(level, message, { line, sourceId });
   });
   window.webContents.on('before-input-event', (event, input) => {
+    const link = linkToPaste(input, clipboard);
+    if (link) {
+      event.preventDefault();
+      window.webContents.insertText(link);
+      return;
+    }
     const command = appCommandFromInput(input);
     if (!command) {
       return;

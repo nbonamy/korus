@@ -3,6 +3,7 @@
     <div class="plan-review-footer__status"><slot /></div>
     <div class="plan-review-footer__actions">
       <button
+        v-if="cancellable"
         class="app-button app-button--tertiary"
         type="button"
         :disabled="disabled"
@@ -32,8 +33,9 @@
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-withDefaults(defineProps<{ disabled?: boolean; hasFeedback: boolean; canApprove?: boolean }>(), {
+withDefaults(defineProps<{ disabled?: boolean; hasFeedback: boolean; canApprove?: boolean; cancellable?: boolean }>(), {
   canApprove: true,
+  cancellable: true,
 });
 const emit = defineEmits<{ cancel: []; revise: []; approve: [] }>();
 const { t } = useI18n();

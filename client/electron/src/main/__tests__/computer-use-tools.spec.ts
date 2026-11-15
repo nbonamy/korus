@@ -78,6 +78,7 @@ process.stdin.on('data', (chunk) => {
     'perform_secondary_action',
     'paste',
     'select_text',
+    'select_option',
     'list_windows',
   ])('accepts the v2 %s command', (command) => {
     expect(isComputerUseCommand(command)).toBe(true);

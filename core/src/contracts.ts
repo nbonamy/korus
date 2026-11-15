@@ -32,6 +32,7 @@ import type {
   AgentGitUpdateFromBaseResult,
   AgentGitLogInput,
   AgentGitLogCommit,
+  AgentGitLogStats,
   AgentGitLogPage,
   AgentGitLogCommitInput,
   AgentGitLogFile,
@@ -113,6 +114,7 @@ export type {
   AgentGitBranchInput,
   AgentGitCommitInput,
   AgentGitDiff,
+  AgentGitDiffOmittedFile,
   AgentGitCommitSummary,
   AgentGitDiffCatalog,
   AgentGitDiffSummary,
@@ -136,6 +138,7 @@ export type {
   AgentGitUpdateFromBaseResult,
   AgentGitLogInput,
   AgentGitLogCommit,
+  AgentGitLogStats,
   AgentGitLogPage,
   AgentGitLogCommitInput,
   AgentGitLogFile,
@@ -1011,7 +1014,7 @@ export type AppApi = {
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: HarnessProvider): Promise<{ text: string; path: string }>;
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
-  saveEngineInstructions(input: { engine: HarnessProvider; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
+  saveEngineInstructions(input: { engine: HarnessProvider; text: string; all?: boolean; confirmed?: boolean; /** The engines `all` writes to; both Codex and Claude when absent. */ engines?: HarnessProvider[] }): Promise<void>;
   getDictationSettings?(): Promise<import('./dictation').DictationSettings>;
   /** Explicit desktop-only credential reveal; never part of settings or shared snapshots. */
   getDictationApiKey?(): Promise<string | null>;

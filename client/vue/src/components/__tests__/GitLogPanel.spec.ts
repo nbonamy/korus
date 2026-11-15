@@ -3,6 +3,7 @@ import { isProxy } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, AgentGitLogInput, AgentGitLogPage } from '@workspace/core/contracts';
 import { stubElectronTestWindow } from '../../../tests/support/client';
+import GitDiffLineStats from '../GitDiffLineStats.vue';
 import GitLogPanel from '../GitLogPanel.vue';
 
 const agent = { id: 'a', teamId: 'team', folder: '/repo', status: { type: 'idle' } } as Agent;
@@ -65,6 +66,25 @@ describe('Git log inline history', () => {
     expect(wrapper.text()).toContain('No changed files.');
   });
 
+  it('shows what each commit changed on its own line, before it is expanded', async () => {
+    const withStats = { ...page, commits: [{ ...commit, stats: { files: 3, additions: 235, deletions: 4 } }], nextCursor: undefined };
+    stubElectronTestWindow({ app: { getAgentGitLog: vi.fn().mockResolvedValue(withStats) } });
+    const wrapper = render(); await flushPromises();
+    const row = wrapper.get('.git-log-panel__commit');
+    expect(row.getComponent(GitDiffLineStats).props()).toStrictEqual({ addedLines: 235, removedLines: 4 });
+    expect(row.get('.git-log-panel__stats').attributes('title')).toBe('3 files changed');
+  });
+
+  it('puts the copy button beside the hash it copies, away from the stats and chevron', async () => {
+    const withStats = { ...page, commits: [{ ...commit, stats: { files: 3, additions: 235, deletions: 4 } }], nextCursor: undefined };
+    stubElectronTestWindow({ app: { getAgentGitLog: vi.fn().mockResolvedValue(withStats) } });
+    const wrapper = render(); await flushPromises();
+    const meta = wrapper.get('.git-log-panel__meta');
+    expect(meta.text()).toContain(sha.slice(0, 8));
+    expect(meta.find('[aria-label="Copy commit hash"]').exists()).toBe(true);
+    expect(wrapper.get('.git-log-panel__commit').find('[aria-label="Copy commit hash"]').exists()).toBe(false);
+  });
+
   it('copies from a collapsed row without expanding it, and recovers clipboard failures', async () => {
     const getAgentGitLogCommit = vi.fn();
     stubElectronTestWindow({ app: { getAgentGitLog: vi.fn().mockResolvedValue({ ...page, nextCursor: undefined }), getAgentGitLogCommit } });
@@ -80,6 +100,18 @@ describe('Git log inline history', () => {
     expect(copy.attributes('title')).toBe('Copied');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(getAgentGitLogCommit).not.toHaveBeenCalled();
+  });
+
+  it('shows the copied tick briefly, then returns to the copy icon', async () => {
+    stubElectronTestWindow({ app: { getAgentGitLog: vi.fn().mockResolvedValue({ ...page, nextCursor: undefined }) } });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    const wrapper = render(); await flushPromises();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const copy = wrapper.get('.git-log-panel__row [aria-label="Copy commit hash"]');
+    await copy.trigger('click'); await flushPromises();
+    expect(copy.attributes('title')).toBe('Copied');
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(copy.attributes('title')).toBe('Copy commit hash');
   });
 
   it('folds date groups independently and keeps them folded when another history page arrives', async () => {

@@ -220,8 +220,18 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     const path = projectPath(repositoryId);
     if (!Number.isSafeInteger(number) || number <= 0) throw new Error('Invalid GitLab merge request number.');
     const response = await this.api(credential, `${API}/projects/${encodeURIComponent(path)}/merge_requests/${number}`);
-    const result = gitlabRequest(await this.requestJson(response), path);
+    const value = await this.requestJson(response);
+    const result = gitlabRequest(value, path);
     if (result.number !== number) throw new Error('GitLab returned an unexpected merge request.');
+    if (record(value) && nonempty(value.source_branch)) {
+      let sourcePath = path;
+      if (value.source_project_id !== value.target_project_id) {
+        const project = await this.requestJson(await this.api(credential, `${API}/projects/${value.source_project_id}`));
+        if (!record(project) || !nonempty(project.path_with_namespace)) throw new Error('The source branch of this merge request is unavailable.');
+        sourcePath = projectPath(`gitlab.com/${project.path_with_namespace}`);
+      }
+      result.head = { repository: `gitlab.com/${sourcePath}`, branch: value.source_branch };
+    }
     return result;
   }
 

@@ -6,14 +6,10 @@
     <template v-else-if="login">
       <div class="remote-codex-auth__code-row">
         <span class="remote-codex-auth__step-number" aria-hidden="true">1</span>
-        <el-button class="remote-codex-auth__step-action" text size="small"
-          :aria-label="$t(codeCopied ? 'surface.remoteCodexAuth.copied' : 'surface.remoteCodexAuth.copy')"
-          :title="$t(codeCopied ? 'surface.remoteCodexAuth.copied' : 'surface.remoteCodexAuth.copy')"
-          @click="copyCode">
-          <span>{{ $t(codeCopied ? 'surface.remoteCodexAuth.copied' : 'surface.remoteCodexAuth.copy') }}</span>
+        <CopyButton class="remote-codex-auth__step-action" :label="$t('surface.remoteCodexAuth.copy')" :copied-label="$t('surface.remoteCodexAuth.copied')" :action="copyCode">
+          <span>{{ $t('surface.remoteCodexAuth.copy') }}</span>
           <strong class="remote-codex-auth__code">{{ login.code }}</strong>
-          <component :is="codeCopied ? CheckIcon : CopyIcon" aria-hidden="true" />
-        </el-button>
+        </CopyButton>
       </div>
       <span v-if="copyFailed">{{ $t('surface.remoteCodexAuth.copyFailed') }}</span>
       <div class="remote-codex-auth__code-row">
@@ -37,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { CheckIcon, CopyIcon } from '../shared/icons/app-icons';
+import { CopyButton } from '@korus-dev/agent-ui-sdk';
 import type { RemoteConnection } from '@workspace/core/contracts';
 import { useRemoteCodexAuthentication, type RemoteCodexAuthApi } from './use-remote-codex-authentication';
 
@@ -50,12 +46,8 @@ const { authentication, login, connected, busy, error, start, cancel, refresh } 
 watch(() => !connected.value && (busy.value || login.value !== null || (!authentication.value && !error.value)), active => emit('activity', active), { immediate: true });
 onScopeDispose(() => emit('activity', false));
 watch(connected, value => { if (value) emit('connected'); });
-const codeCopied = ref(false);
 const copyFailed = ref(false);
-watch(() => login.value?.code, () => {
-  codeCopied.value = false;
-  copyFailed.value = false;
-});
+watch(() => login.value?.code, () => { copyFailed.value = false; });
 async function cancelLogin() {
   await cancel();
   if (!login.value) emit('cancel');
@@ -63,15 +55,13 @@ async function cancelLogin() {
 async function copyCode() {
   const code = login.value?.code;
   if (!code) return;
+  // The button shows its own tick; a failure is reported here and leaves no tick.
   try {
     await navigator.clipboard.writeText(code);
-    if (login.value?.code !== code) return;
-    codeCopied.value = true;
-    copyFailed.value = false;
-  } catch {
-    if (login.value?.code !== code) return;
-    codeCopied.value = false;
-    copyFailed.value = true;
+    if (login.value?.code === code) copyFailed.value = false;
+  } catch (cause) {
+    if (login.value?.code === code) copyFailed.value = true;
+    throw cause;
   }
 }
 const email = computed(() => authentication.value?.account?.type === 'chatgpt' ? authentication.value.account.email : null);
@@ -128,17 +118,6 @@ function openVerification() {
   background: var(--color-text-muted);
   color: var(--color-surface-lowest);
   font-weight: var(--font-weight-semibold);
-}
-
-.remote-codex-auth__step-action :deep(> span) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.remote-codex-auth__step-action :deep(svg) {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
 }
 
 .remote-codex-auth__error {

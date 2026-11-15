@@ -125,8 +125,9 @@
               :tickets="visibleTickets"
               :visible-ticket-indexes="visibleTicketIndexes"
               :annotatable="viewedStage === mission.stage && Boolean(activeRun?.proposal || activeRun?.draftTickets?.length)"
-              :disabled="feedbackBusy || debugFixture"
+              :disabled="feedbackBusy"
               :reset-key="feedbackReset"
+              @comments-change="ticketCommentCount = $event"
               @send-comments="sendTicketComments"
             />
           </section>
@@ -288,6 +289,7 @@ import MissionRequirementReview from './MissionRequirementReview.vue';
 import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import MissionStageRail from './MissionStageRail.vue';
 import MissionTicketBoard, { type MissionTicketComment } from './MissionTicketBoard.vue';
+import { confirmDiscardAnnotations } from './confirm-discard-annotations';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 
 const props = withDefaults(defineProps<{
@@ -574,8 +576,10 @@ watch([() => props.mission.id, () => props.mission.revision, () => activeRun.val
   implementationApprovalVisible.value = false;
 });
 
-function requestApproval(): void {
+const ticketCommentCount = ref(0);
+async function requestApproval(): Promise<void> {
   if (props.mission.stage === 'tickets') {
+    if (ticketCommentCount.value && !(await confirmDiscardAnnotations(ticketCommentCount.value, t))) return;
     resetImplementationModel();
     error.value = '';
     implementationApprovalVisible.value = true;
@@ -644,13 +648,18 @@ async function respondToRequirements(resolution: PlanReviewResolution, feedback?
   if (!run || !props.executeMission) throw new Error(t('planFeedback.unavailable'));
   if (resolution === 'revise') {
     if (!props.sendMissionPrompt) throw new Error(t('planFeedback.unavailable'));
-    await props.sendMissionPrompt(`${t('missions.requirementFeedbackPrompt')}\n\n${feedback}`);
+    // The annotations travel as context so a long review stays out of the visible message.
+    const context = (feedback ?? '').replace(/<\/context>/giu, '&lt;/context&gt;');
+    await props.sendMissionPrompt(`<context>\n${context}\n</context>\n${t('missions.requirementFeedbackPrompt')}`);
   } else {
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: resolution === 'accept' ? 'accept' : 'cancel', runId: run.id });
   }
 }
 async function sendTicketComments(comments: MissionTicketComment[]): Promise<void> {
-  if (!props.sendMissionPrompt || comments.length === 0) return;
+  if (comments.length === 0) return;
+  // Like debug requirement decisions, simulated feedback resolves the local preview without a prompt.
+  if (debugFixture.value) { feedbackReset.value += 1; return; }
+  if (!props.sendMissionPrompt) return;
   feedbackBusy.value = true; error.value = '';
   const details = comments.map((comment, index) => [
     `${index + 1}. ${t('missions.ticketCommentTarget', { number: comment.ticketNumber, title: comment.ticketTitle })}`,

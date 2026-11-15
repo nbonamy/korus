@@ -15,7 +15,11 @@ const typeText = async (wrapper: ReturnType<typeof mount>, value: string) => {
   await input.trigger('input');
 };
 
+/** The initial fit waits for the stage size to stop changing. */
+const settle = async () => { await flushPromises(); await vi.advanceTimersByTimeAsync(200); await flushPromises(); };
+
 it('fits once and preserves zoom through sidebar resizes until the next explicit fit', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   let resize!: (width: number, height?: number) => void;
   vi.stubGlobal('ResizeObserver', class {
     constructor(private callback: ResizeObserverCallback) {}
@@ -41,7 +45,7 @@ it('fits once and preserves zoom through sidebar resizes until the next explicit
     resize(0, 0);
     await flushPromises();
     resize(700);
-    await flushPromises();
+    await settle();
     const initial = width();
     expect(initial).toContain('width: 636px');
     resize(500);
@@ -67,7 +71,34 @@ it('fits once and preserves zoom through sidebar resizes until the next explicit
     resize(700);
     await flushPromises();
     expect(width()).toBe(manual);
-  } finally { wrapper.unmount(); vi.unstubAllGlobals(); }
+  } finally { wrapper.unmount(); vi.unstubAllGlobals(); vi.useRealTimers(); }
+});
+
+it('fits once the stage has room, however long a collapsed or still-opening pane held a size too small to fit anything', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  let resize!: (width: number, height: number) => void;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      if (target.matches('.design-canvas')) resize = (width, height) => this.callback([{ target, contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+    }
+    unobserve() {}
+    disconnect() {}
+  });
+  const workspace = editableWorkspace();
+  const wrapper = mount(DesignPanel, { attachTo: document.body, props: { agentId: 'designer', workspace, execute: vi.fn(async () => ({ workspace })) }, global: { components: { ElTree } } });
+  try {
+    // A collapsed pane can hold one size for a long while; it must not decide the zoom for good.
+    resize(40, 700);
+    await settle();
+    resize(700, 90);
+    await settle();
+    resize(700, 700);
+    await settle();
+
+    expect(wrapper.get('.design-canvas__artboard').attributes('style')).toContain('width: 636px');
+    expect(wrapper.get('button[aria-label="Zoom"]').text()).not.toBe('0.1%');
+  } finally { wrapper.unmount(); vi.unstubAllGlobals(); vi.useRealTimers(); }
 });
 
 it('resizes and drags the inspector closed without losing drafts or its restored width', async () => {

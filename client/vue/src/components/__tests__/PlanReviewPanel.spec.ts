@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElTooltip } from 'element-plus';
+import { ElMessageBox, ElTooltip } from 'element-plus';
 import type { PlanReview, PlanReviewResponse } from '@workspace/core/plan-review';
 import PlanReviewPanel from '../PlanReviewPanel.vue';
 
@@ -44,7 +44,7 @@ describe('Markdown plan review', () => {
       });
       wrapper.unmount();
       wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
-      expect(wrapper.findAll('.comment-preview').map(comment => comment.text())).toEqual(['Feedback for diagram 1', 'Feedback for diagram 2']);
+      expect(wrapper.findAll('.annotation-comment__body').map(comment => comment.text())).toEqual(['Feedback for diagram 1', 'Feedback for diagram 2']);
       await button(wrapper, 'Revise').trigger('click');
       await flushPromises();
       expect(respond).toHaveBeenLastCalledWith(expect.objectContaining({ resolution: 'revise' }));
@@ -139,7 +139,7 @@ describe('Markdown plan review', () => {
         props: { review: current, respond }, attachTo: document.body,
         global: { components: { ElTooltip } },
       });
-      expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
+      expect(wrapper.get('.annotation-comment__body').text()).toBe('Keep all platforms.');
       expect(wrapper.find('[role="switch"]').exists()).toBe(false);
       expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false]);
       await wrapper.findAll('.plan-choice-group')[0]!.get('button[aria-label="Reset"]').trigger('click');
@@ -162,7 +162,7 @@ describe('Markdown plan review', () => {
       await save();
       expect(respond).toHaveBeenLastCalledWith(expect.objectContaining({ draftVersion, draft: { ...draft, choices: [] } }));
       expect(wrapper.findAll('input[type="radio"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([false, true]);
-      expect(wrapper.get('.comment-preview').text()).toBe('Keep all platforms.');
+      expect(wrapper.get('.annotation-comment__body').text()).toBe('Keep all platforms.');
     } finally { wrapper.unmount(); }
   });
 
@@ -224,7 +224,7 @@ describe('Markdown plan review', () => {
       }
       await toggle.trigger('click');
       expect(editor.isVisible()).toBe(false);
-      await wrapper.get('.comment-preview').trigger('click');
+      await wrapper.get('.annotation-comment__text').trigger('click');
       expect(editor.isVisible()).toBe(true);
       await editor.trigger('keydown', { key: 'Escape' });
       expect(editor.isVisible()).toBe(false);
@@ -232,9 +232,60 @@ describe('Markdown plan review', () => {
     } finally { complete?.(); wrapper.unmount(); }
   });
 
+  it('removes a saved comment with the delete button beside its edit button', async () => {
+    const current = review();
+    const respond = vi.fn(async (response: PlanReviewResponse) => result(current, response));
+    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body });
+    try {
+      await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
+      await wrapper.get('textarea').setValue('Keep Linux.');
+      await save();
+      await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
+      expect(wrapper.get('.annotation-comment__body').text()).toContain('Keep Linux.');
+
+      await wrapper.get('.annotation-comment button[aria-label="Remove comment"]').trigger('click');
+      await save();
+
+      expect(wrapper.find('.annotation-comment__body').exists()).toBe(false);
+      expect(respond.mock.calls.at(-1)![0]).toMatchObject({ resolution: 'save', draft: { comments: [] } });
+    } finally { wrapper.unmount(); }
+  });
+
+  it('asks before approving with annotations and approves once the user confirms', async () => {
+    const current = review();
+    const respond = vi.fn(async (response: PlanReviewResponse) => result(current, response));
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
+    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body });
+    try {
+      await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
+      await wrapper.get('textarea').setValue('Keep Linux.');
+      await button(wrapper, 'Approve').trigger('click');
+      await flushPromises();
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('1 annotation'), expect.any(String), expect.objectContaining({ type: 'warning' }));
+      expect(respond.mock.calls.map(call => call[0].resolution)).toEqual(['save', 'accept']);
+    } finally { confirm.mockRestore(); wrapper.unmount(); }
+  });
+
+  it('keeps the review open with its annotations when the user goes back from the approval warning', async () => {
+    const current = review();
+    const respond = vi.fn(async (response: PlanReviewResponse) => result(current, response));
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel');
+    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body });
+    try {
+      await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
+      await wrapper.get('textarea').setValue('Keep Linux.');
+      await button(wrapper, 'Approve').trigger('click');
+      await flushPromises();
+      expect(respond).not.toHaveBeenCalledWith(expect.objectContaining({ resolution: 'accept' }));
+      expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('Keep Linux.');
+      expect(button(wrapper, 'Approve').attributes('disabled')).toBeUndefined();
+    } finally { confirm.mockRestore(); wrapper.unmount(); }
+  });
+
   it.each(['accept', 'cancel'] as const)('flushes pending comments before explicit %s', async resolution => {
     const current = review();
     const respond = vi.fn(async response => result(current, response));
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
     const wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
     try {
       await wrapper.get('button[aria-label="Comment on this section: Platforms"]').trigger('click');
@@ -243,7 +294,7 @@ describe('Markdown plan review', () => {
       await flushPromises();
       expect(respond.mock.calls.map(c => c[0].resolution)).toEqual(['save', resolution]);
       expect(respond).toHaveBeenLastCalledWith({ reviewId: current.id, resolution, draftVersion: 1 });
-    } finally { wrapper.unmount(); }
+    } finally { confirm.mockRestore(); wrapper.unmount(); }
   });
 
   it.each(['failure', 'new review'])('does not approve when a pending save ends with %s', async outcome => {

@@ -39,6 +39,8 @@ export {
   IconArrowsDiagonalMinimize2 as ArrowsDiagonalMinimize2Icon,
   IconArrowsHorizontal as ArrowsHorizontalIcon,
   IconArrowsVertical as ArrowsVerticalIcon,
+  IconSeparatorHorizontal as SeparatorHorizontalIcon,
+  IconSeparatorVertical as SeparatorVerticalIcon,
   IconArrowsSort as ArrowsSortIcon,
   IconBrandJira as BrandJiraIcon,
   IconBrandOpenai as BrandOpenaiIcon,

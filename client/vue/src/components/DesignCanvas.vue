@@ -95,13 +95,16 @@ const zoom = computed(() => {
   const height = selected?.height ?? bounds.value.bottom - bounds.value.y;
   return Math.max(0.001, Math.min(1, (stageWidth.value - 64) / Math.max(1, width), (stageHeight.value - (props.play ? 108 : 164) - (selected ? 0 : captionGutters.value)) / Math.max(1, height)));
 });
+/** Whether the stage is big enough for a fit to be meaningful: its margins and toolbars leave some room. */
+const stageHasRoom = computed(() => stageWidth.value > 64 && stageHeight.value > (props.play ? 108 : 164) + captionGutters.value);
 // Fit is a viewport action, not a resize-dependent zoom mode. Let framing and
 // scroll positioning settle before retaining the resulting numeric scale.
 async function retainZoom() {
   await nextTick();
   if (stage.value && props.zoomChoice === 'fit') { stage.value.scrollLeft = 0; stage.value.scrollTop = 0; }
   else if (props.zoomChoice === 'selection') await focus(props.selectedArtboardId ?? '');
-  if (stage.value && typeof props.zoomChoice !== 'number') emit('zoom', zoom.value);
+  // A stage with no room to fit into (a collapsed or still-opening pane) would retain the zoom floor for good.
+  if (stage.value && typeof props.zoomChoice !== 'number' && stageHasRoom.value) emit('zoom', zoom.value);
 }
 watch(() => props.zoomChoice, () => void retainZoom(), { flush: 'post' });
 watch([bounds, () => !!boardDrag.value, () => props.zoomChoice, () => props.documentId], async () => {
@@ -178,6 +181,8 @@ function nudgeBoard(event: KeyboardEvent, id: string) {
 }
 watch(() => props.interacting, active => { if (!active && boardDrag.value?.ending) boardDrag.value = null; });
 let observer: ResizeObserver | undefined;
+let settleTimer: ReturnType<typeof setTimeout> | undefined;
+const fitSettleMs = 150;
 const gesture = ref<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
 function startPan(event: PointerEvent) {
   if (props.play || props.locked || !stage.value || !(props.pan && event.button === 0 || event.button === 1)) return;
@@ -229,13 +234,18 @@ onMounted(() => {
       if (!size || size.width <= 0 || size.height <= 0) return;
       stageWidth.value = size.width;
       stageHeight.value = size.height;
-      if (!measured) { measured = true; void retainZoom(); }
+      if (measured) return;
+      // The first sizes of a tab that just opened are layout in progress, often too small to fit anything. Retaining
+      // one of those would freeze the zoom at its floor, so the initial fit waits for a size with room that settles.
+      clearTimeout(settleTimer);
+      if (!stageHasRoom.value) return;
+      settleTimer = setTimeout(() => { measured = true; void retainZoom(); }, fitSettleMs);
     });
     if (stage.value) observer.observe(stage.value);
   } else void retainZoom();
   if (props.zoomChoice === 'selection') void focus(props.selectedArtboardId ?? '');
 });
-onBeforeUnmount(() => { observer?.disconnect(); window.removeEventListener('keydown', cancelKey); });
+onBeforeUnmount(() => { clearTimeout(settleTimer); observer?.disconnect(); window.removeEventListener('keydown', cancelKey); });
 defineExpose({ focus, zoom, activeArtboardId });
 </script>
 

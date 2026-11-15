@@ -354,8 +354,15 @@ the touched module's tests plus the full coverage gate.
 
 The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
 Tag pushes do not trigger it. It owns lint/typechecks, the full suite under
-coverage, script tests, and retained coverage reports. The README badge combines
-covered and total statement counts
+coverage, script tests, and retained coverage reports.
+Quality resolves each SDK repository's `main` commit once per run, records the
+revisions in the run summary, and checks out those same commits for every validation
+job. Each SDK is built and packed as it would be published, and the tarball replaces
+the pinned package in `node_modules`, so validation loads prebuilt files like a
+release does. Aliasing to SDK sources (`SDK_LOCAL_SOURCE`) is for local development:
+on a runner it transforms the SDK's source files in every test file and pushes tight
+test timeouts over their limit.
+The README badge combines covered and total statement counts
 from every declared workspace. Only successful Quality runs for the current `main` commit
 publish coverage badge data to the separate `badges` branch; PRs have no publication authority.
 The publishing job alone has repository write permission and retains badge history
@@ -363,7 +370,7 @@ independently of application source. All badge publishers share a publication
 concurrency group and preserve the other badge files so independent updates
 cannot overwrite one another. The release workflow runs ordinary workspace
 and script tests, without coverage, before builds and publication. The workflows are independent:
-Quality failures do not block releases; release test failures do. Run against the
+Quality failures do not block releases; release test failures do. Release validation runs against the
 installed SDK package boundary; source aliases do not substitute for package
 verification. Desktop smoke (boot, create or
 select an agent, pick a folder, send, stream, interrupt or approve, restore after

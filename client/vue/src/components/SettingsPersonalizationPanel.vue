@@ -5,13 +5,13 @@
     </template>
     <div class="settings-personalization__toolbar">
           <el-select class="settings-personalization__engine" :model-value="engine" :disabled="busy" :aria-label="$t('surface.instructionSettings.engine')" @update:model-value="selectEngine">
-            <el-option :label="$t('surface.settingsSidebar.codex')" value="codex" />
-            <el-option :label="$t('surface.settingsSidebar.claudeCode')" value="claude" />
+            <el-option v-for="id in engines" :key="id" :label="engineLabel(id)" :value="id" />
           </el-select>
       <div class="settings-personalization__actions">
         <button class="app-button app-button--secondary" type="button" :disabled="busy || !loaded" @click="saveAll">{{ $t('surface.instructionSettings.saveAll') }}</button>
       </div>
     </div>
+    <p v-if="engines.length === 0" class="settings-personalization__hint">{{ $t('surface.instructionSettings.noEngines') }}</p>
     <p class="settings-personalization__path">{{ filePath }}</p>
     <el-input v-model="text" type="textarea" :rows="10" :disabled="busy || !loaded" :aria-label="$t('surface.instructionSettings.developerInstructions')" @input="scheduleCurrent" />
     <p class="settings-personalization__hint">{{ $t('surface.instructionSettings.personalizationHint') }}</p>
@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useDebouncedSave } from '../shared/use-debounced-save';
 import { ElMessageBox } from 'element-plus';
 import type { HarnessProvider, AppApi } from '@workspace/core/contracts';
@@ -29,8 +29,12 @@ import { translate } from '../i18n';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
 
-const props = defineProps<{ api?: Pick<AppApi, 'readEngineInstructions' | 'saveEngineInstructions'> }>();
-const engine = ref<HarnessProvider>('codex');
+const props = defineProps<{
+  api?: Pick<AppApi, 'readEngineInstructions' | 'saveEngineInstructions'>;
+  /** The connected engines that read an instructions file, one entry each. */
+  engines: readonly HarnessProvider[];
+}>();
+const engine = ref<HarnessProvider>(props.engines[0] ?? 'codex');
 const text = ref('');
 const original = ref('');
 const filePath = ref('');
@@ -75,12 +79,17 @@ async function saveAll() {
     if (!await flush()) return;
     const client = props.api ?? appApi;
     if (!client) throw new Error('Settings client unavailable.');
-    await client.saveEngineInstructions({ engine: engine.value, text: text.value, all: true, confirmed: true });
+    await client.saveEngineInstructions({ engine: engine.value, text: text.value, all: true, confirmed: true, engines: [...props.engines] });
     original.value = text.value;
   } catch (cause) { error.value = String(cause instanceof Error ? cause.message : cause); }
   finally { busy.value = false; }
 }
-onMounted(() => load('codex'));
+const engineLabel = (id: HarnessProvider) => translate(`surface.settingsMenu.engine.${id}`);
+onMounted(() => { if (props.engines[0]) void load(props.engines[0]); });
+// An engine that connects or disconnects while the panel is open: keep editing the current one if it is still listed.
+watch(() => props.engines, (engines) => {
+  if (engines.length > 0 && !engines.includes(engine.value)) void selectEngine(engines[0]!);
+});
 </script>
 
 <style scoped>

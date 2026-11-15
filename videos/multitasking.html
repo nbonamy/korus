@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Multitasking — Korus preview</title>
+    <style>
+      body {
+        margin: 0;
+        background: #20272d;
+        color: #f7f9fc;
+        font:
+          16px -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+      }
+      main {
+        max-width: 1280px;
+        margin: 40px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 28px;
+        letter-spacing: -0.025em;
+        margin: 0 0 20px;
+      }
+      video {
+        width: 100%;
+        display: block;
+        background: #000;
+      }
+      p,
+      a {
+        color: #cfd4dd;
+        line-height: 1.5;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+      }
+      a {
+        text-underline-offset: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Two priorities. Keep your place.</h1>
+      <video controls playsinline poster="assets/multitasking-thumbnail.png">
+        <source src="local/exports/korus-multitasking.mp4" type="video/mp4" />
+        <track
+          src="local/exports/korus-multitasking.vtt"
+          kind="captions"
+          srclang="en"
+          label="English"
+          default
+        />
+      </video>
+      <p>
+        Real Korus desktop interactions in a fictional workspace · Calm American
+        narration
+      </p>
+      <nav aria-label="Video files">
+        <a href="local/exports/korus-multitasking.mp4">Download video</a>
+        <a href="local/exports/korus-multitasking.vtt">Captions</a>
+        <a href="assets/multitasking-thumbnail.png">Thumbnail</a>
+      </nav>
+    </main>
+  </body>
+</html>

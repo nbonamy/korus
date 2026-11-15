@@ -17,7 +17,7 @@ it('copies each displayed login command and reports clipboard failures', async (
       await row.get('button').trigger('click');
       await flushPromises();
       expect(writeText).toHaveBeenLastCalledWith(row.get('code').text());
-      expect(row.get('button').attributes('aria-label')).toContain('copied');
+      expect(row.get('button').attributes('title')).toContain('copied');
     }
     writeText.mockRejectedValueOnce(new Error('Clipboard denied'));
     await rows[0]!.get('button').trigger('click');

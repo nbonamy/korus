@@ -144,14 +144,26 @@ export class AgentGitWorkflowService {
         if (input.closeAgentAfterPush === true && input.target !== 'mergeTarget') {
           throw new Error('Closing an agent after pushing is only available for a completed merge.');
         }
-        const currentWorkflow = await this.options.git.workflow(folder);
+        const currentWorkflow = await this.options.git.workflow(folder, agent.pullRequest);
         const pushFolder = input.target === 'mergeTarget' && !isIntegrationBranchName(currentWorkflow.branch)
           ? await this.options.git.mergeTarget(folder)
           : folder;
         const workflow = pushFolder === folder ? currentWorkflow : await this.options.git.workflow(pushFolder);
         if (workflow.detached || !workflow.branch) throw new Error('Create or check out a branch before pushing.');
         if (!workflow.remote) throw new Error('Add a Git remote before pushing.');
-        await this.options.git.push(pushFolder, workflow.remote, workflow.branch, !workflow.upstream);
+        const tracked = pushFolder === folder && agent.pullRequest?.branch === workflow.branch
+          && agent.pullRequest.repository === workflow.repository ? agent.pullRequest : undefined;
+        if (tracked) {
+          const request = await this.options.getWorkIntegrations().getPullRequest?.(tracked.repository, tracked.number);
+          const head = request?.head;
+          const identity = head && canonicalGitRemoteIdentity(`https://${head.repository}`);
+          if (!head || !identity || identity !== head.repository) throw new Error('The source branch of this pull request is unavailable. Refresh and retry.');
+          const url = workflow.remoteUrl?.startsWith('http')
+            ? `https://${identity}.git` : `git@${identity.replace('/', ':')}.git`;
+          await this.options.git.pushToBranch(pushFolder, url, workflow.branch, head.branch, `pr-${tracked.number}`);
+        } else {
+          await this.options.git.push(pushFolder, workflow.remote, workflow.branch, !workflow.upstream);
+        }
         const result = await this.workflow(agent, { refreshStatus: true });
         if (input.target === 'mergeTarget') await this.options.recordMerge?.(agentId, null, false);
         if (input.closeAgentAfterPush === true) {
@@ -169,17 +181,22 @@ export class AgentGitWorkflowService {
         if (pullRequestNumber !== undefined && (!Number.isInteger(pullRequestNumber) || (pullRequestNumber as number) <= 0)) {
           throw new Error('Invalid request number.');
         }
+        const branchName = requireString(input.name, 'name');
         let expectedHeadSha: string | undefined;
-        if (pullRequestNumber !== undefined && input.requestRepository !== undefined) {
+        let tracking: Agent['pullRequest'];
+        if (pullRequestNumber !== undefined) {
           const workflow = await this.options.git.workflow(folder);
-          if (workflow.repository !== input.requestRepository) throw new Error('The selected request belongs to a different repository remote.');
+          if (input.requestRepository !== undefined && workflow.repository !== input.requestRepository) throw new Error('The selected request belongs to a different repository remote.');
+          if (!workflow.repositoryProvider) throw new Error('Choose a GitHub or GitLab.com remote before checking out a request.');
           const reader = this.options.getWorkIntegrations();
           if (!reader.getPullRequest) throw new Error('Request lookup is unavailable.');
           const request = await reader.getPullRequest(workflow.repository, pullRequestNumber as number);
           if (!request) throw new Error('The request is unavailable. Refresh and retry.');
           expectedHeadSha = request.headSha;
+          const now = new Date().toISOString();
+          tracking = { ...request, provider: workflow.repositoryProvider, repository: workflow.repository,
+            branch: branchName.trim(), createdAt: now, updatedAt: now };
         }
-        const branchName = requireString(input.name, 'name');
         const targetFolder = pullRequestNumber === undefined
           ? await this.options.git.createBranch(folder, branchName, input.createWorktree === true)
           : await this.options.git.createBranch(folder, branchName, input.createWorktree === true, pullRequestNumber as number, ...(expectedHeadSha ? [expectedHeadSha] : []));
@@ -187,8 +204,9 @@ export class AgentGitWorkflowService {
           updateAgentFolder(this.options.getSnapshot(), agentId, targetFolder);
           await this.options.releaseConversation(agent);
         }
+        if (tracking) agent.pullRequest = tracking;
         const workspaceChanged = await this.options.refreshWorkspaceIdentity(agentId);
-        if (input.createWorktree === true || workspaceChanged) await this.options.persistAndEmitSnapshot();
+        if (input.createWorktree === true || workspaceChanged || tracking) await this.options.persistAndEmitSnapshot();
         return this.workflow(agent, { refreshStatus: true });
       }
       case backendMethods.agentGitPullRequestCreate:
@@ -216,7 +234,7 @@ export class AgentGitWorkflowService {
 
   private async pruneInventory(agent: Agent): Promise<GitPruneInventory> {
     const inventory = await this.options.git.pruning.inventory(requireAgentFolder(agent), this.pruneOwners());
-    const workflow = await this.options.git.workflow(requireAgentFolder(agent));
+    const workflow = await this.options.git.workflow(requireAgentFolder(agent), agent.pullRequest);
     const integrations = this.options.getWorkIntegrations();
     if (workflow.repository.includes('/') && await (integrations.repositoryConnected?.(workflow.repository) ?? integrations.githubConnected())) {
       // PR badges are context, never proof that a ref's current head is merged.
@@ -247,7 +265,7 @@ export class AgentGitWorkflowService {
   }
 
   private async workflow(agent: Agent, options: { includePullRequest?: boolean; refreshStatus?: boolean } = {}): Promise<AgentGitWorkflow> {
-    const workflow = await this.options.git.workflow(requireAgentFolder(agent));
+    const workflow = await this.options.git.workflow(requireAgentFolder(agent), agent.pullRequest);
     if (options.refreshStatus) {
       await this.options.refreshGitStatus(agent.id);
     }
@@ -255,10 +273,20 @@ export class AgentGitWorkflowService {
     const provider = workflow.repositoryProvider ?? providerForRemote(workflow.remoteUrl);
     const connected = provider ? await (workIntegrations.repositoryConnected?.(workflow.repository)
       ?? (provider === 'github' ? workIntegrations.githubConnected() : Promise.resolve(false))) : false;
-    let existingPullRequest = null;
+    const tracked = agent.pullRequest && agent.pullRequest.provider === provider && agent.pullRequest.repository === workflow.repository
+      && agent.pullRequest.branch === workflow.branch ? agent.pullRequest : undefined;
+    let existingPullRequest: AgentGitPullRequest | null = tracked ? {
+      number: tracked.number, title: tracked.title, url: tracked.url, draft: tracked.draft,
+      headSha: tracked.headSha, state: tracked.state, ...(tracked.mergedAt ? { mergedAt: tracked.mergedAt } : {}),
+      ...(tracked.head ? { head: tracked.head } : {}),
+    } : null;
     let error: string | undefined;
     if (options.includePullRequest && connected && workflow.branch && provider) {
-      try { existingPullRequest = await workIntegrations.findPullRequest(workflow.repository, workflow.branch); }
+      try {
+        existingPullRequest = tracked
+          ? await workIntegrations.getPullRequest?.(workflow.repository, tracked.number) ?? existingPullRequest
+          : await workIntegrations.findPullRequest(workflow.repository, workflow.branch);
+      }
       catch (failure) { error = failure instanceof Error ? failure.message : String(failure); }
     }
     return {

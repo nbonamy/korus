@@ -46,6 +46,30 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
+  it('offers Korus Computer Use as a plugin on every harness in place of the harness\'s own, only while Computer Use is on', async () => {
+    const snapshot = createTestSnapshot();
+    const gmail = { id: 'gmail@remote', name: 'gmail', displayName: 'Gmail', enabled: true };
+    const bundled = { id: 'computer-use@openai-bundled', name: 'computer-use', displayName: 'Computer Use', enabled: true };
+    const drivers = (['codex', 'claude'] as const).map(provider => ({
+      provider, listPlugins: vi.fn(async () => [gmail, bundled]), getRuntimeStatus: vi.fn(),
+      getCapabilities: vi.fn(() => ({ plugins: provider === 'codex' }) as never),
+      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
+    } satisfies AgentProviderDriver));
+    snapshot.agents = drivers.map(({ provider }) => ({ id: provider, teamId: 'team-test', name: provider,
+      provider, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    let computerUse = true;
+    const server = new AppBackendServer({ version: 'test', snapshot, computerUsePluginAvailable: () => computerUse,
+      driverRpc: new ProviderDriverRpc(new Map(drivers.map(driver => [driver.provider, driver]))) });
+    const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'plugins', method: backendMethods.agentPluginsList, params: { agentId } });
+    try {
+      await expect(list('codex')).resolves.toMatchObject({ result: [gmail, { id: 'korus-computer-use', displayName: 'Computer Use' }] });
+      await expect(list('claude')).resolves.toMatchObject({ result: [{ id: 'korus-computer-use', displayName: 'Computer Use' }] });
+      computerUse = false;
+      await expect(list('codex')).resolves.toMatchObject({ result: [gmail] });
+    } finally { await server.close(); }
+  });
+
   it.each([
     { outcome: 'success', discardChanges: false },
     { outcome: 'failure', discardChanges: true },

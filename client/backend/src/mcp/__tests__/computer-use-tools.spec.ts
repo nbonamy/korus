@@ -98,6 +98,7 @@ describe('Computer Use MCP tools', () => {
       'computer-use-dismiss',
       'computer-use-press-key',
       'computer-use-type-text',
+      'computer-use-fill-form',
       'computer-use-paste',
       'computer-use-set-value',
       'computer-use-select-text',
@@ -112,6 +113,12 @@ describe('Computer Use MCP tools', () => {
       expect(windowId?.safeParse(0).success, tool).toBe(false);
       expect(windowId?.safeParse(undefined).success, tool).toBe(false);
     }
+  });
+
+  it('tells models where to find a dropdown\'s choices', () => {
+    const description = (schema: ZodType | undefined) => (schema as unknown as { description?: string } | undefined)?.description ?? '';
+
+    expect(description(inputShape('computer-use-get-app-state').rootElementIndex)).toContain('options=');
   });
 
   it('registers the complete Computer Use surface', () => {
@@ -131,6 +138,7 @@ describe('Computer Use MCP tools', () => {
       'computer-use-dismiss',
       'computer-use-press-key',
       'computer-use-type-text',
+      'computer-use-fill-form',
       'computer-use-paste',
       'computer-use-set-value',
       'computer-use-select-text',
@@ -556,4 +564,206 @@ describe('Computer Use MCP tools', () => {
       ? inputSchema as ZodType
       : z.object(inputSchema as Record<string, ZodType>);
   }
+
+  describe('naming controls, clicking before typing and filling forms', () => {
+    const target = { app: 'Safari', window_id: 7 };
+    const ok = { ok: true, result: { success: true } };
+    const calls = () => vi.mocked(computerUse.execute).mock.calls.map(([input]) => [input.command, input.arguments]);
+
+    it.each([
+      ['computer-use-click', 'click', { element_index: 674 }],
+      ['computer-use-set-value', 'set_value', { element_index: 674, value: 'Ada' }],
+      ['computer-use-type-text', 'type_text', { element_index: 674, text: 'Ada' }],
+    ])('takes a label for %s that only the user sees, never the helper', async (tool, command, input) => {
+      vi.mocked(computerUse.execute).mockResolvedValue(ok);
+
+      await handlers.get(tool)!({ ...target, ...input, label: 'First Name' });
+
+      expect(calls()).toStrictEqual([[command, { ...target, ...input }]]);
+    });
+
+    it('takes a label on an inspection too, without sending it to the helper', async () => {
+      vi.mocked(computerUse.execute).mockResolvedValue({ ok: true, result: { text: 'tree', stateKind: 'full', stateRevision: 1 } });
+
+      await handlers.get('computer-use-get-app-state')!({ ...target, rootElementIndex: 58, label: 'Full Name' });
+
+      expect(calls().every(([, args]) => !('label' in (args as object)))).toBe(true);
+      expect(calls()[0]![1]).toMatchObject({ ...target, rootElementIndex: 58 });
+    });
+
+    it('clicks the control before typing into it when click_before is set, in one call', async () => {
+      vi.mocked(computerUse.execute).mockResolvedValue(ok);
+
+      await expect(handlers.get('computer-use-type-text')!({ ...target, element_index: 12, click_before: true, text: 'Ada', replace: true, label: 'First Name' }))
+        .resolves.toMatchObject({ isError: false });
+
+      expect(calls()).toStrictEqual([
+        ['click', { ...target, element_index: 12 }],
+        ['type_text', { ...target, element_index: 12, text: 'Ada', replace: true }],
+      ]);
+    });
+
+    it('does not click when click_before is absent', async () => {
+      vi.mocked(computerUse.execute).mockResolvedValue(ok);
+
+      await handlers.get('computer-use-type-text')!({ ...target, element_index: 12, text: 'Ada' });
+
+      expect(calls().map(([command]) => command)).toStrictEqual(['type_text']);
+    });
+
+    it('types nothing when the click before it fails, and says why', async () => {
+      vi.mocked(computerUse.execute).mockResolvedValueOnce({ ok: false, error: 'No such element.', errorCode: 'element_not_found' });
+
+      const result = await handlers.get('computer-use-type-text')!({ ...target, element_index: 12, click_before: true, text: 'Ada' });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(JSON.stringify(result)).toContain('element_not_found');
+      expect(calls().map(([command]) => command)).toStrictEqual(['click']);
+    });
+
+    it('fills several controls in one call, clicking each before typing into it', async () => {
+      vi.mocked(computerUse.execute).mockResolvedValue(ok);
+
+      const result = await handlers.get('computer-use-fill-form')!({ ...target, fields: [
+        { element_index: 3, text: 'Ada', label: 'First Name' },
+        { element_index: 4, text: 'Lovelace', replace: true },
+        { element_index: 5, text: 'ada@example.com', submit: true },
+      ] });
+
+      expect(result).toMatchObject({ isError: false, structuredContent: { filled: 3, total: 3 } });
+      expect(calls()).toStrictEqual([
+        ['type_text', { ...target, element_index: 3, text: 'Ada' }],
+        ['type_text', { ...target, element_index: 4, text: 'Lovelace', replace: true }],
+        ['type_text', { ...target, element_index: 5, text: 'ada@example.com', submit: true }],
+      ]);
+    });
+
+    it('stops at the field that fails and reports which one and how many were filled', async () => {
+      vi.mocked(computerUse.execute)
+        .mockResolvedValueOnce(ok)
+        .mockResolvedValueOnce({ ok: false, error: 'Control is not editable.', errorCode: 'not_editable' });
+
+      const result = await handlers.get('computer-use-fill-form')!({ ...target, fields: [
+        { element_index: 3, text: 'Ada' }, { element_index: 4, text: 'Lovelace', label: 'Last Name' }, { element_index: 5, text: 'x' },
+      ] });
+
+      expect(result).toMatchObject({ isError: true });
+      const text = JSON.stringify(result);
+      expect(text).toContain('field 2 of 3 (Last Name)');
+      expect(text).toContain('1 filled');
+      expect(text).toContain('not_editable');
+      expect(calls()).toHaveLength(2);
+    });
+
+    it('observes the form once after the last field when asked', async () => {
+      vi.mocked(computerUse.execute).mockImplementation(async ({ command }) => command === 'get_app_state'
+        ? { ok: true, result: { text: 'filled form', stateKind: 'full', stateRevision: 2 } } : ok);
+
+      const result = await handlers.get('computer-use-fill-form')!({ ...target, observe: {}, fields: [
+        { element_index: 3, text: 'Ada' }, { element_index: 4, text: 'Lovelace' },
+      ] });
+
+      expect(calls().map(([command]) => command)).toStrictEqual(['type_text', 'type_text', 'get_app_state']);
+      expect(result).toMatchObject({ isError: false, structuredContent: { text: 'filled form', actionDelivered: true, actionResult: { filled: 2, total: 2 } } });
+    });
+
+    describe('checkboxes, radios and dropdowns in a form', () => {
+      const stateOf = (line: string) => ({ ok: true, result: { text: line, stateKind: 'full', stateRevision: 1 } });
+      const box = (value: boolean) => stateOf(`58 check box [settable] title="Consent" value=${value ? 'on' : 'off'}`);
+      const radio = (value: boolean) => stateOf(`61 radio button [settable] title="Single" value=${value ? 'on' : 'off'}`);
+      const fill = (fields: Record<string, unknown>[], extra: Record<string, unknown> = {}) =>
+        handlers.get('computer-use-fill-form')!({ ...target, ...extra, fields });
+
+      it('clicks a checkbox only when its state differs from the one asked for, and confirms the result', async () => {
+        vi.mocked(computerUse.execute).mockImplementation(async ({ command }) => command === 'get_app_state'
+          ? (vi.mocked(computerUse.execute).mock.calls.filter(([call]) => call.command === 'click').length ? box(true) : box(false))
+          : ok);
+
+        const result = await fill([{ element_index: 58, checked: true, label: 'Consent' }]);
+
+        expect(result).toMatchObject({ isError: false, structuredContent: { filled: 1, total: 1 } });
+        expect(calls().map(([command]) => command)).toStrictEqual(['get_app_state', 'click', 'get_app_state']);
+        expect(calls()[0]![1]).toMatchObject({ ...target, rootElementIndex: 58 });
+        expect(calls()[1]![1]).toStrictEqual({ ...target, element_index: 58 });
+      });
+
+      it('leaves a checkbox that already has the state asked for alone', async () => {
+        vi.mocked(computerUse.execute).mockImplementation(async ({ command }) => command === 'get_app_state' ? box(false) : ok);
+
+        await expect(fill([{ element_index: 58, checked: false }])).resolves.toMatchObject({ isError: false });
+
+        expect(calls().map(([command]) => command)).toStrictEqual(['get_app_state']);
+      });
+
+      it('chooses a radio by clicking it, and says so when one is asked to be unchosen', async () => {
+        let chosen = false;
+        vi.mocked(computerUse.execute).mockImplementation(async ({ command }) => {
+          if (command === 'click') chosen = true;
+          return command === 'get_app_state' ? radio(chosen) : ok;
+        });
+
+        await expect(fill([{ element_index: 61, checked: true, label: 'Single' }])).resolves.toMatchObject({ isError: false });
+
+        const failed = await fill([{ element_index: 61, checked: false, label: 'Single' }]);
+        expect(JSON.stringify(failed)).toContain('radio');
+        expect(failed).toMatchObject({ isError: true });
+      });
+
+      it('stops with the field named when the state does not change after the click', async () => {
+        vi.mocked(computerUse.execute).mockImplementation(async ({ command }) => command === 'get_app_state' ? box(false) : ok);
+
+        const result = await fill([{ element_index: 58, checked: true, label: 'Consent' }]);
+
+        expect(result).toMatchObject({ isError: true });
+        expect(JSON.stringify(result)).toContain('Consent');
+        expect(JSON.stringify(result)).toContain('still unchecked');
+      });
+
+      it('sets the value of a slider or other settable control through the helper', async () => {
+        vi.mocked(computerUse.execute).mockResolvedValue(ok);
+
+        await expect(fill([{ element_index: 95, value: '2', label: 'Urgency' }])).resolves.toMatchObject({ isError: false, structuredContent: { filled: 1, total: 1 } });
+
+        expect(calls()).toStrictEqual([['set_value', { ...target, element_index: 95, value: '2' }]]);
+      });
+
+      it('chooses a dropdown option by title through the helper', async () => {
+        vi.mocked(computerUse.execute).mockResolvedValue({ ok: true, result: { success: true, value: 'France', previousValue: 'Canada' } });
+
+        await expect(fill([{ element_index: 21, option: 'France', label: 'Country' }])).resolves.toMatchObject({ isError: false, structuredContent: { filled: 1, total: 1 } });
+
+        expect(calls()).toStrictEqual([['select_option', { ...target, element_index: 21, option: 'France' }]]);
+      });
+
+      it('stops at a dropdown option the helper cannot find and says what it reported', async () => {
+        vi.mocked(computerUse.execute).mockResolvedValue({ ok: false, error: 'No option titled "Atlantis"; the value is "France".', errorCode: 'option_not_found' });
+
+        const result = await fill([{ element_index: 21, option: 'Atlantis', label: 'Country' }]);
+
+        expect(result).toMatchObject({ isError: true });
+        expect(JSON.stringify(result)).toContain('option_not_found');
+        expect(JSON.stringify(result)).toContain('Country');
+      });
+
+      it('fills text, a radio and a checkbox in order, observing once at the end', async () => {
+        let clicks = 0;
+        vi.mocked(computerUse.execute).mockImplementation(async ({ command, arguments: args }) => {
+          if (command === 'click') clicks += 1;
+          if (command === 'get_app_state' && args.rootElementIndex === 61) return radio(clicks >= 1);
+          if (command === 'get_app_state' && args.rootElementIndex === 58) return box(clicks >= 2);
+          return command === 'get_app_state' ? stateOf('final form') : ok;
+        });
+
+        const result = await fill([
+          { element_index: 3, text: 'Ada' },
+          { element_index: 61, checked: true },
+          { element_index: 58, checked: true },
+        ], { observe: {} });
+
+        expect(result).toMatchObject({ isError: false, structuredContent: { text: 'final form', actionResult: { filled: 3, total: 3 } } });
+        expect(calls().filter(([command]) => command === 'get_app_state').length).toBe(5);
+      });
+    });
+  });
+
 });

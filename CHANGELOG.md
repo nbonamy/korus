@@ -4,6 +4,64 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.57.2] - 2026-11-14
+
+### New features
+
+- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.
+- **Control names:** Activity rows name the control an agent worked on, such as "Clicked First Name in Safari".
+- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.
+- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.
+- **Agent wake-ups:** A Claude conversation shows what the agent says when it wakes itself, for example when a background job finishes after its turn ended.
+
+### Improvements and fixes
+
+- **Questions:** An answered Claude question keeps its answers when the conversation is shown again.
+
+## [0.57.1] - 2026-11-14
+
+### New features
+
+- **Computer Use plugin:** Pick Computer Use from the @ suggestions in any engine. It replaces the entries Codex adds itself.
+- **Image rulers:** Add vertical and horizontal rulers (X and Y) in the image annotation editor. Measurements stop at them, and Shift turns a measure or ruler tool the other way. Rulers appear in the image sent to the agent.
+- **Personalization:** Edit the instructions of every connected agent, including Antigravity.
+- **Open on GitHub or GitLab:** Open a repository's page from the Git menu.
+- **Installer clean-up:** After installing from the DMG, Korus offers to eject it and move the installer to the Trash.
+
+### Improvements and fixes
+
+- **Large diffs:** Files with a very large diff show "Diff too large to be shown" with their real line counts instead of freezing the app.
+- **Designs:** Fixed designs opening at 0.1% zoom after restarting with the right panel closed.
+
+## [0.57.0] - 2026-11-13
+
+### New features
+
+- **Workspaces:** Teams are now called workspaces throughout the app, the documentation and the mobile apps.
+- **Engine and model picker:** Choose the engine, model, reasoning effort and speed from one picker above the composer, on desktop, iOS and Android. Model favorites are gone for now.
+- **Annotations:** Requirement and ticket comments are numbered and highlighted in the text, share one compact row you can edit or delete, and save with Enter (Shift+Enter for a new line). Approving a mission with unsent comments asks for confirmation first.
+- **Git history:** Each commit shows how many lines it added and removed, with a copy button next to its hash.
+- **Designs:** Keep several designs per agent, with inline SVG and a design skill that agents can use.
+- **Undo close agent:** Bring a closed agent back from the toast that appears when you close it.
+- **Antigravity:** Run on the Antigravity CLI installed on your Mac, with its permission modes and thinking levels, and see its version and upgrade option in Settings.
+- **Compress sessions:** Compress a long conversation on every engine.
+- **Cursor and Antigravity on mobile:** Pick Cursor on the phone and see Cursor and Antigravity usage.
+- **Claude reasoning:** Claude's thinking appears inline in the conversation, and long Claude conversations open from the end of their history, much faster.
+
+### Improvements and fixes
+
+- **Link paste:** Paste a copied link that has no text version into the composer and the join-by-invite dialog.
+- **Copy buttons:** The check mark returns to the copy icon after a moment, everywhere.
+- **Connect prompt:** Selecting an engine that is not connected opens that engine's settings.
+- **Handoffs:** Give the handoff note five minutes, show its progress, let a failed handoff start over, and keep handoffs of local agents working when a linked host is down.
+- **Pull requests:** Keep fork pull request associations and push to the source branch.
+- **Sidebar:** Drag plain folders to reorder them like repositories, and the repository sidebar mode is now called Project.
+- **Automations:** Turn Automations off from the rail and return to the page you were on.
+- **Empty chats:** Swap an empty chat's engine without the screen flickering.
+- **Empty repositories:** Show the branch name instead of a git status message.
+- **Telemetry:** Wait a minute after launch for the first upload and rest between batches so a backlog never slows the app.
+- **Compatibility:** Agents and workspaces saved by this version are not readable by older builds of Korus. Shipped phones keep working.
+
 ## [0.56.0] - 2026-11-09
 
 ### New features

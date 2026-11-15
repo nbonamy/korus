@@ -100,7 +100,12 @@ export function presentAppTool(
   translate: Translate,
   resolveAgentName?: AgentNameResolver,
 ): ToolPresentation | undefined {
-  if (typeof context.metadata?.displayTitle === 'string') return { title: context.metadata.displayTitle };
+  if (typeof context.metadata?.displayTitle === 'string') {
+    // A title handed over by the host (Korus's own tools) still gets the tool's icon.
+    const hostTool = appMcpToolName(context.kind, context.metadata);
+    const hostIcon = hostTool ? appToolIcon(hostTool) : undefined;
+    return { ...(hostIcon ? { icon: hostIcon } : {}), title: context.metadata.displayTitle };
+  }
   if (context.descriptor?.action === 'search' && context.descriptor.params?.scope === 'tools') {
     const phase = context.descriptor.phase === 'failed' || context.toolCall.state === 'error'
       ? 'failed'

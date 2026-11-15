@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -107,3 +107,83 @@ it('refuses an unexpected fetched request head before creating a local branch', 
     expect((await git(root, ['branch', '--list', 'review'])).stdout.trim()).toBe('');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+it('keeps a fork PR linked after updating its local worktree from main and restoring the workspace', async () => {
+  const container = await mkdtemp(join(tmpdir(), 'korus-fork-pr-'));
+  const root = join(container, 'repo'), target = join(container, 'review'), fork = join(container, 'fork.git');
+  let server: AppBackendServer | undefined;
+  try {
+    await mkdir(root);
+    await git(root, ['init', '-b', 'main']);
+    await git(root, ['config', 'user.email', 'test@example.test']);
+    await git(root, ['config', 'user.name', 'Test']);
+    await git(root, ['commit', '--allow-empty', '-m', 'base']);
+    await git(root, ['switch', '-c', 'contributor']);
+    await writeFile(join(root, 'contributor.txt'), 'PR changes');
+    await git(root, ['add', '.']); await git(root, ['commit', '-m', 'PR changes']);
+    const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim();
+    await git(container, ['init', '--bare', fork]);
+    await git(root, ['push', fork, `${head}:refs/heads/contributor-topic`]);
+    await git(root, ['config', `url.${fork}.insteadOf`, 'git@github.com:contributor/repo.git']);
+    await git(root, ['update-ref', 'refs/pull/87/head', head]);
+    await git(root, ['switch', 'main']);
+    await writeFile(join(root, 'main.txt'), 'Latest main changes');
+    await git(root, ['add', '.']); await git(root, ['commit', '-m', 'Main changes']);
+    await git(root, ['remote', 'add', 'origin', 'git@github.com:owner/repo.git']);
+    const pr = { number: 87, title: 'Project overview', html_url: 'https://github.com/owner/repo/pull/87',
+      state: 'open', draft: false, head: { sha: head, ref: 'contributor-topic', label: 'contributor:contributor-topic',
+        repo: { full_name: 'contributor/repo' } as { full_name: string } | null } };
+    const requests: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async url => {
+      requests.push(String(url));
+      // A branch lookup under owner:... cannot find a contributor's fork PR.
+      return Response.json(String(url).endsWith('/pulls/87') ? pr : []);
+    });
+    const snapshot = createInitialSnapshot(), agent = snapshot.agents[0]!; agent.folder = root;
+    const tokens = new MemoryWorkIntegrationTokenStore();
+    await tokens.set({ provider: 'github', accessToken: 'secret', tokenType: 'Bearer', accountLabel: 'owner', connectedAt: '' });
+    const manager = new WorkIntegrationManager({ drivers: [new GitHubWorkProviderDriver('id')], tokenStore: tokens, getSnapshot: () => snapshot, saveSnapshot: async () => {} });
+    const service = new AgentGitService(() => new Date(), async (folder, args) => {
+      if (args[0] === 'push') {
+        const remote = args[1] === '--set-upstream' ? args[2]! : args[1]!;
+        expect((await git(folder, ['remote', 'get-url', '--push', remote])).stdout.trim()).toBe(fork);
+      }
+      return git(folder, args[0] === 'fetch' ? ['fetch', root, args[2]!] : args);
+    },
+      async input => ({ path: (await createSourceWorktree({ ...input, destinationPath: target })).path }));
+    server = new AppBackendServer({ version: 'test', snapshot, agentGitService: service, workIntegrations: manager });
+    const call = (method: string, params: object = {}) => server!.handleMessage({ jsonrpc: '2.0', id: 'test', method, params: { agentId: agent.id, ...params } });
+    await call(backendMethods.agentGitBranchCreate, { input: { confirmed: true, name: 'feat/project-overview', createWorktree: true, pullRequestNumber: 87 } });
+    expect(agent.pullRequest).toMatchObject({ provider: 'github', repository: 'owner/repo', branch: 'feat/project-overview', number: 87 });
+    expect(await call(backendMethods.agentGitUpdateFromBase, { input: { confirmed: true } })).toMatchObject({ result: {
+      conflicts: [], workflow: { existingPullRequest: { number: 87, headSha: head, url: pr.html_url } },
+    } });
+    expect(await readFile(join(target, 'contributor.txt'), 'utf8')).toBe('PR changes');
+    expect(await readFile(join(target, 'main.txt'), 'utf8')).toBe('Latest main changes');
+    expect((await git(target, ['rev-parse', 'HEAD'])).stdout.trim()).not.toBe(head);
+    const mergedHead = (await git(target, ['rev-parse', 'HEAD'])).stdout.trim();
+    const baseHead = (await git(root, ['rev-parse', 'main'])).stdout.trim();
+    expect(await call(backendMethods.agentGitPush, { input: { confirmed: true } })).toMatchObject({ result: {
+      repository: 'owner/repo', upstream: 'pr-87/contributor-topic', existingPullRequest: { number: 87 },
+    } });
+    expect((await git(container, ['--git-dir', fork, 'rev-parse', 'refs/heads/contributor-topic'])).stdout.trim()).toBe(mergedHead);
+    expect((await git(root, ['rev-parse', 'main'])).stdout.trim()).toBe(baseHead);
+    expect((await git(root, ['config', 'remote.origin.url'])).stdout.trim()).toBe('git@github.com:owner/repo.git');
+    pr.head.sha = mergedHead;
+    const restored = decodeAppSnapshot(JSON.parse(JSON.stringify(snapshot)))!.value;
+    await server.close();
+    server = new AppBackendServer({ version: 'test', snapshot: restored, agentGitService: service, workIntegrations: manager });
+    expect(await call(backendMethods.agentGitWorkflowGet, { includePullRequest: true })).toMatchObject({ result: {
+      repository: 'owner/repo', existingPullRequest: { number: 87, headSha: mergedHead, url: pr.html_url },
+    } });
+    expect(requests.filter(url => url.includes('/pulls'))).not.toHaveLength(0);
+    expect(requests.filter(url => url.includes('/pulls')).every(url => url.endsWith('/pulls/87'))).toBe(true);
+    pr.head.repo = null;
+    await expect(call(backendMethods.agentGitPush, { input: { confirmed: true } })).rejects.toThrow(/source branch.*unavailable/i);
+    expect((await git(container, ['--git-dir', fork, 'rev-parse', 'refs/heads/contributor-topic'])).stdout.trim()).toBe(mergedHead);
+    await git(target, ['switch', '-c', 'unrelated']);
+    const unrelated = await call(backendMethods.agentGitWorkflowGet, { includePullRequest: true }) as { result: { branch: string; existingPullRequest?: unknown } };
+    expect(unrelated.result.branch).toBe('unrelated');
+    expect(unrelated.result.existingPullRequest).toBeUndefined();
+  } finally { await server?.close(); await rm(container, { recursive: true, force: true }); }
+}, 5_000); // Real Git checkout/merge and backend startup/restart share this integration budget.

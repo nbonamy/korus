@@ -43,7 +43,7 @@ describe('RemoteCodexAuthentication', () => {
       await wrapper.get('[aria-label="Copy device code"]').trigger('click');
       await flushPromises();
       expect(writeText.mock.calls).toStrictEqual([[pending.code], [pending.code]]);
-      expect(wrapper.find('[aria-label="Device code copied"]').exists()).toBe(true);
+      expect(wrapper.get('[aria-label="Copy device code"]').attributes('title')).toBe('Device code copied');
       expect(wrapper.text()).not.toContain('Could not copy');
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);

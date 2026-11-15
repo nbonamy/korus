@@ -10,7 +10,7 @@
         <div v-for="file in details.files" :key="file.path">
           <button class="git-log-details__file" type="button" :aria-label="$t('gitLog.viewFile', { path: file.path })" :aria-expanded="selectedFile === file.path" @click="selectFile(file.path)">
             <span class="git-log-details__path" :title="file.path">{{ file.previousPath ? `${file.previousPath} → ` : '' }}{{ file.path }}</span>
-            <span class="git-log-details__stats"><span v-if="file.binary">{{ $t('gitLog.binary') }}</span><template v-else><span class="git-log-details__added">+{{ file.addedLines }}</span><span class="git-log-details__removed">-{{ file.removedLines }}</span></template></span>
+            <span class="git-log-details__stats"><span v-if="file.binary">{{ $t('gitLog.binary') }}</span><GitDiffLineStats v-else :added-lines="file.addedLines ?? 0" :removed-lines="file.removedLines ?? 0" /></span>
           </button>
           <div v-if="selectedFile === file.path" class="git-log-details__diff">
             <GitDiffPreviewPanel :diff="fileDiff" :state="fileState" :error="fileError" />
@@ -28,6 +28,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { AgentGitLogDetails } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
+import GitDiffLineStats from './GitDiffLineStats.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 
 const props = defineProps<{ agentId: string; head: string; sha: string }>();
@@ -139,14 +140,6 @@ onBeforeUnmount(() => { generation++; fileGeneration++; });
   flex: none;
   gap: var(--space-6);
   font-size: var(--font-size-12);
-}
-
-.git-log-details__added {
-  color: var(--color-success);
-}
-
-.git-log-details__removed {
-  color: var(--color-error);
 }
 
 .git-log-details__diff {

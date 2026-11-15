@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultProviderDrivers } from '../driver-rpc';
-import { createClaudeDriver, prepareGeneration, reviewScope } from '../harness-drivers';
+import { codexHarnessOptions, createClaudeDriver, prepareGeneration, reviewScope } from '../harness-drivers';
 import { plainTextGenerationPrompt, sessionHandoff } from '../agents/prompts';
 import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { scriptedDriver } from './support/scripted-driver';
+import { product } from '@workspace/core/product';
+import { AgentRegistry } from '../harness-agent-driver';
 
 const opened: Array<{ close(): Promise<void> }> = [];
 afterEach(async () => { for (const driver of opened.splice(0)) await driver.close(); });
@@ -36,6 +38,13 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(scope('claude')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto' }] });
     expect(scope('cursor')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
     expect(scope('antigravity')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
+  });
+
+  it('gives every harness, Codex included, Korus\'s own plugin and tool title handling', () => {
+    const codex = codexHarnessOptions({}, new AgentRegistry());
+
+    expect(codex.isAppPlugin?.('korus-computer-use')).toBe(true);
+    expect(codex.presentToolCall?.({ server: product.mcpServerName, tool: 'computer_use_stop', input: {}, state: 'completed' })).toBe('Stopped the local Computer Use session');
   });
 
   it('keeps plan capture wording in Korus, not the SDK', async () => {

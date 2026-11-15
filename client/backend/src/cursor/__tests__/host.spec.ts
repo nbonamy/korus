@@ -680,7 +680,8 @@ describe('Cursor ACP host transport boundary', () => {
       expect(parts).toContainEqual({type:'text',text:'Rich output complete'});
       const mcp = parts.find(part=>part.type==='tool' && part.title==='korus: send-message');
       expect(mcp).toMatchObject({kind:'mcp',input:{to:'other-agent',message:'Hello'},output:{recipientName:'Other Agent'},metadata:{server:'korus',tool:'send-message',cursorMcpInput:{providerIdentifier:'korus',toolName:'send-message',args:{to:'other-agent',message:'Hello'}}}});
-      expect(mcp?.type==='tool' && mcp.metadata?.displayTitle).toBeUndefined();
+      // Korus formats its own tools and hands the harness the final title.
+      expect(mcp?.type==='tool' && mcp.metadata?.displayTitle).toBe('Sent message to Other Agent');
     };
     verify(await snapshot());
     await host.close(); host=createProviderDriver('cursor'); events=[]; host.onEvent(event=>events.push(event));

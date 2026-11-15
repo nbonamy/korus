@@ -22,6 +22,13 @@ export type ImageAnnotation = {
   comment: string;
 };
 
+/** A guide line across the image, in image pixels; measurements stop at it like at any edge. */
+export type ImageRuler = {
+  id: string;
+  axis: 'vertical' | 'horizontal';
+  position: number;
+};
+
 export type SavedImageAnnotations = {
   annotations: ImageAnnotation[];
   dataUrl: string;
@@ -165,6 +172,7 @@ export function measurementAnnotation(
   tool: 'measure-horizontal' | 'measure-vertical',
   width: number,
   height: number,
+  rulers: readonly ImageRuler[] = [],
 ): Pick<ImageAnnotation, 'start' | 'end' | 'tool'> {
   const axis = tool === 'measure-horizontal' ? 'horizontal' : 'vertical';
   const maxX = Math.max(0, width - 1);
@@ -174,14 +182,19 @@ export function measurementAnnotation(
     y: clamp(Math.round(point.y), 0, maxY),
   };
 
-  if (!imageData || imageData.width !== width || imageData.height !== height) {
-    return axis === 'horizontal'
-      ? { tool, start: { x: 0, y: cursor.y }, end: { x: maxX, y: cursor.y } }
-      : { tool, start: { x: cursor.x, y: 0 }, end: { x: cursor.x, y: maxY } };
-  }
+  // Rulers across the measured axis act as edges: the nearest one on each side wins over a farther edge.
+  const guides = rulers
+    .filter(ruler => ruler.axis === (axis === 'horizontal' ? 'vertical' : 'horizontal'))
+    .map(ruler => Math.round(ruler.position));
+  const origin = axis === 'horizontal' ? cursor.x : cursor.y;
+  const bounded = (negativeEdge: number, positiveEdge: number): [number, number] => [
+    Math.max(negativeEdge, ...guides.filter(position => position < origin)),
+    Math.min(positiveEdge, ...guides.filter(position => position > origin)),
+  ];
 
-  const negative = findEdge(imageData, cursor, axis, -1);
-  const positive = findEdge(imageData, cursor, axis, 1);
+  const [negative, positive] = !imageData || imageData.width !== width || imageData.height !== height
+    ? bounded(0, axis === 'horizontal' ? maxX : maxY)
+    : bounded(findEdge(imageData, cursor, axis, -1), findEdge(imageData, cursor, axis, 1));
   return axis === 'horizontal'
     ? { tool, start: { x: negative, y: cursor.y }, end: { x: positive, y: cursor.y } }
     : { tool, start: { x: cursor.x, y: negative }, end: { x: cursor.x, y: positive } };
@@ -268,6 +281,33 @@ function midpoint(start: ImageAnnotationPoint, end: ImageAnnotationPoint): Image
     x: (start.x + end.x) / 2,
     y: (start.y + end.y) / 2,
   };
+}
+
+/** Draws rulers as dashed guides across the image; `width` and `height` are the image's, `padding` its offset inside the canvas. */
+export function drawImageRulers(
+  context: CanvasRenderingContext2D,
+  rulers: readonly ImageRuler[],
+  options: { height: number; padding: number; palette?: ImageAnnotationPalette; width: number },
+): void {
+  if (rulers.length === 0) return;
+  const palette = options.palette ?? defaultImageAnnotationPalette;
+  context.save();
+  context.lineWidth = 1;
+  context.setLineDash([6, 4]);
+  context.strokeStyle = palette.stroke;
+  for (const ruler of rulers) {
+    const offset = ruler.position + options.padding + 0.5;
+    context.beginPath();
+    if (ruler.axis === 'vertical') {
+      context.moveTo(offset, options.padding);
+      context.lineTo(offset, options.padding + options.height);
+    } else {
+      context.moveTo(options.padding, offset);
+      context.lineTo(options.padding + options.width, offset);
+    }
+    context.stroke();
+  }
+  context.restore();
 }
 
 export function drawImageAnnotations(

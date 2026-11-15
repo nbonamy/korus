@@ -87,6 +87,7 @@ export const conversationMessages = {
     "personalizationHint": `Edits the selected engine's instruction file on this host. If you use an existing setup, other apps share this file. Changes apply when sessions start or resume, and project instructions still apply.`,
     "engine": "Engine",
     "saveAll": "Save to all",
+    "noEngines": "Connect an agent to edit its instructions.",
     "overwrite": "Replace",
     "overwriteBoth": "This will replace developer instructions for all agents. Do you want to continue?"
   },
@@ -532,6 +533,7 @@ export const conversationMessages = {
     "openFileInTab": "Open {file} in a tab",
     "unmodified": "unmodified",
     "noTextualHunks": "No textual hunks.",
+    "diffTooLarge": "Diff too large to be shown",
     "noDiffContent": "No diff content.",
     "unableToParseDiff": "Unable to parse diff.",
     "unableToLoadDiff": "Unable to load diff."
@@ -737,6 +739,8 @@ export const conversationMessages = {
     "rectangle": "Rectangle",
     "measureHorizontalGap": "Measure horizontal gap",
     "measureVerticalGap": "Measure vertical gap",
+    "verticalRuler": "Vertical ruler",
+    "horizontalRuler": "Horizontal ruler",
     "saveAnnotationComment": "Save annotation comment",
     "addAComment": "Add a comment"
   },

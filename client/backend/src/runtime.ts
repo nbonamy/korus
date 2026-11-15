@@ -416,6 +416,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
     requirements,
     usage,
+    computerUsePluginAvailable: () => computerUseAvailable && snapshot.general.plugins?.computerUseEnabled === true,
     telemetryConsent,
     telemetryActivity: telemetryUpload,
     guestJoins: new GuestJoins({ directory: backendHomeDir(), relay: relayFromEnvironment(process.env).relay ?? undefined }),

@@ -4,7 +4,7 @@
       <FormField v-for="option in options" :key="option.kind" :label="$t(option.label)">
         <div class="claude-login-command">
           <code>{{ option.command }}</code>
-          <el-button text size="small" :icon="copiedCommand === option.command ? CheckIcon : CopyIcon" :aria-label="$t(copiedCommand === option.command ? option.copiedKey : option.copyKey)" @click="copyCommand(option.command)" />
+          <CopyButton :label="$t(option.copyKey)" :copied-label="$t(option.copiedKey)" :action="() => copyCommand(option.command)" />
         </div>
         <p v-if="copyFailedCommand === option.command" role="alert">{{ $t('surface.remoteClaudeAuth.copyFailed') }}</p>
       </FormField>
@@ -19,13 +19,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CheckIcon, CopyIcon } from '../shared/icons/app-icons';
+import { CopyButton } from '@korus-dev/agent-ui-sdk';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
 const props = defineProps<{ modelValue: boolean; configDirectory?: string | null; executablePath?: string; loading: boolean; error: string | null }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; refresh: [] }>();
-const copiedCommand = ref<string | null>(null);
 const copyFailedCommand = ref<string | null>(null);
 const options = computed(() => props.configDirectory === undefined ? [] : ['claudeai', 'console'].map(kind => ({
   kind,
@@ -35,14 +34,14 @@ const options = computed(() => props.configDirectory === undefined ? [] : ['clau
   command: `${props.configDirectory ? `CLAUDE_CONFIG_DIR='${props.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}${props.executablePath ? `'${props.executablePath.replaceAll("'", "'\\''")}'` : 'claude'} auth login --${kind}`,
 })));
 
+// The button shows its own tick; a failure is reported here and leaves no tick.
 async function copyCommand(command: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(command);
-    copiedCommand.value = command;
     copyFailedCommand.value = null;
-  } catch {
-    copiedCommand.value = null;
+  } catch (cause) {
     copyFailedCommand.value = command;
+    throw cause;
   }
 }
 </script>
