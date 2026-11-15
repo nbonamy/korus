@@ -28,7 +28,7 @@
   "dependencies": {
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
-    "@korus-dev/agent-ui-sdk": "0.27.3",
+    "@korus-dev/agent-ui-sdk": "0.27.4",
     "@workspace/core": "0.57.2",
     "@workspace/vue": "0.57.2",
     "autolib": "github:nbonamy/witsy-autolib#v1.2.4",

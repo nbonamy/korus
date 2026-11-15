@@ -5,8 +5,8 @@
     {
       "version": "0.57.2",
       "releasedAt": "2026-11-14",
-      "sourceSha256": "8295c00cd8dfdff35bfa6cc5ca4aded683eff199f47b54b248d951e55c8163ee",
-      "markdown": "### New features\n\n- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.\n- **Control names:** Activity rows name the control an agent worked on, such as \"Clicked First Name in Safari\".\n- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.\n- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.\n\n### Improvements and fixes\n\n- **Questions:** An answered Claude question keeps its answers when the conversation is shown again."
+      "sourceSha256": "7ffa46e3e1212767ef4d6f2d8c631f31a7b9c511a6f4c6faa2cdf50b35f62a0f",
+      "markdown": "### New features\n\n- **Fill forms in one step:** Computer Use fills text fields, checkboxes, radio buttons, dropdowns and sliders in a single call.\n- **Control names:** Activity rows name the control an agent worked on, such as \"Clicked First Name in Safari\".\n- **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.\n- **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.\n- **Agent wake-ups:** A Claude conversation shows what the agent says when it wakes itself, for example when a background job finishes after its turn ended.\n\n### Improvements and fixes\n\n- **Questions:** An answered Claude question keeps its answers when the conversation is shown again."
     },
     {
       "version": "0.57.1",

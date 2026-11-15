@@ -12,6 +12,7 @@ All notable Korus changes are recorded here.
 - **Control names:** Activity rows name the control an agent worked on, such as "Clicked First Name in Safari".
 - **Background file dialogs:** Computer Use can pick a file in an open or save dialog without bringing the app forward.
 - **Chrome:** Computer Use works with forms in Chrome and other Chromium browsers.
+- **Agent wake-ups:** A Claude conversation shows what the agent says when it wakes itself, for example when a background job finishes after its turn ended.
 
 ### Improvements and fixes
 
