@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
 .git-prune-dialog__icon { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 20px; height: 20px; border: 0; background: none; color: var(--color-text-muted); cursor: pointer; flex-shrink: 0; }
 .git-prune-dialog__icon svg { width: var(--icon-sm); height: var(--icon-sm); }
 .git-prune-dialog__icon:disabled { opacity: 0.5; cursor: default; }
-.git-prune-dialog__icon:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.git-prune-dialog__icon:focus-visible { outline: none; }
 .git-prune-dialog__message,
 .git-prune-dialog__error,
 .git-prune-dialog__empty { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-13); }

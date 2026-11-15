@@ -89,8 +89,7 @@ function title(): string {
 }
 
 .update-available-badge:focus-visible {
-  outline: 2px solid var(--color-success);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .update-status-badge__spinner {

@@ -55,7 +55,7 @@ function select(value: T, event: MouseEvent): void {
 .counted-filter i { width: 9px; height: 9px; flex: 0 0 auto; border-radius: var(--radius-full); }
 .counted-filter__all-dot { background: var(--color-primary); }
 .counted-filter button:hover:not(:disabled) { border-color: var(--color-primary); }
-.counted-filter button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.counted-filter button:focus-visible { outline: none; }
 .counted-filter button[aria-pressed="true"] .counted-filter__count { color: inherit; }
 @container counted-filters (max-width: 420px) {
   .counted-filter:not(.counted-filter--wrap) .counted-filter__count { display: none; }

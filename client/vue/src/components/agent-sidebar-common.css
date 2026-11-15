@@ -104,8 +104,7 @@
 }
 
 .agent-sidebar__collapse:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .agent-sidebar__collapse-icon {
@@ -178,8 +177,7 @@
 }
 
 .agent-sidebar__workspace-label:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .agent-sidebar__workspace-actions {
@@ -298,8 +296,7 @@
 }
 
 .agent-sidebar__pull-request-attention:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .agent-sidebar__workspace-group[data-group-kind="quickChats"]

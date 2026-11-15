@@ -135,7 +135,7 @@ onBeforeUnmount(() => { revision++; });
 .command-picker__scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .command-picker__row { display: flex; align-items: center; gap: var(--space-4); width: 100%; min-height: 36px; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 1px solid var(--color-border); color: var(--color-text); background: transparent; text-align: left; cursor: pointer; }
 .command-picker__row:hover:not(:disabled), .command-picker__row:focus-visible { background: var(--color-surface-low); }
-.command-picker__row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.command-picker__row:focus-visible { outline: none; }
 .command-picker__row:disabled { opacity: 0.5; cursor: default; }
 .command-picker__move { flex: none; color: var(--color-text-muted); opacity: 0; }
 .command-picker__row:hover .command-picker__move, .command-picker__row:focus-visible .command-picker__move { opacity: 1; }

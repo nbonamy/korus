@@ -59,8 +59,7 @@ const emit = defineEmits<{ select: [itemId: string] }>();
 }
 
 .app-menu-chip:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline: none;
 }
 
 .app-menu-chip svg {

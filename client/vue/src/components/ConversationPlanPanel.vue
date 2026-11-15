@@ -114,8 +114,7 @@ const running = computed(() => props.plan.status === 'inProgress');
 }
 
 .conversation-plan__close:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline: none;
 }
 
 .conversation-plan__steps {

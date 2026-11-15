@@ -102,7 +102,6 @@ async function clear(): Promise<void> {
 }
 
 .clearable-text-input__clear:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline: none;
 }
 </style>

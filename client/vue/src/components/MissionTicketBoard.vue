@@ -264,8 +264,7 @@ function removeComment(id: string): void {
 }
 
 .mission-ticket-board__card:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .mission-ticket-board__card--selected {

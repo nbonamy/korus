@@ -256,8 +256,7 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
 
 .settings-voice-panel__voice-select:focus-visible,
 .settings-voice-panel__voice-play:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .settings-voice-panel__voice-select strong {

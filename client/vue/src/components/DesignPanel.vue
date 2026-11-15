@@ -610,8 +610,7 @@ async function retryCanvas() {
 .design-panel :deep(input:focus-visible),
 .design-panel :deep(textarea:focus-visible),
 .design-panel :deep(select:focus-visible) {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .design-panel__review-comment textarea,

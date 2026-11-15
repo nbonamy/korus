@@ -99,7 +99,6 @@ function saveComment(comment: string): void {
 }
 
 .chat-text-selection-annotation__add:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 </style>

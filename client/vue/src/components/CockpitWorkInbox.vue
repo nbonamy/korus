@@ -1153,8 +1153,7 @@ function selectAssignee(value: unknown): void {
 }
 
 .cockpit-inbox__row-action:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  outline: none;
 }
 
 .cockpit-inbox__state {

@@ -196,8 +196,7 @@ const nextLabel = computed(() => {
 }
 
 .automation-schedule__day:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .automation-schedule__next {

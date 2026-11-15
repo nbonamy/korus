@@ -804,8 +804,7 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
 
 .code-review-panel__choice:focus-visible {
   border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .code-review-panel__choice-content {
