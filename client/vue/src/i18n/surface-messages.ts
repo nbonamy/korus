@@ -430,6 +430,8 @@ export const conversationMessages = {
     "recentActivity": "Recent activity",
     "alphabetical": "Alphabetical",
     "filterRepositories": "Filter repositories",
+    "filterByOrganization": "Filter repositories by organization",
+    "allOrganizations": "All organizations",
     "noRepositoriesFound": "No repositories found.",
     "connectAWorkProviderToBuildYourOperatorInbox": "Connect a work provider to build your operator inbox.",
     "recent": "Recent"
