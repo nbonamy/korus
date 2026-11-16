@@ -162,6 +162,78 @@ test('groups the skin picker into file loading, local skins and t3skins.dev skin
   assert.deepEqual(errors, []);
 });
 
+test('keeps the sidebar palette beneath skin sidebar images', async () => {
+  const errors = await withAnnotationFixture(themeImportSource, async page => {
+    await mockSkinCatalog(page, []);
+    const plain = await page.locator('.agent-sidebar').evaluate(el => getComputedStyle(el).backgroundImage);
+    assert.equal(plain.match(/color\(srgb [^)]* \/ 0\.65\)/g)?.length, 4, 'without a skin the macOS sidebar keeps its translucent glass tint: ' + plain);
+    await page.evaluate(() => { window.localSkins = [{ name: 'moss', definition: { version: 1, name: 'Moss', appearance: 'dark',
+      colors: { canvas: '#12150f', sidebar: '#0d100b', text: '#e8e2d0' },
+      css: '[data-slot="sidebar-inner"]{background-image:radial-gradient(circle,#e0a948 0 2px,transparent 3px);background-size:40px 40px;background-repeat:repeat}' } }]; });
+    await chooseSkin(page, 'Moss');
+    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
+    const paint = await page.locator('.agent-sidebar').evaluate(el => {
+      const style = getComputedStyle(el);
+      return { image: style.backgroundImage, size: style.backgroundSize, repeat: style.backgroundRepeat };
+    });
+    assert.match(paint.image, /^radial-gradient\(.*\), linear-gradient\(.*rgb\(13, 16, 11\)/, 'the skin art layers over the sidebar color instead of replacing it');
+    assert.equal(paint.size, '40px 40px, auto');
+    assert.equal(paint.repeat, 'repeat, repeat');
+  });
+  assert.deepEqual(errors, []);
+});
+
+// The app wraps the SDK pane in its own ConversationPane, whose scoped styles must not outrank the skin canvas.
+const hostPaneSource = `
+import {createApp,h} from 'vue';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import '@korus-dev/agent-ui-sdk/styles.css';
+import '/client/vue/src/styles/variables.css';
+import '/client/vue/src/styles/base.css';
+import '/client/vue/src/styles/theme.css';
+import {createConversationPaneController} from '@korus-dev/agent-ui-sdk';
+import {createInitialSnapshot} from '@workspace/core/snapshot';
+import {normalizeThemeSettings} from '@workspace/core/settings';
+import {applyAppTheme} from '/client/vue/src/theme/apply-theme.ts';
+import {i18n} from '/client/vue/src/i18n/index.ts';
+import ConversationPane from '/client/vue/src/components/ConversationPane.vue';
+const agent=createInitialSnapshot().agents[0];
+const controller=createConversationPaneController({state:{identity:{conversationKey:'skin-host',messages:[
+ {id:'a1',agentId:agent.id,role:'assistant',status:'complete',turnId:'t1',createdAt:'2026-11-16T00:00:00Z',parts:[{type:'text',text:'The canvas shows through.'}]}
+]},composer:{}},actions:{}});
+window.applyTheme=settings=>applyAppTheme(normalizeThemeSettings({uiFontSize:14,chatFontSize:15,codeFontSize:13,...settings}));
+window.applyTheme({id:'app-dark',mode:'dark'});
+createApp({render:()=>h('div',{style:'display:flex;height:100vh'},[h(ConversationPane,{agent,controller})])}).use(i18n).use(ElementPlus).mount('#app');
+`;
+
+test('keeps a skin canvas image on the app conversation pane and the shell surface without one', async () => {
+  const errors = await withAnnotationFixture(hostPaneSource, async page => {
+    const canvas = page.locator('.conversation-pane .agent-ui-conversation-pane');
+    await canvas.waitFor();
+    const paint = () => canvas.evaluate(el => {
+      const shell = document.createElement('div');
+      shell.style.background = 'var(--color-shell-main)';
+      document.body.append(shell);
+      const expected = getComputedStyle(shell).backgroundColor;
+      shell.remove();
+      return { color: getComputedStyle(el).backgroundColor, shell: expected, image: getComputedStyle(el).backgroundImage };
+    });
+    const plain = await paint();
+    assert.equal(plain.color, plain.shell, 'the dark pane surface matches the composer fade');
+    assert.equal(plain.image, 'none');
+    await page.evaluate(() => window.applyTheme({ id: 'custom-moss', mode: 'dark', skin: {
+      version: 1, name: 'Moss', appearance: 'dark', colors: { canvas: '#12150f', text: '#e8e2d0' },
+      css: '[data-chat-canvas]{background-image:radial-gradient(circle,#e0a948 0 2px,transparent 3px);background-size:40px 40px}',
+    } }));
+    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
+    const skinned = await paint();
+    assert.match(skinned.image, /^radial-gradient\(/, 'the skin canvas image is not reset by host surface styles');
+    assert.equal(await canvas.evaluate(el => getComputedStyle(el).backgroundSize), '40px 40px');
+  });
+  assert.deepEqual(errors, []);
+});
+
 test('keeps Nyx menu surfaces opaque', async () => {
   const errors = await withAnnotationFixture(themeImportSource, async page => {
     await mockSkinCatalog(page, [{ slug: 'nyx', name: 'Nyx', body: nyx.toString() }]);

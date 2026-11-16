@@ -28,12 +28,14 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* Paint the header and body in one layer so their translucent tints never stack. */
-  background: linear-gradient(
+  /* Paint the header and body in one layer so their translucent tints never stack.
+     Skins that add sidebar images keep this paint as their bottom layer. */
+  --agent-sidebar-paint: linear-gradient(
     to bottom,
     var(--color-shell-rail) 0 var(--workbench-appbar-height),
     var(--color-shell-sidebar) var(--workbench-appbar-height) 100%
   );
+  background: var(--agent-sidebar-paint);
   user-select: none;
 }
 

@@ -104,6 +104,40 @@ function carryComposerPaint(parent: RuleList, index: number, sourceSelector: str
   parent.insertRule(`${selector}{${paint}}`, index + 1);
 }
 
+/** Splits a background list at top-level commas only; gradients contain their own. */
+function backgroundLayers(value: string): string[] {
+  const layers: string[] = [];
+  let start = 0, depth = 0;
+  for (let index = 0; index < value.length; index++) {
+    if (value[index] === '(') depth++;
+    else if (value[index] === ')') depth--;
+    else if (value[index] === ',' && depth === 0) { layers.push(value.slice(start, index).trim()); start = index + 1; }
+  }
+  return [...layers, value.slice(start).trim()];
+}
+
+const sidebarHook = /\[(?:data-slot\s*=\s*["']?sidebar(?:-inner)?["']?|data-app-sidebar)\]$/;
+// Sidebars without their own paint variable keep their background color under the transparent fallback.
+const hostSidebarLayer = 'var(--agent-sidebar-paint, linear-gradient(transparent, transparent))';
+const hostLayerValues = [['background-size', 'auto'], ['background-repeat', 'repeat'], ['background-position-x', '0%'], ['background-position-y', '0%']] as const;
+
+function carrySidebarPaint(sourceSelector: string, style: CSSStyleDeclaration): void {
+  // T3 sidebar images sit above the palette color; the host paints that color as an image layer.
+  if (!sidebarHook.test(sourceSelector) || style.getPropertyValue('background-color')) return;
+  const image = style.getPropertyValue('background-image');
+  if (!image || image === 'none') return;
+  const count = backgroundLayers(image).length;
+  style.setProperty('background-image', `${image}, ${hostSidebarLayer}`, style.getPropertyPriority('background-image'));
+  for (const [property, value] of hostLayerValues) {
+    const current = style.getPropertyValue(property);
+    if (!current) continue;
+    // Lists repeat to cover every layer, so pin the skin's layers before adding the host's.
+    const items = backgroundLayers(current);
+    const layers = Array.from({ length: count }, (_, index) => items[index % items.length]);
+    style.setProperty(property, [...layers, value].join(', '), style.getPropertyPriority(property));
+  }
+}
+
 function adaptRules(parent: RuleList, nested = false): void {
   for (let index = parent.cssRules.length - 1; index >= 0; index--) {
     const rule = parent.cssRules[index]!;
@@ -112,6 +146,7 @@ function adaptRules(parent: RuleList, nested = false): void {
       const selector = translate(sourceSelector);
       rule.selectorText = nested ? selector : skinSelector(selector);
       filterStyle(rule.style);
+      carrySidebarPaint(sourceSelector, rule.style);
       // CSS nesting can contain further selectors, declarations and conditional rules.
       if ('cssRules' in rule) adaptRules(rule as CSSStyleRule & RuleList, true);
       carryComposerPaint(parent, index, sourceSelector, rule);

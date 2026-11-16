@@ -674,9 +674,10 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   min-height: 0;
 }
 
-/* The SDK pane paints its own surface token while its composer fade ends in the shell color; in dark themes they differ. */
+/* The SDK pane paints its own surface token while its composer fade ends in the shell color; in dark themes they differ.
+   Only the color: a shorthand would reset the skin canvas image this selector outranks. */
 .conversation-pane .conversation-pane__surface {
-  background: var(--color-shell-main);
+  background-color: var(--color-shell-main);
 }
 
 .conversation-pane__draft-anchor {
