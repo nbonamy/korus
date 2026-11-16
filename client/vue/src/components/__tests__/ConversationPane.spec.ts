@@ -188,6 +188,30 @@ describe('ConversationPane', () => {
     expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent.id, { sessionId: 'thread', contentId: 'a'.repeat(64), offset: 0 });
   });
 
+  it('loads a Quick Chat screenshot once its pending conversation is admitted', async () => {
+    installNativeImagePreview(vi.fn().mockResolvedValue(null));
+    const dataUrl = 'data:image/png;base64,cG5n';
+    const contentId = 'b'.repeat(64);
+    const readConversationContent = vi.fn(async (_agentId, input) => {
+      if (input.sessionId === 'pending') throw new Error('Session has not been admitted.');
+      return { data: Buffer.from(dataUrl).toString('base64'), totalBytes: dataUrl.length, nextOffset: null };
+    });
+    setElectronTestClient({ readConversationContent });
+    const screenshot = (session: string): RendererMessage => ({ ...messages[0]!, parts: [{ type: 'attachment', attachment: { kind: 'image', name: 'Screenshot.png', url: `conversation-image:${session}:${contentId}`, width: 100, height: 100 } }] });
+    const state = shallowReactive({ identity: { conversationKey: agent.id, messages: [screenshot('pending')] } });
+    const controller = createConversationPaneController({ state, actions: {} });
+    const wrapper = mountPane({ controller, agent: { ...agent, provider: 'claude', folder: null, sessionKind: 'quickChat' } });
+    try {
+      await flushPromises();
+      expect(wrapper.find('img.chat-attachment-block__preview').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('Content available on demand');
+      state.identity = { ...state.identity, messages: [screenshot('admitted')] };
+      await flushPromises();
+      expect(wrapper.get('img.chat-attachment-block__preview').attributes('src')).toBe('blob:preview');
+      expect(readConversationContent).toHaveBeenCalledWith(agent.id, { sessionId: 'admitted', contentId, offset: 0 });
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows a provider safety block with its original details and no automatic-resume control', async () => {
     const detail = 'This request was blocked by our safety systems. Reason: Potentially unintended activity.';
     const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, status: { type: 'error', message: `Conversation blocked by provider. Automatic retries are stopped.\n\n${detail}` } } });
