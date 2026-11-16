@@ -35,6 +35,8 @@ export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarn
     script,
     /** Makes the agents' saved conversations known, so provider events and prompts resolve to them. */
     admit: async (...agents: Agent[]): Promise<void> => { for (const agent of agents) await driver.loadConversation!(agent); },
+    /** The arguments of every call an operation received, oldest first. */
+    calls: (operation: ScriptedOperation): unknown[][] => script.calls(operation).map(({ args }) => args),
     /** The prompts that reached the provider, oldest first. */
     sentPrompts: (): ScriptedPrompt[] => promptCalls('sendPrompt'),
     /** The prompts the provider was asked to steer into an active turn, oldest first. */
