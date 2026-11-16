@@ -9,6 +9,7 @@ desktop app: no server/API integration gates). Fakes sit at ownership boundaries
 | Under test | Fake |
 | --- | --- |
 | App controller / state routing | unified backend fake |
+| Daemon workflows that reach an agent (`AppBackendServer`, `ProviderDriverRpc`) | the real `HarnessAgentDriver` over a scripted provider (`scriptedDriver`, below) |
 | Real Codex driver | typed Codex SDK surface (never the real SDK against a fake app-server; that boundary belongs to the SDK repo) |
 | Real Claude driver | fake Claude SDK query |
 | Mounted UI / `App` | `client/vue/tests/support/client-api-mock.ts` + `backend-fixture.ts` |
@@ -287,6 +288,38 @@ initialization, disposable subscriptions, I/O-free defaults, and throwing
 consequential operations unless scripted). Per-test overrides merge into the complete
 fake; use `stubLegacyElectronTestWindow` only to test missing-method compatibility,
 and await asynchronous initialization before exercising controls.
+
+Daemon tests never hand-write an `AgentProviderDriver`. They use
+`client/backend/src/__tests__/support/scripted-driver.ts`: `scriptedDriver(provider, options?, policy?)`
+is the real `HarnessAgentDriver` over `createScriptedHarness` from
+`@korus-dev/multi-agent-sdk/testing`, so prompts, sessions, capabilities and event
+mapping run through production code and only the provider's replies are scripted.
+
+- Script what the provider does with `script.on(operation, handler)`, one call at a
+  time with `respondOnce`, and every call with `respondAlways`. A handler returns the
+  provider's whole result, session included: the harness admits the session from it.
+- Provider events enter with `script.emit(event)`; daemon-published events (the
+  `turnCompleted` and similar helpers in `support/conversation-activity.ts`) enter with
+  `server.emitEvent`. Call `admit(...agents)` first so provider events and prompts resolve
+  to the agent.
+- Assert on the provider side with `calls(operation)`, `script.calls`, `sentPrompts()`,
+  `steeredPrompts()`, or `orderedPromptLog` for order across providers.
+- To assert what Korus hands the driver (the agent record, not the provider context),
+  spy on the real driver with `vi.spyOn(driver, operation)`. To vary what the driver
+  reports at that contract (a capability, a missing operation, the review run) assign
+  over the real driver with `Object.assign`; never replace it. The coordination policy is
+  fixed at construction, so pass it as the `policy` argument.
+- A scripted harness closes with its server: give a restarted server a new driver.
+- Wait on observable conditions (`vi.waitFor`), never microtask counts: the real driver
+  takes more asynchronous steps than a stub.
+- Turn and request state that must follow engine frames belongs to the SDK-level
+  scripted fixtures above. Tests of the RPC over arbitrary drivers (`driver-rpc.spec.ts`,
+  shutdown and usage observation) and of a host itself (`cursor`, `claude`, `codex`) keep
+  purpose-built fakes: a real driver would have every behavior overridden.
+- When a test double is replaced, mutate the production lines the old test covers and
+  confirm the new test fails for every mutant the old one caught; a gap means the
+  replacement lost coverage, and a real-driver failure the old double hid is a product
+  finding.
 
 `sdk-boundary-*.spec.ts`, Claude's `sdk-boundary.spec.ts` and `*backend-boundary.spec.ts`
 run in the normal glob and CI (`npm run test:integration` is a fast entry). Keep
