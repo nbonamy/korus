@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { claudeProviderCapabilities, codexProviderCapabilities, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { AgentProviderDriver, ProviderCodeReviewResult } from '@workspace/core/provider-driver';
+import { scriptedDriver } from './support/scripted-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
@@ -24,11 +25,9 @@ describe('AppBackendServer code review workflow', () => {
     const interrupt = vi.fn();
     const runCodeReview = vi.fn();
     const stopAgentMonitors = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities, runCodeReview, interrupt,
-      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn(),
-    };
+    const { driver } = scriptedDriver('codex');
+    // The review run is what the test controls, at the contract the server calls the driver through.
+    Object.assign(driver, { runCodeReview, interrupt });
     const server = new AppBackendServer({
       stopAgentMonitors,
       version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined),
@@ -113,13 +112,9 @@ describe('AppBackendServer code review workflow', () => {
       }
       return { text: '', reviewerSession: input.reviewerSession };
     });
-    const driver: AgentProviderDriver = {
-      provider: 'claude', getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
-      getCapabilities: () => claudeProviderCapabilities,
-      authenticate: async () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }),
-      runCodeReview, sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
-      onEvent: () => () => undefined, close: vi.fn(),
-    };
+    const { driver, script } = scriptedDriver('claude');
+    script.on('authenticate', () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }));
+    Object.assign(driver, { runCodeReview });
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test', snapshot, saveSnapshot,
@@ -450,17 +445,8 @@ describe('AppBackendServer code review workflow', () => {
         providerSession: agent.providerSession ?? { kind: 'codex' as const, conversationId: 'review-thread' },
       };
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      runCodeReview,
-      sendPrompt: vi.fn(),
-      interrupt,
-      respondToAgentRequest: vi.fn(),
-      onEvent: () => () => undefined,
-      close: vi.fn(),
-    };
+    const { driver } = scriptedDriver('codex');
+    Object.assign(driver, { runCodeReview, interrupt });
     const server = new AppBackendServer({
       version: 'test', snapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -525,22 +511,14 @@ describe('AppBackendServer code review workflow', () => {
     snapshot.agents.push(owner);
     snapshot.teams[0]!.agentIds.push(owner.id);
     const releaseConversation = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
+    const { driver } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    Object.assign(driver, {
       runCodeReview: vi.fn(async (_agent, input) => {
         await reviewTools.finishReviewRound({ findingCount: 0 });
         return { text: '', reviewerSession: input.reviewerSession ?? { kind: 'codex', conversationId: 'review-thread' } };
       }),
-      archiveAgentConversation: vi.fn().mockResolvedValue(undefined),
       releaseConversation,
-      sendPrompt: vi.fn(),
-      interrupt: vi.fn(),
-      respondToAgentRequest: vi.fn(),
-      onEvent: () => () => undefined,
-      close: vi.fn(),
-    };
+    });
     const closeReviewToolContext = vi.fn();
     const server = new AppBackendServer({
       version: 'test', snapshot,
