@@ -1,7 +1,9 @@
-import { createScriptedHarness, type HarnessScript, type ScriptedHarnessOptions } from '@korus-dev/multi-agent-sdk/testing';
+import { createScriptedHarness, type HarnessScript, type ScriptedHarnessOptions, type ScriptedOperation } from '@korus-dev/multi-agent-sdk/testing';
 import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { Agent, HarnessProvider, SendPromptOptions } from '@workspace/core/contracts';
 import { AgentRegistry, HarnessAgentDriver } from '../../harness-agent-driver';
+
+type OperationHandler = (...args: never[]) => unknown;
 
 export type ScriptedPrompt = { agent: Agent; prompt: string; options: SendPromptOptions | undefined };
 
@@ -12,6 +14,17 @@ export type ScriptedPrompt = { agent: Agent; prompt: string; options: SendPrompt
 export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarnessOptions) {
   const { harness, script } = createScriptedHarness(provider, options);
   const driver = new HarnessAgentDriver(provider, harness, { agents: new AgentRegistry() }) as AgentProviderDriver;
+  const queued = new Map<ScriptedOperation, OperationHandler[]>();
+  const fallbacks = new Map<ScriptedOperation, OperationHandler>();
+  const install = (operation: ScriptedOperation) => {
+    if (queued.has(operation)) return;
+    queued.set(operation, []);
+    script.on(operation, ((...args: never[]) => {
+      const handler = queued.get(operation)!.shift() ?? fallbacks.get(operation);
+      if (!handler) throw new Error(`Script ${operation} with respondOnce or respondAlways before it is called.`);
+      return handler(...args);
+    }) as OperationHandler);
+  };
   return {
     driver,
     script,
@@ -22,6 +35,10 @@ export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarn
       const [agent, prompt, promptOptions] = args as [Agent, string, SendPromptOptions | undefined];
       return { agent, prompt, options: promptOptions };
     }),
+    /** What the next call of an operation does; later calls use `respondAlways`. A handler that throws rejects the call. */
+    respondOnce: (operation: ScriptedOperation, handler: OperationHandler): void => { install(operation); queued.get(operation)!.push(handler); },
+    /** What every call of an operation does once no `respondOnce` is queued. */
+    respondAlways: (operation: ScriptedOperation, handler: OperationHandler): void => { install(operation); fallbacks.set(operation, handler); },
     /** The provider proposes a plan for the user to review. */
     proposePlan: (agentId: string, turnId: string, markdown: string): void => script.emit({ type: 'plan.readyForReview', agentId, provider, turnId, payload: { markdown, itemId: turnId } }),
   };

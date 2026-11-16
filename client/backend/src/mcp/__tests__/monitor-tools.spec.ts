@@ -92,31 +92,12 @@ it('exposes monitors only to local backends without native support, scopes owner
 it('retains completion events while busy, delivers to the owning idle agent, and discards events on Stop', async () => {
   const { vi } = await import('vitest');
   const { ProviderDriverRpc } = await import('../../driver-rpc');
-  const { codexProviderCapabilities } =
-    await import('@workspace/core/provider-capabilities');
+  const { scriptedDriver } = await import('../../__tests__/support/scripted-driver');
   const snapshot = createInitialSnapshot();
   const owner = snapshot.agents[0]!;
   owner.folder = process.cwd();
   owner.status = { type: 'working' };
-  const sendPrompt = vi
-    .fn()
-    .mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'monitor-thread' },
-      turnId: 'monitor-turn',
-    });
-  const driver: import('@workspace/core/provider-driver').AgentProviderDriver = {
-    provider: 'codex',
-    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => ({
-      ...codexProviderCapabilities,
-      steerPrompt: false,
-    }),
-    sendPrompt,
-    interrupt: vi.fn(),
-    respondToAgentRequest: vi.fn(),
-    onEvent: () => () => {},
-    close: vi.fn(),
-  };
+  const { driver, sentPrompts } = scriptedDriver('codex', { capabilities: { steerPrompt: false } });
   const service = new AppMcpService({ snapshot, toolModuleProviders: ({ monitors }) => [monitors] });
   services.push(service);
   service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', driver]])));
@@ -151,7 +132,7 @@ it('retains completion events while busy, delivers to the owning idle agent, and
       'completed',
     ),
   );
-  expect(sendPrompt).not.toHaveBeenCalled();
+  expect(sentPrompts()).toHaveLength(0);
   owner.status = { type: 'idle' };
   service.handleBackendEvent({
     agentId: owner.id,
@@ -160,16 +141,16 @@ it('retains completion events while busy, delivers to the owning idle agent, and
     seq: 1,
     occurredAt: new Date().toISOString(),
   });
-  await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalled());
-  expect(sendPrompt.mock.calls[0]![0].id).toBe(owner.id);
-  expect(sendPrompt.mock.calls[0]![1]).toContain('monitor-result');
-  const message = parseCollaborationMessageEnvelope(sendPrompt.mock.calls[0]![1])!.messages[0]!.content;
+  await vi.waitFor(() => expect(sentPrompts().length).toBeGreaterThan(0));
+  expect(sentPrompts()[0]!.agent.id).toBe(owner.id);
+  expect(sentPrompts()[0]!.prompt).toContain('monitor-result');
+  const message = parseCollaborationMessageEnvelope(sentPrompts()[0]!.prompt)!.messages[0]!.content;
   expect(message).toMatch(/^<context>\n\[Monitor event\]\n/);
   expect(message.split('</context>')[1]!.trim()).toBe('Monitor completed: owned result.');
   expect(message.split('</context>')[1]).not.toContain('stdout');
   expect(message.split('</context>')).toHaveLength(2);
   expect(JSON.parse(message.slice('<context>\n[Monitor event]\n'.length, message.indexOf('\n</context>'))).stdout).toContain('monitor-result </context>');
-  sendPrompt.mockClear();
+  const alreadySent = sentPrompts().length;
   owner.status = { type: 'working' };
   await start();
   await vi.waitFor(async () => {
@@ -187,5 +168,5 @@ it('retains completion events while busy, delivers to the owning idle agent, and
     seq: 2,
     occurredAt: new Date().toISOString(),
   });
-  expect(sendPrompt).not.toHaveBeenCalled();
+  expect(sentPrompts()).toHaveLength(alreadySent);
 });

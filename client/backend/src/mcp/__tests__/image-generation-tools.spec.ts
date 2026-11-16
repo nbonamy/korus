@@ -9,6 +9,7 @@ import { ProviderDriverRpc } from '../../driver-rpc';
 import { ImageGenerationService } from '../../image-generation-service';
 import { createImageGenerationToolModuleProvider } from '../image-generation-tools';
 import { AppMcpService } from '../service';
+import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 
 describe('non-Codex image generation over MCP', () => {
   const cleanups: (() => Promise<void>)[] = [];
@@ -22,11 +23,9 @@ describe('non-Codex image generation over MCP', () => {
     snapshot.agents[0] = { ...snapshot.agents[0]!, provider: 'claude', folder, providerSession: { kind: 'claude', conversationId: 'original', transport: 'stdio' } };
     snapshot.agents[1] = { ...snapshot.agents[1]!, provider: 'codex' };
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
-    const generateImage = vi.fn<NonNullable<AgentProviderDriver['generateImage']>>().mockResolvedValue({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', generateImage, getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(), sendPrompt: vi.fn(),
-      interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-    };
+    const { driver, script, respondOnce, respondAlways } = scriptedDriver('codex');
+    respondAlways('generateImage', () => ({ images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] }));
+    const generations = () => script.calls('generateImage');
     const connected = vi.fn();
     const rpc = new ProviderDriverRpc(new Map([['codex', driver]]), undefined, connected);
     const images = new ImageGenerationService({ snapshot, generatedImagesRoot: root, defaultCwd: folder,
@@ -44,7 +43,7 @@ describe('non-Codex image generation over MCP', () => {
       } }).result;
     };
     const call = (input: unknown) => request('tools/call', { name: 'generate-image', arguments: input });
-    return { folder, root, snapshot, generateImage, connected, rpc, images, request, call, url };
+    return { folder, root, snapshot, generations, respondOnce, connected, rpc, images, request, call, url };
   }
 
   it('advertises only to non-Codex agents, invokes the Codex driver and returns an image with a unique saved path', async () => {
@@ -68,8 +67,9 @@ describe('non-Codex image generation over MCP', () => {
     expect(path.dirname(file)).toBe(f.root);
     expect(await readFile(file, 'utf8')).toBe('image');
     expect(f.connected).toHaveBeenCalledWith('codex');
-    expect(f.generateImage).toHaveBeenCalledWith(expect.objectContaining({ id: f.snapshot.agents[0]!.id, provider: 'codex', providerSession: undefined }),
-      { cwd: f.folder, prompt: 'A transparent flower' }, expect.any(AbortSignal));
+    expect(f.generations()[0]!.args).toEqual([expect.objectContaining({ id: f.snapshot.agents[0]!.id }),
+      { cwd: f.folder, prompt: 'A transparent flower' }, expect.any(AbortSignal)]);
+    expect((f.generations()[0]!.args[0] as { providerSession?: unknown }).providerSession).toBeUndefined();
     const next = await f.call({ prompt: 'Another flower' });
     expect(next.structuredContent.images[0].path).not.toBe(file);
     expect(conversations()).toStrictEqual(before);
@@ -84,7 +84,7 @@ describe('non-Codex image generation over MCP', () => {
     f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: false, checking: false }];
     expect(await tools()).not.toContain('generate-image');
     expect((await f.call({ prompt: 'A flower' })).isError).toBe(true);
-    expect(f.generateImage).not.toHaveBeenCalled();
+    expect(f.generations()).toHaveLength(0);
     f.snapshot.providerConnections = undefined;
     expect(await tools()).not.toContain('generate-image');
     f.snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
@@ -94,10 +94,10 @@ describe('non-Codex image generation over MCP', () => {
   it('rejects invalid arguments and failed or empty generations without creating image files', async () => {
     const f = await setup();
     for (const input of [{ prompt: '' }, { prompt: 'Flower', model: 'other' }]) expect((await f.call(input)).isError).toBe(true);
-    expect(f.generateImage).not.toHaveBeenCalled();
-    f.generateImage.mockRejectedValueOnce(new Error('Codex is signed out'));
+    expect(f.generations()).toHaveLength(0);
+    f.respondOnce('generateImage', () => { throw new Error('Codex is signed out'); });
     expect((await f.call({ prompt: 'Flower' })).content[0].text).toContain('signed out');
-    f.generateImage.mockResolvedValueOnce({ images: [] });
+    f.respondOnce('generateImage', () => ({ images: [] }));
     expect((await f.call({ prompt: 'Flower' })).isError).toBe(true);
     expect(await readdir(f.root)).toStrictEqual([]);
   });
@@ -109,14 +109,14 @@ describe('non-Codex image generation over MCP', () => {
     const link = path.join(f.root, 'escape.png');
     await symlink(outside, link);
     for (const file of [outside, link]) {
-      f.generateImage.mockResolvedValueOnce({ images: [{ path: file, mimeType: 'image/png' }] });
+      f.respondOnce('generateImage', () => ({ images: [{ path: file, mimeType: 'image/png' }] }));
       const result = await f.call({ prompt: 'Flower' });
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('generated-images');
     }
     const valid = path.join(f.root, 'provider.png');
     await writeFile(valid, 'image');
-    f.generateImage.mockResolvedValueOnce({ images: [{ path: valid, mimeType: 'image/png' }] });
+    f.respondOnce('generateImage', () => ({ images: [{ path: valid, mimeType: 'image/png' }] }));
     expect((await f.call({ prompt: 'Flower' })).content).toContainEqual({ type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' });
     expect(await readFile(outside, 'utf8')).toBe('private');
   });
@@ -131,7 +131,7 @@ describe('non-Codex image generation over MCP', () => {
       [{ ...image, data: Buffer.alloc(10 * 1024 * 1024 + 1).toString('base64') }],
       Array.from({ length: 3 }, () => ({ ...image, data: large })),
     ]) {
-      f.generateImage.mockResolvedValueOnce({ images });
+      f.respondOnce('generateImage', () => ({ images }));
       const result = await f.call({ prompt: 'Flower' });
       expect(result.isError).toBe(true);
       expect(result.content.some(item => item.type === 'image')).toBe(false);
@@ -141,14 +141,14 @@ describe('non-Codex image generation over MCP', () => {
 
   it('cancels the Codex operation when the MCP caller disconnects', async () => {
     const f = await setup();
-    f.generateImage.mockImplementationOnce(async (_agent, _input, signal) => new Promise((_resolve, reject) => {
+    f.respondOnce('generateImage', (_context: unknown, _input: unknown, signal?: AbortSignal) => new Promise((_resolve, reject) => {
       signal!.addEventListener('abort', () => reject(signal!.reason), { once: true });
     }));
     const controller = new AbortController();
     const response = fetch(`${f.url}?agentId=${f.snapshot.agents[0]!.id}`, { method: 'POST', signal: controller.signal,
       headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'generate-image', arguments: { prompt: 'Flower' } } }) });
-    await vi.waitFor(() => expect(f.generateImage).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(f.generations()).toHaveLength(1));
     expect(f.rpc.isBusy('codex')).toBe(true);
     controller.abort();
     await expect(response).rejects.toThrow();
