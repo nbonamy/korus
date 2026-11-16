@@ -1,8 +1,7 @@
 import { approvalAgentRequest } from '@workspace/core/agent-request';
 import { diffUpdated, fileActivity, toolUpdated, turnCompleted, turnOutput } from './support/conversation-activity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import type { AgentGitService } from '../git/agent-git-service';
@@ -60,7 +59,8 @@ describe('AppBackendServer', () => {
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
     ];
-    let emitEvent: (event: BackendEvent) => void = () => undefined;
+    const emitEvent = (event: BackendEvent) => server.emitEvent(event as never);
+    const { driver } = scriptedDriver('codex');
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/agent-workspace',
       branch: 'main',
@@ -73,19 +73,6 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-06-13T00:00:01.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: (listener) => {
-        emitEvent = listener;
-        return () => undefined;
-      },
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -171,19 +158,12 @@ describe('AppBackendServer', () => {
       provider: 'codex', status: { type: 'working' }, providerSession: { kind: 'codex', conversationId: 'thread-dina' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    let emitEvent: (event: BackendEvent) => void = () => undefined;
+    const emitEvent = (event: BackendEvent) => server.emitEvent(event as never);
+    const { driver } = scriptedDriver('codex');
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/agent-workspace', branch: 'main', ahead: 0, behind: 0, changedFiles: 1,
       addedLines: 5, removedLines: 0, hasUntracked: true, state: 'dirty', updatedAt: '2026-06-13T00:00:01.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: (listener) => { emitEvent = listener; return () => undefined; },
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version', pid: 123, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       agentGitService: { status: getGitStatus } as unknown as AgentGitService,
@@ -233,21 +213,8 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    let emitEvent: (event: BackendEvent) => void = () => undefined;
-    const respondToAgentRequest = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest,
-      onEvent: (listener) => {
-        emitEvent = listener;
-        return () => undefined;
-      },
-      close: async () => undefined,
-    };
+    const { driver, script } = scriptedDriver('codex');
+    await driver.loadConversation!(snapshot.agents[0]!);
     const events: unknown[] = [];
     const server = new AppBackendServer({
       version: 'test-version',
@@ -264,7 +231,7 @@ describe('AppBackendServer', () => {
       params: { response: { id: 'approval-missing', outcome: { kind: 'decision', decision: 'allow' } } },
     })).rejects.toThrow("Agent request 'approval-missing' is no longer pending.");
 
-    emitEvent({ agentId: 'agent-dina', provider: 'codex', type: 'agentRequest.created', payload: { request: {
+    script.emit({ agentId: 'agent-dina', provider: 'codex', type: 'agentRequest.created', payload: { request: {
       id: 'approval-1', conversationId: 'thread-dina', turnId: 'turn-1', kind: 'toolConfirmation',
       confirmation: { integrationId: 'test', integrationName: 'Test', toolName: 'Bash', summary: 'Run tool', argumentsPreview: 'npm test', allowConversation: false, allowAlways: false },
     } } });
@@ -281,7 +248,7 @@ describe('AppBackendServer', () => {
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'agentRequest.created', agentId: 'agent-dina' }),
     ]));
-    expect(respondToAgentRequest).toHaveBeenCalledWith({ agentId: 'agent-dina', id: 'approval-1', outcome: { kind: 'decision', decision: 'allow' } });
+    expect(script.calls('respondToAgentRequest').map(({ args }) => args[0])).toContainEqual({ agentId: 'agent-dina', id: 'approval-1', outcome: { kind: 'decision', decision: 'allow' } });
     await server.close();
   });
 
