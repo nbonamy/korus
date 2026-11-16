@@ -17,6 +17,7 @@ import browser from './korus-browser/SKILL.md?raw';
 import simulator from './korus-simulator/SKILL.md?raw';
 import imagegen from './korus-imagegen/SKILL.md?raw';
 import design from './korus-design/SKILL.md?raw';
+import skin from './korus-skin/SKILL.md?raw';
 import { designAttributes, designSvgAttributes, designSvgTags, designTags } from '@workspace/core/design';
 
 type SkillContext = { computerUseEnabled?: boolean; missionStage?: MissionStage; toolModules?: readonly string[] };
@@ -37,6 +38,7 @@ function skill(source: string): Skill {
 const generalSkills = [skill(html), skill(visualize), skill(stackDiagram), skill(delegation), skill(design)];
 const computerUseSkill = skill(computerUse);
 const moduleSkills = [
+  ['skins', skill(skin)],
   ['image-generation', skill(imagegen)],
   ['in-app-browser', skill(browser)],
   ['mobile-simulator', skill(simulator)],

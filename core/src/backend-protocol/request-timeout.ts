@@ -33,6 +33,7 @@ const requestTimeoutByMethod = {
   [backendMethods.telemetryProfilePreview]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryPreview]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,
+  [backendMethods.clientSkinSet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientDesignCapture]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,

@@ -194,6 +194,8 @@ export const ipcChannels = {
   openAccessibilitySettings: 'system-permissions:accessibility:open',
   openScreenRecordingSettings: 'system-permissions:screen-recording:open',
   launchChatGptApp: 'chatgpt:app:launch',
+  listLocalSkins: 'skins:local:list',
+  deleteLocalSkin: 'skins:local:delete',
   quit: 'app:quit',
   restartApp: 'app:restart',
   reloadRenderer: 'app:renderer:reload',

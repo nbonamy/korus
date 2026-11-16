@@ -1038,6 +1038,9 @@ export type AppApi = {
   openAccessibilitySettings(): Promise<SystemPermissionsStatus>;
   openScreenRecordingSettings(): Promise<SystemPermissionsStatus>;
   launchChatGptApp(input?: LaunchChatGptAppInput): Promise<LaunchChatGptAppResult>;
+  /** Desktop only: valid skin sources saved in the app home. */
+  listLocalSkins?(): Promise<import('./custom-themes').LocalSkin[]>;
+  deleteLocalSkin?(name: string): Promise<void>;
   quit(): Promise<void>;
   restartApp(): Promise<void>;
   reloadRenderer(): Promise<void>;

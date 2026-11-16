@@ -235,6 +235,8 @@ export function createClientApiMock(
     openAccessibilitySettings: unscripted<'openAccessibilitySettings'>('openAccessibilitySettings'),
     openScreenRecordingSettings: unscripted<'openScreenRecordingSettings'>('openScreenRecordingSettings'),
     launchChatGptApp: unscripted<'launchChatGptApp'>('launchChatGptApp'),
+    listLocalSkins: unscripted<'listLocalSkins'>('listLocalSkins'),
+    deleteLocalSkin: unscripted<'deleteLocalSkin'>('deleteLocalSkin'),
     quit: unscripted<'quit'>('quit'),
     setMenuBarVisible: vi.fn<AppApi['setMenuBarVisible']>().mockResolvedValue(undefined),
     restartApp: unscripted<'restartApp'>('restartApp'),

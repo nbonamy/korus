@@ -92,6 +92,17 @@ by mutating user-global tool config.
   user (`allow`, `allow_conversation` and `always_allow` map to `accept` with
   `_meta.persist` of none, `session`, `always`; `deny` to `decline`).
 
+## Custom skins
+
+`set-skin` changes presentation through the connected desktop's normal client
+preferences path. It does not alter daemon policies or another client's palette.
+`korus-skin` supplies the authoring format and rendering constraints through
+`read-skill`. A named definition is saved as an editable JSON file under the
+app home's `skins` directory, which the Appearance skin picker lists as local
+skins. Calling the same name without a definition
+rereads that source, including when already active; disabling clears only the
+active skin and retains the source and the user's palette/mode preferences.
+
 ## Collaboration Model
 
 - Visibility is team-scoped (agents without a team see other no-team agents).

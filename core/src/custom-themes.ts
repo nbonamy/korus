@@ -8,6 +8,18 @@ export type CustomAppTheme = {
   css?: string;
 };
 
+/** Named source files belong to the connected desktop, independently of the active skin. */
+export const skinNamePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export type SkinControlInput = { name: string | null; definition?: Record<string, unknown> };
+/** A valid source saved on the desktop, keyed by its file name. */
+export type LocalSkin = { name: string; skin: CustomAppTheme };
+export type SkinControlResult = {
+  enabled: boolean;
+  name: string | null;
+  path?: string;
+  skin?: Pick<CustomAppTheme, 'id' | 'name' | 'appearance'>;
+};
+
 export const maxThemeFileSize = 2_000_000;
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 

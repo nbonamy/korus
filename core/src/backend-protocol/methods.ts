@@ -19,6 +19,7 @@ export const backendMethods = {
   telemetryProfilePreview: 'telemetry/profile/preview',
   telemetryPreview: 'telemetry/preview',
   clientFocusGet: 'client/focus/get',
+  clientSkinSet: 'client/skin/set',
   clientDebugBackendRestart: 'client/debug/backend/restart',
   companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",

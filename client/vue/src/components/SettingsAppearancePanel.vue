@@ -61,11 +61,21 @@
               :placeholder="$t('surface.settingsAppearancePanel.chooseSkin')"
               :disabled="loadingSkin"
               filterable
-              @visible-change="(visible: boolean) => visible && loadCatalog()"
+              @visible-change="(visible: boolean) => visible && openSkinMenu()"
               @update:model-value="loadSkin"
             >
               <el-option :label="$t('surface.settingsAppearancePanel.loadSkinFile')" value="load-file" />
               <el-option v-if="settings.skin && selectedSkin === 'loaded-skin'" :label="settings.skin.name" value="loaded-skin" disabled />
+              <el-option-group v-if="localSkins.length" :label="$t('surface.settingsAppearancePanel.localSkins')">
+                <el-option v-for="local in localSkins" :key="local.name" class="settings-appearance-panel__skin-option" :label="local.skin.name" :aria-label="local.skin.name" :value="`${localSkinPrefix}${local.name}`">
+                  <span class="settings-appearance-panel__skin-name">{{ local.skin.name }}</span>
+                  <button class="settings-appearance-panel__skin-delete" type="button"
+                    :aria-label="$t('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name })" :title="$t('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name })"
+                    @mousedown.prevent @click.stop.prevent="deleteSkin(local)" @keydown.enter.stop @keydown.space.stop
+                  ><Trash2Icon aria-hidden="true" /></button>
+                </el-option>
+              </el-option-group>
+              <el-option-group v-if="skins.length" :label="skinGalleryLabel">
               <el-option v-for="skin in skins" :key="skin.slug" class="settings-appearance-panel__skin-option" :label="skin.name" :value="skin.slug" :aria-label="skin.name">
                 <span class="settings-appearance-panel__skin-name">{{ skin.name }}</span>
                 <a class="settings-appearance-panel__skin-preview" :href="`${skinGalleryUrl}/skins/${skin.slug}`" target="_blank" rel="noopener noreferrer"
@@ -73,6 +83,7 @@
                   @mousedown.prevent @click.stop.prevent="appPlatformActions.openExternal?.(`${skinGalleryUrl}/skins/${skin.slug}`)" @keydown.enter.stop
                 ><ExternalLinkIcon aria-hidden="true" /></a>
               </el-option>
+              </el-option-group>
             </el-select>
             <input ref="skinFileInput" type="file" accept=".json,application/json" hidden @change="loadSkinFile" />
             <button v-if="settings.skin" class="app-button app-button--neutral" type="button" :title="$t('surface.settingsAppearancePanel.removeSkinTitle', { name: settings.skin.name })" @click="removeTheme">{{ $t('surface.settingsAppearancePanel.removeSkin') }}</button>
@@ -132,10 +143,11 @@
 import { translate } from '../i18n';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { I18nT } from 'vue-i18n';
-import { appPlatformActions } from '../platform-api';
-import { maxThemeFileSize, parseCustomTheme, type CustomAppTheme } from '@workspace/core/custom-themes';
+import { ElMessageBox } from 'element-plus';
+import { appApi, appPlatformActions } from '../platform-api';
+import { maxThemeFileSize, parseCustomTheme, type CustomAppTheme, type LocalSkin } from '@workspace/core/custom-themes';
 import { fetchCatalogSkin, fetchSkinCatalog, skinGalleryUrl, type CatalogSkin } from '../theme/skin-catalog';
-import { ExternalLinkIcon } from '../shared/icons/app-icons';
+import { ExternalLinkIcon, Trash2Icon } from '../shared/icons/app-icons';
 import type { AppThemeSettings, UpdateSettingsInput } from '@workspace/core/contracts';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
@@ -152,6 +164,9 @@ const props = defineProps<{
 }>();
 
 const skins = ref<CatalogSkin[]>([]);
+const localSkins = ref<LocalSkin[]>([]);
+// Catalog slugs and saved file names share one select value space.
+const localSkinPrefix = 'local:';
 const skinFileInput = ref<HTMLInputElement>();
 const loadingSkins = ref(false);
 const loadingSkin = ref(false);
@@ -159,8 +174,13 @@ const skinError = ref('');
 let catalogRequest: AbortController | undefined;
 let skinRequest: AbortController | undefined;
 onBeforeUnmount(() => { catalogRequest?.abort(); skinRequest?.abort(); });
-const selectedSkin = computed(() => props.settings.skin
-  ? skins.value.find(skin => skin.name === props.settings.skin?.name)?.slug ?? 'loaded-skin' : undefined);
+const selectedSkin = computed(() => {
+  const active = props.settings.skin;
+  if (!active) return undefined;
+  const local = localSkins.value.find(entry => entry.skin.id === active.id);
+  if (local) return `${localSkinPrefix}${local.name}`;
+  return skins.value.find(skin => skin.name === active.name)?.slug ?? 'loaded-skin';
+});
 const skinGalleryLabel = new URL(skinGalleryUrl).hostname.replace(/^www\./, '');
 const themes = appThemes;
 const visibleThemes = computed(() => {
@@ -226,6 +246,33 @@ function updateThemeId(id: string): void {
   updateTheme({ id, ...(props.settings.skin ? { skin: null } : {}) });
 }
 
+function openSkinMenu(): void {
+  void loadLocalSkins();
+  void loadCatalog();
+}
+
+// Saved sources change outside the app (agents, editors), so every opening rereads them.
+async function loadLocalSkins(): Promise<void> {
+  try { localSkins.value = await appApi?.listLocalSkins?.() ?? []; }
+  catch { localSkins.value = []; }
+}
+
+async function deleteSkin(local: LocalSkin): Promise<void> {
+  try {
+    await ElMessageBox.confirm(translate('surface.settingsAppearancePanel.deleteSkinMessage', { name: local.skin.name }), translate('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name }), {
+      type: 'warning', confirmButtonText: translate('common.delete'), cancelButtonText: translate('common.cancel'), confirmButtonType: 'danger',
+    });
+  } catch { return; }
+  loadingSkin.value = true;
+  skinError.value = '';
+  try {
+    if (!appApi?.deleteLocalSkin) throw new Error('Skin deletion is unavailable.');
+    await appApi.deleteLocalSkin(local.name);
+    localSkins.value = localSkins.value.filter(entry => entry.name !== local.name);
+  } catch { skinError.value = translate('surface.settingsAppearancePanel.deleteSkinError'); }
+  finally { loadingSkin.value = false; }
+}
+
 async function loadCatalog(): Promise<void> {
   if (loadingSkins.value || skins.value.length) return;
   const request = catalogRequest = new AbortController();
@@ -239,6 +286,11 @@ async function loadCatalog(): Promise<void> {
 async function loadSkin(slug: string): Promise<void> {
   if (slug === 'load-file') {
     skinFileInput.value?.click();
+    return;
+  }
+  const local = slug.startsWith(localSkinPrefix) ? localSkins.value.find(entry => `${localSkinPrefix}${entry.name}` === slug) : undefined;
+  if (local) {
+    await applySkin(async () => local.skin);
     return;
   }
   await applySkin(signal => fetchCatalogSkin(slug, signal));
@@ -295,6 +347,9 @@ function updateNumericTheme(key: 'chatFontSize' | 'codeFontSize' | 'uiFontSize',
 .settings-appearance-panel__skin-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .settings-appearance-panel__skin-preview { display: inline-flex; margin-left: var(--space-4); color: var(--color-text-muted); }
 .settings-appearance-panel__skin-preview svg { width: var(--icon-sm); height: var(--icon-sm); }
+.settings-appearance-panel__skin-delete { display: inline-flex; margin-left: var(--space-4); padding: 0; border: 0; background: none; color: var(--color-text-muted); cursor: pointer; }
+.settings-appearance-panel__skin-delete:hover { color: var(--color-error); }
+.settings-appearance-panel__skin-delete svg { width: var(--icon-sm); height: var(--icon-sm); }
 :global(.settings-appearance-panel__skin-menu .el-scrollbar) {
   --el-scrollbar-bg-color: var(--color-primary);
   --el-scrollbar-hover-bg-color: var(--color-primary);

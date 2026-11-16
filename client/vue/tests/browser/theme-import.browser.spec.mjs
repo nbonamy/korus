@@ -122,6 +122,46 @@ test('renders Pixel-Koi Pond’s embedded SVG background', async () => {
   assert.deepEqual(errors, []);
 });
 
+test('groups the skin picker into file loading, local skins and t3skins.dev skins', async () => {
+  const errors = await withAnnotationFixture(themeImportSource, async page => {
+    await mockSkinCatalog(page, [{ slug: 'nebula', name: 'Nebula', body: nebula.toString() }]);
+    const select = page.locator('.settings-appearance-panel__skin-select .el-select__wrapper');
+    const menu = () => page.locator('.settings-appearance-panel__skin-menu:visible').first().evaluate(el =>
+      [...el.querySelectorAll('.el-select-group__title, .el-select-dropdown__item')].map(item => item.textContent.trim()));
+    await select.click();
+    await page.getByRole('option', { name: 'Nebula', exact: true }).waitFor();
+    assert.deepEqual(await menu(), ['Load from file…', 't3skins.dev', 'Nebula'], 'no local group without saved skins');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { window.localSkins = [{ name: 'moss', definition: { version: 1, name: 'Moss', appearance: 'dark',
+      colors: { canvas: '#12150f', text: '#e8e2d0' } } }]; });
+    await select.click();
+    await page.getByRole('option', { name: 'Moss', exact: true }).waitFor();
+    assert.deepEqual(await menu(), ['Load from file…', 'Local skins', 'Moss', 't3skins.dev', 'Nebula'], 'reopening picks up newly saved skins');
+    await page.getByRole('option', { name: 'Moss', exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
+    await select.click();
+    assert.equal(await page.getByRole('option', { name: 'Moss', exact: true }).getAttribute('aria-selected'), 'true', 'the active local skin is the selected entry');
+    assert.equal(await page.getByRole('option', { name: 'Nebula', exact: true }).getByRole('button').count(), 0, 'catalog skins cannot be deleted');
+    await page.getByRole('button', { name: 'Delete Moss', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.localSkins.length), 1, 'cancelling keeps the saved skin');
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    await page.keyboard.press('Escape');
+    await page.locator('.settings-appearance-panel__skin-menu:visible').waitFor({ state: 'hidden' });
+    await select.click();
+    await page.getByRole('button', { name: 'Delete Moss', exact: true }).press('Enter');
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('theme')).skin);
+    await page.keyboard.press('Escape');
+    await select.click();
+    await page.waitForFunction(() => !document.querySelector('.settings-appearance-panel__skin-menu:not([style*="display: none"])')?.textContent.includes('Moss'));
+    assert.equal(await page.getByRole('option', { name: 'Moss', exact: true }).count(), 0);
+    await page.reload();
+    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'app-light');
+  });
+  assert.deepEqual(errors, []);
+});
+
 test('keeps Nyx menu surfaces opaque', async () => {
   const errors = await withAnnotationFixture(themeImportSource, async page => {
     await mockSkinCatalog(page, [{ slug: 'nyx', name: 'Nyx', body: nyx.toString() }]);

@@ -1,4 +1,6 @@
 import { DictationSettingsStore } from './dictation-settings';
+import { CustomSkinStore } from './custom-skins';
+import { runtimeDaemonHome } from './runtime-config';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
 import type { HarnessProvider, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
 import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
@@ -72,6 +74,13 @@ type PendingBrowserOpen = {
 };
 
 export class AppController {
+  private customSkins: CustomSkinStore | undefined;
+  /** Sources live in the app home so people and agents can find and edit them. */
+  private customSkinStore(): CustomSkinStore {
+    return this.customSkins ??= new CustomSkinStore(path.join(runtimeDaemonHome(), 'skins'), async skin => {
+      this.emitSnapshotToRenderer(await this.updateSettings({ theme: { skin } }));
+    }, () => this.snapshot?.theme.skin?.id);
+  }
   private dictationSettingsStore: DictationSettingsStore | undefined;
   private dictationSettings(): DictationSettingsStore {
     return this.dictationSettingsStore ??= new DictationSettingsStore(app.getPath('userData'), safeStorage, process.platform);
@@ -175,6 +184,7 @@ export class AppController {
       }),
     );
     this.backendClient = backendClient ?? createRuntimeAppBackendClient({
+      setSkin: input => this.customSkinStore().set(input),
       debugRestartBackend: app?.isPackaged ? undefined : input => this.requestDebugBackendRestart(input),
       mobileSimulator: (agentId, input) => this.executeMobileSimulator(agentId, input),
       browserOpen: (agentId, browserId, url) => this.requestBrowserOpen(agentId, browserId, url),
@@ -631,6 +641,9 @@ export class AppController {
     ipc.handle(ipcChannels.openScreenRecordingSettings, () => this.openScreenRecordingSettings());
 
     ipc.handle(ipcChannels.launchChatGptApp, (_event, input) => launchChatGptApp(input));
+
+    ipc.handle(ipcChannels.listLocalSkins, () => this.customSkinStore().list());
+    ipc.handle(ipcChannels.deleteLocalSkin, (_event, name: string) => this.customSkinStore().remove(name));
 
     ipc.handle(ipcChannels.quit, () => {
       this.appLifecycle.quit();

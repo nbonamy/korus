@@ -10,6 +10,8 @@ import '/client/vue/src/styles/theme.css';
 import {defaultThemeSettings,normalizeThemeSettings} from '@workspace/core/settings';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
 import {applyAppTheme} from '/client/vue/src/theme/apply-theme.ts';
+import {configureAppClient} from '/client/vue/src/platform-api.ts';
+import {parseCustomTheme} from '@workspace/core/custom-themes';
 import {i18n} from '/client/vue/src/i18n/index.ts';
 import SettingsAppearancePanel from '/client/vue/src/components/SettingsAppearancePanel.vue';
 import SettingsMenu from '/client/vue/src/components/SettingsMenu.vue';
@@ -20,6 +22,18 @@ const settings=reactive(normalizeThemeSettings(JSON.parse(localStorage.getItem('
 const appearance=ref(true);
 const snapshot=createInitialSnapshot();
 document.documentElement.dataset.platform='macos';
+// Desktop main returns parsed sources from the app home; tests set window.localSkins.
+configureAppClient({platform:'web',api:{
+ listLocalSkins:async()=>(window.localSkins??[]).map(({name,definition})=>({name,skin:parseCustomTheme(definition)})),
+ deleteLocalSkin:async name=>{
+  const local=window.localSkins.find(skin=>skin.name===name);
+  window.localSkins=window.localSkins.filter(skin=>skin.name!==name);
+  if(local&&settings.skin?.id===parseCustomTheme(local.definition).id){
+   settings.skin=null;
+   localStorage.setItem('theme',JSON.stringify(settings));
+  }
+ }
+}});
 watchEffect(()=>applyAppTheme(settings));
 createApp({render:()=>h('div',{class:'app-shell',style:'display:flex;height:100vh;background:var(--color-shell-main)'},[
  h(AgentSidebar,{agents:snapshot.agents,activeAgentId:snapshot.agents[0].id,teamName:'Skin preview'}),

@@ -137,7 +137,7 @@ function backendFixture() {
     request: vi.fn(async (method: string, params?: unknown): Promise<unknown> => {
       if (method === 'snapshot/get') return state;
       if (method === 'client/state/get') return state.clientState;
-      if (method === 'settings/update') {
+      if (method === 'settings/update' || method === 'client/preferences/update') {
         updateSettingsInSnapshot(state.snapshot, (params as { input: Parameters<typeof updateSettingsInSnapshot>[1] }).input);
         return state.snapshot;
       }
@@ -192,6 +192,39 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('saves skins in the app home, lists them for the picker, and publishes edits and disabling through client preferences', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'desktop-skin-'));
+    vi.stubEnv('APP_HOME', directory);
+    try {
+      const fixture = backendFixture(); native.factory.mockReturnValue(fixture.provider);
+      const window = windowFixture(); native.createWindow.mockReturnValue(window);
+      const controller = new AppController(fixture.state.snapshot); controllers.push(controller);
+      controller.registerIpcHandlers(); await controller.initialize(); controller.createWindow(); window.webContents.send.mockClear();
+      const setSkin = native.factory.mock.calls[0]![0].setSkin as (input: import('@workspace/core/custom-themes').SkinControlInput) => Promise<import('@workspace/core/custom-themes').SkinControlResult>;
+      const original = structuredClone(fixture.state.snapshot.theme);
+      const definition = { name: 'Ocean', appearance: 'dark', colors: { canvas: '#07151f' } };
+      const saved = await setSkin({ name: 'ocean', definition });
+      expect(saved.path).toBe(path.join(directory, 'skins', 'ocean.json'));
+      expect(await invoke(ipcChannels.listLocalSkins)).toStrictEqual([{ name: 'ocean', skin: expect.objectContaining({ id: 'custom-ocean', name: 'Ocean' }) }]);
+      expect(fixture.provider.request).toHaveBeenCalledWith(backendMethods.clientPreferencesUpdate, { input: { theme: { skin: expect.objectContaining({ name: 'Ocean' }) } } });
+      expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({ type: 'snapshot.updated', payload: expect.objectContaining({ theme: expect.objectContaining({ skin: expect.objectContaining({ name: 'Ocean' }) }) }) }));
+      await writeFile(saved.path!, JSON.stringify({ ...definition, css: '[data-chat-canvas]{background:#123456}' }));
+      await setSkin({ name: 'ocean' });
+      expect(fixture.state.snapshot.theme.skin?.css).toContain('#123456');
+      await setSkin({ name: null });
+      expect(fixture.state.snapshot.theme).toStrictEqual({ ...original, skin: null });
+      expect(window.webContents.send).toHaveBeenLastCalledWith(ipcChannels.event, expect.objectContaining({ type: 'snapshot.updated', payload: expect.objectContaining({ theme: { ...original, skin: null } }) }));
+      await setSkin({ name: 'moss', definition: { ...definition, name: 'Moss' } });
+      await invoke(ipcChannels.deleteLocalSkin, 'ocean');
+      expect(fixture.state.snapshot.theme.skin?.name).toBe('Moss');
+      expect((await invoke(ipcChannels.listLocalSkins) as { name: string }[]).map(skin => skin.name)).toStrictEqual(['moss']);
+      await invoke(ipcChannels.deleteLocalSkin, 'moss');
+      expect(fixture.state.snapshot.theme).toStrictEqual({ ...original, skin: null });
+      expect(await invoke(ipcChannels.listLocalSkins)).toStrictEqual([]);
+      await expect(readFile(saved.path!, 'utf8')).rejects.toThrow();
+      await expect(invoke(ipcChannels.deleteLocalSkin, '../outside')).rejects.toThrow('name');
+    } finally { vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }); }
+  });
   it('stores dictation credentials and reveals them explicitly through desktop IPC without touching the daemon', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'desktop-dictation-'));
     native.dataDirectory = directory;
