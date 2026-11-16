@@ -1,11 +1,11 @@
 import path from 'node:path';
 import type { DiffVizDiagram } from '@workspace/core/git-diff-viz';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
-import { claudeProviderCapabilities, codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import type { WorkIntegrationManager } from '../work-integrations/manager';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
@@ -29,14 +29,12 @@ describe('AppBackendServer', () => {
     snapshot.agents = [agent];
     snapshot.teams[0]!.agentIds = [agent.id];
     let signal!: AbortSignal;
-    const generateText = vi.fn((_agent, input) => new Promise((_resolve, reject) => {
-      signal = input.signal;
+    const { driver, script } = scriptedDriver('codex');
+    script.on('generateText', (_context: unknown, input: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      signal = input.signal as AbortSignal;
       signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
     }));
-    const interrupt = vi.fn();
-    const driver = { provider: agent.provider, getRuntimeStatus: () => ({ provider: agent.provider, status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities, generateText, interrupt, sendPrompt: vi.fn(),
-      respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} } as unknown as AgentProviderDriver;
+    const generations = () => script.calls('generateText');
     const diff = vi.fn(async () => ({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' }));
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([[agent.provider, driver]])),
       agentGitService: { diff } as unknown as AgentGitService });
@@ -45,13 +43,13 @@ describe('AppBackendServer', () => {
     const cancel = (generationId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'cancel', method: backendMethods.agentGitMessageCancel, params: { agentId: agent.id, generationId } });
     const running = request('active');
     const stopped = expect(running).rejects.toThrow(/cancel/i);
-    await vi.waitFor(() => expect(generateText).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(generations()).toHaveLength(1));
     await cancel('unrelated');
     expect(signal?.aborted).toBe(false);
     const acknowledgement = await cancel('active'); await stopped;
     expect(JSON.parse(JSON.stringify(acknowledgement))).toMatchObject({ result: null });
     expect(signal.aborted).toBe(true);
-    expect(interrupt).not.toHaveBeenCalled();
+    expect(script.calls('interrupt')).toHaveLength(0);
     let finishDiff!: (value: unknown) => void;
     diff.mockReturnValueOnce(new Promise(resolve => { finishDiff = resolve; }) as never);
     const preflight = request('preflight');
@@ -60,7 +58,7 @@ describe('AppBackendServer', () => {
     const cancellation = cancel('preflight');
     finishDiff({ target: { type: 'uncommitted' }, sections: [], diff: 'diff --git a/input.ts b/input.ts\n' });
     await cancellation; await notStarted;
-    expect(generateText).toHaveBeenCalledOnce();
+    expect(generations()).toHaveLength(1);
   });
 
   it('returns git diff data without emitting presentation events', async () => {
@@ -100,16 +98,7 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-08-11T00:00:00.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'claude',
-      getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
-      getCapabilities: () => claudeProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
-      interrupt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver } = scriptedDriver('claude');
     const events: unknown[] = [];
     const server = new AppBackendServer({
       version: 'test-version',
@@ -180,16 +169,7 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-08-11T00:00:00.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver } = scriptedDriver('codex');
     const events: unknown[] = [];
     const findPullRequest = vi.fn().mockResolvedValue(null);
     const server = new AppBackendServer({
@@ -238,25 +218,14 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const generateText = vi.fn()
-      .mockResolvedValueOnce({ text: '{"message":"feat: describe selected changes"}' })
-      .mockResolvedValueOnce({ text: '{"title":"Improve Git drafts","body":"## Summary\\n- Generate drafts"}' })
-      .mockResolvedValueOnce({ text: JSON.stringify(nativeViz([
-        { id: 'input', label: 'Request intake', status: 'unchanged', paths: [] },
-        { id: 'result', label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
-      ])) });
-    const sendPrompt = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider,
-      getRuntimeStatus: () => ({ provider, status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      generateText,
-      sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script, respondOnce, sentPrompts } = scriptedDriver(provider);
+    respondOnce('generateText', () => ({ text: '{"message":"feat: describe selected changes"}' }));
+    respondOnce('generateText', () => ({ text: '{"title":"Improve Git drafts","body":"## Summary\\n- Generate drafts"}' }));
+    respondOnce('generateText', () => ({ text: JSON.stringify(nativeViz([
+      { id: 'input', label: 'Request intake', status: 'unchanged', paths: [] },
+      { id: 'result', label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
+    ])) }));
+    const generated = (index: number) => script.calls('generateText')[index]?.args[1] as { prompt: string; developerInstructions?: string; [key: string]: unknown };
     const commitMessageContext = vi.fn().mockResolvedValue({ context: '## staged changes\ndiff' });
     const pullRequestMessageContext = vi.fn().mockResolvedValue({ baseRef: 'origin/main', context: '## Diff\nbranch diff' });
     const server = new AppBackendServer({
@@ -286,25 +255,25 @@ describe('AppBackendServer', () => {
     expect(viz).toMatchObject({ result: { kind: 'viz', diagram: { nodes: [
       { label: 'Request intake', status: 'unchanged', paths: [] }, { label: 'Draft generation', status: 'changed', paths: ['src/output.ts', 'src/input.ts'] },
     ] } } });
-    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(script.calls('generateText')).toHaveLength(3);
     // The patch travels in the prompt, bounded, so the chat's harness needs no tools to read it.
-    const vizPrompt = generateText.mock.calls[2]?.[1].prompt as string;
+    const vizPrompt = generated(2).prompt as string;
     expect(vizPrompt).toContain('diff --git a/src/input.ts');
     expect(vizPrompt).toMatch(/patch shortened: 300000 of \d+ characters/);
     expect(vizPrompt.length).toBeLessThan(310_000);
-    expect(generateText.mock.calls[2]?.[1]).not.toHaveProperty('tools');
-    expect(generateText.mock.calls[2]?.[1]).toMatchObject({ complexity: 'normal', cwd: '/repo', prompt: expect.stringContaining('origin/main'),
+    expect(generated(2)).not.toHaveProperty('tools');
+    expect(generated(2)).toMatchObject({ complexity: 'normal', cwd: '/repo', prompt: expect.stringContaining('origin/main'),
       developerInstructions: expect.stringMatching(/system impact.*not files/i), outputSchema: { properties: { elements: { minItems: 1 } } } });
-    generateText.mockResolvedValueOnce({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) });
+    respondOnce('generateText', () => ({ text: JSON.stringify(nativeViz([{ id: 'outside', label: 'Invented work', status: 'changed', paths: ['/outside'] }])) }));
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'bad-viz', method: backendMethods.agentGitMessageGenerate,
       params: { agentId: 'agent-dina', input: { kind: 'viz', target: { type: 'branch', baseRef: 'origin/main' } } } })).resolves.toMatchObject({result:{kind:'viz',diagram:{nodes:[{id:'outside',paths:[]}]}}});
-    expect(generateText.mock.calls[0]?.[1].developerInstructions).toContain('Use lowercase conventional commits.');
-    expect(generateText.mock.calls[0]?.[1].developerInstructions).not.toContain('deployment checklist');
-    expect(generateText.mock.calls[1]?.[1].developerInstructions).toContain('Include a deployment checklist.');
-    expect(generateText.mock.calls[1]?.[1].prompt).toContain(gitProvider === 'gitlab' ? 'merge request' : 'pull request');
-    expect(generateText.mock.calls[1]?.[1].developerInstructions).not.toContain('lowercase conventional commits');
-    expect(generateText.mock.calls[0]?.[1]).toMatchObject({ cwd: '/repo', outputSchema: { type: 'object' } });
-    expect(sendPrompt).not.toHaveBeenCalled();
+    expect(generated(0).developerInstructions).toContain('Use lowercase conventional commits.');
+    expect(generated(0).developerInstructions).not.toContain('deployment checklist');
+    expect(generated(1).developerInstructions).toContain('Include a deployment checklist.');
+    expect(generated(1).prompt).toContain(gitProvider === 'gitlab' ? 'merge request' : 'pull request');
+    expect(generated(1).developerInstructions).not.toContain('lowercase conventional commits');
+    expect(generated(0)).toMatchObject({ cwd: '/repo', outputSchema: { type: 'object' } });
+    expect(sentPrompts()).toHaveLength(0);
     await server.close();
   });
 
@@ -442,16 +411,7 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver } = scriptedDriver('codex');
     const events: unknown[] = [];
     const diff = vi.fn().mockRejectedValue(new Error('Git diff failed.'));
     const server = new AppBackendServer({
