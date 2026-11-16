@@ -22,6 +22,7 @@ import { ProviderDriverRpc } from '../../driver-rpc';
 import { VisualizeService } from '../../visualize-service';
 import { WorktreeManager } from '../../worktrees/worktree-manager';
 import { AppMcpService } from '../service';
+import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 import { HostedMcpGateway } from '../hosted-mcp-gateway';
 import { structuredToolResult } from '../tool-result';
 import { createVisualizeToolModuleProvider } from '../visualize-tools';
@@ -1077,7 +1078,7 @@ describe('AppMcpService', () => {
       turnId: 'turn-next',
     });
     service = new AppMcpService({ snapshot, onEvent: (event) => events.push(event) });
-    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createFakeDriver({ sendPrompt })]])));
     const url = await service.start();
 
     await postJson(agentUrl(url, 'agent-dina'), {
@@ -1586,7 +1587,7 @@ describe('AppMcpService', () => {
       }),
       getInitializationMode: () => 'repository',
     }) });
-    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createDriver({ provider: 'claude', sendPrompt })]])));
+    service.setDriverRpc(new ProviderDriverRpc(new Map([['codex', createFakeDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createFakeDriver({ provider: 'claude', sendPrompt })]])));
     const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.', startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.', selection: { provider: row.provider } });
     expect(response.result.isError).not.toBe(true);
     const child = snapshot.agents.at(-1)!;
@@ -1985,7 +1986,8 @@ describe('AppMcpService', () => {
 
 });
 
-function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
+/** A hand-written driver for tests of contract-level absence: a method it lacks, or a capability without its method. */
+function createFakeDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
   return {
     provider: 'codex',
     getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
@@ -2003,6 +2005,12 @@ function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProvid
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
+}
+
+/** The real driver over a scripted provider, with the contract-level behavior a test supplies laid over it. */
+function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
+  const { driver } = scriptedDriver(overrides.provider ?? 'codex');
+  return Object.assign(driver, overrides);
 }
 
 function agentUrl(url: string, agentId: string): string {

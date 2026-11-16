@@ -1,7 +1,8 @@
 import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppSnapshot, SystemPermissionsStatus } from '@workspace/core/contracts';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
+import { scriptedDriver } from './support/scripted-driver';
 import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
@@ -849,20 +850,8 @@ describe('AppBackendServer', () => {
     }];
     snapshot.activeAgentId = 'agent-dina';
     const events: unknown[] = [];
-    let emitEvent: (event: BackendEvent) => void = () => undefined;
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: (listener) => {
-        emitEvent = listener;
-        return () => undefined;
-      },
-      close: async () => undefined,
-    };
+    const { driver, script, admit } = scriptedDriver('codex');
+    await admit(...snapshot.agents);
     const driverRpc = new ProviderDriverRpc(new Map([['codex', driver]]));
     const server = new AppBackendServer({
       version: 'test-version',
@@ -872,7 +861,7 @@ describe('AppBackendServer', () => {
       onEvent: (event) => events.push(event),
     });
 
-    emitEvent({
+    script.emit({
       provider: 'codex',
       agentId: 'agent-dina',
       type: 'agent.statusChanged',
@@ -890,7 +879,7 @@ describe('AppBackendServer', () => {
         shouldPreventDisplaySleepForRemoteAccess: false,
       },
     }]);
-    emitEvent({
+    script.emit({
       provider: 'codex',
       type: 'remoteControl.statusChanged',
       payload: {
