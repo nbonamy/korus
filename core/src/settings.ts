@@ -4,6 +4,7 @@ import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isHarnessProvider } from './contracts/shared';
 import { spokenAnnouncementVoices, type HarnessProvider, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ComputerUseLockHold, type ComputerUseLockPrevention, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
+import { normalizeCustomTheme } from './custom-themes';
 import { repositoryIconKeyForRemote } from './git-remote';
 import { defaultProviderCapabilities } from './provider-capabilities';
 import { readPersistedReviewPreferences } from './code-review';
@@ -380,12 +381,14 @@ export function normalizeThemeSettings(value: unknown): AppThemeSettings {
     return { ...defaultThemeSettings };
   }
 
+  const skin = value.skin !== undefined ? normalizeCustomTheme(value.skin) : undefined;
   return {
     id: typeof value.id === 'string' && value.id.trim() ? value.id.trim() : defaultThemeSettings.id,
     mode: isAppearanceMode(value.mode) ? value.mode : defaultThemeSettings.mode,
     uiFontSize: normalizeFontSize(value.uiFontSize, defaultThemeSettings.uiFontSize),
     chatFontSize: normalizeFontSize(value.chatFontSize, defaultThemeSettings.chatFontSize),
     codeFontSize: normalizeFontSize(value.codeFontSize, defaultThemeSettings.codeFontSize),
+    ...(skin !== undefined ? { skin } : {}),
   };
 }
 

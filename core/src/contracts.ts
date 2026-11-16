@@ -425,6 +425,7 @@ export type AppThemeSettings = {
   uiFontSize: number;
   chatFontSize: number;
   codeFontSize: number;
+  skin?: import('./custom-themes').CustomAppTheme | null;
 };
 
 export type AppPluginSettings = {

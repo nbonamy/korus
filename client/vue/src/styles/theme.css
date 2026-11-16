@@ -62,7 +62,7 @@
 
 .el-segmented {
   --el-segmented-padding: var(--space-2);
-  --el-segmented-bg-color: var(--color-surface-high);
+  --el-segmented-bg-color: var(--color-surface-base);
   --el-segmented-color: var(--color-text-muted);
   --el-segmented-item-selected-color: var(--color-text);
   --el-segmented-item-selected-bg-color: var(--color-surface-lowest);

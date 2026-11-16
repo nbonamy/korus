@@ -17,6 +17,7 @@ describe('SettingsAppearancePanel', () => {
 
     expect(wrapper.text()).not.toContain('UI font size');
     expect(wrapper.text()).toContain('Color');
+    expect(wrapper.get('a[href="https://www.t3skins.dev"]').attributes('target')).toBe('_blank');
     expect(wrapper.text()).toContain('Typography');
     expect(wrapper.text()).toContain('Diff preview');
     expect(wrapper.text()).toContain('Select the color palette used across the app');

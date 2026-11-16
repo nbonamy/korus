@@ -1,11 +1,13 @@
 import { product } from '@workspace/core/product';
 import type { AppearanceMode, AppThemeSettings } from '@workspace/core/contracts';
+import { importedTheme } from './imported-theme';
 
 export type AppThemeDefinition = {
   id: string;
   name: string;
   appearance: Exclude<AppearanceMode, 'system'>;
   colors: Record<string, string>;
+  css?: string;
 };
 
 type ThemeSeed = {
@@ -819,6 +821,11 @@ export function themeIdForSystemMode(themeId: string): string {
 }
 
 export function effectiveTheme(settings: AppThemeSettings, prefersDark: boolean): AppThemeDefinition {
+  const custom = settings.skin;
+  if (custom) {
+    const mode = settings.mode === 'system' ? (prefersDark ? 'dark' : 'light') : settings.mode;
+    return importedTheme(custom, custom.appearance === mode || custom.variants?.[mode] ? mode : custom.appearance);
+  }
   if (settings.mode === 'system' && settings.id === appSystemPair.light) {
     return themeById(prefersDark ? appSystemPair.dark : appSystemPair.light);
   }

@@ -1,5 +1,6 @@
 import type { AppThemeSettings } from '@workspace/core/contracts';
 import { effectiveTheme } from './themes';
+import { applySkinCss } from './skin-css';
 
 const mediaQuery = typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
@@ -7,6 +8,7 @@ const mediaQuery = typeof window !== 'undefined'
   : null;
 
 let currentSettings: AppThemeSettings | null = null;
+let appliedColorTokens: string[] = [];
 
 export function applyAppTheme(settings: AppThemeSettings): void {
   currentSettings = settings;
@@ -19,6 +21,8 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.dataset.appTheme = theme.id;
   root.classList.toggle('dark', theme.appearance === 'dark');
   root.style.colorScheme = theme.appearance;
+  for (const token of appliedColorTokens) if (!(token in theme.colors)) root.style.removeProperty(token);
+  appliedColorTokens = Object.keys(theme.colors);
   for (const [token, value] of Object.entries(theme.colors)) {
     root.style.setProperty(token, value);
   }
@@ -43,6 +47,10 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.style.setProperty('--chat-font-size', `${settings.chatFontSize}px`);
   root.style.setProperty('--code-font-size', `${settings.codeFontSize}px`);
   applyAgentUiThemeTokens(root, theme.colors, theme.appearance);
+  // Imported themes specify independent shell/message roles and may override aliases.
+  const custom = settings.skin?.id === theme.id;
+  if (custom) for (const [token, value] of Object.entries(theme.colors)) root.style.setProperty(token, value);
+  applySkinCss(theme.css, custom);
 }
 
 function applyAgentUiThemeTokens(

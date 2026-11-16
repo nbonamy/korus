@@ -905,6 +905,16 @@ export const conversationMessages = {
     "openFile": "Open file"
   },
   "settingsAppearancePanel": {
+    "skin": "Skin",
+    "loadSkinsFrom": "Skins from {site}",
+    "customSkin": "Custom skin",
+    "removeSkinTitle": "Remove {name}",
+    "removeSkin": "Remove",
+    "loadSkinFile": "Load from file…",
+    "chooseSkin": "Select a skin",
+    "previewSkin": "Preview {name}",
+    "catalogError": "Unable to load skins. Reopen the list to retry",
+    "loadError": "Unable to load this skin",
     "introTitle": `Choose how ${product.name} looks`,
     "introDescription": "Mode, theme and text sizes apply everywhere in the app",
     "appearance": "Appearance",

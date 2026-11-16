@@ -1466,11 +1466,15 @@ describe('state persistence', () => {
   it('persists and restores normalized appearance settings', () => {
     const snapshot = createInitialSnapshot();
     snapshot.theme = {
-      id: 'github-dark',
+      id: 'app-dark',
       mode: 'dark',
       uiFontSize: 15,
       chatFontSize: 17,
       codeFontSize: 14,
+      skin: { id: 'custom-nebula', name: 'Nebula', appearance: 'dark',
+        colors: { canvas: '#0b060d', accent: '#d1458f' },
+        variants: { light: { canvas: '#ffffff', accent: '#d1458f' } },
+        css: '[data-chat-canvas]{background-image:radial-gradient(red, transparent)}' },
     };
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));

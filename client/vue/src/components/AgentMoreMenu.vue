@@ -67,7 +67,7 @@ function onSelect(itemId: string): void {
 
 .agent-more-menu__trigger:hover,
 .agent-more-menu__trigger[aria-expanded="true"] {
-  background: var(--color-surface-high);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
   color: var(--color-text);
 }
 

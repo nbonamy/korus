@@ -37,6 +37,19 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('retains an imported skin across disk reload', async () => {
+    const store = new AppStateStore(home);
+    const snapshot = await store.load();
+    const theme = { ...snapshot.theme, id: 'app-dark', mode: 'dark' as const,
+      skin: { id: 'custom-nebula', name: 'Nebula', appearance: 'dark' as const,
+        colors: { canvas: '#0b060d', accent: '#d1458f' }, css: '[data-chat-canvas]{animation:clouds 10s infinite}' },
+    };
+    snapshot.theme = theme;
+    await store.save(snapshot);
+    const reloaded = await new AppStateStore(home).load();
+    expect(reloaded.theme).toStrictEqual(theme);
+  });
+
   it('persists the lockfile display preference through restart and explicit opt-out', async () => {
     const store = new AppStateStore(home);
     const snapshot = await store.load();

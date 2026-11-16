@@ -195,6 +195,12 @@ describe('settings contracts', () => {
     expect(normalizeSourceFolderState({ recentRepoNames: 'not-an-array' })).toStrictEqual(defaultSourceFolderState);
   });
 
+  it('keeps the chosen palette when persisted theme data carries unrelated keys', () => {
+    expect(normalizeThemeSettings({ ...defaultThemeSettings, id: 'github-light',
+      customThemes: [{ id: 'github-light', name: 'Draft', appearance: 'dark', colors: { canvas: '#000000' } }] }))
+      .toStrictEqual({ ...defaultThemeSettings, id: 'github-light' });
+  });
+
   it('normalizes theme settings with bounded font sizes', () => {
     expect(normalizeThemeSettings({
       id: ' one-dark-pro ',
