@@ -30,6 +30,7 @@ export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarn
     }) as OperationHandler);
   };
   return {
+    provider,
     driver,
     script,
     /** Makes the agents' saved conversations known, so provider events and prompts resolve to them. */
@@ -45,6 +46,24 @@ export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarn
     /** The provider proposes a plan for the user to review. */
     proposePlan: (agentId: string, turnId: string, markdown: string): void => script.emit({ type: 'plan.readyForReview', agentId, provider, turnId, payload: { markdown, itemId: turnId } }),
   };
+}
+
+type ScriptedDriver = ReturnType<typeof scriptedDriver>;
+export type PromptLogEntry = { provider: HarnessProvider; agentId: string; prompt: string; options: SendPromptOptions | undefined };
+
+/**
+ * One chronological record of the prompts that reach several drivers, for tests that assert order across providers.
+ * Each prompt is accepted as the agent's own session, which suits agents that already have one.
+ */
+export function orderedPromptLog(...drivers: ScriptedDriver[]): PromptLogEntry[] {
+  const log: PromptLogEntry[] = [];
+  for (const { provider, script } of drivers) {
+    script.on('sendPrompt', ((context: { id: string; providerSession: unknown }, prompt: string, options?: SendPromptOptions) => {
+      log.push({ provider, agentId: context.id, prompt, options });
+      return { providerSession: context.providerSession };
+    }) as OperationHandler);
+  }
+  return log;
 }
 
 /** A Claude driver whose local sign-in state the test controls. */
