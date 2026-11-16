@@ -11,9 +11,9 @@ export type ScriptedPrompt = { agent: Agent; prompt: string; options: SendPrompt
  * Korus's driver over a provider that only does what the test scripts. A prompt the test sends succeeds with a plausible
  * result unless `script.on('sendPrompt', ...)` replaces it; replace it by returning the provider's whole result, session included.
  */
-export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarnessOptions) {
+export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarnessOptions, policy: Omit<ConstructorParameters<typeof HarnessAgentDriver>[2], 'agents'> = {}) {
   const { harness, script } = createScriptedHarness(provider, options);
-  const driver = new HarnessAgentDriver(provider, harness, { agents: new AgentRegistry() }) as AgentProviderDriver;
+  const driver = new HarnessAgentDriver(provider, harness, { agents: new AgentRegistry(), ...policy }) as AgentProviderDriver;
   const promptCalls = (operation: 'sendPrompt' | 'steerPrompt'): ScriptedPrompt[] => script.calls(operation).map(({ args }) => {
     const [agent, prompt, promptOptions] = args as [Agent, string, SendPromptOptions | undefined];
     return { agent, prompt, options: promptOptions };
