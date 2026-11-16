@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
+import { scriptedDriver, type ScriptedPrompt } from './support/scripted-driver';
 
 describe('AppBackendServer Visualize workflow', () => {
   it('saves a repository visualization without opening Visualize or sending a prompt', async () => {
-    const { agentId, server, snapshot, sendPrompt } = setup();
+    const { agentId, server, snapshot, sentPrompts } = setup();
     const agent = snapshot.agents.at(-1)!;
     agent.workspace = { kind: 'git', folder: '/repo', repositoryRoot: '/repo', primaryWorktreeRoot: '/repo', repositoryName: 'repo', branch: 'main', isLinkedWorktree: false, updatedAt: '' };
     try {
@@ -18,7 +17,7 @@ describe('AppBackendServer Visualize workflow', () => {
       expect(result).toHaveProperty('result');
       expect(snapshot.repositoryVisualizations?.['/repo']).toMatchObject([{ title: 'Review map' }]);
       expect(agent.visualize).toBeUndefined();
-      expect(sendPrompt).not.toHaveBeenCalled();
+      expect(sentPrompts()).toHaveLength(0);
     } finally { await server.close(); }
   });
 
@@ -37,11 +36,11 @@ describe('AppBackendServer Visualize workflow', () => {
   });
 
   it('requests one synchronous visualization choice on first entry and only opens the pane on reentry', async () => {
-    const { agentId, sendPrompt, server, snapshot } = setup();
+    const { agentId, sentPrompts, server, snapshot } = setup();
 
     await request(server, { agentId });
-    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
-    const startPrompt = sendPrompt.mock.calls[0][1];
+    await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
+    const startPrompt = sentPrompts()[0]!.prompt;
     expect(startPrompt).toMatch(/one synchronous, single-select question with exactly three/u);
     expect(startPrompt).toContain('existing Other');
     expect(startPrompt).toMatch(/Do not browse,[\s\S]*background research/u);
@@ -51,16 +50,16 @@ describe('AppBackendServer Visualize workflow', () => {
     });
 
     await request(server, { agentId });
-    expect(sendPrompt).toHaveBeenCalledTimes(1);
+    expect(sentPrompts()).toHaveLength(1);
     await server.close();
   });
 
   it('starts /visualize with a direction by creating a visualization directly', async () => {
-    const { agentId, sendPrompt, server, snapshot } = setup();
+    const { agentId, sentPrompts, server, snapshot } = setup();
 
     await request(server, { agentId, input: { prompt: 'the architecture of the feature' } });
-    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
-    const startPrompt = sendPrompt.mock.calls[0][1];
+    await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
+    const startPrompt = sentPrompts()[0]!.prompt;
     expect(startPrompt.slice(0, startPrompt.indexOf('<context>')).trim()).toBe('Visualize the architecture of the feature.');
     expect(startPrompt).toContain('Create one visualization for this request');
     expect(startPrompt).toContain('Do not suggest visualizations first');
@@ -70,7 +69,7 @@ describe('AppBackendServer Visualize workflow', () => {
   });
 
   it.each([false, true])('requests a fresh choice with an existing library (pane open: %s) without changing its canvas', async isOpen => {
-    const { agentId, sendPrompt, server, snapshot } = setup();
+    const { agentId, sentPrompts, server, snapshot } = setup();
     const visualization = {
       id: 'existing-map', title: 'User-edited map', content: { kind: 'mermaid' as const, source: 'flowchart LR; A --> B' },
       canvas: { revision: 2, elements: [], files: {}, selectedElementIds: [], preview: '' },
@@ -83,18 +82,18 @@ describe('AppBackendServer Visualize workflow', () => {
     };
     try {
       await request(server, { agentId, input: { choose: true } });
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
-      expect(sendPrompt.mock.calls[0][1]).toMatch(/one synchronous, single-select question with exactly three/u);
+      await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
+      expect(sentPrompts()[0]!.prompt).toMatch(/one synchronous, single-select question with exactly three/u);
       expect(snapshot.agents.at(-1)?.visualize).toMatchObject({
         isOpen: true, visualizations: [visualization], selectedVisualizationId: visualization.id,
       });
       await request(server, { agentId });
-      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      expect(sentPrompts()).toHaveLength(1);
     } finally { await server.close(); }
   });
 
   it('requests a choice when reopening a closed empty pane and clears stale cards', async () => {
-    const { agentId, sendPrompt, server, snapshot } = setup();
+    const { agentId, sentPrompts, server, snapshot } = setup();
     snapshot.agents.at(-1)!.visualize = {
       id: 'visualize-closed',
       conversationRef: null,
@@ -107,9 +106,9 @@ describe('AppBackendServer Visualize workflow', () => {
     };
 
     await request(server, { agentId });
-    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
 
-    expect(sendPrompt.mock.calls[0][1]).toMatch(/one synchronous, single-select question with exactly three/u);
+    expect(sentPrompts()[0]!.prompt).toMatch(/one synchronous, single-select question with exactly three/u);
     expect(snapshot.agents.at(-1)?.visualize).toMatchObject({ isOpen: true, suggestions: [] });
     await server.close();
   });
@@ -117,7 +116,7 @@ describe('AppBackendServer Visualize workflow', () => {
 
 function setup(): {
   agentId: string;
-  sendPrompt: ReturnType<typeof vi.fn>;
+  sentPrompts: () => ScriptedPrompt[];
   server: AppBackendServer;
   snapshot: ReturnType<typeof createTestSnapshot>;
 } {
@@ -128,27 +127,15 @@ function setup(): {
   };
   snapshot.agents.push(agent);
   snapshot.teams[0].agentIds.push(agent.id);
-  const sendPrompt = vi.fn().mockResolvedValue({
-    providerSession: { kind: 'codex' as const, conversationId: 'thread-visualize' },
-    turnId: 'turn-visualize',
-  });
-  const driver: AgentProviderDriver = {
-    provider: 'codex',
-    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => codexProviderCapabilities,
-    sendPrompt,
-    interrupt: vi.fn(),
-    respondToAgentRequest: vi.fn(),
-    onEvent: () => () => undefined,
-    close: vi.fn(),
-  };
+  const { driver, script, sentPrompts } = scriptedDriver('codex');
+  script.on('sendPrompt', () => ({ providerSession: { kind: 'codex' as const, conversationId: 'thread-visualize' }, turnId: 'turn-visualize' }));
   const server = new AppBackendServer({
     version: 'test',
     snapshot,
     driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
     saveSnapshot: vi.fn().mockResolvedValue(undefined),
   });
-  return { agentId: agent.id, sendPrompt, server, snapshot };
+  return { agentId: agent.id, sentPrompts, server, snapshot };
 }
 
 async function request(server: AppBackendServer, params: unknown): Promise<void> {
