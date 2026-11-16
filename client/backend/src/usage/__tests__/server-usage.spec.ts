@@ -9,7 +9,8 @@ import { openTelemetryConsent } from "../../telemetry/__tests__/settings-fixture
 import { UsageService } from "../usage-service";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
-import type { AgentProviderDriver, BackendEvent } from "@workspace/core/provider-driver";
+import type { BackendEvent } from "@workspace/core/provider-driver";
+import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 import { defaultProviderCapabilities } from "@workspace/core/provider-capabilities";
 import { ProviderDriverRpc } from "../../driver-rpc";
 import { requestAppBackend } from "@workspace/core/backend-protocol/rpc";
@@ -402,14 +403,14 @@ it.each([false, true])('persists shutdown observations before closing the ledger
     const emit = (phase: ExecutionObservation['phase'], turnId = observation.turnId) => observations.forEach(listener => listener({ ...observation, turnId, phase, requestCoverage: 'complete' }));
     const emitRequest = (value = request) => requests.forEach(listener => listener(value));
     const emitEvent = () => events.forEach(listener => listener({ agentId: provider, type: 'agent.statusChanged', payload: { type: 'idle' } }));
-    const driver: AgentProviderDriver = {
-      provider: provider, getRuntimeStatus: () => ({ provider: provider, status: 'running' }), getCapabilities: () => defaultProviderCapabilities(provider),
-      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
-      onUsage: listener => { observations.add(listener); return () => { observations.delete(listener); }; },
-      onRequestUsage: listener => { requests.add(listener); return () => { requests.delete(listener); }; },
-      onEvent: listener => { events.add(listener); return () => { events.delete(listener); }; },
+    // The real driver, with usage observation and shutdown laid over it at the contract the server drives: the test controls their order.
+    const { driver } = scriptedDriver(provider);
+    Object.assign(driver, {
+      onUsage: (listener: (observation: ExecutionObservation) => void) => { observations.add(listener); return () => { observations.delete(listener); }; },
+      onRequestUsage: (listener: (value: typeof request) => void) => { requests.add(listener); return () => { requests.delete(listener); }; },
+      onEvent: (listener: (event: BackendEvent) => void) => { events.add(listener); return () => { events.delete(listener); }; },
       close: async () => { entered(); await gate; emit('interrupted'); if (provider === 'codex') emitRequest(); emitEvent(); if (failFirst && provider === 'codex') throw closingError; },
-    };
+    });
     return { driver, release, closing, emit, emitRequest, emitEvent, request };
   };
   const first = makeDriver('codex'), last = makeDriver('claude');

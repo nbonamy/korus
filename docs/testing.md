@@ -313,9 +313,12 @@ mapping run through production code and only the provider's replies are scripted
 - Wait on observable conditions (`vi.waitFor`), never microtask counts: the real driver
   takes more asynchronous steps than a stub.
 - Turn and request state that must follow engine frames belongs to the SDK-level
-  scripted fixtures above. Tests of the RPC over arbitrary drivers (`driver-rpc.spec.ts`,
-  shutdown and usage observation) and of a host itself (`cursor`, `claude`, `codex`) keep
-  purpose-built fakes: a real driver would have every behavior overridden.
+  scripted fixtures above. A host's own tests (`cursor`, `claude`, `codex`) drive that host
+  with SDK-shaped fixtures and have no driver double at all.
+- A driver of an unusual shape (advertising nothing, missing an operation, observing usage
+  in a chosen order) is the real driver with that shape assigned over it, as in
+  `driver-rpc.spec.ts` and `server-usage.spec.ts`; an operation a harness lacks is assigned
+  `undefined`.
 - When a test double is replaced, mutate the production lines the old test covers and
   confirm the new test fails for every mutant the old one caught; a gap means the
   replacement lost coverage, and a real-driver failure the old double hid is a product

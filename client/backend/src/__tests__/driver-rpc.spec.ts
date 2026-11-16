@@ -9,6 +9,7 @@ import type { Agent } from '@workspace/core/contracts';
 import { defaultGeneralSettings } from '@workspace/core/settings';
 import { ProviderDriverRpc, createProviderDriver } from '../driver-rpc';
 import { codexOptions } from './support/codex-options';
+import { scriptedDriver } from './support/scripted-driver';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { MISSION_COMMAND_PROMPT } from '../agents/mission-command';
@@ -292,7 +293,8 @@ describe('ProviderDriverRpc', () => {
     const limits = { limitId: 'claude', limitName: null, primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: null }, secondary: null, credits: null, individualLimit: null, planType: null, rateLimitReachedType: null };
     const getAccountRateLimits = vi.fn().mockResolvedValue(limits);
     const claude = createDriver({ provider: 'claude', getAccountRateLimits });
-    const codex = createDriver();
+    // A harness that reports no account usage of its own: the server falls back to what it last saw.
+    const codex = createDriver({ getAccountRateLimits: undefined });
     const rpc = new ProviderDriverRpc(new Map([['claude', claude], ['codex', codex]]));
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: rpc });
     try {
@@ -840,24 +842,22 @@ describe('ProviderDriverRpc', () => {
   });
 });
 
+/**
+ * The real driver over a scripted provider. This spec tests the RPC over drivers that advertise nothing by default,
+ * so what the driver reports is laid over it at the contract the RPC calls, and the provider's replies are scripted.
+ */
 function createDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
-  return {
-    provider: 'codex',
-    getRuntimeStatus: vi.fn().mockReturnValue({ provider: 'codex', status: 'running' }),
-    getCapabilities: vi.fn().mockReturnValue({}),
-    sendPrompt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'thread-send' },
-      turnId: 'turn-send',
-    }),
-    interrupt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
-      turnId: 'turn-interrupt',
-    }),
-    respondToAgentRequest: vi.fn().mockResolvedValue(undefined),
-    onEvent: vi.fn().mockReturnValue(() => undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
+  const { coordinationPolicy, ...contract } = overrides;
+  const provider = overrides.provider ?? 'codex';
+  const { driver, script } = scriptedDriver(provider, undefined, coordinationPolicy ? { coordinationPolicy } : {});
+  const session = (conversationId: string) => ({ kind: provider, conversationId, ...(provider === 'claude' ? { transport: 'stdio' as const } : {}) });
+  script.on('sendPrompt', () => ({ providerSession: session('thread-send'), turnId: 'turn-send' }));
+  script.on('interrupt', () => ({ providerSession: session('thread-interrupt'), turnId: 'turn-interrupt' }));
+  vi.spyOn(driver, 'sendPrompt');
+  vi.spyOn(driver, 'interrupt');
+  vi.spyOn(driver, 'respondToAgentRequest');
+  vi.spyOn(driver, 'close');
+  return Object.assign(driver, { getCapabilities: vi.fn().mockReturnValue({}), ...contract });
 }
 
 function createAgent(): Agent {
