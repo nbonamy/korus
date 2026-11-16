@@ -9,6 +9,7 @@ import { codexProviderCapabilities } from '@workspace/core/provider-capabilities
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
   createTestSnapshot,
@@ -471,21 +472,11 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.agents = [agent];
     snapshot.activeAgentId = agent.id;
-    const releaseConversation = vi.fn();
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
+    const { driver } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    // The real driver, watched at the contract the server calls it through.
+    const releaseConversation = vi.spyOn(driver, 'releaseConversation');
+    const archiveAgentConversation = vi.spyOn(driver, 'archiveAgentConversation');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      releaseConversation,
-      archiveAgentConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
@@ -523,27 +514,13 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.agents = [agent];
     snapshot.activeAgentId = agent.id;
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const deleteAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: agent.providerSession }),
-      interrupt: async () => ({ providerSession: agent.providerSession }),
-      respondToAgentRequest: async () => undefined,
-      releaseConversation: vi.fn(),
-      archiveAgentConversation,
-      ...(withDelete ? { deleteAgentConversation } : {}),
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true, conversationDelete: withDelete }, ...(withDelete ? {} : { unsupported: ['deleteAgentConversation'] as const }) });
     const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined), driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'close-chat', method: backendMethods.agentDelete, params: { agentId: agent.id } });
 
-      expect(deleteAgentConversation).toHaveBeenCalledTimes(expected === 'delete' ? 1 : 0);
-      expect(archiveAgentConversation).toHaveBeenCalledTimes(expected === 'archive' ? 1 : 0);
+      expect(script.calls('deleteAgentConversation')).toHaveLength(expected === 'delete' ? 1 : 0);
+      expect(script.calls('archiveAgentConversation')).toHaveLength(expected === 'archive' ? 1 : 0);
       expect(snapshot.agents).toStrictEqual([]);
     } finally { await server.close(); }
   });
@@ -1036,13 +1013,10 @@ describe('closing an agent whose turn is running', () => {
     snapshot.agents.push(running);
     snapshot.teams[0]!.agentIds.push(running.id);
     const order: string[] = [];
-    const driver = {
-      provider: 'codex', getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(() => ({ conversationArchive: true }) as never),
-      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-      interrupt: vi.fn(async () => { order.push('interrupt'); return { providerSession: running.providerSession }; }),
-      archiveAgentConversation: vi.fn(async () => { order.push('archive'); }),
-      releaseConversation: vi.fn(async () => { order.push('release'); }),
-    } satisfies AgentProviderDriver;
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    script.on('interrupt', () => { order.push('interrupt'); return { providerSession: running.providerSession }; });
+    script.on('archiveAgentConversation', () => { order.push('archive'); });
+    script.on('releaseConversation', () => { order.push('release'); });
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'close', method: backendMethods.agentDelete, params: { agentId: 'reviewer' } });
