@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import { createMission } from '@workspace/core/missions';
 import {
   createTestSnapshot,
@@ -110,20 +109,8 @@ describe('AppBackendServer', () => {
       color: '#7158D4',
       agentIds: [],
     });
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const releaseConversation = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: agent.providerSession }),
-      interrupt: async () => ({ providerSession: agent.providerSession }),
-      respondToAgentRequest: async () => undefined,
-      archiveAgentConversation,
-      releaseConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script, admit } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    await admit(agent);
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
@@ -142,8 +129,10 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(archiveAgentConversation).toHaveBeenCalledWith(agent);
-    expect(releaseConversation).toHaveBeenCalledWith(agent.id);
+    expect(script.calls('archiveAgentConversation')).toHaveLength(1);
+    expect((script.calls('archiveAgentConversation')[0]!.args[0] as { id: string }).id).toBe(agent.id);
+    expect(script.calls('releaseConversation')).toHaveLength(1);
+    expect(script.calls('releaseConversation')[0]!.args[0]).toBe(agent.id);
     await server.close();
   });
 
