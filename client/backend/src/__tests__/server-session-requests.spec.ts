@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
-import { claudeProviderCapabilities, codexProviderCapabilities, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import {
   createTestSnapshot,
   createThreadGoal,
@@ -17,19 +18,19 @@ describe('AppBackendServer', () => {
     const agent: Agent = { id: 'plan-agent', teamId: 'team-test', name: 'Plan', folder: '/synthetic', provider: 'claude', providerSession: { kind: 'claude', conversationId: 'session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' };
     snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.providerConnections = [{ provider: 'claude', installed: true, connected: true, checking: false }];
-    let publish!: (event: BackendEvent) => void;
+    const { driver, script, admit } = scriptedDriver('claude');
+    await admit(agent);
     const identity = { provider: 'claude' as const, agentId: agent.id, conversationId: 'session', turnId: 'turn' };
     const proposal = (id: string) => {
-      publish({ ...identity, type: 'agentRequest.created', payload: { request: { id, conversationId: 'session', turnId: 'turn', kind: 'toolConfirmation', confirmation: { toolName: 'native_plan', integrationId: 'fixture', integrationName: 'Fixture', summary: 'Review plan', argumentsPreview: '# Plan' } } } });
-      publish({ ...identity, type: 'plan.readyForReview', payload: { markdown: '# Plan', itemId: id, requestId: id } });
+      script.emit({ ...identity, type: 'agentRequest.created', payload: { request: { id, conversationId: 'session', turnId: 'turn', kind: 'toolConfirmation', confirmation: { toolName: 'native_plan', integrationId: 'fixture', integrationName: 'Fixture', summary: 'Review plan', argumentsPreview: '# Plan' } } } });
+      script.emit({ ...identity, type: 'plan.readyForReview', payload: { markdown: '# Plan', itemId: id, requestId: id } });
     };
-    const respondToAgentRequest = vi.fn<AgentProviderDriver['respondToAgentRequest']>(async response => {
-      publish({ ...identity, type: 'agentRequest.resolved', payload: { id: response.id, outcome: response.outcome } });
+    script.on('respondToAgentRequest', async (response: { id: string; outcome: unknown }) => {
+      script.emit({ ...identity, type: 'agentRequest.resolved', payload: { id: response.id, outcome: response.outcome } } as never);
       if (resolution === 'revise') proposal('revised-request');
     });
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: agent.providerSession, turnId: 'unexpected-prompt' });
-    const driver: AgentProviderDriver = { provider: 'claude', getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }), getCapabilities: () => claudeProviderCapabilities,
-      respondToAgentRequest, sendPrompt, interrupt: vi.fn(), onEvent: listener => { publish = listener; return () => {}; }, close: async () => {} };
+    const respondToAgentRequest = vi.spyOn(driver, 'respondToAgentRequest');
+    const sendPrompt = vi.spyOn(driver, 'sendPrompt');
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['claude', driver]])) });
     try {
       proposal('native-request');
@@ -49,18 +50,8 @@ describe('AppBackendServer', () => {
 
   it('reconciles unowned Codex conversations once before serving snapshots', async () => {
     const snapshot = createTestSnapshot();
-    const reconcileConversations = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
-      respondToAgentRequest: async () => undefined,
-      reconcileConversations,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver } = scriptedDriver('codex');
+    const reconcileConversations = vi.spyOn(driver, 'reconcileConversations');
     const server = new AppBackendServer({
       version: 'test-version', snapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -83,20 +74,10 @@ describe('AppBackendServer', () => {
       providerSession: { kind: 'codex', conversationId: 'thread-current' }, status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const releaseConversation = vi.fn();
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    script.on('archiveAgentConversation', () => { throw new Error('Archive failed'); });
+    const releaseConversation = vi.spyOn(driver, 'releaseConversation');
     const saveSnapshot = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-current' } }),
-      respondToAgentRequest: async () => undefined,
-      archiveAgentConversation: async () => { throw new Error('Archive failed'); },
-      releaseConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version', snapshot, saveSnapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -125,21 +106,10 @@ describe('AppBackendServer', () => {
       providerSession: oldSession, status: { type: 'idle' },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const resumeConversation = vi.fn()
-      .mockResolvedValueOnce({ providerSession: newSession })
-      .mockResolvedValueOnce({ providerSession: oldSession });
-    const driver: AgentProviderDriver = {
-      provider: provider,
-      getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
-      getCapabilities: () => defaultProviderCapabilities(provider),
-      sendPrompt: async () => ({ providerSession: oldSession }),
-      interrupt: async () => ({ providerSession: oldSession }),
-      respondToAgentRequest: async () => undefined,
-      resumeConversation,
-      reconcileConversations: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, respondOnce } = scriptedDriver(provider);
+    respondOnce('resumeConversation', () => ({ providerSession: newSession }));
+    respondOnce('resumeConversation', () => ({ providerSession: oldSession }));
+    const resumeConversation = vi.spyOn(driver, 'resumeConversation');
     const server = new AppBackendServer({
       version: 'test-version', snapshot, saveSnapshot: vi.fn().mockRejectedValue(new Error('Disk full')),
       driverRpc: new ProviderDriverRpc(new Map([[provider, driver]])),
@@ -178,30 +148,18 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const releaseConversation = vi.fn();
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    script.on('resumeConversation', () => ({ providerSession: { kind: 'codex', conversationId: 'thread-new' } }));
+    script.on('executeScopedPrompt', () => ({ text: 'Summary', session: { kind: 'codex', conversationId: 'thread-test' } }));
+    script.on('sendPrompt', () => ({ providerSession: { kind: 'codex', conversationId: 'thread-compressed' } }));
+    script.on('loadConversation', () => ({ kind: 'codex', conversationId: 'thread-test' }));
+    const releaseConversation = vi.spyOn(driver, 'releaseConversation');
     const archivedAgents: unknown[] = [];
-    const archiveAgentConversation = vi.fn(async (agent) => { archivedAgents.push(structuredClone(agent)); });
-    const resumeConversation = vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'thread-new' },
-    });
-    const summarize = vi.fn().mockResolvedValue({ text: 'Summary', session: { kind: 'codex', conversationId: 'thread-test' } });
-    const startSeeded = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-compressed' } });
-    const setConversationTitle = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: startSeeded,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      releaseConversation,
-      archiveAgentConversation,
-      executeScopedPrompt: summarize, loadConversation: async () => ({ kind: 'codex', conversationId: 'thread-test' }),
-      resumeConversation,
-      setConversationTitle,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const archiveAgent = driver.archiveAgentConversation!.bind(driver);
+    driver.archiveAgentConversation = async agent => { archivedAgents.push(structuredClone(agent)); return archiveAgent(agent); };
+    const resumeConversation = vi.spyOn(driver, 'resumeConversation');
+    const startSeeded = vi.spyOn(driver, 'sendPrompt');
+    const setConversationTitle = vi.spyOn(driver, 'setConversationTitle');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -296,6 +254,7 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['agent-dina', 'agent-jesse'] } } };
+    // A hand-written driver on purpose: it reports the forked conversation as already working, a contract the real driver never reports.
     const forkConversation = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', conversationId: 'thread-forked' },
       activeTurnId: 'turn-forked',
@@ -372,33 +331,23 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const goal = createThreadGoal('thread-goal', 'Ship the goal shelf');
-    const setConversationTitle = vi.fn().mockResolvedValue(undefined);
-    const setGoal = vi.fn().mockResolvedValue({
+    const { driver, script } = scriptedDriver('codex');
+    script.on('setGoal', () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       goal,
-    });
-    const clearGoal = vi.fn().mockResolvedValue({
+    }));
+    script.on('clearGoal', () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-goal' },
       cleared: true,
-    });
-    const setPermissionMode = vi.fn().mockResolvedValue({
+    }));
+    for (const operation of ['setPermissionMode', 'setApprovalPreset'] as const) script.on(operation, () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-approval' },
       providerDefaults: { kind: 'codex', permission: 'approve-for-me' },
-    });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      clearGoal,
-      setPermissionMode,
-      setConversationTitle,
-      setGoal,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    }));
+    const setConversationTitle = vi.spyOn(driver, 'setConversationTitle');
+    const setGoal = vi.spyOn(driver, 'setGoal');
+    const clearGoal = vi.spyOn(driver, 'clearGoal');
+    const setPermissionMode = vi.spyOn(driver, 'setPermissionMode');
     const events: unknown[] = [];
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
@@ -476,20 +425,11 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const setPermissionMode = vi.fn().mockResolvedValue({
+    const { driver, script } = scriptedDriver('claude');
+    script.on('setPermissionMode', () => ({
       providerDefaults: { kind: 'claude', model: 'sonnet', permission: 'bypassPermissions' },
-    });
-    const driver: AgentProviderDriver = {
-      provider: 'claude',
-      getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }),
-      getCapabilities: () => claudeProviderCapabilities,
-      setPermissionMode,
-      sendPrompt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
-      interrupt: async () => ({ providerSession: { kind: 'claude', conversationId: 'session-test', transport: 'stdio' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    }));
+    const setPermissionMode = vi.spyOn(driver, 'setPermissionMode');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -533,25 +473,17 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const steerPrompt = vi.fn().mockResolvedValue({
+    const { driver, script } = scriptedDriver('codex');
+    script.on('steerPrompt', () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-steer' },
       turnId: 'turn-steer',
-    });
-    const interrupt = vi.fn().mockResolvedValue({
+    }));
+    script.on('interrupt', () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-interrupt' },
       turnId: 'turn-interrupt',
-    });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt,
-      respondToAgentRequest: async () => undefined,
-      steerPrompt,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    }));
+    const steerPrompt = vi.spyOn(driver, 'steerPrompt');
+    const interrupt = vi.spyOn(driver, 'interrupt');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -608,16 +540,8 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: vi.fn().mockRejectedValue(new Error('no active turn')),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script } = scriptedDriver('codex');
+    script.on('interrupt', () => { throw new Error('no active turn'); });
     const events: unknown[] = [];
     const server = new AppBackendServer({
       version: 'test-version',
@@ -661,21 +585,12 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const deleteTurn = vi.fn().mockResolvedValue({
+    const { driver, script } = scriptedDriver('codex');
+    script.on('deleteTurn', () => ({
       providerSession: { kind: 'codex', conversationId: 'thread-rollback' },
       activeTurnId: null,
-    });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      deleteTurn,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    }));
+    const deleteTurn = vi.spyOn(driver, 'deleteTurn');
     const events: unknown[] = [];
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
