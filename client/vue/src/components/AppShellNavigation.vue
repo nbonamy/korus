@@ -33,7 +33,7 @@
     @select-team="selectTeamFromRail"
     @toggle-speech-mute="$emit('toggle-speech-mute')"
   />
-  <PaneTransition>
+  <PaneTransition :fade="false">
     <AgentSidebar
       ref="agentSidebar"
       v-if="showAgentSidebar"

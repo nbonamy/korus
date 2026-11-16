@@ -6,8 +6,8 @@ import PaneTransition from '../PaneTransition.vue';
 // Isolate the transition because shell tests stub Vue transitions. Protect delayed
 // removal, completion of expansion, and cancelling a collapse before it finishes.
 const Harness = defineComponent({
-  props: { open: Boolean },
-  setup: props => () => h('div', [h(PaneTransition, null, {
+  props: { open: Boolean, fade: { type: Boolean, default: true } },
+  setup: props => () => h('div', [h(PaneTransition, { fade: props.fade }, {
     default: () => props.open ? h('aside', { style: { flexBasis: '260px', width: '260px', minWidth: '200px' } }, 'Pane content') : null,
   })]),
 });
@@ -36,5 +36,17 @@ describe('PaneTransition', () => {
     expect(wrapper.findAll('aside')).toHaveLength(1);
     expect(getComputedStyle(wrapper.get('aside').element).minWidth).toBe('200px');
     expect(wrapper.get('aside').attributes('style')).toContain('min-width: 200px');
+  });
+
+  it('fades a collapsing pane unless it is translucent, where fading would reveal the window behind it', async () => {
+    vi.useFakeTimers();
+    for (const [fade, opacity] of [[true, '0'], [false, '']] as const) {
+      const wrapper = mount(Harness, { props: { open: true, fade }, attachTo: document.body, global: { stubs: { transition: false } } });
+      await wrapper.setProps({ open: false });
+      await vi.advanceTimersByTimeAsync(40);
+      expect(getComputedStyle(wrapper.get('aside').element).opacity, `fade=${fade}`).toBe(opacity);
+      await vi.runAllTimersAsync();
+      wrapper.unmount();
+    }
   });
 });
