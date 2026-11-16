@@ -98,7 +98,7 @@ function selectTab(tab: string): void {
 }
 
 .settings-sidebar :deep(.el-menu-item:hover) {
-  background: var(--color-surface-high);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 .settings-sidebar :deep(.el-menu-item .provider-icon) {

@@ -62,6 +62,7 @@ function applyAgentUiThemeTokens(
     '--agent-ui-primary-color': colors['--color-primary'],
     '--agent-ui-secondary-color': colors['--color-secondary'],
     '--agent-ui-shell-main-color': shellMain,
+    '--agent-ui-shell-sidebar-color': appearance === 'dark' ? colors['--color-surface-lowest'] : colors['--color-surface-low'],
     '--agent-ui-strong-border-color': colors['--color-outline'],
     '--agent-ui-surface-color': colors['--color-surface-lowest'],
     '--agent-ui-surface-high-color': colors['--color-surface-high'],

@@ -361,7 +361,7 @@
 }
 
 .agent-sidebar__agent--active {
-  background: color-mix(in srgb, var(--color-surface-base) 72%, transparent);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 .agent-sidebar__status {
