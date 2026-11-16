@@ -293,7 +293,7 @@ describe('AppBackendServer', () => {
         params: { input: { id: agentId, name: 'Dina Backend' } },
       })).resolves.toMatchObject({
         result: {
-          agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir }],
+          agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir, status: { type: 'idle' } }],
         },
       });
       const selection = { provider: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null };
