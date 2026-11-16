@@ -3,8 +3,6 @@ import type { Agent } from '@workspace/core/contracts';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { scriptedDriver } from './support/scripted-driver';
 import {
@@ -254,24 +252,14 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     snapshot.clientPreferences = { desktop: { agentOrderByTeam: { 'team-test': ['agent-dina', 'agent-jesse'] } } };
-    // A hand-written driver on purpose: it reports the forked conversation as already working, a contract the real driver never reports.
+    // The real driver with the fork result laid over it at the contract the server calls: the real driver never reports a forked conversation as already working.
+    const { driver } = scriptedDriver('codex');
     const forkConversation = vi.fn().mockResolvedValue({
       providerSession: { kind: 'codex', conversationId: 'thread-forked' },
       activeTurnId: 'turn-forked',
     });
-    const setConversationTitle = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      forkConversation,
-      setConversationTitle,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    Object.assign(driver, { forkConversation });
+    const setConversationTitle = vi.spyOn(driver, 'setConversationTitle');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',

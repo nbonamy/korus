@@ -1986,25 +1986,10 @@ describe('AppMcpService', () => {
 
 });
 
-/** A hand-written driver for tests of contract-level absence: a method it lacks, or a capability without its method. */
+/** The real driver without the optional operations these tests treat as absent (steering, worktree forks), plus the behavior a test supplies. */
 function createFakeDriver(overrides: Partial<AgentProviderDriver> = {}): AgentProviderDriver {
-  return {
-    provider: 'codex',
-    getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'thread-test' },
-      turnId: 'turn-test',
-    }),
-    interrupt: vi.fn().mockResolvedValue({
-      providerSession: { kind: 'codex', conversationId: 'thread-test' },
-      turnId: 'turn-test',
-    }),
-    respondToAgentRequest: vi.fn().mockResolvedValue(undefined),
-    onEvent: vi.fn().mockReturnValue(() => undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
+  const { driver } = scriptedDriver(overrides.provider ?? 'codex');
+  return Object.assign(driver, { steerPrompt: undefined, forkWorktreeConversation: undefined, ...overrides });
 }
 
 /** The real driver over a scripted provider, with the contract-level behavior a test supplies laid over it. */
