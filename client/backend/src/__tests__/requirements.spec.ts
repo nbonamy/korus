@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
+import type { BackendEvent } from '@workspace/core/provider-driver';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import type { ProviderModelOption } from '@workspace/core/contracts';
 import { loadRequirements } from '../requirements';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
+import { scriptedDriver } from './support/scripted-driver';
 
 const homes: string[] = [];
 afterEach(async () => { await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true }))); });
@@ -45,17 +45,14 @@ describe('host requirements', () => {
       { id: 'sol', model: 'gpt-6-sol', displayName: 'Sol', isDefault: true },
       { id: 'luna', model: 'gpt-6-luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ];
-    const emitters = new Map<string, (event: BackendEvent) => void>();
-    const unexpectedExecution = async (): Promise<never> => { throw new Error('Catalog reads must not execute a turn.'); };
-    const drivers = new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(provider => [provider, {
-      provider: provider,
-      getRuntimeStatus: () => ({ provider: provider, status: 'running' }),
-      getCapabilities: () => defaultProviderCapabilities(provider),
-      sendPrompt: unexpectedExecution, interrupt: unexpectedExecution, respondToAgentRequest: unexpectedExecution,
-      listModels: async () => models,
-      onEvent: (listener: (event: BackendEvent) => void) => { emitters.set(provider, listener); return () => {}; },
-      close: async () => {},
-    } satisfies AgentProviderDriver] as const));
+    const unexpectedExecution = () => { throw new Error('Catalog reads must not execute a turn.'); };
+    const scripted = new Map((['codex', 'claude', 'antigravity', 'cursor'] as const).map(provider => {
+      const entry = scriptedDriver(provider);
+      entry.script.on('listModels', () => models);
+      for (const operation of ['sendPrompt', 'interrupt', 'respondToAgentRequest'] as const) entry.script.on(operation, unexpectedExecution);
+      return [provider, entry] as const;
+    }));
+    const drivers = new Map([...scripted].map(([provider, entry]) => [provider, entry.driver] as const));
     const rpc = new ProviderDriverRpc(drivers, undefined, undefined, undefined, requirements);
     const events: BackendEvent[] = [];
     rpc.onEvent(event => events.push(event));
@@ -63,7 +60,7 @@ describe('host requirements', () => {
     try {
       for (const [provider, expected] of [['codex', filtered], ['claude', []], ['antigravity', models], ['cursor', filtered]] as const) {
         await expect(rpc.handle(backendMethods.driverModelsList, { agent: { id: 'agent', provider: provider } })).resolves.toStrictEqual(expected);
-        emitters.get(provider)!({ type: 'models.changed', provider: provider, payload: { models } });
+        scripted.get(provider)!.script.emit({ type: 'models.changed', provider, payload: { models } });
         expect(events.at(-1)).toStrictEqual({ type: 'models.changed', provider: provider, payload: { models: expected } });
       }
       expect(models[0]!.isDefault).toBe(true);
