@@ -158,7 +158,7 @@ it("includes every retained execution beyond 10,000 in totals and model breakdow
   } finally {
     await ledger.close();
   }
-}, 3_000);
+}, 10_000); // Inserts more than 10,000 retained executions; the full suite runs in parallel.
 
 it("persists only statistics in SQLite and replaces late measurements without inflating daily totals", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "local-analytics-"));
