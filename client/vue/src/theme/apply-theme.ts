@@ -19,6 +19,9 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.dataset.theme = theme.appearance;
   root.dataset.effectiveAppearance = theme.appearance;
   root.dataset.appTheme = theme.id;
+  const custom = settings.skin?.id === theme.id;
+  if (custom) root.dataset.skin = theme.id;
+  else delete root.dataset.skin;
   root.classList.toggle('dark', theme.appearance === 'dark');
   root.style.colorScheme = theme.appearance;
   for (const token of appliedColorTokens) if (!(token in theme.colors)) root.style.removeProperty(token);
@@ -48,9 +51,8 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.style.setProperty('--code-font-size', `${settings.codeFontSize}px`);
   applyAgentUiThemeTokens(root, theme.colors, theme.appearance);
   // Imported themes specify independent shell/message roles and may override aliases.
-  const custom = settings.skin?.id === theme.id;
   if (custom) for (const [token, value] of Object.entries(theme.colors)) root.style.setProperty(token, value);
-  applySkinCss(theme.css, custom);
+  applySkinCss(custom ? theme.css : undefined);
 }
 
 function applyAgentUiThemeTokens(

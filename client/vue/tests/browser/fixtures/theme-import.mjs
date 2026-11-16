@@ -35,9 +35,9 @@ configureAppClient({platform:'web',api:{
  }
 }});
 watchEffect(()=>applyAppTheme(settings));
-createApp({render:()=>h('div',{class:'app-shell',style:'display:flex;height:100vh;background:var(--color-shell-main)'},[
+createApp({render:()=>h('div',{'data-slot':'sidebar-wrapper',class:'app-shell',style:'display:flex;height:100vh;background:var(--color-shell-main)'},[
  h(AgentSidebar,{agents:snapshot.agents,activeAgentId:snapshot.agents[0].id,teamName:'Skin preview'}),
- h('main',{class:'app-shell__content',style:'flex:1;min-width:0;display:flex;flex-direction:column'},[
+ h('main',{'data-slot':'sidebar-inset',class:'app-shell__content',style:'flex:1;min-width:0;display:flex;flex-direction:column'},[
   h('header',{class:'agent-header',style:'height:48px;padding:12px;flex:none'},[
    h(SettingsMenu),
    h(AgentMoreMenu,{agentId:snapshot.agents[0].id,shareAvailable:true}),

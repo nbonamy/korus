@@ -104,7 +104,7 @@ test('renders Pixel-Koi Pond’s embedded SVG background', async () => {
     await chooseSkin(page, 'Pixel-Koi Pond');
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-pixel-koi-pond');
     await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
-    const scene = page.locator('.agent-ui-conversation-pane__layout');
+    const scene = page.locator('[data-agent-ui-surface="content"]');
     await scene.waitFor();
     const image = await scene.evaluate(async el => {
       const url = getComputedStyle(el).backgroundImage.match(/url\("(.*)"\)/s)?.[1];
@@ -174,11 +174,12 @@ test('keeps the sidebar palette beneath skin sidebar images', async () => {
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
     const paint = await page.locator('.agent-sidebar').evaluate(el => {
       const style = getComputedStyle(el);
-      return { image: style.backgroundImage, size: style.backgroundSize, repeat: style.backgroundRepeat };
+      return { image: style.backgroundImage, color: style.backgroundColor, size: style.backgroundSize, repeat: style.backgroundRepeat };
     });
-    assert.match(paint.image, /^radial-gradient\(.*\), linear-gradient\(.*rgb\(13, 16, 11\)/, 'the skin art layers over the sidebar color instead of replacing it');
-    assert.equal(paint.size, '40px 40px, auto');
-    assert.equal(paint.repeat, 'repeat, repeat');
+    assert.match(paint.image, /^radial-gradient\(/, 'the skin supplies the image without an injected host image layer');
+    assert.equal(paint.color, 'rgb(13, 16, 11)', 'the palette supplies the surface beneath the image');
+    assert.equal(paint.size, '40px 40px');
+    assert.equal(paint.repeat, 'repeat');
   });
   assert.deepEqual(errors, []);
 });
@@ -198,13 +199,17 @@ import {normalizeThemeSettings} from '@workspace/core/settings';
 import {applyAppTheme} from '/client/vue/src/theme/apply-theme.ts';
 import {i18n} from '/client/vue/src/i18n/index.ts';
 import ConversationPane from '/client/vue/src/components/ConversationPane.vue';
+import AgentSidebar from '/client/vue/src/components/AgentSidebar.vue';
 const agent=createInitialSnapshot().agents[0];
 const controller=createConversationPaneController({state:{identity:{conversationKey:'skin-host',messages:[
  {id:'a1',agentId:agent.id,role:'assistant',status:'complete',turnId:'t1',createdAt:'2026-11-16T00:00:00Z',parts:[{type:'text',text:'The canvas shows through.'}]}
 ]},composer:{}},actions:{}});
 window.applyTheme=settings=>applyAppTheme(normalizeThemeSettings({uiFontSize:14,chatFontSize:15,codeFontSize:13,...settings}));
 window.applyTheme({id:'app-dark',mode:'dark'});
-createApp({render:()=>h('div',{style:'display:flex;height:100vh'},[h(ConversationPane,{agent,controller})])}).use(i18n).use(ElementPlus).mount('#app');
+createApp({render:()=>h('div',{'data-slot':'sidebar-wrapper',class:'app-shell',style:'display:flex;height:100vh'},[
+ h(AgentSidebar,{agents:[agent],activeAgentId:agent.id,teamName:'Skin preview'}),
+ h(ConversationPane,{agent,controller})
+])}).use(i18n).use(ElementPlus).mount('#app');
 `;
 
 test('keeps a skin canvas image on the app conversation pane and the shell surface without one', async () => {
@@ -224,12 +229,38 @@ test('keeps a skin canvas image on the app conversation pane and the shell surfa
     assert.equal(plain.image, 'none');
     await page.evaluate(() => window.applyTheme({ id: 'custom-moss', mode: 'dark', skin: {
       version: 1, name: 'Moss', appearance: 'dark', colors: { canvas: '#12150f', text: '#e8e2d0' },
-      css: '[data-chat-canvas]{background-image:radial-gradient(circle,#e0a948 0 2px,transparent 3px);background-size:40px 40px}',
+      css: '[data-chat-column] [data-chat-canvas]{--fixture-canvas:rgba(18,21,15,0.25)}[data-chat-canvas]{background-color:var(--fixture-canvas);background-image:radial-gradient(circle,#e0a948 0 2px,transparent 3px);background-size:40px 40px}[data-slot="sidebar"] [data-slot="sidebar-inner"]{--fixture-sidebar:#243020}[data-slot="sidebar-inner"]{background:var(--fixture-sidebar)}',
     } }));
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
     const skinned = await paint();
+    assert.equal(skinned.color, 'rgba(18, 21, 15, 0.25)', 'the host does not force the canvas to be opaque');
+    assert.equal(await page.locator('.agent-sidebar').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(36, 48, 32)', 'sidebar outer and inner hooks remain distinct');
     assert.match(skinned.image, /^radial-gradient\(/, 'the skin canvas image is not reset by host surface styles');
     assert.equal(await canvas.evaluate(el => getComputedStyle(el).backgroundSize), '40px 40px');
+    // Backgrounds may live behind the pane, on the shell or document. Renaming the fixtures keeps this a format contract.
+    for (const [source, alpha] of [[nyx, 189], [starry, 0]]) {
+      const skin = { ...JSON.parse(source.toString()), name: 'Backdrop fixture' };
+      await page.evaluate(skin => window.applyTheme({ id: 'app-dark', mode: 'dark', skin }), skin);
+      const layers = await canvas.evaluate(el => {
+        const ctx = document.createElement('canvas').getContext('2d');
+        const alpha = node => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = getComputedStyle(node).backgroundColor; ctx.fillRect(0, 0, 1, 1); return ctx.getImageData(0, 0, 1, 1).data[3]; };
+        const blockers = [];
+        for (let node = el.querySelector('.chat-message').parentElement; node && !node.classList.contains('app-shell'); node = node.parentElement) {
+          if (node !== el && alpha(node)) blockers.push(node.className);
+        }
+        return { blockers, alpha: alpha(el) };
+      });
+      assert.deepEqual(layers.blockers, [], 'host wrappers must not cover a skin backdrop');
+      assert.equal(layers.alpha, alpha, 'the canvas keeps the opacity authored by the skin');
+    }
+    await page.evaluate(() => window.applyTheme({ id: 'app-dark', mode: 'dark', skin: {
+      version: 1, name: 'Shell backdrop', appearance: 'dark', colors: { canvas: '#12150f' },
+      css: '[data-slot="sidebar-wrapper"]{background-image:linear-gradient(#223,#445)}',
+    } }));
+    assert.match(await page.locator('.app-shell').evaluate(el => getComputedStyle(el).backgroundImage), /^linear-gradient\(/);
+    assert.equal((await paint()).color, 'rgba(0, 0, 0, 0)', 'a shell backdrop needs no explicit canvas clearing in the skin');
+    await page.evaluate(() => window.applyTheme({ id: 'app-dark', mode: 'dark' }));
+    assert.equal((await paint()).color, plain.color, 'removing the skin restores the normal surface');
   });
   assert.deepEqual(errors, []);
 });
@@ -239,6 +270,7 @@ test('keeps Nyx menu surfaces opaque', async () => {
     await mockSkinCatalog(page, [{ slug: 'nyx', name: 'Nyx', body: nyx.toString() }]);
     await chooseSkin(page, 'Nyx');
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-nyx');
+    assert.equal(await page.locator('.agent-sidebar').evaluate(el => getComputedStyle(el).backdropFilter), 'blur(0px) saturate(1)', 'skins use the shared appearance policy');
     await page.locator('.settings-appearance-panel__skin-select .el-select__wrapper').click();
     const menu = page.locator('.el-select__popper:visible');
     await menu.waitFor();
@@ -323,7 +355,8 @@ test('keeps light/dark variants, rejects invalid imports, and prevents skin CSS 
     await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
     const canvas = page.locator('.agent-ui-conversation-pane');
     await canvas.waitFor();
-    assert.equal(await canvas.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(238, 238, 255)');
+    assert.equal(await canvas.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
+    assert.equal(await page.locator('.app-shell').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(238, 238, 255)');
     for (const selector of ['.agent-ui-conversation-pane', '.chat-composer', '.chat-message--user .chat-message__stack']) {
       assert.equal(await page.locator(selector).first().evaluate(el => getComputedStyle(el).backgroundImage), 'none');
     }

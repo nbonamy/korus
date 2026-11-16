@@ -1,6 +1,7 @@
 <template>
   <aside
     class="agent-sidebar"
+    data-slot="sidebar-inner"
     :class="{ 'agent-sidebar--compact': compact }"
     :style="sidebarStyle"
     :aria-label="t('sidebar.agents')"

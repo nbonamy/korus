@@ -1,6 +1,7 @@
 <template>
   <WorkspaceHeader
     class="agent-header"
+    data-chat-header
     :sidebar-collapsed="sidebarCollapsed"
   >
     <SidebarExpandButton

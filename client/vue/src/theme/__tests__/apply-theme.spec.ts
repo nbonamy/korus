@@ -7,6 +7,7 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-effective-appearance');
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-app-theme');
+  document.documentElement.removeAttribute('data-skin');
   document.documentElement.removeAttribute('data-platform');
   document.documentElement.classList.remove('dark');
   document.documentElement.removeAttribute('style');

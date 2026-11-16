@@ -1,5 +1,5 @@
 <template>
-  <div ref="loadTimingRoot" class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+  <div ref="loadTimingRoot" class="conversation-pane" data-chat-column :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
     <TelemetryConsentNotice v-if="appClientPlatform === 'desktop' && keyboardActive" />
     <WorktreeInitializationIndicator :agent="agent" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
@@ -651,7 +651,6 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-shell-main);
 }
 
 .conversation-pane__handoff {
@@ -674,10 +673,8 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   min-height: 0;
 }
 
-/* The SDK pane paints its own surface token while its composer fade ends in the shell color; in dark themes they differ.
-   Only the color: a shorthand would reset the skin canvas image this selector outranks. */
-.conversation-pane .conversation-pane__surface {
-  background-color: var(--color-shell-main);
+@layer app-surfaces {
+  .conversation-pane { background: var(--color-shell-main); }
 }
 
 .conversation-pane__draft-anchor {

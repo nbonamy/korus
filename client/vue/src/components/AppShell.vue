@@ -1,6 +1,7 @@
 <template>
   <main
     class="app-shell"
+    data-slot="sidebar-wrapper"
     :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless, 'app-shell--sidebar-collapsed': agentSidebarCollapsed }"
     @contextmenu.capture="conversationFileActions.capture"
   >
@@ -163,7 +164,7 @@
       aria-hidden="true"
       @click="compactNavOpen = false"
     />
-    <section class="app-shell__content">
+    <section class="app-shell__content" data-slot="sidebar-inset">
       <BackendConnectionBanner :connection-state="connectionState" />
       <header v-if="compactViewport && !isAgentWorkspaceVisible && activeHost !== 'mission'" class="app-shell__compact-bar">
         <SidebarExpandButton :label="t('surface.agentHeader.showAgentSidebar')" @click="expandSidebar" />
@@ -3357,7 +3358,6 @@ watch(() => props.fileActivity, (activity) => {
   min-height: 0;
   overflow: hidden;
   color: var(--color-text);
-  background: var(--color-shell-window);
 }
 
 .app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
@@ -3392,7 +3392,11 @@ html[data-platform='macos'] .app-shell--no-rail.app-shell--sidebar-collapsed :de
   display: flex;
   flex-direction: column;
   overflow: visible;
-  background: var(--color-shell-main);
+}
+
+@layer app-surfaces {
+  .app-shell { background: var(--color-shell-window); }
+  .app-shell__content { background: var(--color-shell-main); }
 }
 
 @media (max-width: 768px) {

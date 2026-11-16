@@ -1,6 +1,8 @@
 <template>
   <aside
     class="settings-sidebar"
+    data-slot="sidebar-inner"
+    data-workspace-area="settings-nav"
     :aria-label="$t('surface.settingsSidebar.settingsCategories')"
   >
     <el-menu
@@ -49,7 +51,6 @@ function selectTab(tab: string): void {
 <style scoped>
 .settings-sidebar {
   border-right: 1px solid var(--color-border);
-  background: var(--color-shell-sidebar);
   padding-top: var(--space-24);
 }
 
@@ -60,6 +61,10 @@ function selectTab(tab: string): void {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
+}
+
+@layer app-surfaces {
+  .settings-sidebar { background: var(--color-shell-sidebar); }
 }
 
 .settings-sidebar :deep(.el-menu-item-group__title) {

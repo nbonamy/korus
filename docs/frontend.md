@@ -235,13 +235,21 @@ selector reads T3 Skins' public API; preview links open the skin's page.
 Selecting a skin applies it. T3 version 1 JSON preserves its light/dark variants and custom CSS in the theme
 preferences; removing the skin restores the selected palette. Choosing a built-in
 palette also removes the loaded skin. The adapter maps color roles to shell and
-conversation tokens; `theme/skin-css.ts` translates T3's semantic selectors to the
-host and SDK surfaces. The renderer parses skin CSS before adopting it and strips
+conversation tokens. Shell, sidebar outer/container/inner and chat column are
+distinct native surfaces. `theme/skin-css.ts` aliases T3's conversation selectors
+to the SDK's neutral canvas, content and composer hooks, preserving selector
+specificity and surface relationships. Baseline surface paint lives in cascade
+layers so skin CSS can override it. Structural chat wrappers stay transparent
+under a skin so shell and document backdrops can show through. The renderer parses
+skin CSS before adopting it and strips
 external resource references, imports and unchecked at-rules. Embedded data images,
 gradients, conditional rules and animations are supported. The sidebar's outer corners
 remain square regardless of the skin. Composer shelf attachment and opaque menu
 surfaces remain host-owned. Replacing or removing a skin replaces its
-stylesheet and color overrides. Keep the Nebula browser workflow as the rendering acceptance boundary
+stylesheet and color overrides. Shared glass inputs and palette fallbacks live in
+the appearance stylesheet, separately from selector adaptation; skin-defined
+materials take precedence, including authored opacity. Keep the skin
+browser workflows as the rendering acceptance boundary
 when changing the selector bridge or upgrading the conversation SDK.
 
 ## Canonical UI

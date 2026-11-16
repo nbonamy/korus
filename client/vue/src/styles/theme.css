@@ -1,4 +1,13 @@
 :root {
+  --skin-message-foreground: var(--color-text);
+  --skin-code-background: var(--color-surface-base);
+  --skin-code-foreground: var(--color-text);
+  --skin-message-action: var(--color-primary);
+  --skin-message-action-foreground: var(--color-on-primary);
+  --skin-sidebar-muted-foreground: var(--color-text-muted);
+  --skin-sidebar-row-selected: var(--color-primary-container);
+  --skin-sidebar-foreground: var(--color-text);
+  --skin-sidebar-row-hover: var(--color-surface-low);
   --el-color-primary: var(--color-primary);
   --el-color-success: var(--color-success);
   --el-color-warning: var(--color-warning);
@@ -23,6 +32,39 @@
   --el-border-radius-base: var(--radius-md);
 
   --el-menu-item-height: auto;
+}
+
+/* Shared appearance policy. Imported skin declarations can override these inputs. */
+@layer app-surfaces {
+  :root { --agent-ui-canvas-background: var(--color-shell-main); }
+  :root[data-skin] {
+    --glass-opacity: 85%;
+    --glass-blur: 0px;
+    --glass-saturation: 1;
+    --agent-ui-canvas-background: transparent;
+    --agent-ui-content-background: transparent;
+    --agent-ui-footer-background: transparent;
+  }
+  :root[data-skin] .conversation-pane { background: transparent; }
+  :root[data-skin] .agent-sidebar { background: var(--color-shell-sidebar); color: var(--skin-sidebar-muted-foreground); }
+  :root[data-skin] .chat-message--user .chat-message__stack { color: var(--skin-message-foreground); }
+  :root[data-skin] .chat-code-block { background: var(--skin-code-background); color: var(--skin-code-foreground); }
+  :root[data-skin] .chat-composer {
+    --agent-ui-composer-button-background: var(--skin-message-action);
+    --agent-ui-composer-button-color: var(--skin-message-action-foreground);
+  }
+  :root[data-skin] .agent-sidebar__agent--active { background: var(--skin-sidebar-row-selected); }
+  :root[data-skin] .agent-sidebar__agent--active .agent-sidebar__name { color: var(--skin-sidebar-foreground); }
+  :root[data-skin] .agent-sidebar__agent:not(.agent-sidebar__agent--active):hover,
+  :root[data-skin] .settings-sidebar .el-menu-item:hover { background: var(--skin-sidebar-row-hover); }
+}
+
+/* Product geometry and readable popups remain stable across imported skins. */
+@layer app-skin-invariants {
+  :root[data-skin] :is(.agent-sidebar-pane, .agent-sidebar, .settings-sidebar) { border-radius: 0 !important; }
+  :root[data-skin] :is(.app-menu:not(.app-menu--embedded), .el-popper, .agent-ui-composer-menu__list) {
+    background-color: var(--color-menu-background) !important;
+  }
 }
 
 /* Element Plus derives the default button hover from fixed primary tints, which read as saturated blue on dark surfaces. */
