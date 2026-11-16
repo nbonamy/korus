@@ -383,10 +383,13 @@ export class HarnessAgentDriver implements AgentProviderDriver {
       return { providerSession: this.dataOf(targetSession) };
     });
   }
-  readConversationMessages(ref: ProviderConversationRef, agentId: string) {
+  async readConversationMessages(ref: ProviderConversationRef, agentId: string) {
     const session = this.sessions.get(agentId);
-    if (!session) throw new Error('Unknown conversation.');
-    return this.harness.readConversationMessages(session, this.ref(ref), { view: 'last' }) as never;
+    if (session) return await this.harness.readConversationMessages(session, this.ref(ref), { view: 'last' }) as never;
+    // A stored conversation reads without the agent that ran it: that agent may be gone, or belong to another harness.
+    const reader = this.harness.open({ id: agentId, folder: 'folder' in ref && typeof ref.folder === 'string' ? ref.folder : null, name: null });
+    try { return await this.harness.readConversationMessages(reader, this.ref(ref), { view: 'last' }) as never; }
+    finally { await this.harness.release(reader); }
   }
   async readConversationSummary(agent: Agent, ref: ProviderConversationRef) {
     const found = await this.harness.readConversationSummary(await this.session(agent), this.ref(ref));

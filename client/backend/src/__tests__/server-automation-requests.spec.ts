@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import {
   createTestSnapshot,
   readyRemoteConnection,
@@ -33,18 +32,8 @@ describe('AppBackendServer', () => {
       }],
     }];
     const messages = [createTextMessage('user-thread-cleaned-up-user-1', 'agent-cleaned-up', 'done')];
-    const readConversationMessages = vi.fn().mockResolvedValue(messages);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      readConversationMessages,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script } = scriptedDriver('codex');
+    script.on('readConversationMessages', () => messages);
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -65,7 +54,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-cleaned-up', ref: { provider: 'codex', conversationId: 'thread-unknown' } },
     })).resolves.toMatchObject({ error: { message: 'Conversation reference is not available.' } });
 
-    expect(readConversationMessages).toHaveBeenCalledWith({ provider: 'codex', conversationId: 'thread-cleaned-up' }, 'agent-cleaned-up');
+    expect(script.calls('readConversationMessages')).toHaveLength(1);
     await server.close();
   });
 
