@@ -14,6 +14,10 @@ export type ScriptedPrompt = { agent: Agent; prompt: string; options: SendPrompt
 export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarnessOptions) {
   const { harness, script } = createScriptedHarness(provider, options);
   const driver = new HarnessAgentDriver(provider, harness, { agents: new AgentRegistry() }) as AgentProviderDriver;
+  const promptCalls = (operation: 'sendPrompt' | 'steerPrompt'): ScriptedPrompt[] => script.calls(operation).map(({ args }) => {
+    const [agent, prompt, promptOptions] = args as [Agent, string, SendPromptOptions | undefined];
+    return { agent, prompt, options: promptOptions };
+  });
   const queued = new Map<ScriptedOperation, OperationHandler[]>();
   const fallbacks = new Map<ScriptedOperation, OperationHandler>();
   const install = (operation: ScriptedOperation) => {
@@ -31,10 +35,9 @@ export function scriptedDriver(provider: HarnessProvider, options?: ScriptedHarn
     /** Makes the agents' saved conversations known, so provider events and prompts resolve to them. */
     admit: async (...agents: Agent[]): Promise<void> => { for (const agent of agents) await driver.loadConversation!(agent); },
     /** The prompts that reached the provider, oldest first. */
-    sentPrompts: (): ScriptedPrompt[] => script.calls('sendPrompt').map(({ args }) => {
-      const [agent, prompt, promptOptions] = args as [Agent, string, SendPromptOptions | undefined];
-      return { agent, prompt, options: promptOptions };
-    }),
+    sentPrompts: (): ScriptedPrompt[] => promptCalls('sendPrompt'),
+    /** The prompts the provider was asked to steer into an active turn, oldest first. */
+    steeredPrompts: (): ScriptedPrompt[] => promptCalls('steerPrompt'),
     /** What the next call of an operation does; later calls use `respondAlways`. A handler that throws rejects the call. */
     respondOnce: (operation: ScriptedOperation, handler: OperationHandler): void => { install(operation); queued.get(operation)!.push(handler); },
     /** What every call of an operation does once no `respondOnce` is queued. */
