@@ -73,7 +73,7 @@ const icon = computed(() => props.quickChat ? MessageIcon
   color: var(--color-primary);
 }
 
-/* One trailing column holds the unread dot or the age. Dots stay tight to the icon. */
+/* One trailing column holds the unread dot or the age. */
 .agent-sidebar__activity-indicator {
   display: flex;
   flex: none;
@@ -81,7 +81,7 @@ const icon = computed(() => props.quickChat ? MessageIcon
   justify-content: flex-end;
   align-self: center;
   min-width: var(--agent-status-dot-size, 8px);
-  margin-left: var(--space-1);
+  margin-left: var(--space-4);
 }
 
 .agent-sidebar__activity-indicator--age {

@@ -76,7 +76,10 @@ export function restorableWindows(layout: WindowLayout, snapshot: AppSnapshot): 
       if (!agentIds.length) return [];
       return [hasAgent(state?.agentId) ? saved : { ...saved, viewState: { ...state, agentId: agentIds[0]! } }];
     }
-    if (state?.agentId && !hasAgent(state.agentId)) return [{ ...saved, viewState: null }];
+    if (state?.agentId && !hasAgent(state.agentId)) {
+      const { agentId: _departed, ...viewState } = state;
+      return [{ ...saved, viewState: Object.keys(viewState).length ? viewState : null }];
+    }
     return [saved];
   });
 }

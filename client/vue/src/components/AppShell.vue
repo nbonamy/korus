@@ -149,6 +149,7 @@
       @resize-sidebar="setAgentSidebarWidth"
       @start-sidebar-resize="startAgentSidebarResize"
       @restart-agent="$emit('restart-agent', $event)"
+      @set-agent-unread="$emit('set-agent-unread', $event)"
       @resume-session="openResumeSession"
       @select-agent="selectAgentFromShell"
       @select-team="selectTeamFromRail"
@@ -1103,6 +1104,7 @@ const emit = defineEmits<{
   'assign-work-item': [payload: { agentId: string; item: WorkItem }];
   'remove-work-item-assignment': [item: WorkItem];
   'restart-agent': [agentId: string];
+  'set-agent-unread': [input: { agentId: string; unread: boolean }];
   'resolve-approval': [approvalId: string, decision: ProviderApprovalDecision, scope: ProviderApprovalScope];
   'retry-turn': [turnId: string];
   'send-agent-prompt': [payload: { agentId: string; prompt: string }];
@@ -1222,9 +1224,9 @@ function rememberMissionId(id: string | null): void {
     // Client-local navigation still works when browser storage is unavailable.
   }
 }
-let pendingMissionRestoreId = rememberedMissionId();
+let pendingMissionRestoreId = windowScope.value === 'workspace' && windowState.navigation.value === 'backlog' ? null : rememberedMissionId();
 const activeHost = ref<AppSurface>('agent');
-const cockpitScope = ref(false);
+const cockpitScope = ref(windowScope.value === 'workspace' && windowState.navigation.value === 'cockpit');
 const settingsReturnMissionId = ref<string | null>(null);
 const automationsReturnHost = ref<Exclude<AppSurface, 'automations'>>('agent');
 const missionViewedStage = ref<MissionStage>();
@@ -2502,6 +2504,16 @@ const cockpitVisible = computed(() => cockpitScope.value && (activeHost.value ==
 const backlogVisible = computed(() => activeHost.value === 'backlog');
 const automationsVisible = computed(() => activeHost.value === 'automations');
 const settingsVisible = computed(() => activeHost.value === 'settings');
+watch([windowScope, windowState.navigation], ([scope, navigation]) => {
+  if (scope !== 'workspace') return;
+  cockpitScope.value = navigation === 'cockpit';
+  if (navigation === 'backlog') void openBacklog();
+  else if (activeHost.value !== 'mission') activeHost.value = 'agent';
+}, { immediate: true });
+watch([activeHost, cockpitScope], ([host, cockpit]) => {
+  if (host === 'backlog') windowState.reportNavigation(appApi, 'backlog');
+  else if (host === 'agent' || host === 'mission') windowState.reportNavigation(appApi, cockpit ? 'cockpit' : 'workspace');
+});
 async function setEngineEnabled(provider: HarnessProvider, enabled: boolean) {
   if (!appApi) throw new Error('Backend connection is unavailable.');
   await appApi.setProviderEnabled(provider, enabled);

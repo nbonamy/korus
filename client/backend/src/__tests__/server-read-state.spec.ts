@@ -51,6 +51,19 @@ describe('shared conversation read state', () => {
       await read(1);
       expect(snapshot.agents[0]!.readState?.readRevision).toBe(2);
       await expect(read(999)).rejects.toThrow('Unknown read revision');
+      const status = structuredClone(snapshot.agents[0]!.status);
+      expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'agent/unread', params: { agentId: agent.id } }))
+        .toStrictEqual({ jsonrpc: '2.0', id: 2, result: 3 });
+      expect(snapshot.agents[0]!.readState).toStrictEqual({ revision: 3, readRevision: 2 });
+      expect(snapshot.agents[0]!.status).toStrictEqual(status);
+      await read(2); // The shipped revision-based read request cannot clear a newer manual marker.
+      expect(snapshot.agents[0]!.readState).toStrictEqual({ revision: 3, readRevision: 2 });
+      const restored = new AppBackendServer({ version: 'test', snapshot: JSON.parse(JSON.stringify(snapshot)) });
+      try {
+        expect(await restored.handleMessage({ jsonrpc: '2.0', id: 4, method: 'snapshot/get' })).toMatchObject({ result: { snapshot: { agents: [{ readState: { revision: 3, readRevision: 2 } }] } } });
+        await restored.handleMessage({ jsonrpc: '2.0', id: 3, method: 'agent/read', params: { agentId: agent.id, revision: 3 } });
+        expect(await restored.handleMessage({ jsonrpc: '2.0', id: 5, method: 'snapshot/get' })).toMatchObject({ result: { snapshot: { agents: [{ readState: { revision: 3, readRevision: 3 } }] } } });
+      } finally { await restored.close(); }
       expect(save).toHaveBeenCalled();
     } finally { await server.close(); }
   });

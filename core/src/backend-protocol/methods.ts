@@ -104,6 +104,7 @@ export const backendMethods = {
   agentGoalClear: 'agent/goal/clear',
   agentGoalUpdate: 'agent/goal/update',
   agentMarkRead: 'agent/read',
+  agentMarkUnread: 'agent/unread',
   agentConversationLoad: 'agent/conversation/load',
   agentConversationHistoryLoadOlder: 'agent/conversation/history/loadOlder',
   agentConversationTurnHistoryLoad: 'agent/conversation/turn/history/load',

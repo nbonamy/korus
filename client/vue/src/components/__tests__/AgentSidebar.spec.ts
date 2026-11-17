@@ -381,6 +381,30 @@ describe('AgentSidebar sessions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('offers Mark unread/read using the existing agent unread indicator', async () => {
+    const wrapper = mount(AgentSidebar, { props: { agents: [
+      { ...agents[0]!, status: { type: 'idle' } },
+      { ...agents[0]!, id: 'running', status: { type: 'working' } },
+    ], activeAgentId: agents[0]!.id, teamName: 'Workspace', allTeams: true } });
+    await wrapper.get('button[aria-label="Mark unread"]').trigger('click');
+    expect(wrapper.emitted('select-agent')).toBeUndefined();
+    expect(tooltipContents(wrapper)).toContain('Mark unread');
+    expect(wrapper.find('[data-reorder-id="running"] + button[aria-label="Mark unread"]').exists()).toBe(false);
+    for (const unread of [false, true]) {
+      await wrapper.setProps({ unreadAgentIds: unread ? [agents[0]!.id] : [] });
+      expect(wrapper.find('button[aria-label="Mark unread"]').exists()).toBe(!unread);
+      await wrapper.get(`.agent-sidebar__agent[data-reorder-id="${agents[0]!.id}"]`).trigger('contextmenu', { clientX: 80, clientY: 120 });
+      const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === (unread ? 'Mark read' : 'Mark unread'));
+      expect(action).toBeDefined();
+      action!.click();
+      await flushPromises();
+    }
+    expect(wrapper.emitted('set-agent-unread')).toStrictEqual([
+      [{ agentId: agents[0]!.id, unread: true }],
+      [{ agentId: agents[0]!.id, unread: true }], [{ agentId: agents[0]!.id, unread: false }],
+    ]);
+  });
+
   // Rendered activity sorting, controlled aging and per-team preferences across remounts.
   // Exercises activity grouping, controlled aging and per-team preferences across remounts.
   it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
@@ -441,6 +465,14 @@ describe('AgentSidebar sessions', () => {
         expect(row.get('.agent-sidebar__session-context').text()).toBe(subtitle);
       }
       expect(ids('idle')).toStrictEqual(['new', 'idle', 'review', 'error', 'plan']);
+      const disclosure = (group: string) => wrapper.get(`[data-activity-group="${group}"] header button[aria-expanded]`);
+      await disclosure('working').trigger('click');
+      expect(disclosure('working').attributes('aria-expanded')).toBe('false');
+      expect(ids('working')).toStrictEqual([]);
+      expect(ids('attention')).toStrictEqual(['waiting']);
+      await disclosure('attention').trigger('click');
+      await disclosure('working').trigger('click');
+      expect(ids('working')).toStrictEqual(['working']);
       expect(wrapper.get('[data-reorder-id="working"]').attributes('draggable')).toBe('false');
       await vi.advanceTimersByTimeAsync(250);
       await wrapper.setProps({ agents: items.map(agent => agent.id === 'working' ? { ...agent, status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: new Date().toISOString() } : agent) });
@@ -461,6 +493,9 @@ describe('AgentSidebar sessions', () => {
       wrapper.unmount();
       const restored = mount(AgentSidebar, { props });
       expect(restored.find('[data-activity-group="attention"]').exists()).toBe(true);
+      expect(restored.find('[data-reorder-id="waiting"]').exists()).toBe(false);
+      await restored.get('[data-activity-group="attention"] header button[aria-expanded]').trigger('click');
+      expect(restored.find('[data-reorder-id="waiting"]').exists()).toBe(true);
       restored.unmount();
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   }, 5_000);

@@ -143,6 +143,9 @@ and paths, independently of the saved UI labels.
 `AgentConversationPanel` owns the conversation controller, composer actions and
 annotation dialogs for single, split and Mission hosts. `AppShell` routes application
 commands and arranges panels; `AgentWorkspace` supplies headers and artifact panes.
+Desktop workspace windows persist their Workspace, Cockpit or Backlog navigation in
+Electron's `window-layout.json`, alongside their selection and panes. Scoped windows
+retain their own scope; transient Settings and Automations pages keep the last work view.
 Annotation drafts live in the workspace's provided store, keyed by agent, so pane
 replacement and layout changes retain unsent comments.
 
@@ -206,6 +209,12 @@ runs independently of loaded tree nodes, so an unopened directory remains search
 - Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.
+  Activity-group folding is a client-local preference, scoped to the workspace or
+  Cockpit. It does not change agent execution or attention state.
+  Explicitly marking the open agent unread protects its marker from automatic
+  foreground acknowledgement until navigation away; an explicit read or a shared
+  read checkpoint can clear it. Manual unread advances the existing persisted
+  attention revision without changing execution status.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team or while Cockpit is selected. Agent activity is stored apart from
   metadata so startup hydration does not make idle agents look active.

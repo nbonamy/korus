@@ -35,6 +35,7 @@ const requestTimeoutByMethod = {
   [backendMethods.clientFocusGet]: 1_000,
   [backendMethods.clientSkinSet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentMarkUnread]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientDesignCapture]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.guestConversationControl]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

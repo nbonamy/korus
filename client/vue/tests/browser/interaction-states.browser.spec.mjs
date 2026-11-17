@@ -3,6 +3,64 @@ import { test } from 'vitest';
 import { withAnnotationFixture } from './annotation-fixture.mjs';
 import { interactionControlsSource } from './fixtures/interaction-controls.mjs';
 
+test('activity groups disclose on hover and keyboard focus, fold independently and restore after reload', async () => {
+  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
+    await page.evaluate(() => window.showActivity());
+    await page.addStyleTag({ content: '.agent-sidebar__activity-time{transition:none!important}' });
+    const unreadRow = page.locator('.agent-sidebar__agent[data-reorder-id="quick"]');
+    await unreadRow.hover();
+    const driver = await unreadRow.locator('.agent-sidebar__engine').boundingBox();
+    const dot = await unreadRow.locator('.agent-sidebar__activity-unread').boundingBox();
+    assert.ok(dot.x - driver.x - driver.width >= 8, 'driver and unread dot have a clear gap');
+    const markUnread = page.getByRole('button', { name: 'Mark unread', exact: true }).first();
+    const idleRow = markUnread.locator('..');
+    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '0');
+    await idleRow.hover();
+    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '1');
+    assert.equal(await idleRow.locator('.agent-sidebar__activity-time').evaluate(el => getComputedStyle(el).opacity), '0');
+    await markUnread.hover();
+    await page.getByRole('tooltip', { name: 'Mark unread', exact: true }).waitFor();
+    await page.screenshot({ path: '/tmp/korus-mark-unread.png' });
+    await page.mouse.move(1190, 850);
+    await markUnread.focus();
+    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '1');
+    await markUnread.press('Enter');
+    assert.equal((await page.evaluate(() => window.markedUnread)).unread, true);
+    assert.equal(await page.evaluate(() => window.selectedAgent), null, 'marking unread does not open the chat');
+    await page.waitForFunction(() => document.getAnimations().every(animation =>
+      animation.effect?.getTiming().iterations === Infinity || animation.playState !== 'running'));
+    const group = page.locator('[data-activity-group="working"]');
+    const toggle = group.getByRole('button', { name: 'Working', exact: true });
+    const opacity = selector => group.locator(selector).evaluate(el => getComputedStyle(el).opacity);
+    await page.mouse.move(1190, 850);
+    assert.equal(await opacity('.agent-sidebar__activity-chevron'), '0');
+    const before = await toggle.boundingBox();
+    await toggle.hover();
+    assert.equal(await opacity('.agent-sidebar__activity-chevron'), '1');
+    assert.equal(await opacity('.agent-sidebar__activity-icon'), '0');
+    assert.deepEqual(await toggle.boundingBox(), before, 'swapping the icon does not move the header');
+    await toggle.click();
+    await page.mouse.move(1190, 850);
+    assert.equal(await group.locator('.agent-sidebar__agent').count(), 0);
+    assert.equal(await opacity('.agent-sidebar__activity-chevron'), '1', 'folded groups remain discoverable');
+    assert.equal(await page.locator('[data-activity-group="attention"] .agent-sidebar__agent').count(), 1);
+    await toggle.press('Space');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(await group.locator('.agent-sidebar__agent').count(), 1);
+    await toggle.press('Enter');
+    await page.reload();
+    await page.evaluate(() => window.showActivity());
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    const mouseAction = page.getByRole('button', { name: 'Mark unread', exact: true }).first();
+    await mouseAction.locator('..').hover();
+    await mouseAction.click();
+    assert.equal((await page.evaluate(() => window.markedUnread)).unread, true);
+    assert.equal(await page.evaluate(() => window.selectedAgent), null);
+    await page.screenshot({ path: '/tmp/korus-activity-disclosure.png' });
+  });
+  assert.deepEqual(errors, []);
+});
+
 test('toolbar controls share resting, hover, open and keyboard-focus policy across palettes', async () => {
   const errors = await withAnnotationFixture(interactionControlsSource, async page => {
     await page.locator('.git-diff-control__open').waitFor();

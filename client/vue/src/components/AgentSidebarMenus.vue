@@ -2,6 +2,7 @@
     <AgentContextMenu
       :shared="Boolean(contextMenuAgent?.sharedConversation)"
       v-if="contextMenuAgentId"
+      :unread="Boolean(unreadAgentIds?.includes(contextMenuAgentId))"
       :share-available="Boolean(contextMenuAgentIsLocal && supportsConversationSharing(contextMenuAgent))"
       :fork-disabled="!canForkContextMenuAgent"
       :handoff-disabled="contextMenuAgent?.status.type !== 'idle'"
@@ -61,6 +62,7 @@ import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 const props = defineProps<{ model: AgentSidebarModel }>();
 const {
   contextMenuAgentId,
+  unreadAgentIds,
   contextMenuAgent,
   contextMenuAgentIsLocal,
   supportsConversationSharing,

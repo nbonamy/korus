@@ -1714,6 +1714,16 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.admitRemoteMessage(agent,
           requireString(params.messageId, 'messageId'), requireString(params.prompt, 'prompt')));
       }
+      case backendMethods.agentMarkUnread: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId }, async agent => {
+          const current = agent.readState ?? { revision: 0, readRevision: 0 };
+          this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId, payload: { id: agentId, readState: { ...current, revision: current.revision + 1 } } });
+          await this.persistSnapshotOnly();
+          return current.revision + 1;
+        });
+      }
       case backendMethods.agentMarkRead: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');

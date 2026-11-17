@@ -1,5 +1,5 @@
 import type { Agent, AppSnapshot, MainToRendererEvent } from '@workspace/core/contracts';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { navigationUnreadAgentIds } from '@workspace/core/mission-attention';
 import { appHostCapabilities, appApi } from './platform-api';
@@ -9,6 +9,10 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   const rendererWindowFocused = ref(true);
   const acknowledged = ref<Record<string, number>>({});
   const pending = new Set<string>();
+  const heldUnread = ref<{ agentId: string; revision: number | null } | null>(null);
+  watch(() => options.getSnapshot().activeAgentId, id => {
+    if (heldUnread.value?.agentId !== id) heldUnread.value = null;
+  }, { flush: 'sync' });
   const unreadAgentIds = computed(() => [...new Set([
     ...agentIds.value,
     ...options.getSnapshot().agents.filter(agent => hasUnreadActivity(agent)
@@ -18,6 +22,7 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   function reset(): void {
     agentIds.value = new Set();
     acknowledged.value = {};
+    heldUnread.value = null;
     syncDockBadge();
   }
 
@@ -30,6 +35,9 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
 
   function handleMainEvent(event: MainToRendererEvent): void {
     if (event.type === 'snapshot.updated' || (event.type === 'agent.updated' && event.payload.readState)) {
+      const held = heldUnread.value;
+      const read = held && options.getSnapshot().agents.find(agent => agent.id === held.agentId)?.readState;
+      if (held && held.revision !== null && read && read.readRevision >= held.revision) heldUnread.value = null;
       // Shared metadata supersedes any legacy or Debug marker for this agent.
       agentIds.value = new Set([...agentIds.value].filter(id => !options.getSnapshot().agents.find(agent => agent.id === id)?.readState));
       const active = options.getSnapshot().activeAgentId;
@@ -80,7 +88,32 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
     syncDockBadge();
   }
 
-  function markRead(agentId: string): void {
+  async function markForFollowup(agentId: string): Promise<void> {
+    const agent = options.getSnapshot().agents.find(agent => agent.id === agentId);
+    if (!agent || !appApi?.markAgentUnread) return;
+    if (options.getSnapshot().activeAgentId === agentId) heldUnread.value = { agentId, revision: null };
+    const wasMarked = agentIds.value.has(agentId);
+    markUnread(agentId);
+    try {
+      const revision = await appApi.markAgentUnread(agentId);
+      if (heldUnread.value?.agentId === agentId) {
+        heldUnread.value = (options.getSnapshot().agents.find(item => item.id === agentId)?.readState?.readRevision ?? -1) >= revision
+          ? null : { agentId, revision };
+      }
+    }
+    catch (error) {
+      if (!wasMarked) agentIds.value = new Set([...agentIds.value].filter(id => id !== agentId));
+      if (heldUnread.value?.agentId === agentId) heldUnread.value = null;
+      syncDockBadge();
+      throw error;
+    }
+  }
+
+  function markRead(agentId: string, explicit = false): void {
+    if (heldUnread.value?.agentId === agentId) {
+      if (!explicit) return;
+      heldUnread.value = null;
+    }
     const state = options.getSnapshot().agents.find(agent => agent.id === agentId)?.readState;
     if (state && state.revision > state.readRevision && (acknowledged.value[agentId] ?? 0) < state.revision && appApi?.markAgentRead) {
       const revision = state.revision;
@@ -118,6 +151,7 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   return {
     handleMainEvent,
     markDebugAgentsUnread,
+    markForFollowup,
     markRead,
     prune,
     reset,

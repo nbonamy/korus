@@ -535,7 +535,7 @@ export const messages = {
     },
     agents: {
       actions: 'Agent actions',
-      menu: { rename: 'Rename', duplicate: 'Duplicate', fork: 'Fork', compact: 'Compact', compress: 'Compress', resume: 'Resume', restart: 'Restart' },
+      menu: { rename: 'Rename', duplicate: 'Duplicate', fork: 'Fork', compact: 'Compact', compress: 'Compress', resume: 'Resume', restart: 'Restart', markRead: 'Mark read', markUnread: 'Mark unread' },
       close: 'Close Agent',
       replaceConversationWithSummary: 'Compress Session',
       compactSession: 'Compact Session',

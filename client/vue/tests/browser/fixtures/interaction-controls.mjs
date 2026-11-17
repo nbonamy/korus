@@ -12,6 +12,7 @@ import {appThemes} from '/client/vue/src/theme/themes.ts';
 import {applyAppTheme} from '/client/vue/src/theme/apply-theme.ts';
 import {createInitialSnapshot} from '@workspace/core/snapshot';
 import AgentSidebar from '/client/vue/src/components/AgentSidebar.vue';
+import {providerChoicesKey} from '/client/vue/src/components/provider-selection';
 import TeamRail from '/client/vue/src/components/TeamRail.vue';
 import AgentHeader from '/client/vue/src/components/AgentHeader.vue';
 import RightWorkspacePanel from '/client/vue/src/components/RightWorkspacePanel.vue';
@@ -23,6 +24,11 @@ const gitStatus={folder:agent.folder,branch:'main',ahead:0,behind:0,changedFiles
 const repoAgent={...agent,workspace:{kind:'git',folder:'/src/repo',repositoryName:'repo',repositoryRoot:'/src/repo',branch:'main',isLinkedWorktree:false,primaryWorktreeRoot:'/src/repo',updatedAt:''}};
 const quickAgent={...agent,id:'quick',name:'Quick chat',sessionKind:'quickChat',folder:'/src',workspace:undefined};
 const activeTeam=ref('identity-blue');
+const activity=ref(false);
+const unread=ref(['quick']);
+window.markedUnread=null;
+window.selectedAgent=null;
+window.showActivity=()=>{activity.value=true};
 const identityTeams=[{id:'identity-blue',name:'Blue workspace',color:'#1B4FB2',agentIds:[]},{id:'identity-green',name:'Green workspace',color:'#46A857',agentIds:[]}];
 window.themes=appThemes;
 window.openDialog=async (method,destructive)=>{
@@ -34,7 +40,7 @@ window.openDialog=async (method,destructive)=>{
 window.applyTheme=theme=>applyAppTheme({id:theme.id,mode:theme.appearance,uiFontSize:14,chatFontSize:15,codeFontSize:13});
 window.applyTheme(appThemes.find(theme=>theme.id==='app-dark-blue'));
 createApp({render:()=>h('main',{style:'width:1100px;height:800px;background:var(--color-shell-main)'},[
- h(AgentSidebar,{agents:[repoAgent,quickAgent],activeAgentId:repoAgent.id,teamName:'Workspace',style:'position:absolute;left:620px;top:300px;height:500px'}),
+ h(AgentSidebar,{agents:activity.value?[repoAgent,quickAgent,{...repoAgent,id:'working',status:{type:'working'}},{...repoAgent,id:'waiting',status:{type:'awaitingInput'}}]:[repoAgent,quickAgent],unreadAgentIds:activity.value?unread.value:[],'onSet-agent-unread':input=>{window.markedUnread=input;unread.value=[...unread.value,input.agentId]},'onSelect-agent':id=>{window.selectedAgent=id},allTeams:activity.value,activeAgentId:repoAgent.id,teamName:'Workspace',style:'position:absolute;left:620px;top:300px;height:500px'}),
  h(TeamRail,{teams:identityTeams,activeTeamId:activeTeam.value,'onSelect-team':id=>activeTeam.value=id,style:'position:absolute;right:0;top:300px;height:300px'}),
  h(AgentHeader,{agent,gitStatus,gitReviewAvailable:true,gitWorkflowAvailable:true,workspaceOpen:true,isLoading:false,sidebarCollapsed:false,
  openInAvailable:true,openInCatalog:{defaultApplication:'vscode',applications:[{id:'vscode',label:'VS Code'}]}}),
@@ -53,5 +59,5 @@ createApp({render:()=>h('main',{style:'width:1100px;height:800px;background:var(
   h(SettingsSidebar,{activeTab:'appearance'}),
   h(RightWorkspacePanel,{agent,tabs:['review','plan'],activeTab:'review',gitPanel:{kind:'gitDiff',title:'Changes',diff:previewDiff,state:'idle'},visible:true}),
  ])
-])}).use(i18n).use(ElementPlus).mount('#app');
+])}).provide(providerChoicesKey,ref(['codex','claude'])).use(i18n).use(ElementPlus).mount('#app');
 `;

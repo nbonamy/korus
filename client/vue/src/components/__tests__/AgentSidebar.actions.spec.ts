@@ -413,6 +413,7 @@ describe('AgentSidebar actions', () => {
       'Fork',
       'Hand off',
       'Move to…',
+      'Mark unread',
       'Compact⇧⌘K',
       'Compress',
       'Resume',

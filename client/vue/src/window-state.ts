@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import type { AppApi } from '@workspace/core/contracts';
-import type { ComposerDraft, NativeOwnerEntry, NativeResource, WindowScope, WindowSetup } from '@workspace/core/windows';
+import type { ComposerDraft, NativeOwnerEntry, NativeResource, WindowNavigation, WindowScope, WindowSetup } from '@workspace/core/windows';
 
 /**
  * What this window knows about the other windows. Product state (agents, conversations,
@@ -24,6 +24,8 @@ export function createWindowState() {
   const windowId = ref<number | null>(null);
   const nativeOwners = ref<NativeOwnerEntry[]>([]);
   const scope = ref<WindowScope>('workspace');
+  const navigation = ref<WindowNavigation>('workspace');
+  let reportedNavigation: WindowNavigation = 'workspace';
   /** The team a team or feature window is about; it stays selected whatever the other windows do. */
   const teamId = ref<string | null>(null);
   /** The agent an agent window is about. */
@@ -52,6 +54,7 @@ export function createWindowState() {
     windowId.value = context.windowId;
     nativeOwners.value = context.nativeOwners;
     scope.value = context.viewState?.scope ?? 'workspace';
+    navigation.value = reportedNavigation = context.viewState?.navigation ?? 'workspace';
     teamId.value = scope.value === 'team' || scope.value === 'feature' || scope.value === 'mission' ? context.viewState?.teamId ?? null : null;
     agentId.value = scope.value === 'agent' ? context.viewState?.agentId ?? null : null;
     branch.value = scope.value === 'feature' ? context.viewState?.branch ?? null : null;
@@ -95,6 +98,13 @@ export function createWindowState() {
     unsubscribe = [];
   }
 
+  function reportNavigation(api: AppApi | undefined, value: WindowNavigation): void {
+    if (!started || scope.value !== 'workspace' || !api?.setWindowNavigation || reportedNavigation === value) return;
+    reportedNavigation = value;
+    navigation.value = value;
+    void api.setWindowNavigation(value).catch(() => undefined);
+  }
+
   /** Tells main which agent this window shows, for the commands and notices that follow the window the user is in. */
   function reportSelection(api: AppApi | undefined, agentId: string | null, visibleAgentIds?: string[]): void {
     const visible = visibleAgentIds && [...new Set(visibleAgentIds)].sort();
@@ -115,7 +125,7 @@ export function createWindowState() {
     return !owner || owner.windowId === windowId.value;
   }
 
-  return { windowId, nativeOwners, scope, teamId, agentId, branch, missionId, onSetup, start, stop, reportSelection, ownsNative };
+  return { windowId, nativeOwners, scope, navigation, teamId, agentId, branch, missionId, onSetup, start, stop, reportSelection, reportNavigation, ownsNative };
 }
 
 export const windowState = createWindowState();

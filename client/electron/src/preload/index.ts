@@ -156,6 +156,7 @@ const api: AppApi = {
   closeAgent: (agentId: string, input) => ipc.invoke(ipcChannels.closeAgent, agentId, input),
   restoreClosedAgent: (record) => ipc.invoke(ipcChannels.restoreClosedAgent, record),
   markAgentRead: (agentId: string, revision: number) => ipc.invoke(ipcChannels.markAgentRead, agentId, revision),
+  markAgentUnread: (agentId: string) => ipc.invoke(ipcChannels.markAgentUnread, agentId),
   selectAgent: (agentId: string) => ipc.invoke(ipcChannels.selectAgent, agentId),
   getUsage: (filter) => ipc.invoke(ipcChannels.getUsage, filter),
   getTelemetryConsent: () => ipc.invoke(ipcChannels.getTelemetryConsent),
@@ -204,6 +205,7 @@ const api: AppApi = {
   getWindowContext: () => ipc.invoke(ipcChannels.getWindowContext),
   openWindow: (viewState) => ipc.invoke(ipcChannels.openWindow, viewState),
   setWindowSetup: (setup) => ipc.invoke(ipcChannels.setWindowSetup, setup),
+  setWindowNavigation: (navigation) => ipc.invoke(ipcChannels.setWindowNavigation, navigation),
   setWindowSelection: (agentId, visibleAgentIds) => visibleAgentIds === undefined
     ? ipc.invoke(ipcChannels.setWindowSelection, agentId)
     : ipc.invoke(ipcChannels.setWindowSelection, agentId, visibleAgentIds),

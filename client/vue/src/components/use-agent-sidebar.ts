@@ -473,6 +473,10 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     }
 
     switch (action) {
+      case 'mark-read':
+      case 'mark-unread':
+        emit('set-agent-unread', { agentId, unread: action === 'mark-unread' });
+        break;
       case 'share-agent':
         emit('share-agent', agentId);
         break;

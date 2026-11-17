@@ -192,6 +192,17 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('saves the renderer’s navigation through preload and IPC', async () => {
+    const { controller } = setup();
+    controller.createWindow();
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    await api.setWindowNavigation!('backlog');
+    expect((await api.getWindowContext!()).viewState?.navigation).toBe('backlog');
+    await api.setWindowNavigation!('workspace');
+    expect((await api.getWindowContext!()).viewState?.navigation).toBe('workspace');
+  });
+
   it('saves skins in the app home, lists them for the picker, and publishes edits and disabling through client preferences', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'desktop-skin-'));
     vi.stubEnv('APP_HOME', directory);
@@ -574,6 +585,21 @@ describe('controller desktop lifecycle', () => {
       await expect(invoke('agent-ui-native:read-image-preview', 'agent-workspace-media://generated/not-registered')).rejects.toThrow('invalid or expired');
       await expect(invoke('agent-ui-native:read-image-preview', pathToFileURL(imagePath).href)).rejects.toThrow('invalid or expired');
     } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it('routes manual unread and revision-based read actions through the desktop bridge', async () => {
+    const { provider } = setup();
+    await import('../../preload');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    provider.request.mockResolvedValueOnce(3).mockResolvedValueOnce(null);
+    expect(await api.markAgentUnread('agent-dina')).toBe(3);
+    await api.markAgentRead('agent-dina', 3);
+    expect(provider.request.mock.calls).toStrictEqual([
+      [backendMethods.agentMarkUnread, { agentId: 'agent-dina' }],
+      [backendMethods.agentMarkRead, { agentId: 'agent-dina', revision: 3 }],
+    ]);
+    provider.request.mockRejectedValueOnce(Error('Disconnected'));
+    await expect(api.markAgentUnread('agent-dina')).rejects.toThrow('Disconnected');
   });
 
   it('exposes statistics deletion through preload and propagates backend failures',async()=>{

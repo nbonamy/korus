@@ -135,13 +135,20 @@
         class="agent-sidebar__workspace-group agent-sidebar__section"
         :data-group-kind="group.kind"
         :data-activity-group="group.activity"
+        :data-collapsed="organization.isCollapsed(group.activity) || undefined"
       >
         <header
           class="agent-sidebar__workspace-header"
           :data-motion-id="group.id"
         >
-          <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" aria-hidden="true" />
-          <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
+          <button class="agent-sidebar__workspace-label agent-sidebar__activity-toggle agent-ui-interactive" data-selection="none"
+            type="button" :aria-expanded="!organization.isCollapsed(group.activity)" @click="organization.toggleGroup(group.activity)">
+            <span class="agent-sidebar__activity-disclosure" aria-hidden="true">
+              <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" />
+              <ChevronRightIcon class="agent-sidebar__activity-chevron" />
+            </span>
+            <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
+          </button>
           <AppMenuButton
             v-if="group.activity === 'idle' && !allTeams"
             :heading="t('sidebar.sortIdleBy')"
@@ -157,7 +164,7 @@
             </template>
           </AppMenuButton>
           <el-tooltip
-            v-if="moreRowsLabel(group.id)"
+            v-if="!organization.isCollapsed(group.activity) && moreRowsLabel(group.id)"
             :content="moreRowsLabel(group.id)"
             placement="top"
             :show-after="300"
@@ -175,6 +182,7 @@
         </header>
 
         <ScrollHintRows
+          v-if="!organization.isCollapsed(group.activity)"
           :ref="(rows: unknown) => setRowsRef(group.id, rows)"
           class="agent-sidebar__group-rows"
           @overflow="rowsOverflow[group.id] = $event"
@@ -231,6 +239,17 @@
 
             </ActivityAgentRow>
             <el-tooltip
+              v-if="session.status.type === 'idle' && !session.isUnread && !session.shared && !showQuickSwitchShortcut(session, group.activity)"
+              :content="t('agents.menu.markUnread')" placement="right" :show-after="300"
+              :trigger="['hover', 'focus']" :trigger-keys="[]"
+            >
+              <button class="agent-sidebar__mark-unread agent-ui-interactive" type="button"
+                :aria-label="t('agents.menu.markUnread')" :data-cleanup="isPullRequestFinished(session) || undefined"
+                @click.stop="emit('set-agent-unread', { agentId: session.agentId, unread: true })">
+                <MailIcon aria-hidden="true" />
+              </button>
+            </el-tooltip>
+            <el-tooltip
               v-if="isPullRequestFinished(session) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
               :content="pullRequestAttentionLabel(session)"
               placement="right"
@@ -269,6 +288,7 @@
 </template>
 
 <script setup lang="ts">
+import { ChevronRightIcon, MailIcon } from '../shared/icons/app-icons';
 import { toRefs } from 'vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
@@ -371,6 +391,47 @@ const {
   min-height: var(--section-floor, 0);
 }
 
+.agent-sidebar__workspace-group[data-collapsed] { min-height: 0; flex: 0 0 auto; }
+.agent-sidebar__mark-unread {
+  position: absolute;
+  right: var(--space-6);
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: max(3ch, var(--icon-sm));
+  height: var(--space-12);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-12);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
+  opacity: 0;
+  pointer-events: none;
+}
+.agent-sidebar__mark-unread[data-cleanup] { right: calc(var(--space-6) + var(--agent-sidebar-status-column-width) + var(--space-4)); }
+.agent-sidebar__mark-unread svg { width: var(--icon-sm); height: var(--icon-sm); }
+.agent-sidebar__agent-row:is(:hover, :focus-within) .agent-sidebar__mark-unread { opacity: 1; pointer-events: auto; }
+.agent-sidebar__agent-row:has(.agent-sidebar__mark-unread):is(:hover, :focus-within) :deep(.agent-sidebar__activity-time) { opacity: 0; }
+@media (hover: none) {
+  .agent-sidebar__mark-unread { opacity: 1; pointer-events: auto; }
+  .agent-sidebar__agent-row:has(.agent-sidebar__mark-unread) :deep(.agent-sidebar__activity-time) { opacity: 0; }
+}
+.agent-sidebar__activity-toggle { gap: var(--space-4); --agent-ui-state-rest-foreground: var(--activity-color); }
+.agent-sidebar__activity-disclosure { display: grid; place-items: center; flex: 0 0 var(--agent-sidebar-repository-icon-column-width); }
+.agent-sidebar__activity-disclosure > svg { grid-area: 1 / 1; width: var(--icon-sm); height: var(--icon-sm); }
+.agent-sidebar__activity-chevron { opacity: 0; transform: rotate(90deg); }
+[data-collapsed] .agent-sidebar__activity-chevron { opacity: 1; transform: none; }
+[data-collapsed] .agent-sidebar__activity-disclosure .agent-sidebar__activity-icon,
+.agent-sidebar__workspace-header:hover .agent-sidebar__activity-disclosure .agent-sidebar__activity-icon,
+.agent-sidebar__activity-toggle:focus-visible .agent-sidebar__activity-icon { opacity: 0; }
+.agent-sidebar__workspace-header:hover .agent-sidebar__activity-chevron,
+.agent-sidebar__activity-toggle:focus-visible .agent-sidebar__activity-chevron { opacity: 1; }
+@media (hover: none) {
+  .agent-sidebar__activity-disclosure .agent-sidebar__activity-icon { opacity: 0; }
+  .agent-sidebar__activity-chevron { opacity: 1; }
+}
+
 .agent-sidebar__workspace-group.agent-sidebar__creation-section {
   flex: 0 0 auto;
   margin: var(--space-6) var(--space-4) 0;
@@ -385,6 +446,11 @@ const {
 
 .agent-sidebar__workspace-group.agent-sidebar__section + .agent-sidebar__workspace-group.agent-sidebar__section {
   margin-top: var(--space-6);
+}
+
+/* A collapsed band is just its header, so the section after it sits flush against it. */
+.agent-sidebar__workspace-group.agent-sidebar__section[data-collapsed] + .agent-sidebar__workspace-group.agent-sidebar__section {
+  margin-top: 0;
 }
 
 .agent-sidebar__workspace-group {

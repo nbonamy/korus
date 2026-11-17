@@ -35,6 +35,7 @@ export interface AgentSidebarProps {
 export type SidebarRepositoryTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string; originUrl?: string };
 
 export type AgentSidebarEvents = {
+  'set-agent-unread': [input: { agentId: string; unread: boolean }];
   'collapse-sidebar': [];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];

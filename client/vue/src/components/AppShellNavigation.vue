@@ -96,6 +96,7 @@
       @reorder-agents="$emit('reorder-agents', $event)"
       @reorder-repositories="$emit('reorder-repositories', $event)"
       @restart-agent="$emit('restart-agent', $event)"
+      @set-agent-unread="$emit('set-agent-unread', $event)"
       @resize-sidebar="setAgentSidebarWidth"
       @start-sidebar-resize="$emit('start-sidebar-resize', $event)"
       @resume-session="openResumeSession"
@@ -220,6 +221,7 @@ const emit = defineEmits<{
   'resize-sidebar': [width: number];
   'start-sidebar-resize': [event: PointerEvent];
   'restart-agent': [agentId: string];
+  'set-agent-unread': [input: { agentId: string; unread: boolean }];
   'resume-session': [agentId: string];
   'select-agent': [agentId: string];
   'select-team': [teamId: string];

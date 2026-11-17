@@ -58,6 +58,7 @@ type Private = {
   hostsBrowserPane(event: unknown, agentId: string, browserId: string): boolean;
   windowOf(event: unknown): unknown;
   setWindowSetup(window: unknown, setup: unknown): void;
+  setWindowNavigation(window: unknown, navigation: unknown): void;
   focusWindowById(id: number): void;
   cycleWindow(direction: 1 | -1): void;
   flushPendingDeepLinkCommands(): void;
@@ -568,6 +569,23 @@ describe('AppController with several windows', () => {
 
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); });
+
+    it('saves each window’s navigation independently and restores it from disk', async () => {
+      const { controller, created } = layoutController();
+      internals(controller).openWindow();
+      internals(controller).openWindow();
+      internals(controller).setWindowNavigation(created[0], 'cockpit');
+      internals(controller).setWindowNavigation(created[1], 'backlog');
+      internals(controller).setWindowNavigation(created[0], 'invalid');
+      await controller.shutdown();
+      expect(saved().windows.map(window => window.viewState)).toEqual([{ navigation: 'cockpit' }, { navigation: 'backlog' }]);
+      const reopened = new AppController(createInitialSnapshot(), createBackendClient());
+      reopened.enableWindowLayout(file);
+      reopened.openStartupWindows();
+      expect(created.slice(2).map(window => internals(reopened).getWindowContext(window).viewState))
+        .toEqual([{ navigation: 'cockpit' }, { navigation: 'backlog' }]);
+      await reopened.shutdown();
+    });
 
     it('writes every window with what it shows and where it is, once things settle', () => {
       const { controller, created } = layoutController();
