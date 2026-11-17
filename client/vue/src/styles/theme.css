@@ -169,7 +169,7 @@
 .el-segmented {
   --agent-ui-state-selected: var(--color-surface-lowest);
   --el-segmented-padding: var(--space-2);
-  --el-segmented-bg-color: var(--color-surface-base);
+  --el-segmented-bg-color: var(--color-control-fill);
   --el-segmented-color: var(--color-text-muted);
   --el-segmented-item-selected-color: var(--color-text);
   --el-segmented-item-selected-bg-color: var(--agent-ui-state-selected);

@@ -154,7 +154,7 @@ const providerOptions = computed<
   gap: var(--space-4);
 }
 .usage-date {
-  --agent-ui-state-rest: var(--color-surface-base);
+  --agent-ui-state-rest: var(--color-control-fill);
   white-space: nowrap;
 }
 .usage-options {

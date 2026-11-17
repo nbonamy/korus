@@ -90,6 +90,8 @@
   --color-border: var(--color-outline-variant);
   --color-border-strong: var(--color-outline);
   --color-shell-main: var(--color-surface-lowest);
+  /* A tint of the text colour, so a control reads against any surface it sits on, a card or the page, in any theme. */
+  --color-control-fill: color-mix(in srgb, var(--color-text) 7%, transparent);
   --color-menu-background: var(--color-surface-lowest);
   --color-card-background: color-mix(in srgb, var(--color-surface) 25%, var(--color-surface-lowest));
   --color-shell-window: var(--color-shell-main);
