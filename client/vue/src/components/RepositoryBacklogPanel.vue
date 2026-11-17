@@ -7,7 +7,7 @@
         <strong>{{ repositoryName }}</strong>
       </div>
       <span v-if="branch" class="repository-backlog__branch-pill">
-        <IconGitBranch aria-hidden="true" />
+        <GitBranchIcon aria-hidden="true" />
         {{ branch }}
       </span>
       <button class="agent-ui-interactive"
@@ -284,7 +284,6 @@ import {
   IconDeviceFloppy,
   IconDots,
   IconFilter,
-  IconGitBranch,
   IconGitPullRequest,
   IconRefresh,
   IconRobotFace,
@@ -292,6 +291,7 @@ import {
   IconX,
 } from '@tabler/icons-vue';
 import { workProviderIcon } from './work-provider-icons';
+import { GitBranchIcon } from '../shared/icons/app-icons';
 import type { Agent, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';

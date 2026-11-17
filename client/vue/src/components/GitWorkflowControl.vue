@@ -409,7 +409,7 @@ import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitOperationProgress, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
-import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitLabIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitBranchIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitLabIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi, appPlatformActions } from '../platform-api';
 import { repositoryWebUrl } from '@workspace/core/git-remote';
 import { localizedErrorMessage } from '../i18n/errors';
@@ -685,7 +685,7 @@ const menuItems = computed<AppMenuItem[]>(() => [
   { id: 'separator-log', type: 'separator' },
   { id: 'revert', type: 'action', label: translate('surface.gitWorkflowControl.revert'), icon: ArrowBackUpIcon, disabled: !props.revertChanges || !commitEnabled.value },
   { id: 'commit', type: 'action', label: translate('surface.gitWorkflowControl.commit'), icon: GitCommitIcon, disabled: !commitEnabled.value },
-  { id: 'branch-work', type: 'action', label: translate('branchWork.menu'), icon: GitForkIcon, disabled: !workflow.value || !appApi },
+  { id: 'branch-work', type: 'action', label: translate('branchWork.menu'), icon: GitBranchIcon, disabled: !workflow.value || !appApi },
   { id: 'separator-sync', type: 'separator' },
   { id: 'pull', type: 'action', label: translate('surface.gitWorkflowControl.pull'), icon: RefreshIcon, disabled: !pullEnabled.value },
   { id: 'push', type: 'action', label: translate('surface.gitWorkflowControl.push'), icon: CloudUploadIcon, disabled: !pushEnabled.value },

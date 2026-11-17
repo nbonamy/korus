@@ -22,15 +22,15 @@ import { IconShare as ShareIcon } from '@tabler/icons-vue';
 import { computed } from 'vue';
 import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import RepositoryIcon from './RepositoryIcon.vue';
-import { FolderIcon, FolderRootIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
+import { FolderIcon, FolderRootIcon, GitBranchIcon, GitMainIcon, MessageIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; repository?: boolean; repositoryIcon?: string; age?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string; shortcutVisible?: boolean }>();
 const subtitle = computed(() => props.quickChat ? props.context
   : [props.session.customName ? props.context : null, props.session.branch].filter(Boolean).join(' · '));
 const icon = computed(() => props.quickChat ? MessageIcon
   : props.repository ? FolderRootIcon
-  : props.session.kind === 'worktree' ? GitForkIcon
-    : props.session.kind === 'folder' ? FolderIcon : GitBranchIcon);
+  : props.session.kind === 'main' ? GitMainIcon
+  : props.session.kind === 'folder' ? FolderIcon : GitBranchIcon);
 </script>
 
 <style scoped src="./agent-row.css"></style>

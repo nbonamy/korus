@@ -4,14 +4,15 @@ import { describe, expect, it } from 'vitest';
 import AgentEmptyState from '../AgentEmptyState.vue';
 
 describe('AgentEmptyState', () => {
-  it('shows the canonical project acquisition menu inline and forwards each selection', async () => {
+  it('shows the canonical new-agent sources inline and forwards each selection', async () => {
     const wrapper = mount(AgentEmptyState, {
       global: {
         },
     });
 
     expect(wrapper.text()).toContain(`Welcome to ${product.name}`);
-    expect(wrapper.text()).toContain('Choose a source to start a session');
+    expect(wrapper.text()).toContain('New agent from…');
+    expect(wrapper.get('[role="menu"]').attributes('aria-label')).toBe('New agent from…');
     expect(wrapper.get('.agent-empty-state__mark img').attributes('alt')).toBe(`${product.name}`);
     expect(wrapper.find('.agent-sidebar__new').exists()).toBe(false);
 

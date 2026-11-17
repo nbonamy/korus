@@ -10,7 +10,7 @@
     :name="name"
   />
   <component
-    :is="agent.workspace.isLinkedWorktree ? GitForkIcon : GitBranchIcon"
+    :is="kind === 'main' ? GitMainIcon : GitBranchIcon"
     v-else
     class="agent-quick-open-icon__session"
     :class="`agent-quick-open-icon__session--${kind}`"
@@ -22,7 +22,7 @@
 import type { Agent } from '@workspace/core/contracts';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
 import { computed } from 'vue';
-import { GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
+import { GitBranchIcon, GitMainIcon, MessageIcon } from '../shared/icons/app-icons';
 import RepositoryIcon from './RepositoryIcon.vue';
 
 const props = defineProps<{
@@ -36,7 +36,10 @@ const kind = computed(() => {
   const workspace = props.agent?.workspace;
   if (workspace?.kind !== 'git') return 'folder';
   if (workspace.isLinkedWorktree) return 'worktree';
-  if (workspace.branch === 'main' || workspace.branch === 'master') return 'main';
+  const defaultBranch = workspace.defaultBranch === undefined
+    ? (workspace.branch === 'main' || workspace.branch === 'master' ? workspace.branch : null)
+    : workspace.defaultBranch;
+  if (workspace.branch && workspace.branch === defaultBranch) return 'main';
   return workspace.branch ? 'branch' : 'detached';
 });
 </script>

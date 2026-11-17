@@ -1,6 +1,6 @@
 <template>
   <section class="worktree-reuse-prompt" role="status">
-    <IconGitBranch aria-hidden="true" />
+    <GitBranchIcon aria-hidden="true" />
     <div>
       <strong>{{ t('worktreeReuse.title') }}</strong>
       <p>{{ t('worktreeReuse.detail', { branch }) }}</p>
@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { IconGitBranch } from '@tabler/icons-vue';
+import { GitBranchIcon } from '../shared/icons/app-icons';
 import { useI18n } from 'vue-i18n';
 
 defineProps<{

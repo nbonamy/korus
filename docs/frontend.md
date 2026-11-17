@@ -299,6 +299,11 @@ Search by behavior first.
 Use the globe to identify a remote host and the network icon for actions that
 connect to one.
 
+Use the catalog's `GitMainIcon` for a known default branch and `GitBranchIcon` for
+other branches and worktrees. Their shared components own the glyphs; callers
+keep sizing and semantic colors. Import them from the catalog instead of the
+icon library directly.
+
 App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
 native input routing, shell matching and the shortcut reference share these
 binding declarations. Availability reflects the host and current surface; provider

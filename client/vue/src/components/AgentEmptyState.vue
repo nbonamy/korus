@@ -16,13 +16,13 @@
 
     <div class="agent-empty-state__copy">
       <h1>{{ t('sidebar.welcome') }}</h1>
-      <p>{{ t('sidebar.welcomeDetail') }}</p>
+      <p>{{ t('startWork.newAgentFrom') }}</p>
     </div>
 
     <div class="agent-empty-state__actions">
       <AppMenu
         class="app-menu--embedded"
-        :ariaLabel="t('startWork.addProjectFrom')"
+        :ariaLabel="t('startWork.newAgentFrom')"
         :items="menuItems"
         @select="select"
       />

@@ -447,6 +447,7 @@
     <RepositorySessionSourceDialog
       v-model:provider="repositorySession.provider.value"
       :visible="repositorySessionSourceVisible"
+      :initial-tab="repositorySessionSource?.initialTab"
       :repository-name="repositorySessionSource?.repositoryName ?? ''"
       :branches="repositorySessionSourceBranches"
       :work-items="repositorySessionSourceWorkItems"

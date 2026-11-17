@@ -75,7 +75,7 @@
           >
             <template #prefix>
               <IconGitPullRequest v-if="item.kind === 'pullRequest'" aria-hidden="true" />
-              <IconGitBranch v-else aria-hidden="true" />
+              <GitBranchIcon v-else aria-hidden="true" />
             </template>
           </el-input>
         </section>
@@ -109,7 +109,8 @@
 import { useExecutionSelection } from '../execution-selection';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconAlertTriangle, IconCopy, IconGitBranch, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
+import { IconAlertTriangle, IconCopy, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
+import { GitBranchIcon } from '../shared/icons/app-icons';
 import type { WorkItem } from '@workspace/core/contracts';
 import type { WorkItemAssignmentAction } from '@workspace/core/work-item-prompts';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';

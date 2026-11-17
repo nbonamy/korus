@@ -39,9 +39,9 @@
         <span class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent">
           <StartWorkMenu @select="emit('start-work', $event)">
             <template #trigger="{ attrs }">
-              <el-tooltip :content="t('startWork.addProject')" placement="top" :show-after="300">
-                <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="t('startWork.addProject')">
-                  <FoldersIcon data-icon="folders" aria-hidden="true" />
+              <el-tooltip :content="t('startWork.newAgent')" placement="top" :show-after="300">
+                <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="t('startWork.newAgent')">
+                  <NewAgentIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
             </template>
@@ -293,7 +293,7 @@ import { toRefs } from 'vue';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, FoldersIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, NewAgentIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import ProviderIcon from './ProviderIcon.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';

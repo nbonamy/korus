@@ -89,7 +89,8 @@
       <template v-else-if="tab === 'branches' && purpose === 'session'">
         <h3>{{ t('repositories.sessionSource.recentBranches') }}</h3>
         <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result agent-ui-interactive" type="button" @click="emit('select-branch', branch)">
-          <GitBranchIcon
+          <component
+            :is="branch.isDefault ? GitMainIcon : GitBranchIcon"
             class="repository-session-source-dialog__result-icon repository-session-source-dialog__result-icon--branch"
             :class="{
               'repository-session-source-dialog__result-icon--default': branch.isDefault,
@@ -156,17 +157,17 @@ import type { RemoteConnection, SourceBranch, WorkItem, WorkSource } from '@work
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkItemDetail from './WorkItemDetail.vue';
 import { useWorkSourceBacklog } from './use-work-source-backlog';
-import { ArrowRightIcon, GitBranchIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, GitBranchIcon, GitMainIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
 import HostSelector from './HostSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
 import { useProviderChoices, useNewAgentProvider } from './provider-selection';
 const agentProvider = defineModel<import('@workspace/core/contracts').HarnessProvider>('provider');
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
-
-type SourceTab = 'branches' | 'pullRequests' | 'issues';
+import type { RepositorySessionSourceTab as SourceTab } from './repository-session-context';
 
 const props = withDefaults(defineProps<{
+  initialTab?: SourceTab;
   location?: import('@workspace/core/contracts').AutomationLocation;
   modelAgentId?: string;
   branches?: SourceBranch[];
@@ -186,6 +187,7 @@ const props = withDefaults(defineProps<{
   hostCheckout?: RemoteCheckout | null;
   hostBusy?: boolean;
 }>(), {
+  initialTab: 'branches',
   hosts: () => [],
   hostCheckout: null,
   hostBusy: false,
@@ -239,7 +241,7 @@ watch([backlog.provider, () => backlog.providers.value.length > 0], () => {
   selectedWorkItem.value = null;
   query.value = '';
 });
-const tab = ref<SourceTab>(props.purpose === 'missionIssue' ? 'issues' : 'branches');
+const tab = ref<SourceTab>(props.purpose === 'missionIssue' ? 'issues' : props.initialTab);
 const tabs = computed<ReadonlyArray<{ id: SourceTab; label: string }>>(() => [
   { id: 'branches', label: t('repositories.sessionSource.branches') },
   { id: 'pullRequests', label: t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'repositories.sessionSource.pullRequests') },
@@ -278,7 +280,7 @@ const assignmentExistingWorktreePath = computed(() => (
 watch(() => props.visible, async (visible) => {
   if (!visible) return;
   query.value = '';
-  tab.value = props.purpose === 'missionIssue' ? 'issues' : 'branches';
+  tab.value = props.purpose === 'missionIssue' ? 'issues' : props.initialTab;
   selectedWorkItem.value = null;
   await nextTick();
   searchInput.value?.focus();

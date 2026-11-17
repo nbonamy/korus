@@ -336,14 +336,14 @@ describe('AgentSidebar actions', () => {
     expect(folderGroup.attributes('data-group-kind')).toBe('folder');
     expect(folderGroup.get('.agent-sidebar__workspace-header').find('[data-icon="folder"]').exists()).toBe(true);
     expect(folderGroup.get('.agent-sidebar__agent').find('.agent-sidebar__session-icon').exists()).toBe(false);
-    expect(folderGroup.find('[aria-label="Create agent from branch, pull request, or issue"]').exists()).toBe(false);
+    expect(folderGroup.find('[aria-label^="New session in"]').exists()).toBe(false);
     expect(folderGroup.find('[aria-label="New quick chat"]').exists()).toBe(false);
 
     await chatsGroup.get('[aria-label="New quick chat"]').trigger('click');
     expect(wrapper.emitted('create-quick-chat')).toStrictEqual([[]]);
   });
 
-  it('offers Quick chat beneath Add project until the team has chats', async () => {
+  it('offers Quick chat beneath New agent until the team has chats', async () => {
     const wrapper = mount(AgentSidebar, {
       props: {
         agents,
@@ -372,7 +372,7 @@ describe('AgentSidebar actions', () => {
       },
     });
 
-    expect(wrapper.get('.agent-sidebar__start-work').text()).toContain('Add project');
+    expect(wrapper.get('.agent-sidebar__start-work').text()).toContain('New agent');
     expect(wrapper.find('.agent-sidebar__footer').exists()).toBe(false);
   });
 

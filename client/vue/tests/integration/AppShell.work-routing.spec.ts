@@ -214,7 +214,7 @@ describe('AppShell work routing', () => {
       sourceRepositories: [{ name: 'repo', path: '/code/selected', remoteIdentity: provider === 'gitlab' ? 'github.com/owner/repo' : gitlab.id, worktrees: [] }],
       workRepositoriesByProvider: { github: [github], gitlab: [gitlab] },
     });
-    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected', ...(remoteConnectionId ? { remoteConnectionId } : {}) });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected', initialTab: 'pullRequests', ...(remoteConnectionId ? { remoteConnectionId } : {}) });
     await flushPromises();
     expect(listSourceRepositories).toHaveBeenCalledExactlyOnceWith(remoteConnectionId);
     // Pull requests and issues come from the repository, whichever machine it is looked at on.
@@ -223,7 +223,7 @@ describe('AppShell work routing', () => {
     const dialog = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
     expect(dialog.props('selectedRepositoryId')).toBe(selected.id);
     expect(dialog.props('workItems')).toStrictEqual([request]);
-    await dialog.findAll('[role="tab"]').find(tab => tab.text() === (provider === 'gitlab' ? 'Merge requests' : 'Pull requests'))!.trigger('click');
+    expect(dialog.get('[role="tab"].is-active').text()).toBe(provider === 'gitlab' ? 'Merge requests' : 'Pull requests');
     expect(dialog.text()).toContain(request.title);
   });
 
@@ -909,7 +909,7 @@ describe('AppShell work routing', () => {
     });
 
     expect(wrapper.text()).toContain(`Welcome to ${product.name}`);
-    expect(wrapper.text()).toContain('Choose a source to start a session');
+    expect(wrapper.text()).toContain('New agent from…');
     expect(wrapper.find('.agent-header').exists()).toBe(false);
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
     expect(wrapper.find('.conversation-pane').exists()).toBe(false);

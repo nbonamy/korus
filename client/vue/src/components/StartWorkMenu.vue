@@ -3,8 +3,8 @@
     :block="!$slots.trigger"
     placement="bottom-start"
     :width="240"
-    :heading="t('startWork.addProjectFrom')"
-    :ariaLabel="t('startWork.addProjectFrom')"
+    :heading="t('startWork.newAgentFrom')"
+    :ariaLabel="t('startWork.newAgentFrom')"
     :items="menuItems"
     @select="select"
   >
@@ -14,10 +14,10 @@
           v-bind="attrs"
           class="start-work-menu__trigger agent-ui-interactive"
           type="button"
-          :aria-label="t('startWork.addProject')"
+          :aria-label="t('startWork.newAgent')"
         >
-          <FoldersIcon data-icon="folders" aria-hidden="true" />
-          <span>{{ t('startWork.addProject') }}</span>
+          <NewAgentIcon aria-hidden="true" />
+          <span>{{ t('startWork.newAgent') }}</span>
         </button>
       </slot>
     </template>
@@ -27,7 +27,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { FoldersIcon } from '../shared/icons/app-icons';
+import { NewAgentIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import { isStartWorkAction, startWorkMenuItems, type StartWorkAction } from './start-work-actions';
 

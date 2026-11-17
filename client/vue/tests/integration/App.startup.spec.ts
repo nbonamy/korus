@@ -37,7 +37,7 @@ describe('app startup', () => {
     try {
       await flushPromises();
       expect(wrapper.find('button[aria-label="Join with invite…"]').exists()).toBe(false);
-      await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Add project')!.trigger('click');
+      await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'New agent')!.trigger('click');
       await flushPromises();
       const invite = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Join with invite'))!;
       invite.click(); await flushPromises();

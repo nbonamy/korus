@@ -143,7 +143,7 @@
           />
           <component
             v-else-if="group.kind === 'worktree'"
-            :is="worktreeGroupKind(group) === 'worktree' ? GitForkIcon : GitBranchIcon"
+            :is="worktreeGroupKind(group) === 'main' ? GitMainIcon : GitBranchIcon"
             class="agent-sidebar__workspace-icon"
             :data-session-kind="worktreeGroupKind(group)"
             aria-hidden="true"
@@ -200,14 +200,6 @@
             </AppMenuButton>
           </span>
           <span v-else-if="group.kind === 'repository' && !featureOnly" class="agent-sidebar__workspace-actions">
-            <button class="agent-ui-interactive"
-              type="button"
-              :aria-label="t('sidebar.createFromRepository')"
-              :title="t('sidebar.createFrom')"
-              @click.stop="emit('create-agent-from-repository', sectionTarget(group))"
-            >
-              <GitForkIcon aria-hidden="true" />
-            </button>
             <AppMenuButton
               :open="repositorySessionMenuId === group.id"
               :ariaLabel="t('sidebar.newSessionIn', { repository: group.label })"
@@ -334,7 +326,7 @@ import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, FolderIcon, GitBranchIcon, GitMainIcon, MessageIcon, NewAgentIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import ProviderIcon from './ProviderIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
@@ -349,8 +341,8 @@ function hasReadSafetyBlock(session: WorkspaceSidebarSession): boolean {
 const props = defineProps<{ model: AgentSidebarModel }>();
 // The default-branch group starts anything new; a feature only gains agents on its own branch.
 function featureMenuItems(group: WorkspaceSidebarGroup): AppMenuItem[] {
-  const agent: AppMenuItem = { id: 'new-agent', type: 'action', label: t.value('sidebar.newAgent'), icon: MessageIcon };
-  return group.protected ? [agent, { id: 'new-worktree', type: 'action', label: t.value('sidebar.newWorktree'), icon: GitForkIcon }] : [agent];
+  const agent: AppMenuItem = { id: 'new-agent', type: 'action', label: t.value('sidebar.newAgent'), icon: NewAgentIcon };
+  return group.protected ? [agent, { id: 'new-worktree', type: 'action', label: t.value('sidebar.newWorktree'), icon: GitBranchIcon }] : [agent];
 }
 
 function selectFeatureMenuItem(group: WorkspaceSidebarGroup, itemId: string): void {
@@ -394,7 +386,6 @@ const {
   toggleWorkspace,
   repositorySessionMenuId,
   repositorySessionMenuItems,
-  sectionTarget,
   remoteConnection,
   rowHost,
   activityRepository,

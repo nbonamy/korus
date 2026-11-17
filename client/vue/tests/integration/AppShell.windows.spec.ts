@@ -134,7 +134,7 @@ describe('AppShell in a window that shows less than the workspace', () => {
       expect(wrapper.find('.team-rail').exists()).toBe(false);
       expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
       expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
-      expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+      expect(wrapper.text()).not.toMatch(/Quick chat|New mission|New agent/);
     });
 
     it('opens its agents in split from the feature sidebar in the team’s own order', async () => {

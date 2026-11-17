@@ -3,6 +3,24 @@ import { test } from 'vitest';
 import { withAnnotationFixture } from './annotation-fixture.mjs';
 import { interactionControlsSource } from './fixtures/interaction-controls.mjs';
 
+test('repository creation uses one plus with four choices', async () => {
+  const errors = await withAnnotationFixture(interactionControlsSource, async page => {
+    const group = page.locator('[data-group-kind="repository"]');
+    await group.locator('.agent-sidebar__workspace-header').hover();
+    assert.equal(await group.locator('.agent-sidebar__workspace-actions button').count(), 1);
+    await group.getByRole('button', { name: 'New session in repo', exact: true }).click();
+    const menu = page.getByRole('menu', { name: 'New session in repo', exact: true });
+    await menu.getByRole('menuitem', { name: 'main', exact: true }).waitFor();
+    assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), ['main', 'New worktree…', 'From branch…', 'From issue or PR…']);
+    await page.waitForFunction(() => document.getAnimations().every(animation =>
+      animation.effect?.getTiming().iterations === Infinity || animation.playState !== 'running'));
+    await page.screenshot({ path: '/tmp/korus-repository-create-menu.png' });
+    await menu.getByRole('menuitem', { name: 'From issue or PR…', exact: true }).click();
+    assert.equal((await page.evaluate(() => window.repositorySource)).initialTab, 'pullRequests');
+  });
+  assert.deepEqual(errors, []);
+});
+
 test('activity groups disclose on hover and keyboard focus, fold independently and restore after reload', async () => {
   const errors = await withAnnotationFixture(interactionControlsSource, async page => {
     await page.evaluate(() => window.showActivity());

@@ -28,6 +28,7 @@ const activity=ref(false);
 const unread=ref(['quick']);
 window.markedUnread=null;
 window.selectedAgent=null;
+window.repositorySource=null;
 window.showActivity=()=>{activity.value=true};
 const identityTeams=[{id:'identity-blue',name:'Blue workspace',color:'#1B4FB2',agentIds:[]},{id:'identity-green',name:'Green workspace',color:'#46A857',agentIds:[]}];
 window.themes=appThemes;
@@ -40,7 +41,7 @@ window.openDialog=async (method,destructive)=>{
 window.applyTheme=theme=>applyAppTheme({id:theme.id,mode:theme.appearance,uiFontSize:14,chatFontSize:15,codeFontSize:13});
 window.applyTheme(appThemes.find(theme=>theme.id==='app-dark-blue'));
 createApp({render:()=>h('main',{style:'width:1100px;height:800px;background:var(--color-shell-main)'},[
- h(AgentSidebar,{agents:activity.value?[repoAgent,quickAgent,{...repoAgent,id:'working',status:{type:'working'}},{...repoAgent,id:'waiting',status:{type:'awaitingInput'}}]:[repoAgent,quickAgent],unreadAgentIds:activity.value?unread.value:[],'onSet-agent-unread':input=>{window.markedUnread=input;unread.value=[...unread.value,input.agentId]},'onSelect-agent':id=>{window.selectedAgent=id},allTeams:activity.value,activeAgentId:repoAgent.id,teamName:'Workspace',style:'position:absolute;left:620px;top:300px;height:500px'}),
+ h(AgentSidebar,{agents:activity.value?[repoAgent,quickAgent,{...repoAgent,id:'working',status:{type:'working'}},{...repoAgent,id:'waiting',status:{type:'awaitingInput'}}]:[repoAgent,quickAgent],unreadAgentIds:activity.value?unread.value:[],'onSet-agent-unread':input=>{window.markedUnread=input;unread.value=[...unread.value,input.agentId]},'onSelect-agent':id=>{window.selectedAgent=id},'onCreate-agent-from-repository':input=>{window.repositorySource=input},listRepositoryBranches:async()=>[{name:'main',isDefault:true}],allTeams:activity.value,activeAgentId:repoAgent.id,teamName:'Workspace',style:'position:absolute;left:620px;top:300px;height:500px'}),
  h(TeamRail,{teams:identityTeams,activeTeamId:activeTeam.value,'onSelect-team':id=>activeTeam.value=id,style:'position:absolute;right:0;top:300px;height:300px'}),
  h(AgentHeader,{agent,gitStatus,gitReviewAvailable:true,gitWorkflowAvailable:true,workspaceOpen:true,isLoading:false,sidebarCollapsed:false,
  openInAvailable:true,openInCatalog:{defaultApplication:'vscode',applications:[{id:'vscode',label:'VS Code'}]}}),
