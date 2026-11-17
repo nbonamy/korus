@@ -154,7 +154,8 @@ const running = computed(() => props.plan.status === 'inProgress');
 }
 
 .conversation-plan__pending {
-  color: var(--color-border-strong);
+  /* Light surfaces need the muted text colour for a dashed outline to reach 3:1; the dark border colour already does. */
+  color: light-dark(var(--color-text-muted), var(--color-border-strong));
   stroke-dasharray: 2 3;
 }
 
