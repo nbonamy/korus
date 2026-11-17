@@ -6,6 +6,7 @@ const planSource = `
   import {createApp,h,ref} from 'vue';
   import ElementPlus from 'element-plus';
   import 'element-plus/dist/index.css';
+  import '@korus-dev/agent-ui-sdk/styles.css';
   import '/client/vue/src/styles/variables.css';
   import '/client/vue/src/styles/base.css';
   import {i18n} from '/client/vue/src/i18n/index.ts';
@@ -115,6 +116,7 @@ const ticketSource = `
   import {createApp,h,ref} from 'vue';
   import ElementPlus from 'element-plus';
   import 'element-plus/dist/index.css';
+  import '@korus-dev/agent-ui-sdk/styles.css';
   import '/client/vue/src/styles/variables.css';
   import '/client/vue/src/styles/base.css';
   import {i18n} from '/client/vue/src/i18n/index.ts';
