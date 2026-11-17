@@ -125,7 +125,7 @@ export class DesktopAutoUpdateService {
   }
 
   check(): boolean {
-    if (!this.started || this.status.state === 'disabled') return false;
+    if (!this.started || this.status.state === 'disabled' || this.status.state === 'downloaded') return false;
 
     try {
       this.autoUpdater.checkForUpdates();
@@ -153,6 +153,8 @@ export class DesktopAutoUpdateService {
   }
 
   private setStatus(status: DesktopUpdateStatus): void {
+    // Native checks can finish after a download; the staged installer remains ready.
+    if (this.status.state === 'downloaded' && status.state !== 'downloaded') return;
     this.status = status;
     this.onStatusChanged?.(status);
   }
