@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.1",
+  "currentVersion": "0.58.2",
   "releases": [
+    {
+      "version": "0.58.2",
+      "releasedAt": "2026-11-17",
+      "sourceSha256": "b58426aafc6165da129dd19df0a7ff7a74ac03d7b0d5f8fd15c9842a5c7813bd",
+      "markdown": "### Improvements and fixes\n\n- **Updates:** Downloaded updates keep the green badge visible, and checking for updates offers to install them.\n- **New agent:** Use one repository + menu for the main branch, an existing branch, a new worktree, or pull requests and issues.\n- **Git icons:** Distinguish the main branch from worktrees with consistent icons throughout the app.\n- **Screen lock:** Restored the warning color while automatic screen locking is disabled.\n- **Cost estimates:** Updated pricing for OpenAI and Gemini image models."
+    },
     {
       "version": "0.58.1",
       "releasedAt": "2026-11-16",

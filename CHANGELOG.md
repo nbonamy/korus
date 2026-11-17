@@ -2,6 +2,16 @@
 
 All notable Korus changes are recorded here.
 
+## [0.58.2] - 2026-11-17
+
+### Improvements and fixes
+
+- **Updates:** Downloaded updates keep the green badge visible, and checking for updates offers to install them.
+- **New agent:** Use one repository + menu for the main branch, an existing branch, a new worktree, or pull requests and issues.
+- **Git icons:** Distinguish the main branch from worktrees with consistent icons throughout the app.
+- **Screen lock:** Restored the warning color while automatic screen locking is disabled.
+- **Cost estimates:** Updated pricing for OpenAI and Gemini image models.
+
 ## [0.58.1] - 2026-11-16
 
 ### Improvements and fixes
