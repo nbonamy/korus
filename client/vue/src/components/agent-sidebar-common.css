@@ -1,6 +1,7 @@
 .agent-sidebar {
   --agent-ui-state-selected: color-mix(in srgb, var(--color-text) 3%, transparent);
   --agent-ui-state-hover: color-mix(in srgb, var(--color-text) 1%, transparent);
+  --agent-ui-state-pressed: color-mix(in srgb, var(--color-text) 5%, transparent);
   --agent-sidebar-width: 260px;
   --agent-sidebar-min-width: 200px;
   --agent-sidebar-max-width: 420px;

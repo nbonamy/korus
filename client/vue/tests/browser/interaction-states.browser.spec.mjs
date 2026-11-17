@@ -115,6 +115,9 @@ test('native, toolkit and generated controls retain one state policy and readabl
       const otherChat=page.locator('.agent-sidebar__agent:not([aria-pressed="true"])').first();
       await otherChat.hover();
       assert.equal((await appearance(otherChat)).background,await sidebarTint(1),id+': chat hover is quieter than selection');
+      await page.mouse.down();
+      try { assert.equal((await appearance(otherChat)).background,await sidebarTint(5),id+': pressing a chat keeps a subtle tint'); }
+      finally { await page.mouse.up(); }
       assert.equal(await page.locator('.el-segmented__item-selected').first().evaluate(el=>getComputedStyle(el).boxShadow),'none','segmented selection has no shadow');
     }
     for (const method of ['confirm','alert','prompt']) {
