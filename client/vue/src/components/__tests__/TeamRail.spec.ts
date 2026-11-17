@@ -273,6 +273,7 @@ describe('TeamRail', () => {
     expect(getComputedStyle(cockpit.element).opacity).toBe('0.6');
     expect(wrapper.find('[role="separator"]').exists()).toBe(false);
     const navigation = [
+      ['cockpitActive', 'Cockpit'],
       ['backlogActive', 'Backlog'],
       ['automationsActive', 'Automations'], ['settingsActive', 'Settings menu'],
     ] as const;

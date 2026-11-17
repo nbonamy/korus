@@ -451,13 +451,6 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   opacity: 1;
 }
 
-.team-rail__cockpit,
-.team-rail__cockpit:hover,
-.team-rail__cockpit:focus-visible {
-  border: 0;
-  border-radius: var(--radius-sm);
-}
-
 .team-rail__new svg {
   width: var(--icon-xl);
   height: var(--icon-xl);
