@@ -2,7 +2,21 @@
 
 All notable Korus changes are recorded here.
 
-## Unreleased
+## [0.58.0] - 2026-11-16
+
+### New features
+
+- **Skins:** Choose a skin from t3skins.dev in Appearance settings, or load one from a JSON file.
+- **Custom skins:** Ask your agent to build, apply and reload a skin, and manage saved skins in the picker.
+- **Cockpit groups:** Fold status groups independently and keep your choices after reopening.
+- **Mark unread:** Mark an agent unread from its menu or the shortcut shown when hovering an idle agent.
+- **Restore your view:** Each window remembers whether you left it in a workspace, Cockpit or Backlog.
+
+### Improvements and fixes
+
+- **Appearance:** More consistent button, menu, tab and sidebar states across light themes, dark themes and skins.
+- **Screenshots:** Large screenshots remain visible in new Claude chats instead of appearing as a generic content placeholder.
+- **Past conversations:** Open Automation and handoff conversations when their original agent session is unavailable.
 
 ## [0.57.3] - 2026-11-15
 

@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.57.3",
+  "currentVersion": "0.58.0",
   "releases": [
+    {
+      "version": "0.58.0",
+      "releasedAt": "2026-11-16",
+      "sourceSha256": "92637681f066f3a6816ec9186670e612eb63801b64d1e28ac9e4f2e1580373df",
+      "markdown": "### New features\n\n- **Skins:** Choose a skin from t3skins.dev in Appearance settings, or load one from a JSON file.\n- **Custom skins:** Ask your agent to build, apply and reload a skin, and manage saved skins in the picker.\n- **Cockpit groups:** Fold status groups independently and keep your choices after reopening.\n- **Mark unread:** Mark an agent unread from its menu or the shortcut shown when hovering an idle agent.\n- **Restore your view:** Each window remembers whether you left it in a workspace, Cockpit or Backlog.\n\n### Improvements and fixes\n\n- **Appearance:** More consistent button, menu, tab and sidebar states across light themes, dark themes and skins.\n- **Screenshots:** Large screenshots remain visible in new Claude chats instead of appearing as a generic content placeholder.\n- **Past conversations:** Open Automation and handoff conversations when their original agent session is unavailable."
+    },
     {
       "version": "0.57.3",
       "releasedAt": "2026-11-15",
