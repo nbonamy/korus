@@ -201,6 +201,35 @@ describe('settings contracts', () => {
       .toStrictEqual({ ...defaultThemeSettings, id: 'github-light' });
   });
 
+  it('retains a custom skin and its variants across snapshot save and reload without replacing the palette', () => {
+    const snapshot = createEmptySnapshot();
+    const skin = {
+      name: '  Night sky  ', appearance: 'dark', colors: { accent: '#abcdef' }, canvas: '#102030',
+      variants: { light: { canvas: '#ffffff' }, dark: { canvas: '#102030' } },
+      css: '.chat { background-image: linear-gradient(#102030, #000000); }',
+    };
+    updateSettingsInSnapshot(snapshot, { theme: normalizeThemeSettings({ ...defaultThemeSettings, id: 'github-light', mode: 'system', skin }) });
+    expect(normalizeThemeSettings(JSON.parse(JSON.stringify(snapshot.theme)))).toStrictEqual({
+      ...defaultThemeSettings, id: 'github-light', mode: 'system', skin: {
+        id: 'custom-night-sky', name: 'Night sky', appearance: 'dark',
+        colors: { accent: '#abcdef', canvas: '#102030' }, variants: skin.variants, css: skin.css,
+      },
+    });
+  });
+
+  it('discards malformed persisted skins while preserving the chosen palette', () => {
+    const skin = { name: 'Night sky', appearance: 'dark', colors: { canvas: '#102030' } };
+    for (const invalid of [
+      { ...skin, version: 2 },
+      { ...skin, colors: { canvas: 'url(https://example.com/image.png)' } },
+      { ...skin, variants: { sepia: { canvas: '#102030' } } },
+      { ...skin, css: {} },
+    ]) {
+      expect(normalizeThemeSettings({ ...defaultThemeSettings, id: 'github-light', skin: invalid }))
+        .toStrictEqual({ ...defaultThemeSettings, id: 'github-light', skin: null });
+    }
+  });
+
   it('normalizes theme settings with bounded font sizes', () => {
     expect(normalizeThemeSettings({
       id: ' one-dark-pro ',
