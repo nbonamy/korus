@@ -4,8 +4,8 @@
       <div v-if="loading" class="subagent-panel__state">{{ t('chat.subagents.loadingConversation') }}</div>
       <div v-else-if="error" class="subagent-panel__state subagent-panel__state--error">
         <span>{{ t('chat.subagents.loadError') }}</span>
-        <button
-          class="app-button app-button--secondary"
+        <button data-variant="primary"
+          class="app-button app-button--secondary agent-ui-interactive"
           data-testid="subagent-conversation-retry"
           type="button"
           @click="refreshMessages"

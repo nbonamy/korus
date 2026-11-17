@@ -169,8 +169,8 @@ describe('SettingsConnectionsPanel', () => {
     await wrapper.get('[aria-label="Connection settings for devbox"]').trigger('click');
     await flushPromises();
     expect([...document.body.querySelectorAll('.app-dialog__footer .app-button')].map((button) => [...button.classList])).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--primary'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'agent-ui-interactive'],
     ]);
     bodyButton('Browse')?.click();
     await flushPromises();
@@ -199,11 +199,11 @@ describe('SettingsConnectionsPanel', () => {
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
       'devbox will be removed. This will also remove 1 agent running there from this app. They keep running on the SSH host.',
       'Delete devbox?',
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Delete',
         type: 'warning',
-      },
+      }),
     );
     expect(removeRemoteConnection).toHaveBeenCalledWith('connection-devbox');
   });

@@ -1,7 +1,7 @@
 import type { HarnessProvider, ClaudeAuthentication, CodexAuthentication, AppApi } from '@workspace/core/contracts';
 import { providerAuthenticationState, type ProviderAuthenticationAction, type ProviderConnection, type ProviderSetupChange, type ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { providerDisplayName } from '@workspace/core/provider-driver';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
@@ -277,7 +277,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
         && !options.getConnections().some(connection => connection.provider === setup.provider && connection.connected));
       if (unsignedSeparateSetups.length) {
         try {
-          await ElMessageBox.confirm(
+          await appMessageBox.confirm(
             translate('auth.separateSignInWarning', {
               providers: unsignedSeparateSetups.map(setup => providerDisplayName(setup.provider)).join(', '),
               count: unsignedSeparateSetups.length,

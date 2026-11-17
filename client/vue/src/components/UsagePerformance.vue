@@ -240,9 +240,7 @@ th {
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-regular);
 }
-tbody tr:hover {
-  background: color-mix(in srgb, var(--color-text) 3%, transparent);
-}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }

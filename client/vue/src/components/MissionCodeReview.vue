@@ -1,6 +1,6 @@
 <template>
   <section class="mission-code-review" :aria-label="t('missions.codeReview')">
-    <el-tabs v-model="activeTab" class="mission-code-review__tabs">
+    <el-tabs data-agent-ui-scope v-model="activeTab" class="mission-code-review__tabs">
       <el-tab-pane name="review" :label="t('missions.reviewTab')">
         <MissionReviewFindings
           v-if="mission"

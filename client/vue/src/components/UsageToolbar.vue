@@ -1,20 +1,11 @@
 <template>
   <div class="usage-toolbar">
-    <div class="usage-tabs" role="tablist">
-      <button
-        v-for="tab in tabs"
-        :id="'usage-tab-' + tab.name"
-        :key="tab.name"
-        class="usage-tab"
-        :class="{ 'usage-tab--active': view === tab.name }"
-        type="button"
-        role="tab"
-        :aria-selected="view === tab.name"
-        @click="emit('update:view', tab.name)"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
+    <UsageToggle
+      :model-value="view"
+      :options="tabs.map(tab => ({ value: tab.name, label: tab.label }))"
+      :label="$t('analytics.title')"
+      @update:model-value="emit('update:view', $event)"
+    />
     <div class="usage-filters">
       <UsageToggle
         :model-value="selectedPeriod"
@@ -30,7 +21,7 @@
       <el-popover trigger="click" :width="300"
         ><template #reference
           ><button
-            class="app-button usage-date"
+            class="app-button usage-date agent-ui-interactive"
             type="button"
             :aria-label="$t('analytics.dateRange')"
           >
@@ -60,7 +51,7 @@
         :aria-label="$t('analytics.provider')"
         @update:model-value="emit('update:provider', $event)"
       >
-        <el-option
+        <el-option class="agent-ui-interactive"
           v-for="option in providerOptions"
           :key="option.value"
           :value="option.value"
@@ -89,7 +80,7 @@
       >
         <template #trigger="{ attrs }">
           <el-tooltip :content="$t('analytics.options')" placement="top">
-            <button v-bind="attrs" class="app-icon-button usage-options" type="button" :aria-label="$t('analytics.options')">
+            <button v-bind="attrs" class="app-icon-button usage-options agent-ui-interactive" type="button" :aria-label="$t('analytics.options')">
               <DotsVerticalIcon aria-hidden="true" />
             </button>
           </el-tooltip>
@@ -156,36 +147,6 @@ const providerOptions = computed<
   justify-content: space-between;
   gap: var(--space-6);
 }
-.usage-tabs {
-  display: inline-flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
-}
-.usage-tab {
-  padding: var(--space-2) var(--space-8);
-  border: 0;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  transition:
-    background 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
-}
-.usage-tab:hover {
-  color: var(--color-text);
-}
-.usage-tab--active {
-  background: var(--color-surface-lowest);
-  color: var(--color-text);
-  box-shadow: var(--shadow-sm);
-}
 .usage-filters {
   display: flex;
   flex-wrap: wrap;
@@ -193,6 +154,7 @@ const providerOptions = computed<
   gap: var(--space-4);
 }
 .usage-date {
+  --agent-ui-state-rest: var(--color-surface-base);
   white-space: nowrap;
 }
 .usage-options {

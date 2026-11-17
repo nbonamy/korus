@@ -10,7 +10,7 @@
         <IconGitBranch aria-hidden="true" />
         {{ branch }}
       </span>
-      <button
+      <button class="agent-ui-interactive"
         type="button"
         :aria-label="t('repositoryBacklog.refresh')"
         :disabled="status === 'loading'"
@@ -22,7 +22,7 @@
 
     <div class="repository-backlog__toolbar">
       <div class="repository-backlog__segments" role="radiogroup" :aria-label="$t('surface.repositoryBacklogPanel.workItemType')">
-        <button
+        <button :data-selected="(kindFilter === 'issue') ? '' : undefined" class="agent-ui-interactive"
           type="button"
           role="radio"
           :aria-checked="kindFilter === 'issue'"
@@ -32,7 +32,7 @@
           <IconCircleDot aria-hidden="true" />
           {{ t('repositoryBacklog.issues') }}
         </button>
-        <button
+        <button :data-selected="(kindFilter === 'pullRequest') ? '' : undefined" class="agent-ui-interactive"
           v-if="workProviderDefinition(backlog.provider.value).pullRequests"
           type="button"
           role="radio"
@@ -47,7 +47,7 @@
 
       <div class="repository-backlog__toolbar-actions">
         <button
-          class="repository-backlog__toolbar-button"
+          class="repository-backlog__toolbar-button agent-ui-interactive"
           type="button"
           :aria-label="t('repositoryBacklog.search')"
           :aria-expanded="searchVisible"
@@ -65,7 +65,7 @@
         >
           <template #reference>
             <button
-              class="repository-backlog__toolbar-button"
+              class="repository-backlog__toolbar-button agent-ui-interactive"
               type="button"
               :aria-label="t('repositoryBacklog.filters')"
               :aria-expanded="filtersVisible"
@@ -80,24 +80,24 @@
                 <strong>{{ t('repositoryBacklog.filters') }}</strong>
                 <span>{{ repositoryName }}</span>
               </div>
-              <button type="button" @click="clearFilters">{{ t('repositoryBacklog.clearFilters') }}</button>
+              <button class="agent-ui-interactive" type="button" @click="clearFilters">{{ t('repositoryBacklog.clearFilters') }}</button>
             </header>
 
             <div class="repository-backlog__filter-fields">
               <label>
                 <span>{{ t('repositoryBacklog.state') }}</span>
                 <el-select v-model="stateFilter" size="small" :aria-label="$t('surface.repositoryBacklogPanel.workItemState')">
-                  <el-option :label="t('repositoryBacklog.open')" value="open" />
-                  <el-option :label="t('repositoryBacklog.closed')" value="closed" />
-                  <el-option :label="t('repositoryBacklog.allStates')" value="all" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.open')" value="open" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.closed')" value="closed" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.allStates')" value="all" />
                 </el-select>
               </label>
               <label>
                 <span>{{ t('repositoryBacklog.assignee') }}</span>
                 <el-select v-model="assigneeFilter" size="small" :aria-label="$t('surface.repositoryBacklogPanel.workItemAssignee')">
-                  <el-option :label="t('repositoryBacklog.anyone')" value="all" />
-                  <el-option :label="t('repositoryBacklog.assignedToMe')" value="me" />
-                  <el-option :label="t('repositoryBacklog.unassigned')" value="unassigned" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.anyone')" value="all" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.assignedToMe')" value="me" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.unassigned')" value="unassigned" />
                 </el-select>
               </label>
               <label>
@@ -108,15 +108,15 @@
                   :placeholder="t('repositoryBacklog.allLabels')"
                   :aria-label="$t('surface.repositoryBacklogPanel.workItemLabel')"
                 >
-                  <el-option :label="t('repositoryBacklog.allLabels')" value="" />
-                  <el-option v-for="label in labelOptions" :key="label" :label="label" :value="label" />
+                  <el-option class="agent-ui-interactive" :label="t('repositoryBacklog.allLabels')" value="" />
+                  <el-option class="agent-ui-interactive" v-for="label in labelOptions" :key="label" :label="label" :value="label" />
                 </el-select>
               </label>
             </div>
 
             <footer>
               <span v-if="defaultsSaved">{{ t('repositoryBacklog.defaultsSaved') }}</span>
-              <button class="app-button app-button--tertiary" type="button" @click="saveFilterDefaults">
+              <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="saveFilterDefaults">
                 <IconDeviceFloppy aria-hidden="true" />
                 {{ t('repositoryBacklog.saveDefaults') }}
               </button>
@@ -135,7 +135,7 @@
           :aria-label="$t('surface.repositoryBacklogPanel.searchRepositoryWork')"
           @keydown.esc="closeSearch"
         >
-        <button type="button" :aria-label="t('repositoryBacklog.closeSearch')" @click="closeSearch">
+        <button class="agent-ui-interactive" type="button" :aria-label="t('repositoryBacklog.closeSearch')" @click="closeSearch">
           <IconX aria-hidden="true" />
         </button>
       </div>
@@ -149,7 +149,7 @@
     <div v-else-if="error" class="repository-backlog__state repository-backlog__state--error">
       <IconAlertCircle aria-hidden="true" />
       <span>{{ error }}</span>
-      <button type="button" @click="backlog.refresh()">{{ t('repositoryBacklog.retry') }}</button>
+      <button class="agent-ui-interactive" type="button" @click="backlog.refresh()">{{ t('repositoryBacklog.retry') }}</button>
     </div>
 
     <div v-else-if="filteredItems.length === 0" class="repository-backlog__state">
@@ -219,7 +219,7 @@
         <template v-else-if="operationState === 'idle' || operationState === 'error'">
           <header>
             <strong>{{ t('repositoryBacklog.startWork', { identifier: workItemDisplayIdentifier(selectedItem) }) }}</strong>
-            <button type="button" :aria-label="$t('surface.repositoryBacklogPanel.close')" @click="closeStartWork"><IconX aria-hidden="true" /></button>
+            <button class="agent-ui-interactive" type="button" :aria-label="$t('surface.repositoryBacklogPanel.close')" @click="closeStartWork"><IconX aria-hidden="true" /></button>
           </header>
 
           <WorkItemAssignmentPicker
@@ -260,10 +260,10 @@
       </p>
       <template #footer>
         <div class="app-dialog__footer">
-          <button class="app-button app-button--tertiary" type="button" @click="confirmClearAssignment(false)">
+          <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="confirmClearAssignment(false)">
             {{ t('repositoryBacklog.keepAgent') }}
           </button>
-          <button class="app-button app-button--primary" type="button" @click="confirmClearAssignment(true)">
+          <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="confirmClearAssignment(true)">
             {{ t('repositoryBacklog.closeAgent') }}
           </button>
         </div>
@@ -443,11 +443,12 @@ const RepositoryItemRow = (rowProps: { item: WorkItem; assignment: WorkBacklogAs
   const assignmentNote = rowProps.assignment?.note?.trim();
   return h('article', {
     class: [
-      'repository-backlog__item',
+      'repository-backlog__item', 'agent-ui-interactive',
       rowProps.active ? 'repository-backlog__item--active' : '',
-      rowProps.assignment ? 'repository-backlog__item--assigned' : '',
+      rowProps.assignment ? 'repository-backlog__item--assigned' : 'repository-backlog__item--unassigned',
       assignmentNote ? 'repository-backlog__item--commented' : '',
     ],
+    'data-selected': rowProps.active ? '' : undefined,
     onClick: rowProps.assignment ? () => context.emit('activate') : undefined,
   }, [
     h(item.kind === 'pullRequest' ? IconGitPullRequest : IconCircleDot, { class: 'repository-backlog__item-kind', 'aria-hidden': 'true' }),
@@ -469,7 +470,7 @@ const RepositoryItemRow = (rowProps: { item: WorkItem; assignment: WorkBacklogAs
     ]),
     h('span', { class: 'repository-backlog__item-time' }, relativeTime(item.updatedAt)),
     h('button', {
-      class: 'repository-backlog__item-actions',
+      class: 'repository-backlog__item-actions agent-ui-interactive',
       type: 'button',
       'aria-label': `${t('repositoryBacklog.actions')} ${workItemDisplayIdentifier(item)}`,
       onClick: (event: MouseEvent) => {
@@ -765,14 +766,7 @@ function relativeLuminance(rgb: number[]): number {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.repository-backlog__repository > button:hover {
-  color: var(--color-text);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-backlog__toolbar {
@@ -801,22 +795,14 @@ function relativeLuminance(rgb: number[]): number {
   padding: 0 var(--space-6);
   border: 0;
   border-radius: calc(var(--radius-lg) - 2px);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-12);
-  cursor: pointer;
 }
 
 .repository-backlog__segments button svg {
   width: 14px;
   height: 14px;
-}
-
-.repository-backlog__segments .repository-backlog__segment--active {
-  color: var(--color-text);
-  background: var(--color-surface-lowest);
-  box-shadow: var(--shadow-sm);
 }
 
 .repository-backlog__search {
@@ -858,9 +844,7 @@ function relativeLuminance(rgb: number[]): number {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-backlog__toolbar-actions {
@@ -878,17 +862,9 @@ function relativeLuminance(rgb: number[]): number {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-12);
-  cursor: pointer;
-}
-
-.repository-backlog__toolbar-button:hover,
-.repository-backlog__toolbar-button[aria-expanded="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-low);
 }
 
 .repository-backlog__toolbar-button svg {
@@ -947,11 +923,9 @@ function relativeLuminance(rgb: number[]): number {
   flex: 0 0 auto;
   padding: 0;
   border: 0;
-  color: var(--color-primary);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-primary);
   font: inherit;
   font-size: var(--font-size-11);
-  cursor: pointer;
 }
 
 .repository-backlog__filter-fields {
@@ -1054,9 +1028,10 @@ function relativeLuminance(rgb: number[]): number {
   padding: var(--space-3) var(--space-4);
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
   border-radius: var(--radius-md);
-  background: var(--color-surface-lowest);
   box-shadow: var(--shadow-sm);
 }
+
+:deep(.repository-backlog__item--unassigned) { cursor: default; }
 
 :deep(.repository-backlog__item + .repository-backlog__item) {
   margin-top: var(--space-2);
@@ -1064,22 +1039,6 @@ function relativeLuminance(rgb: number[]): number {
 
 :deep(.repository-backlog__item--assigned) {
   cursor: pointer;
-}
-
-:deep(.repository-backlog__item:hover),
-:deep(.repository-backlog__item--active) {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface-lowest);
-  box-shadow: var(--shadow-md);
-}
-
-:deep(.repository-backlog__item--active) {
-  border-color: var(--color-primary);
-  background: color-mix(
-    in srgb,
-    var(--color-primary-container) 38%,
-    var(--color-surface-lowest)
-  );
 }
 
 :deep(.repository-backlog__item-kind) {
@@ -1202,20 +1161,13 @@ function relativeLuminance(rgb: number[]): number {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-backlog__result-count {
   margin: var(--space-4) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-11);
-}
-
-:deep(.repository-backlog__item-actions:hover) {
-  color: var(--color-text);
-  background: var(--color-surface-high);
 }
 
 :deep(.repository-backlog__item-actions svg) {
@@ -1240,10 +1192,8 @@ function relativeLuminance(rgb: number[]): number {
 
 .repository-backlog__state button {
   border: 0;
-  color: var(--color-primary);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-primary);
   font: inherit;
-  cursor: pointer;
 }
 
 .repository-backlog__clear-copy {
@@ -1288,9 +1238,7 @@ function relativeLuminance(rgb: number[]): number {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-backlog__start-work > header > button svg {

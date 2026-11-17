@@ -34,7 +34,7 @@
           <button
             v-for="session in history.filteredSessions.value"
             :key="session.id"
-            class="conversation-history-dialog__row"
+            class="conversation-history-dialog__row agent-ui-interactive"
             :class="{ 'conversation-history-dialog__row--current': history.isCurrentSession(session) }"
             type="button"
             :disabled="!history.canResume(session)"
@@ -143,19 +143,8 @@ function onVisibilityChanged(visible: boolean): void {
   padding: var(--space-2) var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-}
-
-.conversation-history-dialog__row:hover:not(:disabled),
-.conversation-history-dialog__row:focus-visible {
-  outline: 0;
-  background: var(--color-surface-base);
-}
-
-.conversation-history-dialog__row:disabled {
-  cursor: default;
 }
 
 .conversation-history-dialog__row > svg {

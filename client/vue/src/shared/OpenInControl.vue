@@ -4,7 +4,7 @@
     :class="{ 'open-in-control--compact': variant === 'compact' }"
   >
     <button
-      class="open-in-control__launch"
+      class="open-in-control__launch agent-ui-interactive"
       type="button"
       :aria-label="currentApplication ? $t('dynamic.openIn', { application: currentApplication.label }) : $t('surface.openInControl.openInApplication')"
       :title="currentApplication ? $t('dynamic.openIn', { application: currentApplication.label }) : $t('surface.openInControl.openInApplication')"
@@ -22,7 +22,7 @@
       <template #trigger="{ attrs }">
         <button
           v-bind="attrs"
-          class="open-in-control__menu-trigger"
+          class="open-in-control__menu-trigger agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.openInControl.chooseOpenInApplication')"
           :title="$t('surface.openInControl.chooseApplication')"
@@ -83,7 +83,6 @@ function selectApplication(itemId: string): void {
   height: 32px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-lowest);
   -webkit-app-region: no-drag;
 }
 
@@ -103,18 +102,7 @@ function selectApplication(itemId: string): void {
   width: 32px;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.open-in-control button:hover:not(:disabled) {
-  background: var(--color-surface-low);
-}
-
-.open-in-control button:disabled {
-  cursor: default;
-  opacity: 0.5;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .open-in-control__launch {

@@ -8,11 +8,11 @@
       <strong>{{ translate('surface.diffViz.title') }}</strong>
       <p>{{ diff.trim() ? translate('surface.diffViz.description') : translate('surface.diffViz.empty') }}</p>
       <div class="diff-viz__actions">
-        <button class="app-button app-button--primary diff-viz__generate" type="button" :disabled="busy || !active || !preferencesLoaded || !diff.trim()" @click="generate">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary diff-viz__generate agent-ui-interactive" type="button" :disabled="busy || !active || !preferencesLoaded || !diff.trim()" @click="generate">
           <LoaderIcon v-if="busy" class="diff-viz__spinner" aria-hidden="true" />
           {{ busy ? loadingLabel : translate('surface.diffViz.generate') }}
         </button>
-        <button v-if="busy" class="app-button app-button--tertiary diff-viz__cancel" type="button" :disabled="cancelling" @click="cancel">
+        <button v-if="busy" class="app-button app-button--tertiary diff-viz__cancel agent-ui-interactive" type="button" :disabled="cancelling" @click="cancel">
           {{ translate(cancelling ? 'surface.diffViz.cancelling' : 'surface.diffViz.cancel') }}
         </button>
         <el-checkbox v-else v-model="doNotAskAgain" class="diff-viz__consent" :disabled="busy || !active || !preferencesLoaded">{{ translate('surface.diffViz.doNotAskAgain') }}</el-checkbox>
@@ -23,17 +23,17 @@
     </div>
     <p v-if="error" class="diff-viz__error" role="alert">{{ error }}</p>
     <footer v-if="diagram" class="diff-viz__footer">
-      <button class="app-button app-button--tertiary diff-viz__generate" type="button" :disabled="busy || !active" @click="generate">
+      <button class="app-button app-button--tertiary diff-viz__generate agent-ui-interactive" type="button" :disabled="busy || !active" @click="generate">
         <LoaderIcon v-if="busy" class="diff-viz__spinner" aria-hidden="true" />
         {{ busy ? loadingLabel : translate('surface.diffViz.regenerate') }}
       </button>
-      <button v-if="busy" class="app-button app-button--tertiary diff-viz__cancel" type="button" :disabled="cancelling" @click="cancel">
+      <button v-if="busy" class="app-button app-button--tertiary diff-viz__cancel agent-ui-interactive" type="button" :disabled="cancelling" @click="cancel">
         {{ translate(cancelling ? 'surface.diffViz.cancelling' : 'surface.diffViz.cancel') }}
       </button>
       <span class="diff-viz__save">
         <AppMenuButton :ariaLabel="translate('surface.diffViz.save')" :items="saveItems" placement="top-end" @select="saveOrDownload">
           <template #trigger="{ attrs }">
-            <button v-bind="attrs" class="app-button app-button--tertiary" type="button" :disabled="busy || saving || !active">
+            <button v-bind="attrs" class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy || saving || !active">
               <LoaderIcon v-if="saving" class="diff-viz__spinner" aria-hidden="true" /><DownloadIcon v-else aria-hidden="true" />
               {{ translate('surface.diffViz.save') }}<ChevronDown aria-hidden="true" />
             </button>

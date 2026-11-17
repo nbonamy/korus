@@ -12,12 +12,12 @@
           <span class="cockpit-view__navigation-actions">
             <AppMenuButton v-if="repositoryOrganizations.length > 1" :ariaLabel="$t('surface.cockpitView.filterByOrganization')" :items="organizationMenuItems" @select="selectOrganization">
               <template #trigger="{ attrs }">
-                <button v-bind="attrs" class="app-icon-button" :class="{ 'cockpit-view__navigation-action--active': activeOrganization }" type="button" :aria-label="$t('surface.cockpitView.filterByOrganization')" :title="activeOrganization ?? $t('surface.cockpitView.filterByOrganization')"><IconFilter aria-hidden="true" /></button>
+                <button v-bind="attrs" class="app-icon-button agent-ui-interactive" :class="{ 'cockpit-view__navigation-action--active': activeOrganization }" type="button" :aria-label="$t('surface.cockpitView.filterByOrganization')" :title="activeOrganization ?? $t('surface.cockpitView.filterByOrganization')"><IconFilter aria-hidden="true" /></button>
               </template>
             </AppMenuButton>
             <AppMenuButton :ariaLabel="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })" :items="repositorySortMenuItems" @select="selectRepositorySortMode($event as RepositorySortMode)">
               <template #trigger="{ attrs }">
-                <button v-bind="attrs" class="app-icon-button" type="button" :aria-label="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })" :title="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })"><IconArrowsSort aria-hidden="true" /></button>
+                <button v-bind="attrs" class="app-icon-button agent-ui-interactive" type="button" :aria-label="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })" :title="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })"><IconArrowsSort aria-hidden="true" /></button>
               </template>
             </AppMenuButton>
           </span>
@@ -38,6 +38,7 @@
           <template v-for="(repository, index) in displayedRepositories" :key="repository.id">
             <h2 v-if="favoriteRepositories.length && index === favoriteRepositories.length" class="cockpit-view__favorites-heading app-section-label">{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</h2>
             <div
+              class="agent-ui-interactive" :data-selected="workBacklog.selectedRepositoryId === repository.id ? '' : undefined"
               :data-repository-id="repository.id"
               :class="isFavorite(repository.id) ? favoriteReorder.dropTargetClass(repository.id) : {}"
               @dragover="isFavorite(repository.id) && favoriteReorder.onDragOver(repository.id, $event)"
@@ -46,7 +47,7 @@
             >
               <button
                 v-if="isFavorite(repository.id)"
-                class="cockpit-view__repository-reorder"
+                class="cockpit-view__repository-reorder agent-ui-interactive"
                 type="button"
                 v-bind="favoriteReorder.dragItemAttributes(repository.id)"
                 :aria-label="$t('backlogFavorites.reorder', { repository: repositoryDisplayName(repository) })"
@@ -59,7 +60,7 @@
               >
                 <IconGripVertical aria-hidden="true" />
               </button>
-              <button
+              <button class="agent-ui-interactive" data-appearance="text"
                 type="button"
                 :title="repositoryDisplayName(repository)"
                 :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
@@ -69,7 +70,7 @@
                 <span>{{ repositoryDisplayName(repository) }}</span>
               </button>
               <button
-                class="cockpit-view__repository-favorite"
+                class="cockpit-view__repository-favorite agent-ui-interactive"
                 type="button"
                 :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repositoryDisplayName(repository) })"
                 :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repositoryDisplayName(repository) })"
@@ -78,7 +79,7 @@
                 <component :is="isFavorite(repository.id) ? IconStarFilled : IconStar" aria-hidden="true" />
               </button>
               <a
-                class="cockpit-view__repository-link"
+                class="cockpit-view__repository-link agent-ui-interactive"
                 :href="repository.url"
                 target="_blank"
                 rel="noreferrer"
@@ -99,7 +100,7 @@
       <header v-if="workBacklog" class="cockpit-view__header">
         <div class="cockpit-view__frame">
           <div class="cockpit-view__shortcuts" :aria-label="$t('backlogShortcuts.label')">
-            <button
+            <button class="agent-ui-interactive"
               v-for="shortcut in shortcuts"
               :key="shortcut.id"
               type="button"
@@ -513,10 +514,6 @@ function selectWorkView(view: InboxView): void {
   gap: var(--space-1);
 }
 
-.cockpit-view__navigation-action--active {
-  color: var(--color-primary);
-}
-
 .cockpit-view__repositories {
   min-height: 0;
   flex: 1;
@@ -561,14 +558,11 @@ function selectWorkView(view: InboxView): void {
   border: 0;
   border-radius: var(--radius-md);
   padding: var(--space-4) var(--space-6);
-  color: var(--color-text);
-  background: transparent;
   font: inherit;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-20);
   text-align: left;
-  cursor: pointer;
 }
 
 .cockpit-view__repositories > div > button[aria-pressed] svg {
@@ -584,20 +578,7 @@ function selectWorkView(view: InboxView): void {
   white-space: nowrap;
 }
 
-.cockpit-view__repositories > div:hover,
-.cockpit-view__repositories > div:has(:focus-visible),
-.cockpit-view__repositories > div:has(button[aria-pressed="true"]) {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.cockpit-view__repositories > div:has(button[aria-pressed="true"]) {
-  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
-  background: var(--color-primary-container);
-}
-
 .cockpit-view__repositories > div > button[aria-pressed="true"] {
-  color: var(--color-primary);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -619,7 +600,7 @@ function selectWorkView(view: InboxView): void {
   place-items: center;
   margin-right: var(--space-3);
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   opacity: 0;
 }
 
@@ -627,8 +608,6 @@ function selectWorkView(view: InboxView): void {
 .cockpit-view__repository-favorite {
   padding: 0;
   border: 0;
-  background: transparent;
-  cursor: pointer;
 }
 
 .cockpit-view__repository-reorder {
@@ -660,21 +639,6 @@ function selectWorkView(view: InboxView): void {
 .cockpit-view__repositories > div:hover .cockpit-view__repository-link,
 .cockpit-view__repositories > div:has(:focus-visible) .cockpit-view__repository-link {
   opacity: 1;
-}
-
-.cockpit-view__repository-reorder:hover,
-.cockpit-view__repository-reorder:focus-visible,
-.cockpit-view__repository-favorite:hover,
-.cockpit-view__repository-favorite:focus-visible,
-.cockpit-view__repository-link:hover,
-.cockpit-view__repository-link:focus-visible {
-  color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-
-.cockpit-view__repositories > div button:focus-visible,
-.cockpit-view__repository-link:focus-visible {
-  outline: none;
 }
 
 .cockpit-view__repository-reorder svg,
@@ -749,13 +713,12 @@ function selectWorkView(view: InboxView): void {
   border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   border-radius: var(--radius-xl);
   padding: var(--space-8);
-  color: var(--color-text);
-  background: var(--color-shell-main);
+  --agent-ui-state-rest-foreground: var(--color-text);
+  --agent-ui-state-rest: var(--color-shell-main);
   font: inherit;
   font-size: var(--font-size-16);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
@@ -781,17 +744,6 @@ function selectWorkView(view: InboxView): void {
 
 .cockpit-view__shortcuts button[aria-pressed="true"] .cockpit-view__shortcut-copy > span {
   color: var(--color-primary);
-}
-
-.cockpit-view__shortcuts button:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface-low);
-}
-
-.cockpit-view__shortcuts button[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-shell-main));
 }
 
 @media (max-width: 1200px) {

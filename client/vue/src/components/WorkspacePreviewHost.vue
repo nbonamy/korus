@@ -5,7 +5,7 @@
     <template #header>
       <div class="workspace-preview-host__header">
         <h2 class="app-dialog__title">{{ title || t('missions.documentPreview') }}</h2>
-        <button type="button" class="app-icon-button" :aria-label="t('missions.closeDocument')" @click="emit('close')"><X aria-hidden="true" /></button>
+        <button type="button" class="app-icon-button agent-ui-interactive" :aria-label="t('missions.closeDocument')" @click="emit('close')"><X aria-hidden="true" /></button>
       </div>
     </template>
     <div class="workspace-preview-host__body"><slot /></div>

@@ -18,10 +18,10 @@
     </div>
     <p v-if="error" class="feature-dialog__error" role="alert">{{ error }}</p>
     <template #footer>
-      <button v-if="deleteOperation" class="app-button app-button--secondary" type="button" @click="runInBackground">{{ t('common.runInBackground') }}</button>
+      <button data-variant="primary" v-if="deleteOperation" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="runInBackground">{{ t('common.runInBackground') }}</button>
       <template v-else>
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="close">{{ t('common.cancel') }}</button>
-        <button class="app-button" :class="mode === 'delete' ? 'feature-dialog__delete' : 'app-button--primary'" type="button" :disabled="busy || (mode === 'delete' && !preview)" :aria-busy="busy" @click="submit">{{ mode === 'rename' ? t('features.save') : t('features.deleteAction') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="close">{{ t('common.cancel') }}</button>
+        <button class="app-button agent-ui-interactive" :class="mode === 'delete' ? 'feature-dialog__delete' : 'app-button--primary'" :data-variant="mode === 'delete' ? 'destructive' : 'primary'" data-appearance="solid" type="button" :disabled="busy || (mode === 'delete' && !preview)" :aria-busy="busy" @click="submit">{{ mode === 'rename' ? t('features.save') : t('features.deleteAction') }}</button>
       </template>
     </template>
   </FormDialog>
@@ -97,5 +97,5 @@ async function submit(): Promise<void> {
 .feature-dialog__worktrees code { overflow-wrap: anywhere; color: var(--color-text-muted); font-size: var(--font-size-12); }
 .feature-dialog__error,
 .feature-dialog__warning { color: var(--color-error); }
-.feature-dialog__delete { color: var(--color-on-error); border-color: var(--color-error); background: var(--color-error); }
+.feature-dialog__delete { border-color: var(--color-error); }
 </style>

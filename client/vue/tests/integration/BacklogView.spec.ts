@@ -20,7 +20,7 @@ describe('BacklogView', () => {
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['gitlab.com/other/repo']]);
     wrapper.unmount();
   });
-  it('reveals keyboard-focused favorite controls without a button outline', async () => {
+  it('reveals keyboard-focused favorite controls with shared focus styling', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')], undefined, 'nbonamy/a', document.body);
     try {
       await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
@@ -29,7 +29,7 @@ describe('BacklogView', () => {
       star.element.focus();
       expect(document.activeElement).toBe(star.element);
       expect(getComputedStyle(star.element).opacity).toBe('1');
-      expect(getComputedStyle(star.element).outline).toBe('none');
+      expect(star.classes()).toContain('agent-ui-interactive');
     } finally {
       wrapper.unmount();
     }

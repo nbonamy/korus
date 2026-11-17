@@ -6,7 +6,7 @@
     <template v-if="presentation === 'delivery'">
       <button
         v-if="updateEnabled"
-        class="app-button app-button--neutral git-workflow-control__delivery-action"
+        class="app-button app-button--neutral git-workflow-control__delivery-action agent-ui-interactive"
         type="button"
         :disabled="busy"
         @click="selectAction('update-from-base')"
@@ -15,7 +15,7 @@
         <span>{{ $t('surface.gitWorkflowControl.updateFromBranch', { branch: baseBranch }) }}</span>
       </button>
       <button
-        class="app-button app-button--neutral git-workflow-control__delivery-action"
+        class="app-button app-button--neutral git-workflow-control__delivery-action agent-ui-interactive"
         type="button"
         :disabled="busy || !mergeEnabled || mergeUnavailable"
         @click="selectAction('merge')"
@@ -24,7 +24,7 @@
         <span>{{ $t('surface.gitWorkflowControl.merge') }}</span>
       </button>
       <button
-        class="app-button app-button--neutral git-workflow-control__delivery-action"
+        class="app-button app-button--neutral git-workflow-control__delivery-action agent-ui-interactive"
         type="button"
         :disabled="busy || !prEnabled"
         @click="selectAction('create-pr')"
@@ -35,7 +35,7 @@
     </template>
     <template v-else>
       <button
-        class="git-workflow-control__primary"
+        class="git-workflow-control__primary agent-ui-interactive"
         type="button"
         :disabled="busy || !firstEnabledAction"
         :aria-label="$t('surface.gitWorkflowControl.runGitAction')"
@@ -48,7 +48,7 @@
         <template #trigger="{ attrs }">
           <button
             v-bind="attrs"
-            class="git-workflow-control__trigger"
+            class="git-workflow-control__trigger agent-ui-interactive"
             type="button"
             :disabled="busy"
             :aria-label="$t('surface.gitWorkflowControl.chooseGitAction')"
@@ -78,8 +78,8 @@
       <p v-if="revertError" role="alert">{{ revertError }}</p>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="revertDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy" @click="revertChanges">{{ $t(busy ? 'surface.gitWorkflowControl.reverting' : 'surface.gitWorkflowControl.revert') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="revertDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy" @click="revertChanges">{{ $t(busy ? 'surface.gitWorkflowControl.reverting' : 'surface.gitWorkflowControl.revert') }}</button>
     </template>
   </FormDialog>
 
@@ -109,7 +109,7 @@
         />
         <button
           v-if="canGenerateMessage"
-          class="git-workflow-control__generate"
+          class="git-workflow-control__generate agent-ui-interactive"
           type="button"
           :disabled="busy || commitAddedLines + commitRemovedLines === 0"
           :aria-busy="generatingKind === 'commit'"
@@ -150,11 +150,11 @@
       <div
         v-if="commitOperation.status === 'editing'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="commitDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" :disabled="busy || !canCommit" @click="commit(false)">{{ $t('surface.gitWorkflowControl.commit') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !canCommit || !pushCapable" @click="commit(true)">{{ $t('surface.gitWorkflowControl.commitAndPush') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="commitDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy || !canCommit" @click="commit(false)">{{ $t('surface.gitWorkflowControl.commit') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || !canCommit || !pushCapable" @click="commit(true)">{{ $t('surface.gitWorkflowControl.commitAndPush') }}</button></div>
       <div
         v-else-if="commitOperation.status === 'error'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="commitDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button" :class="commitOperation.commitCreated ? 'app-button--primary' : 'app-button--secondary'" type="button" @click="commitOperation.commitCreated ? retryCommitPush() : returnToCommitForm()">{{ commitOperation.commitCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.back') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="commitDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button agent-ui-interactive" :class="commitOperation.commitCreated ? 'app-button--primary' : 'app-button--secondary'" data-variant="primary" :data-appearance="commitOperation.commitCreated ? 'solid' : undefined" type="button" @click="commitOperation.commitCreated ? retryCommitPush() : returnToCommitForm()">{{ commitOperation.commitCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.back') }}</button></div>
     </template>
   </el-dialog>
 
@@ -195,11 +195,11 @@
       <div
         v-if="pushOperation.status === 'confirming'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="pushDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy" @click="push">{{ $t('surface.gitWorkflowControl.push') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="pushDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy" @click="push">{{ $t('surface.gitWorkflowControl.push') }}</button></div>
       <div
         v-else-if="pushOperation.status === 'error'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="pushDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="push">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="pushDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="push">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
 
@@ -224,7 +224,7 @@
         <textarea v-model="pullRequestBody" rows="5" :placeholder="$t('surface.gitWorkflowControl.describeTheChangeOptional')" />
         <button
           v-if="canGenerateMessage"
-          class="git-workflow-control__generate"
+          class="git-workflow-control__generate agent-ui-interactive"
           type="button"
           :disabled="busy"
           :aria-busy="generatingKind === 'pullRequest'"
@@ -248,7 +248,7 @@
     </div>
     <div v-else-if="pullRequestOperation.status === 'editing' && workflow?.existingPullRequest" class="git-workflow-control__dialog-form git-workflow-control__existing-request">
       {{ isGitLab ? '!' : '#' }}{{ workflow.existingPullRequest.number }} · {{ workflow.existingPullRequest.title }}
-      <button type="button" class="app-button app-button--primary" @click="appPlatformActions.openExternal?.(workflow.existingPullRequest.url)">{{ isGitLab ? $t('gitlabWorkflow.openRequest') : $t('gitlabWorkflow.openPullRequest') }}</button>
+      <button data-variant="primary" data-appearance="solid" type="button" class="app-button app-button--primary agent-ui-interactive" @click="appPlatformActions.openExternal?.(workflow.existingPullRequest.url)">{{ isGitLab ? $t('gitlabWorkflow.openRequest') : $t('gitlabWorkflow.openPullRequest') }}</button>
     </div>
     <GitOperationFeedback
       v-else
@@ -260,20 +260,20 @@
     </GitOperationFeedback>
     <template #footer>
       <div v-if="pullRequestOperation.status === 'editing' && workflow?.existingPullRequest" class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button>
       </div>
       <div
         v-else-if="pullRequestOperation.status === 'editing' && !workflow?.existingPullRequest"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !pullRequestTitle.trim()" @click="createPullRequest">{{ requestText('createPR') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || !pullRequestTitle.trim()" @click="createPullRequest">{{ requestText('createPR') }}</button></div>
       <div
         v-else-if="pullRequestOperation.status === 'creating'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--secondary" type="button" @click="runPullRequestInBackground">{{ $t('common.runInBackground') }}</button></div>
+      ><button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="runPullRequestInBackground">{{ $t('common.runInBackground') }}</button></div>
       <div
         v-else-if="pullRequestOperation.status === 'error'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="createPullRequest">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
+      ><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="createPullRequest">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
 
@@ -293,7 +293,7 @@
     <template #header><div class="app-form-dialog__header" :class="{ 'git-workflow-control__dialog-header': !mergeTargetDirtyWarning }"><h2 class="app-dialog__title">{{ mergeDialogTitle }}</h2><span v-if="mergeTargetDirtyWarning" class="app-dialog__subtitle">{{ $t('surface.gitWorkflowControl.targetWorktreeHasChanges', { branch: baseBranch, sourceBranch: workflow?.branch }) }}</span><span v-else class="git-workflow-control__branch">{{ workflow?.repository }} · {{ workflow?.branch }}</span></div></template>
     <div v-if="!mergeTargetDirtyWarning && mergeOperation.status === 'confirming'" class="git-workflow-control__dialog-form">
       <div class="git-workflow-control__merge-strategy" role="radiogroup" :aria-label="$t('surface.gitWorkflowControl.mergeStrategy')">
-        <label :class="{ 'git-workflow-control__merge-option--selected': mergeStrategy === 'merge' }">
+        <label class="git-workflow-control__merge-option agent-ui-interactive" :data-selected="(mergeStrategy === 'merge') ? '' : undefined" :class="{ 'git-workflow-control__merge-option--selected': mergeStrategy === 'merge' }">
           <input v-model="mergeStrategy" type="radio" value="merge" />
           <GitMergeIcon class="git-workflow-control__merge-icon" aria-hidden="true" />
           <span class="git-workflow-control__merge-copy">
@@ -301,7 +301,7 @@
             <span>{{ $t('surface.gitWorkflowControl.preserveEveryCommitInAMergeCommit') }}</span>
           </span>
         </label>
-        <label :class="{ 'git-workflow-control__merge-option--selected': mergeStrategy === 'squash' }">
+        <label class="agent-ui-interactive" :data-selected="(mergeStrategy === 'squash') ? '' : undefined" :class="{ 'git-workflow-control__merge-option--selected': mergeStrategy === 'squash' }">
           <input v-model="mergeStrategy" type="radio" value="squash" />
           <ArrowsMinimizeIcon class="git-workflow-control__merge-icon" aria-hidden="true" />
           <span class="git-workflow-control__merge-copy">
@@ -334,7 +334,7 @@
         </label>
         <el-select v-if="reportBack" v-model="selectedReportBackAgentId" filterable clearable
           :aria-label="$t('surface.gitWorkflowControl.reportRecipient')" :placeholder="$t('surface.gitWorkflowControl.reportRecipient')">
-          <el-option v-for="recipient in reportBackAgents" :key="recipient.id" :value="recipient.id" :label="recipient.name" />
+          <el-option class="agent-ui-interactive" v-for="recipient in reportBackAgents" :key="recipient.id" :value="recipient.id" :label="recipient.name" />
         </el-select>
       </div>
       <label v-if="workflow?.isLinkedWorktree" class="git-workflow-control__check git-workflow-control__merge-cleanup">
@@ -356,11 +356,11 @@
       <template #icon><GitMergeIcon /></template>
     </GitOperationFeedback>
     <template #footer>
-      <div v-if="mergeTargetDirtyWarning" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
-      <div v-else-if="mergeOperation.status === 'confirming'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" :disabled="busy || !canMerge" @click="merge(false)">{{ $t('surface.gitWorkflowControl.merge') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !canMerge || !pushCapable" @click="merge(true)">{{ $t('surface.gitWorkflowControl.mergeAndPush') }}</button></div>
-      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button class="app-button app-button--secondary" type="button" @click="runMergeInBackground">{{ $t('common.runInBackground') }}</button></div>
-      <div v-else-if="mergeOperation.status === 'warning'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
-      <div v-else-if="mergeOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="mergeOperation.mergeCreated ? retryMergePush() : merge(mergeOperation.pushAfter)">{{ mergeOperation.mergeCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.retry') }}</button></div>
+      <div v-if="mergeTargetDirtyWarning" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
+      <div v-else-if="mergeOperation.status === 'confirming'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy || !canMerge" @click="merge(false)">{{ $t('surface.gitWorkflowControl.merge') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || !canMerge || !pushCapable" @click="merge(true)">{{ $t('surface.gitWorkflowControl.mergeAndPush') }}</button></div>
+      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="runMergeInBackground">{{ $t('common.runInBackground') }}</button></div>
+      <div v-else-if="mergeOperation.status === 'warning'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
+      <div v-else-if="mergeOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="mergeOperation.mergeCreated ? retryMergePush() : merge(mergeOperation.pushAfter)">{{ mergeOperation.mergeCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
 
@@ -385,10 +385,10 @@
       <template #icon><RefreshIcon /></template>
     </GitOperationFeedback>
     <template #footer>
-      <div v-if="updateOperation.status === 'confirmingDirty'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" @click="updateFromBase(true)">{{ $t('surface.gitWorkflowControl.updateAnyway') }}</button><button class="app-button app-button--primary" type="button" @click="commitBeforeUpdate">{{ $t('surface.gitWorkflowControl.commitFirst') }}</button></div>
-      <div v-else-if="updateOperation.status === 'confirmingRequired'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(false)">{{ $t('surface.gitWorkflowControl.updateFromBranch', { branch: baseBranch }) }}</button></div>
+      <div v-if="updateOperation.status === 'confirmingDirty'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="updateFromBase(true)">{{ $t('surface.gitWorkflowControl.updateAnyway') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="commitBeforeUpdate">{{ $t('surface.gitWorkflowControl.commitFirst') }}</button></div>
+      <div v-else-if="updateOperation.status === 'confirmingRequired'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="updateFromBase(false)">{{ $t('surface.gitWorkflowControl.updateFromBranch', { branch: baseBranch }) }}</button></div>
       <div v-else-if="updateOperation.status === 'conflicts'" class="app-dialog__footer">
-        <button class="app-button app-button--secondary" type="button" @click="updateDialogOpen = false">
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="updateDialogOpen = false">
           <svg class="git-workflow-control__countdown" viewBox="0 0 16 16" aria-hidden="true">
             <circle class="git-workflow-control__countdown-track" cx="8" cy="8" r="6" />
             <circle class="git-workflow-control__countdown-ring" cx="8" cy="8" r="6" pathLength="1" />
@@ -396,7 +396,7 @@
           {{ $t('surface.gitWorkflowControl.close') }}
         </button>
       </div>
-      <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
+      <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
   <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" :progress="branchWorkProgress" @started="branchWorkProgress = null" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
@@ -1430,7 +1430,6 @@ function handleMainEvent(event: MainToRendererEvent): void {
   height: 32px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-lowest);
   -webkit-app-region: no-drag;
 }
 
@@ -1447,9 +1446,7 @@ function handleMainEvent(event: MainToRendererEvent): void {
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .git-workflow-control__primary {
@@ -1461,16 +1458,6 @@ function handleMainEvent(event: MainToRendererEvent): void {
   width: 28px;
   border-left: 1px solid var(--color-border) !important;
   border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0;
-}
-
-.git-workflow-control:not(.git-workflow-control--delivery) button:hover:not(:disabled) {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
-.git-workflow-control:not(.git-workflow-control--delivery) button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .git-workflow-control__delivery-action {
@@ -1589,21 +1576,10 @@ function handleMainEvent(event: MainToRendererEvent): void {
   border: 0;
   border-radius: var(--radius-md);
   padding: 0 var(--space-3);
-  color: var(--color-primary);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-primary);
   font: inherit;
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.git-workflow-control__generate:hover:not(:disabled) {
-  background: var(--color-surface-high);
-}
-
-.git-workflow-control__generate:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .git-workflow-control__generate svg {
@@ -1718,20 +1694,8 @@ function handleMainEvent(event: MainToRendererEvent): void {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-6) var(--space-8);
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   text-align: center;
-  cursor: pointer;
-}
-
-.git-workflow-control__merge-strategy label:hover,
-.git-workflow-control__merge-option--selected {
-  color: var(--color-text) !important;
-  border-color: var(--color-primary) !important;
-  background: color-mix(
-    in srgb,
-    var(--color-primary) 6%,
-    transparent
-  ) !important;
 }
 
 .git-workflow-control__merge-strategy input {
@@ -1741,10 +1705,6 @@ function handleMainEvent(event: MainToRendererEvent): void {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-}
-
-.git-workflow-control__merge-strategy label:focus-within {
-  border-color: var(--color-primary);
 }
 
 .git-workflow-control__merge-icon {

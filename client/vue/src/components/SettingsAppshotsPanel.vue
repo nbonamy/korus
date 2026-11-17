@@ -23,10 +23,10 @@
             class="settings-appshots-panel__select"
             @update:model-value="updateHotkey"
           >
-            <el-option label="⌘ + ⌘" value="command" />
-            <el-option label="⌥ + ⌥" value="option" />
-            <el-option label="⇧ + ⇧" value="shift" />
-            <el-option :label="$t('surface.settingsAppshotsPanel.none')" value="none" />
+            <el-option class="agent-ui-interactive" label="⌘ + ⌘" value="command" />
+            <el-option class="agent-ui-interactive" label="⌥ + ⌥" value="option" />
+            <el-option class="agent-ui-interactive" label="⇧ + ⇧" value="shift" />
+            <el-option class="agent-ui-interactive" :label="$t('surface.settingsAppshotsPanel.none')" value="none" />
           </el-select>
         </template>
       </FormRow>
@@ -40,7 +40,7 @@
             :aria-label="$t('surface.settingsAppshotsPanel.appshotDestination')"
             class="settings-appshots-panel__select"
           >
-            <el-option :label="$t('surface.settingsAppshotsPanel.activeAgent')" value="active-agent" />
+            <el-option class="agent-ui-interactive" :label="$t('surface.settingsAppshotsPanel.activeAgent')" value="active-agent" />
           </el-select>
         </template>
       </FormRow>

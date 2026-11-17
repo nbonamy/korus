@@ -3,7 +3,7 @@
     <header class="conversation-plan__header">
       <h2 :title="planTitle">{{ planTitle }}</h2>
       <button
-        class="conversation-plan__close"
+        class="conversation-plan__close agent-ui-interactive"
         type="button"
         :aria-label="t('chat.planProgress.close')"
         :title="t('chat.planProgress.close')"
@@ -103,18 +103,7 @@ const running = computed(() => props.plan.status === 'inProgress');
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.conversation-plan__close:hover {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
-.conversation-plan__close:focus-visible {
-  outline: none;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .conversation-plan__steps {

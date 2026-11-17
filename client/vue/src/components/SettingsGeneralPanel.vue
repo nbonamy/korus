@@ -80,12 +80,12 @@
             >
               {{ sourceFolderLabel }}
             </span>
-            <el-button
+            <el-button class="agent-ui-interactive"
               size="small"
               :loading="choosingSourceFolder"
               @click="chooseSourceFolder"
             > {{ $t('surface.settingsGeneralPanel.choose') }} </el-button>
-            <el-button
+            <el-button class="agent-ui-interactive"
               v-if="sourceFolderState.path"
               size="small"
               @click="clearSourceFolder"
@@ -126,13 +126,13 @@
               <ShieldCheckIcon aria-hidden="true" />
               {{ accessibilityStatusLabel }}
             </span>
-            <el-button
+            <el-button class="agent-ui-interactive"
               v-if="showAccessibilityGrantButton"
               :loading="openingAccessibilitySettings"
               size="small"
               @click="grantAccessibility"
             > {{ $t('surface.settingsGeneralPanel.grant') }} </el-button>
-            <el-button
+            <el-button class="agent-ui-interactive"
               v-else-if="permissions?.accessibility.required"
               :loading="loadingPermissions"
               size="small"
@@ -154,13 +154,13 @@
               <ShieldCheckIcon aria-hidden="true" />
               {{ screenRecordingStatusLabel }}
             </span>
-            <el-button
+            <el-button class="agent-ui-interactive"
               v-if="showScreenRecordingGrantButton"
               :loading="openingScreenRecordingSettings"
               size="small"
               @click="grantScreenRecording"
             > {{ $t('surface.settingsGeneralPanel.grant') }} </el-button>
-            <el-button
+            <el-button class="agent-ui-interactive"
               v-else-if="permissions?.screenRecording.required"
               :loading="loadingPermissions"
               size="small"
@@ -221,7 +221,7 @@
 <script setup lang="ts">
 import { rendererPlatform } from '../renderer-platform';
 import { translate } from '../i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { computed, onMounted, ref } from 'vue';
 import type { AppGeneralSettings, DaemonStatus, SourceFolderState, SystemPermissionsStatus, UpdateSettingsInput } from '@workspace/core/contracts';
 import { defaultSourceFolderState } from '@workspace/core/settings';
@@ -464,7 +464,7 @@ async function updateDaemonEnabled(value: boolean | string | number): Promise<vo
 
 async function promptForRestartAfterDaemonChange(enabled: boolean): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       enabled
         ? translate('surface.settingsGeneralPanel.appNeedsToRestartToConnectToTheBackgroundAgent')
         : translate('surface.settingsGeneralPanel.appNeedsToRestartToUseTheInAppAgent'),

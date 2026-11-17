@@ -90,16 +90,15 @@ describe('TeamRail', () => {
       expect(new DOMWrapper(document.body.querySelector<HTMLElement>('.settings-menu')!).isVisible()).toBe(true);
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   }, 5_000);
-  it('matches the selection ring to the selected team color', async () => {
+  it('keeps the team identity color as selection moves', async () => {
     const wrapper = mountRail({ teams, activeTeamId: 'team-app' });
-    expect(getComputedStyle(wrapper.get(`[aria-label="${product.name}"]`).element).outlineColor)
-      .toBe('rgb(27, 79, 178)');
-
+    const app = wrapper.get(`[aria-label="${product.name}"]`);
+    const skwad = wrapper.get('[aria-label="Skwad"]');
+    expect((app.element as HTMLElement).style.getPropertyValue('--agent-ui-state-focus-ring-color')).toBe('#1B4FB2');
     await wrapper.setProps({ activeTeamId: 'team-sk' });
-    expect(getComputedStyle(wrapper.get('[aria-label="Skwad"]').element).outlineColor)
-      .toBe('rgb(70, 168, 87)');
-    expect(getComputedStyle(wrapper.get(`[aria-label="${product.name}"]`).element).outline)
-      .toBe('');
+    expect(skwad.attributes('aria-pressed')).toBe('true');
+    expect(app.attributes('aria-pressed')).toBe('false');
+    expect((skwad.element as HTMLElement).style.getPropertyValue('--agent-ui-state-focus-ring-color')).toBe('#46A857');
   });
 
   it('renders teams and marks the active team', () => {
@@ -120,7 +119,7 @@ describe('TeamRail', () => {
     expect(markStyle.height).toBe('var(--icon-md)');
     expect(wrapper.get(`[aria-label="${product.name}"]`).attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[aria-label="Skwad"]').attributes('aria-pressed')).toBe('false');
-    expect((wrapper.get('[aria-label="Skwad"]').element as HTMLButtonElement).style.backgroundColor).toBe('rgb(70, 168, 87)');
+    expect((wrapper.get('[aria-label="Skwad"]').element as HTMLButtonElement).style.getPropertyValue('--agent-ui-state-primary-solid')).toBe('#46A857');
     expect(wrapper.find('.team-rail__window-controls').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Create workspace"]').exists()).toBe(true);
     expect(wrapper.get('[aria-label="Automations"]').attributes('aria-pressed')).toBe('false');
@@ -217,7 +216,7 @@ describe('TeamRail', () => {
     });
 
     expect(wrapper.get('[aria-label="Plain Team"]').text()).toBe('PT');
-    expect((wrapper.get('[aria-label="Plain Team"]').element as HTMLButtonElement).style.backgroundColor).toBe('rgb(27, 79, 178)');
+    expect((wrapper.get('[aria-label="Plain Team"]').element as HTMLButtonElement).style.getPropertyValue('--agent-ui-state-primary-solid')).toBe('#1B4FB2');
   });
 
   it('emits team selection and new team intents', async () => {
@@ -461,11 +460,11 @@ describe('TeamRail', () => {
     expect(confirm).toHaveBeenCalledWith(
       `Agents, missions and quick chats will be removed from ${product.name}. Mission worktrees will not be deleted.`,
       `Close ${product.name}?`,
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Close Workspace',
         type: 'warning',
-      },
+      }),
     );
     expect(wrapper.emitted('close-team')).toStrictEqual([['team-app']]);
   });

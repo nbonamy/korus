@@ -9,7 +9,7 @@
         :placeholder="$t('surface.fileExplorerPanel.searchFiles')"
         @keydown.escape="query = ''"
       />
-      <button class="file-explorer__refresh" type="button" :aria-label="$t('surface.fileExplorerPanel.refreshFiles')" @click="refresh">
+      <button class="file-explorer__refresh agent-ui-interactive" type="button" :aria-label="$t('surface.fileExplorerPanel.refreshFiles')" @click="refresh">
         <RefreshIcon aria-hidden="true" />
       </button>
     </header>
@@ -29,7 +29,7 @@
       >
         <button
           v-if="row.kind === 'more'"
-          class="file-explorer__item"
+          class="file-explorer__item agent-ui-interactive"
           type="button"
           :disabled="Boolean(query.trim() ? searchPage?.loading : pages.get(row.path)?.loading)"
           :aria-label="$t('surface.fileExplorerPanel.loadMoreFiles')"
@@ -37,7 +37,7 @@
         >{{ $t('surface.fileExplorerPanel.loadMoreFiles') }}</button>
         <button
           v-else-if="row.kind === 'folder'"
-          class="file-explorer__item file-explorer__folder"
+          class="file-explorer__item file-explorer__folder agent-ui-interactive"
           type="button"
           @click="toggleFolder(row.path)"
         >
@@ -47,7 +47,7 @@
         </button>
         <button
           v-else
-          class="file-explorer__item file-explorer__file"
+          class="file-explorer__item file-explorer__file agent-ui-interactive"
           type="button"
           :title="$t('dynamic.files.preview', { path: row.path })"
           @click="emit('preview', row.path)"
@@ -191,8 +191,7 @@ onBeforeUnmount(() => { disposed = true; epoch += 1; searchVersion += 1; });
   align-items: center;
   padding: var(--space-2);
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .file-explorer__refresh svg {
@@ -215,10 +214,6 @@ onBeforeUnmount(() => { disposed = true; epoch += 1; searchVersion += 1; });
   padding-inline-end: var(--space-2);
 }
 
-.file-explorer__row:hover {
-  background: var(--color-surface-low);
-}
-
 .file-explorer__item {
   min-width: 0;
   flex: 1;
@@ -227,8 +222,7 @@ onBeforeUnmount(() => { disposed = true; epoch += 1; searchVersion += 1; });
   gap: var(--space-2);
   padding: var(--space-2);
   border: 0;
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
 }
 

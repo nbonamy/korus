@@ -42,9 +42,9 @@
 
     <template #footer>
       <div class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" @click="emit('cancel')">{{ $t('surface.agentAvatarCropDialog.cancel') }}</button>
-        <button
-          class="app-button app-button--primary"
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="emit('cancel')">{{ $t('surface.agentAvatarCropDialog.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary agent-ui-interactive"
           type="button"
           @click="apply"
         > {{ $t('surface.agentAvatarCropDialog.useImage') }} </button>

@@ -102,17 +102,6 @@
   margin-inline: var(--space-2);
 }
 
-.mission-workspace__expand:hover,
-.mission-workspace__expand:focus-visible,
-.mission-workspace__expand[aria-pressed='true'] {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
-.mission-workspace__expand:focus-visible {
-  outline: none;
-}
-
 .mission-workspace__workbench {
   display: flex;
   flex: 1 1 calc(100% - var(--mission-chat-size));

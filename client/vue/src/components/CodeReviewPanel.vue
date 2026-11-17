@@ -13,8 +13,8 @@
           <fieldset>
             <legend class="app-section-label">{{ $t('surface.codeReviewPanel.scope') }}</legend>
             <div class="code-review-panel__choices" role="radiogroup">
-              <button
-                class="code-review-panel__choice"
+              <button :data-selected="(scope === workingScope) ? '' : undefined"
+                class="code-review-panel__choice agent-ui-interactive"
                 :class="{ 'is-selected': scope === workingScope }"
                 type="button"
                 role="radio"
@@ -30,8 +30,8 @@
                   </span>
                 </span>
               </button>
-              <button
-                class="code-review-panel__choice"
+              <button :data-selected="(scope === 'branch') ? '' : undefined"
+                class="code-review-panel__choice agent-ui-interactive"
                 :class="{ 'is-selected': scope === 'branch' }"
                 type="button"
                 role="radio"
@@ -53,8 +53,8 @@
           <fieldset>
             <legend class="app-section-label">{{ $t('surface.codeReviewPanel.reviewerThread') }}</legend>
             <div class="code-review-panel__choices" role="radiogroup">
-              <button
-                class="code-review-panel__choice"
+              <button :data-selected="(threadMode === 'independent') ? '' : undefined"
+                class="code-review-panel__choice agent-ui-interactive"
                 :class="{ 'is-selected': threadMode === 'independent' }"
                 type="button"
                 role="radio"
@@ -69,8 +69,8 @@
                   </span>
                 </span>
               </button>
-              <button
-                class="code-review-panel__choice"
+              <button :data-selected="(threadMode === 'current') ? '' : undefined"
+                class="code-review-panel__choice agent-ui-interactive"
                 :class="{ 'is-selected': threadMode === 'current' }"
                 type="button"
                 role="radio"
@@ -101,7 +101,7 @@
               @error="modelsError = true"
             />
           </fieldset>
-          <p v-if="modelsError" role="status">{{ t('automaticReview.modelError') }} <button type="button" class="app-button app-button--tertiary" @click="modelsError = false; modelReload++">{{ t('automaticReview.retry') }}</button></p>
+          <p v-if="modelsError" role="status">{{ t('automaticReview.modelError') }} <button type="button" class="app-button app-button--tertiary agent-ui-interactive" @click="modelsError = false; modelReload++">{{ t('automaticReview.retry') }}</button></p>
           <fieldset v-if="instructions.trim()">
             <legend class="app-section-label">{{ t('surface.codeReviewPanel.additionalInstructions') }}</legend>
             <p class="code-review-panel__instructions" :title="instructions">{{ instructions.replace(/\s+/g, ' ').trim() }}</p>
@@ -109,13 +109,13 @@
           <div class="code-review-panel__automatic">
             <div class="code-review-panel__toggle">
               <span class="app-section-label">{{ t('automaticReview.title') }}</span>
-              <button v-if="automatic" class="code-review-panel__configure" type="button" :disabled="busy" @click="automaticSettingsOpen = true">{{ t('automaticReview.configure') }}</button>
+              <button v-if="automatic" class="code-review-panel__configure agent-ui-interactive" type="button" :disabled="busy" @click="automaticSettingsOpen = true">{{ t('automaticReview.configure') }}</button>
               <el-switch v-model="automatic" :aria-label="t('automaticReview.title')" :disabled="busy" />
             </div>
           </div>
         </div>
-        <button
-          class="app-button app-button--primary code-review-panel__start"
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary code-review-panel__start agent-ui-interactive"
           type="button"
           :disabled="busy || modelsLoading"
           @click="startSelectedReview"
@@ -140,8 +140,8 @@
         <span v-if="!session.automation || session.automation.state === 'manual'">{{ t('automaticReview.manual') }}</span>
         <span v-else-if="session.automation.state === 'running'">{{ t('automaticReview.running', { round: session.rounds.length, max: session.automation.maxRounds }) }}</span>
         <span v-else>{{ session.automation.reason }}</span>
-        <button v-if="session.automation?.state === 'running'" class="app-button app-button--secondary" type="button" :disabled="busy" @click="run(() => reviewSettings.switchToManual(agent.id, session!.id))">{{ t('automaticReview.switchToManual') }}</button>
-        <button v-else-if="session.status !== 'finished'" class="app-button app-button--secondary" type="button" :disabled="busy || !canStopTurn" @click="run(() => reviewSettings.stop(agent.id))">{{ t('automaticReview.stopReview') }}</button>
+        <button data-variant="primary" v-if="session.automation?.state === 'running'" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy" @click="run(() => reviewSettings.switchToManual(agent.id, session!.id))">{{ t('automaticReview.switchToManual') }}</button>
+        <button data-variant="primary" v-else-if="session.status !== 'finished'" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy || !canStopTurn" @click="run(() => reviewSettings.stop(agent.id))">{{ t('automaticReview.stopReview') }}</button>
       </div>
 
       <div
@@ -149,7 +149,7 @@
         role="tablist"
         :aria-label="$t('surface.codeReviewPanel.reviewRounds')"
       >
-        <button
+        <button class="agent-ui-interactive"
           v-for="round in session.rounds"
           :key="round.id"
           type="button"
@@ -229,8 +229,8 @@
       >
         <template v-if="session.status === 'ready'">
           <span>{{ footerMessage }}</span>
-          <button
-            class="app-button app-button--primary"
+          <button data-variant="primary" data-appearance="solid"
+            class="app-button app-button--primary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="submitRound"
@@ -244,16 +244,16 @@
             <el-switch v-model="commitFirst" size="small" :disabled="busy" :aria-label="$t('surface.codeReviewPanel.commitChanges')" />
             <span>{{ $t('surface.codeReviewPanel.commitChanges') }}</span>
           </label>
-          <button
-            class="app-button app-button--secondary"
+          <button data-variant="primary"
+            class="app-button app-button--secondary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="complete(() => finishReview(agent.id, session!.id))"
           >
             {{ $t('surface.codeReviewPanel.finishReview') }}
           </button>
-          <button
-            class="app-button app-button--primary"
+          <button data-variant="primary" data-appearance="solid"
+            class="app-button app-button--primary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="complete(() => reviewAgain(agent.id, session!.id))"
@@ -263,8 +263,8 @@
         </template>
         <template v-else-if="session.status === 'finished'">
           <span>{{ $t('surface.codeReviewPanel.reviewFinished') }}</span>
-          <button
-            class="app-button app-button--primary"
+          <button data-variant="primary" data-appearance="solid"
+            class="app-button app-button--primary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="retryReview"
@@ -274,8 +274,8 @@
         </template>
         <template v-else-if="session.status === 'failed'">
           <span>{{ $t('surface.codeReviewPanel.reviewStopped') }}</span>
-          <button
-            class="app-button app-button--primary"
+          <button data-variant="primary" data-appearance="solid"
+            class="app-button app-button--primary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="retryReview"
@@ -289,10 +289,10 @@
       <div class="app-form-dialog">
         <FormField :label="t('automaticReview.priorities')">
           <el-select v-model="maxPriority" :aria-label="t('automaticReview.priorities')" :disabled="busy">
-            <el-option value="p0" :label="t('automaticReview.critical')" />
-            <el-option value="p1" :label="t('automaticReview.high')" />
-            <el-option value="p2" :label="t('automaticReview.normal')" />
-            <el-option value="p3" :label="t('automaticReview.all')" />
+            <el-option class="agent-ui-interactive" value="p0" :label="t('automaticReview.critical')" />
+            <el-option class="agent-ui-interactive" value="p1" :label="t('automaticReview.high')" />
+            <el-option class="agent-ui-interactive" value="p2" :label="t('automaticReview.normal')" />
+            <el-option class="agent-ui-interactive" value="p3" :label="t('automaticReview.all')" />
           </el-select>
         </FormField>
         <FormField :label="t('automaticReview.rounds')">
@@ -304,7 +304,7 @@
         <p class="app-form-dialog__help">{{ t('automaticReview.independent') }} {{ t('automaticReview.noPublish') }}</p>
       </div>
       <template #footer>
-        <button type="button" class="app-button app-button--primary" @click="automaticSettingsOpen = false">{{ t('automaticReview.done') }}</button>
+        <button data-variant="primary" data-appearance="solid" type="button" class="app-button app-button--primary agent-ui-interactive" @click="automaticSettingsOpen = false">{{ t('automaticReview.done') }}</button>
       </template>
     </FormDialog>
     <p v-if="error" class="code-review-panel__error" role="alert">
@@ -691,10 +691,8 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
 .code-review-panel__configure {
   padding: 0;
   border: 0;
-  color: var(--color-primary);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-primary);
   font-size: var(--font-size-12);
-  cursor: pointer;
 }
 
 .code-review-panel__configure:hover {
@@ -781,30 +779,7 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
   padding: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-lowest);
-  color: inherit;
   font: inherit;
-  cursor: pointer;
-}
-
-.code-review-panel__choice:hover:not(:disabled):not(.is-selected) {
-  border-color: var(--color-outline);
-  background: var(--color-surface-low);
-}
-
-.code-review-panel__choice.is-selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-
-.code-review-panel__choice:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.code-review-panel__choice:focus-visible {
-  border-color: var(--color-primary);
-  outline: none;
 }
 
 .code-review-panel__choice-content {
@@ -920,15 +895,8 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
   border: 0;
   border-bottom: 2px solid transparent;
   padding: var(--space-2) var(--space-1);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
-  cursor: pointer;
-}
-
-.code-review-panel__rounds button.is-active {
-  border-color: var(--color-primary);
-  color: var(--color-text);
 }
 
 .code-review-panel__progress {

@@ -2,34 +2,34 @@
   <div class="visualize-editor" :class="{ 'visualize-editor--annotating': annotating }">
     <div class="visualize-editor__navigation">
       <div class="visualize-editor__compact-zoom">
-        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
+        <button type="button" class="visualize-editor__zoom-action agent-ui-interactive" :disabled="zoomPercent <= 10" :aria-label="translate('visualize.zoomOut')" :title="translate('visualize.zoomOut')" @click="changeZoom(-0.1)">
           <MinusIcon :stroke-width="1" aria-hidden="true" />
         </button>
         <span class="visualize-editor__zoom-level" aria-live="polite">{{ zoomPercent }}%</span>
-        <button type="button" class="visualize-editor__zoom-action" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
+        <button type="button" class="visualize-editor__zoom-action agent-ui-interactive" :disabled="zoomPercent >= 3000" :aria-label="translate('visualize.zoomIn')" :title="translate('visualize.zoomIn')" @click="changeZoom(0.1)">
           <PlusIcon :stroke-width="1" aria-hidden="true" />
         </button>
       </div>
-      <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
+      <button type="button" class="app-button app-button--tertiary visualize-editor__action visualize-editor__fit agent-ui-interactive" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" :title="translate('visualize.fitCanvas')" @click="editor?.fit()">
         <ArrowsMinimizeIcon :stroke-width="1" aria-hidden="true" />
       </button>
     </div>
     <div class="visualize-editor__toolbar">
-      <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready" :aria-pressed="annotating" :aria-label="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" :title="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" @click="toggleAnnotation">
+      <button type="button" class="app-button app-button--tertiary visualize-editor__action agent-ui-interactive" :disabled="!ready" :aria-pressed="annotating" :aria-label="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" :title="translate(annotating ? 'visualize.stopAnnotating' : 'visualize.annotateCanvas')" @click="toggleAnnotation">
         <X v-if="annotating" :stroke-width="1" aria-hidden="true" />
         <ClickIcon v-else :stroke-width="1" aria-hidden="true" />
       </button>
-      <button type="button" class="app-button app-button--tertiary visualize-editor__action" :disabled="!ready || savingPng" :aria-label="translate('visualize.savePng')" :title="translate('visualize.savePng')" @click="savePng">
+      <button type="button" class="app-button app-button--tertiary visualize-editor__action agent-ui-interactive" :disabled="!ready || savingPng" :aria-label="translate('visualize.savePng')" :title="translate('visualize.savePng')" @click="savePng">
         <DownloadIcon :stroke-width="1" aria-hidden="true" />
       </button>
     </div>
     <div ref="host" class="visualize-editor__host" />
     <div v-if="annotating" class="visualize-editor__annotation-layer" :aria-label="translate('visualize.selectShapes')">
-      <button
+      <button :data-selected="(local?.selectedElementIds.includes(target.id)) ? '' : undefined"
         v-for="target in annotationTargets"
         :key="target.id"
         type="button"
-        class="visualize-editor__annotation-target"
+        class="visualize-editor__annotation-target agent-ui-interactive"
         :class="{ 'visualize-editor__annotation-target--selected': local?.selectedElementIds.includes(target.id) }"
         :style="{ left: `${target.x}px`, top: `${target.y}px`, width: `${target.width}px`, height: `${target.height}px` }"
         :aria-label="translate('visualize.selectShape', { id: target.id })"
@@ -52,7 +52,7 @@
     />
     <div v-if="error || !ready" class="visualize-editor__status">
       <span role="status">{{ error || translate('common.loading') }}</span>
-      <button v-if="error" type="button" class="app-button app-button--secondary" @click="retry">{{ translate(ready ? 'visualize.retrySave' : 'visualize.retryLoad') }}</button>
+      <button data-variant="primary" v-if="error" type="button" class="app-button app-button--secondary agent-ui-interactive" @click="retry">{{ translate(ready ? 'visualize.retrySave' : 'visualize.retryLoad') }}</button>
     </div>
   </div>
 </template>
@@ -334,17 +334,7 @@ onBeforeUnmount(() => {
   height: 100%;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
   place-items: center;
-}
-.visualize-editor__zoom-action:hover:not(:disabled) {
-  background: color-mix(in srgb, currentColor 8%, transparent);
-}
-.visualize-editor__zoom-action:disabled {
-  opacity: .45;
-  cursor: default;
 }
 .visualize-editor__zoom-action svg {
   width: 18px;
@@ -376,8 +366,8 @@ onBeforeUnmount(() => {
 .visualize-editor__fit {
   border: 0;
   border-radius: var(--visualize-control-radius, var(--radius-md));
-  background: var(--visualize-control-background, var(--color-surface-low));
-  color: var(--visualize-control-foreground, var(--color-text));
+  --agent-ui-state-rest: var(--visualize-control-background, var(--color-surface-low));
+  --agent-ui-state-rest-foreground: var(--visualize-control-foreground, var(--color-text));
 }
 .visualize-editor__action {
   width: var(--visualize-control-size, 36px);
@@ -386,7 +376,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   border: 0;
   border-radius: 0;
-  color: inherit;
   padding: 0;
 }
 .visualize-editor__action.visualize-editor__fit {
@@ -412,16 +401,7 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-sm);
-  background: transparent;
   pointer-events: auto;
-  cursor: pointer;
-}
-.visualize-editor__annotation-target:hover,
-.visualize-editor__annotation-target:focus-visible,
-.visualize-editor__annotation-target--selected {
-  border-color: var(--color-error);
-  background: color-mix(in srgb, var(--color-error) 8%, transparent);
-  outline: none;
 }
 /* Keep unrelated editor menus out of the embedded canvas. */
 .visualize-editor__host :deep(.main-menu-trigger),

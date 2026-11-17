@@ -4,7 +4,7 @@
       <template #leading><IconStarFilled class="github-star-prompt__icon" aria-hidden="true" /></template>
       <span>{{ t('githubStar.notice', { product: product.name }) }}</span>
       <template #actions>
-        <button class="app-button app-button--small app-button--tertiary github-star-prompt__button" type="button" @click="star">
+        <button class="app-button app-button--small app-button--tertiary github-star-prompt__button agent-ui-interactive" type="button" @click="star">
           <span class="agent-ui-text-shimmer github-star-prompt__label">{{ t('githubStar.action') }}</span>
         </button>
         <IconButton :label="t('githubStar.dismiss')" @click="dismiss"><XIcon aria-hidden="true" /></IconButton>

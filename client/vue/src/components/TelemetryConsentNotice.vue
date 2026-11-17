@@ -7,10 +7,10 @@
     <div class="telemetry-notice__content">
       <p>{{ t('telemetry.notice', { product: product.name }) }}</p>
       <div class="telemetry-notice__actions">
-        <button class="app-button app-button--small app-button--tertiary" type="button" :disabled="busy" @click="change('disable')">
+        <button class="app-button app-button--small app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="change('disable')">
           {{ t('common.cancel') }}
         </button>
-        <button class="app-button app-button--small app-button--primary" type="button" :disabled="busy" @click="change('enable')">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--small app-button--primary agent-ui-interactive" type="button" :disabled="busy" @click="change('enable')">
           {{ t('common.close') }}
         </button>
       </div>

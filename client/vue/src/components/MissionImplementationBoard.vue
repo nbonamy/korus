@@ -112,16 +112,16 @@
           <button
             v-if="!readOnly && selected.run && ['preparing', 'running'].includes(selected.run.status)"
             type="button"
-            class="app-button"
+            class="app-button agent-ui-interactive"
             :disabled="busy"
             @click="emit('stop', selected.run.id)"
           >
             {{ t("missions.stopTicket") }}
           </button>
-          <button
+          <button data-variant="primary" data-appearance="solid"
             v-else-if="!readOnly && selected.run && ['failed', 'cancelled'].includes(selected.run.status)"
             type="button"
-            class="app-button app-button--primary"
+            class="app-button app-button--primary agent-ui-interactive"
             :disabled="busy"
             @click="emit('retry', selected.index)"
           >

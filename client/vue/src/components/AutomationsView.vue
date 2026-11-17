@@ -17,7 +17,7 @@
                 size="small"
               />
             </div>
-            <el-button v-if="locationAutomations.length > 0" type="primary" @click="openCreate">
+            <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" v-if="locationAutomations.length > 0" type="primary" @click="openCreate">
               {{ $t('surface.automationsView.newAutomation') }}
             </el-button>
           </div>
@@ -79,7 +79,7 @@
                     :aria-label="$t('dynamic.automations.enable', { automation: row.name })"
                     @change="toggleAutomation(row.id, $event === true)"
                   />
-                  <button
+                  <button class="agent-ui-interactive"
                     type="button"
                     :aria-label="$t('dynamic.automations.run', { automation: row.name })"
                     :disabled="!row.enabled || Boolean(row.running)"
@@ -87,7 +87,7 @@
                   >
                     <PlayerPlayIcon aria-hidden="true" />
                   </button>
-                  <button
+                  <button class="agent-ui-interactive"
                     type="button"
                     :aria-label="
                       $t('dynamic.automations.viewLogs', {
@@ -104,7 +104,7 @@
                     @select="selectAutomationMenuItem(row.id, $event)"
                   >
                     <template #trigger="{ attrs }">
-                      <button v-bind="attrs" type="button" :aria-label="`${row.name} actions`">
+                      <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="`${row.name} actions`">
                         <DotsVerticalIcon aria-hidden="true" />
                       </button>
                     </template>
@@ -123,7 +123,7 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { computed, ref, watch } from 'vue';
 import type {
   Agent,
@@ -367,7 +367,7 @@ async function confirmDeleteAutomation(automationId: string): Promise<void> {
   }
 
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       `Automation "${automation.name}" will stop sending scheduled prompts.`,
       translate('surface.automationsView.deleteAutomation'),
       {
@@ -393,7 +393,7 @@ async function confirmClearAutomationHistory(automationId: string): Promise<void
   }
 
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       `Finished execution history for "${automation.name}" will be cleared. Active runs are kept.`,
       translate('surface.automationsView.clearHistory'),
       {
@@ -417,7 +417,7 @@ async function confirmDeleteAutomationExecution(payload: { executionId: string; 
   }
 
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       translate('surface.automationsView.thisExecutionWillBeRemovedFromTheAutomationHistory'),
       translate('surface.automationsView.deleteExecution'),
       {
@@ -690,19 +690,7 @@ function formatShortDate(value: string): string {
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.automations-view__row-actions button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.automations-view__row-actions button:hover:not(:disabled),
-.automations-view__row-actions button:focus-visible:not(:disabled) {
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .automations-view__row-actions svg {

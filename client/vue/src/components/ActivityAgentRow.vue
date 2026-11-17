@@ -1,5 +1,5 @@
 <template>
-  <button class="agent-sidebar__activity-agent" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
+  <button class="agent-sidebar__activity-agent agent-ui-interactive" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
     <ShareIcon v-if="session.shared" class="agent-sidebar__session-icon" role="img" :aria-label="$t('guest.shared')" />
     <span v-else-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
       <RepositoryIcon :icon="repositoryIcon" :name="context ?? ''" />

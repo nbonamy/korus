@@ -4,21 +4,21 @@
       <FormGrid>
         <FormField density="compact" :label="$t('automationSchedule.repeat')" label-for="automation-repeat">
           <el-select id="automation-repeat" v-model="repeat" :aria-label="$t('automationSchedule.repeat')">
-            <el-option v-for="kind in repeatKinds" :key="kind" :value="kind" :label="$t(`automationSchedule.${kind}`)" />
+            <el-option class="agent-ui-interactive" v-for="kind in repeatKinds" :key="kind" :value="kind" :label="$t(`automationSchedule.${kind}`)" />
           </el-select>
         </FormField>
         <FormField density="compact" v-if="repeat === 'interval'" :label="$t('automationSchedule.every')">
           <div class="automation-schedule__pair">
             <el-input-number v-model="intervalAmount" :min="1" :max="525600" :aria-label="$t('automationSchedule.every')" />
             <el-select v-model="intervalUnit" :aria-label="$t('automationSchedule.unit')">
-              <el-option :value="1" :label="$t('automationSchedule.minutes')" />
-              <el-option :value="60" :label="$t('automationSchedule.hours')" />
+              <el-option class="agent-ui-interactive" :value="1" :label="$t('automationSchedule.minutes')" />
+              <el-option class="agent-ui-interactive" :value="60" :label="$t('automationSchedule.hours')" />
             </el-select>
           </div>
         </FormField>
         <FormField density="compact" v-else-if="!(advanced && repeat === 'custom')" :label="$t('automationSchedule.time')" label-for="automation-time">
           <el-select id="automation-time" v-model="time" filterable allow-create default-first-option :aria-label="$t('automationSchedule.time')">
-            <el-option v-for="option in times" :key="option.value" :value="option.value" :label="option.label" />
+            <el-option class="agent-ui-interactive" v-for="option in times" :key="option.value" :value="option.value" :label="option.label" />
           </el-select>
         </FormField>
 
@@ -33,7 +33,7 @@
             </FormField>
             <FormField density="compact" :label="$t('automationSchedule.frequency')" label-for="automation-frequency">
               <el-select id="automation-frequency" v-model="frequency" :aria-label="$t('automationSchedule.frequency')">
-                <el-option v-for="freq in ['DAILY', 'WEEKLY', 'MONTHLY']" :key="freq" :value="freq" :label="$t(`automationSchedule.${freq.toLowerCase()}`)" />
+                <el-option class="agent-ui-interactive" v-for="freq in ['DAILY', 'WEEKLY', 'MONTHLY']" :key="freq" :value="freq" :label="$t(`automationSchedule.${freq.toLowerCase()}`)" />
               </el-select>
             </FormField>
             <FormField density="compact" v-if="frequency === 'MONTHLY'" :label="$t('automationSchedule.monthDay')">
@@ -42,7 +42,7 @@
           </div>
           <FormField density="compact" v-if="repeat === 'weekly' || (repeat === 'custom' && frequency === 'WEEKLY')" :label="$t('automationSchedule.days')">
             <div class="automation-schedule__days" role="group" :aria-label="$t('automationSchedule.days')">
-              <button v-for="day in weekdays" :key="day.code" type="button" class="automation-schedule__day"
+              <button v-for="day in weekdays" :key="day.code" type="button" class="automation-schedule__day agent-ui-interactive"
                 :aria-pressed="days.includes(day.code)" :aria-label="day.label" :title="day.label" @click="toggleDay(day.code)">{{ day.short }}</button>
             </div>
           </FormField>
@@ -182,21 +182,9 @@ const nextLabel = computed(() => {
   min-height: 36px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-lowest);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   font-size: var(--font-size-13);
-  cursor: pointer;
-}
-
-.automation-schedule__day[aria-pressed='true'] {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-}
-
-.automation-schedule__day:focus-visible {
-  outline: none;
 }
 
 .automation-schedule__next {

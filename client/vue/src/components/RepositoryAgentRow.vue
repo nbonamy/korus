@@ -1,5 +1,5 @@
 <template>
-  <button class="agent-sidebar__repository-agent">
+  <button class="agent-sidebar__repository-agent agent-ui-interactive">
     <ShareIcon v-if="session.shared" class="agent-sidebar__session-icon" role="img" :aria-label="$t('guest.shared')" />
     <RemoteHostIndicator v-if="groupKind === 'worktree' && session.remoteConnectionId" :connection-id="session.remoteConnectionId" :connection="host">
       <RepositoryIcon :icon="repositoryIcon" :name="session.displayTitle" />

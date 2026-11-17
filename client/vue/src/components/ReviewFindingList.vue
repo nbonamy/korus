@@ -11,7 +11,7 @@
     >
       <div class="review-finding__title-row">
         <button
-          class="review-finding__toggle"
+          class="review-finding__toggle agent-ui-interactive"
           type="button"
           :aria-expanded="expandedFindingId === finding.id"
           :aria-controls="`finding-details-${finding.id}`"
@@ -25,7 +25,7 @@
         <div v-if="selectable || clarifiable" class="review-finding__quick-actions">
           <button
             v-if="clarifiable"
-            class="app-button app-button--tertiary review-finding__quick-action"
+            class="app-button app-button--tertiary review-finding__quick-action agent-ui-interactive"
             type="button"
             :aria-label="clarifyLabel || $t('surface.codeReviewPanel.clarify')"
             :title="clarifyLabel || $t('surface.codeReviewPanel.clarify')"
@@ -49,7 +49,7 @@
       </div>
       <div v-if="expandedFindingId === finding.id" :id="`finding-details-${finding.id}`" class="review-finding__body">
         <span v-if="finding.repositoryPath" class="review-finding__repository">{{ finding.repositoryPath }}</span>
-        <button v-if="finding.location && finding.locationInteractive !== false" class="review-finding__location" type="button" @click="emit('openFile', finding.location.file)">
+        <button v-if="finding.location && finding.locationInteractive !== false" class="review-finding__location agent-ui-interactive" type="button" @click="emit('openFile', finding.location.file)">
           {{ locationLabel(finding.location) }}
         </button>
         <span v-else-if="finding.location" class="review-finding__location review-finding__location--text">
@@ -112,8 +112,7 @@ function locationLabel(location: CodeReviewLocation): string {
 .review-finding { display: flex; flex-direction: column; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); }
 .review-finding[data-state="skipped"] { opacity: .74; }
 .review-finding__title-row { display: flex; align-items: stretch; min-width: 0; }
-.review-finding__toggle { flex: 1; min-width: 0; min-height: 46px; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
-.review-finding__toggle:hover, .review-finding__toggle:focus-visible { background: var(--color-surface-low); }
+.review-finding__toggle { flex: 1; min-width: 0; min-height: 46px; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 0; text-align: left; }
 .review-finding__title { flex: 1; min-width: 0; }
 .review-finding__title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-13); line-height: var(--line-height-18); }
 .review-finding__priority { padding: 2px 6px; border-radius: var(--radius-sm); background-color: var(--color-error-container); color: var(--color-error); font-weight: 700; font-size: var(--font-size-11); }
@@ -130,8 +129,8 @@ function locationLabel(location: CodeReviewLocation): string {
 .review-finding__quick-action svg { width: var(--icon-sm); height: var(--icon-sm); }
 .review-finding__selection { flex: 0 0 auto; }
 .review-finding__repository { color: var(--color-text-muted); font-family: var(--font-family-mono); font-size: var(--font-size-12); }
-.review-finding__location { justify-self: start; max-width: 100%; padding: 0; border: 0; color: var(--color-primary); background: transparent; font-family: var(--font-family-mono); font-size: var(--font-size-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.review-finding__location--text { cursor: default; }
+.review-finding__location { justify-self: start; max-width: 100%; padding: 0; border: 0; --agent-ui-state-rest-foreground: var(--color-primary); font-family: var(--font-family-mono); font-size: var(--font-size-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-finding__location--text { color: var(--color-primary); cursor: default; }
 .review-finding__body { display: grid; gap: var(--space-4); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--color-border); }
 .review-finding__description p { margin: 0; font-size: var(--font-size-13); line-height: var(--line-height-20); }
 .review-finding__decision { margin: 0; padding: var(--space-3); border-left: 3px solid var(--color-text-muted); background: var(--color-surface-low); }

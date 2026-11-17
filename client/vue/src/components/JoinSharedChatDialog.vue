@@ -27,8 +27,8 @@
     <p v-else-if="failed" role="alert">{{ t('guest.storageFailed') }}</p>
     <p v-else-if="view && ['invalid', 'upgradeRequired', 'rejected', 'storageUnavailable'].includes(view.status)" role="alert">{{ t(`guest.status.${view.status}`) }}</p>
     <template #footer>
-      <button type="button" class="app-button app-button--tertiary" :disabled="pending" @click="emit('close')">{{ t('common.cancel') }}</button>
-      <button type="button" class="app-button app-button--primary" :disabled="pending || (needsName ? !validName : !invitation.trim())" @click="submit">{{ t('guest.join') }}</button>
+      <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :disabled="pending" @click="emit('close')">{{ t('common.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid" type="button" class="app-button app-button--primary agent-ui-interactive" :disabled="pending || (needsName ? !validName : !invitation.trim())" @click="submit">{{ t('guest.join') }}</button>
     </template>
   </FormDialog>
 </template>

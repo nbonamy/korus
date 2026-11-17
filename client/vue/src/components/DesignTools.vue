@@ -3,25 +3,25 @@
     <div class="design-tools__group" data-design-tools>
       <AppMenuButton :items="boardItems" :ariaLabel="t('design.artboard')" :width="240" placement="bottom-start" @select="emit('focus', $event)">
         <template #trigger="{ attrs }">
-          <button v-bind="attrs" class="design-tools__menu design-tools__board" type="button" :disabled="locked" :aria-label="t('design.artboard')" :title="boardTitle">
+          <button v-bind="attrs" class="design-tools__menu design-tools__board agent-ui-interactive" type="button" :disabled="locked" :aria-label="t('design.artboard')" :title="boardTitle">
             <RectangleIcon class="design-tools__board-icon" /><span>{{ boardTitle }}</span><ChevronDown />
           </button>
         </template>
       </AppMenuButton>
       <span class="design-tools__divider" />
-      <button v-if="!play" class="app-icon-button" type="button" :aria-label="t('design.selectElements')" :title="t('design.selectElements')" :aria-pressed="!pan" :disabled="interacting" @click="emit('pan', false)"><PointerIcon /></button>
-      <button v-if="!play" class="app-icon-button" type="button" :aria-label="t('design.panCanvas')" :title="t('design.panCanvas')" :aria-pressed="pan" :disabled="interacting" @click="emit('pan', true)"><HandMoveIcon /></button>
+      <button v-if="!play" class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.selectElements')" :title="t('design.selectElements')" :aria-pressed="!pan" :disabled="interacting" @click="emit('pan', false)"><PointerIcon /></button>
+      <button v-if="!play" class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.panCanvas')" :title="t('design.panCanvas')" :aria-pressed="pan" :disabled="interacting" @click="emit('pan', true)"><HandMoveIcon /></button>
       <span v-if="!play" class="design-tools__divider" />
       <slot name="actions" />
     </div>
     <div class="design-tools__group" data-design-tools>
-      <button class="app-icon-button" type="button" data-action="play" :aria-label="t(play ? 'design.edit' : 'design.play')" :title="t(play ? 'design.edit' : 'design.play')" :aria-pressed="play" :disabled="locked" @click="emit('play')"><PointerIcon v-if="play" /><PlayerPlayIcon v-else /></button>
-      <button v-if="!play" class="app-icon-button" type="button" :aria-label="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :title="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :aria-pressed="inspectorVisible" :disabled="interacting" @click="emit('inspector')"><LayoutSidebarRightIcon /></button>
+      <button class="app-icon-button agent-ui-interactive" type="button" data-action="play" :aria-label="t(play ? 'design.edit' : 'design.play')" :title="t(play ? 'design.edit' : 'design.play')" :aria-pressed="play" :disabled="locked" @click="emit('play')"><PointerIcon v-if="play" /><PlayerPlayIcon v-else /></button>
+      <button v-if="!play" class="app-icon-button agent-ui-interactive" type="button" :aria-label="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :title="t(inspectorVisible ? 'design.hideInspector' : 'design.showInspector')" :aria-pressed="inspectorVisible" :disabled="interacting" @click="emit('inspector')"><LayoutSidebarRightIcon /></button>
       <span class="design-tools__divider" />
-      <button class="app-icon-button" type="button" :aria-label="t('design.fitAll')" :title="t('design.fitAll')" :disabled="interacting" @click="emit('zoom', 'fit')"><ArrowsMaximizeIcon /></button>
-      <button class="app-icon-button" type="button" :aria-label="t('design.fitArtboard')" :title="t('design.fitArtboard')" :disabled="interacting || !selectedArtboardId" @click="emit('zoom', 'selection')"><ArrowsMinimizeIcon /></button>
+      <button class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.fitAll')" :title="t('design.fitAll')" :disabled="interacting" @click="emit('zoom', 'fit')"><ArrowsMaximizeIcon /></button>
+      <button class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.fitArtboard')" :title="t('design.fitArtboard')" :disabled="interacting || !selectedArtboardId" @click="emit('zoom', 'selection')"><ArrowsMinimizeIcon /></button>
       <AppMenuButton :items="zoomItems" :ariaLabel="t('design.zoom')" :width="180" @select="changeZoom">
-        <template #trigger="{ attrs }"><button v-bind="attrs" class="design-tools__menu design-tools__zoom" type="button" :disabled="interacting" :aria-label="t('design.zoom')" :title="t('design.zoom')"><span>{{ zoom < 0.1 ? Math.round(zoom * 1000) / 10 : Math.round(zoom * 100) }}%</span><ChevronDown /></button></template>
+        <template #trigger="{ attrs }"><button v-bind="attrs" class="design-tools__menu design-tools__zoom agent-ui-interactive" type="button" :disabled="interacting" :aria-label="t('design.zoom')" :title="t('design.zoom')"><span>{{ zoom < 0.1 ? Math.round(zoom * 1000) / 10 : Math.round(zoom * 100) }}%</span><ChevronDown /></button></template>
       </AppMenuButton>
     </div>
   </div>
@@ -86,27 +86,9 @@ function changeZoom(value: string) { emit('zoom', value === 'fit' || value === '
   padding-inline: var(--space-2);
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   font-size: var(--font-size-13);
-  cursor: pointer;
-}
-
-.design-tools__menu:hover:not(:disabled),
-.design-tools__menu[aria-expanded="true"] {
-  background: var(--color-surface-low);
-}
-
-.design-tools :deep(button:focus-visible) {
-  outline: none;
-  background: var(--color-primary-container);
-  color: var(--color-primary);
-}
-
-.design-tools__menu:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .design-tools__menu svg {
@@ -131,11 +113,6 @@ function changeZoom(value: string) { emit('zoom', value === 'fit' || value === '
 
 .design-tools__zoom {
   font-variant-numeric: tabular-nums;
-}
-
-.design-tools .app-icon-button[aria-pressed="true"] {
-  color: var(--color-primary);
-  background: var(--color-primary-container);
 }
 
 @container design-canvas-controls (max-width: 520px) {

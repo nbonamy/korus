@@ -862,11 +862,11 @@ describe('AppShell work routing', () => {
     expect(confirm).toHaveBeenCalledWith(
       "GitHub #12 is already assigned to Jesse. We don't know if Jesse is still working on it. Assign it to Dina anyway?",
       'Assign anyway?',
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Assign Anyway',
         type: 'warning',
-      },
+      }),
     );
     expect(wrapper.emitted('assign-work-item')).toStrictEqual([[{
       agentId: 'agent-dina',
@@ -1267,11 +1267,11 @@ describe('AppShell work routing', () => {
     expect(confirm).toHaveBeenCalledWith(
       `Agents, missions and quick chats will be removed from ${product.name}. Mission worktrees will not be deleted.`,
       'Close Skwad?',
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Close Workspace',
         type: 'warning',
-      },
+      }),
     );
     expect(wrapper.emitted('close-team')).toStrictEqual([['team-skwad']]);
   });

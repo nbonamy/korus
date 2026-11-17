@@ -840,7 +840,13 @@ function theme(seed: ThemeSeed): AppThemeDefinition {
     appearance: seed.appearance,
     colors: {
       '--color-primary': seed.primary,
+      '--color-on-primary': seed.appearance === 'dark' ? '#ffffff' : solidForeground(seed.primary),
+      '--color-primary-container': `color-mix(in srgb, ${seed.primary} 16%, ${seed.surfaceLowest})`,
+      '--color-on-primary-container': seed.primary,
       '--color-secondary': seed.secondary,
+      '--color-on-secondary': solidForeground(seed.secondary),
+      '--color-secondary-container': `color-mix(in srgb, ${seed.secondary} 16%, ${seed.surfaceLowest})`,
+      '--color-on-secondary-container': seed.text,
       '--color-surface': seed.surface,
       '--color-surface-lowest': seed.surfaceLowest,
       '--color-surface-low': seed.surfaceLow,
@@ -850,7 +856,23 @@ function theme(seed: ThemeSeed): AppThemeDefinition {
       '--color-on-surface': seed.text,
       '--color-on-surface-variant': seed.muted,
       '--color-outline': seed.outline,
-      '--color-outline-variant': seed.outlineVariant,
+      '--color-outline-variant': seed.appearance === 'dark'
+        ? `color-mix(in srgb, ${seed.outlineVariant} 88%, ${seed.text})`
+        : seed.outlineVariant,
     },
   };
+}
+
+/** Choose the more legible solid-action foreground from the seed's RGB accent. */
+function solidForeground(color: string): string {
+  const hex = /^#([\da-f]{6}|[\da-f]{3})$/i.exec(color)?.[1];
+  const channels = hex
+    ? (hex.length === 3 ? [...hex].map(channel => channel + channel) : hex.match(/../g)!).map(channel => parseInt(channel, 16))
+    : color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  if (channels?.length !== 3) throw new Error(`Unsupported built-in accent: ${color}`);
+  const luminance = channels.map(channel => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff';
 }

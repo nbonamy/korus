@@ -594,7 +594,8 @@ describe('SettingsView', () => {
     const refresh = wrapper.get('.engine-hero button[aria-label="Check again"]');
     expect(refresh.text()).toBe('');
     expect(refresh.find('svg').exists()).toBe(true);
-    expect(getComputedStyle(refresh.element).color).toBe(getComputedStyle(wrapper.get('.engine-hero a').element).color);
+    expect(refresh.classes()).toContain('agent-ui-interactive');
+    expect(wrapper.get('.engine-hero a').classes()).toContain('agent-ui-interactive');
     expect(wrapper.findAll('button').some(button => button.text() === 'Connect')).toBe(false);
     await wrapper.findAll('button').find(button => button.attributes('aria-label') === 'Check again')!.trigger('click');
     expect(refreshProvider).toHaveBeenCalledExactlyOnceWith(provider);

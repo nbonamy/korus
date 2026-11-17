@@ -13,8 +13,8 @@
       aria-hidden="true"
     />
     <el-button
-      :type="buttonType"
-      class="agent-sidebar__new new-agent-button__primary"
+      :type="buttonType" :data-variant="buttonType ? 'primary' : undefined" :data-appearance="buttonType ? 'solid' : undefined"
+      class="agent-sidebar__new new-agent-button__primary agent-ui-interactive"
       :aria-label="label"
       @click="emit('new-agent')"
     >
@@ -54,11 +54,9 @@ const detachedIcon = computed(() => props.tone !== 'primary');
 .new-agent-button {
   --new-agent-button-height: 44px;
   --new-agent-button-border-radius: var(--radius-lg);
-  --new-agent-button-color: white;
+  --new-agent-button-color: var(--color-on-primary);
   --new-agent-button-bg: var(--color-primary);
   --new-agent-button-border: var(--color-primary);
-  --new-agent-button-hover-bg: color-mix(in srgb, var(--color-primary) 80%, var(--color-background));
-  --new-agent-button-hover-border: color-mix(in srgb, var(--color-primary) 80%, var(--color-background));
   --new-agent-button-padding-inline: var(--space-8);
   --new-agent-button-icon-display: none;
   width: 100%;
@@ -76,8 +74,6 @@ const detachedIcon = computed(() => props.tone !== 'primary');
   --new-agent-button-color: var(--color-text-muted);
   --new-agent-button-bg: transparent;
   --new-agent-button-border: transparent;
-  --new-agent-button-hover-bg: transparent;
-  --new-agent-button-hover-border: transparent;
   --new-agent-button-icon-display: block;
 }
 
@@ -85,8 +81,6 @@ const detachedIcon = computed(() => props.tone !== 'primary');
   --new-agent-button-color: var(--color-text-muted);
   --new-agent-button-bg: transparent;
   --new-agent-button-border: transparent;
-  --new-agent-button-hover-bg: var(--color-surface-low);
-  --new-agent-button-hover-border: transparent;
   --new-agent-button-icon-display: block;
 }
 
@@ -110,8 +104,8 @@ const detachedIcon = computed(() => props.tone !== 'primary');
   min-height: var(--new-agent-button-height);
   border-color: var(--new-agent-button-border);
   border-radius: var(--new-agent-button-border-radius);
-  color: var(--new-agent-button-color);
-  background: var(--new-agent-button-bg);
+  --agent-ui-state-rest-foreground: var(--new-agent-button-color);
+  --agent-ui-state-rest: var(--new-agent-button-bg);
   font-size: var(--font-size-14);
   line-height: var(--line-height-22);
   font-weight: var(--font-weight-semibold);
@@ -123,13 +117,6 @@ const detachedIcon = computed(() => props.tone !== 'primary');
 .new-agent-button--small .new-agent-button__primary {
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
-}
-
-.new-agent-button__primary:hover,
-.new-agent-button__primary:focus-visible {
-  color: var(--new-agent-button-color);
-  background: var(--new-agent-button-hover-bg);
-  border-color: var(--new-agent-button-hover-border);
 }
 
 .new-agent-button__icon {

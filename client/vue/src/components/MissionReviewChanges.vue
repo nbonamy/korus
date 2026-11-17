@@ -6,7 +6,7 @@
         v-model="selectedRepositoryPath"
         :aria-label="t('missions.reviewRepository')"
       >
-        <el-option
+        <el-option class="agent-ui-interactive"
           v-for="repository in repositories"
           :key="repository.repositoryPath"
           :value="repository.repositoryPath"
@@ -14,8 +14,8 @@
         />
       </el-select>
       <el-select v-model="target" :aria-label="t('missions.diffScope')">
-        <el-option value="branch" :label="t('missions.branchDiff')" />
-        <el-option value="uncommitted" :label="t('missions.uncommittedDiff')" />
+        <el-option class="agent-ui-interactive" value="branch" :label="t('missions.branchDiff')" />
+        <el-option class="agent-ui-interactive" value="uncommitted" :label="t('missions.uncommittedDiff')" />
       </el-select>
       <MissionWorkspaceOpenIn
         v-if="selectedRepository?.workspacePath && selectedRepository.agent"
@@ -27,7 +27,7 @@
         @open="emit('open-worktree', $event)"
       />
       <button
-        class="mission-review-changes__refresh mission-review-changes__group"
+        class="mission-review-changes__refresh mission-review-changes__group agent-ui-interactive"
         type="button"
         :aria-label="t('missions.groupByFileType')"
         :title="t('missions.groupByFileType')"
@@ -37,7 +37,7 @@
         <FolderIcon aria-hidden="true" />
       </button>
       <button
-        class="mission-review-changes__refresh"
+        class="mission-review-changes__refresh agent-ui-interactive"
         type="button"
         :aria-label="t('missions.refreshDiff')"
         :title="t('missions.refreshDiff')"
@@ -200,19 +200,7 @@ watch(
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   place-items: center;
-  color: var(--color-text);
-  background: var(--color-surface);
-  cursor: pointer;
-}
-
-.mission-review-changes__refresh:hover,
-.mission-review-changes__refresh:focus-visible {
-  background: var(--color-surface-low);
-}
-
-.mission-review-changes__group[aria-pressed='false'] {
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 
 .mission-review-changes__refresh svg {

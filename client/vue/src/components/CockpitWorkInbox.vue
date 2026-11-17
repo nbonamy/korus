@@ -2,7 +2,7 @@
   <main class="cockpit-inbox">
     <div class="cockpit-inbox__toolbar">
       <nav class="cockpit-inbox__views" :aria-label="$t('surface.cockpitWorkInbox.cockpitViews')">
-        <button
+        <button class="agent-ui-interactive"
           v-for="option in viewOptions"
           :key="option.id"
           type="button"
@@ -24,8 +24,8 @@
           :placeholder="$t('surface.cockpitWorkInbox.allTypes')"
           :aria-label="$t('surface.cockpitWorkInbox.itemType')"
         >
-          <el-option :label="$t('surface.cockpitWorkInbox.issues')" value="issue" />
-          <el-option :label="$t(connection.provider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests')" value="pullRequest" />
+          <el-option class="agent-ui-interactive" :label="$t('surface.cockpitWorkInbox.issues')" value="issue" />
+          <el-option class="agent-ui-interactive" :label="$t(connection.provider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests')" value="pullRequest" />
         </el-select>
         <el-input
           v-if="searchOpen"
@@ -40,7 +40,7 @@
         />
         <button
           v-else
-          class="cockpit-inbox__icon-button"
+          class="cockpit-inbox__icon-button agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.cockpitWorkInbox.searchWork')"
           @click="openSearch"
@@ -50,30 +50,30 @@
 
         <el-popover placement="bottom-end" trigger="click" :width="360" popper-class="app-popover cockpit-inbox__filters-popover">
           <template #reference>
-            <button class="cockpit-inbox__filter-button" type="button">
+            <button class="cockpit-inbox__filter-button agent-ui-interactive" type="button">
               <IconFilter aria-hidden="true" /> {{ $t('surface.cockpitWorkInbox.filters') }} <span v-if="activeFilterCount">{{ activeFilterCount }}</span>
             </button>
           </template>
           <div class="cockpit-inbox__filters" :aria-label="$t('surface.cockpitWorkInbox.workFilters')">
             <label> {{ $t('surface.cockpitWorkInbox.repository') }} <el-select :model-value="selectedRepositoryId" clearable filterable :placeholder="$t('surface.cockpitWorkInbox.allRepositories')" :aria-label="$t('surface.cockpitWorkInbox.repositoryFilter')" @update:model-value="selectRepository">
-                <el-option v-for="repository in sortedRepositories" :key="repository.id" :label="repository.fullName" :value="repository.id" />
+                <el-option class="agent-ui-interactive" v-for="repository in sortedRepositories" :key="repository.id" :label="repository.fullName" :value="repository.id" />
               </el-select>
             </label>
             <label> {{ $t('surface.cockpitWorkInbox.label') }} <el-select :model-value="selectedTagName" clearable filterable :placeholder="$t('surface.cockpitWorkInbox.allLabels')" :aria-label="$t('surface.cockpitWorkInbox.labelFilter')" @update:model-value="selectTag">
-                <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
+                <el-option class="agent-ui-interactive" v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
               </el-select>
             </label>
             <label> {{ $t('surface.cockpitWorkInbox.assignee') }} <el-select :model-value="assigneeSelection" clearable filterable :placeholder="$t('surface.cockpitWorkInbox.allAssignees')" :aria-label="$t('surface.cockpitWorkInbox.assigneeFilter')" @update:model-value="selectAssignee">
-                <el-option v-if="!selectedRepositoryId" :label="$t('surface.cockpitWorkInbox.assignedToMe')" :value="assignedToMeValue" />
-                <el-option v-for="assignee in assigneeOptions" :key="assignee" :label="assignee" :value="assignee" />
+                <el-option class="agent-ui-interactive" v-if="!selectedRepositoryId" :label="$t('surface.cockpitWorkInbox.assignedToMe')" :value="assignedToMeValue" />
+                <el-option class="agent-ui-interactive" v-for="assignee in assigneeOptions" :key="assignee" :label="assignee" :value="assignee" />
               </el-select>
             </label>
             <span class="cockpit-inbox__provider"><component :is="workProviderIcon(connection.provider)" aria-hidden="true" /> {{ providerLabel }}</span>
           </div>
         </el-popover>
 
-        <el-button class="cockpit-inbox__start-work" type="primary" :icon="PlayerPlayIcon" :disabled="startingWork || selectedItems.length === 0" @click="openStartWorkDialog()"> {{ $t('surface.cockpitWorkInbox.startWork') }} </el-button>
-        <button class="cockpit-inbox__refresh" type="button" :disabled="status === 'loading'" :aria-label="$t('surface.cockpitWorkInbox.refreshWorkItems')" @click="emit('refresh', selectedRepositoryId)">
+        <el-button data-variant="primary" data-appearance="solid" class="cockpit-inbox__start-work agent-ui-interactive" type="primary" :icon="PlayerPlayIcon" :disabled="startingWork || selectedItems.length === 0" @click="openStartWorkDialog()"> {{ $t('surface.cockpitWorkInbox.startWork') }} </el-button>
+        <button class="cockpit-inbox__refresh agent-ui-interactive" type="button" :disabled="status === 'loading'" :aria-label="$t('surface.cockpitWorkInbox.refreshWorkItems')" @click="emit('refresh', selectedRepositoryId)">
           <RefreshIcon aria-hidden="true" />
         </button>
       </div>
@@ -86,8 +86,8 @@
         <p> {{ $t('surface.cockpitWorkInbox.aBacklogAcrossEveryRepositoryCanContainALotOfWorkAndCons') }} </p>
       </div>
       <div class="cockpit-inbox__scope-actions">
-        <el-button type="primary" @click="emit('select-global-scope', 'assignedToMe')"> {{ $t('surface.cockpitWorkInbox.showItemsAssignedToMe') }} </el-button>
-        <el-button plain @click="emit('select-global-scope', 'all')"> {{ $t('surface.cockpitWorkInbox.loadEverything') }} </el-button>
+        <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" type="primary" @click="emit('select-global-scope', 'assignedToMe')"> {{ $t('surface.cockpitWorkInbox.showItemsAssignedToMe') }} </el-button>
+        <el-button class="agent-ui-interactive" plain @click="emit('select-global-scope', 'all')"> {{ $t('surface.cockpitWorkInbox.loadEverything') }} </el-button>
       </div>
     </section>
     <p v-else-if="status === 'loading' && items.length === 0" class="cockpit-inbox__state">{{ $t('surface.cockpitWorkInbox.loadingWorkItems') }}</p>
@@ -104,14 +104,14 @@
           </span>
           <strong>{{ group.label }}</strong>
           <span>{{ group.rows.length }}</span>
-          <button v-if="activeView !== 'all'" type="button" @click="selectView('all')">{{ $t('surface.cockpitWorkInbox.showAll') }}</button>
+          <button class="agent-ui-interactive" v-if="activeView !== 'all'" type="button" @click="selectView('all')">{{ $t('surface.cockpitWorkInbox.showAll') }}</button>
         </header>
 
         <div class="cockpit-inbox__rows">
           <article
             v-for="row in group.rows"
             :key="row.item.id"
-            class="cockpit-inbox__row"
+            class="cockpit-inbox__row agent-ui-interactive"
             :data-priority="row.priority"
             tabindex="0"
             @click="selectRow(row)"
@@ -158,7 +158,7 @@
             <div class="cockpit-inbox__row-actions">
               <el-tooltip :content="$t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
                 <button
-                  class="cockpit-inbox__row-action"
+                  class="cockpit-inbox__row-action agent-ui-interactive"
                   type="button"
                   :aria-label="$t('backlogSource.viewItem', { identifier: workItemDisplayIdentifier(row.item) })"
                   @click.stop="viewRow(row)"
@@ -167,7 +167,7 @@
                 </button>
               </el-tooltip>
               <el-tooltip v-if="!row.assignment" :content="startItemLabel(row.item)" placement="top" :show-after="300">
-                <button class="cockpit-inbox__row-action" type="button" :aria-label="startItemLabel(row.item)" @click.stop="openStartWorkDialog(row.item)">
+                <button class="cockpit-inbox__row-action agent-ui-interactive" type="button" :aria-label="startItemLabel(row.item)" @click.stop="openStartWorkDialog(row.item)">
                   <PlayerPlayIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
@@ -179,7 +179,7 @@
                 <template #trigger="{ attrs }">
                   <button
                     v-bind="attrs"
-                    class="cockpit-inbox__row-action"
+                    class="cockpit-inbox__row-action agent-ui-interactive"
                     type="button"
                     :aria-label="$t('surface.cockpitWorkInbox.moreActions', { identifier: workItemDisplayIdentifier(row.item) })"
                   >
@@ -202,7 +202,7 @@
       <span v-if="error" class="cockpit-inbox__pagination-error" role="alert">{{ error }}</span>
       <div class="cockpit-inbox__page-controls">
         <button
-          class="cockpit-inbox__icon-button"
+          class="cockpit-inbox__icon-button agent-ui-interactive"
           type="button"
           :disabled="pageLoading || page <= 1"
           :aria-label="$t('surface.cockpitWorkInbox.previousPage')"
@@ -212,7 +212,7 @@
         </button>
         <span>{{ $t('surface.cockpitWorkInbox.page') }} {{ page }}</span>
         <button
-          class="cockpit-inbox__icon-button"
+          class="cockpit-inbox__icon-button agent-ui-interactive"
           type="button"
           :disabled="pageLoading || !hasNextPage"
           :aria-label="$t('surface.cockpitWorkInbox.nextPage')"
@@ -244,7 +244,7 @@
       <div class="cockpit-inbox__start-body">
         <p> {{ $t('surface.cockpitWorkInbox.launch') }} <strong>{{ launchItems.length }} {{ launchItems.length === 1 ? 'agent' : 'agents' }}</strong>{{ $t('surface.cockpitWorkInbox.eachAgentWillWorkInADedicatedWorktree') }} </p>
         <label> {{ $t('surface.cockpitWorkInbox.team') }} <el-select v-model="selectedTeamId" :disabled="startingWork" :aria-label="$t('surface.cockpitWorkInbox.teamForNewAgents')">
-            <el-option v-for="team in teams" :key="team.id" :label="team.name" :value="team.id" />
+            <el-option class="agent-ui-interactive" v-for="team in teams" :key="team.id" :label="team.name" :value="team.id" />
           </el-select>
         </label>
         <label v-if="readyHosts.length">{{ $t('remoteTarget.machine') }}
@@ -254,7 +254,7 @@
         <label v-if="!workProviderDefinition(connection.provider).repositoryBacked">
           {{ $t('backlogSource.codeRepository') }}
           <el-select v-model="selectedCodeRepositoryPath" :loading="codeRepositoriesLoading" :disabled="startingWork" :aria-label="$t('backlogSource.codeRepository')" :placeholder="$t('backlogSource.chooseCodeRepository')">
-            <el-option v-for="repository in codeRepositories" :key="repository.path" :label="repository.name" :value="repository.path" />
+            <el-option class="agent-ui-interactive" v-for="repository in codeRepositories" :key="repository.path" :label="repository.name" :value="repository.path" />
           </el-select>
         </label>
         <label>{{ $t('repositoryBacklog.session') }}
@@ -264,9 +264,9 @@
 
       <template #footer>
         <div class="app-dialog__footer">
-          <button class="app-button app-button--tertiary" type="button" :disabled="startingWork" @click="closeStartWorkDialog(false)">{{ $t('surface.cockpitWorkInbox.cancel') }}</button>
-          <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(secondaryLaunchAction)">{{ $t(`repositoryBacklog.${secondaryLaunchAction}`) }}</button>
-          <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(primaryLaunchAction)">{{ $t(`repositoryBacklog.${primaryLaunchAction}`) }}</button>
+          <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="startingWork" @click="closeStartWorkDialog(false)">{{ $t('surface.cockpitWorkInbox.cancel') }}</button>
+          <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(secondaryLaunchAction)">{{ $t(`repositoryBacklog.${secondaryLaunchAction}`) }}</button>
+          <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork(primaryLaunchAction)">{{ $t(`repositoryBacklog.${primaryLaunchAction}`) }}</button>
         </div>
       </template>
     </el-dialog>
@@ -752,19 +752,14 @@ function selectAssignee(value: unknown): void {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   padding: 0 var(--space-8);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-15);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-20);
-  cursor: pointer;
 }
 
 .cockpit-inbox__views button[aria-pressed="true"] {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-container);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -804,9 +799,7 @@ function selectAssignee(value: unknown): void {
   gap: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: var(--color-surface);
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 
 .cockpit-inbox__kind-filter {
@@ -966,11 +959,9 @@ function selectAssignee(value: unknown): void {
 .cockpit-inbox__group > header button {
   margin-left: auto;
   border: 0;
-  color: var(--color-primary);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-primary);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
-  cursor: pointer;
 }
 
 .cockpit-inbox__group-marker {
@@ -1017,7 +1008,6 @@ function selectAssignee(value: unknown): void {
   padding: 0 var(--space-8);
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
-  cursor: pointer;
 }
 
 .cockpit-inbox__selection {
@@ -1033,12 +1023,6 @@ function selectAssignee(value: unknown): void {
 
 .cockpit-inbox__row + .cockpit-inbox__row {
   border-top: 1px solid var(--color-border);
-}
-
-.cockpit-inbox__row:hover,
-.cockpit-inbox__row:focus-visible {
-  background: var(--color-surface-low);
-  outline: none;
 }
 
 .cockpit-inbox__repository,
@@ -1135,25 +1119,14 @@ function selectAssignee(value: unknown): void {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
-  cursor: pointer;
 }
 
 .cockpit-inbox__row-action svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
-}
-
-.cockpit-inbox__row-action:hover {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.cockpit-inbox__row-action:focus-visible {
-  outline: none;
 }
 
 .cockpit-inbox__state {
@@ -1189,11 +1162,6 @@ function selectAssignee(value: unknown): void {
   display: inline-flex;
   align-items: center;
   gap: var(--space-8);
-}
-
-.cockpit-inbox__page-controls button:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 .cockpit-inbox__page-controls svg {

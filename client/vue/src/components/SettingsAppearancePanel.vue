@@ -35,8 +35,8 @@
             :aria-label="$t('surface.settingsAppearancePanel.theme')"
             @update:model-value="updateThemeId"
           >
-            <el-option v-if="settings.skin" :label="$t('surface.settingsAppearancePanel.customSkin')" value="custom-skin" disabled />
-            <el-option
+            <el-option class="agent-ui-interactive" v-if="settings.skin" :label="$t('surface.settingsAppearancePanel.customSkin')" value="custom-skin" disabled />
+            <el-option class="agent-ui-interactive"
               v-for="theme in visibleThemes"
               :key="theme.id"
               :label="theme.name"
@@ -64,19 +64,19 @@
               @visible-change="(visible: boolean) => visible && openSkinMenu()"
               @update:model-value="loadSkin"
             >
-              <el-option :label="$t('surface.settingsAppearancePanel.loadSkinFile')" value="load-file" />
-              <el-option v-if="settings.skin && selectedSkin === 'loaded-skin'" :label="settings.skin.name" value="loaded-skin" disabled />
+              <el-option class="agent-ui-interactive" :label="$t('surface.settingsAppearancePanel.loadSkinFile')" value="load-file" />
+              <el-option class="agent-ui-interactive" v-if="settings.skin && selectedSkin === 'loaded-skin'" :label="settings.skin.name" value="loaded-skin" disabled />
               <el-option-group v-if="localSkins.length" :label="$t('surface.settingsAppearancePanel.localSkins')">
-                <el-option v-for="local in localSkins" :key="local.name" class="settings-appearance-panel__skin-option" :label="local.skin.name" :aria-label="local.skin.name" :value="`${localSkinPrefix}${local.name}`">
+                <el-option v-for="local in localSkins" :key="local.name" class="settings-appearance-panel__skin-option agent-ui-interactive" :label="local.skin.name" :aria-label="local.skin.name" :value="`${localSkinPrefix}${local.name}`">
                   <span class="settings-appearance-panel__skin-name">{{ local.skin.name }}</span>
-                  <button class="settings-appearance-panel__skin-delete" type="button"
+                  <button data-variant="destructive" class="settings-appearance-panel__skin-delete agent-ui-interactive" type="button"
                     :aria-label="$t('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name })" :title="$t('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name })"
                     @mousedown.prevent @click.stop.prevent="deleteSkin(local)" @keydown.enter.stop @keydown.space.stop
                   ><Trash2Icon aria-hidden="true" /></button>
                 </el-option>
               </el-option-group>
               <el-option-group v-if="skins.length" :label="skinGalleryLabel">
-              <el-option v-for="skin in skins" :key="skin.slug" class="settings-appearance-panel__skin-option" :label="skin.name" :value="skin.slug" :aria-label="skin.name">
+              <el-option v-for="skin in skins" :key="skin.slug" class="settings-appearance-panel__skin-option agent-ui-interactive" :label="skin.name" :value="skin.slug" :aria-label="skin.name">
                 <span class="settings-appearance-panel__skin-name">{{ skin.name }}</span>
                 <a class="settings-appearance-panel__skin-preview" :href="`${skinGalleryUrl}/skins/${skin.slug}`" target="_blank" rel="noopener noreferrer"
                   :aria-label="$t('surface.settingsAppearancePanel.previewSkin', { name: skin.name })" :title="$t('surface.settingsAppearancePanel.previewSkin', { name: skin.name })"
@@ -86,7 +86,7 @@
               </el-option-group>
             </el-select>
             <input ref="skinFileInput" type="file" accept=".json,application/json" hidden @change="loadSkinFile" />
-            <button v-if="settings.skin" class="app-button app-button--neutral" type="button" :title="$t('surface.settingsAppearancePanel.removeSkinTitle', { name: settings.skin.name })" @click="removeTheme">{{ $t('surface.settingsAppearancePanel.removeSkin') }}</button>
+            <button v-if="settings.skin" class="app-button app-button--neutral agent-ui-interactive" type="button" :title="$t('surface.settingsAppearancePanel.removeSkinTitle', { name: settings.skin.name })" @click="removeTheme">{{ $t('surface.settingsAppearancePanel.removeSkin') }}</button>
           </div>
           <p v-if="skinError" class="settings-appearance-panel__error" role="alert">{{ skinError }}</p>
         </template>
@@ -143,7 +143,7 @@
 import { translate } from '../i18n';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { I18nT } from 'vue-i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { appApi, appPlatformActions } from '../platform-api';
 import { maxThemeFileSize, parseCustomTheme, type CustomAppTheme, type LocalSkin } from '@workspace/core/custom-themes';
 import { fetchCatalogSkin, fetchSkinCatalog, skinGalleryUrl, type CatalogSkin } from '../theme/skin-catalog';
@@ -259,7 +259,7 @@ async function loadLocalSkins(): Promise<void> {
 
 async function deleteSkin(local: LocalSkin): Promise<void> {
   try {
-    await ElMessageBox.confirm(translate('surface.settingsAppearancePanel.deleteSkinMessage', { name: local.skin.name }), translate('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name }), {
+    await appMessageBox.confirm(translate('surface.settingsAppearancePanel.deleteSkinMessage', { name: local.skin.name }), translate('surface.settingsAppearancePanel.deleteSkin', { name: local.skin.name }), {
       type: 'warning', confirmButtonText: translate('common.delete'), cancelButtonText: translate('common.cancel'), confirmButtonType: 'danger',
     });
   } catch { return; }
@@ -347,8 +347,7 @@ function updateNumericTheme(key: 'chatFontSize' | 'codeFontSize' | 'uiFontSize',
 .settings-appearance-panel__skin-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .settings-appearance-panel__skin-preview { display: inline-flex; margin-left: var(--space-4); color: var(--color-text-muted); }
 .settings-appearance-panel__skin-preview svg { width: var(--icon-sm); height: var(--icon-sm); }
-.settings-appearance-panel__skin-delete { display: inline-flex; margin-left: var(--space-4); padding: 0; border: 0; background: none; color: var(--color-text-muted); cursor: pointer; }
-.settings-appearance-panel__skin-delete:hover { color: var(--color-error); }
+.settings-appearance-panel__skin-delete { display: inline-flex; margin-left: var(--space-4); padding: 0; border: 0; --agent-ui-state-rest: transparent; --agent-ui-state-rest-foreground: var(--color-text-muted); }
 .settings-appearance-panel__skin-delete svg { width: var(--icon-sm); height: var(--icon-sm); }
 :global(.settings-appearance-panel__skin-menu .el-scrollbar) {
   --el-scrollbar-bg-color: var(--color-primary);

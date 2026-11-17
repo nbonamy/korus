@@ -7,7 +7,7 @@ import {
   type AppHostCapabilities,
 } from '@workspace/core/client';
 import type { AppApi } from '@workspace/core/contracts';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from './shared/dialog/message-box';
 
 export const CODEX_APP_DEEP_LINK = 'codex://' as const;
 export const CHATGPT_PLUGINS_URL = 'https://chatgpt.com/plugins' as const;
@@ -56,7 +56,7 @@ function desktopPlatformActions(api: AppApi | undefined): Readonly<AppPlatformAc
 
 async function confirmChatGptRelaunch(): Promise<boolean> {
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       translate('surface.platform-api.chatGPTIsAlreadyOpenAppNeedsToRelaunchItWithAppSI'),
       translate('surface.platform-api.quitAndRelaunchChatGPT'),
       {

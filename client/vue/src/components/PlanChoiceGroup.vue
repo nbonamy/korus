@@ -16,7 +16,7 @@
     <el-tooltip v-if="answer" :content="t('planFeedback.clear')" placement="top" :show-after="300">
       <button
         type="button"
-        class="plan-choice-reset"
+        class="plan-choice-reset agent-ui-interactive"
         :aria-label="t('planFeedback.clear')"
         :disabled="disabled"
         @click="emit('change', null)"
@@ -97,14 +97,9 @@ small {
   width: 24px;
   height: 24px;
   border: 0;
-  background: transparent;
   padding: 0;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   border-radius: 5px;
-  cursor: pointer;
-}
-.plan-choice-reset:hover:not(:disabled) {
-  color: var(--color-text);
 }
 .plan-choice-reset svg {
   width: 16px;

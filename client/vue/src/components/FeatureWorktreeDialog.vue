@@ -10,7 +10,7 @@
           :disabled="creating || worktrees.size > 0"
           :aria-label="agentMode ? $t('features.repository') : $t('features.repositories')"
         >
-          <el-option v-for="repository in repositories" :key="repositoryKey(repository)" :label="repository.repositoryName" :value="repositoryKey(repository)" />
+          <el-option class="agent-ui-interactive" v-for="repository in repositories" :key="repositoryKey(repository)" :label="repository.repositoryName" :value="repositoryKey(repository)" />
         </el-select>
       </FormField>
       <FormField v-if="agentMode && !fixedBranch" :label="$t('features.branchSelect')" label-for="feature-worktree-branch-choice">
@@ -22,8 +22,8 @@
           :disabled="creating || worktrees.size > 0"
           :aria-label="$t('features.branchSelect')"
         >
-          <el-option :label="$t('features.branch')" :value="NEW_BRANCH" />
-          <el-option v-for="item in branchOptions" :key="item.name" :label="item.name" :value="item.name" />
+          <el-option class="agent-ui-interactive" :label="$t('features.branch')" :value="NEW_BRANCH" />
+          <el-option class="agent-ui-interactive" v-for="item in branchOptions" :key="item.name" :label="item.name" :value="item.name" />
         </el-select>
       </FormField>
       <FormField v-if="!agentMode || fixedBranch || branchChoice === NEW_BRANCH" :label="agentMode ? $t('features.branchName') : $t('features.branch')" label-for="feature-worktree-branch">
@@ -44,8 +44,8 @@
       </p>
     </form>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="creating" @click="emit('close')">{{ $t('common.cancel') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="!canCreate" :aria-busy="creating" @click="create">
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="creating" @click="emit('close')">{{ $t('common.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="!canCreate" :aria-busy="creating" @click="create">
         {{ failures.length ? $t('features.retry') : $t('surface.newSourceWorktreeDialog.create') }}
       </button>
     </template>

@@ -10,12 +10,12 @@
   >
     <template #headerActions>
       <div class="automation-execution-log__header-actions">
-        <el-button
+        <el-button data-variant="destructive" data-appearance="solid" class="agent-ui-interactive"
           type="danger"
           :disabled="automation.executionLog.length === 0"
           @click="emit('clear-history', automation.id)"
         > {{ $t('surface.automationExecutionLog.clear') }} </el-button>
-        <el-button
+        <el-button class="agent-ui-interactive"
           @click="emit('close')"
         > {{ $t('surface.automationExecutionLog.back') }} </el-button>
       </div>

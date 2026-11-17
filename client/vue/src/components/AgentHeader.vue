@@ -66,7 +66,7 @@
       />
       <button
         v-if="agent && !agent.sharedConversation && shareAvailable && shareActive"
-        class="app-button app-button--neutral agent-header__share"
+        class="app-button app-button--neutral agent-header__share agent-ui-interactive"
         type="button"
         :aria-label="$t('sharing.share')"
         :title="connectedGuests === null ? $t('sharing.share') : $t('sharing.guests', { count: connectedGuests })"
@@ -123,7 +123,7 @@
       />
       <button
         v-if="executionPlanAvailable"
-        class="agent-header__execution-plan"
+        class="agent-header__execution-plan agent-ui-interactive"
         type="button"
         :aria-label="$t('surface.agentHeader.toggleExecutionPlan')"
         :title="$t('surface.agentHeader.toggleExecutionPlan')"
@@ -134,7 +134,7 @@
       </button>
       <button
         v-if="workspaceOpen && workspaceToggleAvailable !== false"
-        class="agent-header__workspace"
+        class="agent-header__workspace agent-ui-interactive"
         type="button"
         :aria-label="$t(workspaceExpanded ? 'surface.agentHeader.restoreWorkspaceWidth' : 'surface.agentHeader.expandWorkspace')"
         :title="$t(workspaceExpanded ? 'surface.agentHeader.restoreWorkspaceWidth' : 'surface.agentHeader.expandWorkspace')"
@@ -147,7 +147,7 @@
       </button>
       <button
         v-if="workspaceToggleAvailable !== false"
-        class="agent-header__workspace"
+        class="agent-header__workspace agent-ui-interactive"
         data-global-workspace-toggle
         type="button"
         :aria-label="$t('surface.agentHeader.toggleRightWorkspace')"
@@ -165,7 +165,7 @@
       />
       <button
         v-if="agent?.sharedConversation && guestStatus !== 'rejected' && guestStatus !== 'storageUnavailable'"
-        class="app-button app-button--neutral agent-header__leave"
+        class="app-button app-button--neutral agent-header__leave agent-ui-interactive"
         type="button"
         :aria-label="$t('guest.leave')"
         :disabled="guestBusy"
@@ -464,7 +464,7 @@ const gitReviewAvailable = computed(() => {
   width: 32px;
   height: 32px;
   padding: 0;
-  color: var(--color-primary);
+  --agent-ui-state-rest-foreground: var(--color-primary);
 }
 
 .agent-header__share :deep(svg) {
@@ -475,8 +475,7 @@ const gitReviewAvailable = computed(() => {
 .agent-header__workspace {
   -webkit-app-region: no-drag;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   display: grid;
   place-items: center;
@@ -484,27 +483,19 @@ const gitReviewAvailable = computed(() => {
   height: 32px;
   padding: 0;
   border: 0;
-  cursor: pointer;
 }
 
 .agent-header__execution-plan {
   -webkit-app-region: no-drag;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
   padding: 0;
-}
-
-.agent-header__execution-plan:hover,
-.agent-header__execution-plan[aria-pressed="true"] {
-  background: var(--color-surface-high);
-  color: var(--color-text);
 }
 
 .agent-header__execution-plan :deep(svg) {
@@ -512,17 +503,10 @@ const gitReviewAvailable = computed(() => {
   height: var(--icon-md);
 }
 
-.agent-header__workspace:hover,
-.agent-header__workspace[aria-pressed="true"] {
-  background: var(--color-surface-high);
-  color: var(--color-text);
-}
-
 .agent-header__workspace :deep(svg) {
   width: var(--icon-md);
   height: var(--icon-md);
 }
-
 
 /* Narrow split panes keep the same essential controls as phones. */
 @container agent-header (max-width: 400px) {

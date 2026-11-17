@@ -53,10 +53,14 @@
     --agent-ui-composer-button-background: var(--skin-message-action);
     --agent-ui-composer-button-color: var(--skin-message-action-foreground);
   }
-  :root[data-skin] .agent-sidebar__agent--active { background: var(--skin-sidebar-row-selected); }
   :root[data-skin] .agent-sidebar__agent--active .agent-sidebar__name { color: var(--skin-sidebar-foreground); }
-  :root[data-skin] .agent-sidebar__agent:not(.agent-sidebar__agent--active):hover,
-  :root[data-skin] .settings-sidebar .el-menu-item:hover { background: var(--skin-sidebar-row-hover); }
+  :root[data-skin] :is(.agent-sidebar__agent, .settings-sidebar .el-menu-item) {
+    --agent-ui-state-hover: var(--skin-sidebar-row-hover);
+    --agent-ui-state-selected: var(--skin-sidebar-row-selected);
+    --agent-ui-state-primary-hover: var(--skin-sidebar-row-hover);
+    --agent-ui-state-primary-selected: var(--skin-sidebar-row-selected);
+    --agent-ui-state-primary-foreground: var(--skin-sidebar-foreground);
+  }
 }
 
 /* Product geometry and readable popups remain stable across imported skins. */
@@ -67,25 +71,85 @@
   }
 }
 
-/* Element Plus derives the default button hover from fixed primary tints, which read as saturated blue on dark surfaces. */
-.dark .el-button:not(.el-button--primary, .el-button--success, .el-button--warning, .el-button--danger, .el-button--info, .is-text, .is-link) {
-  --el-button-hover-text-color: var(--color-text);
-  --el-button-hover-bg-color: var(--color-surface-high);
-  --el-button-hover-border-color: var(--color-outline);
-  --el-button-active-text-color: var(--color-text);
-  --el-button-active-bg-color: var(--color-surface-highest);
-  --el-button-active-border-color: var(--color-outline);
+/* Toolkit buttons consume the shared primitive's computed states; they do not define another policy. */
+:root .el-button.agent-ui-interactive {
+  --el-button-bg-color: var(--agent-ui-interactive-rest);
+  --el-button-text-color: var(--agent-ui-interactive-rest-foreground);
+  --el-button-hover-bg-color: var(--agent-ui-interactive-hover);
+  --el-button-hover-text-color: var(--agent-ui-interactive-hover-foreground);
+  --el-button-active-bg-color: var(--agent-ui-interactive-pressed);
+  --el-button-active-text-color: var(--agent-ui-interactive-pressed-foreground);
+  --el-button-border-color: var(--color-border);
+  --el-button-hover-border-color: var(--el-button-border-color);
+  --el-button-active-border-color: var(--el-button-border-color);
+  --el-button-disabled-bg-color: var(--agent-ui-interactive-rest);
+  --el-button-disabled-text-color: var(--agent-ui-interactive-rest-foreground);
+  --el-button-disabled-border-color: var(--el-button-border-color);
+  cursor: revert-layer;
+  opacity: revert-layer;
+  outline: revert-layer;
+  outline-offset: revert-layer;
+  box-shadow: revert-layer;
 }
 
-.el-button--primary {
-  --el-button-hover-bg-color: var(--color-secondary);
-  --el-button-hover-border-color: var(--el-button-hover-bg-color);
+.el-button.agent-ui-interactive:is([data-appearance="solid"], .agent-ui-interactive--solid) {
+  --el-button-border-color: var(--agent-ui-interactive-rest);
 }
 
-.el-button--danger {
-  --el-button-text-color: var(--el-color-danger);
-  --el-button-bg-color: var(--el-bg-color);
-  --el-button-hover-bg-color: var(--el-color-danger);
+.el-button--primary.agent-ui-interactive:not([data-appearance="solid"]):not(.agent-ui-interactive--solid) {
+  --agent-ui-state-rest-foreground: var(--color-primary);
+}
+
+.el-button--danger.agent-ui-interactive:not([data-appearance="solid"]):not(.agent-ui-interactive--solid) {
+  --agent-ui-state-rest-foreground: var(--color-error);
+}
+
+.el-button--success.agent-ui-interactive {
+  --agent-ui-state-primary-solid: var(--color-success);
+  --agent-ui-state-primary-solid-foreground: var(--color-on-success);
+}
+
+.el-button--warning.agent-ui-interactive {
+  --agent-ui-state-primary-solid: var(--color-warning);
+  --agent-ui-state-primary-solid-foreground: var(--color-on-warning);
+}
+
+:root .app-message-box .el-message-box__headerbtn {
+  --el-color-info: var(--agent-ui-interactive-rest-foreground);
+  --el-color-primary: var(--agent-ui-interactive-hover-foreground);
+  background: revert-layer;
+  color: revert-layer;
+  cursor: revert-layer;
+  outline: revert-layer;
+  outline-offset: revert-layer;
+}
+
+/* Tabs share one selection material across native and toolkit presentations. */
+.right-workspace-panel__tab,
+.el-tabs[data-agent-ui-scope] {
+  --agent-ui-state-selected: var(--app-tab-selection-background);
+}
+
+/* Generated toolkit rows retain layout and selection indicators while sharing interaction paint. */
+:root .el-tabs[data-agent-ui-scope] [role="tab"][aria-selected] {
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
+  background: revert-layer;
+  color: revert-layer;
+  cursor: revert-layer;
+  outline: revert-layer;
+  outline-offset: revert-layer;
+  box-shadow: revert-layer;
+}
+
+:root .el-select-dropdown__item.agent-ui-interactive {
+  --el-fill-color-light: var(--agent-ui-interactive-hover);
+  --el-color-primary: var(--agent-ui-interactive-selected-foreground);
+  --el-text-color-regular: var(--color-text);
+  --el-text-color-placeholder: var(--color-text);
+  cursor: revert-layer;
+  opacity: revert-layer;
+  outline: revert-layer;
+  outline-offset: revert-layer;
 }
 
 .el-checkbox {
@@ -103,15 +167,16 @@
 }
 
 .el-segmented {
+  --agent-ui-state-selected: var(--color-surface-lowest);
   --el-segmented-padding: var(--space-2);
   --el-segmented-bg-color: var(--color-surface-base);
   --el-segmented-color: var(--color-text-muted);
   --el-segmented-item-selected-color: var(--color-text);
-  --el-segmented-item-selected-bg-color: var(--color-surface-lowest);
+  --el-segmented-item-selected-bg-color: var(--agent-ui-state-selected);
   --el-segmented-item-selected-disabled-bg-color: var(--color-surface-low);
   --el-segmented-item-hover-color: var(--color-text);
-  --el-segmented-item-hover-bg-color: transparent;
-  --el-segmented-item-active-bg-color: transparent;
+  --el-segmented-item-hover-bg-color: var(--agent-ui-state-hover);
+  --el-segmented-item-active-bg-color: var(--agent-ui-state-pressed);
   border-radius: var(--radius-full);
   font-size: var(--font-size-13);
 }
@@ -122,7 +187,7 @@
 }
 
 .el-segmented__item-selected {
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
 }
 
 .el-segmented__item {

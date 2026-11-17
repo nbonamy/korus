@@ -1,7 +1,7 @@
 <template>
   <aside class="mission-conversation-rail" :aria-label="t('missions.support')">
     <div class="mission-conversation-rail__navigation">
-      <ElTabs
+      <ElTabs data-agent-ui-scope
         v-if="conversations.length > 1"
         v-model="selectedAgentId"
         type="border-card"
@@ -255,18 +255,6 @@ function conversationKey(run: Conversation['run']): string {
   padding: 0 var(--space-8);
   border-bottom: 0;
   color: var(--color-text-muted);
-}
-
-.mission-conversation-rail__switcher :deep(.el-tabs__header .el-tabs__item.is-active) {
-  color: var(--color-primary);
-  background-color: var(--color-surface-lowest);
-}
-
-.mission-conversation-rail__switcher :deep(.el-tabs__item:focus-visible) {
-  border-radius: 0;
-  box-shadow: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .mission-conversation-rail__tab-label {

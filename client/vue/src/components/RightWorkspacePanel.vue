@@ -5,7 +5,7 @@
       <div ref="tabStripRoot" class="right-workspace-panel__tab-strip">
         <button
           v-if="tabsOverflow"
-          class="right-workspace-panel__tab-nav"
+          class="right-workspace-panel__tab-nav agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.rightWorkspacePanel.scrollTabsLeft')"
           :disabled="!canScrollTabsLeft"
@@ -21,16 +21,16 @@
           @scroll="updateTabScrollState"
         >
           <div ref="tabTrackRoot" class="right-workspace-panel__tab-track">
-            <div
+            <div :data-selected="(activeTab === tab) ? '' : undefined"
               v-for="tab in tabs"
               :key="tab"
-              class="right-workspace-panel__tab"
+              class="right-workspace-panel__tab agent-ui-interactive"
               :class="{ 'right-workspace-panel__tab--active': activeTab === tab }"
               @contextmenu="openTabContextMenu(tab, $event)"
             >
               <el-tooltip :content="tabLabel(tab)" placement="top" :show-after="800">
                 <button
-                  class="right-workspace-panel__tab-select"
+                  class="right-workspace-panel__tab-select agent-ui-interactive" data-appearance="text"
                   type="button"
                   role="tab"
                   :aria-label="tabLabel(tab)"
@@ -59,7 +59,7 @@
               </el-tooltip>
               <button
                 v-if="isRightWorkspaceFileTab(tab) && filePanel(tab)?.documentId && saveDocument"
-                class="right-workspace-panel__tab-save"
+                class="right-workspace-panel__tab-save agent-ui-interactive"
                 type="button"
                 :aria-label="$t('documents.saveTabAs', { title: tabLabel(tab) })"
                 :title="$t('documents.saveAs')"
@@ -69,7 +69,7 @@
                 <DownloadIcon aria-hidden="true" />
               </button>
               <button
-                class="right-workspace-panel__tab-close"
+                class="right-workspace-panel__tab-close agent-ui-interactive"
                 type="button"
                 :aria-label="$t('dynamic.files.closeTab', { tab: tabLabel(tab) })"
                 @click="emit('closeTab', tab)"
@@ -81,7 +81,7 @@
         </div>
         <button
           v-if="tabsOverflow"
-          class="right-workspace-panel__tab-nav"
+          class="right-workspace-panel__tab-nav agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.rightWorkspacePanel.scrollTabsRight')"
           :disabled="!canScrollTabsRight"
@@ -101,7 +101,7 @@
 
       <button
         v-if="fileExplorerToggleVisible"
-        class="right-workspace-panel__files-toggle"
+        class="right-workspace-panel__files-toggle agent-ui-interactive"
         type="button"
         :aria-label="filesPaneOpen ? $t('surface.rightWorkspacePanel.collapseFileExplorer') : $t('surface.rightWorkspacePanel.showFileExplorer')"
         :aria-pressed="filesPaneOpen"
@@ -114,7 +114,7 @@
       <div class="right-workspace-panel__add">
         <AppMenuButton v-model:open="addMenuOpen" :ariaLabel="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')" :items="addMenuItems" @select="openTabFromMenu">
           <template #trigger="{ attrs }">
-            <button
+            <button class="agent-ui-interactive"
               v-bind="attrs"
               type="button"
               :aria-label="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')"
@@ -145,30 +145,30 @@
       class="right-workspace-panel__launcher"
       :aria-label="$t('surface.rightWorkspacePanel.openAWorkspaceTab')"
     >
-      <button type="button" @click="emit('openTab', 'codeReview')">
+      <button class="agent-ui-interactive" type="button" @click="emit('openTab', 'codeReview')">
         <IconChecklist aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.review') }}</span>
       </button>
-      <button type="button" @click="emit('openTab', 'design')">
+      <button class="agent-ui-interactive" type="button" @click="emit('openTab', 'design')">
         <IconPalette aria-hidden="true" />
         <span>{{ $t('design.title') }}</span>
       </button>
-      <button type="button" @click="emit('openTab', 'visualize')">
+      <button class="agent-ui-interactive" type="button" @click="emit('openTab', 'visualize')">
         <IconSitemap aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.visualize') }}</span>
       </button>
-      <button type="button" @click="emit('openTab', 'review')">
+      <button class="agent-ui-interactive" type="button" @click="emit('openTab', 'review')">
         <FileDiffIcon aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.changes') }}</span>
         <kbd>{{ workspaceShortcuts.changes }}</kbd>
       </button>
-      <button v-if="simulatorAvailable" type="button" @click="emit('openTab', 'simulator')"><IconDeviceMobile aria-hidden="true" /><span>{{ $t('surface.mobileSimulator.tab') }}</span></button>
-      <button v-if="browserAvailable" type="button" @click="emit('openTab', 'browser')">
+      <button class="agent-ui-interactive" v-if="simulatorAvailable" type="button" @click="emit('openTab', 'simulator')"><IconDeviceMobile aria-hidden="true" /><span>{{ $t('surface.mobileSimulator.tab') }}</span></button>
+      <button class="agent-ui-interactive" v-if="browserAvailable" type="button" @click="emit('openTab', 'browser')">
         <IconWorld aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.browser') }}</span>
         <kbd>{{ workspaceShortcuts.browser }}</kbd>
       </button>
-      <button type="button" @click="emit('openTab', 'files')">
+      <button class="agent-ui-interactive" type="button" @click="emit('openTab', 'files')">
         <FoldersIcon aria-hidden="true" />
         <span>{{ $t('surface.rightWorkspacePanel.files') }}</span>
       </button>
@@ -287,9 +287,9 @@
           class="right-workspace-panel__open-file"
         >
           <span>{{ $t('surface.rightWorkspacePanel.selectAFileFromTheExplorer') }}</span>
-          <button
+          <button data-variant="primary"
             v-if="!fileExplorerVisible"
-            class="app-button app-button--secondary"
+            class="app-button app-button--secondary agent-ui-interactive"
             type="button"
             @click="emit('toggleFilesPane')"
           >
@@ -1002,24 +1002,12 @@ function urlForTab(tab: RightWorkspaceTab): string {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .right-workspace-panel__tab-nav svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.right-workspace-panel__tab-nav:hover:not(:disabled) {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
-.right-workspace-panel__tab-nav:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 .right-workspace-panel__tab {
@@ -1030,13 +1018,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
   align-items: center;
   container-type: inline-size;
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: transparent;
-}
-
-.right-workspace-panel__tab--active {
-  color: var(--color-text);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .right-workspace-panel__tab-select,
@@ -1045,12 +1027,10 @@ function urlForTab(tab: RightWorkspaceTab): string {
 .right-workspace-panel__files-toggle,
 .right-workspace-panel__add button {
   border: 0;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
 }
 
 .right-workspace-panel__tab-select {
+  /* The compound tab owns selection paint; its focusable label keeps the tab ARIA state. */
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
@@ -1100,10 +1080,6 @@ function urlForTab(tab: RightWorkspaceTab): string {
   display: grid;
 }
 
-.right-workspace-panel__tab-save:disabled {
-  cursor: default;
-}
-
 @container (max-width: 72px) {
   .right-workspace-panel__tab-select {
     justify-content: center;
@@ -1127,15 +1103,6 @@ function urlForTab(tab: RightWorkspaceTab): string {
   }
 }
 
-.right-workspace-panel__tab-save:hover:not(:disabled),
-.right-workspace-panel__tab-close:hover,
-.right-workspace-panel__files-toggle:hover,
-.right-workspace-panel__add button:hover,
-.right-workspace-panel__add button[aria-expanded="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
 .right-workspace-panel__files-toggle {
   flex: 0 0 auto;
   display: grid;
@@ -1145,14 +1112,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
   padding: 0;
   border: 0;
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.right-workspace-panel__files-toggle[aria-pressed="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .right-workspace-panel__add {
@@ -1167,7 +1127,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
   height: var(--space-16);
   padding: 0;
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .right-workspace-panel__launcher {
@@ -1246,16 +1206,9 @@ function urlForTab(tab: RightWorkspaceTab): string {
   padding: var(--space-6) var(--space-8);
   border: 0;
   border-radius: var(--radius-lg);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
-}
-
-.right-workspace-panel__launcher > button:hover,
-.right-workspace-panel__launcher > button:focus-visible {
-  background: var(--color-surface-low);
 }
 
 .right-workspace-panel__launcher svg {

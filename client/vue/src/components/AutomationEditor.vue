@@ -19,19 +19,19 @@
         <FormGrid>
           <FormField density="compact" :label="$t('promptAutomation.team')" label-for="automation-team">
             <el-select id="automation-team" v-model="form.teamId" :aria-label="$t('surface.automationEditor.automationTargetTeam')">
-              <el-option v-for="team in teams" :key="team.id" :value="team.id" :label="team.name" />
+              <el-option class="agent-ui-interactive" v-for="team in teams" :key="team.id" :value="team.id" :label="team.name" />
             </el-select>
           </FormField>
           <FormField density="compact" :label="$t('promptAutomation.conversation')" label-for="automation-target"
             :help="form.kind === 'newQuickChat' ? undefined : $t('promptAutomation.inheritsSettings')">
             <el-select id="automation-target" v-model="conversation" fit-input-width :aria-label="$t('promptAutomation.conversation')"
               :placeholder="$t('promptAutomation.conversation')">
-              <el-option value="new" :label="$t('promptAutomation.newQuickChat')" />
+              <el-option class="agent-ui-interactive" value="new" :label="$t('promptAutomation.newQuickChat')" />
               <el-option-group v-if="quickChats.length" :label="$t('promptAutomation.quickChat')">
-                <el-option v-for="agent in quickChats" :key="agent.id" :value="`quickChat:${agent.id}`" :label="conversationLabel(agent)" :title="conversationLabel(agent)" />
+                <el-option class="agent-ui-interactive" v-for="agent in quickChats" :key="agent.id" :value="`quickChat:${agent.id}`" :label="conversationLabel(agent)" :title="conversationLabel(agent)" />
               </el-option-group>
               <el-option-group v-if="agentChats.length" :label="$t('promptAutomation.agent')">
-                <el-option v-for="agent in agentChats" :key="agent.id" :value="`agent:${agent.id}`" :label="conversationLabel(agent)" :title="conversationLabel(agent)" />
+                <el-option class="agent-ui-interactive" v-for="agent in agentChats" :key="agent.id" :value="`agent:${agent.id}`" :label="conversationLabel(agent)" :title="conversationLabel(agent)" />
               </el-option-group>
             </el-select>
           </FormField>
@@ -47,8 +47,8 @@
       <p v-if="error" class="automation-editor__notice" role="alert">{{ error }}</p>
     </div>
     <footer class="automation-editor__footer">
-      <el-button @click="emit('cancel')">{{ $t('surface.automationEditor.cancel') }}</el-button>
-      <el-button type="primary" native-type="submit" :disabled="!canSubmit" :loading="saving">{{ $t('surface.automationEditor.saveAutomation') }}</el-button>
+      <el-button class="agent-ui-interactive" @click="emit('cancel')">{{ $t('surface.automationEditor.cancel') }}</el-button>
+      <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" type="primary" native-type="submit" :disabled="!canSubmit" :loading="saving">{{ $t('surface.automationEditor.saveAutomation') }}</el-button>
     </footer>
   </form>
 </template>

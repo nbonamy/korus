@@ -29,7 +29,6 @@ const options = computed(() => [
   font-weight: var(--font-weight-semibold);
 }
 .git-diff-view-toggle :deep(.el-segmented__item) { padding: var(--space-2) var(--space-6); }
-.git-diff-view-toggle :deep(.el-segmented__item-selected) { box-shadow: var(--shadow-sm); }
 .git-diff-view-toggle__option { display: flex; align-items: center; gap: var(--space-3); }
 .git-diff-view-toggle__option svg { width: var(--icon-md); height: var(--icon-md); }
 </style>

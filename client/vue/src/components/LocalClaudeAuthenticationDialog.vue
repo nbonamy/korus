@@ -11,8 +11,8 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="emit('update:modelValue', false)">{{ $t('surface.remoteClaudeAuth.close') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="loading" @click="emit('refresh')">{{ $t('surface.remoteClaudeAuth.refresh') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="emit('update:modelValue', false)">{{ $t('surface.remoteClaudeAuth.close') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="loading" @click="emit('refresh')">{{ $t('surface.remoteClaudeAuth.refresh') }}</button>
     </template>
   </FormDialog>
 </template>

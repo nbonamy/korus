@@ -40,6 +40,7 @@ describe('AppMenu', () => {
     expect(row.text()).toContain('3 files');
     expect(row.get('.app-menu__value-added').text()).toBe('+12');
     expect(row.get('.app-menu__value-removed').text()).toBe('-4');
+    expect(getComputedStyle(row.get('.app-menu__value-removed').element).color).toBe('var(--color-error)');
     expect(row.get('.app-menu__color-dot').attributes('style')).toContain('background-color');
     await row.trigger('click');
     expect(wrapper.emitted('select')).toBeUndefined();
@@ -63,7 +64,7 @@ describe('AppMenu', () => {
     expect(wrapper.emitted('select')).toStrictEqual([['branch']]);
   });
 
-  it('renders actions, separators, selected radio state, and submenu chevrons consistently', () => {
+  it('renders actions, separators, selected radio state, and submenu chevrons consistently', async () => {
     const wrapper = mountMenu([
       {
         id: 'edit',
@@ -95,6 +96,12 @@ describe('AppMenu', () => {
     ]);
     expect(wrapper.find('[role="separator"]').exists()).toBe(true);
     expect(wrapper.find('.app-menu__chevron').exists()).toBe(true);
+    const submenu = wrapper.get('.app-menu__item--submenu');
+    expect(submenu.attributes('aria-expanded')).toBe('false');
+    await wrapper.get('.app-menu__submenu').trigger('mouseenter');
+    expect(submenu.attributes('aria-expanded')).toBe('true');
+    await wrapper.get('.app-menu__submenu').trigger('mouseleave');
+    expect(submenu.attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('[role="menuitemradio"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.text()).toContain('Team A • Current team');
     expect(getComputedStyle(wrapper.get('[role="menuitem"]').element).userSelect).toBe('none');

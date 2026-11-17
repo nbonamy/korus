@@ -14,7 +14,7 @@
     <span class="clearable-text-input__action">
       <button
         v-if="modelValue && !disabled && !readonly"
-        class="clearable-text-input__clear"
+        class="clearable-text-input__clear agent-ui-interactive"
         type="button"
         :aria-label="clearLabel ?? $t('common.clearText')"
         :title="clearLabel ?? $t('common.clearText')"
@@ -90,18 +90,6 @@ async function clear(): Promise<void> {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.clearable-text-input__clear:hover,
-.clearable-text-input__clear:focus-visible {
-  color: var(--color-text);
-  background: var(--color-surface-high);
-}
-
-.clearable-text-input__clear:focus-visible {
-  outline: none;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 </style>

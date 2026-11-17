@@ -4,7 +4,7 @@
     <p role="status">{{ t('guest.noLongerAccessible') }}</p>
     <p v-if="view.status === 'storageUnavailable'" role="alert">{{ t('guest.status.storageUnavailable') }}</p>
     <p v-if="closeFailed" role="alert">{{ t('guest.storageFailed') }}</p>
-    <button type="button" class="app-button app-button--secondary" :disabled="busy || closing" @click="close">{{ t('common.close') }}</button>
+    <button data-variant="primary" type="button" class="app-button app-button--secondary agent-ui-interactive" :disabled="busy || closing" @click="close">{{ t('common.close') }}</button>
   </div>
   <ConversationPane
     v-else

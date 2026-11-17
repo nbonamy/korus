@@ -19,12 +19,12 @@
           <span class="git-review-panel__removed">-{{ summary.removedLines }}</span>
         </div>
         <div class="git-review-panel__actions">
-          <button type="button" :aria-label="$t('surface.gitReviewPanel.refreshRepositoryDiff')" :title="$t('surface.gitReviewPanel.refresh')" @click="emit('refresh')">
+          <button class="agent-ui-interactive" type="button" :aria-label="$t('surface.gitReviewPanel.refreshRepositoryDiff')" :title="$t('surface.gitReviewPanel.refresh')" @click="emit('refresh')">
             <RefreshIcon aria-hidden="true" />
           </button>
           <AppMenuButton :ariaLabel="$t('surface.gitReviewPanel.reviewOptions')" :items="menuItems" @select="emit('selectMenuItem', $event)">
             <template #trigger="{ attrs }">
-              <button
+              <button class="agent-ui-interactive"
                 v-bind="attrs"
                 type="button"
                 :aria-label="$t('surface.gitReviewPanel.reviewOptions')"
@@ -140,15 +140,7 @@ const emit = defineEmits<{ refresh: []; selectMenuItem: [id: string]; 'update:vi
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.git-review-panel__actions button:hover,
-.git-review-panel__actions button[aria-expanded="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .git-review-panel__actions svg {

@@ -1,7 +1,7 @@
 <template>
   <button
     v-if="selection && !commentingSelection"
-    class="chat-text-selection-annotation__add"
+    class="chat-text-selection-annotation__add agent-ui-interactive"
     type="button"
     :style="actionStyle"
     @pointerdown.prevent
@@ -87,18 +87,8 @@ function saveComment(comment: string): void {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-lowest);
   box-shadow: var(--shadow-md);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: 500 var(--font-size-13) / 1.2 var(--font-family-ui);
-  cursor: pointer;
-}
-
-.chat-text-selection-annotation__add:hover {
-  background: var(--color-surface-low);
-}
-
-.chat-text-selection-annotation__add:focus-visible {
-  outline: none;
 }
 </style>

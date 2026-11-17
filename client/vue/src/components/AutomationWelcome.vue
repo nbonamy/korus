@@ -7,9 +7,9 @@
       <h3>{{ $t('surface.automationWelcome.noAutomationsYet') }}</h3>
       <p>{{ $t('surface.automationWelcome.automationsWatchForMatchingWork') }}</p>
     </div>
-    <el-button
+    <el-button data-variant="primary" data-appearance="solid"
       type="primary"
-      class="automation-welcome__button"
+      class="automation-welcome__button agent-ui-interactive"
       @click="emit('create')"
     > {{ $t('surface.automationWelcome.createAutomation') }} </el-button>
   </section>

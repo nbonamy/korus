@@ -5,7 +5,7 @@
         <button
           ref="pickerTrigger"
           type="button"
-          class="mobile-simulator__picker-trigger"
+          class="mobile-simulator__picker-trigger agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.device')"
           :aria-expanded="pickerOpen"
           aria-haspopup="menu"
@@ -30,7 +30,7 @@
               :key="device.id"
               type="button"
               role="menuitemradio"
-              class="mobile-simulator__menu-item"
+              class="mobile-simulator__menu-item agent-ui-interactive"
               :aria-checked="device.id === attachment.device.id"
               :disabled="!usable(device)"
               @click="switchTo(device)"
@@ -52,7 +52,7 @@
         <span class="mobile-simulator__title">{{ $t('surface.mobileSimulator.tab') }}</span>
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.refresh')"
           :title="$t('surface.mobileSimulator.refresh')"
           :disabled="busy"
@@ -63,7 +63,7 @@
       </template>
     </header>
     <p v-if="error" class="mobile-simulator__error" role="alert">
-      {{ error }} <button type="button" @click="retry">{{ $t('surface.mobileSimulator.retry') }}</button>
+      {{ error }} <button class="agent-ui-interactive" type="button" @click="retry">{{ $t('surface.mobileSimulator.retry') }}</button>
     </p>
     <p v-if="typingError && !error" class="mobile-simulator__error" role="alert">{{ typingError }}</p>
     <div v-if="!attachment" class="mobile-simulator__empty">
@@ -89,7 +89,7 @@
             v-for="device in group.devices"
             :key="device.id"
             type="button"
-            class="mobile-simulator__device"
+            class="mobile-simulator__device agent-ui-interactive"
             :disabled="busy || !usable(device)"
             @click="attach(device)"
           >
@@ -111,7 +111,7 @@
         </p>
         <div v-for="item in platformSetup" :key="item.platform" class="mobile-simulator__setup">
           <span>{{ item.message }}</span>
-          <button type="button" @click="openSetup(item.url)">{{ $t('surface.mobileSimulator.setup') }}</button>
+          <button class="agent-ui-interactive" type="button" @click="openSetup(item.url)">{{ $t('surface.mobileSimulator.setup') }}</button>
         </div>
       </template>
     </div>
@@ -135,7 +135,7 @@
       <div class="mobile-simulator__pill" role="toolbar" :aria-label="$t('surface.mobileSimulator.controls')">
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.home')"
           :title="$t('surface.mobileSimulator.home')"
           :disabled="busy"
@@ -146,7 +146,7 @@
         <button
           v-if="attachment.device.platform === 'android'"
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.back')"
           :title="$t('surface.mobileSimulator.back')"
           :disabled="busy"
@@ -157,7 +157,7 @@
         <span class="mobile-simulator__divider" aria-hidden="true" />
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.rotate')"
           :title="$t('surface.mobileSimulator.rotate')"
           :disabled="busy"
@@ -166,16 +166,16 @@
           <IconRotate2 aria-hidden="true" />
         </button>
         <template v-if="attachment.device.foldable">
-          <button type="button" class="mobile-simulator__icon-button" :aria-label="$t('surface.mobileSimulator.fold')" :title="$t('surface.mobileSimulator.fold')" :disabled="busy" @click="setFolded(true)">
+          <button type="button" class="mobile-simulator__icon-button agent-ui-interactive" :aria-label="$t('surface.mobileSimulator.fold')" :title="$t('surface.mobileSimulator.fold')" :disabled="busy" @click="setFolded(true)">
             <DuoPoseIcon pose="folded" />
           </button>
-          <button type="button" class="mobile-simulator__icon-button" :aria-label="$t('surface.mobileSimulator.unfold')" :title="$t('surface.mobileSimulator.unfold')" :disabled="busy" @click="setFolded(false)">
+          <button type="button" class="mobile-simulator__icon-button agent-ui-interactive" :aria-label="$t('surface.mobileSimulator.unfold')" :title="$t('surface.mobileSimulator.unfold')" :disabled="busy" @click="setFolded(false)">
             <DuoPoseIcon pose="unfolded" />
           </button>
         </template>
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.screenshot')"
           :title="$t('surface.mobileSimulator.screenshot')"
           :disabled="busy"
@@ -186,7 +186,7 @@
         <span class="mobile-simulator__divider" aria-hidden="true" />
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.powerOff')"
           :title="$t('surface.mobileSimulator.powerOff')"
           :disabled="busy"
@@ -196,7 +196,7 @@
         </button>
         <button
           type="button"
-          class="mobile-simulator__icon-button"
+          class="mobile-simulator__icon-button agent-ui-interactive"
           :aria-label="$t('surface.mobileSimulator.detach')"
           :title="$t('surface.mobileSimulator.detach')"
           :disabled="busy"
@@ -555,8 +555,7 @@ onBeforeUnmount(() => {
   padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font-weight: var(--font-weight-medium);
 }
 .mobile-simulator__picker-trigger svg {
@@ -564,10 +563,6 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   color: var(--color-text-muted);
-}
-.mobile-simulator__picker-trigger:hover:not(:disabled),
-.mobile-simulator__picker-trigger[aria-expanded='true'] {
-  background: var(--color-surface-high);
 }
 .mobile-simulator__name {
   overflow: hidden;
@@ -613,15 +608,8 @@ onBeforeUnmount(() => {
   padding: var(--space-3) var(--space-4);
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-}
-.mobile-simulator__menu-item:hover:not(:disabled) {
-  background: var(--color-surface-high);
-}
-.mobile-simulator__menu-item:disabled {
-  opacity: 0.45;
 }
 .mobile-simulator__menu-label {
   flex: 1;
@@ -647,21 +635,12 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 .mobile-simulator__icon-button svg {
   width: 17px;
   height: 17px;
   stroke-width: 1.7;
-}
-.mobile-simulator__icon-button:hover:not(:disabled) {
-  background: var(--color-surface-high);
-  color: var(--color-text);
-}
-.mobile-simulator__icon-button:disabled,
-.mobile-simulator__device:disabled {
-  opacity: 0.4;
 }
 .mobile-simulator__error {
   display: flex;
@@ -675,8 +654,6 @@ onBeforeUnmount(() => {
 .mobile-simulator__setup button {
   padding: 0;
   border: 0;
-  background: transparent;
-  color: inherit;
   text-decoration: underline;
 }
 .mobile-simulator__empty {
@@ -742,12 +719,8 @@ onBeforeUnmount(() => {
   padding: var(--space-4) var(--space-4);
   border: 0;
   border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-}
-.mobile-simulator__device:hover:not(:disabled) {
-  background: var(--color-surface-high);
 }
 .mobile-simulator__device-name {
   flex: 1;
@@ -782,7 +755,7 @@ onBeforeUnmount(() => {
 }
 .mobile-simulator__setup button {
   flex: none;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 .mobile-simulator__screen {
   display: flex;

@@ -1,20 +1,20 @@
 <template>
   <div class="git-log-details" :aria-busy="loading">
     <p v-if="loading">{{ $t('gitLog.loadingDetails') }}</p>
-    <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="app-button app-button--tertiary" type="button" @click="load">{{ $t('gitLog.retry') }}</button></div>
+    <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="load">{{ $t('gitLog.retry') }}</button></div>
     <template v-else-if="details">
       <p v-if="messageBody" class="git-log-details__message">{{ messageBody }}</p>
       <h4>{{ $t('gitLog.files') }}</h4>
       <p v-if="!details.files.length">{{ $t('gitLog.noFiles') }}</p>
       <div class="git-log-details__files">
         <div v-for="file in details.files" :key="file.path">
-          <button class="git-log-details__file" type="button" :aria-label="$t('gitLog.viewFile', { path: file.path })" :aria-expanded="selectedFile === file.path" @click="selectFile(file.path)">
+          <button class="git-log-details__file agent-ui-interactive" type="button" :aria-label="$t('gitLog.viewFile', { path: file.path })" :aria-expanded="selectedFile === file.path" @click="selectFile(file.path)">
             <span class="git-log-details__path" :title="file.path">{{ file.previousPath ? `${file.previousPath} → ` : '' }}{{ file.path }}</span>
             <span class="git-log-details__stats"><span v-if="file.binary">{{ $t('gitLog.binary') }}</span><GitDiffLineStats v-else :added-lines="file.addedLines ?? 0" :removed-lines="file.removedLines ?? 0" /></span>
           </button>
           <div v-if="selectedFile === file.path" class="git-log-details__diff">
             <GitDiffPreviewPanel :diff="fileDiff" :state="fileState" :error="fileError" />
-            <button v-if="fileState === 'error'" type="button" class="app-button app-button--tertiary" @click="readFile(file.path)">{{ $t('gitLog.retry') }}</button>
+            <button v-if="fileState === 'error'" type="button" class="app-button app-button--tertiary agent-ui-interactive" @click="readFile(file.path)">{{ $t('gitLog.retry') }}</button>
           </div>
         </div>
       </div>
@@ -119,15 +119,9 @@ onBeforeUnmount(() => { generation++; fileGeneration++; });
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 0;
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
   font-size: var(--font-size-13);
-  cursor: pointer;
-}
-
-.git-log-details__file:hover {
-  background: var(--color-surface-high);
 }
 
 .git-log-details__path {
@@ -145,9 +139,5 @@ onBeforeUnmount(() => { generation++; fileGeneration++; });
 .git-log-details__diff {
   overflow: auto;
   max-height: 400px;
-}
-
-button:focus-visible {
-  outline: none;
 }
 </style>

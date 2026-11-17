@@ -5,8 +5,8 @@
       <strong :title="board.title">{{ board.title }}</strong>
     </div>
     <div class="design-review-bar__actions">
-      <button class="app-button app-button--secondary" type="button" :aria-label="t('design.reviewComment')" :title="t('design.reviewComment')" :disabled="disabled" @click="emit('comment')"><MessageCircleIcon />{{ t('design.commentAction') }}</button>
-      <button class="app-button app-button--primary" type="button" data-action="build" :disabled="disabled" @click="emit('build')"><CodeIcon />{{ t('design.buildThis') }}</button>
+      <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :aria-label="t('design.reviewComment')" :title="t('design.reviewComment')" :disabled="disabled" @click="emit('comment')"><MessageCircleIcon />{{ t('design.commentAction') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" data-action="build" :disabled="disabled" @click="emit('build')"><CodeIcon />{{ t('design.buildThis') }}</button>
     </div>
   </div>
 </template>

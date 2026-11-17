@@ -36,7 +36,7 @@
           v-for="suggestion in visualize.suggestions"
           :key="suggestion.id"
           type="button"
-          class="visualize-panel__suggestion"
+          class="visualize-panel__suggestion agent-ui-interactive"
           :disabled="busy || Boolean(suggestion.visualizationId)"
           @click="emit('generate', suggestion.id)"
         >
@@ -55,7 +55,7 @@
       >
         <button
           type="button"
-          class="visualize-panel__thumbnail"
+          class="visualize-panel__thumbnail agent-ui-interactive"
           :class="{ 'visualize-panel__thumbnail--selected': visualization.id === visualize.selectedVisualizationId }"
           :aria-label="translate('visualize.showDiagram', { title: visualization.title })"
           :aria-pressed="visualization.id === visualize.selectedVisualizationId"
@@ -71,7 +71,7 @@
         </button>
         <button
           type="button"
-          class="visualize-panel__delete"
+          data-variant="destructive" class="visualize-panel__delete agent-ui-interactive"
           :aria-label="translate('visualize.deleteDiagram', { title: visualization.title })"
           @click="confirmDelete(visualization)"
         >
@@ -84,7 +84,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { IconX as XIcon } from '@tabler/icons-vue';
 import type { Visualization, VisualizationAsset, VisualizeSession } from '@workspace/core/visualize';
 import { translate } from '../i18n';
@@ -177,7 +177,7 @@ function compactDescription(description: string): string {
 
 async function confirmDelete(visualization: Visualization): Promise<void> {
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       translate('visualize.deleteDiagramMessage', { title: visualization.title }),
       translate('visualize.deleteDiagramTitle'),
       {
@@ -286,22 +286,9 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
   padding: var(--space-10);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  color: var(--color-text);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
-}
-
-.visualize-panel__suggestion:hover:not(:disabled),
-.visualize-panel__suggestion:focus-visible {
-  border-color: var(--color-primary);
-  background: var(--color-surface-high);
-}
-
-.visualize-panel__suggestion:disabled {
-  cursor: default;
-  opacity: 0.65;
 }
 
 .visualize-panel__suggestion > span {
@@ -349,9 +336,7 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: var(--color-surface-low);
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .visualize-panel__thumbnail-item {
@@ -370,10 +355,9 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 50%;
-  color: var(--color-text);
-  background: var(--color-shell-main);
+  --agent-ui-state-rest-foreground: var(--color-text);
+  --agent-ui-state-rest: var(--color-shell-main);
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -386,11 +370,6 @@ async function confirmDelete(visualization: Visualization): Promise<void> {
 .visualize-panel__delete svg {
   width: 14px;
   height: 14px;
-}
-
-.visualize-panel__thumbnail--selected {
-  border-color: var(--color-primary);
-  color: var(--color-text);
 }
 
 .visualize-panel__thumbnail span {

@@ -3,7 +3,7 @@
     <el-tooltip v-if="active" :content="activeLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300" popper-class="team-rail-lock-tooltip">
       <button
         type="button"
-        class="team-rail__lock team-rail__lock--active"
+        class="team-rail__lock team-rail__lock--active agent-ui-interactive"
         :aria-label="activeAriaLabel"
         @click="turnBackOn"
       >
@@ -13,7 +13,7 @@
     <AppMenuButton v-else :items="items" :ariaLabel="$t('surface.computerUseLock.enable')" :width="220" placement="right-end" @select="choose">
       <template #trigger="{ attrs, open }">
         <el-tooltip :content="$t('surface.computerUseLock.enable')" :trigger="['hover', 'focus']" placement="right" :show-after="300" :disabled="open" popper-class="team-rail-lock-tooltip">
-          <button v-bind="attrs" type="button" class="team-rail__lock" :aria-label="$t('surface.computerUseLock.enable')">
+          <button v-bind="attrs" type="button" class="team-rail__lock agent-ui-interactive" :aria-label="$t('surface.computerUseLock.enable')">
             <LockIcon aria-hidden="true" />
           </button>
         </el-tooltip>
@@ -80,28 +80,18 @@ function turnBackOn(): void {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-full);
-  color: var(--team-rail-icon-color);
-  background: transparent;
-  cursor: pointer;
+  border-radius: var(--radius-lg);
+  --agent-ui-state-rest-foreground: var(--team-rail-icon-color);
   opacity: 0.6;
 }
 
 .team-rail__lock--active {
   opacity: 1;
-  color: var(--color-warning);
 }
 
 .team-rail__lock:hover,
 .team-rail__lock:focus-visible {
-  color: var(--team-rail-icon-hover-color);
   opacity: 1;
-  outline: none;
-}
-
-.team-rail__lock--active:hover,
-.team-rail__lock--active:focus-visible {
-  color: var(--color-warning);
 }
 
 .team-rail__lock svg {

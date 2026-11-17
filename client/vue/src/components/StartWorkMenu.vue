@@ -12,7 +12,7 @@
       <slot name="trigger" :attrs="attrs">
         <button
           v-bind="attrs"
-          class="start-work-menu__trigger"
+          class="start-work-menu__trigger agent-ui-interactive"
           type="button"
           :aria-label="t('startWork.addProject')"
         >
@@ -55,19 +55,11 @@ function select(action: string): void {
   padding: 0 var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  cursor: pointer;
-}
-
-.start-work-menu__trigger:hover,
-.start-work-menu__trigger:focus-visible {
-  color: var(--color-text);
-  outline: 0;
 }
 
 .start-work-menu__trigger svg {

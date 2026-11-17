@@ -12,7 +12,7 @@
     <div v-else class="diff-treemap__empty">{{ $t('surface.diffTreemap.noLineChanges') }}</div>
     <details v-if="withoutLines.length" class="diff-treemap__without-lines">
       <summary>{{ $t('surface.diffTreemap.filesWithoutLines', { count: withoutLines.length }) }}</summary>
-      <button v-for="file in withoutLines" :key="file.fullPath" type="button" @click="emit('select', file.fullPath)">{{ file.fullPath }}</button>
+      <button class="agent-ui-interactive" v-for="file in withoutLines" :key="file.fullPath" type="button" @click="emit('select', file.fullPath)">{{ file.fullPath }}</button>
     </details>
     <GitDiffTreemapTooltip :target="tooltipTarget" :file="hovered" />
   </section>
@@ -80,6 +80,6 @@ async function navigate(event: KeyboardEvent): Promise<void> {
 .diff-treemap__canvas { position: relative; flex: 1 1 auto; min-height: 240px; overflow: hidden; }
 .diff-treemap__without-lines { flex: 0 0 auto; color: var(--color-text-muted); }
 .diff-treemap__without-lines summary { cursor: pointer; }
-.diff-treemap__without-lines button { display: block; max-width: 100%; padding: var(--space-2) 0; overflow-wrap: anywhere; border: 0; color: var(--color-text); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.diff-treemap__without-lines button { display: block; max-width: 100%; padding: var(--space-2) 0; overflow-wrap: anywhere; border: 0; --agent-ui-state-rest-foreground: var(--color-text); font: inherit; text-align: left; }
 .diff-treemap__empty { flex: 1; padding: var(--space-6); color: var(--color-text-muted); }
 </style>

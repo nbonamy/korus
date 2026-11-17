@@ -7,7 +7,7 @@
           <span>{{ $t('surface.settingsIntegrationsPanel.clickTheCodeToCopyIt') }}</span>
         </div>
         <button
-          class="work-authorization-steps__code"
+          class="work-authorization-steps__code agent-ui-interactive"
           type="button"
           :aria-label="$t('workAuthorization.copyCode', { provider: providerLabel, code: authorization.userCode })"
           @click="copyAuthorizationCode"
@@ -26,8 +26,8 @@
         <strong>{{ $t('workAuthorization.step2', { provider: providerLabel }) }}</strong>
         <span>{{ $t('workAuthorization.pasteCode', { provider: providerLabel }) }}</span>
       </div>
-      <el-button
-        :type="codeCopied ? 'primary' : undefined"
+      <el-button class="agent-ui-interactive"
+        :type="codeCopied ? 'primary' : undefined" :data-variant="codeCopied ? 'primary' : undefined" :data-appearance="codeCopied ? 'solid' : undefined"
         @click="emit('open')"
       >{{ $t('workAuthorization.open', { provider: providerLabel }) }}</el-button>
     </li>
@@ -140,17 +140,11 @@ async function copyAuthorizationCode(): Promise<void> {
   gap: var(--space-6);
   padding: var(--space-3) 0;
   border: 0;
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-16);
   font-weight: var(--font-weight-semibold);
   text-align: center;
-  cursor: pointer;
-}
-
-.work-authorization-steps__code:hover {
-  color: var(--color-primary);
 }
 
 .work-authorization-steps__waiting {

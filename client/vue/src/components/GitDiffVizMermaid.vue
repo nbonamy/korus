@@ -5,9 +5,9 @@
       <div v-else ref="stage" class="diff-viz-mermaid__stage" :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" @click="activate" @keydown="activate" v-html="rendered.svg" />
     </div>
     <div class="diff-viz-mermaid__controls">
-      <button type="button" class="app-button app-button--tertiary" :aria-label="translate('visualize.zoomOut')" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - 0.25)"><MinusIcon aria-hidden="true" /></button>
-      <button type="button" class="app-button app-button--tertiary" :aria-label="translate('visualize.zoomIn')" :disabled="zoom >= 4" @click="zoom = Math.min(4, zoom + 0.25)"><PlusIcon aria-hidden="true" /></button>
-      <button type="button" class="app-button app-button--tertiary" :aria-label="translate('visualize.fitCanvas')" @click="zoom = 1"><ArrowsMinimizeIcon aria-hidden="true" /></button>
+      <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :aria-label="translate('visualize.zoomOut')" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - 0.25)"><MinusIcon aria-hidden="true" /></button>
+      <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :aria-label="translate('visualize.zoomIn')" :disabled="zoom >= 4" @click="zoom = Math.min(4, zoom + 0.25)"><PlusIcon aria-hidden="true" /></button>
+      <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :aria-label="translate('visualize.fitCanvas')" @click="zoom = 1"><ArrowsMinimizeIcon aria-hidden="true" /></button>
     </div>
   </div>
 </template>

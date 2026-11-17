@@ -20,14 +20,14 @@
           <p v-else-if="connection(provider)?.status === 'connecting'" class="repositories-onboarding__detail">{{ t('surface.settingsIntegrationsPanel.waitingForAuthorization') }}</p>
           <p v-if="providerError(provider)" class="repositories-onboarding__error" role="alert">{{ providerError(provider) }}</p>
           <div class="repositories-onboarding__actions">
-            <el-button v-if="connection(provider)?.status === 'connecting' && authorizationErrors?.[provider]" :aria-label="t('repositoryOnboarding.retryAuthorization', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.retry') }}</el-button>
-            <el-button v-if="connection(provider)?.status === 'connecting'" :aria-label="t('repositoryOnboarding.cancel', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => disconnect(provider))">{{ t('linearIntegration.cancel') }}</el-button>
-            <el-button v-else-if="connection(provider)?.status !== 'connected' || usingCli(provider)" type="primary" :aria-label="t('repositoryOnboarding.connect', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.connect', { provider: label(provider) }) }}</el-button>
+            <el-button class="agent-ui-interactive" v-if="connection(provider)?.status === 'connecting' && authorizationErrors?.[provider]" :aria-label="t('repositoryOnboarding.retryAuthorization', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.retry') }}</el-button>
+            <el-button class="agent-ui-interactive" v-if="connection(provider)?.status === 'connecting'" :aria-label="t('repositoryOnboarding.cancel', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => disconnect(provider))">{{ t('linearIntegration.cancel') }}</el-button>
+            <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" v-else-if="connection(provider)?.status !== 'connected' || usingCli(provider)" type="primary" :aria-label="t('repositoryOnboarding.connect', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.connect', { provider: label(provider) }) }}</el-button>
           </div>
         </section>
       </div>
       <div v-if="!authorizing" class="repositories-onboarding__footer">
-        <el-button class="repositories-onboarding__continue" :type="connectedDirectly ? 'primary' : 'default'" size="large" :disabled="anyBusy" @click="continueOnboarding">{{ t(hasConnections ? 'auth.continue' : 'repositoryOnboarding.skip') }}</el-button>
+        <el-button class="repositories-onboarding__continue agent-ui-interactive" :type="connectedDirectly ? 'primary' : 'default'" :data-variant="connectedDirectly ? 'primary' : undefined" :data-appearance="connectedDirectly ? 'solid' : undefined" size="large" :disabled="anyBusy" @click="continueOnboarding">{{ t(hasConnections ? 'auth.continue' : 'repositoryOnboarding.skip') }}</el-button>
         <span class="repositories-onboarding__hint">{{ t('repositoryOnboarding.settingsHint') }}</span>
       </div>
     </div>

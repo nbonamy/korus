@@ -17,13 +17,13 @@
         @select="organization.select($event)"
       >
         <template #trigger="{ attrs }">
-          <button v-bind="attrs" class="agent-sidebar__header-action" type="button" :aria-label="t('sidebar.view')" :title="t('sidebar.view')">
+          <button v-bind="attrs" class="agent-sidebar__header-action agent-ui-interactive" type="button" :aria-label="t('sidebar.view')" :title="t('sidebar.view')">
             <ArrowsSortIcon aria-hidden="true" />
           </button>
         </template>
       </AppMenuButton>
       <button
-        class="agent-sidebar__collapse"
+        class="agent-sidebar__collapse agent-ui-interactive"
         type="button"
         :aria-label="t('sidebar.hide')"
         @click="emit('collapse-sidebar')"
@@ -40,19 +40,19 @@
           <StartWorkMenu @select="emit('start-work', $event)">
             <template #trigger="{ attrs }">
               <el-tooltip :content="t('startWork.addProject')" placement="top" :show-after="300">
-                <button v-bind="attrs" type="button" :aria-label="t('startWork.addProject')">
+                <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="t('startWork.addProject')">
                   <FoldersIcon data-icon="folders" aria-hidden="true" />
                 </button>
               </el-tooltip>
             </template>
           </StartWorkMenu>
           <el-tooltip :content="t('sidebar.quickChat')" placement="top" :show-after="300">
-            <button type="button" :aria-label="t('sidebar.quickChat')" @click="emit('create-quick-chat')">
+            <button class="agent-ui-interactive" type="button" :aria-label="t('sidebar.quickChat')" @click="emit('create-quick-chat')">
               <MessageIcon data-icon="message" aria-hidden="true" />
             </button>
           </el-tooltip>
           <el-tooltip v-if="!phoneScope && !missions?.length" :content="t('missions.new')" placement="top" :show-after="300">
-            <button
+            <button class="agent-ui-interactive"
               type="button"
               :aria-label="t('missions.new')"
               :disabled="missionCreationPending"
@@ -72,7 +72,7 @@
         <header class="agent-sidebar__workspace-header">
           <TargetArrowIcon class="agent-sidebar__workspace-icon" data-icon="target-arrow" aria-hidden="true" />
           <button
-            class="agent-sidebar__workspace-label"
+            class="agent-sidebar__workspace-label agent-ui-interactive" data-selection="none"
             type="button"
             :aria-label="t('missions.title')"
             :aria-expanded="!missionsCollapsed"
@@ -81,7 +81,7 @@
             <strong>{{ t('missions.title') }}</strong>
           </button>
           <span v-if="!allTeams" class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent">
-            <button
+            <button class="agent-ui-interactive"
               type="button"
               :aria-label="t('missions.new')"
               :title="t('missions.new')"
@@ -96,8 +96,8 @@
         <p v-if="missionCreationError" class="agent-sidebar__mission-error" role="alert">{{ missionCreationError }}</p>
         <template v-if="!missionsCollapsed">
           <div v-for="mission in missions" :key="mission.id" class="agent-sidebar__agent-row">
-            <button
-              class="agent-sidebar__agent"
+            <button :data-selected="(activeMissionId === mission.id) ? '' : undefined"
+              class="agent-sidebar__agent agent-ui-interactive"
               :class="{ 'agent-sidebar__agent--active': activeMissionId === mission.id, 'agent-sidebar__agent--awaiting-input': attentionOf(mission) === 'needsInput' }"
               type="button"
               :aria-pressed="activeMissionId === mission.id"
@@ -151,7 +151,7 @@
             @select="organization.selectIdleSort($event)"
           >
             <template #trigger="{ attrs }">
-              <button v-bind="attrs" class="agent-sidebar__activity-more agent-sidebar__activity-sort" type="button" :aria-label="t('sidebar.sortIdle')" :title="t('sidebar.sortIdle')">
+              <button v-bind="attrs" class="agent-sidebar__activity-more agent-sidebar__activity-sort agent-ui-interactive" type="button" :aria-label="t('sidebar.sortIdle')" :title="t('sidebar.sortIdle')">
                 <ArrowsSortIcon aria-hidden="true" />
               </button>
             </template>
@@ -163,7 +163,7 @@
             :show-after="300"
           >
             <button
-              class="agent-sidebar__activity-more"
+              class="agent-sidebar__activity-more agent-ui-interactive"
               type="button"
               tabindex="-1"
               :aria-label="moreRowsLabel(group.id)"
@@ -185,7 +185,7 @@
             class="agent-sidebar__agent-row"
             :data-motion-id="session.agentId"
           >
-            <ActivityAgentRow
+            <ActivityAgentRow :data-selected="(session.isActive) ? '' : undefined"
               :session="session"
               :context="activityContext.get(session.agentId)"
               :repository="activityRepository.has(session.agentId)"
@@ -195,7 +195,7 @@
               :shortcut-visible="showQuickSwitchShortcut(session, group.activity)"
               :unread-label="t('sidebar.unread')"
               v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...activityIndicator(session, group.activity) }"
-              class="agent-sidebar__agent"
+              class="agent-sidebar__agent agent-ui-interactive"
               :class="[
                 { 'agent-sidebar__agent--active': session.isActive, 'agent-sidebar__agent--awaiting-input': session.status.type === 'awaitingInput' },
               ]"
@@ -237,7 +237,7 @@
               :show-after="300"
             >
               <button
-                class="agent-sidebar__pull-request-attention"
+                class="agent-sidebar__pull-request-attention agent-ui-interactive"
                 type="button"
                 :aria-label="pullRequestAttentionLabel(session)"
                 @click.stop="emit('cleanup-pull-request', session.agentId)"
@@ -402,14 +402,11 @@ const {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   opacity: 0.7;
 }
 
 .agent-sidebar__activity-more:hover {
-  color: var(--color-text);
   opacity: 1;
 }
 
@@ -497,7 +494,7 @@ const {
 
 .agent-sidebar__section .agent-sidebar__workspace-header .agent-sidebar__workspace-actions button,
 .agent-sidebar__section .agent-sidebar__workspace-header .agent-sidebar__activity-more {
-  color: var(--activity-color);
+  --agent-ui-state-rest-foreground: var(--activity-color);
 }
 
 .agent-sidebar__workspace-group[data-activity-group="attention"] {

@@ -14,15 +14,15 @@
       <span v-if="copyFailed">{{ $t('surface.remoteCodexAuth.copyFailed') }}</span>
       <div class="remote-codex-auth__code-row">
         <span class="remote-codex-auth__step-number" aria-hidden="true">2</span>
-        <el-button text size="small" @click="openVerification">{{ $t('surface.remoteCodexAuth.open') }}</el-button>
+        <el-button class="agent-ui-interactive" text size="small" @click="openVerification">{{ $t('surface.remoteCodexAuth.open') }}</el-button>
       </div>
       <div class="remote-codex-auth__actions">
-        <el-button text size="small" :disabled="busy" @click="cancelLogin">{{ $t('surface.remoteCodexAuth.cancel') }}</el-button>
+        <el-button class="agent-ui-interactive" text size="small" :disabled="busy" @click="cancelLogin">{{ $t('surface.remoteCodexAuth.cancel') }}</el-button>
       </div>
     </template>
     <template v-else-if="!busy && (authentication || error)">
       <span v-if="!authentication" :title="error">{{ $t('surface.remoteCodexAuth.unavailable') }}</span>
-      <button class="app-button app-button--secondary" type="button" :disabled="busy" :aria-busy="busy" @click="authentication ? start() : refresh()">
+      <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy" :aria-busy="busy" @click="authentication ? start() : refresh()">
         {{ $t(authentication ? 'surface.remoteCodexAuth.retrySignIn' : 'surface.remoteCodexAuth.retry') }}
       </button>
     </template>

@@ -4,7 +4,7 @@
       <div class="annotation-comment__line">
         <button
           v-if="number"
-          class="annotation-comment__locate"
+          data-variant="primary" data-appearance="solid" class="annotation-comment__locate agent-ui-interactive"
           type="button"
           :aria-label="t('chat.textAnnotations.show', { number })"
           @click="emit('reveal')"
@@ -12,7 +12,7 @@
         <MessageIcon v-else class="annotation-comment__icon" aria-hidden="true" />
         <button
           v-if="!open"
-          class="annotation-comment__text"
+          class="annotation-comment__text agent-ui-interactive"
           type="button"
           :aria-label="t('planFeedback.edit')"
           :title="quoted ? `${quote}\n${comment.body}` : comment.body"
@@ -38,7 +38,7 @@
         />
         <button
           v-if="!open"
-          class="annotation-comment__remove"
+          data-variant="destructive" class="annotation-comment__remove agent-ui-interactive"
           type="button"
           :aria-label="t('planFeedback.remove')"
           :disabled="disabled"
@@ -112,18 +112,6 @@ watch(
 .annotation-comment__line button {
   border: 0;
   font: inherit;
-  cursor: pointer;
-}
-.annotation-comment__line button:focus-visible {
-  outline: none;
-}
-.annotation-comment__line .annotation-comment__text,
-.annotation-comment__line .annotation-comment__remove {
-  background: transparent;
-}
-.annotation-comment__line .annotation-comment__text:focus-visible,
-.annotation-comment__line .annotation-comment__remove:focus-visible {
-  background: var(--color-surface);
 }
 .annotation-comment__line .annotation-comment__locate {
   display: inline-grid;
@@ -134,8 +122,7 @@ watch(
   padding: 0 3px;
   border-radius: var(--radius-full);
   place-items: center;
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  --agent-ui-state-rest-foreground: var(--color-on-primary);
   font: 600 var(--font-size-10) / 1 var(--font-family-ui);
 }
 .annotation-comment__icon {
@@ -154,7 +141,7 @@ watch(
   gap: 8px;
   padding: 0;
   text-align: start;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 .annotation-comment__quote {
   min-width: 0;
@@ -191,11 +178,9 @@ watch(
   height: 34px;
   align-items: center;
   padding: 0 8px;
-  color: var(--color-error);
+  --agent-ui-state-rest-foreground: var(--color-error);
 }
-.annotation-comment__remove:hover:not(:disabled) {
-  opacity: 0.75;
-}
+
 /* Editing keeps the number beside the text box, in the same frame. */
 .annotation-comment--open .annotation-comment__line {
   align-items: flex-start;

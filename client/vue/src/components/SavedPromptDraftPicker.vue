@@ -16,20 +16,20 @@
       <span class="saved-prompt-draft-picker__hint">{{ t('chat.savedDrafts.hint') }}</span>
     </div>
     <div :id="listId" class="saved-prompt-draft-picker__list" role="list">
-      <div
+      <div :data-selected="(index === activeIndex) ? '' : undefined"
         v-for="(draft, index) in matches"
         :key="draft.id"
         :id="optionId(draft.id)"
-        class="saved-prompt-draft-picker__row"
+        class="saved-prompt-draft-picker__row agent-ui-interactive"
         :class="{ 'saved-prompt-draft-picker__row--active': index === activeIndex }"
         role="listitem"
         :aria-current="index === activeIndex ? 'true' : undefined"
         @mouseenter="activeIndex = index"
       >
-        <button class="saved-prompt-draft-picker__text" type="button" :title="draft.text" @click="emit('select', { id: draft.id, keep: $event.shiftKey })">
+        <button class="saved-prompt-draft-picker__text agent-ui-interactive" data-appearance="text" type="button" :title="draft.text" @click="emit('select', { id: draft.id, keep: $event.shiftKey })">
           {{ preview(draft.text) }}
         </button>
-        <button class="saved-prompt-draft-picker__action" type="button" :aria-label="t('chat.savedDrafts.delete')" :title="t('chat.savedDrafts.delete')" @click="emit('delete', draft.id)">
+        <button class="saved-prompt-draft-picker__action agent-ui-interactive" type="button" :aria-label="t('chat.savedDrafts.delete')" :title="t('chat.savedDrafts.delete')" @click="emit('delete', draft.id)">
           <XIcon aria-hidden="true" />
         </button>
       </div>
@@ -113,8 +113,6 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .saved-prompt-draft-picker__list { min-height: 0; overflow-y: auto; padding: var(--space-2); }
 .saved-prompt-draft-picker__row { display: flex; align-items: center; min-width: 0; border-radius: var(--radius-lg); }
-.saved-prompt-draft-picker__row:hover,
-.saved-prompt-draft-picker__row--active { background: var(--color-surface); }
 .saved-prompt-draft-picker__text {
   display: -webkit-box;
   flex: 1 1 auto;
@@ -122,13 +120,11 @@ function handleKeydown(event: KeyboardEvent): void {
   padding: var(--space-2) var(--space-4);
   overflow: hidden;
   border: 0;
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  cursor: pointer;
 }
 .saved-prompt-draft-picker__action {
   display: grid;
@@ -138,11 +134,8 @@ function handleKeydown(event: KeyboardEvent): void {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
-.saved-prompt-draft-picker__action:hover { color: var(--color-text); background: var(--color-surface-high); }
 .saved-prompt-draft-picker__action svg { width: var(--icon-sm); height: var(--icon-sm); }
 .saved-prompt-draft-picker__empty { margin: 0; padding: var(--space-2) var(--space-4); color: var(--color-text-muted); font: inherit; }
 .saved-prompt-draft-picker__hint { flex: 0 0 auto; padding-right: var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-12); white-space: nowrap; }

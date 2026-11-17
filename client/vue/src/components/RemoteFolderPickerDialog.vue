@@ -17,7 +17,7 @@
           :placeholder="$t('surface.remoteFolderPickerDialog.hOME')"
           @keydown.enter.prevent="loadFolders(folderPath)"
         />
-        <el-button
+        <el-button class="agent-ui-interactive"
           size="small"
           :loading="loading"
           @click="loadFolders(folderPath)"
@@ -42,7 +42,7 @@
         <button
           v-if="folderListing?.parentPath"
           type="button"
-          class="remote-folder-picker-dialog__row"
+          class="remote-folder-picker-dialog__row agent-ui-interactive"
           @click="loadFolders(folderListing.parentPath)"
         >
           <FolderIcon aria-hidden="true" />
@@ -52,7 +52,7 @@
           v-for="entry in folderEntries"
           :key="entry.path"
           type="button"
-          class="remote-folder-picker-dialog__row"
+          class="remote-folder-picker-dialog__row agent-ui-interactive"
           @click="loadFolders(entry.path)"
         >
           <FolderIcon aria-hidden="true" />
@@ -67,9 +67,9 @@
 
     <template #footer>
       <div class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.remoteFolderPickerDialog.cancel') }}</button>
-        <button
-          class="app-button app-button--primary"
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="close">{{ $t('surface.remoteFolderPickerDialog.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary agent-ui-interactive"
           type="button"
           :disabled="!folderPath.trim()"
           @click="selectFolder"
@@ -205,17 +205,10 @@ function reset(): void {
   padding: var(--space-4) var(--space-6);
   border: 0;
   border-radius: var(--space-4);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
-}
-
-.remote-folder-picker-dialog__row:hover,
-.remote-folder-picker-dialog__row:focus-visible {
-  background: var(--color-surface-low);
 }
 
 .remote-folder-picker-dialog__row svg {

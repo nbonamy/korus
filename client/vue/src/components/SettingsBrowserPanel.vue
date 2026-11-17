@@ -17,7 +17,7 @@
       >
         <template #leading><BrowserExtensionIcon :id="extension.id" size="large" /></template>
         <template #control>
-          <el-button
+          <el-button class="agent-ui-interactive"
             v-if="!extension.version"
             :aria-label="`Install ${extension.name}`"
             :disabled="pending"
@@ -35,7 +35,7 @@
             <template #trigger="{ attrs }">
               <button
                 v-bind="attrs"
-                class="app-icon-button"
+                class="app-icon-button agent-ui-interactive"
                 type="button"
                 :aria-label="$t('surface.browserExtensions.actions', { name: extension.name })"
                 :title="$t('surface.browserExtensions.actions', { name: extension.name })"

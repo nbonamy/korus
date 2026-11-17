@@ -3,7 +3,7 @@
     <template #trigger="{ attrs }">
       <button
         v-bind="attrs"
-        class="agent-more-menu__trigger"
+        class="agent-more-menu__trigger agent-ui-interactive"
         type="button"
         :aria-label="$t('surface.agentHeader.moreActions')"
       >
@@ -60,15 +60,7 @@ function onSelect(itemId: string): void {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.agent-more-menu__trigger:hover,
-.agent-more-menu__trigger[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .agent-more-menu__trigger :deep(svg) {

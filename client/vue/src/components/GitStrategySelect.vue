@@ -1,6 +1,6 @@
 <template>
   <el-select :model-value="modelValue" :aria-label="label" @update:model-value="$emit('update:modelValue', $event)">
-    <el-option v-for="strategy in choices" :key="strategy" :value="strategy" :label="strategyLabel(strategy)" />
+    <el-option class="agent-ui-interactive" v-for="strategy in choices" :key="strategy" :value="strategy" :label="strategyLabel(strategy)" />
   </el-select>
 </template>
 <script setup lang="ts">

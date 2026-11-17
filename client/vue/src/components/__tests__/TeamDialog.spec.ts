@@ -25,8 +25,8 @@ describe('TeamDialog', () => {
     expect(wrapper.findAll('.team-dialog__color')).toHaveLength(teamColors.length);
     expect(wrapper.find('.team-dialog__preview').exists()).toBe(false);
     expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--primary'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'agent-ui-interactive'],
     ]);
     expect(saveButton(wrapper).attributes()).toHaveProperty('disabled');
   });

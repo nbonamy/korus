@@ -27,8 +27,8 @@
       </span>
     </template>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="close">{{ t('common.cancel') }}</button>
-      <button class="app-button app-button--danger repository-delete-dialog__delete" type="button" :disabled="!canDelete" :aria-busy="busy" @click="remove">
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="close">{{ t('common.cancel') }}</button>
+      <button data-variant="destructive" data-appearance="solid" class="app-button app-button--danger repository-delete-dialog__delete agent-ui-interactive" type="button" :disabled="!canDelete" :aria-busy="busy" @click="remove">
         {{ t(busy ? 'repositoryDeletion.deleting' : 'repositoryDeletion.action') }}
       </button>
     </template>
@@ -103,8 +103,8 @@ async function remove(): Promise<void> {
 }
 
 .repository-delete-dialog__delete {
-  color: var(--color-on-error);
+  --agent-ui-state-rest-foreground: var(--color-on-error);
   border-color: var(--color-error);
-  background: var(--color-error);
+  --agent-ui-state-rest: var(--color-error);
 }
 </style>

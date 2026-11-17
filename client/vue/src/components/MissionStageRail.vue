@@ -2,7 +2,7 @@
   <nav class="mission-stage-rail" :aria-label="t('missions.progress')">
     <ol ref="stageList" class="mission-stage-rail__stages">
       <li v-for="(stage, index) in stages" :key="stage">
-        <button
+        <button class="agent-ui-interactive"
           type="button"
           :class="{ 'mission-stage-rail__stage--viewed': viewedStage === stage }"
           :data-stage="stage"
@@ -103,19 +103,8 @@ function stageStatus(stage: MissionStage): string {
   padding: var(--space-2) var(--space-8);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
-}
-
-.mission-stage-rail__stages button:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
-}
-
-.mission-stage-rail__stages .mission-stage-rail__stage--viewed {
-  background: var(--color-surface-high);
 }
 
 .mission-stage-rail__stages button[data-state="complete"] strong {

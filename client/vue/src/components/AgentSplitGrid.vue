@@ -19,7 +19,7 @@
       />
       <button
         v-else
-        class="agent-split-grid__empty"
+        class="agent-split-grid__empty agent-ui-interactive"
         type="button"
         @click="emit('focus', pane.id)"
       >
@@ -222,8 +222,6 @@ function focusPane(id: number, event: Event): void {
 .agent-split-grid__empty {
   flex: 1;
   border: 0;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 </style>

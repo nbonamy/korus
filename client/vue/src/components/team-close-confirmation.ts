@@ -1,12 +1,12 @@
 import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { Team } from '@workspace/core/contracts';
 
 export async function confirmCloseTeam(team: Team): Promise<'close' | null> {
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       `Agents, missions and quick chats will be removed from ${product.name}. Mission worktrees will not be deleted.`,
       `Close ${team.name}?`,
       {

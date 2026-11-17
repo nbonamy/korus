@@ -1,7 +1,7 @@
 <template>
   <div class="obfuscated-input" :class="$attrs.class" :style="$attrs.style">
     <input v-bind="{ ...$attrs, class: undefined, style: undefined }" :type="visible ? 'text' : 'password'" :value="modelValue" :disabled="disabled" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)" @blur="emit('blur')" @keydown.enter="emit('commit')" />
-    <button class="app-icon-button" type="button" :disabled="disabled" :aria-label="visible ? hideLabel : showLabel" :title="visible ? hideLabel : showLabel" :aria-pressed="visible" @mousedown.prevent @click="visible = !visible">
+    <button class="app-icon-button agent-ui-interactive" type="button" :disabled="disabled" :aria-label="visible ? hideLabel : showLabel" :title="visible ? hideLabel : showLabel" :aria-pressed="visible" @mousedown.prevent @click="visible = !visible">
       <component :is="visible ? IconEyeOff : IconEye" :size="16" aria-hidden="true" />
     </button>
   </div>

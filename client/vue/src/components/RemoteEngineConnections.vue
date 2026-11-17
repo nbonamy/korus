@@ -31,7 +31,7 @@
       <RemoteClaudeAuthentication v-if="signingIn === engine.provider && engine.provider === 'claude'" :connection="connection" :authentication="engine.authentication?.kind === 'claude' ? engine.authentication.state : undefined" @connected="finishConnection" @cancel="signingIn = null" @activity="authActivity = $event" />
     </template>
     <p v-if="error" role="alert">{{ error }}</p>
-    <button v-if="error" class="app-button app-button--tertiary" type="button" :disabled="busy" @click="refresh">{{ $t('surface.remoteClaudeAuth.retry') }}</button>
+    <button v-if="error" class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="refresh">{{ $t('surface.remoteClaudeAuth.retry') }}</button>
   </div>
 </template>
 

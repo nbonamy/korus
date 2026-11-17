@@ -13,8 +13,8 @@
         <span class="onboarding-landing-title__line">{{ t('auth.completeTitle') }}</span>
         <span class="onboarding-landing-title__line onboarding-landing-title__detail">{{ t('auth.completeDetail') }}</span>
       </h1>
-      <el-button
-        class="onboarding-complete__action"
+      <el-button data-variant="primary" data-appearance="solid"
+        class="onboarding-complete__action agent-ui-interactive"
         type="primary"
         size="large"
         @click="emit('complete')"

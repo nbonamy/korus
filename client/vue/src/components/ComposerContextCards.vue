@@ -7,7 +7,7 @@
       :title="item.title"
       :class="{ 'composer-context-cards__card--interactive': item.activateLabel }"
     >
-      <button v-if="item.activateLabel" class="composer-context-cards__open" type="button" :aria-label="item.activateLabel" :disabled="disabled" @click="emit('activate', item.id)">
+      <button v-if="item.activateLabel" class="composer-context-cards__open agent-ui-interactive" type="button" :aria-label="item.activateLabel" :disabled="disabled" @click="emit('activate', item.id)">
         <component :is="item.icon" v-if="item.icon" class="composer-context-cards__icon" :stroke-width="1.5" aria-hidden="true" />
         <strong class="composer-context-cards__detail">{{ item.detail }}</strong>
       </button>
@@ -18,12 +18,12 @@
       </span>
       <strong v-if="item.detail" class="composer-context-cards__detail">{{ item.detail }}</strong>
       </template>
-      <button v-if="item.editLabel" class="composer-context-cards__edit" type="button" :aria-label="item.editLabel" :title="item.editLabel" :disabled="disabled" @click="emit('edit', item.id)">
+      <button v-if="item.editLabel" class="composer-context-cards__edit agent-ui-interactive" type="button" :aria-label="item.editLabel" :title="item.editLabel" :disabled="disabled" @click="emit('edit', item.id)">
         <FormsIcon aria-hidden="true" />
       </button>
       <button
         type="button"
-        class="composer-context-cards__remove"
+        class="composer-context-cards__remove agent-ui-interactive"
         :aria-label="item.removeLabel"
         :disabled="disabled"
         @click="emit('remove', item.id)"
@@ -122,11 +122,9 @@ const emit = defineEmits<{
   min-width: 0;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
 }
 
 .composer-context-cards__open .composer-context-cards__detail {
@@ -145,21 +143,7 @@ const emit = defineEmits<{
   border: 0;
   border-radius: var(--radius-full);
   place-items: center;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.composer-context-cards__edit:hover:not(:disabled),
-.composer-context-cards__remove:hover:not(:disabled) {
-  background: var(--color-surface-low);
-  color: var(--color-text);
-}
-
-.composer-context-cards__edit:disabled,
-.composer-context-cards__remove:disabled {
-  cursor: default;
-  opacity: 0.5;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .composer-context-cards__edit svg,

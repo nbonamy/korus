@@ -4,15 +4,21 @@
     "stylelint-config-recommended-vue"
   ],
   "plugins": [
-    "@lyliya/stylelint-value-no-unknown-custom-properties"
+    "@lyliya/stylelint-value-no-unknown-custom-properties",
+    "./client/vue/scripts/stylelint-interaction-states.mjs"
   ],
   "overrides": [
     {
-      "files": ["**/*.vue"],
+      "files": [
+        "**/*.vue"
+      ],
       "customSyntax": "postcss-html"
     },
     {
-      "files": ["**/AgentSidebarRepo.vue", "**/AgentSidebarActivity.vue"],
+      "files": [
+        "**/AgentSidebarRepo.vue",
+        "**/AgentSidebarActivity.vue"
+      ],
       "rules": {
         "lyliya/value-no-unknown-custom-properties": [
           true,
@@ -33,7 +39,19 @@
       {
         "importFrom": [
           "src/styles/variables.css",
-          "src/styles/theme.css"
+          "src/styles/theme.css",
+          {
+            "custom-properties": {
+              "--agent-ui-interactive-rest": "initial",
+              "--agent-ui-interactive-rest-foreground": "initial",
+              "--agent-ui-interactive-hover": "initial",
+              "--agent-ui-interactive-hover-foreground": "initial",
+              "--agent-ui-interactive-pressed": "initial",
+              "--agent-ui-interactive-pressed-foreground": "initial",
+              "--agent-ui-interactive-selected": "initial",
+              "--agent-ui-interactive-selected-foreground": "initial"
+            }
+          }
         ]
       }
     ],
@@ -42,19 +60,26 @@
     "function-no-unknown": [
       true,
       {
-        "ignoreFunctions": ["v-bind"]
+        "ignoreFunctions": [
+          "v-bind"
+        ]
       }
     ],
     "color-no-invalid-hex": true,
     "selector-pseudo-class-no-unknown": [
       true,
       {
-        "ignorePseudoClasses": ["deep", "global", "slotted"]
+        "ignorePseudoClasses": [
+          "deep",
+          "global",
+          "slotted"
+        ]
       }
     ],
     "no-descending-specificity": null,
     "no-empty-source": null,
     "declaration-property-value-no-unknown": null,
-    "keyframes-name-pattern": "^(?:(?!.*(?:spin|rotate)).*|app-spin|activity-working-spin|git-operation-feedback-spin|repository-backlog-spin)$"
+    "keyframes-name-pattern": "^(?:(?!.*(?:spin|rotate)).*|app-spin|activity-working-spin|git-operation-feedback-spin|repository-backlog-spin)$",
+    "app/interaction-state-owner": true
   }
 }

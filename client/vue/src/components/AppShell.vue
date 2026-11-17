@@ -421,7 +421,7 @@
             </template>
             <template #default="{ agentId, focused }">
               <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
-              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
+              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button agent-ui-interactive" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
               <AgentConversationPanel v-else-if="conversationViewFor(agentId)" :key="agentId" :ref="instance => setConversationPanel(agentId, instance)"
                 :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="focused"
                 :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
@@ -651,7 +651,8 @@ import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
 import { localizedErrorMessage, localizedText } from '../i18n/errors';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -1664,7 +1665,7 @@ const workItemRouting = useWorkItemRouting({
     notifyError: (message) => ElMessage.error(message),
     confirmReassignment: async (message) => {
       try {
-        await ElMessageBox.confirm(
+        await appMessageBox.confirm(
           message,
           translate('surface.appShell.assignAnyway'),
           {
@@ -2258,7 +2259,7 @@ async function startVisualizeForAgent(agentId: string, input?: import('@workspac
 
 async function deleteDesignAfterConfirm(agentId: string, designId: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(translate('design.deleteConfirm'), translate('design.deleteTitle'), {
+    await appMessageBox.confirm(translate('design.deleteConfirm'), translate('design.deleteTitle'), {
       confirmButtonText: translate('design.deleteAction'), cancelButtonText: translate('common.cancel'), type: 'warning',
     });
   } catch { return; }
@@ -2374,7 +2375,7 @@ const cockpitBacklogState = useCockpitBacklog({
   configure: (input) => props.configureWorkBacklog(input),
   confirmLoadAll: async () => {
     try {
-      await ElMessageBox.confirm(
+      await appMessageBox.confirm(
         translate('backlogSource.loadGlobalConfirmation'),
         translate('surface.appShell.loadTheGlobalBacklog'),
         {

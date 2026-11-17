@@ -12,7 +12,7 @@
       title-id="settings-connections-remotes-title"
     >
       <template #actions>
-        <el-button
+        <el-button class="agent-ui-interactive"
           text
           size="small"
           :disabled="checkingConnectionId !== null"
@@ -30,7 +30,7 @@
       >
         <button
           type="button"
-          class="settings-connections-panel__identity"
+          class="settings-connections-panel__identity agent-ui-interactive"
           :aria-expanded="isExpanded(connection)"
           :aria-controls="`connection-details-${connection.id}`"
           :disabled="connectionBusy(connection)"
@@ -64,12 +64,12 @@
         <div class="settings-connections-panel__actions">
           <el-button
             v-if="!connectionBusy(connection) && (canUpgrade(connection) || connection.status !== 'ready')"
-            class="settings-connections-panel__upgrade"
+            class="settings-connections-panel__upgrade agent-ui-interactive"
             size="small"
             :disabled="checkingConnectionId !== null"
             @click="runConnectionAction(connection)"
           >{{ connectionActionLabel(connection) }}</el-button>
-          <button
+          <button class="agent-ui-interactive"
             type="button"
             :aria-label="$t('dynamic.settings.connection', { connection: connection.name })"
             :title="$t('surface.settingsConnectionsPanel.connectionSettings')"
@@ -83,7 +83,7 @@
             @select="selectConnectionMenuItem(connection, $event)"
           >
             <template #trigger="{ attrs }">
-              <button v-bind="attrs" type="button" :aria-label="`${connection.name} actions`">
+              <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="`${connection.name} actions`">
                 <DotsVerticalIcon aria-hidden="true" />
               </button>
             </template>
@@ -135,7 +135,7 @@
               :placeholder="$t('surface.settingsConnectionsPanel.src')"
             />
             <button
-              class="app-form-dialog__button-control settings-connections-panel__browse"
+              class="app-form-dialog__button-control settings-connections-panel__browse agent-ui-interactive"
               type="button"
               :disabled="!settingsConnection"
               @click="openSettingsFolderPicker"
@@ -150,9 +150,9 @@
         </p>
       </form>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" @click="closeConnectionSettings"> {{ $t('surface.settingsConnectionsPanel.cancel') }} </button>
-        <button
-          class="app-button app-button--primary"
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="closeConnectionSettings"> {{ $t('surface.settingsConnectionsPanel.cancel') }} </button>
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary agent-ui-interactive"
           type="button"
           :aria-busy="savingConnectionSettings"
           :disabled="savingConnectionSettings"
@@ -180,8 +180,8 @@
         </div>
       </div>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" @click="setupDialogVisible = false">{{ $t('common.cancel') }}</button>
-        <button class="app-button app-button--primary" type="button" :disabled="selectedBackends.length === 0" @click="initializeConnection">{{ $t('common.ok') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="setupDialogVisible = false">{{ $t('common.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="selectedBackends.length === 0" @click="initializeConnection">{{ $t('common.ok') }}</button>
       </template>
     </FormDialog>
 
@@ -227,7 +227,7 @@
               <strong>{{ host.host }}</strong>
               <span>{{ hostCandidateLabel(host) }}</span>
             </div>
-            <el-button
+            <el-button class="agent-ui-interactive"
               size="small"
               :loading="addingHost === host.host"
               :disabled="addingHost !== null"
@@ -247,7 +247,7 @@ import { providerDisplayName } from '@workspace/core/provider-driver';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import { harnessProviders } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { computed, onMounted, ref } from 'vue';
 import type { AddSshConnectionInput, Agent, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -536,7 +536,7 @@ function selectConnectionMenuItem(connection: RemoteConnection, itemId: string):
 async function confirmRemoveConnection(connection: RemoteConnection): Promise<void> {
   const remoteAgentCount = props.agents.filter((agent) => agent.remoteConnectionId === connection.id).length;
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       connectionDeleteMessage(connection, remoteAgentCount),
       `Delete ${connection.name}?`,
       {
@@ -679,19 +679,8 @@ function statusLabel(status: RemoteConnection['status']): string {
   gap: var(--space-8);
   padding: 0;
   border: 0;
-  background: transparent;
-  color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
-}
-
-.settings-connections-panel__identity:focus-visible {
-  outline: none;
-}
-
-.settings-connections-panel__identity:disabled {
-  cursor: default;
 }
 
 .settings-connections-panel__attention {
@@ -755,8 +744,6 @@ function statusLabel(status: RemoteConnection['status']): string {
   flex: 0 0 auto;
 }
 
-
-
 .settings-connections-panel__actions {
   flex: 0 0 auto;
   display: inline-flex;
@@ -771,14 +758,7 @@ function statusLabel(status: RemoteConnection['status']): string {
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.settings-connections-panel__actions button:not(.settings-connections-panel__upgrade):hover,
-.settings-connections-panel__actions button:not(.settings-connections-panel__upgrade):focus-visible {
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .settings-connections-panel__actions svg {
@@ -819,6 +799,5 @@ function statusLabel(status: RemoteConnection['status']): string {
   border: 0;
   border-left: 1px solid var(--color-border);
   border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0;
-  background: var(--color-surface-low);
 }
 </style>

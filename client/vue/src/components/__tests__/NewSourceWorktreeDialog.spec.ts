@@ -59,8 +59,8 @@ describe('NewSourceWorktreeDialog', () => {
     expect(wrapper.find('.app-form-dialog__footer-left').exists()).toBe(false);
 
     expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--primary'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'agent-ui-interactive'],
     ]);
 
     await wrapper.get('.new-source-worktree-dialog__branch-input').setValue('Fix/source folder!!');

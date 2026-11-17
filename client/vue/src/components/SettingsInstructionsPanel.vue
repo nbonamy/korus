@@ -23,9 +23,9 @@
             :aria-label="$t('surface.instructionSettings.worktreeInitialization')"
             @update:model-value="updateWorktreeInitializationMode"
           >
-            <el-option :label="$t('surface.instructionSettings.worktreeInitializationAutomatic')" value="automatic" />
-            <el-option :label="$t('surface.instructionSettings.worktreeInitializationRepository')" value="repository" />
-            <el-option :label="$t('surface.instructionSettings.worktreeInitializationDisabled')" value="off" />
+            <el-option class="agent-ui-interactive" :label="$t('surface.instructionSettings.worktreeInitializationAutomatic')" value="automatic" />
+            <el-option class="agent-ui-interactive" :label="$t('surface.instructionSettings.worktreeInitializationRepository')" value="repository" />
+            <el-option class="agent-ui-interactive" :label="$t('surface.instructionSettings.worktreeInitializationDisabled')" value="off" />
           </el-select>
         </template>
       </FormRow>

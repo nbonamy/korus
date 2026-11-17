@@ -4,11 +4,11 @@
       <SettingsIntro kind="skills" :title="$t('surface.skills.introTitle')" :description="$t('surface.skills.introDescription')" />
     </template>
     <template #actions>
-      <button class="app-button app-button--neutral" :disabled="busy || !state" :aria-busy="syncing || undefined" :aria-label="$t('surface.skills.syncLabel')" :title="$t('surface.skills.syncHint')" @click="confirmSync"><RefreshIcon v-if="!syncing" />{{ $t('surface.skills.sync') }}</button>
-      <button class="app-button app-button--primary" :disabled="busy" @click="installDialog = true"><PlusIcon />{{ $t('surface.skills.installSkill') }}</button>
+      <button class="app-button app-button--neutral agent-ui-interactive" :disabled="busy || !state" :aria-busy="syncing || undefined" :aria-label="$t('surface.skills.syncLabel')" :title="$t('surface.skills.syncHint')" @click="confirmSync"><RefreshIcon v-if="!syncing" />{{ $t('surface.skills.sync') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" :disabled="busy" @click="installDialog = true"><PlusIcon />{{ $t('surface.skills.installSkill') }}</button>
     </template>
     <p v-if="!installDialog && (error || state?.issues.length)" class="settings-skills__error" role="alert">{{ error || state?.issues.join('\n') }}</p>
-    <el-tabs v-model="view" @tab-change="query = ''">
+    <el-tabs data-agent-ui-scope v-model="view" @tab-change="query = ''">
       <el-tab-pane :label="$t('surface.skills.discover')" name="discover">
         <el-input v-model="query" class="settings-skills__search" clearable :aria-label="$t('surface.skills.search')" :placeholder="$t('surface.skills.searchPlaceholder')" />
         <div class="settings-skills__cards">
@@ -20,14 +20,14 @@
               <p>{{ skill.description }}</p>
               <div class="settings-skills__actions">
                 <template v-if="installed(skill)">
-                  <button v-if="refreshable(skill)" class="app-button app-button--neutral" :disabled="busy" :aria-busy="activeSource === skill.source || undefined" @click="run({ action: 'install', source: skill.source, refresh: true })">
+                  <button v-if="refreshable(skill)" class="app-button app-button--neutral agent-ui-interactive" :disabled="busy" :aria-busy="activeSource === skill.source || undefined" @click="run({ action: 'install', source: skill.source, refresh: true })">
                     <RefreshIcon v-if="activeSource !== skill.source" />{{ $t('surface.skills.refresh') }}
                   </button>
-                  <button class="app-button app-button--neutral settings-skills__icon-only" :disabled="busy" :aria-busy="uninstalling === skill.name || undefined" :aria-label="$t('surface.skills.uninstallLabel', { name: skill.title })" :title="$t('surface.skills.uninstall')" @click="uninstall(skill)">
+                  <button class="app-button app-button--neutral settings-skills__icon-only agent-ui-interactive" :disabled="busy" :aria-busy="uninstalling === skill.name || undefined" :aria-label="$t('surface.skills.uninstallLabel', { name: skill.title })" :title="$t('surface.skills.uninstall')" @click="uninstall(skill)">
                     <Trash2Icon v-if="uninstalling !== skill.name" aria-hidden="true" />
                   </button>
                 </template>
-                <button v-else class="app-button app-button--neutral" :disabled="busy" :aria-busy="activeSource === skill.source || undefined" @click="run({ action: 'install', source: skill.source })">
+                <button v-else class="app-button app-button--neutral agent-ui-interactive" :disabled="busy" :aria-busy="activeSource === skill.source || undefined" @click="run({ action: 'install', source: skill.source })">
                   <PlusIcon v-if="activeSource !== skill.source" />
                   {{ $t(activeSource === skill.source ? 'surface.skills.installing' : skill.kind === 'pack' ? 'surface.skills.installPack' : 'surface.skills.install') }}
                 </button>
@@ -42,8 +42,8 @@
         <div class="settings-skills__toolbar">
           <el-input v-model="query" class="settings-skills__search" clearable :aria-label="$t('surface.skills.search')" :placeholder="$t('surface.skills.searchPlaceholder')" />
           <el-select v-model="kind" class="settings-skills__kind" :aria-label="$t('surface.skills.kind')">
-            <el-option value="personal" :label="$t('surface.skills.personal')" />
-            <el-option value="builtIn" :label="$t('surface.skills.builtIn')" />
+            <el-option class="agent-ui-interactive" value="personal" :label="$t('surface.skills.personal')" />
+            <el-option class="agent-ui-interactive" value="builtIn" :label="$t('surface.skills.builtIn')" />
           </el-select>
         </div>
         <div v-if="loading" class="settings-skills__skeleton" role="status" aria-busy="true" :aria-label="$t('surface.skills.loading')">
@@ -67,14 +67,14 @@
           <template #actions="{ row }">
             <span v-if="rowTask?.name === row.name" class="app-spinner settings-skills__spinner" role="status" :aria-label="$t(rowTask?.action === 'remove' ? 'surface.skills.deleting' : 'surface.skills.syncing', { name: row.name })" />
             <AppMenuButton v-else :ariaLabel="$t('surface.skills.actions', { name: row.name })" :items="skillActions(row)" @select="selectSkillAction(row, $event)">
-              <template #trigger="{ attrs }"><button v-bind="attrs" type="button" class="app-icon-button" :disabled="busy" :aria-label="$t('surface.skills.actions', { name: row.name })"><DotsVerticalIcon aria-hidden="true" /></button></template>
+              <template #trigger="{ attrs }"><button v-bind="attrs" type="button" class="app-icon-button agent-ui-interactive" :disabled="busy" :aria-label="$t('surface.skills.actions', { name: row.name })"><DotsVerticalIcon aria-hidden="true" /></button></template>
             </AppMenuButton>
           </template>
         </AppDataList>
       </el-tab-pane>
     </el-tabs>
     <FormDialog v-model="documentDialog" :title="viewingName" width="720px">
-      <el-tabs v-if="document && document.files.length > 1" v-model="documentVersion">
+      <el-tabs data-agent-ui-scope v-if="document && document.files.length > 1" v-model="documentVersion">
         <el-tab-pane v-for="(file, index) in document.files" :key="index" :name="String(index)" :label="file.providers.map(providerDisplayName).join(', ') || $t('surface.skills.managedCopy')" />
       </el-tabs>
       <div v-if="!document" class="settings-skills__document-loading" role="status" aria-busy="true" :aria-label="$t('surface.skills.loadingDocument')">
@@ -84,7 +84,7 @@
         <p v-if="viewed?.description" class="settings-skills__summary">{{ viewed.description }}</p>
         <div class="agent-ui-markdown settings-skills__body" v-html="viewedHtml" />
       </article>
-      <template #footer><button class="app-button app-button--tertiary" @click="documentDialog = false">{{ $t('common.close') }}</button></template>
+      <template #footer><button class="app-button app-button--tertiary agent-ui-interactive" @click="documentDialog = false">{{ $t('common.close') }}</button></template>
     </FormDialog>
     <FormDialog v-model="installDialog" :title="$t('surface.skills.installSkill')">
       <form id="skill-source-form" class="app-form-dialog" @submit.prevent="installSource">
@@ -93,7 +93,7 @@
         </FormField>
         <FormField v-if="providerChoices.length > 1" :label="$t('surface.skills.codingAgents')">
           <el-select v-model="installBackends" multiple :disabled="busy" :aria-label="$t('surface.skills.codingAgents')">
-            <el-option v-for="provider in providerChoices" :key="provider" :value="provider" :label="providerDisplayName(provider)">
+            <el-option class="agent-ui-interactive" v-for="provider in providerChoices" :key="provider" :value="provider" :label="providerDisplayName(provider)">
               <span class="settings-skills__agent"><ProviderIcon :provider="provider" />{{ providerDisplayName(provider) }}</span>
             </el-option>
           </el-select>
@@ -101,8 +101,8 @@
         <p v-if="error" class="settings-skills__error" role="alert">{{ error }}</p>
       </form>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="installDialog = false">{{ $t('common.cancel') }}</button>
-        <button type="submit" form="skill-source-form" class="app-button app-button--primary" :aria-busy="busy || undefined" :disabled="busy || !source.trim() || (providerChoices.length > 1 && !installBackends.length)">{{ $t(busy ? 'surface.skills.installing' : 'surface.skills.install') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="installDialog = false">{{ $t('common.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid" type="submit" form="skill-source-form" class="app-button app-button--primary agent-ui-interactive" :aria-busy="busy || undefined" :disabled="busy || !source.trim() || (providerChoices.length > 1 && !installBackends.length)">{{ $t(busy ? 'surface.skills.installing' : 'surface.skills.install') }}</button>
       </template>
     </FormDialog>
   </SettingsPanelFrame>
@@ -110,7 +110,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import { curatedSkills, parseSkillDocument, type InstalledSkill, type CuratedSkill, type SkillManagerInput, type SkillManagerState, type SkillDocument } from '@workspace/core/skill-manager';
 import { providerDisplayName } from '@workspace/core/provider-driver';
@@ -200,7 +200,7 @@ async function uninstall(skill: CuratedSkill) {
   // A pack is the skills Korus installed under its name; removing it removes each of them from every agent.
   const names = skill.kind === 'pack' ? packSkills(skill) : [skill.name];
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       translate(skill.kind === 'pack' ? 'surface.skills.uninstallPackMessage' : 'surface.skills.deleteMessage', { name: skill.title, count: names.length, skills: names.slice(0, 12).join(', ') + (names.length > 12 ? '…' : '') }),
       translate('surface.skills.uninstallTitle', { name: skill.title }),
       { type: 'warning', confirmButtonText: translate('surface.skills.uninstall'), cancelButtonText: translate('common.cancel'), confirmButtonClass: 'app-button app-button--danger' },
@@ -224,7 +224,7 @@ async function selectSkillAction(row: AppDataListRow, action: string) {
   if (action === 'sync' && !row.builtIn && row.origin !== 'synced') { await run({ action: 'sync', name }); return; }
   if (action !== 'delete' || row.builtIn) return;
   try {
-    await ElMessageBox.confirm(translate('surface.skills.deleteMessage', { name }), translate('surface.skills.deleteTitle', { name }), {
+    await appMessageBox.confirm(translate('surface.skills.deleteMessage', { name }), translate('surface.skills.deleteTitle', { name }), {
       type: 'warning', confirmButtonText: translate('surface.skills.delete'), cancelButtonText: translate('common.cancel'),
       confirmButtonType: 'danger',
     });
@@ -256,7 +256,7 @@ function installSource() {
 }
 async function confirmSync() {
   try {
-    await ElMessageBox.confirm(translate('surface.skills.syncMessage'), translate('surface.skills.syncTitle'), {
+    await appMessageBox.confirm(translate('surface.skills.syncMessage'), translate('surface.skills.syncTitle'), {
       type: 'warning', confirmButtonText: translate('surface.skills.sync'), cancelButtonText: translate('common.cancel'),
     });
   } catch { return; }
@@ -266,6 +266,11 @@ onMounted(() => run({ action: 'list' }));
 </script>
 
 <style scoped>
+.settings-skills :deep([role="tab"]) {
+  --agent-ui-state-hover: transparent;
+  --agent-ui-state-pressed: transparent;
+  --agent-ui-state-selected: transparent;
+}
 .settings-skills__toolbar { display: flex; gap: var(--space-6); margin: var(--space-4) 0 var(--space-12); }
 .settings-skills__toolbar .settings-skills__search { flex: 1; min-width: 0; margin: 0; }
 .settings-skills__kind { flex: 0 0 140px; width: 140px; }

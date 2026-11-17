@@ -270,6 +270,7 @@ Search by behavior first.
 | Foreground-only UI timeout | `useForegroundTimeout` | `client/vue/src/shared/use-foreground-timeout.ts` |
 | Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
+| Generated confirmation, alert and prompt dialogs | `appMessageBox` (preserves toolkit options; opts generated buttons into shared states) | `client/vue/src/shared/dialog/` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
@@ -359,7 +360,30 @@ replace a newer dialog or navigation selection.
 - Semantic variables for colors and repeated design values; component-specific
   geometry stays local. Derive Element Plus overrides from the same variables and
   scope them to the owning wrapper. Bridge themes into the SDK through documented
-  `--codex-*` variables and `data-codex-theme`; never restyle SDK internals.
+  `--agent-ui-*` variables and public surface attributes; never restyle SDK internals.
+- **Interaction states have one owner:** the SDK's `agent-ui-interactive` primitive.
+  Authored buttons, menu actions and selectable rows opt into it; generated toolkit
+  tabs use `data-agent-ui-scope`. Select intent through `data-variant` (neutral,
+  primary, destructive), `data-appearance` (ghost, solid, text) and semantic ARIA
+  state. Use `data-selected` for compound rows, and `data-focus="fill"` for menu
+  keyboard highlighting. Disclosure headings use `data-selection="none"` so
+  expansion retains the resting material while hover and focus remain available.
+  Colored identity tiles and swatches use
+  `data-selection="ring"` to retain their material while showing selection.
+  A checked menu item retains its checkmark without a
+  selected fill. Keep size, layout, borders and reveal-on-hover geometry local;
+  do not declare a control's color, background, focus ring or disabled paint.
+  Configure exceptional resting materials through `--agent-ui-state-rest` and
+  `--agent-ui-state-rest-foreground`. Elevation surfaces are separate from
+  `--agent-ui-state-hover`, pressed and selected tokens.
+  Element Plus adapters in `styles/theme.css` read the primitive's resolved
+  `--agent-ui-interactive-*` values through toolkit CSS variables, and let the
+  shared layer own cursor, dimming and focus. Standard field widgets retain their
+  toolkit behavior with semantic state inputs. Generated MessageBox controls use
+  `shared/dialog/message-box`; product code does not import `ElMessageBox` directly.
+  The `app/interaction-state-owner` Stylelint rule rejects local copies of control
+  paint. Resize handles, chart inspection, status markers and authored document
+  content keep their own geometry and domain colors.
 - App chrome (buttons, menus, headers) is unselectable; conversation and document
   content stays selectable. Native system sans stack, restrained weights.
 - Make loading, working, awaiting-input, empty, offline, error and interrupted

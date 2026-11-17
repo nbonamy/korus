@@ -31,8 +31,9 @@
           <button
             v-for="color in teamColors"
             :key="color"
-            class="team-dialog__color"
+            class="team-dialog__color agent-ui-interactive" data-selection="ring" data-variant="primary" data-appearance="solid"
             :class="{ 'team-dialog__color--selected': color === selectedColor }"
+            :data-selected="color === selectedColor ? '' : undefined"
             :style="{ '--team-color': color }"
             type="button"
             role="radio"
@@ -58,9 +59,9 @@
     </form>
 
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.teamDialog.cancel') }}</button>
-      <button
-        class="app-button app-button--primary"
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="close">{{ $t('surface.teamDialog.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :aria-busy="submitting"
         :disabled="submitting || !canSave"
@@ -170,14 +171,9 @@ function resetForm(): void {
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-full);
-  color: var(--color-on-primary);
-  background: var(--team-color);
-  cursor: pointer;
-}
-
-.team-dialog__color--selected {
-  border-color: var(--color-surface-lowest);
-  box-shadow: 0 0 0 2px var(--color-primary);
+  --agent-ui-state-primary-solid-foreground: var(--color-on-primary);
+  --agent-ui-state-primary-solid: var(--team-color);
+  --agent-ui-state-focus-ring-color: var(--team-color);
 }
 
 .team-dialog__color svg {

@@ -86,7 +86,7 @@
           :show-after="300"
         >
           <button
-            class="conversation-pane__annotate-attachment"
+            class="conversation-pane__annotate-attachment agent-ui-interactive"
             :class="{ 'conversation-pane__annotate-attachment--saved': annotationCount(attachments[index]) > 0 }"
             type="button"
             :aria-label="annotationActionLabel(attachments[index])"
@@ -119,12 +119,12 @@
           <details>
             <summary><AlertTriangleIcon aria-hidden="true" /><span class="conversation-pane__safety-title">{{ t('backend.providerSafetyBlocked') }}</span><ChevronDownIcon class="conversation-pane__safety-chevron" aria-hidden="true" /></summary>
             <pre>{{ safetyReview?.explanation || safetyBlock }}</pre>
-            <button v-if="safetyReview?.canContinue && appApi" class="app-button app-button--secondary safety-review-continue" type="button" :disabled="safetyReviewBusy" @click="continueSafetyReview">{{ t('backend.continueSafetyReview') }}</button>
+            <button data-variant="primary" v-if="safetyReview?.canContinue && appApi" class="app-button app-button--secondary safety-review-continue agent-ui-interactive" type="button" :disabled="safetyReviewBusy" @click="continueSafetyReview">{{ t('backend.continueSafetyReview') }}</button>
           </details>
         </div>
       </template>
       <template #before-composer>
-        <button v-if="agent && !providerChoices.includes(agent.provider)" class="app-button app-button--tertiary" type="button" @click="connectEngine(agent.provider)">
+        <button v-if="agent && !providerChoices.includes(agent.provider)" class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="connectEngine(agent.provider)">
           {{ t('engineConnection.required') }}
         </button>
         <div v-if="draftPickerOpen" class="conversation-pane__draft-anchor">
@@ -736,23 +736,11 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   border: 0;
   border-radius: var(--radius-full);
   place-items: center;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.conversation-pane__annotate-attachment:hover:not(:disabled) {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.conversation-pane__annotate-attachment:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .conversation-pane__annotate-attachment--saved {
-  color: var(--color-primary);
+  --agent-ui-state-rest-foreground: var(--color-primary);
 }
 
 .conversation-pane__annotate-attachment--saved svg {

@@ -5,18 +5,18 @@
         <h2>{{ t('missions.reviewFindings') }}</h2>
         <span>{{ t('missions.reviewFindingCount', { count: findings.length }) }}</span>
       </div>
-      <button
+      <button data-variant="primary" data-appearance="solid"
         v-if="openSelectedCount && canRemediate"
-        class="app-button app-button--primary"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :disabled="busy"
         @click="fixSelected"
       >
         {{ t('missions.fixSelected', { count: openSelectedCount }) }}
       </button>
-      <button
+      <button data-variant="primary" data-appearance="solid"
         v-else-if="canRerunReview"
-        class="app-button app-button--primary"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :disabled="busy"
         @click="rerunReview"

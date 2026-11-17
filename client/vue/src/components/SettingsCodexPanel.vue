@@ -18,7 +18,7 @@
         :error="launchError"
       >
         <template #control>
-          <el-button
+          <el-button class="agent-ui-interactive"
             :loading="launching"
             size="small"
             @click="launch"

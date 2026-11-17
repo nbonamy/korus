@@ -42,22 +42,22 @@
         <p class="codex-login__description">{{ t('auth.signInDescription') }}</p>
         <div class="codex-login__providers">
           <div class="codex-login__provider">
-          <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('codex', codexConnected) }" :disabled="missing('codex') || loading || (codexConnected && codexEnabled) || continuing || Boolean(updatingProvider)" @click="emit('login')">
+          <el-button class="agent-ui-interactive" size="large" :class="{ 'codex-login__connect--required': needsSignIn('codex', codexConnected) }" :disabled="missing('codex') || loading || (codexConnected && codexEnabled) || continuing || Boolean(updatingProvider)" @click="emit('login')">
             <ProviderIcon provider="codex" />
             {{ t(codexConnected ? (codexEnabled ? 'auth.codexConnected' : 'auth.enableCodex') : 'auth.connectCodex') }}
           </el-button>
           <div class="codex-login__detection">
-            <button v-if="cancellable" class="codex-login__cancel" type="button" :disabled="cancelling" @click="emit('cancel')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+            <button v-if="cancellable" class="codex-login__cancel agent-ui-interactive" type="button" :disabled="cancelling" @click="emit('cancel')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
             <template v-else>
             <span v-if="!missing('codex') && updatingProvider === 'codex'" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="codexConnected || detected('codex')"><CheckIcon aria-hidden="true" /> {{ t(codexConnected ? 'auth.connected' : 'auth.detected') }}</span>
             <ProviderInstallActions v-if="missing('codex')" provider="codex" :capabilities="setupCapabilities('codex')" :busy="updatingProvider === 'codex'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'codex')" @install="emit('install-provider', 'codex')" />
-            <button v-else-if="canCustomize('codex') && detected('codex') && updatingProvider !== 'codex'" type="button" :disabled="loading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'codex')">{{ t('auth.customize') }}</button>
+            <button class="agent-ui-interactive" v-else-if="canCustomize('codex') && detected('codex') && updatingProvider !== 'codex'" type="button" :disabled="loading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'codex')">{{ t('auth.customize') }}</button>
             </template>
           </div>
           </div>
           <div class="codex-login__provider">
-          <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('claude', claudeConnected) }" :disabled="missing('claude') || claudeLoading || (claudeConnected && claudeEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-claude')">
+          <el-button class="agent-ui-interactive" size="large" :class="{ 'codex-login__connect--required': needsSignIn('claude', claudeConnected) }" :disabled="missing('claude') || claudeLoading || (claudeConnected && claudeEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-claude')">
             <ProviderIcon provider="claude" />
             {{ t(claudeConnected ? (claudeEnabled ? 'auth.claudeConnected' : 'auth.enableClaude') : 'auth.connectClaude') }}
           </el-button>
@@ -65,39 +65,39 @@
             <span v-if="!missing('claude') && (updatingProvider === 'claude' || claudeLoading)" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="claudeConnected || detected('claude')"><CheckIcon aria-hidden="true" /> {{ t(claudeConnected ? 'auth.connected' : 'auth.detected') }}</span>
             <ProviderInstallActions v-if="missing('claude')" provider="claude" :capabilities="setupCapabilities('claude')" :busy="updatingProvider === 'claude'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'claude')" @install="emit('install-provider', 'claude')" />
-            <button v-else-if="canCustomize('claude') && detected('claude') && updatingProvider !== 'claude' && !claudeLoading" type="button" :disabled="continuing || Boolean(updatingProvider)" @click="emit('customize', 'claude')">{{ t('auth.customize') }}</button>
+            <button class="agent-ui-interactive" v-else-if="canCustomize('claude') && detected('claude') && updatingProvider !== 'claude' && !claudeLoading" type="button" :disabled="continuing || Boolean(updatingProvider)" @click="emit('customize', 'claude')">{{ t('auth.customize') }}</button>
           </div>
           </div>
           <div v-if="antigravityAvailable" class="codex-login__provider">
-            <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('antigravity', antigravityConnected) }" :disabled="missing('antigravity') || antigravityLoading || antigravityPending || (antigravityConnected && antigravityEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-antigravity')">
+            <el-button class="agent-ui-interactive" size="large" :class="{ 'codex-login__connect--required': needsSignIn('antigravity', antigravityConnected) }" :disabled="missing('antigravity') || antigravityLoading || antigravityPending || (antigravityConnected && antigravityEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-antigravity')">
               <ProviderIcon provider="antigravity" />
               {{ t(antigravityConnected ? (antigravityEnabled ? 'antigravity.connected' : 'antigravity.enable') : 'antigravity.connect') }}
             </el-button>
             <div class="codex-login__detection">
               <ProviderInstallActions v-if="missing('antigravity')" provider="antigravity" :capabilities="setupCapabilities('antigravity')" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" @install="emit('install-provider', 'antigravity')" />
-              <button v-else-if="antigravityPending" class="codex-login__cancel" type="button" @click="emit('cancel-antigravity')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+              <button v-else-if="antigravityPending" class="codex-login__cancel agent-ui-interactive" type="button" @click="emit('cancel-antigravity')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'antigravity' || antigravityLoading" role="status">{{ t('auth.checking') }}</span>
                 <span v-else-if="antigravityConnected || detected('antigravity')"><CheckIcon aria-hidden="true" /> {{ t(antigravityConnected ? 'auth.connected' : 'auth.detected') }}</span>
-                <button v-if="canCustomize('antigravity')" type="button" :disabled="antigravityLoading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'antigravity')">{{ t('auth.customize') }}</button>
+                <button data-appearance="text" class="agent-ui-interactive" v-if="canCustomize('antigravity')" type="button" :disabled="antigravityLoading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'antigravity')">{{ t('auth.customize') }}</button>
               </template>
             </div>
           </div>
           <div v-if="cursorAvailable" class="codex-login__provider">
-            <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('cursor', cursorConnected) }" :disabled="missing('cursor') || cursorLoading || cursorPending || (cursorConnected && cursorEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-cursor')">
+            <el-button class="agent-ui-interactive" size="large" :class="{ 'codex-login__connect--required': needsSignIn('cursor', cursorConnected) }" :disabled="missing('cursor') || cursorLoading || cursorPending || (cursorConnected && cursorEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-cursor')">
               <ProviderIcon provider="cursor" />
               {{ t(cursorConnected ? (cursorEnabled ? 'cursor.connected' : 'cursor.enable') : 'cursor.connect') }}
             </el-button>
             <div class="codex-login__detection">
               <ProviderInstallActions v-if="missing('cursor')" provider="cursor" :capabilities="setupCapabilities('cursor')" :busy="updatingProvider === 'cursor'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'cursor')" @install="emit('install-provider', 'cursor')" />
-              <button v-else-if="cursorPending" class="codex-login__cancel" type="button" @click="emit('cancel-cursor')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+              <button v-else-if="cursorPending" class="codex-login__cancel agent-ui-interactive" type="button" @click="emit('cancel-cursor')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'cursor' || cursorLoading" role="status">{{ t('auth.checking') }}</span>
                 <span v-else-if="cursorConnected || detected('cursor')"><CheckIcon aria-hidden="true" /> {{ t(cursorConnected ? 'auth.connected' : 'auth.detected') }}</span>
               </template>
             </div>
           </div>
-          <el-button class="codex-login__continue" size="large" :loading="continuing" :disabled="Boolean(updatingProvider) || !(codexConnected && codexEnabled || claudeConnected && claudeEnabled || antigravityAvailable && antigravityConnected && antigravityEnabled || cursorAvailable && cursorConnected && cursorEnabled)" @click="emit('continue')">
+          <el-button class="codex-login__continue agent-ui-interactive" size="large" :loading="continuing" :disabled="Boolean(updatingProvider) || !(codexConnected && codexEnabled || claudeConnected && claudeEnabled || antigravityAvailable && antigravityConnected && antigravityEnabled || cursorAvailable && cursorConnected && cursorEnabled)" @click="emit('continue')">
             {{ t('auth.continue') }}
           </el-button>
         </div>
@@ -219,7 +219,7 @@ const needsSignIn = (provider: HarnessProvider, connected?: boolean) => !connect
 
 .codex-login__provider .el-button.codex-login__connect--required {
   border-color: var(--color-error);
-  color: var(--color-error);
+  --agent-ui-state-rest-foreground: var(--color-error);
 }
 
 .codex-login__providers {
@@ -256,14 +256,10 @@ const needsSignIn = (provider: HarnessProvider, connected?: boolean) => !connect
   min-height: 0;
   padding: 0;
   border: 0;
-  background: none;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   text-decoration: none;
-  cursor: pointer;
 }
-
-.codex-login__detection > button:hover { color: var(--color-text); }
 
 .codex-login__providers .el-button + .el-button {
   margin-left: 0;
@@ -314,11 +310,6 @@ const needsSignIn = (provider: HarnessProvider, connected?: boolean) => !connect
   border-radius: var(--radius-full);
   background: var(--color-primary);
   animation: codex-login-status-pulse 1.4s ease-in-out infinite;
-}
-
-.codex-login__cancel:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 
 .codex-login__cancel {

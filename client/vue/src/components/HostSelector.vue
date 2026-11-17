@@ -3,10 +3,10 @@
     <template #prefix>
       <component :is="selected === 'local' ? DeviceImacIcon : WorldIcon" class="host-selector__icon" aria-hidden="true" />
     </template>
-    <el-option v-if="showThisComputer" value="local" :label="t('remoteTarget.thisComputer')">
+    <el-option class="agent-ui-interactive" v-if="showThisComputer" value="local" :label="t('remoteTarget.thisComputer')">
       <span class="host-selector__option" :class="{ 'host-selector__option--small': size === 'small' }"><DeviceImacIcon aria-hidden="true" />{{ t('remoteTarget.thisComputer') }}</span>
     </el-option>
-    <el-option v-for="host in hosts" :key="host.id" :value="host.id" :label="host.name" :disabled="disabledHostIds.includes(host.id)">
+    <el-option class="agent-ui-interactive" v-for="host in hosts" :key="host.id" :value="host.id" :label="host.name" :disabled="disabledHostIds.includes(host.id)">
       <span class="host-selector__option" :class="{ 'host-selector__option--small': size === 'small' }"><WorldIcon aria-hidden="true" />{{ host.name }}</span>
     </el-option>
   </el-select>

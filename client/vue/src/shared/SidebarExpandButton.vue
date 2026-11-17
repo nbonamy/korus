@@ -1,5 +1,5 @@
 <template>
-  <button class="sidebar-expand-button" type="button" :aria-label="label" :title="label" @click="emit('click')">
+  <button class="sidebar-expand-button agent-ui-interactive" type="button" :aria-label="label" :title="label" @click="emit('click')">
     <PanelLeftOpenIcon aria-hidden="true" />
   </button>
 </template>
@@ -18,9 +18,7 @@ const emit = defineEmits<{ click: [] }>();
   align-items: center;
   padding: 0;
   border: none;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   -webkit-app-region: no-drag;
 }
 

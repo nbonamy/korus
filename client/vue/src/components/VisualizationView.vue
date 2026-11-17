@@ -24,9 +24,9 @@
       />
     </div>
     <div v-if="!compact" class="visualization-view__controls">
-      <button type="button" :aria-label="translate('visualize.zoomOut')" :disabled="scale <= minScale" @click="zoomBy(-zoomStep)">−</button>
-      <button type="button" :aria-label="translate('visualize.resetView')" @click="resetView">{{ Math.round(scale * 100) }}%</button>
-      <button type="button" :aria-label="translate('visualize.zoomIn')" :disabled="scale >= maxScale" @click="zoomBy(zoomStep)">+</button>
+      <button class="agent-ui-interactive" type="button" :aria-label="translate('visualize.zoomOut')" :disabled="scale <= minScale" @click="zoomBy(-zoomStep)">−</button>
+      <button class="agent-ui-interactive" type="button" :aria-label="translate('visualize.resetView')" @click="resetView">{{ Math.round(scale * 100) }}%</button>
+      <button class="agent-ui-interactive" type="button" :aria-label="translate('visualize.zoomIn')" :disabled="scale >= maxScale" @click="zoomBy(zoomStep)">+</button>
       <span class="sr-only" aria-live="polite">{{ translate('visualize.zoomLevel', { percent: Math.round(scale * 100) }) }}</span>
     </div>
   </div>
@@ -229,19 +229,8 @@ function resetView(): void {
   padding: 0 var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
-  cursor: pointer;
-}
-
-.visualization-view__controls button:hover:not(:disabled) {
-  background: var(--color-surface-high);
-}
-
-.visualization-view__controls button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .sr-only {

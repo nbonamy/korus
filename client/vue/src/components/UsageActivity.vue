@@ -16,7 +16,8 @@
             <button
               v-for="tab in tabs"
               :key="tab.value"
-              class="activity-tab"
+              class="activity-tab agent-ui-interactive"
+              data-appearance="text"
               :class="{ 'activity-tab--active': mode === tab.value }"
               type="button"
               role="tab"
@@ -379,14 +380,12 @@ function showWeek(week: (typeof weeks.value)[number], event: PointerEvent) {
 .activity-tab {
   padding: 0;
   border: 0;
-  background: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  --agent-ui-state-rest: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-13);
 }
 .activity-tab--active {
-  color: var(--color-text);
   font-weight: var(--font-weight-semibold);
 }
 .activity-body {

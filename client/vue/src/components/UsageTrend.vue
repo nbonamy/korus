@@ -30,7 +30,7 @@
         <button
           v-for="point in observations"
           :key="point.label"
-          class="chart-observation"
+          class="chart-observation agent-ui-interactive"
           tabindex="-1"
           :aria-label="point.label"
           @focus="activate(point.index)"

@@ -24,7 +24,7 @@
         t('planFeedback.deliveryPending')
       }}</span>
       <span v-if="error" role="alert">{{ error }}</span>
-      <button v-if="save.error.value" class="app-button" type="button" @click="retrySave">
+      <button v-if="save.error.value" class="app-button agent-ui-interactive" type="button" @click="retrySave">
         {{ t('planFeedback.retry') }}
       </button>
     </PlanReviewFooter>

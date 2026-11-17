@@ -1,8 +1,8 @@
 <template>
   <li class="mission-implementation__ticket-item">
-    <button
+    <button :data-selected="(selected) || (active) ? '' : undefined"
       type="button"
-      class="mission-implementation__ticket"
+      class="mission-implementation__ticket agent-ui-interactive"
       :class="{ 'mission-implementation__ticket--selected': selected, 'mission-implementation__ticket--active': active }"
       :aria-label="t('missions.openTicketThread', { title: item.ticket.title })"
       :aria-pressed="Boolean(active)"
@@ -27,7 +27,7 @@
     </button>
     <button
       type="button"
-      class="mission-implementation__ticket-details"
+      class="mission-implementation__ticket-details agent-ui-interactive"
       :aria-label="item.run?.implementationResult
         ? t('missions.viewTicketEvidence', { title: item.ticket.title })
         : t('missions.openTicketDetails', { title: item.ticket.title })"
@@ -82,31 +82,11 @@ const preview = computed(() => missionTicketPreview(props.item.ticket, t('missio
   padding: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  color: var(--color-text);
-  background: var(--color-surface-lowest);
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease;
-}
-
-.mission-implementation__ticket:hover:not(:disabled),
-.mission-implementation__ticket:focus-visible {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface-low);
-}
-
-.mission-implementation__ticket:disabled {
-  cursor: default;
-}
-
-.mission-implementation__ticket--selected,
-.mission-implementation__ticket--active,
-.mission-implementation__ticket--active:hover:not(:disabled),
-.mission-implementation__ticket--active:focus-visible {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
 }
 
 .mission-implementation__ticket-heading {
@@ -219,15 +199,7 @@ const preview = computed(() => missionTicketPreview(props.item.ticket, t('missio
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.mission-implementation__ticket-details:hover,
-.mission-implementation__ticket-details:focus-visible {
-  color: var(--color-primary);
-  background: var(--color-primary-container);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .mission-implementation__ticket-details svg {
