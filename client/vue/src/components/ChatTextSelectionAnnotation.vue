@@ -88,6 +88,7 @@ function saveComment(comment: string): void {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
+  --agent-ui-state-rest: var(--color-surface-lowest);
   --agent-ui-state-rest-foreground: var(--color-text);
   font: 500 var(--font-size-13) / 1.2 var(--font-family-ui);
 }
