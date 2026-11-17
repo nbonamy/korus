@@ -2,6 +2,12 @@
 
 All notable Korus changes are recorded here.
 
+## [0.58.1] - 2026-11-16
+
+### Improvements and fixes
+
+- **Annotations:** Restored the text-selection Annotate button's background in light and dark themes.
+
 ## [0.58.0] - 2026-11-16
 
 ### New features

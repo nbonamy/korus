@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.0",
+  "currentVersion": "0.58.1",
   "releases": [
+    {
+      "version": "0.58.1",
+      "releasedAt": "2026-11-16",
+      "sourceSha256": "ef174b3fc4c1aa5f88e4f89b4e785be302d69606baee3959d5b4faf73580db68",
+      "markdown": "### Improvements and fixes\n\n- **Annotations:** Restored the text-selection Annotate button's background in light and dark themes."
+    },
     {
       "version": "0.58.0",
       "releasedAt": "2026-11-16",
