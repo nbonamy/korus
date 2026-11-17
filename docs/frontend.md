@@ -274,6 +274,7 @@ Search by behavior first.
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
+| One choice among a few, as segmented buttons | `AppSegmented` (`label` is the accessible name; `size` is `default`, `small` or `compact`; its fill is `--color-control-fill`, so it reads on any surface and no caller styles `el-segmented`) | `client/vue/src/shared/` |
 | Obfuscated text with show/hide and ordinary editing | `InputObfuscated` | `client/vue/src/shared/form/InputObfuscated.vue` |
 | Single-line text with an inline clear action | `ClearableTextInput` | `client/vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `client/vue/src/shared/` |

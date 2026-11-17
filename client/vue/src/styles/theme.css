@@ -166,34 +166,6 @@
   --el-popper-bg-color-light: var(--color-surface-lowest);
 }
 
-.el-segmented {
-  --agent-ui-state-selected: var(--color-surface-lowest);
-  --el-segmented-padding: var(--space-2);
-  --el-segmented-bg-color: var(--color-control-fill);
-  --el-segmented-color: var(--color-text-muted);
-  --el-segmented-item-selected-color: var(--color-text);
-  --el-segmented-item-selected-bg-color: var(--agent-ui-state-selected);
-  --el-segmented-item-selected-disabled-bg-color: var(--color-surface-low);
-  --el-segmented-item-hover-color: var(--color-text);
-  --el-segmented-item-hover-bg-color: var(--agent-ui-state-hover);
-  --el-segmented-item-active-bg-color: var(--agent-ui-state-pressed);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-13);
-}
-
-.el-segmented__item,
-.el-segmented__item-selected {
-  border-radius: var(--radius-full);
-}
-
-.el-segmented__item-selected {
-  box-shadow: none;
-}
-
-.el-segmented__item {
-  padding: 0 var(--space-8);
-}
-
 .el-select-dropdown__list {
   padding-top: 0px;
   padding-bottom: 0px;

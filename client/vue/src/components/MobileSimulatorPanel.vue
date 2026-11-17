@@ -75,12 +75,12 @@
         <span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t('surface.mobileSimulator.loading') }}
       </p>
       <template v-else>
-        <el-segmented
+        <AppSegmented
           v-if="platforms.length > 1"
           class="mobile-simulator__segments"
           :model-value="activePlatform"
           :options="platforms.map((item) => ({ value: item, label: platformLabel(item) }))"
-          :aria-label="$t('surface.mobileSimulator.platform')"
+          :label="$t('surface.mobileSimulator.platform')"
           @update:model-value="platform = $event"
         />
         <div v-for="group in deviceGroups(platformDevices)" :key="group.id" class="mobile-simulator__group">
@@ -236,6 +236,7 @@ import { translate } from '../i18n';
 import { appApi, appPlatformActions } from '../platform-api';
 import MobileLiveScreen from './MobileLiveScreen.vue';
 import { DuoPoseIcon } from '../shared/icons/app-icons';
+import AppSegmented from '../shared/AppSegmented.vue';
 const props = defineProps<{ agentId: string; visible: boolean }>();
 const attachment = ref<MobileAttachment | null>(null);
 const television = computed(() => /\b(?:tv|androidtv|googletv|appletv|television)\b/iu.test(attachment.value?.device.name.replace(/[_-]/gu, ' ') ?? ''));

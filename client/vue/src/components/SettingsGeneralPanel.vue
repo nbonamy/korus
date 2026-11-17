@@ -12,10 +12,10 @@
         :description="$t('surface.settingsGeneralPanel.followUpShortcuts', { modifier: followUpModifier })"
       >
         <template #control>
-          <el-segmented
+          <AppSegmented
             :model-value="settings.followUpBehavior"
             :options="followUpOptions"
-            :aria-label="$t('surface.settingsGeneralPanel.followUpBehavior')"
+            :label="$t('surface.settingsGeneralPanel.followUpBehavior')"
             @update:model-value="updateFollowUpBehavior"
           />
         </template>
@@ -226,6 +226,7 @@ import { computed, onMounted, ref } from 'vue';
 import type { AppGeneralSettings, DaemonStatus, SourceFolderState, SystemPermissionsStatus, UpdateSettingsInput } from '@workspace/core/contracts';
 import { defaultSourceFolderState } from '@workspace/core/settings';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
+import AppSegmented from '../shared/AppSegmented.vue';
 import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import { Circle, ShieldCheckIcon } from '../shared/icons/app-icons';

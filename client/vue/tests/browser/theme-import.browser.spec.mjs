@@ -19,9 +19,12 @@ test('loads Nebula, renders it after reload, and switches back to a chosen palet
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.settings-appearance-panel__skin-select .el-select__wrapper')).backgroundColor === 'rgb(0, 31, 55)');
     const controls = await page.evaluate(() => {
       const color = element => getComputedStyle(element).backgroundColor;
-      return { track: color(document.querySelector('.el-segmented')), select: color(document.querySelector('.settings-appearance-panel__skin-select .el-select__wrapper')) };
+      const probe = document.body.appendChild(document.createElement('div'));
+      probe.style.background = 'var(--color-control-fill)';
+      const fill = color(probe); probe.remove();
+      return { track: color(document.querySelector('.el-segmented')), fill, select: color(document.querySelector('.settings-appearance-panel__skin-select .el-select__wrapper')) };
     });
-    assert.equal(controls.track, 'rgb(10, 44, 68)');
+    assert.equal(controls.track, controls.fill, 'segmented controls use the shared control fill, whatever surface they sit on');
     assert.equal(controls.select, 'rgb(0, 31, 55)');
     const actions = page.getByRole('button', { name: 'Agent actions', exact: true });
     await actions.hover();

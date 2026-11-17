@@ -16,9 +16,10 @@
         :description="$t('surface.settingsAppearancePanel.chooseHowAppFollowsLightAndDarkAppearances')"
       >
         <template #control>
-          <el-segmented
+          <AppSegmented
             :model-value="settings.mode"
             :options="modeOptions"
+            :label="$t('surface.settingsAppearancePanel.mode')"
             @update:model-value="updateMode"
           />
         </template>
@@ -154,6 +155,7 @@ import SettingsIntro from './SettingsIntro.vue';
 import FormField from '../shared/form/FormField.vue';
 import FormGrid from '../shared/form/FormGrid.vue';
 import FormRow from '../shared/form/FormRow.vue';
+import AppSegmented from '../shared/AppSegmented.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import { appThemes, themeIdForAppearance, themeIdForSystemMode } from '../theme/themes';

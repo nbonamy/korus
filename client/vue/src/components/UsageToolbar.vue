@@ -1,13 +1,13 @@
 <template>
   <div class="usage-toolbar">
-    <UsageToggle
+    <AppSegmented
       :model-value="view"
       :options="tabs.map(tab => ({ value: tab.name, label: tab.label }))"
       :label="$t('analytics.title')"
       @update:model-value="emit('update:view', $event)"
     />
     <div class="usage-filters">
-      <UsageToggle
+      <AppSegmented
         :model-value="selectedPeriod"
         :options="
           [7, 30, 90].map((value) => ({
@@ -66,7 +66,7 @@
         </el-option>
       </el-select>
       <div v-if="view === 'usage'" id="usage-grouping">
-        <UsageToggle
+        <AppSegmented
           :model-value="grouping"
           :options="groupingOptions()"
           :label="$t('analytics.groupBy')"
@@ -96,7 +96,7 @@ import { translate } from "../i18n";
 import AppMenuButton from "../shared/menu/AppMenuButton.vue";
 import type { AppMenuItem } from "../shared/menu/app-menu";
 import { BoltIcon, DotsVerticalIcon } from "../shared/icons/app-icons";
-import UsageToggle from "./UsageToggle.vue";
+import AppSegmented from "../shared/AppSegmented.vue";
 import { groupingOptions, type UsageGrouping } from "./usage-chart";
 import type { UsageView } from "./use-usage-analytics";
 const props = defineProps<{

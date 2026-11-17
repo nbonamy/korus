@@ -25,7 +25,7 @@ function setup(auto = false) {
     panel: { kind: 'gitDiff', title: 'Changes', diff, state: 'idle' } }, global: {
       provide: { [diffVizSettingsKey as symbol]: () => snapshot.general }, stubs: { GitDiffVizCanvas: canvas, GitDiffVizMermaid: canvas },
     } });
-  const openViz = () => wrapper.get('.git-diff-view-toggle button:nth-child(2)').trigger('click');
+  const openViz = () => wrapper.findAll('.git-diff-view-toggle .el-segmented__item').find(item => item.text() === 'Viz')!.get('input').setValue(true);
   return { wrapper, generate, save, cancel, updateSettings, snapshot, openViz };
 }
 
@@ -155,7 +155,7 @@ describe('Changes Viz workflow', () => {
   it('waits for an explicit Generate with auto off, caches the drawing and opens all files behind a semantic component', async () => {
     const { wrapper, generate, openViz } = setup();
     try {
-      expect(wrapper.findAll('.git-diff-view-toggle button').map(item => item.text())).toStrictEqual(['Files', 'Viz', 'Map']);
+      expect(wrapper.findAll('.git-diff-view-toggle .el-segmented__item').map(item => item.text())).toStrictEqual(['Files', 'Viz', 'Map']);
       await openViz(); await flushPromises();
       expect(wrapper.get('.diff-viz__empty p').text()).toBe('See the affected components and how they connect. Korus will inspect this working folder and the selected Git comparison using read-only tools.');
       expect(wrapper.get('.diff-viz__consent').text()).toBe('Do not ask again');
