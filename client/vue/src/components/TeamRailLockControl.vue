@@ -86,6 +86,8 @@ function turnBackOn(): void {
 }
 
 .team-rail__lock--active {
+  --agent-ui-state-rest-foreground: var(--color-warning);
+  --agent-ui-state-hover-foreground: var(--color-warning);
   opacity: 1;
 }
 

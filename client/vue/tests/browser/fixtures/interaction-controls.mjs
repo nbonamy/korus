@@ -1,5 +1,5 @@
 export const interactionControlsSource = `
-import {createApp,h,ref} from 'vue';
+import {createApp,computed,h,ref} from 'vue';
 import ElementPlus,{ElButton,ElTabs,ElTabPane} from 'element-plus';
 import {appMessageBox} from '/client/vue/src/shared/dialog/message-box.ts';
 import 'element-plus/dist/index.css';
@@ -14,6 +14,7 @@ import {createInitialSnapshot} from '@workspace/core/snapshot';
 import AgentSidebar from '/client/vue/src/components/AgentSidebar.vue';
 import {providerChoicesKey} from '/client/vue/src/components/provider-selection';
 import TeamRail from '/client/vue/src/components/TeamRail.vue';
+import {computerUseLockKey} from '/client/vue/src/components/computer-use-lock.ts';
 import AgentHeader from '/client/vue/src/components/AgentHeader.vue';
 import RightWorkspacePanel from '/client/vue/src/components/RightWorkspacePanel.vue';
 import ProviderInstallActions from '/client/vue/src/components/ProviderInstallActions.vue';
@@ -26,6 +27,8 @@ const quickAgent={...agent,id:'quick',name:'Quick chat',sessionKind:'quickChat',
 const activeTeam=ref('identity-blue');
 const activity=ref(false);
 const unread=ref(['quick']);
+const lockState=ref({visible:false,hold:false});
+window.showLock=()=>{lockState.value={visible:true,hold:{until:null}}};
 window.markedUnread=null;
 window.selectedAgent=null;
 window.repositorySource=null;
@@ -60,5 +63,5 @@ createApp({render:()=>h('main',{style:'width:1100px;height:800px;background:var(
   h(SettingsSidebar,{activeTab:'appearance'}),
   h(RightWorkspacePanel,{agent,tabs:['review','plan'],activeTab:'review',gitPanel:{kind:'gitDiff',title:'Changes',diff:previewDiff,state:'idle'},visible:true}),
  ])
-])}).provide(providerChoicesKey,ref(['codex','claude'])).use(i18n).use(ElementPlus).mount('#app');
+])}).provide(providerChoicesKey,ref(['codex','claude'])).provide(computerUseLockKey,{state:computed(()=>lockState.value),setHold:async hold=>{lockState.value={visible:true,hold}}}).use(i18n).use(ElementPlus).mount('#app');
 `;

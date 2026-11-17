@@ -11,11 +11,11 @@ test('repository creation uses one plus with four choices', async () => {
     await group.getByRole('button', { name: 'New session in repo', exact: true }).click();
     const menu = page.getByRole('menu', { name: 'New session in repo', exact: true });
     await menu.getByRole('menuitem', { name: 'main', exact: true }).waitFor();
-    assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), ['main', 'New worktree…', 'From branch…', 'From issue or PR…']);
+    assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), ['main', 'From branch…', 'New worktree…', 'Pull requests & issues…']);
     await page.waitForFunction(() => document.getAnimations().every(animation =>
       animation.effect?.getTiming().iterations === Infinity || animation.playState !== 'running'));
     await page.screenshot({ path: '/tmp/korus-repository-create-menu.png' });
-    await menu.getByRole('menuitem', { name: 'From issue or PR…', exact: true }).click();
+    await menu.getByRole('menuitem', { name: 'Pull requests & issues…', exact: true }).click();
     assert.equal((await page.evaluate(() => window.repositorySource)).initialTab, 'pullRequests');
   });
   assert.deepEqual(errors, []);
@@ -143,8 +143,15 @@ test('native, toolkit and generated controls retain one state policy and readabl
       await control('native','primary').evaluate(el=>el.removeAttribute('data-highlighted'));
       assert.ok(highlighted.contrast>=native.contrast-.02,`${theme.id}: hover preserves primary text contrast`);
     }
+    await page.evaluate(()=>window.showLock());
+    const lock=page.locator('.team-rail__lock--active');
     for (const theme of ['app-light','app-dark-blue','dracula-dark']) {
       await page.evaluate(id=>window.applyTheme(window.themes.find(theme=>theme.id===id)),theme);
+      const warning=await page.evaluate(()=>{const probe=document.createElement('span');probe.style.color='var(--color-warning)';document.body.append(probe);const color=getComputedStyle(probe).color;probe.remove();return color});
+      await page.mouse.move(1190,850);
+      assert.equal((await appearance(lock)).color,warning,theme+': disabled screen locking retains its warning color');
+      await lock.hover();
+      assert.equal((await appearance(lock)).color,warning,theme+': screen-lock warning survives hover');
       for (const variant of ['neutral','primary','destructive']) {
         await page.mouse.move(1190,850); const rest=await appearance(control('native',variant));
         await control('native',variant).hover(); const hover=await appearance(control('native',variant));

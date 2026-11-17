@@ -607,7 +607,7 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-actions').findAll('button')).toHaveLength(1);
     const menuItems = () => [...document.body.querySelectorAll<HTMLButtonElement>('[role="menu"][aria-label="New session in id8"] [role="menuitem"]')];
     expect(menuItems().map(item => item.textContent?.trim()))
-      .toStrictEqual(['main', 'New worktree…', 'From branch…', 'From issue or PR…']);
+      .toStrictEqual(['main', 'From branch…', 'New worktree…', 'Pull requests & issues…']);
     const main = menuItems().find((item) => item.textContent?.trim() === 'main')!;
     expect(main.querySelector('.git-main-icon')).not.toBeNull();
     expect(main.getAttribute('aria-haspopup')).toBeNull();
@@ -616,7 +616,7 @@ describe('AgentSidebar sessions', () => {
     for (const id of ['new-worktree', 'from-branch', 'from-work-item']) {
       await sessionMenu?.vm.$emit('update:open', true);
       await flushPromises();
-      const labels = { 'new-worktree': 'New worktree…', 'from-branch': 'From branch…', 'from-work-item': 'From issue or PR…' };
+      const labels = { 'new-worktree': 'New worktree…', 'from-branch': 'From branch…', 'from-work-item': 'Pull requests & issues…' };
       menuItems().find(item => item.textContent?.trim() === labels[id as keyof typeof labels])!.click();
       await flushPromises();
     }

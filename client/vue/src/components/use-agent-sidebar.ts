@@ -318,8 +318,8 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
         disabled: !defaultBranch,
         ...remoteAction('default-branch:remote'),
       },
-      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitBranchIcon, ...remoteAction('new-worktree:remote') },
       { id: 'from-branch', type: 'action', label: t('sidebar.fromBranch'), icon: GitBranchIcon },
+      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitBranchIcon, ...remoteAction('new-worktree:remote') },
       {
         id: 'from-work-item', type: 'action', icon: GitPullRequestIcon,
         label: t(canonicalGitRemoteIdentity(group.originUrl ?? '')?.startsWith('gitlab.com/') ? 'sidebar.fromIssueOrMergeRequest' : 'sidebar.fromIssueOrPullRequest'),
