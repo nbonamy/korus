@@ -46,8 +46,8 @@
         </template>
       </FormRow>
       <FormRow :title="$t('surface.settingsAppearancePanel.skin')">
-        <template #copy>
-          <I18nT keypath="surface.settingsAppearancePanel.loadSkinsFrom" tag="span">
+        <template #description>
+          <I18nT keypath="surface.settingsAppearancePanel.skinDescription" tag="span">
             <template #site><a class="settings-appearance-panel__skin-link" :href="skinGalleryUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(skinGalleryUrl)">{{ skinGalleryLabel }}</a></template>
           </I18nT>
         </template>

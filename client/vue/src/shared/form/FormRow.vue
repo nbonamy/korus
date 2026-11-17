@@ -7,7 +7,7 @@
     <span v-if="$slots.leading" class="form-row__leading"><slot name="leading" /></span>
     <span class="form-row__copy">
       <strong>{{ title }}</strong>
-      <span v-if="description">{{ description }}</span>
+      <span v-if="description || $slots.description"><slot name="description">{{ description }}</slot></span>
       <span
         v-if="error"
         class="form-row__error"

@@ -906,7 +906,7 @@ export const conversationMessages = {
   },
   "settingsAppearancePanel": {
     "skin": "Skin",
-    "loadSkinsFrom": "Skins from {site}",
+    "skinDescription": "Skins hosted on {site}. Ask your agent to create your own.",
     "customSkin": "Custom skin",
     "removeSkinTitle": "Remove {name}",
     "removeSkin": "Remove",
