@@ -885,16 +885,17 @@ describe('companion engine', () => {
     connector.connect = async id => ({ ...await original(id), selectModel, sendPrompt,
       listModels: async () => [{ id: 'model', model: 'model', displayName: 'Model', isDefault: true,
         defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }],
-        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }], defaultServiceTier: null }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }], defaultServiceTier: null }],
     });
     const { engine, latest } = open(connector);
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      await vi.waitFor(() => expect(latest().models).toStrictEqual([{ id: 'model', name: 'Model', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }] }]));
+      await vi.waitFor(() => expect(latest().models).toStrictEqual([{ id: 'model', name: 'Model', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }, { id: 'ultrafast', name: 'Ultrafast' }] }]));
       expect(latest().capabilities.serviceTier).toBe(true);
-      for (const serviceTier of ['fast', null]) {
+      expect(latest().composer).toMatchObject({ speedTiers: ['fast', 'ultrafast'], nextServiceTier: 'fast' });
+      for (const [serviceTier, next] of [['fast', 'ultrafast'], ['ultrafast', null], [null, 'fast']] as const) {
         await engine.dispatch({ type: 'composer', change: { serviceTier } });
-        expect(latest().composer.serviceTier).toBe(serviceTier);
+        expect(latest().composer).toMatchObject({ serviceTier, nextServiceTier: next });
         expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, provider: 'codex' });
         await engine.dispatch({ type: 'send', text: 'Continue' });
         expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier }) }));

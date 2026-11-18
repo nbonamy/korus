@@ -225,22 +225,25 @@ struct ComposerView: View {
         .accessibilityLabel("Current goal")
     }
 
+    private var hasSpeedButton: Bool { model.supportsServiceTier && !model.speedTiers.isEmpty }
+
+    /// Each press steps standard → the model's faster tiers → standard, as on the desktop.
     @ViewBuilder
     private var serviceTierToggle: some View {
-        if model.supportsServiceTier, let tier = model.selectedModel?.fastTier {
-            let enabled = model.selectedServiceTier == tier.id
-            Button { model.chooseServiceTier(enabled ? nil : tier.id) } label: {
-                Image(systemName: enabled ? "bolt.fill" : "bolt")
-                    .font(.system(size: 18, weight: .semibold))
-                    .scaleEffect(x: 1.15, y: 0.78)
-                    .foregroundStyle(enabled ? Color.primary : .secondary)
+        if hasSpeedButton {
+            let active = model.selectedServiceTier.flatMap { model.speedTiers.contains($0) ? $0 : nil }
+            let name = { (id: String?) in id.flatMap { id in model.selectedModel?.tiers.first { $0.id == id }?.name } ?? "Standard" }
+            Button { model.chooseServiceTier(model.nextServiceTier) } label: {
+                SpeedIcon(tier: active)
+                    .foregroundStyle(active == nil ? Color.secondary : .accentColor)
                     .frame(width: 32, height: 34)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Fast mode")
-            .accessibilityValue(enabled ? "On" : "Off")
-            .accessibilityHint(enabled ? "Switch to Standard service tier." : "Switch to Fast service tier.")
+            .sensoryFeedback(.impact(weight: .light), trigger: active)
+            .accessibilityLabel("Speed")
+            .accessibilityValue(name(active))
+            .accessibilityHint("Switch to \(name(model.nextServiceTier)).")
         }
     }
 
@@ -264,7 +267,7 @@ struct ComposerView: View {
             }
             .font(.footnote.weight(.medium))
             .foregroundStyle(.primary)
-            .padding(.leading, model.supportsServiceTier && model.selectedModel?.fastTier != nil ? 0 : 10)
+            .padding(.leading, hasSpeedButton ? 0 : 10)
             .padding(.trailing, 10).frame(height: 34)
             .contentShape(Capsule())
         }
@@ -417,5 +420,30 @@ struct ComposerView: View {
         .animation(.smooth(duration: 0.2), value: primaryAction)
         .accessibilityLabel(sending ? "Sending" : stopping ? "Stop" : model.goalMode ? "Set goal" : choosing ? mode == .queue ? "Queue message" : "Steer agent" : "Send")
         .accessibilityHint(choosing ? "Touch and hold to choose Queue or Steer." : "")
+    }
+}
+
+/// The speed icons: a bolt for standard, a filled bolt for a faster tier and, as on the desktop, a pair for ultrafast.
+/// Stepping up fills the bolt, then splits it in two; stepping back to standard merges them.
+private struct SpeedIcon: View {
+    let tier: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var split: CGFloat { tier == "ultrafast" ? 3 : 0 }
+
+    private func glyph(_ name: String, weight: Font.Weight = .semibold) -> some View {
+        Image(systemName: name).font(.system(size: 17, weight: weight))
+    }
+
+    var body: some View {
+        ZStack {
+            glyph("bolt").offset(x: -split).opacity(tier == nil || split > 0 ? 1 : 0)
+            // Cut the back bolt where the front one overlaps it, as the desktop icon does.
+            glyph("bolt.fill", weight: .black).scaleEffect(1.12).offset(x: split).opacity(split > 0 ? 1 : 0).blendMode(.destinationOut)
+            glyph("bolt.fill").offset(x: split).opacity(tier == nil ? 0 : 1)
+        }
+        .symbolEffect(.bounce, value: tier)
+        .compositingGroup()
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.62), value: tier)
     }
 }

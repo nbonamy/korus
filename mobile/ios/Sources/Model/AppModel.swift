@@ -92,6 +92,9 @@ final class AppModel {
     var selectedModelID: String?
     var selectedEffort: String?
     var selectedServiceTier: String?
+    /// The speed button's faster tiers and the one a press selects (nil is standard), from the engine.
+    var speedTiers: [String] = []
+    var nextServiceTier: String?
     var supportsServiceTier = false
     var planMode = false
     var supportsGoals = false
@@ -390,6 +393,8 @@ final class AppModel {
         set(\.selectedModelID, state.composer.modelId)
         set(\.selectedEffort, state.composer.effort)
         set(\.selectedServiceTier, state.composer.serviceTier)
+        set(\.speedTiers, state.composer.speedTiers ?? [])
+        set(\.nextServiceTier, state.composer.nextServiceTier)
         set(\.supportsServiceTier, state.capabilities.serviceTier)
         set(\.planMode, state.composer.planMode)
         set(\.permission, state.permissions.current)

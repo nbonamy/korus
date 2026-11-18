@@ -104,7 +104,6 @@ struct ModelChoice: Identifiable, Hashable, Codable, Sendable {
     let name: String
     var efforts: [String] = []
     var tiers: [Tier] = []
-    var fastTier: Tier? { tiers.first { $0.id == "fast" || $0.id == "priority" } }
 }
 
 /// Repository-scoped branch choices from the laptop, without filesystem paths.

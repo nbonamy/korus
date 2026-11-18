@@ -22,7 +22,7 @@ class ComposerControlsWorkflowTest {
         "laptops" to JSONArray().put(json("id" to "host","name" to "Computer")),
         "header" to json("title" to "Agent","status" to "idle"),"goalBusy" to busy,
         "capabilities" to json("goals" to true,"planMode" to true,"reasoningEffort" to true,"serviceTier" to true),
-        "composer" to json("modelId" to "model","effort" to "high","serviceTier" to null,"planMode" to plan),
+        "composer" to json("modelId" to "model","effort" to "high","serviceTier" to null,"planMode" to plan,"speedTiers" to JSONArray(listOf("priority")),"nextServiceTier" to "priority"),
         "models" to JSONArray().put(json("id" to "model","name" to "Model","efforts" to JSONArray(listOf("high","low")),"tiers" to JSONArray().put(json("id" to "priority","name" to "Fast")))),
         "permissions" to json("current" to "read-only","options" to JSONArray().put(json("id" to "read-only","label" to "Read only","dangerous" to false)).put(json("id" to "full-access","label" to "Full access","dangerous" to true))))
     private fun mount(e: NativeEngineFixture, state: JSONObject) {
@@ -106,7 +106,7 @@ class ComposerControlsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e,state(connected=false));app.onNodeWithTag("composer").performClick()
             app.onNodeWithContentDescription("Choose model and reasoning").assertIsNotEnabled()
-            app.onNodeWithContentDescription("Fast mode").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Speed").assertIsNotEnabled()
             app.onNodeWithContentDescription("Add").performClick()
             app.onNodeWithText("Plan mode").assertIsNotEnabled()
             app.onNodeWithText("Permissions").assertIsNotEnabled()
