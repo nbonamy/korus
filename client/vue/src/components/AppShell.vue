@@ -214,13 +214,6 @@
         :update-remote-connection="updateRemoteConnection"
         :remove-remote-connection="removeRemoteConnection"
         :companion-control="companionControl"
-        :get-remote-control-status="getRemoteControlStatus"
-        :enable-remote-control="enableRemoteControl"
-        :disable-remote-control="disableRemoteControl"
-        :start-device-pairing="startDevicePairing"
-        :check-device-pairing="checkDevicePairing"
-        :list-paired-devices="listPairedDevices"
-        :revoke-paired-device="revokePairedDevice"
         :daemon-status="daemonStatus"
         :daemon-status-error="daemonStatusError"
         :choose-source-folder="chooseSourceFolder"
@@ -669,7 +662,7 @@ import { useI18n } from 'vue-i18n';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import { useCompactViewport } from '../shared/use-compact-viewport';
 import type { HarnessProvider, AgentFileActivity } from '@workspace/core/contracts';
-import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, DevicePairingSession, DevicePairingStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentCreationProgress, AgentFilePreviewResult, AgentFileSearchItem, AgentGitStatus, AppCommand, ApprovalPreset, AppSnapshot, ProviderApprovalDecision, ProviderApprovalRequest, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, ProviderModelOption, ProviderPluginSummary, ProviderRuntimeStatus, ProviderSkillSummary, DaemonStatus, CloneSourceRepositoryInput, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DesktopUpdateStatus, GlobalWorkItemQuery, AutomationLocation, ModelFavorite, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, ReasoningEffort, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceBranch, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, Team, ThreadGoal, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -887,13 +880,6 @@ const props = withDefaults(defineProps<{
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
-  getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
-  enableRemoteControl?: () => Promise<DevicePairingStatus>;
-  disableRemoteControl?: () => Promise<DevicePairingStatus>;
-  startDevicePairing?: () => Promise<DevicePairingSession>;
-  checkDevicePairing?: (session: DevicePairingSession) => Promise<boolean>;
-  listPairedDevices?: (environmentId: string) => Promise<PairedDevice[]>;
-  revokePairedDevice?: (environmentId: string, clientId: string) => Promise<void>;
   setDaemonEnabled?: (enabled: boolean) => Promise<void>;
   restartApp?: () => Promise<void>;
   getAutomationSnapshot?: (location?: AutomationLocation) => Promise<AppSnapshot>;
@@ -1044,13 +1030,6 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection: async () => undefined,
   updateRemoteConnection: async () => undefined,
   removeRemoteConnection: async () => undefined,
-  getRemoteControlStatus: async () => ({ status: 'disabled' as const }),
-  enableRemoteControl: async () => ({ status: 'disabled' as const }),
-  disableRemoteControl: async () => ({ status: 'disabled' as const }),
-  startDevicePairing: async () => ({ pairingCode: '', environmentId: '', expiresAt: '' }),
-  checkDevicePairing: async () => false,
-  listPairedDevices: async () => [],
-  revokePairedDevice: async () => undefined,
   setDaemonEnabled: async () => undefined,
   restartApp: async () => undefined,
   getAutomationSnapshot: async () => createEmptySnapshot(),

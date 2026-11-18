@@ -80,13 +80,6 @@ export function createClientApiMock(
     guestConversationContent: unscripted<'guestConversationContent'>('guestConversationContent'),
     conversationShareControl: unscripted<'conversationShareControl'>('conversationShareControl'),
     companionControl: unscripted<'companionControl'>('companionControl'),
-    getRemoteControlStatus: unscripted<'getRemoteControlStatus'>('getRemoteControlStatus'),
-    enableRemoteControl: unscripted<'enableRemoteControl'>('enableRemoteControl'),
-    disableRemoteControl: unscripted<'disableRemoteControl'>('disableRemoteControl'),
-    startDevicePairing: unscripted<'startDevicePairing'>('startDevicePairing'),
-    checkDevicePairing: unscripted<'checkDevicePairing'>('checkDevicePairing'),
-    listPairedDevices: unscripted<'listPairedDevices'>('listPairedDevices'),
-    revokePairedDevice: unscripted<'revokePairedDevice'>('revokePairedDevice'),
     connectWorkProvider: unscripted<'connectWorkProvider'>('connectWorkProvider'),
     pollWorkProviderAuthorization: unscripted<'pollWorkProviderAuthorization'>('pollWorkProviderAuthorization'),
     disconnectWorkProvider: unscripted<'disconnectWorkProvider'>('disconnectWorkProvider'),
@@ -307,7 +300,6 @@ export function createClientApiMock(
 
   // Harmless reads have explicit values; writes and consequential operations must be scripted.
   api.listSshHosts.mockResolvedValue([]);
-  api.listPairedDevices.mockResolvedValue([]);
   api.listWorkSources.mockResolvedValue([]);
   api.listWorkItems.mockResolvedValue([]);
   api.listAssignedWorkItems.mockResolvedValue([]);
@@ -322,7 +314,6 @@ export function createClientApiMock(
   api.listSourceWorktrees.mockResolvedValue([]);
   api.listAgentConversations.mockResolvedValue([]);
   api.readConversationMessages.mockResolvedValue([]);
-  api.getRemoteControlStatus.mockResolvedValue({ status: 'disabled' });
   api.getDaemonStatus.mockResolvedValue({ supported: true, installed: false, running: false, socketPath: '/test/daemon.sock' });
   api.getPluginStatus.mockResolvedValue({ chromeEnabled: false });
   api.getCodexResourceSharingStatus.mockResolvedValue({ enabled: false, migrationRequired: false });

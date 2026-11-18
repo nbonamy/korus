@@ -25,13 +25,13 @@
         <FormRow
           v-if="status.enabled"
           as="label"
-          :title="$t('surface.settingsDevicePairingSection.keepThisMacAwake')"
+          :title="$t('surface.settingsMobileSection.keepThisMacAwake')"
           :description="$t('surface.settingsMobileSection.keepAwakeHint')"
         >
           <template #control>
             <el-switch
               :model-value="settings.preventSleepWhenRemoteAccessEnabled"
-              :aria-label="$t('surface.settingsDevicePairingSection.keepThisMacAwake')"
+              :aria-label="$t('surface.settingsMobileSection.keepThisMacAwake')"
               @update:model-value="updateKeepAwake"
             />
           </template>

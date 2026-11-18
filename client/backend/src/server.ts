@@ -63,7 +63,7 @@ import { createAppRpcError, createAppRpcResult, appRpcErrorCodes, isAppRpcNotifi
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot, isAppSnapshot } from '@workspace/core/snapshot-guards';
-import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DevicePairingStatus, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AgentGitDiffTarget, AgentHistoryLoadResult, AgentStatus, AppPluginStatus, AppSnapshot, ClosedAgentRecord, ProviderModelOption, ProviderConversationRef, CloneSourceRepositoryInput, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, ClientState, DuplicateAgentOptions, BackendPublishedEvent, MoveAgentToTeamInput, OpenInApplication, RemoteConnection, RendererMessage, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SendPromptOptions, SetCodexResourceSharingInput, SourceBranch, SourceRepository, SourceWorktree, SystemPermissionsStatus, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput } from '@workspace/core/contracts';
 import type { WorkBacklogConfigurationInput, WorkProviderKind } from '@workspace/core/contracts';
 import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections';
 import { providerDisplayName, resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
@@ -538,8 +538,6 @@ export class AppBackendServer {
   private readonly missions: MissionService;
   private readonly missionExecution: MissionExecutionService;
   private readonly missionArtifacts: MissionArtifactStorage;
-  private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
-  private remoteControlStatusLoaded = false;
   /** In-process guest authority, separate from local RPC and paired-device grants. */
   authorizeConversationGuest(handle: string, credential: string) {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
@@ -1325,7 +1323,6 @@ export class AppBackendServer {
     await step('handoffs', () => this.agentHandoffs.recover());
     await step('engine connections', () => this.providerConnections?.refresh());
     await step('source folder', () => this.initializeSourceFolderIfNeeded());
-    if (this.snapshot.providerConnections?.some(provider => provider.connected && defaultProviderCapabilities(provider.provider).remoteControl)) await step('remote control status', () => this.ensureRemoteControlStatus());
     await step('workspaces', () => this.agentWorkspaces.reconcile());
     await step('conversations', () => this.reconcileConversationsOnce());
     this.reconcileShares();
@@ -1946,19 +1943,6 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.systemPermissions.openAccessibilitySettings());
       case backendMethods.systemPermissionsScreenRecordingOpen:
         return createAppRpcResult(message.id, await this.systemPermissions.openScreenRecordingSettings());
-      case backendMethods.remoteControlStatusGet:
-      case backendMethods.remoteControlEnable:
-      case backendMethods.remoteControlDisable:
-        {
-          const status = await this.requireDriverRpc().handle(message.method, message.params) as DevicePairingStatus;
-          this.publishRemoteControlStatus(status);
-          return createAppRpcResult(message.id, status);
-        }
-      case backendMethods.remoteControlPairingStart:
-      case backendMethods.remoteControlPairingCheck:
-      case backendMethods.remoteControlClientsList:
-      case backendMethods.remoteControlClientRevoke:
-        return createAppRpcResult(message.id, await this.requireDriverRpc().handle(message.method, message.params));
       case backendMethods.connectionsSshHostsList:
         return createAppRpcResult(message.id, await this.sshConnections.listHostCandidates());
       case backendMethods.connectionsSshCreate: {
@@ -4465,13 +4449,6 @@ export class AppBackendServer {
       const authentication = event.payload;
       this.providerConnections?.observe(authentication.kind, authentication.connected, authentication);
     }
-    if (event.type === 'remoteControl.statusChanged') {
-      const status = remoteControlStatusFromUnknown(event.payload);
-      if (status) {
-        this.remoteControlStatus = status;
-        this.remoteControlStatusLoaded = true;
-      }
-    }
     const fullEvent = this.nextMainEvent(event);
     this.observeRecoveryTurn(fullEvent);
     this.options.usage?.observeEvent(fullEvent);
@@ -4605,30 +4582,8 @@ export class AppBackendServer {
     });
   }
 
-  private publishRemoteControlStatus(status: DevicePairingStatus): void {
-    this.remoteControlStatusLoaded = true;
-    this.handleBackendEvent({
-      type: 'remoteControl.statusChanged',
-      payload: status,
-    }, { persist: false });
-  }
-
   private clientStateFromSnapshot(snapshot: AppSnapshot): ClientState {
-    return clientStateFromSnapshot(snapshot, this.remoteControlStatus, this.companionAccessEnabled);
-  }
-
-  private async ensureRemoteControlStatus(): Promise<void> {
-    if (this.remoteControlStatusLoaded || !this.driverRpc) return;
-    try {
-      const status = await this.driverRpc.handle(backendMethods.remoteControlStatusGet, undefined);
-      const parsed = remoteControlStatusFromUnknown(status);
-      if (parsed) this.remoteControlStatus = parsed;
-    } catch {
-      // Remote-control status is an optional capability. Keep the safe default
-      // when an older or unavailable driver cannot answer the status request.
-    } finally {
-      this.remoteControlStatusLoaded = true;
-    }
+    return clientStateFromSnapshot(snapshot, this.companionAccessEnabled);
   }
 
   private emitRemoteBackendEvent(event: BackendPublishedEvent): void {
@@ -5344,36 +5299,16 @@ function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
     (event.payload.tool.kind === 'command' || event.payload.tool.kind === 'fileChange');
 }
 
-function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {
+function clientStateFromSnapshot(snapshot: AppSnapshot, companionAccessEnabled: boolean): ClientState {
   return {
     sourceFolderPath: snapshot.sourceFolder.path,
     shouldPreventDisplaySleep: snapshot.general.preventSleepWhenAgentsRun &&
       snapshot.agents.some((agent) => isActiveAgentStatus(agent.status)),
     shouldPreventDisplaySleepForRemoteAccess: snapshot.general.preventSleepWhenRemoteAccessEnabled !== false &&
-      (remoteControlStatus.status === 'connected' || companionAccessEnabled),
+      companionAccessEnabled,
   };
 }
 
 function isActiveAgentStatus(status: AgentStatus): boolean {
   return status.type === 'working' || status.type === 'awaitingInput';
-}
-
-function remoteControlStatusFromUnknown(value: unknown): DevicePairingStatus | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    (record.status !== 'disabled' && record.status !== 'connecting' && record.status !== 'connected' && record.status !== 'errored') ||
-    (record.serverName !== undefined && typeof record.serverName !== 'string') ||
-    (record.installationId !== undefined && typeof record.installationId !== 'string') ||
-    (record.environmentId !== undefined && record.environmentId !== null && typeof record.environmentId !== 'string')
-  ) {
-    return null;
-  }
-  const status: DevicePairingStatus = {
-    status: record.status,
-  };
-  if (typeof record.serverName === 'string') status.serverName = record.serverName;
-  if (typeof record.installationId === 'string') status.installationId = record.installationId;
-  if (record.environmentId === null || typeof record.environmentId === 'string') status.environmentId = record.environmentId;
-  return status;
 }

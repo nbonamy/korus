@@ -11,7 +11,6 @@ export const snapshotEventOwnership = {
   'client.connectionChanged': 'renderer',
   'snapshot.updated': 'runtime',
   'account.rateLimitsUpdated': 'runtime',
-  'remoteControl.statusChanged': 'renderer',
   'models.changed': 'renderer',
   'skills.changed': 'renderer',
   'client.markdownDisplayRequested': 'renderer',

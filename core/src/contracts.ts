@@ -60,9 +60,6 @@ import type {
 } from './contracts/workspace';
 import type {
   AddSshConnectionInput,
-  DevicePairingSession,
-  DevicePairingStatus,
-  PairedDevice,
   RemoteConnectionsState,
   SshHostCandidate,
   UpdateRemoteConnectionInput,
@@ -168,9 +165,6 @@ export type {
 export type {
   AddSshConnectionInput,
   ClaudeAuthentication,
-  DevicePairingSession,
-  DevicePairingStatus,
-  PairedDevice,
   RemoteConnection,
   RemoteConnectionStatus,
   RemoteConnectionTransport,
@@ -883,13 +877,6 @@ export type AppApi = {
   guestConversationContent(id: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   conversationShareControl(input: import('./conversation-sharing').ConversationShareControl): Promise<import('./conversation-sharing').ConversationShareResult>;
   companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
-  getRemoteControlStatus(): Promise<DevicePairingStatus>;
-  enableRemoteControl(): Promise<DevicePairingStatus>;
-  disableRemoteControl(): Promise<DevicePairingStatus>;
-  startDevicePairing(): Promise<DevicePairingSession>;
-  checkDevicePairing(session: DevicePairingSession): Promise<boolean>;
-  listPairedDevices(environmentId: string): Promise<PairedDevice[]>;
-  revokePairedDevice(environmentId: string, clientId: string): Promise<void>;
   connectWorkProvider(provider: WorkProviderKind, options?: import('./contracts/work').WorkProviderConnectOptions): Promise<WorkProviderConnectResult>;
   pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<AppSnapshot>;
   disconnectWorkProvider(provider: WorkProviderKind): Promise<AppSnapshot>;

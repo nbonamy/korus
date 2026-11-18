@@ -3,7 +3,7 @@ import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import { AppController } from '../app-controller';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { AddSshConnectionInput, AppSnapshot, CloneSourceRepositoryInput, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, Automation, AutomationLocation, MoveAgentToTeamInput, PairedDevice, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, SystemPermissionsStatus, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderConnectResult, WorkProviderKind } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, AppSnapshot, CloneSourceRepositoryInput, CreateAgentInput, CreateAutomationInput, CreateProjectInput, CreateQuickChatInput, CreateSourceRepositoryInput, CreateSourceWorktreeInput, CreateTeamInput, DuplicateAgentOptions, Automation, AutomationLocation, MoveAgentToTeamInput, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, SourceFolderListInput, SourceRepository, SourceWorktree, SshHostCandidate, SystemPermissionsStatus, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkBacklogConfigurationInput, WorkItem, WorkProviderConnectResult, WorkProviderKind } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { currentSnapshot, createBackendClient, updateSettings } from './app-controller-test-harness';
 
@@ -509,44 +509,6 @@ describe('AppController', () => {
     expect(request).toHaveBeenCalledWith('connections/delete', { connectionId: 'connection-devbox' });
   });
 
-  it('routes device pairing actions through daemon', async () => {
-    const status: DevicePairingStatus = {
-      status: 'connected', serverName: `${product.name}`, installationId: 'installation-1', environmentId: 'environment-1',
-    };
-    const session: DevicePairingSession = {
-      pairingCode: 'opaque-payload', manualPairingCode: 'ABCD-EFGH', environmentId: 'environment-1',
-      expiresAt: '2030-03-17T17:46:40.000Z',
-    };
-    const devices: PairedDevice[] = [{ clientId: 'client-1', displayName: 'Nicolas’s iPhone' }];
-    const request = vi.fn((method: string) => {
-      if (method === backendMethods.remoteControlPairingStart) return Promise.resolve(session);
-      if (method === backendMethods.remoteControlPairingCheck) return Promise.resolve(true);
-      if (method === backendMethods.remoteControlClientsList) return Promise.resolve(devices);
-      if (method === backendMethods.remoteControlClientRevoke) return Promise.resolve(null);
-      return Promise.resolve(status);
-    });
-    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }));
-    await controller.initialize();
-
-    await expect(getRemoteControlStatus(controller)).resolves.toBe(status);
-    await expect(enableRemoteControl(controller)).resolves.toBe(status);
-    await expect(disableRemoteControl(controller)).resolves.toBe(status);
-    await expect(startDevicePairing(controller)).resolves.toBe(session);
-    await expect(checkDevicePairing(controller, session)).resolves.toBe(true);
-    await expect(listPairedDevices(controller, 'environment-1')).resolves.toBe(devices);
-    await expect(revokePairedDevice(controller, 'environment-1', 'client-1')).resolves.toBeUndefined();
-
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlStatusGet, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlEnable, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlDisable, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlPairingStart, undefined);
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlPairingCheck, { session });
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlClientsList, { environmentId: 'environment-1' });
-    expect(request).toHaveBeenCalledWith(backendMethods.remoteControlClientRevoke, {
-      environmentId: 'environment-1', clientId: 'client-1',
-    });
-  });
-
   it('routes automation mutations and runs through daemon', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder.initialized = true;
@@ -892,35 +854,6 @@ async function removeRemoteConnection(controller: AppController, connectionId: s
   return (controller as unknown as {
     removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
   }).removeRemoteConnection(connectionId);
-}
-
-function getRemoteControlStatus(controller: AppController): Promise<DevicePairingStatus> {
-  return (controller as unknown as { getRemoteControlStatus(): Promise<DevicePairingStatus> }).getRemoteControlStatus();
-}
-
-function enableRemoteControl(controller: AppController): Promise<DevicePairingStatus> {
-  return (controller as unknown as { enableRemoteControl(): Promise<DevicePairingStatus> }).enableRemoteControl();
-}
-
-function disableRemoteControl(controller: AppController): Promise<DevicePairingStatus> {
-  return (controller as unknown as { disableRemoteControl(): Promise<DevicePairingStatus> }).disableRemoteControl();
-}
-
-function startDevicePairing(controller: AppController): Promise<DevicePairingSession> {
-  return (controller as unknown as { startDevicePairing(): Promise<DevicePairingSession> }).startDevicePairing();
-}
-
-function checkDevicePairing(controller: AppController, session: DevicePairingSession): Promise<boolean> {
-  return (controller as unknown as { checkDevicePairing(value: DevicePairingSession): Promise<boolean> }).checkDevicePairing(session);
-}
-
-function listPairedDevices(controller: AppController, environmentId: string): Promise<PairedDevice[]> {
-  return (controller as unknown as { listPairedDevices(id: string): Promise<PairedDevice[]> }).listPairedDevices(environmentId);
-}
-
-function revokePairedDevice(controller: AppController, environmentId: string, clientId: string): Promise<void> {
-  return (controller as unknown as { revokePairedDevice(environment: string, client: string): Promise<void> })
-    .revokePairedDevice(environmentId, clientId);
 }
 
 async function configureWorkBacklog(controller: AppController, input: WorkBacklogConfigurationInput, location?: AutomationLocation): Promise<AppSnapshot> {

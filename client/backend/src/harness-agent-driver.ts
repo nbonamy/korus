@@ -328,17 +328,6 @@ export class HarnessAgentDriver implements AgentProviderDriver {
     if (!this.harness.getProviderCapabilities().bankedResets) throw new Error('Reset redemption is unsupported');
     return this.harness.useBankedReset(input);
   }
-  private remoteControl(): Harness {
-    if (!this.harness.getProviderCapabilities().remoteControl) throw new Error(`${this.provider} does not support remote control.`);
-    return this.harness;
-  }
-  async getRemoteControlStatus() { return this.remoteControl().getRemoteControl(); }
-  async enableRemoteControl() { return this.remoteControl().setRemoteControl(true); }
-  async disableRemoteControl() { return this.remoteControl().setRemoteControl(false); }
-  async startDevicePairing() { return this.remoteControl().startDevicePairing(); }
-  async checkDevicePairing(pairing: Parameters<Harness['checkDevicePairing']>[0]) { return this.remoteControl().checkDevicePairing(pairing); }
-  async listPairedDevices(environmentId: string) { return this.remoteControl().listPairedDevices(environmentId); }
-  async revokePairedDevice(environmentId: string, clientId: string) { return this.remoteControl().revokePairedDevice(environmentId, clientId); }
   async generateText(agent: Agent, input: ProviderTextGeneration) { return this.harness.generateText(await this.session(agent), (this.policy.prepareGeneration?.(agent, input) ?? input) as never); }
   async generateImage(agent: Agent, input: Parameters<NonNullable<AgentProviderDriver['generateImage']>>[1], signal?: AbortSignal) { return this.harness.generateImage(await this.session(agent), input as never, signal) as never; }
 

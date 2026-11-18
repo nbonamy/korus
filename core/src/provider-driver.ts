@@ -15,9 +15,6 @@ import type {
   ProviderSkillSummary, ConversationSummary,
   ConversationListInput,
   ConversationResumeTarget,
-  DevicePairingSession,
-  DevicePairingStatus,
-  PairedDevice,
   RendererMessage,
   PromptAttachment,
   SendPromptOptions,
@@ -130,13 +127,6 @@ type HarnessDriver<Context, Event, HistoryFrame = unknown> = {
   getAccountRateLimits?(): Promise<Sdk.AccountRateLimits | null>;
   setConversationStorage?(ref: ProviderConversationRef, state: Sdk.ConversationStorageState): Promise<void>;
   startRealtime?(agent: Context, options: Sdk.RealtimeOptions): Promise<Sdk.RealtimeSession>;
-  getRemoteControlStatus?(): Promise<DevicePairingStatus>;
-  enableRemoteControl?(): Promise<DevicePairingStatus>;
-  disableRemoteControl?(): Promise<DevicePairingStatus>;
-  startDevicePairing?(): Promise<DevicePairingSession>;
-  checkDevicePairing?(session: DevicePairingSession): Promise<boolean>;
-  listPairedDevices?(environmentId: string): Promise<PairedDevice[]>;
-  revokePairedDevice?(environmentId: string, clientId: string): Promise<void>;
   getCapabilities(agent?: Context): ProviderCapabilities;
   sendPrompt(agent: Context, prompt: string, options?: SendPromptOptions): Promise<ProviderSendResult>;
   executeScopedPrompt?(agent: Context, input: { prompt: string; cwd: string; session?: ProviderSessionData; scope: Sdk.HarnessPromptScope; options?: SendPromptOptions; signal?: AbortSignal; /** Keeps the run out of the conversation's published events (for example a summary the user did not ask to see). */ silent?: boolean }): Promise<{ text: string; session: ProviderSessionData }>;
@@ -211,13 +201,6 @@ export type AgentProviderDriver = Omit<HarnessDriver<Agent, BackendEvent>, 'getC
   assertHandoffReady?(agent: Agent): Promise<void>;
   forkWorktreeConversation?(agent: Agent, targetAgent: Agent): Promise<ProviderConversationForkResult | null>;
   continueInterruptedTurn?(agent: Agent, safetyReview?: import('./provider-safety-block').ProviderSafetyReviewTarget): Promise<ProviderTurnActionResult>;
-  getRemoteControlStatus?(): Promise<DevicePairingStatus>;
-  enableRemoteControl?(): Promise<DevicePairingStatus>;
-  disableRemoteControl?(): Promise<DevicePairingStatus>;
-  startDevicePairing?(): Promise<DevicePairingSession>;
-  checkDevicePairing?(session: DevicePairingSession): Promise<boolean>;
-  listPairedDevices?(environmentId: string): Promise<PairedDevice[]>;
-  revokePairedDevice?(environmentId: string, clientId: string): Promise<void>;
 };
 
 export function unsupportedProviderFeature(agent: Agent, feature: string): Error {

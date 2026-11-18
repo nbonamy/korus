@@ -2,7 +2,7 @@ import type {
   AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentCreationProgress,
   AgentFileActivity, AgentGitOperationProgress, AgentGitStatus, AgentStatus, AppSnapshot, ProviderConnectionState,
   ProviderModelOption, ProviderRuntimeStatus, ProviderSkillSummary, BrowserAnnotation,
-  CelebrationKind, DevicePairingStatus,
+  CelebrationKind,
   SendPromptOptions, SidePanelMarkdownRequest, SubagentActivityChange, SubagentIdentityChange,
   SubagentOperationChange, SubagentStatusChange, ThreadGoal, TurnGitDiff,
   WorkBacklogAssignment, WorkBacklogAssignmentPolicy, WorkBacklogAssignmentStatus
@@ -99,10 +99,6 @@ type AppEvent =
       type: 'account.rateLimitsUpdated';
       provider: HarnessProvider;
       payload: { rateLimits: AccountRateLimits };
-    }>
-  | EventWith<{
-      type: 'remoteControl.statusChanged';
-      payload: DevicePairingStatus;
     }>
   | EventWith<{
       type: 'models.changed';

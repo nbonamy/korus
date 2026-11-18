@@ -135,13 +135,6 @@
     :update-remote-connection="updateRemoteConnection"
     :remove-remote-connection="removeRemoteConnection"
     :companion-control="companionControl"
-    :get-remote-control-status="getRemoteControlStatus"
-    :enable-remote-control="enableRemoteControl"
-    :disable-remote-control="disableRemoteControl"
-    :start-device-pairing="startDevicePairing"
-    :check-device-pairing="checkDevicePairing"
-    :list-paired-devices="listPairedDevices"
-    :revoke-paired-device="revokePairedDevice"
     :set-daemon-enabled="setDaemonEnabled"
     :connect-work-provider="connectWorkProvider"
     :open-work-provider-authorization="openWorkProviderAuthorization"
@@ -401,13 +394,6 @@ const {
   updateRemoteConnection,
   removeRemoteConnection,
   companionControl,
-  getRemoteControlStatus,
-  enableRemoteControl,
-  disableRemoteControl,
-  startDevicePairing,
-  checkDevicePairing,
-  listPairedDevices,
-  revokePairedDevice,
   setDaemonEnabled,
   connectWorkProvider,
   openWorkProviderAuthorization,

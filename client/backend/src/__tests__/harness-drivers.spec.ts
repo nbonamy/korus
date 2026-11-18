@@ -69,33 +69,16 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(sessionHandoff.continuation('NOTES')).toContain('NOTES');
   });
 
-  it('reads banked resets and runs remote control through the harness that offers them', async () => {
+  it('reads banked resets through the harness that offers them', async () => {
     const { driver, script } = scriptedDriver('codex');
     const resets = { status: 'ready', summary: { availableCount: '1' }, accountCredits: { balance: '12', unlimited: false } };
-    const status = { enabled: true, allowRemoteControl: true };
     script.on('getBankedResets', (async () => resets) as never);
     script.on('useBankedReset', (async () => ({ status: 'redeemed' })) as never);
-    script.on('getRemoteControlStatus', (async () => status) as never);
-    script.on('enableRemoteControl', (async () => status) as never);
-    script.on('disableRemoteControl', (async () => ({ ...status, enabled: false })) as never);
-    script.on('startDevicePairing', (async () => ({ code: 'ABCD' })) as never);
-    script.on('checkDevicePairing', (async () => true) as never);
-    script.on('listPairedDevices', (async () => [{ id: 'phone' }]) as never);
-    script.on('revokePairedDevice', (async () => undefined) as never);
     expect(await driver.getBankedResets!()).toStrictEqual(resets);
     expect(await driver.useBankedReset!({ token: 't' } as never)).toStrictEqual({ status: 'redeemed' });
-    expect(await driver.getRemoteControlStatus!()).toStrictEqual(status);
-    expect(await driver.enableRemoteControl!()).toStrictEqual(status);
-    expect(await driver.disableRemoteControl!()).toMatchObject({ enabled: false });
-    expect(await driver.startDevicePairing!()).toStrictEqual({ code: 'ABCD' });
-    expect(await driver.checkDevicePairing!({ code: 'ABCD' } as never)).toBe(true);
-    expect(await driver.listPairedDevices!('env')).toStrictEqual([{ id: 'phone' }]);
-    await driver.revokePairedDevice!('env', 'phone');
-    expect(script.calls('revokePairedDevice')[0]?.args).toStrictEqual(['env', 'phone']);
     // A harness without them says so instead of failing.
     const other = scriptedDriver('claude').driver;
     expect(await other.getBankedResets!()).toStrictEqual({ status: 'unsupported' });
-    await expect(other.getRemoteControlStatus!()).rejects.toThrow('claude does not support remote control.');
   });
 
   it('offers the permissions the harness offers, in Korus words, with the harness deciding which are dangerous', () => {

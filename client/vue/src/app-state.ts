@@ -13,7 +13,7 @@ import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import type { AgentGitBranchInput, AgentGitCommitInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow } from '@workspace/core/contracts';
 import type { AgentCreationProgress, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DevicePairingSession, DevicePairingStatus, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, PairedDevice, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
+import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
 import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-manager';
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -1373,38 +1373,6 @@ export function useAppState() {
     return appApi.companionControl(input);
   }
 
-  async function getRemoteControlStatus(): Promise<DevicePairingStatus> {
-    if (!appApi?.getRemoteControlStatus) return { status: 'disabled' };
-    return appApi.getRemoteControlStatus();
-  }
-
-  async function enableRemoteControl(): Promise<DevicePairingStatus> {
-    if (!appApi?.enableRemoteControl) return { status: 'disabled' };
-    return appApi.enableRemoteControl();
-  }
-
-  async function disableRemoteControl(): Promise<DevicePairingStatus> {
-    if (!appApi?.disableRemoteControl) return { status: 'disabled' };
-    return appApi.disableRemoteControl();
-  }
-
-  async function startDevicePairing(): Promise<DevicePairingSession> {
-    if (!appApi?.startDevicePairing) throw new Error(translate('surface.app-state.devicePairingIsNotAvailable'));
-    return appApi.startDevicePairing();
-  }
-
-  async function checkDevicePairing(session: DevicePairingSession): Promise<boolean> {
-    return appApi?.checkDevicePairing?.(plainDevicePairingSession(session)) ?? false;
-  }
-
-  async function listPairedDevices(environmentId: string): Promise<PairedDevice[]> {
-    return appApi?.listPairedDevices?.(environmentId) ?? [];
-  }
-
-  async function revokePairedDevice(environmentId: string, clientId: string): Promise<void> {
-    await appApi?.revokePairedDevice?.(environmentId, clientId);
-  }
-
   async function loadDaemonStatus(): Promise<void> {
     if (!appHostCapabilities.daemonManagement || !appApi?.getDaemonStatus) {
       return;
@@ -1816,13 +1784,6 @@ export function useAppState() {
     updateRemoteConnection,
     removeRemoteConnection,
     companionControl,
-    getRemoteControlStatus,
-    enableRemoteControl,
-    disableRemoteControl,
-    startDevicePairing,
-    checkDevicePairing,
-    listPairedDevices,
-    revokePairedDevice,
     setDaemonEnabled,
     connectWorkProvider,
     pollWorkProviderAuthorization,
@@ -1938,10 +1899,6 @@ function emptyComposerState(): ComposerState {
 
 function plainConversationRef(ref: ProviderConversationRef): ProviderConversationRef {
   return JSON.parse(JSON.stringify(ref)) as ProviderConversationRef;
-}
-
-function plainDevicePairingSession(session: DevicePairingSession): DevicePairingSession {
-  return JSON.parse(JSON.stringify(session)) as DevicePairingSession;
 }
 
 function cloneWorkItemForIpc(item: WorkItem): WorkItem {
@@ -2124,7 +2081,6 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
   switch (event.type) {
     case 'client.connectionChanged':
     case 'conversation.shareChanged':
-    case 'remoteControl.statusChanged':
     case 'git.branchWorkProgress':
     case 'git.operationProgress':
     case 'browser.annotationCreated':

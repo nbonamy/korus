@@ -16,7 +16,6 @@ import type {
   ProviderSkillSummary,
   BrowserAnnotation,
   CelebrationKind, DesktopUpdateStatus,
-  DevicePairingStatus,
   LaunchChatGptAppInput,
   LaunchChatGptAppResult,
   MainToRendererEvent,
@@ -152,10 +151,6 @@ describe('ipc channels', () => {
       }>();
     expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'skills.changed' }>, 'provider'>>()
       .toEqualTypeOf<{ provider: HarnessProvider }>();
-    expectTypeOf<Extract<MainToRendererEvent, { type: 'remoteControl.statusChanged' }>['payload']>()
-      .toEqualTypeOf<DevicePairingStatus>();
-    expectTypeOf<Pick<Extract<MainToRendererEvent, { type: 'remoteControl.statusChanged' }>, 'provider'>>()
-      .toEqualTypeOf<{ provider?: HarnessProvider }>();
     expectTypeOf<Extract<MainToRendererEvent, { type: 'client.markdownDisplayRequested' }>['payload']>()
       .toEqualTypeOf<SidePanelMarkdownRequest>();
     expectTypeOf<Pick<

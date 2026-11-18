@@ -163,13 +163,6 @@
           :update-remote-connection="updateRemoteConnection"
           :remove-remote-connection="removeRemoteConnection"
           :companion-control="companionControl"
-          :get-remote-control-status="getRemoteControlStatus"
-          :enable-remote-control="enableRemoteControl"
-          :disable-remote-control="disableRemoteControl"
-          :start-device-pairing="startDevicePairing"
-          :check-device-pairing="checkDevicePairing"
-          :list-paired-devices="listPairedDevices"
-          :revoke-paired-device="revokePairedDevice"
         />
       </div>
     </main>
@@ -178,7 +171,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AddSshConnectionInput, Agent, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
+import type { AddSshConnectionInput, Agent, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
 import UsagePanel from './UsagePanel.vue';
 import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
@@ -258,13 +251,6 @@ const props = withDefaults(defineProps<{
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
-  getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
-  enableRemoteControl?: () => Promise<DevicePairingStatus>;
-  disableRemoteControl?: () => Promise<DevicePairingStatus>;
-  startDevicePairing?: () => Promise<DevicePairingSession>;
-  checkDevicePairing?: (session: DevicePairingSession) => Promise<boolean>;
-  listPairedDevices?: (environmentId: string) => Promise<PairedDevice[]>;
-  revokePairedDevice?: (environmentId: string, clientId: string) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
@@ -288,13 +274,6 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection: async () => undefined,
   updateRemoteConnection: async () => undefined,
   removeRemoteConnection: async () => undefined,
-  getRemoteControlStatus: async () => ({ status: 'disabled' as const }),
-  enableRemoteControl: async () => ({ status: 'disabled' as const }),
-  disableRemoteControl: async () => ({ status: 'disabled' as const }),
-  startDevicePairing: async () => ({ pairingCode: '', environmentId: '', expiresAt: '' }),
-  checkDevicePairing: async () => false,
-  listPairedDevices: async () => [],
-  revokePairedDevice: async () => undefined,
   generalSettings: () => ({ ...defaultGeneralSettings }),
   sourceFolder: () => ({ ...defaultSourceFolderState }),
   daemonStatus: null,

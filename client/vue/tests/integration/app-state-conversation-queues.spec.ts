@@ -3,7 +3,7 @@ import { nextTick, reactive } from 'vue';
 import { useAppState } from '../../src/app-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
-import type { AppSnapshot, ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, DevicePairingSession, MainToRendererEvent, RendererMessage, SourceRepository, WorkItem, WorkSource } from '@workspace/core/contracts';
+import type { AppSnapshot, ProviderApprovalRequest, ProviderConversationRef, AppApi, ConversationSummary, MainToRendererEvent, RendererMessage, SourceRepository, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { workItemAssignmentPrompt } from '@workspace/core/work-item-prompts';
 import { clearConfetti, useConfetti } from '../../src/shared/confetti/use-confetti';

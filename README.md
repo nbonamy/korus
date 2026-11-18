@@ -72,9 +72,6 @@ and API usage are billed separately.
   inspect and operate macOS applications while you keep the session visible.
 - **Review with context** — Open Git changes, source files, turn-specific diffs,
   Markdown, execution plans, and Plan-mode proposals beside the conversation.
-- **Keep Codex work accessible from your phone** — Pair Codex mobile with
-  Korus's Codex connection while agents continue running through the background
-  backend. This pairing is specific to Codex.
 - **Take your team with you** — Pair the iPhone or Android companion with your
   computers, switch saved connections, and follow agents across workspaces. Respond to
   requests and send follow-ups while work continues on the connected computer.

@@ -35,7 +35,7 @@ import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
-import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DevicePairingSession, type DevicePairingStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type PairedDevice, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
+import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
 import { sendAppCommand, sendRendererEvent } from './ipc-events';
 import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } from './app-menu';
@@ -283,13 +283,6 @@ export class AppController {
     ipc.handle(ipcChannels.guestConversationContent, (_event, id, input) => this.requireBackendClient().request(backendMethods.guestConversationContent, { id, input }));
     ipc.handle(ipcChannels.conversationShareControl, (_event, input) => this.requireBackendClient().request(backendMethods.conversationShareControl, { input }));
     ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
-    ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
-    ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
-    ipc.handle(ipcChannels.disableRemoteControl, () => this.disableRemoteControl());
-    ipc.handle(ipcChannels.startDevicePairing, () => this.startDevicePairing());
-    ipc.handle(ipcChannels.checkDevicePairing, (_event, session: DevicePairingSession) => this.checkDevicePairing(session));
-    ipc.handle(ipcChannels.listPairedDevices, (_event, environmentId: string) => this.listPairedDevices(environmentId));
-    ipc.handle(ipcChannels.revokePairedDevice, (_event, environmentId: string, clientId: string) => this.revokePairedDevice(environmentId, clientId));
 
     ipc.handle(ipcChannels.connectWorkProvider, async (_event, provider: WorkProviderKind, options?: WorkProviderConnectOptions) => {
       return this.connectWorkProvider(provider, options);
@@ -1115,34 +1108,6 @@ export class AppController {
 
   private async removeRemoteConnection(connectionId: string): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.connectionsDelete, { connectionId }));
-  }
-
-  private getRemoteControlStatus(): Promise<DevicePairingStatus> {
-    return this.requireBackendClient().request(backendMethods.remoteControlStatusGet);
-  }
-
-  private enableRemoteControl(): Promise<DevicePairingStatus> {
-    return this.requireBackendClient().request(backendMethods.remoteControlEnable);
-  }
-
-  private disableRemoteControl(): Promise<DevicePairingStatus> {
-    return this.requireBackendClient().request(backendMethods.remoteControlDisable);
-  }
-
-  private startDevicePairing(): Promise<DevicePairingSession> {
-    return this.requireBackendClient().request(backendMethods.remoteControlPairingStart);
-  }
-
-  private checkDevicePairing(session: DevicePairingSession): Promise<boolean> {
-    return this.requireBackendClient().request(backendMethods.remoteControlPairingCheck, { session });
-  }
-
-  private listPairedDevices(environmentId: string): Promise<PairedDevice[]> {
-    return this.requireBackendClient().request(backendMethods.remoteControlClientsList, { environmentId });
-  }
-
-  private async revokePairedDevice(environmentId: string, clientId: string): Promise<void> {
-    await this.requireBackendClient().request(backendMethods.remoteControlClientRevoke, { environmentId, clientId });
   }
 
 

@@ -490,7 +490,6 @@ describe('useAppState', () => {
       'browser.annotationCreated',
       'client.celebrationRequested',
       'client.connectionChanged',
-      'remoteControl.statusChanged',
       'provider.authenticationChanged',
       'workspace.fileActivityDetected',
       'git.branchWorkProgress',
@@ -516,8 +515,8 @@ describe('useAppState', () => {
 
     listeners[0]?.({
       seq: 1,
-      type: 'remoteControl.statusChanged',
-      payload: { status: 'connected', serverName: `${product.name} test` },
+      type: 'client.connectionChanged',
+      payload: { status: 'connected' },
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
     listeners[0]?.({
