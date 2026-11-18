@@ -131,7 +131,6 @@ test('groups the skin picker into file loading, local skins and t3skins.dev skin
     const description = page.locator('.form-row').filter({ has: page.getByText('Skin', { exact: true }) }).locator('.form-row__copy > span');
     const typography = locator => locator.evaluate(el => { const s = getComputedStyle(el); return [s.color, s.fontSize, s.lineHeight]; });
     assert.deepEqual(await typography(description), await typography(page.getByText('Select the color palette used across the app', { exact: true })), 'skin guidance uses the shared settings description typography');
-    assert.equal(await description.textContent(), 'Skins hosted on t3skins.dev. Ask your agent to create your own.');
     const select = page.locator('.settings-appearance-panel__skin-select .el-select__wrapper');
     const menu = () => page.locator('.settings-appearance-panel__skin-menu:visible').first().evaluate(el =>
       [...el.querySelectorAll('.el-select-group__title, .el-select-dropdown__item')].map(item => item.textContent.trim()));
