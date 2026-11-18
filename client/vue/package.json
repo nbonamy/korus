@@ -1,6 +1,6 @@
 {
   "name": "@workspace/vue",
-  "version": "0.58.4",
+  "version": "0.58.5",
   "description": "Reusable Vue product shell for application hosts.",
   "private": true,
   "type": "module",
@@ -35,7 +35,7 @@
     "@korus-dev/agent-ui-sdk": "0.28.1",
     "@korus-dev/multi-agent-sdk": "0.28.3",
     "@tabler/icons-vue": "^3.44.0",
-    "@workspace/core": "0.58.4",
+    "@workspace/core": "0.58.5",
     "beautiful-mermaid": "^1.1.3",
     "canvas-confetti": "^1.9.4",
     "chart.js": "4.6.1",

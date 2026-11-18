@@ -2,6 +2,18 @@
 
 All notable Korus changes are recorded here.
 
+## [0.58.5] - 2026-11-18
+
+### New features
+
+- **SSH hosts:** Install Cursor or Antigravity from Settings and connect using a copyable sign-in command for that host.
+- **Remote repository actions:** Use the globe beside **From branch…** or **Pull requests & issues…** to start work on a connected SSH host.
+
+### Improvements and fixes
+
+- **Mobile pairing:** Settings now uses Korus Mobile for pairing phones with Korus.
+- **Analytics:** Updated model pricing.
+
 ## [0.58.4] - 2026-11-18
 
 ### Improvements and fixes

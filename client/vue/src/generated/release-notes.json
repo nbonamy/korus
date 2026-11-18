@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.4",
+  "currentVersion": "0.58.5",
   "releases": [
+    {
+      "version": "0.58.5",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "5efba1b8261af85e1ce1dfa98a585129bebcba08184e515ec7db48648abef223",
+      "markdown": "### New features\n\n- **SSH hosts:** Install Cursor or Antigravity from Settings and connect using a copyable sign-in command for that host.\n- **Remote repository actions:** Use the globe beside **From branch…** or **Pull requests & issues…** to start work on a connected SSH host.\n\n### Improvements and fixes\n\n- **Mobile pairing:** Settings now uses Korus Mobile for pairing phones with Korus.\n- **Analytics:** Updated model pricing."
+    },
     {
       "version": "0.58.4",
       "releasedAt": "2026-11-18",
