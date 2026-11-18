@@ -5133,6 +5133,348 @@
         }
       ]
     },
+    "gpt-6.2-astra": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6.2-astra",
+        "source": {
+          "path": "providers/openai/models/gpt-6.2-astra.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/guides/function-calling",
+            "https://developers.openai.com/api/docs/guides/latest-model",
+            "https://developers.openai.com/api/docs/guides/latest-model;",
+            "https://developers.openai.com/api/docs/guides/priority-processing",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation",
+            "https://developers.openai.com/api/docs/guides/tools-tool-search",
+            "https://developers.openai.com/api/docs/guides/ultrafast-mode",
+            "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+            "https://developers.openai.com/api/docs/models/gpt-6.2-astra,",
+            "https://developers.openai.com/api/docs/pricing",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast",
+            "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create;"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-18T14:10:51.655Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 8,
+                "cache": {
+                  "read": 0.4,
+                  "write": {
+                    "12h": 20,
+                    "30m": 10
+                  }
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 16,
+                    "cache": {
+                      "read": 0.8,
+                      "write": {
+                        "12h": 40,
+                        "30m": 20
+                      }
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 40,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 60,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              },
+              {
+                "when": {
+                  "date": {
+                    "lt": "2027-03-01"
+                  },
+                  "service_tier": {
+                    "equals": "ultrafast"
+                  }
+                },
+                "factor": {
+                  "text": 3
+                }
+              },
+              {
+                "when": {
+                  "date": {
+                    "gte": "2027-03-01"
+                  },
+                  "service_tier": {
+                    "equals": "ultrafast"
+                  }
+                },
+                "factor": {
+                  "text": 6
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority",
+            "ultrafast"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            },
+            "pro": {
+              "body": {
+                "reasoning": {
+                  "mode": "pro"
+                }
+              }
+            },
+            "ultrafast": {
+              "body": {
+                "service_tier": "ultrafast"
+              }
+            }
+          },
+          "source": {
+            "revision": "d893237face842c5a4c918009d50c8e33b7c6523",
+            "collectedAt": "2026-11-18T14:10:51.655Z",
+            "blobSha": "82e500f6bb3337640d69c9ddee2c7dea222df97b"
+          }
+        }
+      ]
+    },
+    "gpt-6.2-sol": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6.2-sol",
+        "source": {
+          "path": "providers/openai/models/gpt-6.2-sol.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/guides/function-calling",
+            "https://developers.openai.com/api/docs/guides/latest-model",
+            "https://developers.openai.com/api/docs/guides/latest-model;",
+            "https://developers.openai.com/api/docs/guides/priority-processing",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation",
+            "https://developers.openai.com/api/docs/guides/tools-tool-search",
+            "https://developers.openai.com/api/docs/guides/ultrafast-mode",
+            "https://developers.openai.com/api/docs/models/gpt-6.2-sol",
+            "https://developers.openai.com/api/docs/models/gpt-6.2-sol,",
+            "https://developers.openai.com/api/docs/pricing",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast",
+            "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create;"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-18T14:10:51.655Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 2,
+                "cache": {
+                  "read": 0.1,
+                  "write": {
+                    "12h": 5,
+                    "30m": 2.5
+                  }
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 4,
+                    "cache": {
+                      "read": 0.2,
+                      "write": {
+                        "12h": 10,
+                        "30m": 5
+                      }
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 10,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 15,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              },
+              {
+                "when": {
+                  "date": {
+                    "lt": "2027-03-01"
+                  },
+                  "service_tier": {
+                    "equals": "ultrafast"
+                  }
+                },
+                "factor": {
+                  "text": 3
+                }
+              },
+              {
+                "when": {
+                  "date": {
+                    "gte": "2027-03-01"
+                  },
+                  "service_tier": {
+                    "equals": "ultrafast"
+                  }
+                },
+                "factor": {
+                  "text": 6
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority",
+            "ultrafast"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            },
+            "pro": {
+              "body": {
+                "reasoning": {
+                  "mode": "pro"
+                }
+              }
+            },
+            "ultrafast": {
+              "body": {
+                "service_tier": "ultrafast"
+              }
+            }
+          },
+          "source": {
+            "revision": "d893237face842c5a4c918009d50c8e33b7c6523",
+            "collectedAt": "2026-11-18T14:10:51.655Z",
+            "blobSha": "f7e99ab82c84229363a856176b651eab1db9e1cf"
+          }
+        }
+      ]
+    },
     "gpt-audio": {
       "metadata": {
         "canonicalId": "openai/gpt-audio",
