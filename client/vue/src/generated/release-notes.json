@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.2",
+  "currentVersion": "0.58.3",
   "releases": [
+    {
+      "version": "0.58.3",
+      "releasedAt": "2026-11-17",
+      "sourceSha256": "52c382bb548530eaf0f580d9a2f40101b7b66c15bbd3170949081b9355aff491",
+      "markdown": "### Improvements and fixes\n\n- **Annotations:** The Annotate button stays opaque on hover and press, keeping chat text from showing through.\n- **Model picker:** Click the speed button to cycle through the model’s available speeds while keeping the picker open."
+    },
     {
       "version": "0.58.2",
       "releasedAt": "2026-11-17",

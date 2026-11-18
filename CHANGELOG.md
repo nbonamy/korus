@@ -2,6 +2,13 @@
 
 All notable Korus changes are recorded here.
 
+## [0.58.3] - 2026-11-17
+
+### Improvements and fixes
+
+- **Annotations:** The Annotate button stays opaque on hover and press, keeping chat text from showing through.
+- **Model picker:** Click the speed button to cycle through the model’s available speeds while keeping the picker open.
+
 ## [0.58.2] - 2026-11-17
 
 ### Improvements and fixes
