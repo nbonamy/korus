@@ -40,6 +40,13 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         #if DEBUG
         webView.isInspectable = true
         #endif
+        loadEngine()
+    }
+
+    /// Every engine page gets its own native Noise registry: a page that died could not close its connections,
+    /// and leaving them in place would fill the registry and refuse every new connection, QR pairing included.
+    private func loadEngine() {
+        crypto.reset()
         webView.load(URLRequest(url: WebAssets.url("engine.html")))
     }
 
@@ -184,6 +191,6 @@ extension EngineHost {
         recordLifecycle("app.webcontent-terminated", stage: "reload")
         isReady = false
         pending.removeAll()
-        webView.load(URLRequest(url: WebAssets.url("engine.html")))
+        loadEngine()
     }
 }
