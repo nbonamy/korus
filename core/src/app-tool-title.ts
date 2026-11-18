@@ -320,6 +320,8 @@ export function appToolTitle({ tool, args, result, phase, resolveAgentName }: {
   return phrase(`${key}.${phase}`)?.replace('{target}', () => target ?? '').replace(/\s{2,}/g, ' ').trim();
 }
 
+const AGENT_ID_PATTERN = /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function phrase(path: string): string | undefined {
   const value = path.split('.').reduce<unknown>((node, key) => isRecord(node) ? node[key] : undefined, STRINGS);
   return typeof value === 'string' ? value : undefined;
@@ -343,11 +345,15 @@ function toolTarget(
   resolveAgentName?: AppAgentNameResolver,
 ): string {
   const requestedRecipient = typeof args.to === 'string' ? args.to.trim() : '';
+  // The tool accepts `agent:<id>` style labels, so look the bare id up too.
+  const recipientId = requestedRecipient.slice(requestedRecipient.lastIndexOf(':') + 1).trim();
   const candidates = tool === 'send-message'
     ? [
         phase === 'completed' ? resultString(result, 'recipientName') : undefined,
         requestedRecipient ? resolveAgentName?.(requestedRecipient) : undefined,
-        requestedRecipient,
+        recipientId && recipientId !== requestedRecipient ? resolveAgentName?.(recipientId) : undefined,
+        // A raw agent id means nothing to the reader; fall through to the generic label instead.
+        AGENT_ID_PATTERN.test(recipientId) ? undefined : requestedRecipient,
       ]
     : tool === 'browser-open'
       ? [args.url]
@@ -368,12 +374,32 @@ function toolTarget(
 }
 
 function nestedResultRecords(result: unknown): Record<string, unknown>[] {
+  // Some harnesses hand over the raw MCP content: a JSON string or text blocks.
+  const parsed = mcpTextPayload(result);
+  if (parsed) return [parsed];
   if (!isRecord(result)) return [];
   const records = [result];
   for (const key of ['structuredContent', 'result']) {
     if (isRecord(result[key])) records.push(result[key]);
   }
+  const content = mcpTextPayload(result.content);
+  if (content) records.push(content);
   return records;
+}
+
+function mcpTextPayload(value: unknown): Record<string, unknown> | undefined {
+  const texts = typeof value === 'string'
+    ? [value]
+    : Array.isArray(value)
+      ? value.flatMap(block => isRecord(block) && typeof block.text === 'string' ? [block.text] : [])
+      : [];
+  for (const text of texts) {
+    try {
+      const payload: unknown = JSON.parse(text);
+      if (isRecord(payload)) return payload;
+    } catch { /* plain text, not a payload */ }
+  }
+  return undefined;
 }
 
 function firstString(...values: unknown[]): string | undefined {
