@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.3",
+  "currentVersion": "0.58.4",
   "releases": [
+    {
+      "version": "0.58.4",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "b38aeace33f3d814801372b4d4b6e97eb409fcba3a6c1edc7054dcd05463c6b3",
+      "markdown": "### Improvements and fixes\n\n- **Skins:** In Appearance, ask Korus to create your own skin to open a Quick Chat with an editable prompt.\n- **Paired devices:** Desktop supports showing the names phones set for themselves.\n- **Companion diagnostics:** Logs show where Live Activity delivery failed.\n- **Agent messages:** Sent message entries show the recipient’s name when available and omit raw agent IDs."
+    },
     {
       "version": "0.58.3",
       "releasedAt": "2026-11-17",

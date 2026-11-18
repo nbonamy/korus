@@ -2,6 +2,15 @@
 
 All notable Korus changes are recorded here.
 
+## [0.58.4] - 2026-11-18
+
+### Improvements and fixes
+
+- **Skins:** In Appearance, ask Korus to create your own skin to open a Quick Chat with an editable prompt.
+- **Paired devices:** Desktop supports showing the names phones set for themselves.
+- **Companion diagnostics:** Logs show where Live Activity delivery failed.
+- **Agent messages:** Sent message entries show the recipient’s name when available and omit raw agent IDs.
+
 ## [0.58.3] - 2026-11-17
 
 ### Improvements and fixes
