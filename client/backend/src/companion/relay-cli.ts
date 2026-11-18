@@ -54,7 +54,7 @@ export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessE
   const senders: Partial<Record<'development' | 'production', ApnsSender>> = {};
   if (config.apns) for (const environment of ['development', 'production'] as const) {
     const key = config.apns[environment];
-    if (key) senders[environment] = new ApnsSender({ ...key, teamId: config.apns.teamId, topic: config.apns.topic, environment, privateKey: await readFile(key.privateKeyFile, 'utf8') });
+    if (key) senders[environment] = new ApnsSender({ ...key, teamId: config.apns.teamId, topic: config.apns.topic, environment, privateKey: await readFile(key.privateKeyFile, 'utf8'), log: logLine });
   }
   let firebase: FcmSender | undefined;
   if (config.fcm) {

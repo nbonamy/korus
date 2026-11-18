@@ -28,6 +28,18 @@ const registration = { token: 'ab'.repeat(32), environment: 'development' as con
 const notification = { id: 'a'.repeat(64), kind: 'question' as const, name: 'Builder', createdAt: 1000, target: { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null } };
 beforeEach(() => { transport.status = 200; transport.reason = ''; transport.connect.mockClear(); transport.destroyed.mockClear(); });
 describe('Apple push provider boundary', () => {
+  it('says why Apple refused a Live Activity, with Apple\'s reason and never the device token', async () => {
+    const log = vi.fn();
+    const sender = new ApnsSender({ ...config, log });
+    const base = { hostId: 'host', instanceId: 'a7dd30ba-8472-4b2e-8675-910016589490', timestamp: 1000, startedAt: 990_000, state: { running: 1, attention: 0, agents: [], more: 0 } };
+    transport.status = 403; transport.reason = 'InvalidProviderToken';
+    expect(await sender.sendLiveActivity({ ...registration, kind: 'start' }, { ...base, event: 'start' })).toBe('unavailable');
+    expect(log).toHaveBeenCalledWith('apns refused', { pushType: 'liveactivity', status: 403, reason: 'InvalidProviderToken' });
+    log.mockClear();
+    expect(await sender.sendLiveActivity({ ...registration, kind: 'start', environment: 'production' }, { ...base, event: 'start' })).toBe('unavailable');
+    expect(log).toHaveBeenCalledWith('apns refused', { pushType: 'liveactivity', status: 0, reason: 'environment-mismatch' });
+    expect(JSON.stringify(log.mock.calls)).not.toContain(registration.token);
+  });
   it('starts, updates and ends an aggregate Live Activity using its dedicated Apple topic and token', async () => {
     const sender = new ApnsSender(config);
     const state = { running: 4, attention: 2, agents: [{ id: 'a', name: 'Mobile', status: 'approval' as const, detail: 'Needs your approval' }], more: 3 };

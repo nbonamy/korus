@@ -192,9 +192,15 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
       const source = ingress.source(connection.remoteAddr);
       if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
       const result = await (protocol === companionPushProtocol ? push.send.bind(push) : push.liveActivity.bind(push))(connection.remotePeer.toString(), source, await readOne(stream));
+      if (result !== 'sent') options.log?.('push not delivered', { kind: protocol === companionPushProtocol ? 'notification' : 'live-activity', result });
       stream.send(encodeCompanionFrame({ result }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-    } catch { stream.abort(new Error('Push unavailable.')); }
+    } catch (error) {
+      // Our own refusals carry no identities; anything else is reported by kind only.
+      options.log?.('push refused', { kind: protocol === companionPushProtocol ? 'notification' : 'live-activity',
+        reason: error instanceof z.ZodError ? 'invalid-request' : error instanceof Error && ['Push denied.', 'Denied.'].includes(error.message) ? 'denied' : 'error' });
+      stream.abort(new Error('Push unavailable.'));
+    }
   }, { maxInboundStreams: 4, maxOutboundStreams: 1 });
   return relay;
 }

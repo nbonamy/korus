@@ -5,6 +5,7 @@ import type { RelayLink } from '../relay-link';
 import type { CompanionGateway } from '../gateway';
 
 vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
+import { warnMain } from '../../log';
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** A relay stream whose answer the test controls. */
@@ -27,6 +28,27 @@ function fixture() {
   return { client: new RelayClient(link, gateway), link, grants, opened, gates, peak: () => peak };
 }
 
+describe('Live Activity delivery', () => {
+  const registration = { token: 'ab'.repeat(32), environment: 'production' as const, kind: 'start' as const };
+  const activity = { hostId: 'host', instanceId: 'a7dd30ba-8472-4b2e-8675-910016589490', timestamp: 1000, startedAt: 990_000, event: 'start' as const, state: { running: 1, attention: 0, agents: [], more: 0 } };
+  it.each([
+    ['link-down', (f: ReturnType<typeof fixture>) => { (f.link as { connected: boolean }).connected = false; }],
+    ['not-paired', (f: ReturnType<typeof fixture>) => { f.grants.splice(0); }],
+    ['relay-refused', (f: ReturnType<typeof fixture>) => { (f.link.dialRelay as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Push unavailable.')); }],
+  ] as const)('names the stage that kept a Live Activity from the relay: %s', async (stage, arrange) => {
+    const f = fixture(); arrange(f); vi.mocked(warnMain).mockClear();
+    expect(await f.client.liveActivity('first', registration as never, activity as never)).toBe('unavailable');
+    expect(warnMain).toHaveBeenCalledWith('companion', 'live activity not delivered', { stage });
+    expect(JSON.stringify(vi.mocked(warnMain).mock.calls)).not.toContain(registration.token);
+  });
+  it('passes on the relay\'s answer when the relay could not deliver it', async () => {
+    const f = fixture(); vi.mocked(warnMain).mockClear();
+    const result = f.client.liveActivity('first', registration as never, activity as never);
+    await settle(); f.gates.shift()!({ result: 'unavailable' });
+    expect(await result).toBe('unavailable');
+    expect(warnMain).toHaveBeenCalledWith('companion', 'live activity not delivered', { stage: 'relay-answer', result: 'unavailable' });
+  });
+});
 describe('relay admission', () => {
   it('sends one admission at a time, each built from the grants as they are when it runs', async () => {
     const f = fixture();

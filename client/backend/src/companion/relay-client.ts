@@ -46,8 +46,15 @@ export class RelayClient {
     return this.deliver(peerId, companionPushProtocol, { peerId, registration, notification });
   }
 
-  liveActivity(peerId: string, registration: LiveActivityRegistration, activity: LiveActivityPush): Promise<PushResult> {
-    return this.deliver(peerId, companionLiveActivityProtocol, { peerId, registration, activity });
+  /** Every Live Activity that does not reach the relay's sender says at which stage, for a log a person can act on. */
+  async liveActivity(peerId: string, registration: LiveActivityRegistration, activity: LiveActivityPush): Promise<PushResult> {
+    const stage = !this.link.connected ? 'link-down' : !this.authorized(peerId) ? 'not-paired' : null;
+    if (stage) { warnMain('companion', 'live activity not delivered', { stage }); return 'unavailable'; }
+    let result: PushResult;
+    try { result = await this.deliver(peerId, companionLiveActivityProtocol, { peerId, registration, activity }); }
+    catch { warnMain('companion', 'live activity not delivered', { stage: 'relay-refused' }); return 'unavailable'; }
+    if (result !== 'sent') warnMain('companion', 'live activity not delivered', { stage: 'relay-answer', result });
+    return result;
   }
 
   private async deliver(peerId: string, protocol: string, payload: unknown): Promise<PushResult> {
