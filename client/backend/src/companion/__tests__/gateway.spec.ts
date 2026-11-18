@@ -49,6 +49,27 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  describe('naming a paired device from the device itself', () => {
+    it('replaces a generic pairing name with the one the phone gives, kept across restarts', async () => {
+      const f = fixture(); await f.pair();
+      await f.gateway.request('phone', 'device.rename', { name: '  Evan\u2019s   iPhone  ' });
+      expect(f.gateway.grants.map(grant => grant.name)).toStrictEqual(['Evan\u2019s iPhone']);
+      expect(f.saved().grants.map(grant => grant.name)).toStrictEqual(['Evan\u2019s iPhone']);
+      const restarted = new CompanionGateway('host', f.saved(), f.port, () => 2);
+      expect(restarted.grants.map(grant => grant.name)).toStrictEqual(['Evan\u2019s iPhone']);
+    });
+    it.each([['blank', '   '], ['overlong', 'x'.repeat(81)], ['multi-line', 'Evan\niPhone'], ['control characters', 'Evan\u0007']])('refuses a %s name and keeps the old one', async (_case, name) => {
+      const f = fixture(); await f.pair();
+      const before = f.gateway.grants.map(grant => grant.name);
+      await expect(f.gateway.request('phone', 'device.rename', { name })).rejects.toThrow();
+      expect(f.gateway.grants.map(grant => grant.name)).toStrictEqual(before);
+    });
+    it('lets only a paired device name itself', async () => {
+      const f = fixture(); await f.pair();
+      await expect(f.gateway.request('stranger', 'device.rename', { name: 'Not mine' })).rejects.toThrow('not authorized');
+      expect(f.gateway.grants.map(grant => grant.name)).not.toContain('Not mine');
+    });
+  });
   it.each([false, true])('keeps phone subscriptions readable while a published snapshot is still saving (safety findings: %s)', async (withFindings) => {
     const f = fixture(); await f.pair();
     const app = createTestSnapshot();

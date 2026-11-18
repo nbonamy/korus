@@ -1,3 +1,4 @@
+import { companionDeviceName } from '@workspace/core/companion-pairing';
 import type { AgentRequest } from '@workspace/core/agent-request';
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
@@ -33,6 +34,17 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!current?.registerPush) return;
     try { await current.registerPush(registration); if (current === session) pushRegistrationFailed.value = false; }
     catch { if (current === session) pushRegistrationFailed.value = true; }
+  }
+  /** What this phone calls itself; every laptop it connects to is told, so the desktop can tell its devices apart. */
+  let deviceName: string | null = null;
+  async function shareDeviceName(current = session) {
+    if (!deviceName || !current?.renameDevice) return;
+    // A laptop that predates naming refuses; the phone keeps its pairing name there.
+    await current.renameDevice(deviceName).catch(() => {});
+  }
+  async function setDeviceName(value: string) {
+    deviceName = companionDeviceName(value);
+    await shareDeviceName();
   }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
@@ -424,6 +436,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) forwardNotification(notification); }) ?? (() => {});
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
+      void shareDeviceName(session);
       status.value = 'connected'; errorDetail.value = '';
       // Receipt reads must not hold back the transcript; they settle while it loads.
       const receiptsSettled = receipts.reconcile();
@@ -804,7 +817,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return {
     // The link to the laptop.
-    status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
+    status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed, setDeviceName,
     // What the laptop hosts, and which of it is selected.
     teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectProvider, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.

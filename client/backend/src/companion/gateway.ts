@@ -28,7 +28,7 @@ import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
 import type { CompanionUsage, CompanionNewChat, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch, CompanionRepositoryProvider, CompanionRepository } from '@workspace/core/companion-protocol';
 import type { CompanionUpload } from './uploads';
-import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
+import { companionDeviceName, companionDeviceNameMax, generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
 import { previewFile } from './file-preview';
 import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
@@ -439,6 +439,16 @@ export class CompanionGateway {
       });
     }));
   }
+  /** The grant object itself is kept: open update streams are authorized by its identity. */
+  private rename(peerId: string, name: string) {
+    return this.mutate(async () => {
+      const grant = this.state.grants.find(candidate => candidate.peerId === peerId);
+      if (!grant) throw new Error('Device is not authorized.');
+      if (grant.name === name) return;
+      await this.port.save({ ...this.state, grants: this.state.grants.map(candidate => candidate === grant ? { ...grant, name } : candidate) });
+      grant.name = name;
+    });
+  }
   async revoke(peerId: string) {
     return this.mutate(async () => {
       const push = { ...this.state.push }; delete push[peerId];
@@ -658,6 +668,14 @@ export class CompanionGateway {
       return this.creations.status(peer.peerId, creationId);
     },
     'device.forget': async (peer, args) => { z.object({}).strict().parse(args); await this.revoke(peer.peerId); return {}; },
+    /** A phone names itself, so the desktop can tell its devices apart; released phones never call this. */
+    'device.rename': async (peer, args) => {
+      const { name: offered } = z.object({ name: z.string().max(companionDeviceNameMax * 4) }).strict().parse(args);
+      const name = companionDeviceName(offered);
+      if (!name) throw new Error('Invalid device name.');
+      await this.rename(peer.peerId, name);
+      return {};
+    },
   };
   private async mission(peer: Peer, missionId: string, revision: number) {
     if (!this.port.executeMission) throw new Error('Mission actions are unavailable.');

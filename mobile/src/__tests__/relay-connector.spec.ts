@@ -147,6 +147,15 @@ describe('native relay host adapter', () => {
     } finally { session.close(); await connector.dispose!(); }
   });
 
+  it('names this phone on the paired laptop with one device request', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    transport.response = () => ({});
+    const session = await connector.connect(host.hostId);
+    try {
+      await session.renameDevice!('Evan\u2019s iPhone');
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'device.rename', args: { name: 'Evan\u2019s iPhone' } });
+    } finally { session.close(); await connector.dispose!(); }
+  });
   it('reads the quotas of released laptops that only answer for the engines they always listed', async () => {
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
     const providers = [{ provider: 'codex', limits: null, failed: false }];

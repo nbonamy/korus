@@ -144,6 +144,7 @@ export type EngineCommand =
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
+  | { type: 'deviceName'; name: string }
   | { type: 'liveActivityRegistration'; laptopId: string; requestId: string; registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
@@ -508,6 +509,7 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'pushRegistration': return state.registerPush(command.registration);
+      case 'deviceName': return state.setDeviceName(command.name);
       case 'queuedPrompt': return state.updateQueuedPrompt(command.target, command.promptId, command.action);
       case 'openNotification': {
         const target = command.target;

@@ -31,6 +31,10 @@ import androidx.compose.ui.unit.sp
             AppRow("Connections", icon = Icons.Outlined.Laptop, onClick = { model.sheet = "connections" }, trailing = { Chevron() })
             AppDivider()
             AppRow("Usage and limits", icon = Icons.Outlined.Speed, onClick = { model.sheet = "usage" }, trailing = { Chevron() })
+            AppDivider()
+            var naming by remember { mutableStateOf(false) }
+            AppRow("Device name", icon = Icons.Outlined.Smartphone, onClick = { naming = true }, trailing = { SettingValue(model.deviceName.ifEmpty { android.os.Build.MODEL }) })
+            if (naming) DeviceNameDialog(model.deviceName, onCancel = { naming = false }) { model.renameDevice(it); naming = false }
         }
         AppSection("Preferences", if (model.appLock.canProtect) null else appLockFooter(model.appLock)) {
             var menu by remember { mutableStateOf(false) }
@@ -104,6 +108,17 @@ internal fun notificationValue(status: String) = when (status) {
 
 /** The name to save for a laptop, or null when the person has typed nothing usable. */
 internal fun cleanLaptopName(value: String): String? = value.trim().takeIf { it.isNotEmpty() && it.length <= 60 }
+
+/** The name this phone goes by on its laptops, or null when the person has typed nothing usable. */
+internal fun cleanDeviceName(value: String): String? = value.trim().replace(Regex("\\s+"), " ").takeIf { it.isNotEmpty() && it.length <= 80 && it.none(Char::isISOControl) }
+
+@Composable private fun DeviceNameDialog(current: String, onCancel: () -> Unit, onSave: (String) -> Unit) {
+    var name by remember { mutableStateOf(current) }
+    AlertDialog(onDismissRequest = onCancel, title = { Text("Device name") },
+        text = { OutlinedTextField(name, { name = it }, singleLine = true, placeholder = { Text(android.os.Build.MODEL) }) },
+        confirmButton = { TextButton(enabled = cleanDeviceName(name) != null, onClick = { cleanDeviceName(name)?.let(onSave) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } })
+}
 
 @Composable private fun RenameLaptopDialog(laptop: org.json.JSONObject, onCancel: () -> Unit, onSave: (String) -> Unit) {
     var name by remember { mutableStateOf(laptop.string("name")) }

@@ -50,6 +50,24 @@ describe('companion state', () => {
       expect(pair).not.toHaveBeenCalled();
     } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
   });
+  it('tells each laptop the name this phone goes by, on connecting and when it changes, and ignores laptops that cannot take it', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const renameDevice = vi.fn(async (_name: string) => { throw new Error('Unknown method'); });
+    connector.connect = async id => ({ ...await original(id), renameDevice });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop');
+      expect(renameDevice).not.toHaveBeenCalled();
+      await state.setDeviceName('Evan\u2019s iPhone');
+      expect(renameDevice).toHaveBeenLastCalledWith('Evan\u2019s iPhone');
+      expect(state.status.value).toBe('connected');
+      await state.connect('demo-laptop', true);
+      await vi.waitFor(() => expect(renameDevice).toHaveBeenCalledTimes(2));
+      expect(state.status.value).toBe('connected');
+      await state.setDeviceName('   ');
+      expect(renameDevice).toHaveBeenCalledTimes(2);
+    } finally { state.dispose(); }
+  });
   it('still asks to pair for a laptop this phone has no pairing with', async () => {
     const connector = createDemoConnector();
     const state = createCompanionState(connector);
