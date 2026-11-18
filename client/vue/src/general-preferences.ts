@@ -9,7 +9,7 @@ export type GeneralPreferences = {
   migrate: () => Promise<void>;
 };
 export const generalPreferencesKey: InjectionKey<GeneralPreferences> = Symbol('generalPreferences');
-// TODO(remove-after: 2026-11-30): Remove all three localStorage migrations and fallback reads. https://github.com/nbonamy/korus/issues/74
+// TODO(remove-after: 2026-11-30): Remove all three localStorage migrations and fallback reads. https://github.com/Korus-Dev/korus/issues/74
 const legacyKeys = {
   githubStarPrompt: 'app:githubStarPrompt:v1',
   preferredProviders: 'app:preferredEngines',

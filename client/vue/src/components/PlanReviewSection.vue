@@ -3,7 +3,7 @@
     <header class="plan-review-section__heading">
       <div v-if="section.heading" class="agent-ui-markdown" v-html="section.heading" />
       <span v-else>{{ section.title }}</span>
-      <button
+      <button class="agent-ui-interactive"
         ref="commentButton"
         type="button"
         :aria-label="`${t('planFeedback.comment')}: ${section.title}`"
@@ -30,7 +30,7 @@
             <template #error><pre><code>{{ block.diagram.source }}</code></pre></template>
           </VisualizationView>
           <button
-            class="app-button app-button--tertiary"
+            class="app-button app-button--tertiary agent-ui-interactive"
             type="button"
             :aria-label="t('planFeedback.commentDiagram', { number: block.diagram.number, title: section.title })"
             :aria-expanded="target?.id === block.diagram.id"
@@ -209,18 +209,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', dismissOutside
   padding: 3px;
   border: 0;
   border-radius: 5px;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.plan-review-section__heading button:focus-visible {
-  outline: none;
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-.plan-review-section__heading button:hover {
-  background: var(--color-surface);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 .plan-review-section__heading svg {
   width: 18px;
@@ -241,11 +230,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', dismissOutside
   top: var(--space-8);
   right: var(--space-8);
   padding: var(--space-4);
-  background: var(--color-overlay);
-}
-.plan-diagram > button:focus-visible {
-  outline: none;
-  background: var(--color-surface);
+  --agent-ui-state-rest: var(--color-overlay);
 }
 .plan-diagram > button svg {
   width: 18px;

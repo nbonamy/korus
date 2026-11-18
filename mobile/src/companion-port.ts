@@ -52,6 +52,8 @@ type CompanionOperations = {
   createProject?(input: CompanionProjectInput, signal?: AbortSignal): Promise<string>;
   getUsage?(): Promise<CompanionUsage[]>;
   registerPush?(registration: CompanionPushRegistration | null): Promise<void>;
+  /** The name this phone goes by on the laptop's list of paired devices; laptops that predate it refuse. */
+  renameDevice?(name: string): Promise<void>;
   onNotification?(listener: (notification: CompanionNotification) => void): () => void;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(reply: CompanionRequestReply): Promise<void>;

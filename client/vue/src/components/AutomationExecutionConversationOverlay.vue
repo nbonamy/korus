@@ -17,7 +17,7 @@
           </h4>
           <span>{{ agentName }}</span>
         </div>
-        <button
+        <button class="agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.automationExecutionConversationOverlay.closeConversationPreview')"
           @click="emit('close')"
@@ -156,15 +156,7 @@ const emit = defineEmits<{
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.automation-execution-conversation-overlay__header button:hover,
-.automation-execution-conversation-overlay__header button:focus-visible {
-  color: var(--color-text);
-  background: var(--color-surface);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .automation-execution-conversation-overlay__header svg {

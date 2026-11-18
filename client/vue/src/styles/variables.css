@@ -73,11 +73,25 @@
   /* Semantic aliases */
   --color-text: var(--color-on-surface);
   --color-text-muted: var(--color-on-surface-variant);
+  --agent-ui-state-hover: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --agent-ui-state-pressed: color-mix(in srgb, var(--color-text) 16%, transparent);
+  --agent-ui-state-selected: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --app-tab-selection-background: light-dark(var(--color-surface-low), var(--agent-ui-state-selected));
+  --agent-ui-state-hover-foreground: var(--color-text);
+  --agent-ui-state-selected-foreground: var(--color-text);
+  --agent-ui-state-focus-ring-color: var(--color-primary);
+  --agent-ui-state-focus-ring-width: 2px;
+  --agent-ui-state-focus-ring-offset: 2px;
+  --agent-ui-state-disabled-opacity: 0.5;
+  --agent-ui-state-primary-solid-foreground: var(--color-on-primary);
+  --agent-ui-state-destructive-solid-foreground: var(--color-on-error);
   --color-background: var(--color-surface);
   --color-window-background: var(--color-background);
   --color-border: var(--color-outline-variant);
   --color-border-strong: var(--color-outline);
   --color-shell-main: var(--color-surface-lowest);
+  /* A tint of the text colour, so a control reads against any surface it sits on, a card or the page, in any theme. */
+  --color-control-fill: color-mix(in srgb, var(--color-text) 7%, transparent);
   --color-menu-background: var(--color-surface-lowest);
   --color-card-background: color-mix(in srgb, var(--color-surface) 25%, var(--color-surface-lowest));
   --color-shell-window: var(--color-shell-main);

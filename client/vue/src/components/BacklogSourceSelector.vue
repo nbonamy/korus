@@ -2,12 +2,12 @@
   <div v-if="(showProvider && providers.length > 1) || showSource" class="backlog-source-selector" :class="{ 'backlog-source-selector--small': size === 'small', 'backlog-source-selector--full-width': fullWidth, 'backlog-source-selector--chip': chip }">
     <el-select v-if="showProvider && providers.length > 1" class="backlog-source-selector__provider" :size="size" :model-value="provider" :aria-label="$t('backlogSource.provider')" @update:model-value="emit('select-provider', $event)">
       <template #prefix><component :is="workProviderIcon(provider)" aria-hidden="true" /></template>
-      <el-option v-for="option in providers" :key="option" :label="workProviderDefinition(option).label" :value="option">
+      <el-option class="agent-ui-interactive" v-for="option in providers" :key="option" :label="workProviderDefinition(option).label" :value="option">
         <span class="backlog-source-selector__option"><component :is="workProviderIcon(option)" aria-hidden="true" />{{ workProviderDefinition(option).label }}</span>
       </el-option>
     </el-select>
     <el-select v-if="showSource" class="backlog-source-selector__source" :size="size" :model-value="sourceId" filterable clearable :aria-label="$t(workProviderDefinition(provider).sourceLabel.key)" :placeholder="$t(workProviderDefinition(provider).sourceLabel.key)" @update:model-value="emit('select-source', $event || null)">
-      <el-option v-for="source in sources" :key="source.id" :label="source.fullName" :value="source.id" />
+      <el-option class="agent-ui-interactive" v-for="source in sources" :key="source.id" :label="source.fullName" :value="source.id" />
     </el-select>
   </div>
 </template>

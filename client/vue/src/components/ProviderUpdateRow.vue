@@ -7,11 +7,11 @@
       </span>
     </template>
     <template #control>
-      <el-button v-if="state?.status === 'waiting'" size="small" :disabled="loading" @click="cancel">{{ $t('common.cancel') }}</el-button>
-      <el-button v-else-if="state?.status === 'current'" size="small" disabled>{{ $t('providerUpdate.current') }}</el-button>
-      <el-button v-else-if="state?.status === 'available' && state.canUpgrade" size="small" :disabled="loading" @click="upgrade">{{ $t(state.busy ? 'providerUpdate.upgradeWhenIdle' : 'providerUpdate.upgrade') }}</el-button>
+      <el-button class="agent-ui-interactive" v-if="state?.status === 'waiting'" size="small" :disabled="loading" @click="cancel">{{ $t('common.cancel') }}</el-button>
+      <el-button class="agent-ui-interactive" v-else-if="state?.status === 'current'" size="small" disabled>{{ $t('providerUpdate.current') }}</el-button>
+      <el-button class="agent-ui-interactive" v-else-if="state?.status === 'available' && state.canUpgrade" size="small" :disabled="loading" @click="upgrade">{{ $t(state.busy ? 'providerUpdate.upgradeWhenIdle' : 'providerUpdate.upgrade') }}</el-button>
       <a v-else-if="state?.status === 'manual' || (state?.status === 'available' && !state.canUpgrade)" :href="instructionsUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(instructionsUrl)">{{ $t('providerUpdate.instructions') }}</a>
-      <button class="provider-update__refresh" type="button" :disabled="loading || pending" :aria-label="$t('providerUpdate.check')" :title="$t('providerUpdate.check')" @click="refresh(true)">
+      <button class="provider-update__refresh agent-ui-interactive" type="button" :disabled="loading || pending" :aria-label="$t('providerUpdate.check')" :title="$t('providerUpdate.check')" @click="refresh(true)">
         <ElIcon :size="12" :class="{ 'is-loading': loading || state?.status === 'upgrading' }"><RefreshIcon /></ElIcon>
       </button>
     </template>
@@ -20,7 +20,8 @@
 
 <script setup lang="ts">
 import { computed, inject, onScopeDispose, ref, watch } from 'vue';
-import { ElIcon, ElMessageBox } from 'element-plus';
+import { ElIcon } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { useI18n } from 'vue-i18n';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import type { ProviderUpdateStatus } from '@workspace/core/contracts/provider-updates';
@@ -110,7 +111,7 @@ async function upgrade() {
   const expected = revision;
   const token = state.value?.token;
   try {
-    await ElMessageBox.confirm(t('providerUpdate.confirmation'), t('providerUpdate.upgrade'), { confirmButtonText: t('providerUpdate.upgrade'), cancelButtonText: t('common.cancel') });
+    await appMessageBox.confirm(t('providerUpdate.confirmation'), t('providerUpdate.upgrade'), { confirmButtonText: t('providerUpdate.upgrade'), cancelButtonText: t('common.cancel') });
   } catch { return; }
   if (expected !== revision) return;
   await change({ action: 'upgrade', confirmed: true, token });
@@ -165,11 +166,9 @@ onScopeDispose(() => { ++revision; clearTimeout(timer); clearTimeout(previewTime
   justify-content: center;
   padding: var(--space-1);
   border: 0;
-  background: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  --agent-ui-state-rest: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
-.provider-update__refresh:disabled { cursor: default; opacity: 0.5; }
 @media (prefers-reduced-motion: reduce) {
   .provider-update__refresh .is-loading { animation: none; }
 }

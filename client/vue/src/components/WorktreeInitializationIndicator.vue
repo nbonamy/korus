@@ -2,7 +2,7 @@
     <div v-if="visibleWorktreeInitialization" class="conversation-pane__initialization" role="status" aria-live="polite">
       <span v-if="visibleWorktreeInitialization.state === 'running'" class="app-spinner app-spinner--sm" aria-hidden="true" />
       <span v-else-if="visibleWorktreeInitialization.state === 'complete'" class="conversation-pane__initialization-check" aria-hidden="true"><IconCheck /></span>
-      <button v-else class="app-icon-button" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissInitialization">
+      <button v-else class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('common.close')" :title="t('common.close')" @click="dismissInitialization">
         <X aria-hidden="true" />
       </button>
       <div>

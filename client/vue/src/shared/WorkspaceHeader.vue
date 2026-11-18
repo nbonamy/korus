@@ -20,10 +20,13 @@ defineProps<{ sidebarCollapsed?: boolean }>();
   gap: var(--space-8);
   padding: 0 var(--space-4) 0 var(--space-8);
   border-bottom: 1px solid var(--color-shell-appbar-divider);
-  background: var(--color-shell-main);
   box-shadow: var(--shadow-content-edge);
   user-select: none;
   -webkit-app-region: drag;
+}
+
+@layer app-surfaces {
+  .workspace-header { background: var(--color-shell-main); }
 }
 
 .workspace-header--sidebar-collapsed {

@@ -29,7 +29,7 @@
           </div>
           <div class="hero-controls">
             <div id="usage-measure">
-              <UsageToggle
+              <AppSegmented
                 :model-value="isTokenMeasure ? 'total' : measure"
                 :options="measureOptions"
                 :label="$t('analytics.measure')"
@@ -37,7 +37,8 @@
               />
             </div>
             <div v-if="isTokenMeasure" id="usage-token-measure" class="token-controls">
-              <UsageToggle
+              <AppSegmented
+                size="small"
                 :model-value="measure"
                 :options="tokenOptions"
                 :label="$t('analytics.tokenMeasure')"
@@ -55,7 +56,7 @@ import { computed } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";
 import UsageCard from "./UsageCard.vue";
-import UsageToggle from "./UsageToggle.vue";
+import AppSegmented from "../shared/AppSegmented.vue";
 import UsageTrend from "./UsageTrend.vue";
 import {
   chartFormat,
@@ -203,14 +204,6 @@ const delta = computed(() => {
   align-items: flex-end;
   justify-content: flex-end;
   gap: var(--space-4);
-}
-.token-controls :deep(.el-segmented) {
-  --el-segmented-padding: var(--space-1);
-  min-height: 24px;
-  font-size: var(--font-size-11);
-}
-.token-controls :deep(.el-segmented__item) {
-  padding: 0 var(--space-6);
 }
 @media (max-width: 720px) {
   .hero-header {

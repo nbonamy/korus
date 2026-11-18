@@ -7,26 +7,26 @@ afterEach(() => {
 });
 
 describe('StartWorkMenu', () => {
-  it('opens invitation joining from the project menu', async () => {
+  it('opens invitation joining from the new-agent menu', async () => {
     const wrapper = mount(StartWorkMenu, { attachTo: document.body });
-    await wrapper.get('[aria-label="Add project"]').trigger('click');
+    await wrapper.get('[aria-label="New agent"]').trigger('click');
     const invite = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Join with invite'));
     expect(invite).toBeDefined();
     expect(invite!.querySelector('svg.tabler-icon-share')).not.toBeNull();
     invite!.click(); await wrapper.vm.$nextTick();
     expect(wrapper.emitted('select')).toStrictEqual([['invite']]);
   });
-  it('offers project acquisition from a prominent new-session trigger', async () => {
+  it('offers agent sources from a prominent new-agent trigger', async () => {
     const wrapper = mount(StartWorkMenu, {
       attachTo: document.body,
     });
 
     expect(wrapper.getComponent({ name: 'ElPopover' }).props('width')).toBe(240);
-    expect(wrapper.get('[aria-label="Add project"]').text()).toBe('Add project');
-    expect(wrapper.get('[aria-label="Add project"]').find('[data-icon="folders"]').exists()).toBe(true);
-    await wrapper.get('[aria-label="Add project"]').trigger('click');
+    expect(wrapper.get('[aria-label="New agent"]').text()).toBe('New agent');
+    expect(wrapper.get('[aria-label="New agent"]').find('.tabler-icon-copy-plus').exists()).toBe(true);
+    await wrapper.get('[aria-label="New agent"]').trigger('click');
 
-    expect(document.body.textContent).toContain('Add project from');
+    expect(document.body.textContent).toContain('New agent from…');
     expect(document.body.textContent).toContain('New project…');
     expect(document.body.textContent).toContain('Existing folder or repository…');
     expect(document.body.textContent).toContain('GitHub repository…');

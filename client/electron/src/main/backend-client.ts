@@ -6,6 +6,7 @@ import { warnMain } from './log';
 import { runtimeDaemonBackendMode, runtimeDaemonCommand, runtimeDaemonSocketPath, runtimeDaemonWatchFile } from './runtime-config';
 import type { SpokenAnnouncementQueue } from './spoken-announcements';
 import type { SpokenAnnouncementVoice } from '@workspace/core/contracts';
+import type { SkinControlInput, SkinControlResult } from '@workspace/core/custom-themes';
 
 export type AppBackendClientPort = {
   close(): Promise<void>;
@@ -17,6 +18,7 @@ export type AppBackendClientPort = {
 };
 
 export function createRuntimeAppBackendClient(options: {
+  setSkin?: (input: SkinControlInput) => Promise<SkinControlResult>;
   debugRestartBackend?: (input: { agentId: string; reason: string }) => Promise<{ scheduled: boolean }>;
   mobileSimulator?: (agentId: string, input: import('@workspace/core/mobile-simulator').MobileRequest) => Promise<import('@workspace/core/mobile-simulator').MobileResult>;
   browserOpen?: (agentId: string, browserId: string, url: string) => Promise<unknown>;
@@ -26,6 +28,7 @@ export function createRuntimeAppBackendClient(options: {
 } = {}): AppBackendClientPort | null {
   const mode = runtimeDaemonBackendMode();
   const requestHandlers = createRuntimeClientRequestHandlers({
+    setSkin: options.setSkin,
     debugRestartBackend: options.debugRestartBackend,
     mobileSimulator: options.mobileSimulator,
     browserExecute: options.browserExecute,

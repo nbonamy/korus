@@ -24,7 +24,7 @@
         t('planFeedback.deliveryPending')
       }}</span>
       <span v-if="error" role="alert">{{ error }}</span>
-      <button v-if="save.error.value" class="app-button" type="button" @click="retrySave">
+      <button v-if="save.error.value" class="app-button agent-ui-interactive" type="button" @click="retrySave">
         {{ t('planFeedback.retry') }}
       </button>
     </PlanReviewFooter>
@@ -161,8 +161,7 @@ async function decide(resolution: PlanReviewResolution) {
   box-sizing: border-box;
 }
 .plan-review-document :deep(:focus-visible) {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 3px;
+  outline: none;
 }
 .plan-review-document :deep(textarea:focus-visible) {
   outline-offset: -2px;

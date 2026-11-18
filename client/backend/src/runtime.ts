@@ -16,6 +16,8 @@ import { PromptRejectedError } from './agents/prompt-rejected';
 import { quickChatTeamInstructions } from './agents/quick-chat-context';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
 import { createDebugToolModuleProvider } from './mcp/debug-tools';
+import { createSkinToolModuleProvider } from './mcp/skin-tools';
+import type { SkinControlResult } from '@workspace/core/custom-themes';
 import { relayFromEnvironment, CompanionManager } from './companion/manager';
 import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
@@ -254,6 +256,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     listRemoteWorktrees: (connectionId, repoPath) => server.listRemoteWorktrees(connectionId, repoPath),
     createRemoteWorktree: input => server.createRemoteWorktree(input),
     toolModuleProviders: [
+      createSkinToolModuleProvider((agentId, input) => options.requestClient<SkinControlResult>(backendMethods.clientSkinSet, { agentId, ...input })),
       createDebugToolModuleProvider(options.features?.debugTools === true, (agentId, reason) => options.requestClient(backendMethods.clientDebugBackendRestart, { agentId, reason })),
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
@@ -270,6 +273,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const mcpServerUrl = await mcpService.start();
   const driverOptions: ProviderDriverRegistryOptions = {
     appMcpServerUrl: mcpServerUrl,
+    reviewMcpServerUrl: agent => server?.independentReviewMcpServerUrl(agent),
     hostedMcpServerUrls: () => mcpService.hostedMcpServerUrls(),
     generalSettings: snapshot.general,
     pluginSettings,

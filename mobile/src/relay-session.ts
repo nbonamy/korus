@@ -133,6 +133,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
     // Laptops that predate the request for every engine answer for the ones they always listed.
     async getUsage() { try { return await call<CompanionUsage[]>('usage.get', { providers: 'all' }); } catch { return call<CompanionUsage[]>('usage.get', {}); } },
+    async renameDevice(name) { await call('device.rename', { name }); },
     async registerPush(registration) {
       if (!registration) { await call('notifications.register', null); return; }
       const signer = await network.signer();

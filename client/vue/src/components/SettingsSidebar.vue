@@ -1,6 +1,8 @@
 <template>
   <aside
     class="settings-sidebar"
+    data-slot="sidebar-inner"
+    data-workspace-area="settings-nav"
     :aria-label="$t('surface.settingsSidebar.settingsCategories')"
   >
     <el-menu
@@ -8,7 +10,7 @@
       @select="selectTab"
     >
       <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
-        <el-menu-item v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
+        <el-menu-item class="agent-ui-interactive" data-variant="primary" :data-selected="activeTab === destination.id ? '' : undefined" v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
           <ProviderIcon v-if="destination.provider" :provider="destination.provider" monochrome />
           <component :is="destination.icon" v-else aria-hidden="true" />
           <span>{{ $t(destination.labelKey) }}</span>
@@ -48,8 +50,8 @@ function selectTab(tab: string): void {
 
 <style scoped>
 .settings-sidebar {
+  --agent-ui-state-primary-selected: color-mix(in srgb, var(--color-primary) 8%, transparent);
   border-right: 1px solid var(--color-border);
-  background: var(--color-shell-sidebar);
   padding-top: var(--space-24);
 }
 
@@ -60,6 +62,10 @@ function selectTab(tab: string): void {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
+}
+
+@layer app-surfaces {
+  .settings-sidebar { background: var(--color-shell-sidebar); }
 }
 
 .settings-sidebar :deep(.el-menu-item-group__title) {
@@ -85,7 +91,11 @@ function selectTab(tab: string): void {
   gap: var(--space-4);
   padding: var(--space-4) var(--space-4) !important;
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
+  background: revert-layer;
+  color: revert-layer;
+  outline: revert-layer;
+  cursor: revert-layer;
   font-size: var(--font-size-15);
 }
 
@@ -97,21 +107,12 @@ function selectTab(tab: string): void {
   stroke-width: 1.5px;
 }
 
-.settings-sidebar :deep(.el-menu-item:hover) {
-  background: var(--color-surface-high);
-}
-
 .settings-sidebar :deep(.el-menu-item .provider-icon) {
   transform: scale(1.15);
 }
 
 .settings-sidebar :deep(.el-menu-item.is-active) {
-  color: var(--color-on-primary-container);
   font-weight: var(--font-weight-semibold);
-  background: var(--color-primary-container);
 }
 
-.settings-sidebar :deep(.el-menu-item.is-active svg) {
-  color: var(--color-primary);
-}
 </style>

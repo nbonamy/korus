@@ -19,13 +19,13 @@
     <template #footer>
       <div class="app-dialog__footer">
         <button
-          class="app-button app-button--tertiary"
+          class="app-button app-button--tertiary agent-ui-interactive"
           type="button"
           :disabled="pending"
           @click="$emit('decline')"
         > {{ $t('surface.codexResourceSharingMigrationDialog.keepIsolated') }} </button>
-        <button
-          class="app-button app-button--primary"
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary agent-ui-interactive"
           type="button"
           :aria-busy="pending"
           :disabled="blocked || pending"

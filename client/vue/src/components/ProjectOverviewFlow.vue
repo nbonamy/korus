@@ -81,8 +81,8 @@
           <span class="project-flow__note">{{ note(station) }}</span>
           <ul v-if="openStation === station.kind" class="project-flow__stuck-list" :aria-label="stuckSummary(station)">
             <li v-for="item in station.stuck" :key="item.branch">
-              <a v-if="item.target?.kind === 'url'" :href="item.target.url" target="_blank" rel="noopener noreferrer">{{ item.branch }}</a>
-              <button v-else-if="item.target?.kind === 'agent'" type="button" @click="emit('select-agent', item.target.agentId)">{{ item.branch }}</button>
+              <a v-if="item.target?.kind === 'url'" class="agent-ui-interactive" data-appearance="text" :href="item.target.url" target="_blank" rel="noopener noreferrer">{{ item.branch }}</a>
+              <button v-else-if="item.target?.kind === 'agent'" class="agent-ui-interactive" data-appearance="text" type="button" @click="emit('select-agent', item.target.agentId)">{{ item.branch }}</button>
               <span v-else>{{ item.branch }}</span>
               <span class="project-flow__stuck-reason">{{ reasonText(item) }}</span>
             </li>
@@ -389,13 +389,10 @@ function note(station: ProjectFlowStation): string {
   overflow: hidden;
   padding: 0;
   border: 0;
-  color: var(--color-primary);
-  background: none;
   font: inherit;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
 }
 
 .project-flow__stuck-reason {

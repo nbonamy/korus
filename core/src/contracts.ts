@@ -425,6 +425,7 @@ export type AppThemeSettings = {
   uiFontSize: number;
   chatFontSize: number;
   codeFontSize: number;
+  skin?: import('./custom-themes').CustomAppTheme | null;
 };
 
 export type AppPluginSettings = {
@@ -1011,6 +1012,7 @@ export type AppApi = {
   restoreClosedAgent?(record: ClosedAgentRecord): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
   markAgentRead(agentId: string, revision: number): Promise<void>;
+  markAgentUnread(agentId: string): Promise<number>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: HarnessProvider): Promise<{ text: string; path: string }>;
   manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
@@ -1046,6 +1048,9 @@ export type AppApi = {
   openAccessibilitySettings(): Promise<SystemPermissionsStatus>;
   openScreenRecordingSettings(): Promise<SystemPermissionsStatus>;
   launchChatGptApp(input?: LaunchChatGptAppInput): Promise<LaunchChatGptAppResult>;
+  /** Desktop only: valid skin sources saved in the app home. */
+  listLocalSkins?(): Promise<import('./custom-themes').LocalSkin[]>;
+  deleteLocalSkin?(name: string): Promise<void>;
   quit(): Promise<void>;
   restartApp(): Promise<void>;
   reloadRenderer(): Promise<void>;
@@ -1058,6 +1063,7 @@ export type AppApi = {
   setWindowSetup?(setup: import('./windows').WindowSetup): Promise<void>;
   /** Desktop windows only: tells main which agent this window shows. */
   setWindowSelection?(agentId: string | null, visibleAgentIds?: string[]): Promise<void>;
+  setWindowNavigation?(navigation: import('./windows').WindowNavigation): Promise<void>;
   claimNativeResource?(resource: import('./windows').NativeResource, agentId: string, takeOver?: boolean): Promise<boolean>;
   releaseNativeResource?(resource: import('./windows').NativeResource, agentId: string): Promise<void>;
   syncComposerDraft?(agentId: string, draft: import('./windows').ComposerDraft | null): Promise<void>;

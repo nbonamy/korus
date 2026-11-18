@@ -1,7 +1,7 @@
 <template>
   <div class="run-profiles-control">
     <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('runProfiles.title')" :items="menuItems" :width="300" max-height="60vh" @select="selectAction">
-      <template #trigger="{ attrs }"><button v-bind="attrs" class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')"><PlayerPlayIcon aria-hidden="true" /></button></template>
+      <template #trigger="{ attrs }"><button v-bind="attrs" class="run-profiles-control__trigger agent-ui-interactive" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')"><PlayerPlayIcon aria-hidden="true" /></button></template>
     </AppMenuButton>
   </div>
   <Teleport to="body">
@@ -18,10 +18,10 @@
       </template>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" @click="closeRunner">{{ $t('common.close') }}</button>
-      <button v-if="selection.profile.previewUrl" class="app-button app-button--secondary" :disabled="!previewAvailable" :title="previewAvailable ? selection.profile.previewUrl : $t('runProfiles.previewUnavailable')" @click="preview(selection.profile.previewUrl)">{{ $t('runProfiles.preview') }}</button>
-      <button v-if="latestRun?.state === 'running'" class="app-button app-button--primary" :disabled="busy" @click="stop(latestRun.id)">{{ $t('runProfiles.stop') }}</button>
-      <button v-else class="app-button app-button--primary" :disabled="busy || !selection.cwd || Boolean(targetError)" @click="start"><PlayerPlayIcon :size="16" aria-hidden="true" />{{ $t('runProfiles.runCommand') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" @click="closeRunner">{{ $t('common.close') }}</button>
+      <button data-variant="primary" v-if="selection.profile.previewUrl" class="app-button app-button--secondary agent-ui-interactive" :disabled="!previewAvailable" :title="previewAvailable ? selection.profile.previewUrl : $t('runProfiles.previewUnavailable')" @click="preview(selection.profile.previewUrl)">{{ $t('runProfiles.preview') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="latestRun?.state === 'running'" class="app-button app-button--primary agent-ui-interactive" :disabled="busy" @click="stop(latestRun.id)">{{ $t('runProfiles.stop') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-else class="app-button app-button--primary agent-ui-interactive" :disabled="busy || !selection.cwd || Boolean(targetError)" @click="start"><PlayerPlayIcon :size="16" aria-hidden="true" />{{ $t('runProfiles.runCommand') }}</button>
     </template>
   </FormDialog>
   </Teleport>
@@ -119,8 +119,7 @@ onBeforeUnmount(() => { revision++; clearTimeout(timer); emit('visibility', fals
 
 <style scoped>
 .run-profiles-control { display: inline-flex; -webkit-app-region: no-drag; }
-.run-profiles-control__trigger { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-lowest); color: var(--color-text-muted); cursor: pointer; -webkit-app-region: no-drag; }
-.run-profiles-control__trigger:hover { background: var(--color-surface-low); color: var(--color-text); }
+.run-profiles-control__trigger { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); --agent-ui-state-rest-foreground: var(--color-text-muted); -webkit-app-region: no-drag; }
 .run-profiles-control__trigger svg { width: var(--icon-md); height: var(--icon-md); }
 .command-runner { display: grid; gap: var(--space-6); }
 .command-runner__command { display: block; padding: var(--space-6); border-radius: var(--radius-md); background: var(--color-surface-low); font-family: var(--font-family-mono); font-size: var(--font-size-13); overflow-wrap: anywhere; }

@@ -2,24 +2,23 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { Agent, AccountRateLimits } from '@workspace/core/contracts';
 import { sessionError } from './support/conversation-activity';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
-import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { createTestSnapshot } from './server-test-fixtures';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
+import { orderedPromptLog, scriptedDriver } from './support/scripted-driver';
 
 const servers: AppBackendServer[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); vi.useRealTimers(); });
 function host(snapshot = createTestSnapshot()) {
   snapshot.providerConnections ??= createTestSnapshot().providerConnections;
   if (!snapshot.providerConnections!.some(connection => connection.provider === 'cursor')) snapshot.providerConnections!.push({ provider: 'cursor', installed: true, connected: true, checking: false });
-  const send = vi.fn(async (agent: Agent, _prompt: string) => ({ providerSession: agent.providerSession! }));
-  const driver = (provider: Agent['provider']) => ({ provider: provider, getRuntimeStatus: () => ({ provider: provider, status: 'running' as const }), getCapabilities: () => defaultProviderCapabilities(provider),
-    sendPrompt: send, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} });
+  const fleet = { codex: scriptedDriver('codex'), claude: scriptedDriver('claude'), cursor: scriptedDriver('cursor') };
+  const send = orderedPromptLog(...Object.values(fleet));
   const events: unknown[] = [];
   const saved: ReturnType<typeof persistedStateFromSnapshot>[] = [];
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async value => { saved.push(persistedStateFromSnapshot(value)); },
-    driverRpc: new ProviderDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')], ['cursor', driver('cursor')]])), onEvent: event => events.push(event) });
+    driverRpc: new ProviderDriverRpc(new Map([['codex', fleet.codex.driver], ['claude', fleet.claude.driver], ['cursor', fleet.cursor.driver]])), onEvent: event => events.push(event) });
   servers.push(server);
   const limit = (agent: Agent, message: string) => agent.provider === 'codex' ? server.emitEvent(sessionError(agent.id, { message, code: 'usageLimitExceeded' },
     { conversationId: agent.providerSession?.kind === 'codex' ? agent.providerSession.conversationId : '', turnId: 'blocked' })) : server.emitEvent({ type: 'agent.statusChanged', agentId: agent.id, provider: agent.provider,
@@ -51,13 +50,13 @@ it('resumes each provider once at its reset, including a weekly quota', async ()
   server.emitEvent({ type: 'account.rateLimitsUpdated', provider: 'cursor', payload: { rateLimits: quota(reset) } });
   limit(snapshot.agents[2]!, 'Usage limit reached');
   expect(snapshot.agents[2]!.rateLimitPause).toMatchObject({ conversationId: 'cursor', resumeAt: reset, enabled: true });
-  await vi.advanceTimersByTimeAsync(299_999); expect(send).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(299_999); expect(send).toHaveLength(0);
   await vi.advanceTimersByTimeAsync(5_001);
-  expect(send.mock.calls.map(([agent, prompt]) => [agent.id, prompt])).toEqual([['claude', 'continue'], ['cursor', 'continue']]);
+  expect(send.map(({ agentId, prompt }) => [agentId, prompt])).toEqual([['claude', 'continue'], ['cursor', 'continue']]);
   await vi.advanceTimersByTimeAsync(weeklyReset - reset);
-  expect(send.mock.calls.map(([agent, prompt]) => [agent.id, prompt]).sort()).toEqual([['claude', 'continue'], ['codex', 'continue'], ['cursor', 'continue']]);
+  expect(send.map(({ agentId, prompt }) => [agentId, prompt]).sort()).toEqual([['claude', 'continue'], ['codex', 'continue'], ['cursor', 'continue']]);
   expect(snapshot.agents.every(agent => !agent.rateLimitPause)).toBe(true);
-  await vi.advanceTimersByTimeAsync(60_000); expect(send).toHaveBeenCalledTimes(3);
+  await vi.advanceTimersByTimeAsync(60_000); expect(send).toHaveLength(3);
   for (const event of events) expect(() => decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).not.toThrow();
 });
 it('persists the off preference, restores pending resets and cancels stale or manually resumed conversations', async () => {
@@ -72,7 +71,7 @@ it('persists the off preference, restores pending resets and cancels stale or ma
   expect(restored.agents[1]!.rateLimitPause).toMatchObject({ resumeAt: reset, enabled: false });
   await first.server.close(); servers.splice(servers.indexOf(first.server), 1);
   const next = host(restored);
-  await vi.advanceTimersByTimeAsync(360_000); expect(next.send).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(360_000); expect(next.send).toHaveLength(0);
   // A later short reset is armed when re-enabled, but a user prompt owns continuation.
   next.limit(restored.agents[1]!, "You've hit your session limit · resets 1:35am (America/Chicago)");
   await next.toggle(restored.agents[1]!, true);
@@ -83,7 +82,7 @@ it('persists the off preference, restores pending resets and cancels stale or ma
   next.limit(restored.agents[0]!, 'Usage limit reached');
   restored.agents[0]!.providerSession = { kind: 'codex', conversationId: 'different' };
   await vi.advanceTimersByTimeAsync(600_000);
-  expect(next.send.mock.calls.map(([, prompt]) => prompt)).toEqual(['Do something else']);
+  expect(next.send.map(({ prompt }) => prompt)).toEqual(['Do something else']);
 });
 it('cancels quota continuation when the provider stops the conversation for safety review', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-24T06:25:00Z'));
@@ -96,5 +95,5 @@ it('cancels quota continuation when the provider stops the conversation for safe
   server.emitEvent(sessionError(agent.id, { message: 'Usage limit reached', code: 'misalignment_policy_violation' }, { conversationId: 'codex', turnId: 'blocked' }));
   expect(agent.rateLimitPause).toBeUndefined();
   await vi.advanceTimersByTimeAsync(360_000);
-  expect(send).not.toHaveBeenCalled();
+  expect(send).toHaveLength(0);
 });

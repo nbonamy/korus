@@ -39,12 +39,12 @@
 
     <template #footer>
       <div v-if="busy" class="app-dialog__footer">
-        <button class="app-button app-button--secondary" type="button" @click="emit('background')">{{ $t('common.runInBackground') }}</button>
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="emit('background')">{{ $t('common.runInBackground') }}</button>
       </div>
       <div v-else class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')"> {{ $t('surface.agentCloseDialog.cancel') }} </button>
-        <button class="app-button app-button--secondary" type="button" :disabled="busy" @click="emit('keep-worktree')"> {{ $t('surface.agentCloseDialog.keepWorktree') }} </button>
-        <button class="app-button app-button--primary" type="button" :aria-busy="busy" :disabled="busy || (hasChanges && !discardChanges)" @click="deleteWorktree"> {{ $t('surface.agentCloseDialog.deleteWorktree') }} </button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="emit('close')"> {{ $t('surface.agentCloseDialog.cancel') }} </button>
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy" @click="emit('keep-worktree')"> {{ $t('surface.agentCloseDialog.keepWorktree') }} </button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :aria-busy="busy" :disabled="busy || (hasChanges && !discardChanges)" @click="deleteWorktree"> {{ $t('surface.agentCloseDialog.deleteWorktree') }} </button>
       </div>
     </template>
   </el-dialog>

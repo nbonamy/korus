@@ -2,9 +2,9 @@
   <section class="design-panel" :aria-label="t('design.title')" :data-revision="revision">
     <div v-if="error || draftTargetRemoved || tweakDraftRemoved" class="design-panel__error" role="alert">
       <span>{{ error || t(tweakDraftRemoved ? 'design.tweakChanged' : 'design.targetRemoved') }}</span>
-      <button v-if="tweakDraft" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryTweak">{{ t('design.retryTweak') }}</button>
-      <button v-if="pendingCanvas" type="button" class="app-button app-button--primary" :disabled="busy" @click="retryCanvas">{{ t('design.retryCanvas') }}</button>
-      <button type="button" class="app-button app-button--secondary" data-action="reload" :disabled="busy" @click="reload">{{ t('design.discardReload') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="tweakDraft" type="button" class="app-button app-button--primary agent-ui-interactive" :disabled="busy" @click="retryTweak">{{ t('design.retryTweak') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="pendingCanvas" type="button" class="app-button app-button--primary agent-ui-interactive" :disabled="busy" @click="retryCanvas">{{ t('design.retryCanvas') }}</button>
+      <button data-variant="primary" type="button" class="app-button app-button--secondary agent-ui-interactive" data-action="reload" :disabled="busy" @click="reload">{{ t('design.discardReload') }}</button>
     </div>
     <div v-if="!current.document" class="design-panel__empty">
       <h2>{{ t('design.emptyTitle') }}</h2>
@@ -15,20 +15,20 @@
         <div class="design-panel__canvas-shell">
           <DesignTools :artboards="current.document.content.artboards" :selected-artboard-id="canvas?.activeArtboardId ?? board?.id ?? null" :locked="locked" :interacting="interacting" :play="play" :pan="pan" :inspector-visible="inspectorVisible" :zoom="canvas?.zoom ?? 1" :zoom-choice="zoomChoice" @focus="focusBoard" @pan="changePan" @play="togglePlay" @inspector="inspectorVisible = !inspectorVisible" @zoom="changeZoom">
             <template #actions>
-              <button class="app-icon-button" type="button" :aria-label="t('design.undo')" :title="t('design.undo')" :disabled="locked || !history.canUndo.value" @click="historyAction('undo')"><UndoIcon /></button>
-              <button class="app-icon-button" type="button" :aria-label="t('design.redo')" :title="t('design.redo')" :disabled="locked || !history.canRedo.value" @click="historyAction('redo')"><RedoIcon /></button>
+              <button class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.undo')" :title="t('design.undo')" :disabled="locked || !history.canUndo.value" @click="historyAction('undo')"><UndoIcon /></button>
+              <button class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.redo')" :title="t('design.redo')" :disabled="locked || !history.canRedo.value" @click="historyAction('redo')"><RedoIcon /></button>
               <span class="design-panel__toolbar-divider" />
               <AppMenuButton v-if="current.document" v-model:open="historyVisible" :items="historyItems" :ariaLabel="t('design.history')" :width="280" placement="bottom-start" @select="historyAction">
-                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :aria-label="t('design.history')" :title="`${t('design.history')} · ${t('design.revision', { revision })}`"><HistoryIcon /></button></template>
+                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.history')" :title="`${t('design.history')} · ${t('design.revision', { revision })}`"><HistoryIcon /></button></template>
                 <template #before>
                   <form class="design-panel__history" @submit.prevent="checkpoint">
                     <ClearableTextInput v-model="checkpointTitle" subtle :aria-label="t('design.checkpoint')" :placeholder="t('design.checkpoint')" :disabled="locked" />
-                    <button class="app-button app-button--secondary app-button--small" type="submit" :aria-label="t('design.saveCheckpoint')" :title="t('design.saveCheckpoint')" :disabled="locked || !checkpointTitle.trim()">{{ t('design.save') }}</button>
+                    <button data-variant="primary" class="app-button app-button--secondary app-button--small agent-ui-interactive" type="submit" :aria-label="t('design.saveCheckpoint')" :title="t('design.saveCheckpoint')" :disabled="locked || !checkpointTitle.trim()">{{ t('design.save') }}</button>
                   </form>
                 </template>
               </AppMenuButton>
               <AppMenuButton :items="exportItems" :ariaLabel="t('design.export')" :width="190" @select="exportSelection">
-                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button" type="button" :disabled="locked" :aria-label="t('design.export')" :title="t('design.export')"><DownloadIcon /></button></template>
+                <template #trigger="{ attrs }"><button v-bind="attrs" class="app-icon-button agent-ui-interactive" type="button" :disabled="locked" :aria-label="t('design.export')" :title="t('design.export')"><DownloadIcon /></button></template>
               </AppMenuButton>
             </template>
           </DesignTools>
@@ -42,8 +42,8 @@
                 <textarea ref="reviewCommentInput" v-model="reviewCommentDraft.text" :aria-label="t('design.proposalComment')" :placeholder="t('design.commentPlaceholder')" rows="3" :disabled="busy" />
                 <p v-if="error" role="alert">{{ error }}</p>
                 <div class="design-panel__actions">
-                  <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="reviewCommentDraft = undefined">{{ t('common.cancel') }}</button>
-                  <button class="app-button app-button--primary" type="submit" :disabled="locked || !reviewCommentDraft.text.trim()">{{ t('design.sendComment') }}</button>
+                  <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="reviewCommentDraft = undefined">{{ t('common.cancel') }}</button>
+                  <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="submit" :disabled="locked || !reviewCommentDraft.text.trim()">{{ t('design.sendComment') }}</button>
                 </div>
               </form>
             </template>
@@ -53,7 +53,7 @@
         <div v-if="!play" v-show="inspectorVisible" ref="inspector" class="design-panel__inspector-shell" :style="{ '--design-inspector-width': `${inspectorWidth}px` }">
           <div class="design-panel__inspector-resizer" role="separator" :aria-label="t('design.resizeInspector')" aria-orientation="vertical" tabindex="0" aria-valuemin="220" :aria-valuemax="body?.clientWidth || 800" :aria-valuenow="inspectorWidth" @pointerdown="startInspectorResize" @keydown.left.prevent="resizeInspector(inspectorWidth + 16)" @keydown.right.prevent="resizeInspector(inspectorWidth - 16)" />
         <div class="design-panel__inspector" :inert="interacting || !!pendingCanvas">
-          <el-tabs v-model="inspectorTab" class="design-panel__tabs">
+          <el-tabs data-agent-ui-scope v-model="inspectorTab" class="design-panel__tabs">
             <el-tab-pane name="properties" :label="t('design.properties')" :disabled="!!tweakDraft">
               <fieldset class="design-panel__fields" :disabled="busy && !autoSaving">
                 <DesignLayers v-if="board" class="design-panel__tree" :board="board" :selected-id="current.selectedNodeId" :disabled="locked" @select="selectNode" />
@@ -108,8 +108,8 @@
         <p v-if="error" role="alert">{{ error }}</p>
       </div>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="buildVisible = false">{{ t('common.cancel') }}</button>
-        <button class="app-button app-button--primary" type="button" data-action="implement" :disabled="busy" @click="implement">{{ t('design.sendForCoding') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="buildVisible = false">{{ t('common.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" data-action="implement" :disabled="busy" @click="implement">{{ t('design.sendForCoding') }}</button>
       </template>
     </FormDialog>
   </section>
@@ -486,11 +486,6 @@ async function retryCanvas() {
   min-height: 0;
 }
 
-.design-panel .app-icon-button[aria-pressed="true"] {
-  background: var(--color-primary-container);
-  color: var(--color-primary);
-}
-
 .design-panel__inspector-shell {
   --design-inspector-width: 280px;
 
@@ -610,8 +605,7 @@ async function retryCanvas() {
 .design-panel :deep(input:focus-visible),
 .design-panel :deep(textarea:focus-visible),
 .design-panel :deep(select:focus-visible) {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .design-panel__review-comment textarea,

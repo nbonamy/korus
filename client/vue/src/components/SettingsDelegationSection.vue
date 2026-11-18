@@ -2,7 +2,7 @@
   <FormSection :title="t('delegation.title')" title-id="settings-workflows-delegation-title">
     <FormRow :title="t('delegation.startingContext')" :description="t(draft.worktreeDelegationStartingContext === 'conversation' ? 'delegation.forkDescription' : 'delegation.handoffDescription')">
       <template #control>
-        <el-segmented :model-value="draft.worktreeDelegationStartingContext" :options="contextOptions" :aria-label="t('delegation.startingContext')" @update:model-value="updateContext" />
+        <AppSegmented :model-value="draft.worktreeDelegationStartingContext" :options="contextOptions" :label="t('delegation.startingContext')" @update:model-value="updateContext" />
       </template>
     </FormRow>
     <div class="settings-delegation__instructions">
@@ -21,10 +21,11 @@ import { useDebouncedSave } from '../shared/use-debounced-save';
 import SettingsTextareaField from './SettingsTextareaField.vue';
 import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
+import AppSegmented from '../shared/AppSegmented.vue';
 
 const props = defineProps<{ settings: AppGeneralSettings; updateSettings?: (input: UpdateSettingsInput) => Promise<void> }>();
 const { t } = useI18n();
-const contextOptions = computed(() => [
+const contextOptions = computed<{ value: DelegationStartingContext; label: string }[]>(() => [
   { label: t('delegation.handoff'), value: 'handoff' },
   { label: t('delegation.conversation'), value: 'conversation' },
 ]);

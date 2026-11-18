@@ -88,6 +88,16 @@ async function fixture(driver: AgentProviderDriver, agent: Agent, desktopFocused
 }
 
 describe('mobile requests across the owning daemon', () => {
+  it('keeps the shipped conversation.read request working after the desktop marks an agent unread', async () => {
+    const sdk = codexSdkFixture(), agent = { ...sdkAgent(), teamId: 'team-test' };
+    const f = await fixture(sdk.driver, agent);
+    await f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentMarkUnread, params: { agentId: agent.id } });
+    const workspace = await f.workspace(), owner = workspace.agents.find(item => item.id === agent.id)!;
+    expect(owner.readState).toStrictEqual({ revision: 1, readRevision: 0 });
+    await f.gateway.request('phone', 'conversation.read', { target: companionTarget(f.hostId, workspace.teams[0]!, owner), revision: 1 });
+    expect((await f.workspace()).agents.find(item => item.id === agent.id)!.readState).toStrictEqual({ revision: 1, readRevision: 1 });
+  });
+
   it.each([
     { focused: true, selected: 'same', pushes: false },
     { focused: true, selected: 'other', pushes: true },

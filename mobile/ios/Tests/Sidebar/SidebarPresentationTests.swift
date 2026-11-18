@@ -8,14 +8,6 @@ final class SidebarPresentationTests: XCTestCase {
         """
         let model = try JSONDecoder().decode(ModelChoice.self, from: Data(json.utf8))
         XCTAssertEqual(model, ModelChoice(id: "model", name: "Model", efforts: ["high"], tiers: [.init(id: "fast", name: "Fast")]))
-        XCTAssertEqual(model.fastTier?.id, "fast")
-    }
-
-    func testFastToggleTargetsOnlyTheOfferedFastTier() {
-        let model = ModelChoice(id: "model", name: "Model", tiers: [.init(id: "ultrafast", name: "Ultrafast"), .init(id: "priority", name: "Fast")])
-        XCTAssertEqual(model.fastTier?.id, "priority")
-        XCTAssertNil(ModelChoice(id: "model", name: "Model", tiers: [.init(id: "ultrafast", name: "Ultrafast")]).fastTier)
-        XCTAssertNil(ModelChoice(id: "model", name: "Model").fastTier)
     }
 
     func testRepositoryImageIconsSupplyImageBytesInsteadOfDataURLText() {

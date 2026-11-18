@@ -5,13 +5,13 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CallToolResult, ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
-import { claudeProviderCapabilities, codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { AppBackendServer } from '../../server';
 import { ProviderDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { AppMcpService } from '../service';
+import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 
 const execute = promisify(execFile);
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -38,7 +38,6 @@ async function harness(provider: 'codex' | 'claude' = 'codex') {
     provider: provider === 'codex' ? 'claude' : 'codex', providers: { [provider]: { model: 'old-review-model', reasoningEffort: 'medium' } },
     automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: true },
   };
-  let emit: (event: BackendEvent) => void = () => undefined;
   let complete!: () => void;
   const pending = new Promise<void>(resolve => { complete = resolve; });
   const runCodeReview = vi.fn<NonNullable<AgentProviderDriver['runCodeReview']>>(async (agent, input) => {
@@ -49,12 +48,8 @@ async function harness(provider: 'codex' | 'claude' = 'codex') {
       ? { kind: 'codex', conversationId: 'review-thread' }
       : { kind: 'claude', conversationId: 'review-thread', transport: 'stdio' } };
   });
-  const driver = (kind: 'codex' | 'claude'): AgentProviderDriver => ({
-    provider: kind, getRuntimeStatus: () => ({ provider: kind, status: 'running' }),
-    getCapabilities: () => kind === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities, runCodeReview,
-    sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
-    onEvent: listener => { if (kind === provider) emit = listener; return () => undefined; }, close: vi.fn(),
-  });
+  // The real drivers over scripted providers; the review run itself is what the test controls at the contract the server calls.
+  const driver = (kind: 'codex' | 'claude') => Object.assign(scriptedDriver(kind).driver, { runCodeReview });
   let server!: AppBackendServer;
   const mcp = new AppMcpService({ snapshot, startAutomaticReview: (id, input) => server.startAutomaticReview(id, input) });
   const url = await mcp.start();
@@ -67,7 +62,7 @@ async function harness(provider: 'codex' | 'claude' = 'codex') {
     driverRpc: new ProviderDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')]])),
   });
   cleanups.push(() => server.close());
-  emit({
+  server.emitEvent({
     agentId: owner.id, provider: provider, conversationId: 'owner-thread', type: 'conversation.settingsUpdated',
     payload: { settings: { model: 'thread-model', reasoningEffort: 'high' } },
   });

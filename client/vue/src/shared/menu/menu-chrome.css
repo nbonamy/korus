@@ -7,30 +7,12 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .app-icon-button svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.app-icon-button:hover:not(:disabled),
-.app-icon-button[aria-expanded='true'] {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.app-icon-button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-.app-icon-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .app-popover {

@@ -87,7 +87,7 @@ describe('restorable windows', () => {
   });
 
   it('forgets a selection that is gone for a workspace window but keeps the window', () => {
-    const restored = restorableWindows(layout({ viewState: { agentId: 'agent-gone' }, frame }, { viewState: { agentId: agentA }, frame }), snapshot);
-    expect(restored.map(window => window.viewState)).toEqual([null, { agentId: agentA }]);
+    const restored = restorableWindows(layout({ viewState: { agentId: 'agent-gone' }, frame }, { viewState: { agentId: agentA }, frame }, { viewState: { agentId: 'agent-gone', navigation: 'cockpit' }, frame }), snapshot);
+    expect(restored.map(window => window.viewState)).toEqual([null, { agentId: agentA }, { navigation: 'cockpit' }]);
   });
 });

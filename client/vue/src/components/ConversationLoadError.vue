@@ -11,8 +11,8 @@
       <h1>{{ $t('surface.conversationPane.historyLoadFailed') }}</h1>
       <p>{{ $t('surface.conversationPane.historyLoadFailedReason') }}</p>
     </div>
-    <button
-      class="app-button app-button--secondary"
+    <button data-variant="primary"
+      class="app-button app-button--secondary agent-ui-interactive"
       type="button"
       :disabled="loading"
       @click="emit('retry')"

@@ -25,6 +25,8 @@ let package = Package(
         .testTarget(name: "CompanionRequestsTests", dependencies: ["CompanionRequests"], path: "Tests/Requests"),
         .target(name: "CompanionConversation", path: "Sources/Conversation"),
         .testTarget(name: "CompanionConversationTests", dependencies: ["CompanionConversation"], path: "Tests/Conversation"),
+        .target(name: "CompanionCrypto", path: "Sources/Crypto"),
+        .testTarget(name: "CompanionCryptoTests", dependencies: ["CompanionCrypto"], path: "Tests/Crypto"),
         .target(name: "CompanionDictation", path: "Sources/Dictation"),
         .testTarget(name: "CompanionDictationTests", dependencies: ["CompanionDictation"], path: "Tests/Dictation")
     ]

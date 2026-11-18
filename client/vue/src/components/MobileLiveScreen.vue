@@ -2,7 +2,7 @@
   <div class="mobile-live-screen">
     <p v-if="error" class="mobile-live-screen__error" role="alert">
       {{ error }}
-      <button type="button" @click="connect()">
+      <button class="agent-ui-interactive" type="button" @click="connect()">
         {{ $t('surface.mobileSimulator.retry') }}
       </button>
     </p>
@@ -20,7 +20,7 @@
         v-for="item in hardwareButtons"
         :key="item.id"
         type="button"
-        class="mobile-live-screen__hw"
+        class="mobile-live-screen__hw agent-ui-interactive"
         :class="`mobile-live-screen__hw--${item.edge}`"
         :style="item.style"
         :aria-label="$t(`surface.mobileSimulator.${item.id}`)"
@@ -478,8 +478,6 @@ onBeforeUnmount(() => {
   position: absolute;
   padding: 0;
   border: 0;
-  background: transparent;
-  cursor: pointer;
 }
 .mobile-live-screen__hw::before {
   position: absolute;
@@ -496,9 +494,6 @@ onBeforeUnmount(() => {
 .mobile-live-screen__hw:hover:not(:disabled)::before,
 .mobile-live-screen__hw:focus-visible::before {
   background: var(--color-text-muted);
-}
-.mobile-live-screen__hw:disabled {
-  cursor: default;
 }
 /* Hovering swells the bar, thicker and slightly longer, as a larger target. */
 .mobile-live-screen__hw--left:hover:not(:disabled)::before,
@@ -621,10 +616,7 @@ onBeforeUnmount(() => {
 .mobile-live-screen__error button {
   padding: 0;
   border: 0;
-  background: transparent;
-  color: inherit;
   font: inherit;
   text-decoration: underline;
-  cursor: pointer;
 }
 </style>

@@ -53,14 +53,7 @@ const { t } = useI18n();
   width: 24px;
   height: 24px;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-}
-
-.repository-icon-picker :deep(.identity-picker__trigger:hover),
-.repository-icon-picker :deep(.identity-picker__trigger[aria-expanded="true"]) {
-  color: var(--color-text);
-  background: var(--color-surface-base);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-icon-picker :deep(.identity-picker__trigger > svg) {

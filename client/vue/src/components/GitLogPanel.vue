@@ -5,18 +5,18 @@
       <div class="git-log-panel__search">
         <ClearableTextInput v-model="search" :aria-label="$t('gitLog.search')" :placeholder="$t('gitLog.search')" :maxlength="200" />
       </div>
-      <button type="button" class="git-log-panel__refresh" :aria-label="$t('gitLog.refresh')" @click="refresh"><RefreshIcon aria-hidden="true" /></button>
+      <button type="button" class="git-log-panel__refresh agent-ui-interactive" :aria-label="$t('gitLog.refresh')" @click="refresh"><RefreshIcon aria-hidden="true" /></button>
     </header>
     <div ref="scrollRoot" class="git-log-panel__history" :aria-busy="loading">
       <p v-if="error" role="alert" class="git-log-panel__status">{{ error }}</p>
       <p v-if="loading && !commits.length" class="git-log-panel__status">{{ $t('gitLog.loading') }}</p>
       <p v-else-if="!error && !commits.length" class="git-log-panel__status">{{ $t(search ? 'gitLog.noMatches' : 'gitLog.empty') }}</p>
       <section v-for="group in groups" :key="group.key" class="git-log-panel__group">
-        <h3><button type="button" class="git-log-panel__group-toggle" :aria-expanded="!collapsedGroups.has(group.date)" @click="toggleGroup(group.date)"><ChevronDown :class="{ 'git-log-panel__group-chevron--closed': collapsedGroups.has(group.date) }" aria-hidden="true" /><span>{{ group.label }}</span></button></h3>
+        <h3><button type="button" class="git-log-panel__group-toggle agent-ui-interactive" data-appearance="text" :aria-expanded="!collapsedGroups.has(group.date)" @click="toggleGroup(group.date)"><ChevronDown :class="{ 'git-log-panel__group-chevron--closed': collapsedGroups.has(group.date) }" aria-hidden="true" /><span>{{ group.label }}</span></button></h3>
         <template v-if="!collapsedGroups.has(group.date)">
           <article v-for="commit in group.commits" :key="commit.sha" class="git-log-panel__entry" :class="{ 'git-log-panel__entry--selected': selected === commit.sha }">
-            <div class="git-log-panel__row">
-              <button type="button" class="git-log-panel__commit" :aria-expanded="selected === commit.sha" @click="toggle(commit.sha)">
+            <div class="git-log-panel__row agent-ui-interactive" :data-selected="selected === commit.sha ? '' : undefined">
+              <button type="button" class="git-log-panel__commit agent-ui-interactive" data-appearance="text" :aria-expanded="selected === commit.sha" @click="toggle(commit.sha)">
                 <span class="git-log-panel__dot" aria-hidden="true" />
                 <span class="git-log-panel__subject">{{ commit.subject }}</span>
                 <span v-if="commit.stats" class="git-log-panel__stats" :title="$t('gitLog.filesChanged', commit.stats.files)"><GitDiffLineStats :added-lines="commit.stats.additions" :removed-lines="commit.stats.deletions" /></span>
@@ -33,7 +33,7 @@
           </article>
         </template>
       </section>
-      <button v-if="page?.nextCursor" type="button" class="git-log-panel__older" :aria-label="$t('gitLog.older')" :disabled="loading" @click="loadOlder">{{ $t(loading ? 'gitLog.loading' : 'gitLog.older') }}</button>
+      <button v-if="page?.nextCursor" type="button" class="git-log-panel__older agent-ui-interactive" :aria-label="$t('gitLog.older')" :disabled="loading" @click="loadOlder">{{ $t(loading ? 'gitLog.loading' : 'gitLog.older') }}</button>
     </div>
   </section>
 </template>
@@ -189,14 +189,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   height: 28px;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.git-log-panel__refresh:hover {
-  background: var(--color-surface-high);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .git-log-panel__search {
@@ -243,12 +236,9 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   width: 100%;
   padding: 0;
   border: 0;
-  color: inherit;
-  background: transparent;
   font: inherit;
   text-align: left;
   text-transform: inherit;
-  cursor: pointer;
 }
 
 .git-log-panel__group-toggle svg {
@@ -293,18 +283,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   padding: var(--space-4) var(--space-6) 0;
   border: 0;
   border-radius: var(--radius-sm);
-  color: inherit;
-  background: transparent;
   text-align: left;
-  cursor: pointer;
-}
-
-.git-log-panel__row:hover {
-  background: var(--color-surface-high);
-}
-
-.git-log-panel__entry--selected .git-log-panel__row {
-  background: var(--color-primary-container);
 }
 
 .git-log-panel__dot {
@@ -367,14 +346,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   padding: var(--space-3) var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  color: var(--color-text);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font-size: var(--font-size-13);
-}
-
-button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
 }
 </style>

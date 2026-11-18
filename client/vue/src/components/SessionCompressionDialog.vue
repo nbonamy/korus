@@ -34,10 +34,10 @@
 
     <template #footer>
       <div v-if="!busy" class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" @click="emit('close')">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="emit('close')">
           {{ t('common.cancel') }}
         </button>
-        <button class="app-button app-button--primary" type="button" @click="emit('confirm', dontShowAgain)">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="emit('confirm', dontShowAgain)">
           {{ t('sessionCompression.action') }}
         </button>
       </div>

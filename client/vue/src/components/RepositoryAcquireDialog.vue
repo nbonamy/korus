@@ -29,10 +29,10 @@
       <p v-if="error" class="repository-acquire-dialog__url-error">{{ error }}</p>
     </form>
     <template #footer>
-      <button v-if="progress" class="app-button app-button--secondary" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
+      <button data-variant="primary" v-if="progress" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
       <template v-else>
-        <button class="app-button app-button--tertiary" type="button" @click="emit('close')">{{ t('common.cancel') }}</button>
-        <button class="app-button app-button--primary" type="button" :disabled="!canSubmitUrl || busy" @click="submitUrl">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="emit('close')">{{ t('common.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="!canSubmitUrl || busy" @click="submitUrl">
           {{ t('repositories.acquire.cloneRepository') }}
         </button>
       </template>
@@ -81,7 +81,7 @@
             :key="repository.id"
             :disabled="busy"
             type="button"
-            class="repository-acquire-dialog__row"
+            class="repository-acquire-dialog__row agent-ui-interactive"
             @click="emit('select-repository', repository)"
           >
             <component :is="providerIcon" aria-hidden="true" />
@@ -111,8 +111,8 @@
           @open="emit('open-authorization')"
         />
         <div v-else class="repository-acquire-dialog__connect">
-          <button
-            class="app-button app-button--primary"
+          <button data-variant="primary" data-appearance="solid"
+            class="app-button app-button--primary agent-ui-interactive"
             type="button"
             :disabled="busy"
             @click="emit('connect')"
@@ -362,16 +362,8 @@ function repositoryKindLabel(repository: WorkSource): string {
   padding: var(--space-4) var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
-}
-
-.repository-acquire-dialog__row:hover,
-.repository-acquire-dialog__row:focus-visible {
-  background: var(--color-surface-base);
-  outline: 0;
 }
 
 .repository-acquire-dialog__row > svg {

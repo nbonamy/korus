@@ -26,7 +26,8 @@ export async function withAnnotationFixture(source, run) {
       resolveId(id) { if (id === '/annotation-entry.js') return '\0annotation-entry'; },
       load(id) { if (id === '\0annotation-entry') return source; },
     }],
-    server: { host: '127.0.0.1', port: 0 },
+    // Automated fixtures keep their initial module state while shared SDK sources are being edited.
+    server: { host: '127.0.0.1', port: 0, hmr: false },
   });
   const browser = await chromium.launch();
   try {

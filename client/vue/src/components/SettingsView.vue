@@ -120,6 +120,7 @@
           v-else-if="activeTab === 'appearance'"
           :settings="settings"
           :update-settings="updateSettings"
+          @create-skin="emit('create-skin')"
         />
         <SettingsProjectsPanel
           v-else-if="activeTab === 'projects'"
@@ -315,6 +316,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   selectTab: [tab: SettingsTab];
+  'create-skin': [];
 }>();
 
 const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [])

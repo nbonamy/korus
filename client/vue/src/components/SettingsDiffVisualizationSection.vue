@@ -3,7 +3,7 @@
     <FormRow :title="t('surface.diffViz.style')" :description="t('surface.diffViz.styleDescription')">
       <template #control>
         <el-select :model-value="mode" :aria-label="t('surface.diffViz.style')" @update:model-value="updateMode">
-          <el-option v-for="value in diffVisualizationModes" :key="value" :value="value" :label="t(`surface.diffViz.mode.${value}`)" />
+          <el-option class="agent-ui-interactive" v-for="value in diffVisualizationModes" :key="value" :value="value" :label="t(`surface.diffViz.mode.${value}`)" />
         </el-select>
       </template>
     </FormRow>

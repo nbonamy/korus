@@ -1,12 +1,14 @@
 import { expect, it, vi } from 'vitest';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { createTestSnapshot } from './server-test-fixtures';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
+import { scriptedDriver } from './support/scripted-driver';
+
+/** The agent an operation addressed. */
+const addressed = (call: { args: unknown[] }) => (call.args[0] as { id: string }).id;
 
 it('does not retry startup continuation after an explicit Stop during writer backoff', async () => {
   vi.useFakeTimers();
@@ -15,19 +17,17 @@ it('does not retry startup continuation after an explicit Stop during writer bac
   const agent: Agent = { id: 'recovering', name: 'Recovering', teamId: 'team-test', folder: '/tmp', provider: 'codex',
     providerSession: { kind: 'codex', conversationId: 'recovery' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' };
   snapshot.agents = [agent];
-  const continued = vi.fn().mockRejectedValue(new Error('Codex app-server request timed out: thread/resume'));
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => codexProviderCapabilities, sendPrompt: async () => ({ providerSession: agent.providerSession! }),
-    interrupt: async () => ({ providerSession: agent.providerSession! }), respondToAgentRequest: async () => {},
-    continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const { driver, script } = scriptedDriver('codex');
+  script.on('continueInterruptedTurn', () => { throw new Error('Codex app-server request timed out: thread/resume'); });
+  const continued = () => script.calls('continueInterruptedTurn');
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {}, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
   try {
     const startup = server.initialize();
-    await vi.waitFor(() => expect(continued).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(continued()).toHaveLength(1));
     await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: 'agent/interrupt', params: { agentId: agent.id } });
     await vi.advanceTimersByTimeAsync(7500);
     await startup;
-    expect(continued).toHaveBeenCalledOnce();
+    expect(continued()).toHaveLength(1);
     expect(agent.status.type).toBe('idle');
     expect(agent.autoResumePending).toBeUndefined();
   } finally { await server.close(); vi.useRealTimers(); }
@@ -43,20 +43,25 @@ it('persists active work, clears a user stop, and resumes only marked agents aft
     status: { type: 'idle' }, createdAt: '', updatedAt: '',
   } as Agent));
   snapshot.agents = agents;
-  const continued = vi.fn(async (agent: Agent) => ({ providerSession: agent.providerSession!, activeTurnId: 'resumed' }));
-  const driver = (provider: 'codex' | 'claude' | 'cursor'): AgentProviderDriver => ({
-    provider: provider, getRuntimeStatus: () => ({ provider: provider, status: 'running' }), getCapabilities: () => defaultProviderCapabilities(provider),
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }),
-    interrupt: async agent => {
-      expect(stored?.agents.find(candidate => candidate.id === agent.id)?.autoResumePending).toBeUndefined();
-      return { providerSession: agent.providerSession! };
-    }, respondToAgentRequest: async () => {},
-    continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {},
-  });
+  const driver = (provider: 'codex' | 'claude' | 'cursor') => {
+    const scripted = scriptedDriver(provider);
+    scripted.script.on('continueInterruptedTurn', (context: { providerSession: unknown }) => ({ providerSession: context.providerSession, activeTurnId: 'resumed' }));
+    scripted.script.on('interrupt', (context: { id: string; providerSession: unknown }) => {
+      expect(stored?.agents.find(candidate => candidate.id === context.id)?.autoResumePending).toBeUndefined();
+      return { providerSession: context.providerSession };
+    });
+    return scripted;
+  };
   let stored: ReturnType<typeof persistedStateFromSnapshot> | undefined;
-  const create = (state: AppSnapshot) => new AppBackendServer({ version: 'test', snapshot: state,
-    saveSnapshot: async current => { stored = structuredClone(persistedStateFromSnapshot(current)); },
-    driverRpc: new ProviderDriverRpc(new Map([['codex', driver('codex')], ['claude', driver('claude')], ['cursor', driver('cursor')]])) });
+  const newDrivers = () => ({ codex: driver('codex'), claude: driver('claude'), cursor: driver('cursor') });
+  let drivers = newDrivers();
+  // A restart builds new drivers: closing a server closes its harnesses.
+  const create = (state: AppSnapshot, restart = false) => {
+    if (restart) drivers = newDrivers();
+    return new AppBackendServer({ version: 'test', snapshot: state,
+      saveSnapshot: async current => { stored = structuredClone(persistedStateFromSnapshot(current)); },
+      driverRpc: new ProviderDriverRpc(new Map([['codex', drivers.codex.driver], ['claude', drivers.claude.driver], ['cursor', drivers.cursor.driver]])) });
+  };
   const server = create(snapshot);
   try {
     for (const agent of agents) {
@@ -68,10 +73,10 @@ it('persists active work, clears a user stop, and resumes only marked agents aft
     expect((stored!.agents.find(agent => agent.id === 'stopped') as Agent & { autoResumePending?: boolean }).autoResumePending).not.toBe(true);
     const restored = snapshotFromPersistedState(JSON.parse(JSON.stringify(stored)));
     await server.close();
-    const restarted = create(restored);
+    const restarted = create(restored, true);
     try {
       await restarted.initialize();
-      expect(continued.mock.calls.map(([agent]) => agent.id).sort()).toEqual(['claude', 'codex', 'cursor']);
+      expect(Object.values(drivers).flatMap(({ script }) => script.calls('continueInterruptedTurn').map(addressed)).sort()).toEqual(['claude', 'codex', 'cursor']);
     } finally { await restarted.close(); }
   } finally { await server.close(); }
 });
@@ -96,12 +101,10 @@ it('does not resume work when startup recovery is disabled', async () => {
   snapshot.general.autoResumeOnStartup = false;
   snapshot.agents = [{ id: 'a', name: 'a', folder: '/tmp', provider: 'codex', teamId: 'team-test',
     providerSession: { kind: 'codex', conversationId: 'thread' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' }];
-  const continued = vi.fn();
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }), interrupt: async agent => ({ providerSession: agent.providerSession! }),
-    respondToAgentRequest: async () => {}, continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const continued = () => script.calls('continueInterruptedTurn');
+  const { driver, script } = scriptedDriver('codex');
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {}, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
-  try { await server.initialize(); expect(continued).not.toHaveBeenCalled(); expect(snapshot.agents[0]!.autoResumePending).toBeUndefined(); }
+  try { await server.initialize(); expect(continued()).toHaveLength(0); expect(snapshot.agents[0]!.autoResumePending).toBeUndefined(); }
   finally { await server.close(); }
 });
 
@@ -109,9 +112,8 @@ it('reports a failed recovery and consumes it so a later startup does not send i
   const snapshot = createTestSnapshot(); snapshot.sourceFolder.initialized = true;
   snapshot.agents = [{ id: 'a', name: 'a', folder: '/tmp', provider: 'codex', teamId: 'team-test',
     providerSession: { kind: 'codex', conversationId: 'thread' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' }];
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }), interrupt: async agent => ({ providerSession: agent.providerSession! }),
-    respondToAgentRequest: async () => {}, continueInterruptedTurn: async () => { throw new Error('unavailable'); }, onEvent: () => () => {}, close: async () => {} };
+  const { driver, script } = scriptedDriver('codex');
+  script.on('continueInterruptedTurn', () => { throw new Error('unavailable'); });
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {}, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
   try {
     await server.initialize();
@@ -124,10 +126,8 @@ it('does not continue a replacement session selected while recovery is being sav
   const snapshot = createTestSnapshot(); snapshot.sourceFolder = { path: '/tmp', initialized: true, recentRepoNames: [] };
   snapshot.agents = [{ id: 'a', name: 'a', folder: '/tmp', provider: 'codex', teamId: 'team-test',
     providerSession: { kind: 'codex', conversationId: 'old' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' }];
-  const continued = vi.fn();
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }), interrupt: async agent => ({ providerSession: agent.providerSession! }),
-    respondToAgentRequest: async () => {}, continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const continued = () => script.calls('continueInterruptedTurn');
+  const { driver, script } = scriptedDriver('codex');
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let savingRecovery = false;
@@ -139,7 +139,7 @@ it('does not continue a replacement session selected while recovery is being sav
     await vi.waitFor(() => expect(savingRecovery).toBe(true));
     snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     release(); await startup;
-    expect(continued).not.toHaveBeenCalled();
+    expect(continued()).toHaveLength(0);
   } finally { release(); await server.close(); }
 });
 
@@ -149,14 +149,13 @@ it('does not replace newer active work with a recovery error', async () => {
     providerSession: { kind: 'codex', conversationId: 'old' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' }];
   let rejectRecovery!: (error: Error) => void;
   const continuation = new Promise<never>((_, reject) => { rejectRecovery = reject; });
-  const continued = vi.fn(() => continuation);
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }), interrupt: async agent => ({ providerSession: agent.providerSession! }),
-    respondToAgentRequest: async () => {}, continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const continued = () => script.calls('continueInterruptedTurn');
+  const { driver, script } = scriptedDriver('codex');
+  script.on('continueInterruptedTurn', () => continuation);
   const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: async () => {}, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
   try {
     const startup = server.initialize();
-    await vi.waitFor(() => expect(continued).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(continued()).toHaveLength(1));
     snapshot.agents[0]!.status = { type: 'working' };
     snapshot.agents[0]!.autoResumePending = true;
     rejectRecovery(new Error('busy')); await startup;
@@ -169,10 +168,8 @@ it('does not start recovery after the daemon closes during the roster write', as
   const snapshot = createTestSnapshot(); snapshot.sourceFolder = { path: '/tmp', initialized: true, recentRepoNames: [] };
   snapshot.agents = [{ id: 'a', name: 'a', folder: '/tmp', provider: 'codex', teamId: 'team-test',
     providerSession: { kind: 'codex', conversationId: 'old' }, status: { type: 'idle' }, autoResumePending: true, createdAt: '', updatedAt: '' }];
-  const continued = vi.fn();
-  const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-    sendPrompt: async agent => ({ providerSession: agent.providerSession! }), interrupt: async agent => ({ providerSession: agent.providerSession! }),
-    respondToAgentRequest: async () => {}, continueInterruptedTurn: continued, onEvent: () => () => {}, close: async () => {} };
+  const continued = () => script.calls('continueInterruptedTurn');
+  const { driver, script } = scriptedDriver('codex');
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let saving = false;
@@ -183,6 +180,6 @@ it('does not start recovery after the daemon closes during the roster write', as
     const startup = server.initialize();
     await vi.waitFor(() => expect(saving).toBe(true));
     await server.close(); release(); await startup;
-    expect(continued).not.toHaveBeenCalled();
+    expect(continued()).toHaveLength(0);
   } finally { release(); await server.close(); }
 });

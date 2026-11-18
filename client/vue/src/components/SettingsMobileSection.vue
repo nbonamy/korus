@@ -38,7 +38,7 @@
         </FormRow>
         <FormRow v-if="status.enabled" :title="$t('surface.settingsMobileSection.pairedDevices')" :description="status.devices.length ? '' : $t('surface.settingsMobileSection.noDevices')">
           <template #control>
-            <el-button text size="small" :disabled="busy || !status.connected" @click="pair">{{ $t('surface.settingsMobileSection.addDevice') }}</el-button>
+            <el-button class="agent-ui-interactive" text size="small" :disabled="busy || !status.connected" @click="pair">{{ $t('surface.settingsMobileSection.addDevice') }}</el-button>
           </template>
         </FormRow>
         <FormRow v-if="status.enabled && invitation && invitation.expiresAt > now" as="div" class="settings-mobile__pairing" role="group" :aria-label="$t('surface.settingsMobileSection.pairingCode')" :title="$t('surface.settingsMobileSection.pairingCode')" :description="$t('surface.settingsMobileSection.pairingCodeHint')">
@@ -51,13 +51,13 @@
         </FormRow>
         <FormRow v-for="request in status.enabled ? status.pending : []" :key="request.id" class="settings-mobile__request" :title="request.name">
           <template #control>
-            <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="decide(request.id, false)">{{ $t('surface.settingsMobileSection.deny') }}</button>
-            <button class="app-button app-button--primary" type="button" :disabled="busy" @click="decide(request.id, true)">{{ $t('surface.settingsMobileSection.approve') }}</button>
+            <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="decide(request.id, false)">{{ $t('surface.settingsMobileSection.deny') }}</button>
+            <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy" @click="decide(request.id, true)">{{ $t('surface.settingsMobileSection.approve') }}</button>
           </template>
         </FormRow>
         <FormRow v-for="device in status.enabled ? status.devices : []" :key="device.peerId" :title="device.name">
           <template #control>
-            <el-button text type="danger" size="small" :disabled="busy" @click="act({ action: 'revoke', peerId: device.peerId })">{{ $t('surface.settingsMobileSection.revoke') }}</el-button>
+            <el-button data-variant="destructive" class="agent-ui-interactive" text type="danger" size="small" :disabled="busy" @click="act({ action: 'revoke', peerId: device.peerId })">{{ $t('surface.settingsMobileSection.revoke') }}</el-button>
           </template>
         </FormRow>
       </template>

@@ -18,18 +18,18 @@
         <div class="settings-integrations-panel__actions">
           <template v-if="connection.source === 'cli' && connection.status === 'connected'">
             <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingCli', { provider: workProviderDefinition(connection.provider).label }) }}</StatusPill>
-            <el-button size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
+            <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
           <template v-else-if="connection.source === 'cli' && connection.status !== 'connecting'">
-            <el-button size="small" type="primary" :aria-label="$t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label })" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label }) }}</el-button>
-            <el-button size="small" :aria-label="actionLabel('connect', connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
+            <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" size="small" type="primary" :aria-label="$t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label })" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label }) }}</el-button>
+            <el-button class="agent-ui-interactive" size="small" :aria-label="actionLabel('connect', connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
           <template v-else-if="connection.status === 'connected'">
             <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>
-            <el-button size="small" :aria-label="actionLabel('disconnect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
+            <el-button class="agent-ui-interactive" size="small" :aria-label="actionLabel('disconnect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
           </template>
-          <el-button v-else-if="connection.status === 'connecting'" size="small" :aria-label="actionLabel('cancel', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('linearIntegration.cancel') }}</el-button>
-          <el-button v-else size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
+          <el-button class="agent-ui-interactive" v-else-if="connection.status === 'connecting'" size="small" :aria-label="actionLabel('cancel', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('linearIntegration.cancel') }}</el-button>
+          <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" v-else size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
         </div>
       </article>
       <div v-if="pendingAuthorization(connection.provider)?.userCode && connection.status === 'connecting'" class="settings-integrations-panel__authorization">

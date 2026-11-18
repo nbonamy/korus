@@ -3,8 +3,8 @@
     :block="!$slots.trigger"
     placement="bottom-start"
     :width="240"
-    :heading="t('startWork.addProjectFrom')"
-    :ariaLabel="t('startWork.addProjectFrom')"
+    :heading="t('startWork.newAgentFrom')"
+    :ariaLabel="t('startWork.newAgentFrom')"
     :items="menuItems"
     @select="select"
   >
@@ -12,12 +12,12 @@
       <slot name="trigger" :attrs="attrs">
         <button
           v-bind="attrs"
-          class="start-work-menu__trigger"
+          class="start-work-menu__trigger agent-ui-interactive"
           type="button"
-          :aria-label="t('startWork.addProject')"
+          :aria-label="t('startWork.newAgent')"
         >
-          <FoldersIcon data-icon="folders" aria-hidden="true" />
-          <span>{{ t('startWork.addProject') }}</span>
+          <NewAgentIcon aria-hidden="true" />
+          <span>{{ t('startWork.newAgent') }}</span>
         </button>
       </slot>
     </template>
@@ -27,7 +27,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { FoldersIcon } from '../shared/icons/app-icons';
+import { NewAgentIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import { isStartWorkAction, startWorkMenuItems, type StartWorkAction } from './start-work-actions';
 
@@ -55,19 +55,11 @@ function select(action: string): void {
   padding: 0 var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  cursor: pointer;
-}
-
-.start-work-menu__trigger:hover,
-.start-work-menu__trigger:focus-visible {
-  color: var(--color-text);
-  outline: 0;
 }
 
 .start-work-menu__trigger svg {

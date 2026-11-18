@@ -48,6 +48,15 @@ vi.mock('electron', () => ({
 }));
 
 describe('createClientRequestHandlers', () => {
+  it('routes skin changes to the desktop preference owner and rejects malformed client input', async () => {
+    const setSkin = vi.fn().mockResolvedValue({ enabled: true, name: 'ocean' });
+    const handler = createClientRequestHandlers({ openExternal: vi.fn(), getSystemPermissionsStatus: vi.fn(), openAccessibilitySettings: vi.fn(), computerUseOptions, setSkin })['client/skin/set']!;
+    await expect(handler({ agentId: 'caller', name: 'ocean' })).resolves.toMatchObject({ enabled: true });
+    expect(setSkin).toHaveBeenCalledExactlyOnceWith({ name: 'ocean' });
+    expect(() => handler({ agentId: 'caller', name: 42 })).toThrow('skin name');
+    expect(() => handler({ agentId: 'caller', name: 'ocean', definition: [] })).toThrow('params');
+    expect(setSkin).toHaveBeenCalledOnce();
+  });
   it('routes debug restart requests only when the desktop provides the restart handler', async () => {
     const options = { openExternal: vi.fn(), getSystemPermissionsStatus: vi.fn(), openAccessibilitySettings: vi.fn(), computerUseOptions };
     expect(createClientRequestHandlers(options)['client/debug/backend/restart']).toBeUndefined();

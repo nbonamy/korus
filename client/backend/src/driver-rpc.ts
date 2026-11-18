@@ -40,6 +40,8 @@ import { harnessProviders } from '@korus-dev/multi-agent-sdk/contracts';
 
 export type ProviderDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
+  /** The restricted endpoint for an independent reviewer, including restored reviews. */
+  reviewMcpServerUrl?: (agent: Agent) => string | undefined;
   hostedMcpServerUrls?: () => Readonly<Record<string, string>>;
   generalSettings?: AppGeneralSettings;
   getGeneralSettings?: () => AppGeneralSettings;

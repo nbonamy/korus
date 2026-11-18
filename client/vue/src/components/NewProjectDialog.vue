@@ -33,11 +33,11 @@
       <ProviderSelector v-model="provider" :disabled="busy" />
     </template>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="close">
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="close">
         {{ t('newProjectDialog.cancel') }}
       </button>
-      <button
-        class="app-button app-button--primary"
+      <button data-variant="primary" data-appearance="solid"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :aria-busy="busy"
         :disabled="busy || !name.trim() || !provider"

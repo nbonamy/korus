@@ -1,4 +1,4 @@
-import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowScope, type WindowSetup, type WindowViewState } from '@workspace/core/windows';
+import { isEmptyComposerDraft, type ComposerDraft, type NativeOwnerEntry, type NativeResource, type WindowNavigation, type WindowScope, type WindowSetup, type WindowViewState } from '@workspace/core/windows';
 
 export type ManagedWindow = {
   readonly id: number;
@@ -90,6 +90,11 @@ export class WindowRegistry<W extends ManagedWindow> {
       entry.ready = ready;
       if (!ready) entry.visibleAgentIds = [];
     }
+  }
+
+  setNavigation(window: W, navigation: WindowNavigation): void {
+    const entry = this.entryOf(window);
+    if (entry?.scope === 'workspace') entry.viewState = { ...entry.viewState, navigation };
   }
 
   isReady(window: W): boolean {

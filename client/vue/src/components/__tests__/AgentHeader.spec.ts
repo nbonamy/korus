@@ -781,9 +781,9 @@ describe('AgentHeader', () => {
       'git-workflow-control agent-header__git-actions',
       'open-in-control agent-header__open-in',
       'subagent-control',
-      'agent-header__execution-plan',
-      'agent-header__workspace',
-      'update-available-badge',
+      'agent-header__execution-plan agent-ui-interactive',
+      'agent-header__workspace agent-ui-interactive',
+      'update-available-badge agent-ui-interactive',
     ]);
   });
 

@@ -39,7 +39,7 @@
             :aria-label="$t('surface.settingsPluginsPanel.keepMacUnlockedDuringComputerUse')"
             @update:model-value="updateLockPrevention"
           >
-            <el-option v-for="mode in lockPreventionModes" :key="mode.value" :value="mode.value" :label="$t(mode.label)" />
+            <el-option class="agent-ui-interactive" v-for="mode in lockPreventionModes" :key="mode.value" :value="mode.value" :label="$t(mode.label)" />
           </el-select>
         </template>
       </FormRow>
@@ -69,7 +69,7 @@
         :error="pluginManagerError"
       >
         <template #control>
-          <el-button
+          <el-button class="agent-ui-interactive"
             circle
             :loading="managingPlugins"
             :aria-label="$t('surface.settingsPluginsPanel.installCodexPluginsAndMCPServers')"

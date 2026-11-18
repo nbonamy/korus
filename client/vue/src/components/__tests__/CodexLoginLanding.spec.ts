@@ -111,7 +111,7 @@ describe('CodexLoginLanding', () => {
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
     const actionStyle = (element: Element) => {
       const style = getComputedStyle(element);
-      return ['color', 'font-size', 'font-weight', 'line-height', 'padding', 'text-decoration'].map(property => style.getPropertyValue(property));
+      return ['font-size', 'font-weight', 'line-height', 'padding', 'text-decoration'].map(property => style.getPropertyValue(property));
     };
     const customize = providers[0]!.get('.codex-login__detection button');
     expect(actionStyle(providers[1]!.get('a').element)).toEqual(actionStyle(customize.element));

@@ -72,16 +72,25 @@ function setup() {
 describe('mission execution', () => {
   it('hands completion back to the lead and waits for its next scheduling decision', async () => {
     const h = setup(); const lead = h.originalAgents[0]!;
+    const history = { changes: 'Earlier changes\n'.padEnd(100_000, 'c'), tests: 'Earlier tests\n'.padEnd(100_000, 't') };
     await h.store.change(h.current().id, mission => {
       mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
       mission.execution!.implementationMode = 'perRepository';
-      mission.artifacts.tickets = ['a', 'b'].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath: lead.folder!, done: false }));
+      mission.artifacts.implementation = history;
+      mission.artifacts.tickets = ['a', 'b', ...Array.from({ length: 250 }, (_, index) => `held-${index}`)].map(id => ({ id: `mission-ticket-${id}`, title: id, repositoryPath: lead.folder!, done: false }));
     });
     const plan = { commandId: 'initial', expectedRevision: 0, maxConcurrency: 1, continuationLimit: 0,
       assignments: ['a', 'b'].map(id => ({ ticketId: `mission-ticket-${id}`, ticketRevision: 0, memberId: lead.id })) };
     await h.service.schedule(lead.id, plan); await h.service.waitForLaunches();
     const first = h.current().execution!.runs[0]!;
+    for (const field of ['changes', 'tests'] as const) {
+      await expect(h.service.submit(first.workerId!, { summary: 'Too large', ticketId: first.ticketId!,
+        implementation: { changes: 'commit abc123', tests: 'pass', [field]: 'x'.repeat(100_001) } })).rejects.toThrow('Report code changes and actual test evidence');
+    }
+    expect(h.current().artifacts.implementation).toStrictEqual(history);
     await h.service.submit(first.workerId!, { summary: 'Done', ticketId: first.ticketId!, implementation: { changes: 'commit abc123', tests: 'pass' } });
+    const evidence = { changes: `${history.changes}\n\ncommit abc123`, tests: `${history.tests}\n\npass` };
+    expect(h.current().artifacts.implementation).toStrictEqual(evidence);
     expect(h.ports.sendMessage).toHaveBeenLastCalledWith(first.workerId, lead.id, expect.any(String));
     const message = h.ports.sendMessage.mock.calls.at(-1)![2] as string;
     const [visible, hidden] = message.split('<context>');
@@ -90,6 +99,14 @@ describe('mission execution', () => {
     expect(hidden).toContain(first.workerId!);
     await h.service.agentFinished(first.workerId!, 'completed'); await h.service.waitForLaunches();
     expect(h.current().execution!.runs).toHaveLength(1);
+    const home = await mkdtemp(path.join(tmpdir(), 'mission-large-evidence-'));
+    try {
+      const disk = new AppStateStore(home);
+      await disk.save(h.snapshot);
+      const restored = await disk.load();
+      expect(restored.missions).toStrictEqual(h.snapshot.missions);
+      h.snapshot.missions = restored.missions;
+    } finally { await rm(home, { recursive: true, force: true }); }
     h.service = new MissionExecutionService(h.ports);
     await h.service.recoverInterruptedRuns();
     expect(h.current().execution!.runs).toHaveLength(1);
@@ -99,7 +116,38 @@ describe('mission execution', () => {
     const before = structuredClone(h.current().execution!.runs);
     await new MissionExecutionService(h.ports).agentFinished(first.workerId!, 'completed');
     expect(h.current().execution!.runs).toEqual(before);
+    const second = h.current().execution!.runs.at(-1)!;
+    await h.service.submit(second.workerId!, { summary: 'Next ticket done', ticketId: second.ticketId!, implementation: { changes: 'commit def456', tests: 'next pass' } });
+    expect(h.current().artifacts.implementation).toStrictEqual({ changes: `${evidence.changes}\n\ncommit def456`, tests: `${evidence.tests}\n\nnext pass` });
+    expect(await h.ports.readArtifact(h.current().id, 'implementation')).toContain(`${evidence.tests}\n\nnext pass`);
+    expect(JSON.stringify(h.current().execution!.runs).length).toBeLessThan(10_000);
+    expect(h.current().artifacts.tickets.filter(ticket => !ticket.done)).toHaveLength(250);
     expect(h.current().stage).toBe('implementation');
+  });
+
+  it('reads and revises a 200-ticket schedule without sending duplicate historical artifact snapshots', async () => {
+    const h = setup(); const lead = h.originalAgents[0]!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.artifacts.tickets = Array.from({ length: 200 }, (_, index) => ({ id: `mission-ticket-${index}`, title: `Completed work ${index}`, repositoryPath: lead.folder!, done: true }));
+      mission.artifacts.implementation = { changes: 'c'.repeat(90_000), tests: 't'.repeat(90_000) };
+      mission.execution!.runs = Array.from({ length: 200 }, (_, index) => ({
+        id: `historical-${index}`, stage: 'implementation', memberId: lead.id, workerId: lead.id,
+        ticketId: `mission-ticket-${index}`, status: 'accepted', skills: [], feedback: '', startedAt: 'before',
+        summary: `Finished ${index}`, implementationResult: { changes: `commit ${index}`, tests: `passed ${index}` },
+        proposal: structuredClone(mission.artifacts),
+      }));
+    });
+    const history = h.current().execution!.runs;
+    expect(JSON.stringify(history).length).toBeGreaterThan(16 * 1024 * 1024);
+    const schedule = h.service.schedulingContext(lead.id);
+    expect(schedule.tickets).toHaveLength(200);
+    expect(JSON.stringify(schedule).length).toBeLessThan(256 * 1024);
+    expect(schedule.runs?.map(run => [run.id, run.status, run.summary, run.implementationResult])).toStrictEqual(
+      history.map(run => [run.id, run.status, run.summary, run.implementationResult]));
+    await h.service.schedule(lead.id, { commandId: 'pause', expectedRevision: schedule.revision, assignments: [], maxConcurrency: 1, continuationLimit: 0 });
+    expect(h.service.schedulingContext(lead.id).revision).toBe(schedule.revision + 1);
+    expect(h.current().execution!.runs).toStrictEqual(history);
   });
 
   it('requires a durable lead decision and enforces identity, replay, dependencies and Stop', async () => {
@@ -113,6 +161,8 @@ describe('mission execution', () => {
     expect(h.current().execution!.runs).toHaveLength(0);
     const plan = { commandId: 'decision-1', expectedRevision: 0, maxConcurrency: 2, continuationLimit: 1,
       assignments: ['b', 'a'].map(id => ({ ticketId: `mission-ticket-${id}`, ticketRevision: 0, memberId: lead.id })) };
+    await expect(h.service.schedule(lead.id, { ...plan, assignments: Array.from({ length: 201 }, () => plan.assignments[0]!) })).rejects.toThrow('Invalid Mission dispatch plan');
+    await expect(h.service.schedule(lead.id, { ...plan, maxConcurrency: 21 })).rejects.toThrow('Invalid Mission dispatch plan');
     await expect(h.service.schedule('intruder', plan)).rejects.toThrow(/lead/i);
     h.ports.publish.mockRejectedValueOnce(new Error('publication unavailable'));
     await expect(h.service.schedule(lead.id, plan)).rejects.toThrow('publication unavailable');

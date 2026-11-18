@@ -19,7 +19,7 @@ test('Activity sidebar actions share one row at supported sidebar widths', async
     await page.goto(server.resolvedUrls.local[0]);
     await page.getByRole('button', { name: 'Agent view', exact: true }).click();
     await page.getByRole('menuitemradio', { name: 'Activity', exact: true }).click();
-    const project = page.getByRole('button', { name: 'Add project', exact: true });
+    const project = page.getByRole('button', { name: 'New agent', exact: true });
     const chat = page.getByRole('button', { name: 'Quick chat', exact: true });
     for (const hasMission of [true, false]) {
       if (!hasMission) await page.getByRole('button', { name: 'Toggle existing mission' }).click();
@@ -39,6 +39,6 @@ test('Activity sidebar actions share one row at supported sidebar widths', async
     await chat.click();
     assert.equal(await page.getByLabel('Selected action').textContent(), 'quick-chat');
     await project.click();
-    await page.getByRole('menu', { name: 'Add project from' }).waitFor();
+    await page.getByRole('menu', { name: 'New agent from…' }).waitFor();
   } finally { await browser?.close(); await server.close(); }
 });

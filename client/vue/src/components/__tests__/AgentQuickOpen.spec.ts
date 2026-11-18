@@ -88,7 +88,8 @@ describe('AgentQuickOpen', () => {
     const main = agent('main', 'Main', 'team-current');
     const custom = agent('custom', 'Custom', 'team-current');
     const worktree = agent('worktree', 'Worktree', 'team-current');
-    if (custom.workspace?.kind !== 'git' || worktree.workspace?.kind !== 'git') throw new Error('Expected Git workspaces');
+    if (main.workspace?.kind !== 'git' || custom.workspace?.kind !== 'git' || worktree.workspace?.kind !== 'git') throw new Error('Expected Git workspaces');
+    main.workspace = { ...main.workspace, branch: 'trunk', defaultBranch: 'trunk' };
     worktree.workspace = { ...worktree.workspace, isLinkedWorktree: true };
     const quickChat = { ...agent('chat', 'Chat', 'team-current'), sessionKind: 'quickChat' as const, workspace: undefined };
     const wrapper = mount(AgentQuickOpen, {
@@ -103,9 +104,11 @@ describe('AgentQuickOpen', () => {
     const rows = wrapper.findAll('.quick-open-dialog__item');
     const row = (name: string) => rows.find((candidate) => candidate.text().includes(name))!;
     expect(row('Main').find('.agent-quick-open-icon__session--main').exists()).toBe(true);
+    expect(row('Main').find('.git-main-icon').exists()).toBe(true);
     expect(row('Custom').find('.agent-avatar').text()).toContain('🐝');
     expect(row('Custom').find('.agent-quick-open-icon__session').exists()).toBe(false);
     expect(row('Worktree').find('.agent-quick-open-icon__session--worktree').exists()).toBe(true);
+    expect(row('Worktree').find('.git-branch-icon').exists()).toBe(true);
     expect(row('Chat').find('[data-icon="message"]').exists()).toBe(true);
     expect(row('Chat').find('.agent-avatar').exists()).toBe(false);
   });

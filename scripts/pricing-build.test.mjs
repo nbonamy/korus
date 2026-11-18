@@ -61,7 +61,7 @@ console.log(JSON.stringify(history));
       const observation = {
         provider: 'codex', sessionId: 's', turnId: 't', agentId: 'a', requestId: 'r', revision: 0, status: 'final', at,
         apiProvider: 'openai', model: 'gpt-6-sol', modality: 'text', cacheMode: 'implicit',
-        requestedServiceTier: 'priority', reportedServiceTier: 'standard', reportedMode: null, pricingContext: { context: 1000, region: null },
+        requestedServiceTier: 'priority', reportedServiceTier: 'standard', reportedMode: null, pricingContext: { context: 1000, region: 'global' },
         tokens: { input: 1000, output: 100, cacheRead: 0, cacheWrite: {}, reasoning: 0, inputIncludesCacheRead: true, inputIncludesCacheWrite: true, outputIncludesReasoning: true },
       };
       try {

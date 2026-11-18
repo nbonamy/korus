@@ -11,7 +11,7 @@
     <template #prefix>
       <ProviderIcon v-if="provider" :provider="provider" />
     </template>
-    <el-option
+    <el-option class="agent-ui-interactive"
       v-for="choice in displayChoices"
       :key="choice"
       :value="choice"
@@ -23,7 +23,7 @@
       </span>
     </el-option>
   </el-select>
-  <button v-else-if="choices.length === 0" class="app-button app-button--tertiary" type="button" @click="connectEngine()">{{ t('engineConnection.required') }}</button>
+  <button v-else-if="choices.length === 0" class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="connectEngine()">{{ t('engineConnection.required') }}</button>
 </template>
 
 <script setup lang="ts">

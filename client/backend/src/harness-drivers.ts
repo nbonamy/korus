@@ -31,7 +31,7 @@ const realHarness: HarnessFactory = (provider, options) => createHarness(provide
 const planOnly = '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.';
 
 /** App identity, instructions and MCP wiring shared by every provider. */
-function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'isAppPlugin' | 'presentToolCall' | 'trustedMcpServerName' | 'instructions' | 'mcpServers' | 'log'> {
+function common(options: Options, agents: AgentRegistry, capabilities: LiveCapabilities): Pick<HarnessOptions, 'client' | 'stateDirectory' | 'formatPrompt' | 'isAppPlugin' | 'presentToolCall' | 'trustedMcpServerName' | 'instructions' | 'mcpServers' | 'log'> {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   return {
     client: { name: product.mcpServerName, title: product.name, metadataDirectory: 'korus-sessions', temporaryDirectory: 'korus-tmp' },
@@ -48,6 +48,8 @@ function common(options: Options, agents: AgentRegistry): Pick<HarnessOptions, '
     },
     mcpServers: context => {
       const agent = agents.get(context.id);
+      const reviewUrl = options.reviewMcpServerUrl?.(agent);
+      if (reviewUrl) return reviewScope(capabilities)(reviewUrl).mcpServers;
       return [
         ...(options.appMcpServerUrl ? [{ name: product.mcpServerName, url: appMcpUrlForAgent(options.appMcpServerUrl, agent) }] : []),
         ...Object.entries(options.hostedMcpServerUrls?.() ?? {}).map(([name, url]) => ({ name, url: agentScopedMcpUrl(url, agent.id) })),
@@ -67,7 +69,7 @@ const reviewTools = ['read-skill', 'report_finding', 'update_finding', 'delete_f
 type LiveCapabilities = () => Pick<ReturnType<ReturnType<typeof createHarness>['getProviderCapabilities']>, 'mcpAutoApproval' | 'mcpRequiredServers' | 'structuredOutput'>;
 export const reviewScope = (capabilities: LiveCapabilities) => (url: string) => {
   const { mcpAutoApproval, mcpRequiredServers } = capabilities();
-  return { id: url, mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...reviewTools] }] } as never;
+  return { id: url, mcpServers: [{ name: product.mcpServerName, url, ...(mcpAutoApproval ? { approval: 'auto' as const } : {}), ...(mcpRequiredServers ? { required: true } : {}), enabledTools: [...reviewTools] }] };
 };
 
 /** Every harness gets the same review scope and generation preparation; a harness adds only what is its own. */
@@ -78,7 +80,8 @@ function createCursorDriver(options: Options = {}, make: HarnessFactory = realHa
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   const agents = new AgentRegistry();
   const home = settings()?.providerHomes?.cursor;
-  const harness = make('cursor', { ...common(options, agents),
+  let harness: ReturnType<typeof createHarness>;
+  harness = make('cursor', { ...common(options, agents, () => harness.getProviderCapabilities()),
     ...(home?.isolated ? { home: home.homePath } : {}),
     cursor: { command: resolveCursorExecutable, steeringFallback: () => settings()?.cursorSteeringFallbackEnabled === true },
   });
@@ -103,7 +106,8 @@ export const prepareGeneration = (provider: HarnessProvider, capabilities: LiveC
 export function createAntigravityDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const agents = new AgentRegistry();
   const home = (options.getGeneralSettings?.() ?? options.generalSettings)?.providerHomes?.antigravity;
-  const harness = make('antigravity', { ...common(options, agents),
+  let harness: ReturnType<typeof createHarness>;
+  harness = make('antigravity', { ...common(options, agents, () => harness.getProviderCapabilities()),
     ...(home ? { home: home.homePath } : {}),
     antigravity: { command: process.env.APP_ANTIGRAVITY_COMMAND },
   });
@@ -115,7 +119,8 @@ export function createAntigravityDriver(options: Options = {}, make: HarnessFact
 export function createClaudeDriver(options: Options & { homeDir?: string } = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
   const agents = new AgentRegistry();
-  const harness = make('claude', { ...common(options, agents),
+  let harness: ReturnType<typeof createHarness>;
+  harness = make('claude', { ...common(options, agents, () => harness.getProviderCapabilities()),
     client: { name: product.name, title: product.name, metadataDirectory: 'korus-sessions', entrypoint: product.slug, clientApp: 'agent-workspace' },
     ...(options.homeDir ? { home: options.homeDir } : {}),
     claude: { launch: (command, env) => resolveClaudeLaunch(command, env), decideTool: tool => tool === 'ExitPlanMode' ? { behavior: 'deny' as const, message: `${product.name} captured the proposed plan. Wait for the user to review or request implementation.` } : undefined, disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] },
@@ -125,9 +130,9 @@ export function createClaudeDriver(options: Options & { homeDir?: string } = {},
 }
 
 /** The Harness options Korus runs Codex with. */
-export function codexHarnessOptions(options: Options, agents: AgentRegistry): HarnessOptions {
+export function codexHarnessOptions(options: Options, agents: AgentRegistry, capabilities: LiveCapabilities = () => defaultProviderCapabilities('codex')): HarnessOptions {
   const settings = () => options.getGeneralSettings?.() ?? options.generalSettings;
-  const base = common(options, agents);
+  const base = common(options, agents, capabilities);
   return {
     client: { name: 'workspace', title: product.name, version: '0.3.0', metadataDirectory: base.client.metadataDirectory },
     formatPrompt: base.formatPrompt, isAppPlugin: base.isAppPlugin, presentToolCall: base.presentToolCall, trustedMcpServerName: product.mcpServerName, log: base.log,
@@ -165,7 +170,8 @@ export function codexHarnessOptions(options: Options, agents: AgentRegistry): Ha
 
 export function createCodexDriver(options: Options = {}, make: HarnessFactory = realHarness): HarnessAgentDriver {
   const agents = new AgentRegistry();
-  const harness = make('codex', codexHarnessOptions(options, agents));
+  let harness: ReturnType<typeof createHarness>;
+  harness = make('codex', codexHarnessOptions(options, agents, () => harness.getProviderCapabilities()));
   return driver('codex', harness, agents, {
     coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] } },
   });

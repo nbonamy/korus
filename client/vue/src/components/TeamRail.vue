@@ -10,8 +10,8 @@
     <div class="team-rail__body">
 
       <el-tooltip v-if="!phoneScope" :content="$t('surface.teamRail.backlog')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
-        <button
-          class="team-rail__backlog"
+        <button :data-selected="(backlogActive) ? '' : undefined"
+          class="team-rail__backlog agent-ui-interactive"
           :class="{ 'team-rail__backlog--active': backlogActive }"
           type="button"
           :aria-label="$t('surface.teamRail.backlog')"
@@ -23,8 +23,8 @@
       </el-tooltip>
 
       <el-tooltip :content="$t('surface.teamRail.cockpit')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
-        <button
-          class="team-rail__cockpit"
+        <button :data-selected="(cockpitActive) ? '' : undefined"
+          class="team-rail__cockpit agent-ui-interactive"
           :class="{ 'team-rail__cockpit--active': cockpitActive }"
           type="button"
           :aria-label="$t('surface.teamRail.cockpit')"
@@ -37,7 +37,7 @@
 
       <el-tooltip v-for="team in teams" :key="team.id" :disabled="contextMenuTeamId === team.id" :content="team.name" :trigger="['hover', 'focus']" placement="right" :show-after="300">
         <button
-          class="team-rail__team"
+          class="team-rail__team agent-ui-interactive" data-selection="ring" data-variant="primary" data-appearance="solid"
           :class="[
             { 'team-rail__team--active': isTeamActive(team.id) },
             { 'team-rail__team--unread': isTeamUnread(team.id) },
@@ -46,8 +46,8 @@
           type="button"
           v-bind="clientTeamOrderUpdate.dragItemAttributes(team.id)"
           :style="{
-            backgroundColor: team.color ?? defaultTeamColor,
-            outlineColor: isTeamActive(team.id) ? team.color ?? defaultTeamColor : undefined,
+            '--agent-ui-state-primary-solid': team.color ?? defaultTeamColor,
+            '--agent-ui-state-focus-ring-color': team.color ?? defaultTeamColor,
           }"
           :aria-label="teamAriaLabel(team)"
           :aria-pressed="isTeamActive(team.id)"
@@ -78,7 +78,7 @@
 
       <el-tooltip :content="$t('surface.teamRail.createTeam')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
         <button
-          class="team-rail__new"
+          class="team-rail__new agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.teamRail.createTeam')"
           @click="emit('new-team')"
@@ -90,7 +90,8 @@
       <div class="team-rail__bottom">
         <el-tooltip v-if="spokenAnnouncementsEnabled" :content="spokenAnnouncementsToggleLabel" :trigger="['hover', 'focus']" placement="right" :show-after="300">
           <button
-            class="team-rail__speech-mute"
+            class="team-rail__speech-mute agent-ui-interactive"
+            data-selection="none"
             :class="{ 'team-rail__speech-mute--active': spokenAnnouncementsMuted }"
             type="button"
             :aria-label="spokenAnnouncementsToggleLabel"
@@ -109,8 +110,8 @@
         </el-tooltip>
 
         <el-tooltip v-if="!phoneScope" :content="$t('surface.teamRail.automations')" :trigger="['hover', 'focus']" placement="right" :show-after="300">
-          <button
-            class="team-rail__automations"
+          <button :data-selected="(automationsActive) ? '' : undefined"
+            class="team-rail__automations agent-ui-interactive"
             :class="{ 'team-rail__automations--active': automationsActive }"
             type="button"
             :aria-label="$t('surface.teamRail.automations')"
@@ -365,11 +366,14 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   height: var(--team-rail-button-size);
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--team-text-color);
+  --agent-ui-state-primary-solid-foreground: var(--team-text-color);
+  --agent-ui-state-primary-solid-hover: var(--agent-ui-state-primary-solid);
+  --agent-ui-state-primary-solid-pressed: var(--agent-ui-state-primary-solid);
+  --agent-ui-state-selection-ring-width: 1px;
+  --agent-ui-state-selection-ring-offset: 2px;
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-16);
-  cursor: pointer;
 }
 
 .team-rail__product-mark {
@@ -410,10 +414,8 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-full);
-  color: var(--team-rail-icon-color);
-  background: transparent;
-  cursor: pointer;
+  border-radius: var(--radius-lg);
+  --agent-ui-state-rest-foreground: var(--team-rail-icon-color);
 }
 
 .team-rail__cockpit:not(.team-rail__cockpit--active),
@@ -422,18 +424,6 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
 .team-rail__speech-mute,
 :deep() .settings-menu__trigger:not(.settings-menu__trigger--active) {
   opacity: 0.6;
-}
-
-.team-rail__cockpit:hover,
-.team-rail__cockpit:focus-visible,
-.team-rail__backlog:hover,
-.team-rail__backlog:focus-visible,
-.team-rail__automations:hover,
-.team-rail__automations:focus-visible,
-.team-rail__speech-mute:hover,
-.team-rail__speech-mute:focus-visible {
-  color: var(--team-rail-icon-hover-color);
-  outline: none;
 }
 
 .team-rail__cockpit:hover,
@@ -458,23 +448,7 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
 .team-rail__automations--active {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: var(--color-surface-low);
   opacity: 1;
-}
-
-.team-rail__cockpit,
-.team-rail__cockpit:hover,
-.team-rail__cockpit:focus-visible {
-  border: 0;
-  border-radius: var(--radius-sm);
-}
-
-.team-rail__cockpit.team-rail__cockpit--active {
-  color: var(--team-text-color);
-  background: var(--color-cockpit-background);
-  outline: 1px solid var(--color-cockpit-background);
-  outline-offset: 2px;
 }
 
 .team-rail__new svg {
@@ -529,12 +503,6 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   opacity: 0.46;
 }
 
-.team-rail__team--active {
-  color: var(--team-text-color);
-  outline: 1px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
 .team-rail__unread-indicator {
   position: absolute;
   z-index: 2;
@@ -565,6 +533,7 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
 }
 
 .team-rail__new {
+  --agent-ui-state-rest: var(--color-surface-low);
   width: var(--team-rail-button-size);
   height: var(--team-rail-button-size);
   display: grid;
@@ -572,15 +541,7 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   padding: 0;
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: var(--color-surface-low);
-  cursor: pointer;
-}
-
-.team-rail__new:hover,
-.team-rail__new:focus-visible {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 :deep() .settings-menu__trigger {
@@ -589,20 +550,13 @@ function closeFloatingUiOnEscape(event: KeyboardEvent): void {
   width: var(--team-rail-button-size);
   height: var(--team-rail-button-size);
   padding: 0;
-  color: var(--team-rail-icon-color);
-}
-
-:deep() .settings-menu__trigger:hover,
-:deep() .settings-menu__trigger:focus-visible {
-  color: var(--team-rail-icon-hover-color);
-  outline: none;
+  border-radius: var(--radius-lg);
+  --agent-ui-state-rest-foreground: var(--team-rail-icon-color);
 }
 
 :deep() .settings-menu__trigger--active {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  background: var(--color-surface-low);
   opacity: 1;
 }
 

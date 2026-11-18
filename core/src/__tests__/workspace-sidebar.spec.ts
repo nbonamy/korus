@@ -306,17 +306,17 @@ describe('workspace sidebar projection', () => {
     const local = gitAgent('agent-local', 'Local', '/Users/me/src/korus', 'main', false, '/Users/me/src/korus');
     const remote = gitAgent('agent-remote', 'Remote', '/home/me/korus', 'main', false, '/home/me/korus');
     remote.remoteConnectionId = 'connection-devbox';
-    for (const agent of [local, remote]) if (agent.workspace?.kind === 'git') agent.workspace.originUrl = 'git@github.com:nbonamy/korus.git';
+    for (const agent of [local, remote]) if (agent.workspace?.kind === 'git') agent.workspace.originUrl = 'git@github.com:owner/repo.git';
 
     const [group, ...others] = projectSidebar({ agents: [remote, local], activeAgentId: null });
 
     expect(others).toStrictEqual([]);
     expect(group).toMatchObject({
-      id: 'git:remote:github.com/nbonamy/korus',
-      repositoryKey: 'remote:github.com/nbonamy/korus',
+      id: 'git:remote:github.com/owner/repo',
+      repositoryKey: 'remote:github.com/owner/repo',
       repositoryRoot: '/Users/me/src/korus',
       repositoryAgentId: 'agent-local',
-      originUrl: 'git@github.com:nbonamy/korus.git',
+      originUrl: 'git@github.com:owner/repo.git',
       spansHosts: true,
     });
     expect(group).not.toHaveProperty('remoteConnectionId');

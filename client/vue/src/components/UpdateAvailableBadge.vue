@@ -42,7 +42,7 @@ function title(): string {
   </span>
   <button
     v-else-if="isVisible()"
-    class="update-available-badge"
+    data-variant="primary" data-appearance="solid" class="update-available-badge agent-ui-interactive"
     type="button"
     :title="title()"
     :aria-label="title()"
@@ -77,20 +77,9 @@ function title(): string {
 
 .update-available-badge {
   border-color: var(--color-success);
-  color: var(--color-on-success);
-  background: var(--color-success);
-  cursor: pointer;
-}
-
-.update-available-badge:hover,
-.update-available-badge:focus-visible {
-  color: var(--color-on-success);
-  background: color-mix(in srgb, var(--color-success) 86%, #000);
-}
-
-.update-available-badge:focus-visible {
-  outline: 2px solid var(--color-success);
-  outline-offset: 2px;
+  --agent-ui-state-rest-foreground: var(--color-on-success);
+  --agent-ui-state-primary-solid: var(--color-success);
+  --agent-ui-state-primary-solid-foreground: var(--color-on-success);
 }
 
 .update-status-badge__spinner {

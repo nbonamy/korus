@@ -39,7 +39,7 @@ it("warns for enabled providers whose driver does not report tokens", async () =
   expect(warning().text()).toBe("Cursor turns are reported, but token usage and cost are unavailable.");
   expect(warning().classes()).toContain("el-alert--warning");
   expect(warning().find(".el-alert__close-btn").exists()).toBe(false);
-  await wrapper.get("#usage-tab-performance").trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
   expect(warning().isVisible()).toBe(true);
   await wrapper.setProps({ providerConnections: [{ ...connection, enabled: false }] });
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -202,10 +202,7 @@ it("plots service-tier model rates without stacking or treating missing measurem
   const wrapper = mount(UsagePanel);
   try {
     await flushPromises();
-    await wrapper
-      .findAll('[role="tab"]')
-      .find((tab) => tab.text() === "Performance")!
-      .trigger("click");
+    await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
     expect(getUsage).toHaveBeenCalledWith(
       expect.objectContaining({ group: "model" }),
     );
@@ -251,11 +248,11 @@ it("plots service-tier model rates without stacking or treating missing measurem
     expect(
       wrapper.get('[aria-label="Output Speed"] tbody').text(),
     ).not.toContain(" · fast");
-    await wrapper.get("#usage-tab-usage").trigger("click");
+    await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Usage");
     expect(
       wrapper.get('[aria-label="Usage breakdown"] tbody').findAll("tr"),
     ).toHaveLength(1);
-    await wrapper.get("#usage-tab-performance").trigger("click");
+    await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
     await wrapper.get('[aria-label="Analytics options"]').trigger("click");
     expect(toggle().getAttribute("aria-checked")).toBe("true");
     expect(toggle().querySelector(".tabler-icon-check")).not.toBeNull();
@@ -440,10 +437,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
       .filter((r) => r.attributes("aria-label")?.includes("sonnet")).length,
   ).toBe(1);
   expect(getUsage).toHaveBeenCalledTimes(4); // Both projections, the activity window and the comparison period load once; chart controls do not fetch or mix periods.
-  await wrapper
-    .findAll('[role="tab"]')
-    .find((t) => t.text() === "Performance")!
-    .trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
   await flushPromises();
   // 100 provider-reported tokens over 4 working seconds after the first token.
   expect(wrapper.text()).toContain("25");
@@ -530,7 +524,7 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
     wrapper.get('[aria-label="Output Speed"] tbody tr')
       .findAll("td").map((cell) => cell.text()),
   ).toStrictEqual(["gpt-6-luna", "1.2M"]);
-  await wrapper.get("#usage-tab-usage").trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Usage");
   expect(wrapper.get(".hero-number strong").text()).toBe("19.2M");
   expect(
     wrapper.get('[aria-label="Usage breakdown"] tbody tr')
@@ -597,10 +591,7 @@ it("scales model behavior bars by value and uses each model provider color", asy
   setElectronTestClient({ getUsage: vi.fn(async () => summary) });
   const wrapper = mount(UsagePanel);
   await flushPromises();
-  await wrapper
-    .findAll('[role="tab"]')
-    .find((tab) => tab.text() === "Performance")!
-    .trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
   await flushPromises();
 
   const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
@@ -711,10 +702,7 @@ it("keeps TTFT models while omitting unmeasured speed and absent tiers", async (
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await flushPromises();
-  await wrapper
-    .findAll('[role="tab"]')
-    .find((t) => t.text() === "Performance")!
-    .trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
   await flushPromises();
   const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
   expect(
@@ -748,7 +736,7 @@ it("keeps TTFT models while omitting unmeasured speed and absent tiers", async (
   expect(wrapper.get('[aria-label="Output Speed"] tbody').findAll("tr")
     .map(row => row.findAll("td").map(cell => cell.text())))
     .toStrictEqual([["gpt-6-luna · fast", "50"]]);
-  await wrapper.get("#usage-tab-usage").trigger("click");
+  await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Usage");
   const share = wrapper.get('[aria-label="Usage share"]');
   expect(share.text()).not.toContain("grok-4.5");
   await choose(wrapper, "#usage-measure", "Turns");
@@ -1257,10 +1245,10 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
       ["Codex", "1", "10", "$0.00", "50%"],
     ]);
     expect(wrapper.find(".cost-coverage").exists()).toBe(false);
-    await wrapper.get("#usage-tab-performance").trigger("click");
+    await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Performance");
     expect(wrapper.find('[aria-label="Time to First Token (TTFT)"]').exists()).toBe(true);
     expect(wrapper.find('[aria-label="Output Speed"]').exists()).toBe(false);
-    await wrapper.get("#usage-tab-usage").trigger("click");
+    await choose(wrapper, '[aria-label="Analytics"][role="radiogroup"]', "Usage");
     expect(wrapper.get(".hero-number strong").text()).toBe("20");
   } finally {
     wrapper.unmount();

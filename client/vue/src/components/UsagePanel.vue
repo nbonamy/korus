@@ -6,15 +6,15 @@
   >
     <template #actions>
       <button
-        class="app-button app-button--tertiary"
+        class="app-button app-button--tertiary agent-ui-interactive"
         type="button"
         :disabled="busy || clearing"
         @click="clearStatistics"
       >
         {{ $t(clearing ? "analytics.clearing" : "analytics.clear") }}
       </button>
-      <button
-        class="app-button app-button--secondary analytics-refresh"
+      <button data-variant="primary"
+        class="app-button app-button--secondary analytics-refresh agent-ui-interactive"
         type="button"
         :aria-label="$t('analytics.refresh')"
         :disabled="busy"

@@ -1,7 +1,7 @@
 <template>
   <AppMenuButton v-model:open="open" placement="bottom-end" :ariaLabel="t('missions.costMenu')" :items="items" :width="260">
     <template #trigger="{ attrs }">
-      <button v-bind="attrs" class="mission-cost-menu__trigger" type="button" :aria-label="t('missions.costMenu')" :title="t('missions.costMenu')">
+      <button v-bind="attrs" class="mission-cost-menu__trigger agent-ui-interactive" type="button" :aria-label="t('missions.costMenu')" :title="t('missions.costMenu')">
         <IconDots aria-hidden="true" />
       </button>
     </template>
@@ -53,15 +53,7 @@ const items = computed<AppMenuItem[]>(() => {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.mission-cost-menu__trigger:hover,
-.mission-cost-menu__trigger[aria-expanded="true"] {
-  background: var(--color-surface-high);
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .mission-cost-menu__trigger :deep(svg) {

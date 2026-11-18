@@ -26,10 +26,10 @@
     />
     <template v-if="operation" #footer>
       <div class="app-dialog__footer">
-        <button v-if="operationState === 'error'" class="app-button app-button--tertiary" type="button" @click="close">
+        <button v-if="operationState === 'error'" class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="close">
           {{ t('common.close') }}
         </button>
-        <button v-else class="app-button app-button--secondary" type="button" :disabled="operationState !== 'running'" @click="runInBackground">
+        <button data-variant="primary" v-else class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="operationState !== 'running'" @click="runInBackground">
           {{ t('common.runInBackground') }}
         </button>
       </div>

@@ -7,6 +7,7 @@ import type {
 import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../../src/components/AppShell.vue';
+import { windowState } from '../../src/window-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { createMission } from '@workspace/core/missions';
 import { selectAgent } from '@workspace/core/agent-manager';
@@ -46,6 +47,45 @@ afterEach(() => {
 });
 
 describe('AppShell navigation and teams', () => {
+  it.each(['cockpit', 'backlog'] as const)('restores %s from this window’s saved view and remembers leaving it', async navigation => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'owner' }];
+    let saved = 'workspace';
+    const api = {
+      getWindowContext: async () => ({ windowId: 1, viewState: { navigation: saved }, nativeOwners: [], composerDrafts: {} }),
+      setWindowNavigation: vi.fn(async (value: string) => { saved = value; }),
+    } as unknown as AppApi;
+    window.app = api;
+    const start = () => windowState.start({ api: () => api, showAgent: () => {}, showTeam: () => {}, agentExists: () => true, teamExists: () => true, applyDraft: () => {} });
+    const loadGlobalWorkItems = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 25, totalItems: 0, hasNextPage: false });
+    const mountWindow = () => mountShell({ snapshot, loadGlobalWorkItems });
+    await start();
+    let wrapper = mountWindow();
+    try {
+      const label = navigation === 'cockpit' ? 'Cockpit' : 'Backlog';
+      await wrapper.get(`[aria-label="${label}"]`).trigger('click');
+      await flushPromises();
+      expect(saved).toBe(navigation);
+      wrapper.unmount();
+      loadGlobalWorkItems.mockClear();
+      windowState.navigation.value = 'workspace';
+      const restarting = start();
+      wrapper = mountWindow();
+      await restarting;
+      await flushPromises();
+      expect(wrapper.get(`[aria-label="${label}"]`).attributes('aria-pressed')).toBe('true');
+      if (navigation === 'backlog') expect(loadGlobalWorkItems).toHaveBeenCalledOnce();
+      await wrapper.get(`[aria-label="${product.defaultTeamName}"]`).trigger('click');
+      await flushPromises();
+      expect(saved).toBe('workspace');
+      wrapper.unmount();
+      await start();
+      wrapper = mountWindow();
+      expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('false');
+      expect(wrapper.get('[aria-label="Backlog"]').attributes('aria-pressed')).toBe('false');
+    } finally { wrapper.unmount(); windowState.stop(); windowState.navigation.value = 'workspace'; }
+  });
+
   it('opens the shortcut reference through the keyboard and native Help command, leaving typing alone', async () => {
     let command: (value: AppCommand) => void = () => {};
     window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;

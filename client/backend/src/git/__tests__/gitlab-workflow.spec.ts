@@ -69,7 +69,7 @@ it.each(['git@gitlab.com:group/sub/repo.git', 'https://gitlab.com/group/sub/repo
     await git(root, ['config', 'branch.feature/demo.remote', 'other']); await git(root, ['config', 'branch.feature/demo.merge', 'refs/heads/feature/demo']);
     expect(await service.workflow(root)).toMatchObject({ remote: 'other', repository: 'owner/other', repositoryProvider: 'github' });
   } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
-}, 3_000);
+}, 10_000); // Real Git init, commit and remote setup per case needs headroom when the full suite runs in parallel.
 it.each(['github', 'gitlab'].flatMap(provider => ['current', 'new', 'reuse'].map(mode => ({ provider, mode }))))('checks out the intended $provider request head with worktree mode $mode', async ({ provider, mode }) => {
   const container = await mkdtemp(join(tmpdir(), 'korus-request-ref-'));
   const root = join(container, 'repo');

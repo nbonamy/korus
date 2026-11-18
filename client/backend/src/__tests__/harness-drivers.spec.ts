@@ -38,6 +38,18 @@ describe('Korus provider drivers over the SDK Harness', () => {
     expect(scope('claude')).toStrictEqual({ id: 'http://review', mcpServers: [{ ...server, approval: 'auto' }] });
     expect(scope('cursor')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
     expect(scope('antigravity')).toStrictEqual({ id: 'http://review', mcpServers: [server] });
+
+    const agents = new AgentRegistry();
+    agents.set({ id: 'reviewer', name: 'Reviewer' } as never);
+    let reviewUrl: string | undefined = 'http://review';
+    const options = codexHarnessOptions({ appMcpServerUrl: 'http://app', hostedMcpServerUrls: () => ({ github: 'http://github' }), reviewMcpServerUrl: () => reviewUrl }, agents);
+    const endpoints = () => options.mcpServers!({ id: 'reviewer' } as never);
+    expect(endpoints()).toStrictEqual(scope('codex').mcpServers);
+    // Recreated review endpoints must be used even when history is loaded before the next round.
+    reviewUrl = 'http://restored-review';
+    expect(endpoints()).toStrictEqual([{ ...server, url: reviewUrl, approval: 'auto', required: true }]);
+    reviewUrl = undefined;
+    expect(endpoints()).toHaveLength(2);
   });
 
   it('gives every harness, Codex included, Korus\'s own plugin and tool title handling', () => {

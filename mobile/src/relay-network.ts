@@ -110,6 +110,7 @@ export function createRelayNetwork(options: { vault: ProtectedVault; relayPeerId
       }
     },
     isDisposed: () => disposed,
+    isSuspended: () => suspended,
     resume() { if (disposed) throw new Error('Companion closed.'); suspended = false; },
     async suspend() { suspended = true; await stop(); },
     async dispose() { disposed = true; await stop(); },

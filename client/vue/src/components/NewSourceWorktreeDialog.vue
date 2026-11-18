@@ -27,7 +27,7 @@
               :loading="branchesLoading"
               :placeholder="$t('surface.newSourceWorktreeDialog.chooseBaseBranch')"
             >
-              <el-option
+              <el-option class="agent-ui-interactive"
                 v-for="branch in orderedBranches"
                 :key="branch.name"
                 :label="branch.name"
@@ -67,7 +67,7 @@
               :placeholder="$t('surface.newSourceWorktreeDialog.enterABranchName')"
             />
             <button
-              class="new-source-worktree-dialog__folder-picker"
+              class="new-source-worktree-dialog__folder-picker agent-ui-interactive"
               type="button"
               :aria-label="$t('surface.newSourceWorktreeDialog.chooseWorktreeFolder')"
               :title="$t('surface.newSourceWorktreeDialog.chooseWorktreeFolder')"
@@ -83,11 +83,11 @@
     </form>
 
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="backOrClose">
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="backOrClose">
         {{ existingWorktree ? $t('common.back') : $t('surface.newSourceWorktreeDialog.cancel') }}
       </button>
-      <button
-        class="app-button app-button--primary"
+      <button data-variant="primary" data-appearance="solid"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :aria-busy="creating"
         :disabled="creating || (!existingWorktree && !canCreate)"
@@ -337,20 +337,7 @@ async function refreshSuggestedDestinationPath(): Promise<void> {
   height: var(--space-16);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.new-source-worktree-dialog__folder-picker:hover:not(:disabled),
-.new-source-worktree-dialog__folder-picker:focus-visible {
-  color: var(--color-text);
-  background: var(--color-surface);
-}
-
-.new-source-worktree-dialog__folder-picker:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .new-source-worktree-dialog__folder-picker svg {

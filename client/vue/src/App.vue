@@ -182,6 +182,7 @@
     @assign-work-item="assignWorkItemToAgent"
     @remove-work-item-assignment="removeWorkItemAssignment"
     @restart-agent="restartAgent"
+    @set-agent-unread="setAgentUnread"
     @select-agent="selectAgent"
     @select-team="selectTeam"
     @select-model="selectModel"
@@ -451,6 +452,7 @@ const {
   setRendererWindowFocused,
   setVisibleAgentIds,
   markDebugAgentsUnread,
+  setAgentUnread,
   selectTeam,
   sendPrompt,
   sendPromptToAgent,

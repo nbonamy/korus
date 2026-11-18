@@ -6,6 +6,7 @@ describe('window view state', () => {
     {},
     { agentId: 'agent-1' },
     { scope: 'workspace' },
+    { navigation: 'workspace' }, { navigation: 'cockpit' }, { navigation: 'backlog' },
     { agentId: 'agent-1', scope: 'agent' },
     { teamId: 'team-1', scope: 'team' },
     { teamId: 'team-1', branch: 'feat1', scope: 'feature' },
@@ -14,6 +15,7 @@ describe('window view state', () => {
 
   it.each([
     null, 'agent', [], { agentId: 1 }, { teamId: 3 }, { scope: 'bogus' },
+    { navigation: 'settings' }, { navigation: 1 },
     { scope: 'agent' }, { scope: 'team' }, { scope: 'feature' },
     { teamId: 'team-1', scope: 'feature' }, { branch: 'feat1', scope: 'feature' }, { teamId: 'team-1', branch: '', scope: 'feature' }, { branch: 3 },
     { scope: 'mission' }, { scope: 'mission', teamId: 'team-1' }, { scope: 'mission', missionId: 'mission-1' }, { scope: 'mission', teamId: 'team-1', missionId: '' }, { missionId: 3 },

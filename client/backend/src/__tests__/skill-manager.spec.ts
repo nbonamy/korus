@@ -6,9 +6,8 @@ import { AppBackendServer } from '../server';
 import { ProviderSetup } from '../provider-setup';
 import { createRemoteAgent, createTestSnapshot } from './server-test-fixtures';
 import { ProviderDriverRpc } from '../driver-rpc';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
+import { scriptedDriver } from './support/scripted-driver';
 import type { BackendPublishedEvent, ProviderSkillSummary } from '@workspace/core/contracts';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { curatedSkills } from '@workspace/core/skill-manager';
 
 let root: string;
@@ -51,15 +50,14 @@ function host(options: { multiRootAntigravity?: boolean } = {}) {
   const snapshot = createTestSnapshot();
   snapshot.agents = [{ ...createRemoteAgent(), id: 'local-agent', teamId: 'team-test', folder: root }];
   let catalog: ProviderSkillSummary[] = [];
-  const driver: AgentProviderDriver = {
-    provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => codexProviderCapabilities, sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(),
-    onEvent: () => () => undefined, close: async () => undefined,
-    async listSkills(_agent, forceReload = false) {
+  // The real driver, with the skills this test's provider can see laid over it at the contract the server calls.
+  const { driver } = scriptedDriver('codex');
+  Object.assign(driver, {
+    async listSkills(_agent: unknown, forceReload = false) {
       if (forceReload) catalog = (await readdir(path.join(root, 'codex/skills')).catch(() => [])).map(name => ({ name, description: '', enabled: true, path: path.join(root, 'codex/skills', name, 'SKILL.md') }));
       return catalog;
     },
-  };
+  });
   const events: BackendPublishedEvent[] = [];
   const lifecycles = new Map((['codex', 'claude', 'antigravity'] as const).map(provider => [provider, {
     home: () => ({ isolated: true, shareSkills: false, homePath: path.join(root, provider) }),

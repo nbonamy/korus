@@ -4,7 +4,7 @@
       <button
         v-bind="attrs"
         type="button"
-        class="split-layout-control"
+        class="split-layout-control agent-ui-interactive"
         :aria-label="t('split.layout')"
         :title="t('split.layout')"
       >
@@ -55,14 +55,7 @@ function select(id: string): void {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.split-layout-control:hover,
-.split-layout-control:focus-visible {
-  color: var(--color-text);
-  background: var(--color-surface-high);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 .split-layout-control svg {
   width: 18px;

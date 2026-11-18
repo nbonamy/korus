@@ -25,6 +25,9 @@ struct SettingsView: View {
                     NavigationLink { ConnectionsView(closeSettings: { dismiss() }) } label: {
                         plainLabel("Connections", systemImage: "laptopcomputer")
                     }
+                    NavigationLink { DeviceNameView() } label: {
+                        row("Device name", systemImage: "iphone", value: model.deviceName.isEmpty ? UIDevice.current.model : model.deviceName)
+                    }
                     NavigationLink { UsageView() } label: {
                         plainLabel("Usage and limits", systemImage: "gauge.with.dots.needle.33percent")
                     }
@@ -125,6 +128,36 @@ struct SettingsView: View {
 }
 
 /// How a message sent while the agent is still working is handled; the explanation lives here, not on the list.
+/// The name the laptops show for this phone; saved when the person is done typing, not on every keystroke.
+private struct DeviceNameView: View {
+    @Environment(AppModel.self) private var model
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        AppSheetList {
+            Section {
+                TextField(UIDevice.current.model, text: $draft)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($focused)
+                    .onSubmit(save)
+            }
+        }
+        .navigationTitle("Device Name")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { draft = model.deviceName; focused = true }
+        .onDisappear(perform: save)
+    }
+
+    private func save() {
+        let name = draft.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard name != model.deviceName, name.count <= 80 else { return }
+        model.deviceName = name
+    }
+}
+
 private struct FollowUpSettingsView: View {
     @Environment(AppModel.self) private var model
 

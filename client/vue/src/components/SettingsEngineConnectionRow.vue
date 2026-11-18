@@ -4,19 +4,19 @@
       <template #control>
         <template v-if="overflow">
           <ProviderInstallActions v-if="installed === false && provider && !setupCapabilities?.installation.managed" :provider="provider" :capabilities="setupCapabilities" :busy="busy" :disabled="saving || updateBusy" @refresh="emit('refresh')" />
-          <el-button v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
-          <el-button v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
-          <el-button v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
+          <el-button class="agent-ui-interactive" v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
+          <el-button class="agent-ui-interactive" v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
+          <el-button class="agent-ui-interactive" v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
           <AppMenuButton :ariaLabel="t('engineConnection.actions', { name: title })" :items="overflowItems" @select="selectOverflowItem">
             <template #trigger="{ attrs }">
-              <button v-bind="attrs" class="settings-engine-connection__menu" type="button" :aria-label="t('engineConnection.actions', { name: title })"><DotsVerticalIcon aria-hidden="true" /></button>
+              <button v-bind="attrs" class="settings-engine-connection__menu agent-ui-interactive" type="button" :aria-label="t('engineConnection.actions', { name: title })"><DotsVerticalIcon aria-hidden="true" /></button>
             </template>
           </AppMenuButton>
         </template>
         <ProviderInstallActions v-else-if="installed === false && provider" :provider="provider" :capabilities="setupCapabilities" :busy="busy" :automated="installable" @refresh="emit('refresh')" @install="emit('install')" />
-        <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
-        <el-button v-else-if="connected" size="small" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
-        <el-button v-else size="small" :disabled="busy || saving" @click="emit('connect')">
+        <button v-else-if="pending" class="app-button app-button--tertiary agent-ui-interactive" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
+        <el-button class="agent-ui-interactive" v-else-if="connected" size="small" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
+        <el-button class="agent-ui-interactive" v-else size="small" :disabled="busy || saving" @click="emit('connect')">
           {{ $t('engineConnection.connect') }}
         </el-button>
         <el-switch v-if="!overflow" :model-value="connected && enabled !== false" :loading="saving" :disabled="!connected || busy || saving || pending" :aria-label="enabledLabel" @update:model-value="toggle" />
@@ -41,9 +41,9 @@
       </div>
       <div class="engine-hero__action">
         <ProviderInstallActions v-if="installed === false && provider" :provider="provider" :capabilities="setupCapabilities" :busy="busy" @refresh="emit('refresh')" @install="emit('install')" />
-        <button v-else-if="pending" class="app-button app-button--tertiary" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
-        <el-button v-else-if="connected" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
-        <el-button v-else type="primary" :disabled="busy || saving" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
+        <button v-else-if="pending" class="app-button app-button--tertiary agent-ui-interactive" type="button" aria-busy="true" :disabled="busy" @click="emit('cancel')">{{ $t('auth.cancel') }}</button>
+        <el-button class="agent-ui-interactive" v-else-if="connected" :disabled="busy || saving" @click="emit('disconnect')">{{ $t('engineConnection.disconnect') }}</el-button>
+        <el-button data-variant="primary" data-appearance="solid" class="agent-ui-interactive" v-else type="primary" :disabled="busy || saving" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
       </div>
     </div>
     <div class="engine-hero__details">
@@ -61,7 +61,7 @@
 import { computed, ref } from 'vue';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import { resolveProviderSetupCapabilities, type ProviderAuthentication, type ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { useI18n } from 'vue-i18n';
 import FormRow from '../shared/form/FormRow.vue';
 import ProviderIcon from './ProviderIcon.vue';
@@ -120,7 +120,7 @@ async function toggle(value: string | number | boolean) {
   try { await props.setEnabled?.(value === true); }
   catch (cause) {
     const lastEngine = String(cause).endsWith('Cannot disable the last engine. Enable another one first.');
-    await ElMessageBox.alert(
+    await appMessageBox.alert(
       t(lastEngine ? 'engineConnection.lastEngine' : 'engineConnection.updateFailed'),
       t(lastEngine ? 'engineConnection.lastEngineTitle' : 'engineConnection.updateFailedTitle'),
       { confirmButtonText: t('common.ok'), type: lastEngine ? 'warning' : 'error' },
@@ -241,9 +241,7 @@ async function toggle(value: string | number | boolean) {
   justify-content: center;
   padding: var(--space-2);
   border: 0;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .settings-engine-connection__menu svg {

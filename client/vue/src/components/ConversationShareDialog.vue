@@ -20,10 +20,10 @@
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </div>
     <template #footer>
-      <button type="button" class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.close') }}</button>
-      <button v-if="state?.active" type="button" class="app-button app-button--secondary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
-      <button v-if="!state && !loading" type="button" class="app-button app-button--primary" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
-      <button v-else-if="state" type="button" class="app-button app-button--primary" :aria-busy="busy || loading" :disabled="busy || loading || state.availability === 'notConfigured'" @click="run(state.active ? 'copy' : 'create')">
+      <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :disabled="busy" @click="close">{{ t('sharing.close') }}</button>
+      <button data-variant="primary" v-if="state?.active" type="button" class="app-button app-button--secondary agent-ui-interactive" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="!state && !loading" type="button" class="app-button app-button--primary agent-ui-interactive" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-else-if="state" type="button" class="app-button app-button--primary agent-ui-interactive" :aria-busy="busy || loading" :disabled="busy || loading || state.availability === 'notConfigured'" @click="run(state.active ? 'copy' : 'create')">
         {{ state.active ? t('sharing.copy') : t('sharing.share') }}
       </button>
     </template>

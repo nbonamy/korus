@@ -1,5 +1,6 @@
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
+import type { RepositorySessionSourceTab } from './repository-session-context';
 
 export interface AgentSidebarProps {
   agents: Agent[];
@@ -39,13 +40,14 @@ export interface AgentSidebarProps {
 export type SidebarRepositoryTarget = { agentId: string; repositoryName: string; repositoryRoot: string; remoteConnectionId?: string; originUrl?: string };
 
 export type AgentSidebarEvents = {
+  'set-agent-unread': [input: { agentId: string; unread: boolean }];
   'collapse-sidebar': [];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];
   'compact-session': [agentId: string];
   'cleanup-pull-request': [agentId: string];
   'update-collapsed-repositories': [repositoryKeys: string[]];
-  'create-agent-from-repository': [payload: SidebarRepositoryTarget];
+  'create-agent-from-repository': [payload: SidebarRepositoryTarget & { initialTab?: RepositorySessionSourceTab }];
   'create-agent-on-branch': [payload: SidebarRepositoryTarget & { branch: SourceBranch }];
   'create-agent-worktree-in-repository': [payload: SidebarRepositoryTarget];
   'create-feature-agent': [repositories: SidebarRepositoryTarget[], branch?: string];

@@ -4,10 +4,10 @@
       <WorktreeReusePrompt :branch="branchName" :path="existingWorktreePath" />
       <div class="work-item-assignment-picker__body"><slot /></div>
       <footer>
-        <button class="app-button app-button--tertiary" type="button" @click="reuseAction = null">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="reuseAction = null">
           {{ t('common.cancel') }}
         </button>
-        <button class="app-button app-button--primary" type="button" @click="confirmReuse">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" @click="confirmReuse">
           {{ t('worktreeReuse.action') }}
         </button>
       </footer>
@@ -16,7 +16,7 @@
       <section class="work-item-assignment-picker__section">
         <h3 class="app-section-label">{{ t('repositoryBacklog.workIn') }}</h3>
         <div class="work-item-assignment-picker__target-options">
-          <button
+          <button :data-selected="(destination === 'new') ? '' : undefined" class="agent-ui-interactive"
             type="button"
             :class="{ 'is-selected': destination === 'new' }"
             :aria-pressed="destination === 'new'"
@@ -27,7 +27,7 @@
             <strong>{{ t('repositoryBacklog.newIsolatedSession') }}</strong>
             <span>{{ t('repositoryBacklog.newIsolatedSessionDetail') }}</span>
           </button>
-          <button
+          <button :data-selected="(destination === 'existing') ? '' : undefined" class="agent-ui-interactive"
             type="button"
             :class="{ 'is-selected': destination === 'existing' }"
             :aria-pressed="destination === 'existing'"
@@ -56,7 +56,7 @@
             :aria-label="t('repositoryBacklog.existingSession')"
             :placeholder="t('repositoryBacklog.chooseSession')"
           >
-            <el-option
+            <el-option class="agent-ui-interactive"
               v-for="session in eligibleSessions"
               :key="session.agentId"
               :label="session.label"
@@ -75,7 +75,7 @@
           >
             <template #prefix>
               <IconGitPullRequest v-if="item.kind === 'pullRequest'" aria-hidden="true" />
-              <IconGitBranch v-else aria-hidden="true" />
+              <GitBranchIcon v-else aria-hidden="true" />
             </template>
           </el-input>
         </section>
@@ -91,13 +91,13 @@
       <p v-if="error" class="work-item-assignment-picker__error" role="alert">{{ error }}</p>
 
       <footer>
-        <button class="app-button app-button--tertiary" type="button" :disabled="!canSubmit" @click="requestCustom">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="!canSubmit" @click="requestCustom">
           {{ t('repositoryBacklog.custom') }}
         </button>
-        <button class="app-button app-button--secondary" type="button" :disabled="!canSubmit" @click="requestSubmit(secondaryAction)">
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="!canSubmit" @click="requestSubmit(secondaryAction)">
           {{ item.kind === 'pullRequest' ? t('repositoryBacklog.addressFeedback') : t('repositoryBacklog.investigate') }}
         </button>
-        <button class="app-button app-button--primary" type="button" :disabled="!canSubmit" @click="requestSubmit(primaryAction)">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="!canSubmit" @click="requestSubmit(primaryAction)">
           {{ item.kind === 'pullRequest' ? t('repositoryBacklog.review') : t('repositoryBacklog.fix') }}
         </button>
       </footer>
@@ -109,7 +109,8 @@
 import { useExecutionSelection } from '../execution-selection';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconAlertTriangle, IconCopy, IconGitBranch, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
+import { IconAlertTriangle, IconCopy, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
+import { GitBranchIcon } from '../shared/icons/app-icons';
 import type { WorkItem } from '@workspace/core/contracts';
 import type { WorkItemAssignmentAction } from '@workspace/core/work-item-prompts';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
@@ -283,27 +284,9 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
   padding: 0 var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
-}
-
-.work-item-assignment-picker__target-options > button:hover:not(:disabled):not(.is-selected) {
-  border-color: var(--color-outline);
-  background: var(--color-surface-low);
-}
-
-.work-item-assignment-picker__target-options > button.is-selected {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-
-.work-item-assignment-picker__target-options > button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .work-item-assignment-picker__target-options strong {

@@ -578,6 +578,55 @@ describe('useAppState', () => {
     expect(markAgentRead).toHaveBeenCalledWith(agent.id, 3);
   });
 
+  it('keeps a manually unread open agent unread until revisited or explicitly marked read', async () => {
+    const remote = createInitialSnapshot();
+    const agent = remote.agents[0]!, other = remote.agents[1]!;
+    remote.activeAgentId = agent.id;
+    agent.readState = { revision: 1, readRevision: 1 };
+    const status = structuredClone(agent.status);
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    let seq = 0;
+    const publish = () => listeners[0]!({ type: 'agent.updated', seq: ++seq, occurredAt: '', agentId: agent.id, payload: { id: agent.id, readState: { ...agent.readState! } } });
+    const markAgentRead = vi.fn(async (_id: string, revision: number) => { agent.readState!.readRevision = revision; publish(); });
+    const markAgentUnread = vi.fn(async () => {
+      // An older turn can be acknowledged while the manual request is being admitted.
+      agent.readState!.revision++;
+      agent.readState!.readRevision = agent.readState!.revision;
+      publish();
+      agent.readState!.revision++;
+      publish();
+      return agent.readState!.revision;
+    });
+    stubElectronTestWindow({ app: {
+      getSnapshot: async () => structuredClone(remote),
+      selectAgent: async id => { remote.activeAgentId = id; return structuredClone(remote); },
+      markAgentUnread,
+      markAgentRead, onEvent: listener => { listeners.push(listener); return () => {}; },
+    } });
+    const state = useAppState();
+    const notifyError = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    try {
+      await state.loadSnapshot();
+      await state.setAgentUnread({ agentId: agent.id, unread: true });
+      expect(state.unreadAgentIds.value).toContain(agent.id);
+      state.setRendererWindowFocused(false);
+      state.setRendererWindowFocused(true);
+      expect(markAgentRead).not.toHaveBeenCalled();
+      await state.selectAgent(other.id);
+      expect(state.unreadAgentIds.value).toContain(agent.id);
+      await state.selectAgent(agent.id);
+      await vi.waitFor(() => expect(state.unreadAgentIds.value).not.toContain(agent.id));
+      await state.setAgentUnread({ agentId: agent.id, unread: true });
+      await state.setAgentUnread({ agentId: agent.id, unread: false });
+      expect(state.unreadAgentIds.value).not.toContain(agent.id);
+      markAgentUnread.mockRejectedValueOnce(Error('Disconnected'));
+      await state.setAgentUnread({ agentId: agent.id, unread: true });
+      expect(state.unreadAgentIds.value).not.toContain(agent.id);
+      expect(notifyError).toHaveBeenCalledWith('Disconnected');
+      expect(state.snapshot.value.agents.find(item => item.id === agent.id)!.status).toStrictEqual(status);
+    } finally { notifyError.mockRestore(); }
+  });
+
   it('marks an inactive current-team agent and an agent from another non-empty team unread for Debug', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const otherAgents = [

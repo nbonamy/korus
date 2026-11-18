@@ -61,7 +61,7 @@ describe('AppShellNavigation', () => {
     expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
     expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
     expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+    expect(wrapper.text()).not.toMatch(/Quick chat|New mission|New agent/);
   });
 
   it('forwards team-rail navigation as semantic shell actions', () => {

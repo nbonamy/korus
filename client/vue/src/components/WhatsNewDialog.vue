@@ -18,7 +18,7 @@
             size="small"
             :teleported="false"
           >
-            <el-option
+            <el-option class="agent-ui-interactive"
               v-for="release in releaseNotes.releases"
               :key="release.version"
               :label="$t('dynamic.version', { version: release.version })"
@@ -29,7 +29,7 @@
           <p class="app-dialog__subtitle">{{ $t('surface.whatsNewDialog.released') }} {{ formattedReleaseDate }}</p>
         </div>
         <button
-          class="app-dialog__icon-button"
+          class="app-dialog__icon-button agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.whatsNewDialog.closeWhatSNew')"
           @click="emit('close')"

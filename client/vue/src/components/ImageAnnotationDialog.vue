@@ -24,8 +24,8 @@
                 placement="bottom"
                 :show-after="300"
               >
-                <button
-                  class="image-annotation-dialog__tool"
+                <button :data-selected="(currentTool === item.id) ? '' : undefined"
+                  class="image-annotation-dialog__tool agent-ui-interactive"
                   :class="{ 'image-annotation-dialog__tool--active': currentTool === item.id }"
                   type="button"
                   :aria-label="item.label"
@@ -39,8 +39,8 @@
             <span class="image-annotation-dialog__toolbar-separator" aria-hidden="true" />
             <div class="image-annotation-dialog__toolbar-group" role="group" :aria-label="$t('surface.imageAnnotationDialog.imageScale')">
               <el-tooltip :content="$t('dynamic.annotation.retinaHint')" placement="bottom" :show-after="300">
-                <button
-                  class="image-annotation-dialog__tool image-annotation-dialog__tool--retina"
+                <button :data-selected="(retinaMode) ? '' : undefined"
+                  class="image-annotation-dialog__tool image-annotation-dialog__tool--retina agent-ui-interactive"
                   :class="{ 'image-annotation-dialog__tool--active': retinaMode }"
                   type="button"
                   :aria-label="$t('surface.imageAnnotationDialog.retinaMode')"
@@ -52,7 +52,7 @@
             <span class="image-annotation-dialog__toolbar-separator" aria-hidden="true" />
             <div class="image-annotation-dialog__toolbar-group" role="group" :aria-label="$t('surface.imageAnnotationDialog.annotationHistory')">
               <button
-                class="image-annotation-dialog__tool"
+                class="image-annotation-dialog__tool agent-ui-interactive"
                 type="button"
                 :aria-label="$t('surface.imageAnnotationDialog.undoLastAnnotation')"
                 :title="$t('surface.imageAnnotationDialog.undoLastAnnotationDelete')"
@@ -156,7 +156,7 @@
           <ol v-if="annotations.length > 0" class="image-annotation-dialog__comment-list">
             <li v-for="annotation in annotations" :key="annotation.id">
               <button
-                class="image-annotation-dialog__comment"
+                class="image-annotation-dialog__comment agent-ui-interactive"
                 type="button"
                 :aria-label="$t('dynamic.annotation.edit', { number: annotation.number })"
                 @click="editComment(annotation)"
@@ -168,7 +168,7 @@
                 </span>
               </button>
               <button
-                class="image-annotation-dialog__comment-remove"
+                class="image-annotation-dialog__comment-remove agent-ui-interactive"
                 type="button"
                 :aria-label="$t('dynamic.annotation.remove', { number: annotation.number })"
                 @click="removeAnnotation(annotation.id)"
@@ -185,16 +185,16 @@
 
     <template #footer>
       <div class="app-dialog__footer image-annotation-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" :disabled="saving" @click="emit('close')">{{ $t('surface.imageAnnotationDialog.cancel') }}</button>
-        <button
-          class="app-button app-button--secondary"
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="saving" @click="emit('close')">{{ $t('surface.imageAnnotationDialog.cancel') }}</button>
+        <button data-variant="primary"
+          class="app-button app-button--secondary agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.imageAnnotationDialog.clearImageAnnotations')"
           :disabled="(annotations.length === 0 && rulers.length === 0) || saving"
           @click="clearAnnotations"
         >{{ $t('surface.imageAnnotationDialog.clear') }}</button>
-        <button
-          class="app-button app-button--primary image-annotation-dialog__save"
+        <button data-variant="primary" data-appearance="solid"
+          class="app-button app-button--primary image-annotation-dialog__save agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.imageAnnotationDialog.saveImageAnnotations')"
           :aria-busy="saving"
@@ -1175,24 +1175,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
   padding: 0;
   border: 0;
   border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.image-annotation-dialog__tool:hover:not(:disabled) {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.image-annotation-dialog__tool--active {
-  color: var(--color-primary);
-  background: var(--color-primary-container);
-}
-
-.image-annotation-dialog__tool:disabled {
-  opacity: 0.32;
-  cursor: default;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .image-annotation-dialog__tool svg {
@@ -1324,10 +1307,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
   border-radius: var(--radius-lg);
 }
 
-.image-annotation-dialog__comment-list li:hover {
-  background: var(--color-surface-low);
-}
-
 .image-annotation-dialog__comment {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
@@ -1335,10 +1314,8 @@ function clamp(value: number, minimum: number, maximum: number): number {
   min-width: 0;
   padding: var(--space-3);
   border: 0;
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
 }
 
 .image-annotation-dialog__comment-number {
@@ -1381,14 +1358,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.image-annotation-dialog__comment-remove:hover {
-  color: var(--color-error);
-  background: var(--color-error-container);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .image-annotation-dialog__comment-remove svg {

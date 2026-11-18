@@ -4,7 +4,6 @@ import type { ToolPresentationContext } from '@korus-dev/agent-ui-sdk';
 import {
   IconBrowser as BrowserIcon,
   IconDeviceDesktop as DeviceDesktopIcon,
-  IconGitBranch as GitBranchIcon,
   IconMarkdown as MarkdownIcon,
   IconMessage as MessageIcon,
   IconMessageReport as MessageReportIcon,
@@ -17,6 +16,7 @@ import {
   IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { messages } from '../i18n/messages';
+import { GitBranchIcon } from '../shared/icons/app-icons';
 import { presentAppTool } from '../tool-presentation';
 
 describe(`${product.name} tool presentation`, () => {

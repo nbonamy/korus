@@ -1,4 +1,4 @@
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { appApi, appHostCapabilities } from '../platform-api';
 import { translate as t } from '../i18n';
@@ -23,7 +23,7 @@ export function useDocumentSaveAs(options: {
       overwrite = true; // The native save dialog owns overwrite confirmation.
     } else {
       try {
-        const answer = await ElMessageBox.prompt(t('documents.destination'), t('documents.saveAs'), {
+        const answer = await appMessageBox.prompt(t('documents.destination'), t('documents.saveAs'), {
           inputValue: defaultPath, confirmButtonText: t('documents.save'), cancelButtonText: t('common.cancel'),
         });
         destination = answer.value;
@@ -35,7 +35,7 @@ export function useDocumentSaveAs(options: {
     } catch (error) {
       if (!overwrite && String(error).includes('File already exists')) {
         try {
-          await ElMessageBox.confirm(t('documents.replaceFile'), t('documents.saveAs'), { confirmButtonText: t('documents.replace'), cancelButtonText: t('common.cancel') });
+          await appMessageBox.confirm(t('documents.replaceFile'), t('documents.saveAs'), { confirmButtonText: t('documents.replace'), cancelButtonText: t('common.cancel') });
         } catch { return; }
         await options.save(agentId, tabId, destination, true);
       } else throw error;

@@ -3,7 +3,7 @@
     <slot v-if="granted && !elsewhere" />
     <div v-else-if="elsewhere || refused" class="native-resource-gate__elsewhere">
       <span>{{ $t(`surface.nativeResource.${resource}Elsewhere`) }}</span>
-      <button class="app-button app-button--secondary" type="button" @click="takeOver">
+      <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="takeOver">
         {{ $t('surface.nativeResource.moveHere') }}
       </button>
     </div>

@@ -11,10 +11,10 @@
         :key="ticketKey(ticket, index)"
         class="mission-ticket-board__item"
       >
-        <button
+        <button :data-selected="(selectedKey === ticketKey(ticket, index)) ? '' : undefined"
           :ref="(element) => setCardRef(ticketKey(ticket, index), element)"
           type="button"
-          class="mission-ticket-board__card"
+          class="mission-ticket-board__card agent-ui-interactive"
           :class="{
             'mission-ticket-board__card--selected':
               selectedKey === ticketKey(ticket, index),
@@ -246,32 +246,13 @@ function removeComment(id: string): void {
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  color: var(--color-text);
-  background: var(--color-surface-lowest);
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
     background 160ms ease;
-}
-
-.mission-ticket-board__card:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-surface-low);
-  box-shadow: var(--shadow-md);
-}
-
-.mission-ticket-board__card:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.mission-ticket-board__card--selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
-  box-shadow: var(--shadow-md);
 }
 
 .mission-ticket-board__number {

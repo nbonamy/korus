@@ -1,7 +1,43 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.57.2",
+  "currentVersion": "0.58.4",
   "releases": [
+    {
+      "version": "0.58.4",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "b38aeace33f3d814801372b4d4b6e97eb409fcba3a6c1edc7054dcd05463c6b3",
+      "markdown": "### Improvements and fixes\n\n- **Skins:** In Appearance, ask Korus to create your own skin to open a Quick Chat with an editable prompt.\n- **Paired devices:** Desktop supports showing the names phones set for themselves.\n- **Companion diagnostics:** Logs show where Live Activity delivery failed.\n- **Agent messages:** Sent message entries show the recipient’s name when available and omit raw agent IDs."
+    },
+    {
+      "version": "0.58.3",
+      "releasedAt": "2026-11-17",
+      "sourceSha256": "52c382bb548530eaf0f580d9a2f40101b7b66c15bbd3170949081b9355aff491",
+      "markdown": "### Improvements and fixes\n\n- **Annotations:** The Annotate button stays opaque on hover and press, keeping chat text from showing through.\n- **Model picker:** Click the speed button to cycle through the model’s available speeds while keeping the picker open."
+    },
+    {
+      "version": "0.58.2",
+      "releasedAt": "2026-11-17",
+      "sourceSha256": "b58426aafc6165da129dd19df0a7ff7a74ac03d7b0d5f8fd15c9842a5c7813bd",
+      "markdown": "### Improvements and fixes\n\n- **Updates:** Downloaded updates keep the green badge visible, and checking for updates offers to install them.\n- **New agent:** Use one repository + menu for the main branch, an existing branch, a new worktree, or pull requests and issues.\n- **Git icons:** Distinguish the main branch from worktrees with consistent icons throughout the app.\n- **Screen lock:** Restored the warning color while automatic screen locking is disabled.\n- **Cost estimates:** Updated pricing for OpenAI and Gemini image models."
+    },
+    {
+      "version": "0.58.1",
+      "releasedAt": "2026-11-16",
+      "sourceSha256": "ef174b3fc4c1aa5f88e4f89b4e785be302d69606baee3959d5b4faf73580db68",
+      "markdown": "### Improvements and fixes\n\n- **Annotations:** Restored the text-selection Annotate button's background in light and dark themes."
+    },
+    {
+      "version": "0.58.0",
+      "releasedAt": "2026-11-16",
+      "sourceSha256": "92637681f066f3a6816ec9186670e612eb63801b64d1e28ac9e4f2e1580373df",
+      "markdown": "### New features\n\n- **Skins:** Choose a skin from t3skins.dev in Appearance settings, or load one from a JSON file.\n- **Custom skins:** Ask your agent to build, apply and reload a skin, and manage saved skins in the picker.\n- **Cockpit groups:** Fold status groups independently and keep your choices after reopening.\n- **Mark unread:** Mark an agent unread from its menu or the shortcut shown when hovering an idle agent.\n- **Restore your view:** Each window remembers whether you left it in a workspace, Cockpit or Backlog.\n\n### Improvements and fixes\n\n- **Appearance:** More consistent button, menu, tab and sidebar states across light themes, dark themes and skins.\n- **Screenshots:** Large screenshots remain visible in new Claude chats instead of appearing as a generic content placeholder.\n- **Past conversations:** Open Automation and handoff conversations when their original agent session is unavailable."
+    },
+    {
+      "version": "0.57.3",
+      "releasedAt": "2026-11-15",
+      "sourceSha256": "713d5bc53df137cb94c706ad3e9d8e44bca7db6bea14d9a04b4f19786ca5a65d",
+      "markdown": "### New features\n\n- **Backlog:** Filter the repository list by organization.\n\n### Improvements and fixes\n\n- **Missions:** Run larger backlogs without ticket-count or accumulated-evidence limits, with smaller scheduling responses and preserved history.\n- **Code reviews:** Fixed loading older messages and attachment previews in independent code reviews.\n- **Controls:** Removed unwanted focus outlines from buttons, fields and menus.\n- **Analytics:** Updated model pricing."
+    },
     {
       "version": "0.57.2",
       "releasedAt": "2026-11-14",

@@ -47,9 +47,9 @@
 
     <!-- The footer slot must always exist: FormDialog reads it once, so a late slot never renders. -->
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="$emit('close')">{{ $t('common.cancel') }}</button>
-      <button
-        class="app-button app-button--primary"
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="$emit('close')">{{ $t('common.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :aria-busy="busy"
         :disabled="!canConfirm"

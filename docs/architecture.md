@@ -892,6 +892,8 @@ publishes only after saving.
   future dispatch; existing reserved runs retain their authorization. The daemon atomically
   validates decisions, enforces ticket dependencies and the user's per-repository concurrency
   choice, reserves runs and launches workers. It never invents assignments outside that plan.
+  The backlog has no ticket-count cap; dispatch batch size and concurrency are
+  bounded independently of the total number of tickets.
   Worker completion saves evidence and sends the lead a durable message. Instructions
   to assess the result and proceed with the next assignment stay in hidden context.
   Completion does not reserve or launch another ticket; the lead submits the next
@@ -905,6 +907,8 @@ publishes only after saving.
   a new lead plan includes them. The lead drives routine recovery and surfaces only blockers
   needing user authority or input, with evidence and the smallest required action.
   Scheduling cannot approve stages or delivery.
+  Scheduling reads include each run's own result and status, without copies of
+  full artifact proposals or ticket drafts; those remain in the saved history.
   The execution engine reports assignment, acceptance,
   recovery, failure and cancellation to the lead through short messages. Hidden
   context carries Mission, run, ticket, worker/lead IDs, repository/worktree and the
@@ -919,6 +923,10 @@ publishes only after saving.
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.
+  Submission limits apply to each ticket's report rather than to cumulative
+  implementation evidence, which grows across tickets and survives persistence.
+  Accepted ticket runs retain their own evidence rather than another full artifact
+  snapshot.
   Once every ticket's implementation is accepted and saved, the orchestrator
   notifies the Mission lead with a reference to the implementation evidence.
   Continuing to Review remains a user decision.
@@ -960,8 +968,11 @@ target and reviewer agents) plus an opaque reviewer session reference.
   conversation is never disposed.
 - New independent reviewers follow their source agent in each client's saved order;
   an explicit user reorder takes precedence.
-- Codex review rounds wait for their matching terminal turn event without a fixed
-  duration limit; elapsed time alone does not fail an active review.
+- Review rounds wait for the harness run to finish without a fixed duration limit;
+  elapsed time alone does not fail an active review.
+- Independent reviewers use their own agent's normal conversation, with the
+  restricted review MCP endpoint configured before history loading or a review
+  prompt. Current-thread reviews use a scoped execution in the existing conversation.
 - Independent reviews start in a fresh conversation and retain it between rounds;
   every round receives the cumulative ledger (all prior skips, fixes and decisions)
   in a `<context>` block.

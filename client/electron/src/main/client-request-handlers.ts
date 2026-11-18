@@ -1,5 +1,6 @@
 import { captureDesign } from './design-capture';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import type { SkinControlInput, SkinControlResult } from '@workspace/core/custom-themes';
 import { app, BrowserWindow, shell } from 'electron';
 import type { SystemPermissionsStatus } from '@workspace/core/contracts';
 import { type AnnouncementPhase, type SpokenAnnouncementRequest, type SpokenAnnouncementVoice } from '@workspace/core/contracts';
@@ -10,6 +11,7 @@ import { createRuntimeSpokenAnnouncementQueue, type SpokenAnnouncementQueue } fr
 export type ClientRequestHandler = (params: unknown) => unknown | Promise<unknown>;
 
 export type ClientRequestHandlersOptions = {
+  setSkin?: (input: SkinControlInput) => Promise<SkinControlResult>;
   debugRestartBackend?: (input: { agentId: string; reason: string }) => Promise<{ scheduled: boolean }>;
   desktopFocused?: () => boolean;
   openExternal: (url: string) => Promise<unknown>;
@@ -23,7 +25,7 @@ export type ClientRequestHandlersOptions = {
   spokenAnnouncementVoice?: () => SpokenAnnouncementVoice;
 };
 
-export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequestHandlersOptions, 'debugRestartBackend' | 'mobileSimulator' | 'browserExecute' | 'browserOpen' | 'spokenAnnouncements' | 'spokenAnnouncementVoice'> = {}): Record<string, ClientRequestHandler> {
+export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequestHandlersOptions, 'setSkin' | 'debugRestartBackend' | 'mobileSimulator' | 'browserExecute' | 'browserOpen' | 'spokenAnnouncements' | 'spokenAnnouncementVoice'> = {}): Record<string, ClientRequestHandler> {
   const spokenAnnouncements = overrides.spokenAnnouncements ?? createRuntimeSpokenAnnouncementQueue({
     appPath: app?.getAppPath?.() ?? process.cwd(),
     isPackaged: app?.isPackaged ?? false,
@@ -48,6 +50,14 @@ export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequest
 
 export function createClientRequestHandlers(options: ClientRequestHandlersOptions): Record<string, ClientRequestHandler> {
   return {
+    ...(options.setSkin ? {
+      [backendMethods.clientSkinSet]: (params: unknown) => {
+        const input = requireRecord(params);
+        requireString(input.agentId, 'agentId');
+        if (input.name !== null && typeof input.name !== 'string') throw new Error('Invalid skin name.');
+        return options.setSkin!({ name: input.name, ...(input.definition !== undefined ? { definition: requireRecord(input.definition) } : {}) });
+      },
+    } : {}),
     ...(options.debugRestartBackend ? {
       [backendMethods.clientDebugBackendRestart]: (params: unknown) => {
         const input = requireRecord(params);

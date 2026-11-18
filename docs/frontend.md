@@ -143,6 +143,9 @@ and paths, independently of the saved UI labels.
 `AgentConversationPanel` owns the conversation controller, composer actions and
 annotation dialogs for single, split and Mission hosts. `AppShell` routes application
 commands and arranges panels; `AgentWorkspace` supplies headers and artifact panes.
+Desktop workspace windows persist their Workspace, Cockpit or Backlog navigation in
+Electron's `window-layout.json`, alongside their selection and panes. Scoped windows
+retain their own scope; transient Settings and Automations pages keep the last work view.
 Annotation drafts live in the workspace's provided store, keyed by agent, so pane
 replacement and layout changes retain unsent comments.
 
@@ -206,6 +209,12 @@ runs independently of loaded tree nodes, so an unopened directory remains search
 - Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
   desktop and mobile own their local view preference, clock and transitions. Native
   activity rows share one identity space across groups so regrouping preserves rows.
+  Activity-group folding is a client-local preference, scoped to the workspace or
+  Cockpit. It does not change agent execution or attention state.
+  Explicitly marking the open agent unread protects its marker from automatic
+  foreground acknowledgement until navigation away; an explicit read or a shared
+  read checkpoint can clear it. Manual unread advances the existing persisted
+  attention revision without changing execution status.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team or while Cockpit is selected. Agent activity is stored apart from
   metadata so startup hydration does not make idle agents look active.
@@ -228,6 +237,30 @@ runs independently of loaded tree nodes, so an unopened directory remains search
   Desktop Dock and team-rail unread badges count ordinary conversations and current
   Mission leads; hidden workers retain their unread state within the Mission.
 
+## Imported themes
+
+Appearance keeps the built-in palette and one loaded skin independently. The skin
+selector reads T3 Skins' public API; preview links open the skin's page.
+Selecting a skin applies it. T3 version 1 JSON preserves its light/dark variants and custom CSS in the theme
+preferences; removing the skin restores the selected palette. Choosing a built-in
+palette also removes the loaded skin. The adapter maps color roles to shell and
+conversation tokens. Shell, sidebar outer/container/inner and chat column are
+distinct native surfaces. `theme/skin-css.ts` aliases T3's conversation selectors
+to the SDK's neutral canvas, content and composer hooks, preserving selector
+specificity and surface relationships. Baseline surface paint lives in cascade
+layers so skin CSS can override it. Structural chat wrappers stay transparent
+under a skin so shell and document backdrops can show through. The renderer parses
+skin CSS before adopting it and strips
+external resource references, imports and unchecked at-rules. Embedded data images,
+gradients, conditional rules and animations are supported. The sidebar's outer corners
+remain square regardless of the skin. Composer shelf attachment and opaque menu
+surfaces remain host-owned. Replacing or removing a skin replaces its
+stylesheet and color overrides. Shared glass inputs and palette fallbacks live in
+the appearance stylesheet, separately from selector adaptation; skin-defined
+materials take precedence, including authored opacity. Keep the skin
+browser workflows as the rendering acceptance boundary
+when changing the selector bridge or upgrading the conversation SDK.
+
 ## Canonical UI
 
 Search by behavior first.
@@ -246,9 +279,11 @@ Search by behavior first.
 | Foreground-only UI timeout | `useForegroundTimeout` | `client/vue/src/shared/use-foreground-timeout.ts` |
 | Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
+| Generated confirmation, alert and prompt dialogs | `appMessageBox` (preserves toolkit options; opts generated buttons into shared states) | `client/vue/src/shared/dialog/` |
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
+| One choice among a few, as segmented buttons | `AppSegmented` (`label` is the accessible name; `size` is `default`, `small` or `compact`; its fill is `--color-control-fill`, so it reads on any surface and no caller styles `el-segmented`) | `client/vue/src/shared/` |
 | Obfuscated text with show/hide and ordinary editing | `InputObfuscated` | `client/vue/src/shared/form/InputObfuscated.vue` |
 | Single-line text with an inline clear action | `ClearableTextInput` | `client/vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `client/vue/src/shared/` |
@@ -263,6 +298,11 @@ Search by behavior first.
 
 Use the globe to identify a remote host and the network icon for actions that
 connect to one.
+
+Use the catalog's `GitMainIcon` for a known default branch and `GitBranchIcon` for
+other branches and worktrees. Their shared components own the glyphs; callers
+keep sizing and semantic colors. Import them from the catalog instead of the
+icon library directly.
 
 App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
 native input routing, shell matching and the shortcut reference share these
@@ -335,7 +375,30 @@ replace a newer dialog or navigation selection.
 - Semantic variables for colors and repeated design values; component-specific
   geometry stays local. Derive Element Plus overrides from the same variables and
   scope them to the owning wrapper. Bridge themes into the SDK through documented
-  `--codex-*` variables and `data-codex-theme`; never restyle SDK internals.
+  `--agent-ui-*` variables and public surface attributes; never restyle SDK internals.
+- **Interaction states have one owner:** the SDK's `agent-ui-interactive` primitive.
+  Authored buttons, menu actions and selectable rows opt into it; generated toolkit
+  tabs use `data-agent-ui-scope`. Select intent through `data-variant` (neutral,
+  primary, destructive), `data-appearance` (ghost, solid, text) and semantic ARIA
+  state. Use `data-selected` for compound rows, and `data-focus="fill"` for menu
+  keyboard highlighting. Disclosure headings use `data-selection="none"` so
+  expansion retains the resting material while hover and focus remain available.
+  Colored identity tiles and swatches use
+  `data-selection="ring"` to retain their material while showing selection.
+  A checked menu item retains its checkmark without a
+  selected fill. Keep size, layout, borders and reveal-on-hover geometry local;
+  do not declare a control's color, background, focus ring or disabled paint.
+  Configure exceptional resting materials through `--agent-ui-state-rest` and
+  `--agent-ui-state-rest-foreground`. Elevation surfaces are separate from
+  `--agent-ui-state-hover`, pressed and selected tokens.
+  Element Plus adapters in `styles/theme.css` read the primitive's resolved
+  `--agent-ui-interactive-*` values through toolkit CSS variables, and let the
+  shared layer own cursor, dimming and focus. Standard field widgets retain their
+  toolkit behavior with semantic state inputs. Generated MessageBox controls use
+  `shared/dialog/message-box`; product code does not import `ElMessageBox` directly.
+  The `app/interaction-state-owner` Stylelint rule rejects local copies of control
+  paint. Resize handles, chart inspection, status markers and authored document
+  content keep their own geometry and domain colors.
 - App chrome (buttons, menus, headers) is unselectable; conversation and document
   content stays selectable. Native system sans stack, restrained weights.
 - Make loading, working, awaiting-input, empty, offline, error and interrupted

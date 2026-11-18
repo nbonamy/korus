@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver, BackendEvent } from '@workspace/core/provider-driver';
 import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import type { HarnessProvider, RendererMessage } from '@workspace/core/contracts';
-import { codexProviderCapabilities, claudeProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { DurableTaskService } from '../agents/durable-task-service';
 import { createTestSnapshot, createRemoteAgent, createRemoteTeamSnapshot, readyRemoteConnection } from './server-test-fixtures';
+import { scriptedDriver } from './support/scripted-driver';
 
 function unfinishedTasks(parentAgentId: string, workerAgentId: string) {
   return new DurableTaskService({ tasks: [{ id: 'task', parentAgentId, workerAgentId, state: 'interrupted',
@@ -64,45 +63,35 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
     snapshot.agents = [{ id: 'source', name: 'Worker', folder: '/repo', provider: provider, teamId: 'team-test', providerSession: provider === 'codex' ? { kind: 'codex', conversationId: 'original' } : { kind: 'claude', conversationId: 'original', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' }];
     snapshot.teams[0]!.agentIds = ['source'];
     snapshot.activeAgentId = 'source';
-    let sourceListener!: (event: BackendEvent) => void;
     let release!: () => void;
     const releaseGate = new Promise<void>(resolve => { release = resolve; });
     const sourceSend = vi.fn();
     const targetSend = vi.fn();
     const messages: RendererMessage[] = [{ id: 'note', agentId: 'source', turnId: 'note-turn', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'Goal: continue the fix.' }], createdAt: '' }];
-    const read = vi.fn(async () => messages);
-    const archive = vi.fn(async () => undefined);
-    const drivers = new Map<HarnessProvider, AgentProviderDriver>();
+    const drivers = new Map<HarnessProvider, ReturnType<typeof scriptedDriver>>();
     for (const kind of [provider, targetProvider] as HarnessProvider[]) {
-      drivers.set(kind, {
-        provider: kind,
-        getRuntimeStatus: () => ({ provider: kind, status: 'running' }),
-        // Both sides archive here, so the test can watch the source being put away whichever harness it is.
-        getCapabilities: () => ({ ...(kind === 'codex' ? codexProviderCapabilities : claudeProviderCapabilities), conversationArchive: true }),
-        sendPrompt: async (agent, prompt) => {
-          (agent.id === 'source' ? sourceSend : targetSend)(prompt);
-          return { providerSession: kind === 'codex' ? { kind: 'codex', conversationId: agent.id } : { kind: 'claude', conversationId: agent.id, transport: 'stdio' }, turnId: 'note-turn' };
-        },
-        readConversationMessages: read,
-        archiveAgentConversation: archive,
-        assertHandoffReady: async () => undefined,
-        releaseConversation: () => releaseGate,
-        interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'original' } }),
-        respondToAgentRequest: async () => undefined,
-        onEvent: listener => { if (kind === provider) sourceListener = listener; return () => undefined; },
-        close: async () => undefined,
+      // Both sides archive here, so the test can watch the source being put away whichever harness it is.
+      const entry = scriptedDriver(kind, { capabilities: { conversationArchive: true } });
+      entry.script.on('sendPrompt', (context: { id: string }, prompt: string) => {
+        (context.id === 'source' ? sourceSend : targetSend)(prompt);
+        return { providerSession: kind === 'codex' ? { kind: 'codex', conversationId: context.id } : { kind: 'claude', conversationId: context.id, transport: 'stdio' }, turnId: 'note-turn' };
       });
+      entry.script.on('readConversationMessages', () => messages);
+      entry.script.on('releaseConversation', () => releaseGate);
+      drivers.set(kind, entry);
     }
+    const archived = () => drivers.get(provider)!.script.calls('archiveAgentConversation').length + drivers.get(targetProvider)!.script.calls('archiveAgentConversation').length;
+    const readCalls = () => [...drivers.values()].flatMap(entry => entry.script.calls('readConversationMessages')).length;
     const persisted: unknown[] = [];
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(drivers), saveSnapshot: async value => { persisted.push(structuredClone(value)); } });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([...drivers].map(([kind, entry]) => [kind, entry.driver]))), saveSnapshot: async value => { persisted.push(structuredClone(value)); } });
     const params = { agentId: 'source', input: { operationId: 'once', selection: { provider: targetProvider, model: null, reasoningEffort: null, serviceTier: null } } };
     const operation = server.handleMessage({ jsonrpc: '2.0', id: 'handoff', method: 'agent/handoff/start', params });
     await vi.waitFor(() => expect(sourceSend).toHaveBeenCalledOnce());
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: 'agent/prompt/send', params: { agentId: 'source', prompt: 'Competing work' } })).rejects.toThrow('handoff');
     await expect(server.handleMessage({ jsonrpc: '2.0', id: 'move', method: 'agent/team/move', params: { input: { agentId: 'source', teamId: 'team-test' } } })).rejects.toThrow('handoff');
-    sourceListener(turnCompleted('source', 'note-turn', { provider, ...(provider === 'codex' ? { conversationId: 'original' } : {}) }));
-    sourceListener({ agentId: 'source', type: 'agent.statusChanged', payload: { type: 'idle' } });
-    await vi.waitFor(() => expect(archive).toHaveBeenCalledOnce());
+    server.emitEvent(turnCompleted('source', 'note-turn', { provider, ...(provider === 'codex' ? { conversationId: 'original' } : {}) }));
+    server.emitEvent({ agentId: 'source', type: 'agent.statusChanged', payload: { type: 'idle' } });
+    await vi.waitFor(() => expect(archived()).toBe(1));
     expect(targetSend).not.toHaveBeenCalled();
     release();
     await operation;
@@ -115,7 +104,7 @@ describe.each(['codex', 'claude'] as const)('%s handoff routing', provider => {
     await server.handleMessage({ jsonrpc: '2.0', id: 'retry', method: 'agent/handoff/start', params });
     expect(targetSend).toHaveBeenCalledOnce();
     await server.handleMessage({ jsonrpc: '2.0', id: 'history', method: 'agent/conversation/messages/get', params: { agentId: target.id, ref: target.handoff!.sourceRef } });
-    expect(read).toHaveBeenCalledTimes(2);
+    expect(readCalls()).toBe(2);
     await server.close();
   });
 });

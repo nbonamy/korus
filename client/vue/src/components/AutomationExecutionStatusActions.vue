@@ -7,14 +7,14 @@
       {{ statusLabel }}
     </span>
     <div class="automation-execution-log__row-actions">
-      <button
+      <button class="agent-ui-interactive"
         type="button"
         :aria-label="$t('dynamic.automations.viewConversation', { ticket })"
         @click.stop="emit('view-conversation')"
       >
         <EyeIcon aria-hidden="true" />
       </button>
-      <button
+      <button class="agent-ui-interactive"
         type="button"
         :aria-label="$t('dynamic.automations.deleteExecution', { ticket })"
         :disabled="status === 'working' || status === 'awaitingInput'"
@@ -92,14 +92,7 @@ const emit = defineEmits<{
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.automation-execution-log__row-actions button:hover,
-.automation-execution-log__row-actions button:focus-visible {
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .automation-execution-log__row-actions svg {

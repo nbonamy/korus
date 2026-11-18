@@ -1,12 +1,12 @@
 <template>
   <span class="provider-install-actions">
     <code v-if="installation.command">{{ installation.command }}</code>
-    <button v-if="installation.managed" type="button" :aria-label="$t('auth.installNamedProvider', { provider: providerDisplayName(provider) })" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+    <button class="agent-ui-interactive" data-appearance="text" v-if="installation.managed" type="button" :aria-label="$t('auth.installNamedProvider', { provider: providerDisplayName(provider) })" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
       <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
       {{ $t('auth.installProvider') }}
     </button>
-    <a v-else-if="installation.instructionsUrl" :href="installation.instructionsUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(installation.instructionsUrl!)">{{ $t('auth.installProvider') }}</a>
-    <button v-if="!installation.managed || !busy" type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
+    <a class="agent-ui-interactive" data-appearance="text" v-else-if="installation.instructionsUrl" :href="installation.instructionsUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(installation.instructionsUrl!)">{{ $t('auth.installProvider') }}</a>
+    <button class="agent-ui-interactive" data-appearance="text" v-if="!installation.managed || !busy" type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
       <ElIcon :size="12" :class="{ 'is-loading': busy }" aria-hidden="true"><RefreshIcon /></ElIcon>
     </button>
   </span>
@@ -44,21 +44,9 @@ const installation = computed(() => resolveProviderSetupCapabilities(props.provi
   min-height: 0;
   padding: 0;
   border: 0;
-  background: none;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   text-decoration: none;
-  cursor: pointer;
-}
-
-.provider-install-actions a:hover,
-.provider-install-actions button:hover:not(:disabled) {
-  color: var(--color-text);
-}
-
-.provider-install-actions button:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 
 @media (prefers-reduced-motion: reduce) {

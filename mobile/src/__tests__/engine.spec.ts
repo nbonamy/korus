@@ -611,7 +611,7 @@ describe('companion engine', () => {
       expect(shown(events)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
     } finally { engine.dispose(); }
   });
-  it.each([true, false])('restores saved pairing and offers connect when its host is unavailable (available=%s)', async available => {
+  it.each([true, false])('restores saved pairing and keeps it when its host is unavailable (available=%s)', async available => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let initialized!: () => void; let connected!: () => void;
     connector.initialize = () => new Promise<void>((resolve) => { initialized = resolve; });
@@ -624,9 +624,10 @@ describe('companion engine', () => {
     initialized(); await vi.waitFor(() => expect(latest().connection).toBe('connecting'));
     expect(latest().startup).toBe('loading');
     connected(); await starting;
-    expect(latest()).toMatchObject({ startup: 'ready', connection: available ? 'connected' : 'unpaired' });
-    if (available) expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
-    else {
+    expect(latest()).toMatchObject({ startup: 'ready', connection: available ? 'connected' : 'error' });
+    // A saved pairing is never presented as missing because its laptop could not be reached.
+    expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    if (!available) {
       expect(latest().laptops).toHaveLength(1);
       connector.connect = connect;
       await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
@@ -884,16 +885,17 @@ describe('companion engine', () => {
     connector.connect = async id => ({ ...await original(id), selectModel, sendPrompt,
       listModels: async () => [{ id: 'model', model: 'model', displayName: 'Model', isDefault: true,
         defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }],
-        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }], defaultServiceTier: null }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }], defaultServiceTier: null }],
     });
     const { engine, latest } = open(connector);
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      await vi.waitFor(() => expect(latest().models).toStrictEqual([{ id: 'model', name: 'Model', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }] }]));
+      await vi.waitFor(() => expect(latest().models).toStrictEqual([{ id: 'model', name: 'Model', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }, { id: 'ultrafast', name: 'Ultrafast' }] }]));
       expect(latest().capabilities.serviceTier).toBe(true);
-      for (const serviceTier of ['fast', null]) {
+      expect(latest().composer).toMatchObject({ speedTiers: ['fast', 'ultrafast'], nextServiceTier: 'fast' });
+      for (const [serviceTier, next] of [['fast', 'ultrafast'], ['ultrafast', null], [null, 'fast']] as const) {
         await engine.dispatch({ type: 'composer', change: { serviceTier } });
-        expect(latest().composer.serviceTier).toBe(serviceTier);
+        expect(latest().composer).toMatchObject({ serviceTier, nextServiceTier: next });
         expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier, provider: 'codex' });
         await engine.dispatch({ type: 'send', text: 'Continue' });
         expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ selection: expect.objectContaining({ serviceTier }) }));

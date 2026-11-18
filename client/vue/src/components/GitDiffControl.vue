@@ -4,7 +4,7 @@
   >
     <button
       v-if="hasSelectedChanges"
-      class="git-diff-control__open"
+      class="git-diff-control__open agent-ui-interactive"
       type="button"
       :aria-label="$t('surface.agentHeader.openRepositoryDiff')"
       :title="selectedLabel"
@@ -35,7 +35,7 @@
       <template #trigger="{ attrs }">
         <button
           v-bind="attrs"
-          class="git-diff-control__menu-trigger"
+          class="git-diff-control__menu-trigger agent-ui-interactive"
           type="button"
           :aria-label="$t('surface.agentHeader.chooseRepositoryDiff')"
         >
@@ -272,21 +272,13 @@ function rawSummaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
   height: 32px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-lowest);
   -webkit-app-region: no-drag;
 }
 
 .git-diff-control button {
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
-  cursor: pointer;
-}
-
-.git-diff-control button:hover {
-  background: var(--color-surface-high);
-  color: var(--color-text);
 }
 
 .git-diff-control__open,

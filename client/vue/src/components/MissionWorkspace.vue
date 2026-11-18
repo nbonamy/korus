@@ -8,7 +8,7 @@
       <span class="mission-workspace__mission-status" :data-status="mission.status">{{ t(`missions.${mission.status}`) }}</span>
       <MissionCostMenu :mission="mission" />
       <button
-        class="app-icon-button"
+        class="app-icon-button agent-ui-interactive"
         type="button"
         :aria-label="t('surface.agentHeader.toggleRightWorkspace')"
         :title="t(workspacePreviewOpen || conversationOnly ? 'surface.agentHeader.closeRightWorkspace' : 'surface.agentHeader.openRightWorkspace')"
@@ -31,7 +31,7 @@
         <MissionStageRail :mission="mission" :viewed-stage="viewedStage" @view-stage="viewedStage = $event">
           <template #actions>
             <button
-              class="app-icon-button mission-workspace__expand"
+              class="app-icon-button mission-workspace__expand agent-ui-interactive"
               type="button"
               :aria-label="t(expandedPane === 'workbench' ? 'missions.restoreSplitView' : 'missions.expandWorkbench')"
               :title="t(expandedPane === 'workbench' ? 'missions.restoreSplitView' : 'missions.expandWorkbench')"
@@ -53,9 +53,9 @@
               <span class="app-spinner app-spinner--primary" aria-hidden="true" />
               <span>{{ activeStageStatus }}</span>
             </div>
-            <button
+            <button data-variant="primary" data-appearance="solid"
               v-else-if="viewedStage === 'implementation' && mission.stage === 'implementation' && implementationReady"
-              class="app-button app-button--primary"
+              class="app-button app-button--primary agent-ui-interactive"
               type="button"
               :aria-busy="busy"
               :disabled="busy || !executeMission || debugFixture"
@@ -64,9 +64,9 @@
               {{ t('missions.continueToReview') }}
               <ArrowRightIcon aria-hidden="true" />
             </button>
-            <button
+            <button data-variant="primary" data-appearance="solid"
               v-else-if="viewedStage === mission.stage && !['requirements', 'implementation'].includes(mission.stage) && activeRun?.proposal"
-              class="app-button app-button--primary"
+              class="app-button app-button--primary agent-ui-interactive"
               type="button"
               :aria-busy="busy"
               :disabled="busy || (viewedStage === 'tickets' && !missionLead)"
@@ -86,13 +86,13 @@
               <option value="" disabled>{{ t('missions.replacementMember') }}</option>
               <option v-for="member in localMembers" :key="member.id" :value="member.id">{{ member.name }}</option>
             </select>
-            <button class="app-button app-button--small" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
+            <button class="app-button app-button--small agent-ui-interactive" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
           </form>
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
           <MissionTaskFilters v-if="filterTickets.length" v-model:statuses="taskStatuses" :tickets="filterTickets" :items="filterItems" />
           <div v-if="filterTickets.length && !visibleTicketIndexes.length" class="mission-workspace__filter-empty" role="status">
             <p>{{ t('missions.taskFilters.empty') }}</p>
-            <button type="button" class="app-button app-button--small" :aria-label="t('missions.taskFilters.clear')" @click="taskStatuses = []">{{ t('missions.taskFilters.clear') }}</button>
+            <button type="button" class="app-button app-button--small agent-ui-interactive" :aria-label="t('missions.taskFilters.clear')" @click="taskStatuses = []">{{ t('missions.taskFilters.clear') }}</button>
           </div>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
@@ -164,9 +164,9 @@
             <span class="mission-workspace__callout-icon"><FileTextIcon aria-hidden="true" /></span>
             <h3>{{ t('missions.noArtifactYet') }}</h3>
             <p>{{ t(conversationAgentId ? 'missions.keepWorkingInConversation' : 'missions.missionLeadStarting') }}</p>
-            <button
+            <button data-variant="primary" data-appearance="solid"
               v-if="!initialRequirements && mission.execution && !activeRun && mission.status !== 'completed'"
-              class="app-button app-button--primary"
+              class="app-button app-button--primary agent-ui-interactive"
               type="button"
               :aria-busy="busy"
               :disabled="busy || !executeMission"
@@ -192,7 +192,7 @@
         <template #actions>
           <button
             v-if="!conversationOnly"
-            class="app-icon-button mission-workspace__expand"
+            class="app-icon-button mission-workspace__expand agent-ui-interactive"
             type="button"
             :aria-label="t(expandedPane === 'conversation' ? 'missions.restoreSplitView' : 'missions.expandConversation')"
             :title="t(expandedPane === 'conversation' ? 'missions.restoreSplitView' : 'missions.expandConversation')"
@@ -234,9 +234,9 @@
   >
     <div class="mission-workspace__start-options">
       <el-select v-model="implementationMode" class="mission-workspace__execution-mode" :aria-label="t('missions.implementationExecution')" :disabled="busy">
-        <el-option :label="t('missions.executionLead')" value="lead" />
-        <el-option :label="t('missions.executionPerRepository')" value="perRepository" />
-        <el-option :label="t('missions.executionMultiplePerRepository')" value="multiplePerRepository" />
+        <el-option class="agent-ui-interactive" :label="t('missions.executionLead')" value="lead" />
+        <el-option class="agent-ui-interactive" :label="t('missions.executionPerRepository')" value="perRepository" />
+        <el-option class="agent-ui-interactive" :label="t('missions.executionMultiplePerRepository')" value="multiplePerRepository" />
       </el-select>
       <ProviderModelSelector
         v-if="!leadExecutesImplementation"
@@ -250,10 +250,10 @@
       <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
         {{ t('common.cancel') }}
       </button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || (!leadExecutesImplementation && !implementationModel)" @click="approveProposal">
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || (!leadExecutesImplementation && !implementationModel)" @click="approveProposal">
         {{ t('missions.startImplementationAction') }}
       </button>
     </template>

@@ -8,9 +8,9 @@
     :width="220"
   >
     <template #reference>
-      <button
+      <button :data-selected="(active) ? '' : undefined"
         ref="menuTrigger"
-        class="settings-menu__trigger"
+        class="settings-menu__trigger agent-ui-interactive"
         :class="{ 'settings-menu__trigger--active': active }"
         type="button"
         :aria-label="account ? $t('surface.settingsMenu.accountMenu') : $t('surface.settingsMenu.settingsMenu')"
@@ -26,7 +26,7 @@
           <BrandSpeedTest />
           <span>{{ $t('surface.settingsMenu.usage') }}</span>
           <el-tooltip placement="top" :show-after="150" popper-class="settings-menu-legend-popper">
-            <button class="settings-menu__legend-trigger" type="button" :aria-label="$t('surface.settingsMenu.usage')">
+            <button class="settings-menu__legend-trigger agent-ui-interactive" type="button" :aria-label="$t('surface.settingsMenu.usage')">
               <InfoCircleIcon aria-hidden="true" />
             </button>
             <template #content>
@@ -288,19 +288,7 @@ function selectMenuItem(itemId: string): void {
 <style scoped>
 .settings-menu__trigger {
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.settings-menu__trigger:hover,
-.settings-menu__trigger:focus-visible {
-  color: var(--color-text);
-  outline: none;
-}
-
-.settings-menu__trigger--active {
-  color: var(--color-primary);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .settings-menu {
@@ -333,8 +321,7 @@ function selectMenuItem(itemId: string): void {
   margin: 0 0 0 auto;
   padding: 0;
   border: 0;
-  background: none;
-  color: inherit;
+  --agent-ui-state-rest: transparent;
   cursor: help;
 }
 

@@ -6,6 +6,7 @@ const planSource = `
   import {createApp,h,ref} from 'vue';
   import ElementPlus from 'element-plus';
   import 'element-plus/dist/index.css';
+  import '@korus-dev/agent-ui-sdk/styles.css';
   import '/client/vue/src/styles/variables.css';
   import '/client/vue/src/styles/base.css';
   import {i18n} from '/client/vue/src/i18n/index.ts';
@@ -84,7 +85,7 @@ test('saved requirement comments keep their passages marked with numbers that op
   assert.deepEqual(errors, []);
 });
 
-test('clicking outside an open requirement comment closes it, and the comment button shows no outline', async () => {
+test('clicking outside closes a requirement comment and keyboard dismissal restores visible focus', async () => {
   const errors = await withAnnotationFixture(planSource, async page => {
     const painted = name => page.evaluate(name => [...(CSS.highlights.get(name) ?? [])].map(range => range.toString()), name);
     await page.locator('strong').evaluate(element => {
@@ -101,12 +102,12 @@ test('clicking outside an open requirement comment closes it, and the comment bu
     assert.deepEqual(await painted('chat-annotation-focus'), [], 'the passage is deselected');
     assert.deepEqual(await page.locator('[data-annotation-id]').allTextContents(), ['1'], 'the saved comment keeps its marker');
 
-    // Closing with the keyboard returns focus to the comment button, which must not draw an outline.
+    // Closing with the keyboard returns focus to the comment button, with the shared keyboard focus ring.
     await page.locator('.plan-review-section__heading button').click();
     await page.locator('textarea:visible').press('Escape');
     const focused = page.locator('.plan-review-section__heading button');
     assert.equal(await focused.evaluate(element => document.activeElement === element), true, 'focus returns to the comment button');
-    assert.equal(await focused.evaluate(element => getComputedStyle(element).outlineStyle), 'none', 'the focused comment button has no outline');
+    assert.equal(await focused.evaluate(element => getComputedStyle(element).outlineStyle), 'solid', 'the keyboard-focused comment button is visible');
   });
   assert.deepEqual(errors, []);
 });
@@ -115,6 +116,7 @@ const ticketSource = `
   import {createApp,h,ref} from 'vue';
   import ElementPlus from 'element-plus';
   import 'element-plus/dist/index.css';
+  import '@korus-dev/agent-ui-sdk/styles.css';
   import '/client/vue/src/styles/variables.css';
   import '/client/vue/src/styles/base.css';
   import {i18n} from '/client/vue/src/i18n/index.ts';

@@ -1,3 +1,4 @@
+import { serviceTierCycle } from './service-tier';
 import type { CompanionCheckpoint, CompanionConversationSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
@@ -96,7 +97,9 @@ export type EngineState = {
   mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; value: string; description: string }[] };
   skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; value: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
-  composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
+  composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean;
+    /** The speed button: the selected model's faster tiers, and the one a press selects (null is standard). */
+    speedTiers: string[]; nextServiceTier: string | null };
   /** The permission the chat runs with, and the ones its engine offers. */
   permissions: { current: string | null; options: { id: string; label: string; dangerous: boolean }[] };
   capabilities: { goals: boolean; models: boolean; reasoningEffort: boolean; serviceTier: boolean; planMode: boolean; interrupt: boolean; attachments: boolean };
@@ -144,6 +147,7 @@ export type EngineCommand =
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
+  | { type: 'deviceName'; name: string }
   | { type: 'liveActivityRegistration'; laptopId: string; requestId: string; registration: import('@workspace/core/companion-live-activity').LiveActivityRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
@@ -377,7 +381,11 @@ export function createEngine(port: EnginePort) {
       provider: agent?.provider ?? null,
       canSelectProvider: engines() !== null, switchingProvider: state.switchingProvider.value, modelsLoading: state.modelsLoading.value || state.switchingProvider.value !== null,
       models: pickableModels(state.models.value).map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
-      composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
+      composer: (() => {
+        const speed = serviceTierCycle(state.models.value.find(model => model.id === settings?.model?.id)?.serviceTiers ?? [], settings?.serviceTier ?? null);
+        return { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false,
+          speedTiers: speed.tiers, nextServiceTier: speed.next };
+      })(),
       permissions: { current: state.permission.value, options: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id,
         label: typeof mode.label === 'string' ? mode.label : readableId(mode.id), dangerous: mode.dangerous === true })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
@@ -508,6 +516,7 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'pushRegistration': return state.registerPush(command.registration);
+      case 'deviceName': return state.setDeviceName(command.name);
       case 'queuedPrompt': return state.updateQueuedPrompt(command.target, command.promptId, command.action);
       case 'openNotification': {
         const target = command.target;

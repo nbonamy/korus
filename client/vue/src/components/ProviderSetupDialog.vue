@@ -20,8 +20,8 @@
       <p v-if="error" role="alert">{{ error }}</p>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">{{ t(confirming ? 'common.cancel' : 'surface.remoteClaudeAuth.close') }}</button>
-      <button class="app-button app-button--primary" type="button" :disabled="busy || !configurable || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="emit('close')">{{ t(confirming ? 'common.cancel' : 'surface.remoteClaudeAuth.close') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || !configurable || (confirming ? !acknowledged : setup?.locked && (!allowReset || (isolated === setup.isolated && shareSkills === setup.shareSkills)))" @click="save">{{ t(busy ? 'auth.settingUp' : confirming ? 'engineSetup.removeAndSwitch' : 'auth.saveSetup') }}</button>
     </template>
   </FormDialog>
 </template>

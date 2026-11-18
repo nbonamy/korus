@@ -3,7 +3,7 @@
     <span v-if="authentication?.loggedIn">{{ $t('surface.remoteClaudeAuth.connected') }}</span>
     <template v-else-if="error">
       <span :title="error">{{ $t('surface.remoteClaudeAuth.unavailable') }}</span>
-      <button class="app-button app-button--secondary" type="button" :disabled="checking" @click="refresh">
+      <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="checking" @click="refresh">
         {{ $t('surface.remoteClaudeAuth.retry') }}
       </button>
     </template>
@@ -27,8 +27,8 @@
         <p v-if="error" class="remote-claude-auth__error">{{ $t('surface.remoteClaudeAuth.unavailable') }}</p>
       </div>
       <template #footer>
-        <button class="app-button app-button--tertiary" type="button" @click="dialogVisible = false; emit('cancel')">{{ $t('surface.remoteClaudeAuth.close') }}</button>
-        <button class="app-button app-button--primary" type="button" :disabled="checking" :aria-busy="checking" @click="refresh">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="dialogVisible = false; emit('cancel')">{{ $t('surface.remoteClaudeAuth.close') }}</button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="checking" :aria-busy="checking" @click="refresh">
           {{ $t('surface.remoteClaudeAuth.refresh') }}
         </button>
       </template>

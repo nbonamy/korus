@@ -92,6 +92,9 @@ final class AppModel {
     var selectedModelID: String?
     var selectedEffort: String?
     var selectedServiceTier: String?
+    /// The speed button's faster tiers and the one a press selects (nil is standard), from the engine.
+    var speedTiers: [String] = []
+    var nextServiceTier: String?
     var supportsServiceTier = false
     var planMode = false
     var supportsGoals = false
@@ -141,6 +144,20 @@ final class AppModel {
     var branches = RepositoryBranches()
     var creatingChatGroupID: String?
     /// The engine new chats start with, remembered between launches; unavailable ones fall back to the first the laptop offers.
+    /// What this phone calls itself on the laptops it pairs with: the system name when iOS shares it, otherwise the person's own.
+    var deviceName = UserDefaults.standard.string(forKey: "device.name") ?? AppModel.systemDeviceName {
+        didSet {
+            UserDefaults.standard.set(deviceName, forKey: "device.name")
+            shareDeviceName()
+        }
+    }
+    /// Without Apple's device-name entitlement iOS answers with the model ("iPhone"), which tells no two phones apart.
+    private static var systemDeviceName: String { UIDevice.current.name == UIDevice.current.model ? "" : UIDevice.current.name }
+    private var pairingDeviceName: String {
+        let name = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? UIDevice.current.model : name
+    }
+    private func shareDeviceName() { command("deviceName", ["name": deviceName]) }
     var preferredProvider = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
         didSet { UserDefaults.standard.set(preferredProvider, forKey: "newChat.backend") }
     }
@@ -202,6 +219,7 @@ final class AppModel {
             self?.command("pushRegistration", ["registration": registration as Any? ?? NSNull()])
         }
         push.flush()
+        shareDeviceName()
 
         engine.onRestarted = { [weak self] in
             // The new page knows nothing: tell it whether the app can be seen, and what push registration to hold.
@@ -209,6 +227,7 @@ final class AppModel {
             self?.syncEngineActivity()
             Task { await self?.push.refresh() }
             self?.liveActivities.refresh()
+            self?.shareDeviceName()
         }
         engine.onSendResult = { [weak self] result in
             self?.composerDrafts.completeSend(result)
@@ -374,6 +393,8 @@ final class AppModel {
         set(\.selectedModelID, state.composer.modelId)
         set(\.selectedEffort, state.composer.effort)
         set(\.selectedServiceTier, state.composer.serviceTier)
+        set(\.speedTiers, state.composer.speedTiers ?? [])
+        set(\.nextServiceTier, state.composer.nextServiceTier)
         set(\.supportsServiceTier, state.capabilities.serviceTier)
         set(\.planMode, state.composer.planMode)
         set(\.permission, state.permissions.current)
@@ -466,7 +487,7 @@ final class AppModel {
         command("selectAgent", ["id": id])
     }
 
-    func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
+    func pair(code: String) { command("pair", ["code": code, "deviceName": pairingDeviceName]) }
 
     func send(mode: ComposerSendMode? = nil) {
         guard canSend, !goalMode || supportsGoals, supportsAttachments || composerDrafts.items.isEmpty else { return }

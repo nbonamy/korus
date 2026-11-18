@@ -5,19 +5,19 @@
       <div class="diff-viz-canvas__targets">
         <div v-for="target in targets" :key="target.id" class="diff-viz-canvas__node" :data-status="target.status"
           :style="{ left: `${target.x}px`, top: `${target.y}px`, width: `${target.width}px`, height: `${target.height}px` }">
-          <button v-if="target.paths.length" type="button" class="diff-viz-canvas__target"
+          <button v-if="target.paths.length" type="button" class="diff-viz-canvas__target agent-ui-interactive"
             :aria-label="translate('surface.diffViz.openChanges', { label: target.label })" :title="diffVizTooltip(target)" @click="emit('select', target.paths, target.locations?.[0])" />
           <span v-else role="img" :aria-label="`${target.label} · ${translate(`surface.diffViz.${target.status}`)}`" />
         </div>
       </div>
       <div class="diff-viz-canvas__controls">
-        <button type="button" class="app-button app-button--tertiary" :disabled="!ready" :aria-label="translate('visualize.zoomOut')" @click="editor?.zoomBy(-0.1)"><MinusIcon aria-hidden="true" /></button>
-        <button type="button" class="app-button app-button--tertiary" :disabled="!ready" :aria-label="translate('visualize.zoomIn')" @click="editor?.zoomBy(0.1)"><PlusIcon aria-hidden="true" /></button>
-        <button type="button" class="app-button app-button--tertiary" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" @click="editor?.fit()"><ArrowsMinimizeIcon aria-hidden="true" /></button>
+        <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :disabled="!ready" :aria-label="translate('visualize.zoomOut')" @click="editor?.zoomBy(-0.1)"><MinusIcon aria-hidden="true" /></button>
+        <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :disabled="!ready" :aria-label="translate('visualize.zoomIn')" @click="editor?.zoomBy(0.1)"><PlusIcon aria-hidden="true" /></button>
+        <button type="button" class="app-button app-button--tertiary agent-ui-interactive" :disabled="!ready" :aria-label="translate('visualize.fitCanvas')" @click="editor?.fit()"><ArrowsMinimizeIcon aria-hidden="true" /></button>
       </div>
       <div v-if="error || !ready" class="diff-viz-canvas__status" role="status">
         {{ error || translate('common.loading') }}
-        <button v-if="error" type="button" class="app-button app-button--secondary" @click="load">{{ translate('visualize.retryLoad') }}</button>
+        <button data-variant="primary" v-if="error" type="button" class="app-button app-button--secondary agent-ui-interactive" @click="load">{{ translate('visualize.retryLoad') }}</button>
       </div>
     </div>
   </div>
@@ -91,8 +91,7 @@ onBeforeUnmount(() => { disposed = true; epoch++; recolor = undefined; themeObse
 .diff-viz-canvas__host, .diff-viz-canvas__targets { position: absolute; inset: 0; }
 .diff-viz-canvas__targets { z-index: 2; pointer-events: none; overflow: hidden; }
 .diff-viz-canvas__node { position: absolute; }
-.diff-viz-canvas__target { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; pointer-events: auto; }
-.diff-viz-canvas__target:hover, .diff-viz-canvas__target:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.diff-viz-canvas__target { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; pointer-events: auto; }
 .diff-viz-canvas__controls { position: absolute; z-index: 3; right: var(--space-6); bottom: var(--space-6); display: flex; gap: var(--space-2); padding: var(--space-1); border-radius: var(--radius-lg); background: var(--color-surface-lowest); }
 .diff-viz-canvas__status { position: absolute; z-index: 4; inset: 0; display: flex; align-items: center; justify-content: center; gap: var(--space-4); color: var(--color-text-muted); background: var(--color-surface-lowest); }
 .diff-viz-canvas__host :deep(.excalidraw) { background: transparent; }

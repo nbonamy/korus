@@ -1,5 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { ElMessageBox } from "element-plus";
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { UsageFilter, UsageSummary } from "@workspace/core/usage";
 import type { HarnessProvider } from "@workspace/core/contracts";
 import { appApi } from "../platform-api";
@@ -187,7 +187,7 @@ export function useUsageAnalytics() {
   }
   async function clearStatistics(): Promise<void> {
     try {
-      await ElMessageBox.confirm(
+      await appMessageBox.confirm(
         translate("analytics.clearConfirmation"),
         translate("analytics.clearTitle"),
         {

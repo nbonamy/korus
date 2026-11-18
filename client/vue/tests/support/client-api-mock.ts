@@ -198,6 +198,7 @@ export function createClientApiMock(
     closeAgent: unscripted<'closeAgent'>('closeAgent'),
     restoreClosedAgent: unscripted<'restoreClosedAgent'>('restoreClosedAgent'),
     markAgentRead: vi.fn().mockResolvedValue(undefined),
+    markAgentUnread: vi.fn().mockResolvedValue(1),
     selectAgent: unscripted<'selectAgent'>('selectAgent'),
   getUsage: vi.fn().mockResolvedValue({recordedSince:0,retainedSince:0,rows:[]}),
   getTelemetryConsent: vi.fn().mockResolvedValue({enabled:false}),
@@ -237,6 +238,8 @@ export function createClientApiMock(
     openAccessibilitySettings: unscripted<'openAccessibilitySettings'>('openAccessibilitySettings'),
     openScreenRecordingSettings: unscripted<'openScreenRecordingSettings'>('openScreenRecordingSettings'),
     launchChatGptApp: unscripted<'launchChatGptApp'>('launchChatGptApp'),
+    listLocalSkins: unscripted<'listLocalSkins'>('listLocalSkins'),
+    deleteLocalSkin: unscripted<'deleteLocalSkin'>('deleteLocalSkin'),
     quit: unscripted<'quit'>('quit'),
     setMenuBarVisible: vi.fn<AppApi['setMenuBarVisible']>().mockResolvedValue(undefined),
     restartApp: unscripted<'restartApp'>('restartApp'),
@@ -245,6 +248,7 @@ export function createClientApiMock(
     openWindow: unscripted<'openWindow'>('openWindow'),
     setWindowSelection: unscripted<'setWindowSelection'>('setWindowSelection'),
     setWindowSetup: unscripted<'setWindowSetup'>('setWindowSetup'),
+    setWindowNavigation: unscripted<'setWindowNavigation'>('setWindowNavigation'),
     claimNativeResource: unscripted<'claimNativeResource'>('claimNativeResource'),
     releaseNativeResource: unscripted<'releaseNativeResource'>('releaseNativeResource'),
     syncComposerDraft: unscripted<'syncComposerDraft'>('syncComposerDraft'),
@@ -345,6 +349,7 @@ export function createClientApiMock(
   api.getWindowContext.mockResolvedValue({ windowId: 1, viewState: null, nativeOwners: [], composerDrafts: {} });
   api.setWindowSelection.mockResolvedValue(undefined);
   api.setWindowSetup.mockResolvedValue(undefined);
+  api.setWindowNavigation.mockResolvedValue(undefined);
   api.openWindow.mockResolvedValue(undefined);
   api.claimNativeResource.mockResolvedValue(true);
   api.releaseNativeResource.mockResolvedValue(undefined);

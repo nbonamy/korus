@@ -1,6 +1,9 @@
 import type { AppSnapshot, AutomationLocation } from '@workspace/core/contracts';
 
+export type RepositorySessionSourceTab = 'branches' | 'pullRequests' | 'issues';
+
 export type RepositorySessionSource = {
+  initialTab?: RepositorySessionSourceTab;
   agentId?: string;
   teamId?: string;
   /** Machine the repository path lives on; the source agent's when omitted. */

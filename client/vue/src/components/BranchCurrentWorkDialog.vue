@@ -3,7 +3,7 @@
     <p v-if="loading" role="status">{{ $t('branchWork.loading') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <div v-if="preview?.recoveries?.length && !result" class="branch-work__result">
-      <button v-for="recovery in preview.recoveries" :key="recovery.input.requestId" class="app-button app-button--secondary" type="button" :disabled="busy" @click="resume(recovery.input, recovery.result)">{{ $t('branchWork.resume', { branch: recovery.input.branchName }) }}</button>
+      <button data-variant="primary" v-for="recovery in preview.recoveries" :key="recovery.input.requestId" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy" @click="resume(recovery.input, recovery.result)">{{ $t('branchWork.resume', { branch: recovery.input.branchName }) }}</button>
     </div>
     <div v-if="preview && !result" class="branch-work__form">
       <ClearableTextInput subtle id="branch-work-name" v-model="branchName" name="branch" :aria-label="$t('branchWork.branchName')" :placeholder="$t('branchWork.branchPlaceholder')" :disabled="busy || Boolean(request)" autocomplete="off" autofocus />
@@ -14,12 +14,12 @@
       <p v-if="result.detail">{{ result.detail }}</p>
       <p v-if="result.sourceBackupFolder">{{ $t('branchWork.backups', { folder: result.sourceBackupFolder }) }}</p>
       <p v-if="result.retainedPaths.length">{{ $t('branchWork.retained') }} {{ result.retainedPaths.join(', ') }}</p>
-      <button v-if="result.agentId" class="app-button app-button--secondary" type="button" @click="emit('inspect-agent', result.agentId)">{{ $t('branchWork.inspect') }}</button>
+      <button data-variant="primary" v-if="result.agentId" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="emit('inspect-agent', result.agentId)">{{ $t('branchWork.inspect') }}</button>
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="dismiss(false)">{{ result ? $t('branchWork.close') : $t('branchWork.cancel') }}</button>
-      <button v-if="error && !result" class="app-button app-button--secondary" type="button" :disabled="busy" @click="refresh">{{ $t('branchWork.refresh') }}</button>
-      <button v-if="result?.state !== 'completed'" class="app-button app-button--primary" type="button" :disabled="busy || (!result && !valid)" @click="submit">{{ busy ? $t('branchWork.working') : result || error ? $t('branchWork.retry') : $t('branchWork.submit') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="dismiss(false)">{{ result ? $t('branchWork.close') : $t('branchWork.cancel') }}</button>
+      <button data-variant="primary" v-if="error && !result" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy" @click="refresh">{{ $t('branchWork.refresh') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="result?.state !== 'completed'" class="app-button app-button--primary agent-ui-interactive" type="button" :disabled="busy || (!result && !valid)" @click="submit">{{ busy ? $t('branchWork.working') : result || error ? $t('branchWork.retry') : $t('branchWork.submit') }}</button>
     </template>
   </FormDialog>
 </template>

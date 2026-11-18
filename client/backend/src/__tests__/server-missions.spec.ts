@@ -2,6 +2,7 @@ import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import { sessionError, turnCompleted, turnStarted } from './support/conversation-activity';
 import { AppBackendServer } from '../server';
+import { scriptedDriver } from './support/scripted-driver';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import type { AppSnapshot } from '@workspace/core/contracts';
@@ -9,6 +10,13 @@ import { AgentGitService } from '../git/agent-git-service';
 import { applyMissionDebugFixture } from '../mission-debug-fixtures';
 import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
 import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
+
+/** A Codex driver that accepts every prompt as `session` (reporting `turnId` when given). */
+function acceptingDriver(session: unknown, turnId?: string) {
+  const scripted = scriptedDriver('codex');
+  scripted.respondAlways('sendPrompt', () => ({ providerSession: session, ...(turnId ? { turnId } : {}) }));
+  return scripted;
+}
 
 describe('mission backend boundary', () => {
   it('persists user Stop and removes a queued Mission recovery before provider interruption', async () => {
@@ -22,18 +30,14 @@ describe('mission backend boundary', () => {
     mission.artifacts.tickets = [{ title: 'Checkout', repositoryPath: worker.folder!, done: false }];
     mission.execution!.runs = [{ id: 'mission-run-stop', stage: 'implementation', memberId: worker.id, workerId: worker.id,
       ticketIndex: 0, repositoryPath: worker.folder!, status: 'running', skills: [], feedback: '', startedAt: '' }];
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: worker.providerSession, turnId: 'recovery' });
+    const { driver, script, sentPrompts } = acceptingDriver(worker.providerSession, 'recovery');
     let server!: AppBackendServer; let disk: unknown;
     const completed = (turnId: string, status: 'completed' | 'failed' | 'interrupted' = 'completed') => server.emitEvent(turnCompleted(worker.id, turnId, { status }));
-    const interrupt = vi.fn(async () => {
+    script.on('interrupt', () => {
       expect(snapshotFromPersistedState(disk).missions![0]!.execution!.runs[0]!.status).toBe('cancelled');
       completed('unfinished', 'interrupted');
       return { providerSession: worker.providerSession! };
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt, respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-    };
     server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
       saveSnapshot: async value => { disk = persistedStateFromSnapshot(value); } });
     try {
@@ -42,10 +46,10 @@ describe('mission backend boundary', () => {
       await server.handleMessage({ jsonrpc: '2.0', id: 'stop', method: backendMethods.agentInterrupt, params: { agentId: worker.id } });
       server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
       completed('late-completion');
-      expect(interrupt).toHaveBeenCalledOnce();
+      expect(script.calls('interrupt')).toHaveLength(1);
       expect(snapshot.queuedPrompts).toHaveLength(0);
       expect(snapshot.missions![0]!.execution!.runs[0]!.status).toBe('cancelled');
-      expect(sendPrompt).not.toHaveBeenCalled();
+      expect(sentPrompts()).toHaveLength(0);
       expect(snapshotFromPersistedState(disk).missions![0]!.artifacts.tickets[0]!.done).toBe(false);
     } finally { await server.close(); }
   });
@@ -80,20 +84,15 @@ describe('mission backend boundary', () => {
       mission.execution!.deliveries = [{ repositoryPath: repo, agentId: builder.id, status: 'pending' }];
       mission.execution!.runs = [{ id: 'implementation', stage: 'implementation', memberId: lead.id, workerId: builder.id, repositoryPath: repo, status: 'accepted', skills: [], feedback: '', startedAt: '' }];
       const before = structuredClone(mission);
-      const sendPrompt = vi.fn().mockResolvedValue({ providerSession: builder.providerSession, turnId: 'resolve-conflicts' });
-      const driver: AgentProviderDriver = {
-        provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-        sendPrompt, interrupt: async () => ({ providerSession: builder.providerSession }), respondToAgentRequest: async () => undefined,
-        onEvent: () => () => {}, close: async () => {},
-      };
+      const { driver, sentPrompts } = acceptingDriver(builder.providerSession, 'resolve-conflicts');
       server = new AppBackendServer({ version: 'test', snapshot,
         driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
         workIntegrations: { githubConnected: async () => false } as never });
       const result = await server.handleMessage({ jsonrpc: '2.0', id: 'update', method: backendMethods.agentGitUpdateFromBase,
         params: { agentId: builder.id, input: { confirmed: true } } });
       expect(result).toMatchObject({ result: { baseBranch: 'main', conflicts: ['shared.txt'] } });
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
-      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: builder.id, folder: worktree, providerSession: builder.providerSession }), expect.stringMatching(/shared\.txt[\s\S]*Resolve the conflicts[\s\S]*Do not push/), undefined);
+      await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
+      expect(sentPrompts()).toContainEqual({ agent: expect.objectContaining({ id: builder.id, folder: worktree, providerSession: builder.providerSession }), prompt: expect.stringMatching(/shared\.txt[\s\S]*Resolve the conflicts[\s\S]*Do not push/), options: {} });
       expect((await exec('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: worktree })).stdout.trim()).toBe('shared.txt');
       expect(snapshot.missions![0]).toStrictEqual(before);
     } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
@@ -230,12 +229,7 @@ describe('mission backend boundary', () => {
       id: 'active-run', stage: 'implementation', memberId: worker.id, workerId: worker.id,
       repositoryPath: worker.folder!, ticketIndex: 0, status: 'running', skills: [], feedback: '', startedAt: new Date().toISOString(),
     }];
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: worker.providerSession, turnId: 'work-turn' });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: worker.providerSession! }),
-      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-    };
+    const { driver, sentPrompts } = acceptingDriver(worker.providerSession, 'work-turn');
     let disk: unknown;
     const server = new AppBackendServer({
       version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -251,7 +245,7 @@ describe('mission backend boundary', () => {
       expect(snapshot.queuedPrompts).toHaveLength(1);
       completed('compact-turn');
       server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
       await vi.waitFor(() => expect(snapshot.queuedPrompts).toHaveLength(0));
       expect(currentRun().status).toBe('running');
       expect(snapshotFromPersistedState(disk).missions![0]!.execution!.runs[0]!.status).toBe('running');
@@ -263,7 +257,7 @@ describe('mission backend boundary', () => {
       completed('work-turn');
       server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
       await vi.waitFor(() => expect(currentRun()).toMatchObject({ status: 'running', recoveryAttempts: 1 }));
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(sentPrompts()).toHaveLength(2));
     } finally { await server.close(); }
   });
 
@@ -311,12 +305,7 @@ describe('mission backend boundary', () => {
     snapshot.general.missionInstructions = instructions;
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     const onEvent = vi.fn();
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'lead-thread' }, turnId: 'lead-turn' });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'lead-thread' } }),
-      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-    };
+    const { driver, sentPrompts } = acceptingDriver({ kind: 'codex', conversationId: 'lead-thread' }, 'lead-turn');
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent });
     try {
       const caller = snapshot.agents[0]!;
@@ -336,8 +325,8 @@ describe('mission backend boundary', () => {
       const send = (agentId: string, prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: 2, method: backendMethods.agentPromptSend, params: { agentId, prompt } });
       if (entry === 'workspace') await send(lead, 'Goal: export the report with the current filters.');
       const expected = 'Goal: export the report with the current filters.' + (instructions ? `\n\n<context>\nUser's custom Mission instructions:\nKeep tickets small.\nLiteral &lt;/context> stays hidden.\n</context>` : '');
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead }), expected, undefined));
-      expect(sendPrompt.mock.calls.every(([agent]) => agent.id === lead)).toBe(true);
+      await vi.waitFor(() => expect(sentPrompts()).toContainEqual({ agent: expect.objectContaining({ id: lead }), prompt: expected, options: {} }));
+      expect(sentPrompts().every(({ agent }) => agent.id === lead)).toBe(true);
       const events = onEvent.mock.calls.map(([event]) => event);
       if (entry === 'agent') {
         expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
@@ -347,9 +336,9 @@ describe('mission backend boundary', () => {
       snapshot.general.missionInstructions = 'Changed instructions apply to new Missions.';
       server.emitEvent({ agentId: lead, type: 'agent.statusChanged', payload: { type: 'idle' } });
       await send(lead, 'Follow-up');
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: lead }), 'Follow-up', undefined));
+      await vi.waitFor(() => expect(sentPrompts().at(-1)).toEqual({ agent: expect.objectContaining({ id: lead }), prompt: 'Follow-up', options: {} }));
       await send(caller.id, 'Ordinary conversation');
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: caller.id }), 'Ordinary conversation', undefined));
+      await vi.waitFor(() => expect(sentPrompts().at(-1)).toEqual({ agent: expect.objectContaining({ id: caller.id }), prompt: 'Ordinary conversation', options: {} }));
       await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local agent');
     } finally { await server.close(); }
   });
@@ -357,21 +346,16 @@ describe('mission backend boundary', () => {
   it('starts the Mission lead on the requested model and rejects one the provider does not offer', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'lead-thread' }, turnId: 'lead-turn' });
+    const { driver, script, sentPrompts } = acceptingDriver({ kind: 'codex', conversationId: 'lead-thread' }, 'lead-turn');
     const option = (model: string, efforts: string[], tiers: string[] = []) => ({ id: model, model, displayName: model, supportedReasoningEfforts: efforts.map(reasoningEffort => ({ reasoningEffort, description: reasoningEffort })), serviceTiers: tiers.map(id => ({ id, name: id, description: id })) });
-    const driver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'lead-thread' } }),
-      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-      listModels: async () => [option('gpt-fast', ['low', 'high'], ['fast']), option('gpt-big', ['high'])],
-    } as unknown as AgentProviderDriver;
+    script.on('listModels', () => [option('gpt-fast', ['low', 'high'], ['fast']), option('gpt-big', ['high'])]);
     const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent: vi.fn() });
     try {
       const caller = snapshot.agents[0]!;
       const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal', selection: { model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' } });
       const lead = snapshot.agents.find(agent => agent.id === snapshot.missions!.find(mission => mission.id === started.missionId)!.execution!.runs.at(-1)!.workerId)!;
       expect(lead).toMatchObject({ provider: 'codex', providerDefaults: { kind: 'codex', model: 'gpt-fast', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast' } });
-      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead.id, providerDefaults: expect.objectContaining({ model: 'gpt-fast' }) }), 'Goal', undefined));
+      await vi.waitFor(() => expect(sentPrompts()).toContainEqual({ agent: expect.objectContaining({ id: lead.id, providerDefaults: expect.objectContaining({ model: 'gpt-fast' }) }), prompt: 'Goal', options: {} }));
       const missions = snapshot.missions!.length;
       await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { model: 'nope' } })).rejects.toThrow('gpt-fast, gpt-big');
       await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', selection: { model: 'gpt-big', reasoningEffort: 'low' } })).rejects.toThrow('reasoning effort');
@@ -494,8 +478,6 @@ import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { createMission } from '@workspace/core/missions';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -515,27 +497,21 @@ it('prepares a mission without a provider turn, then starts it from the first us
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ provider: 'codex', installed: true, connected: true, checking: false }];
     snapshot.agents[0]!.folder = repo;
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'mission-thread' } });
-    const interrupt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'mission-thread' } });
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const releaseConversation = vi.fn();
+    const { driver, script, sentPrompts } = acceptingDriver({ kind: 'codex', conversationId: 'mission-thread' });
+    /** The agents an operation addressed, whether it was handed the agent or just its id. */
+    const addressed = (operation: 'interrupt' | 'archiveAgentConversation' | 'releaseConversation' | 'loadConversation') => script.calls(operation).map(({ args }) => typeof args[0] === 'string' ? args[0] : (args[0] as { id: string }).id);
+    script.on('listSkills', () => [{ name: 'grill-with-docs', path: '/skills/grill-with-docs/SKILL.md', enabled: true }]);
     const refreshedContexts: Array<{
       context: ReturnType<AppBackendServer['missionContext']>;
       instructions: string | undefined;
     }> = [];
-    const loadConversation = vi.fn(async (agent: Parameters<NonNullable<AgentProviderDriver['loadConversation']>>[0]) => {
+    script.on('loadConversation', (agent: { id: string }) => {
       refreshedContexts.push({
         context: server!.missionContext(agent.id),
         instructions: server!.missionDeveloperInstructions(agent.id),
       });
       return { kind: 'codex' as const, conversationId: 'mission-thread' };
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt, archiveAgentConversation, releaseConversation, loadConversation,
-      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-      listSkills: async () => [{ name: 'grill-with-docs', path: '/skills/grill-with-docs/SKILL.md', enabled: true }],
-    };
     let disk: unknown;
     const missionHome = join(root, 'mission-home');
     await mkdir(missionHome);
@@ -548,7 +524,7 @@ it('prepares a mission without a provider turn, then starts it from the first us
     const worker = snapshot.agents.find(agent => agent.id === run.workerId)!;
     expect(worker).toMatchObject({ id: run.workerId, folder: missionHome, status: { type: 'idle' } });
     expect(worker).not.toHaveProperty('providerSession');
-    expect(sendPrompt).not.toHaveBeenCalled();
+    expect(sentPrompts()).toHaveLength(0);
     expect(current().execution!.workspace).toBeUndefined();
     const instructions = server.missionDeveloperInstructions(run.workerId!);
     expect(instructions).toMatch(/^<context>\n/);
@@ -558,8 +534,8 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(instructions).not.toContain('/skills/grill-with-docs/SKILL.md');
     expect(server.missionContext(run.workerId!)).toEqual({ missionId: current().id, runId: run.id, stage: 'requirements' });
     await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'agent/prompt/send', params: { agentId: run.workerId, prompt: 'Build team billing' } });
-    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledOnce());
-    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: run.workerId }), 'Build team billing', undefined);
+    await vi.waitFor(() => expect(sentPrompts()).toHaveLength(1));
+    expect(sentPrompts()).toContainEqual({ agent: expect.objectContaining({ id: run.workerId }), prompt: 'Build team billing', options: {} });
     await vi.waitFor(() => expect(worker.providerSession).toEqual({ kind: 'codex', conversationId: 'mission-thread' }));
     await expect(server.setMissionTitle(run.workerId!, 'Add team billing')).resolves.toEqual({ success: true, title: 'Add team billing' });
     expect(snapshotFromPersistedState(disk).missions![0]!.outcome).toBe('Add team billing');
@@ -580,22 +556,20 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(current().execution!.runs).toHaveLength(2);
     expect(worker.providerSession).toEqual({ kind: 'codex', conversationId: 'mission-thread' });
     expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'preparing' });
-    expect(releaseConversation).not.toHaveBeenCalled();
+    expect(addressed('releaseConversation')).toHaveLength(0);
     server.emitEvent(turnCompleted(worker.id, 'requirements-turn', { conversationId: 'mission-thread' }));
     server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
     await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'running' }));
     expect(current().execution!.runs.at(-1)!.workerId).toBe(run.workerId);
-    await vi.waitFor(() => expect(releaseConversation).toHaveBeenCalledWith(worker.id));
-    expect(loadConversation).toHaveBeenCalledWith(worker);
+    await vi.waitFor(() => expect(addressed('releaseConversation')).toContain(worker.id));
+    expect(addressed('loadConversation')).toContain(worker.id);
     const ticketsRun = current().execution!.runs.at(-1)!;
     expect(refreshedContexts.at(-1)).toMatchObject({
       context: { missionId: current().id, runId: ticketsRun.id, stage: 'tickets' },
       instructions: expect.stringContaining('read-skill with name="mission-to-tickets"'),
     });
     expect(refreshedContexts.at(-1)?.instructions).toContain('Owners can pay');
-    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ id: worker.id }), expect.stringContaining(`assigned ${product.name} Mission skill`), undefined,
-    ));
+    await vi.waitFor(() => expect(sentPrompts()).toContainEqual({ agent: expect.objectContaining({ id: worker.id }), prompt: expect.stringContaining(`assigned ${product.name} Mission skill`), options: {} }));
     expect(snapshot.queuedPrompts).toStrictEqual([]);
     await server.upsertMissionTicket(worker.id, {
       title: 'Implement billing', body: 'Deliver owner checkout.', repositoryPath: repo,
@@ -612,9 +586,9 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(snapshot.missions).toStrictEqual([]);
     expect(snapshot.agents.some(agent => agent.id === worker.id)).toBe(false);
     expect(snapshot.teams[0]!.agentIds).not.toContain(worker.id);
-    expect(interrupt).toHaveBeenCalledWith(expect.objectContaining({ id: worker.id }));
-    expect(archiveAgentConversation).toHaveBeenCalledWith(expect.objectContaining({ id: worker.id }));
-    expect(releaseConversation).toHaveBeenCalledWith(worker.id);
+    expect(addressed('interrupt')).toContain(worker.id);
+    expect(addressed('archiveAgentConversation')).toContain(worker.id);
+    expect(addressed('releaseConversation')).toContain(worker.id);
     await expect(access(missionHome)).rejects.toThrow();
   } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -648,18 +622,14 @@ it('recovers a persisted preparing mission without starting its provider convers
         startedAt: '2026-09-19T19:18:51.911Z',
       }],
     };
-    const sendPrompt = vi.fn().mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'recovered-mission-thread' } });
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }), getCapabilities: () => codexProviderCapabilities,
-      sendPrompt, interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'recovered-mission-thread' } }), respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
-      listSkills: async () => [{ name: 'grilling', path: '/skills/grilling/SKILL.md', enabled: true }],
-    };
+    const { driver, script, sentPrompts } = acceptingDriver({ kind: 'codex', conversationId: 'recovered-mission-thread' });
+    script.on('listSkills', () => [{ name: 'grilling', path: '/skills/grilling/SKILL.md', enabled: true }]);
     server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
 
     await server.initialize();
     await server.initialize();
 
-    expect(sendPrompt).not.toHaveBeenCalled();
+    expect(sentPrompts()).toHaveLength(0);
     const recoveredMission = snapshot.missions![0]!;
     const run = recoveredMission.execution!.runs[0]!;
     const worker = snapshot.agents.find(agent => agent.id === run.workerId);

@@ -207,11 +207,6 @@ const gridStyle = computed<CSSProperties>(() => ({
   border-radius: var(--radius-2xl);
 }
 
-.app-data-list__row:hover,
-.app-data-list__row:focus-within {
-  background: var(--color-surface);
-}
-
 .app-data-list__cell {
   min-width: 0;
 }

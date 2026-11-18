@@ -7,6 +7,7 @@ import {
   DesktopAutoUpdateService,
   resolveDesktopUpdateFeedUrl,
 } from '../auto-update';
+import { ManualUpdateCheckController } from '../manual-update-check';
 
 class AutoUpdaterMock extends EventEmitter {
   checkForUpdates = vi.fn();
@@ -108,6 +109,35 @@ describe('desktop auto-update', () => {
     service.start();
 
     expect(statuses.at(-1)).toStrictEqual({ state: 'error', error: 'network unavailable' });
+  });
+
+  it('keeps a background download visible and offers installation on a later manual check', async () => {
+    const { service, statuses, updater, setIntervalFn } = createService();
+    service.start();
+    updater.emit('update-downloaded', {}, '', '0.4.0');
+
+    // The next hourly check must not hide the staged update from renderer subscribers.
+    vi.mocked(setIntervalFn).mock.calls[0]![0]();
+    // Late results from an overlapping native check cannot discard it either.
+    updater.emit('checking-for-update');
+    updater.emit('update-available');
+    updater.emit('update-not-available');
+    updater.emit('error', new Error('network unavailable'));
+    expect(statuses).toStrictEqual([{ state: 'downloaded', version: '0.4.0' }]);
+    expect(service.getStatus()).toStrictEqual({ state: 'downloaded', version: '0.4.0' });
+    expect(updater.checkForUpdates).toHaveBeenCalledOnce();
+
+    const showMessageBox = vi.fn().mockResolvedValue({ response: 0 });
+    const manualCheck = new ManualUpdateCheckController({
+      getWindow: () => null, installUpdate: () => service.install(), showMessageBox,
+    });
+    expect(manualCheck.begin(service.getStatus())).toBe(false);
+    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    expect(showMessageBox).toHaveBeenCalledWith(null, expect.objectContaining({
+      message: 'Update ready to install', buttons: ['Install and Relaunch', 'Later'],
+    }));
+    expect(updater.quitAndInstall).toHaveBeenCalledOnce();
   });
 
   it('installs only after an update is downloaded', async () => {

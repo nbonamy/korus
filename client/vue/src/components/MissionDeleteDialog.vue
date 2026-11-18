@@ -39,15 +39,15 @@
 
     <template #footer>
       <div v-if="busy" class="app-dialog__footer">
-        <button class="app-button app-button--secondary" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="emit('background')">{{ t('common.runInBackground') }}</button>
       </div>
       <div v-else class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="emit('close')">
           {{ t('common.cancel') }}
         </button>
-        <button
+        <button data-variant="primary"
           v-if="worktrees.length"
-          class="app-button app-button--secondary"
+          class="app-button app-button--secondary agent-ui-interactive"
           type="button"
           :disabled="busy"
           @click="emit('confirm', false)"
@@ -55,7 +55,7 @@
           {{ t('missions.keepWorktrees') }}
         </button>
         <button
-          class="app-button mission-delete-dialog__delete"
+          data-variant="destructive" data-appearance="solid" class="app-button mission-delete-dialog__delete agent-ui-interactive"
           type="button"
           :aria-busy="busy"
           :disabled="busy"
@@ -170,12 +170,6 @@ function onVisibilityChanged(visible: boolean): void {
 
 .mission-delete-dialog__delete {
   border-color: var(--color-error);
-  color: var(--color-on-error);
-  background: var(--color-error);
-}
-
-.mission-delete-dialog__delete:hover:not(:disabled) {
-  border-color: var(--color-error);
-  background: color-mix(in srgb, var(--color-error) 86%, black);
+  --agent-ui-state-rest-foreground: var(--color-on-error);
 }
 </style>

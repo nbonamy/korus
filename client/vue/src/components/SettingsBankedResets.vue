@@ -1,7 +1,7 @@
 <template>
   <FormSection :title="$t('bankedResets.title')" title-id="settings-banked-resets-title">
     <template #actions>
-      <el-button size="small" :disabled="loading || pendingReset !== null || !eligible || unavailable || !transportConnected" :aria-label="$t('bankedResets.refresh')" @click="refresh">{{ $t('bankedResets.refresh') }}</el-button>
+      <el-button class="agent-ui-interactive" size="small" :disabled="loading || pendingReset !== null || !eligible || unavailable || !transportConnected" :aria-label="$t('bankedResets.refresh')" @click="refresh">{{ $t('bankedResets.refresh') }}</el-button>
     </template>
     <FormRow :title="summary ? $t('bankedResets.available', { count: summary.availableCount }) : statusText">
       <template #copy>
@@ -21,7 +21,7 @@
           <span v-if="credit.expiresAt !== null">{{ $t('bankedResets.expires') }} <time :datetime="iso(credit.expiresAt)">{{ date(credit.expiresAt) }}</time></span>
         </template>
         <template v-if="credit.redemptionToken && appApi?.useBankedReset" #control>
-          <el-button size="small" :disabled="loading || pendingReset !== null || usedTokens.has(credit.redemptionToken)" @click="useReset(credit.redemptionToken)">{{ $t('bankedResets.useReset') }}</el-button>
+          <el-button class="agent-ui-interactive" size="small" :disabled="loading || pendingReset !== null || usedTokens.has(credit.redemptionToken)" @click="useReset(credit.redemptionToken)">{{ $t('bankedResets.useReset') }}</el-button>
         </template>
       </FormRow>
     </div>
@@ -34,7 +34,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { isBankedResets, isBankedResetResult, type BankedResets, type BankedResetResult } from '@workspace/core/contracts/banked-resets';
 import { appApi } from '../platform-api';
 import FormSection from '../shared/form/FormSection.vue';
@@ -101,7 +101,7 @@ async function useReset(redemptionToken: string) {
   pendingReset.value = redemptionToken; redemptionFailed.value = false; outcome.value = undefined;
   try {
     try {
-      await ElMessageBox.confirm(t('bankedResets.confirmMessage'), t('bankedResets.confirmTitle'), {
+      await appMessageBox.confirm(t('bankedResets.confirmMessage'), t('bankedResets.confirmTitle'), {
         confirmButtonText: t('bankedResets.useReset'), cancelButtonText: t('common.cancel'), type: 'warning',
       });
     } catch { return; }

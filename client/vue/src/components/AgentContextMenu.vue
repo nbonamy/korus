@@ -27,6 +27,8 @@ import {
   ExternalLinkIcon,
   GitForkIcon,
   MessageCircleIcon,
+  MailIcon,
+  MailOpenedIcon,
   PencilIcon,
   RefreshIcon,
   SwitchHorizontalIcon,
@@ -37,6 +39,8 @@ import { openInApplicationFromMenuItem, openInMenuItems } from '../shared/open-i
 import { appApi } from '../platform-api';
 
 export type AgentContextMenuAction =
+  | 'mark-read'
+  | 'mark-unread'
   | 'share-agent'
   | 'close-agent'
   | 'compress-session'
@@ -49,7 +53,8 @@ export type AgentContextMenuAction =
   | 'resume-session'
   | 'restart-agent';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
+  unread?: boolean;
   shared?: boolean;
   shareAvailable?: boolean;
   compressDisabled?: boolean;
@@ -63,7 +68,7 @@ const props = defineProps<{
   openInDisabled?: boolean;
   x: number;
   y: number;
-}>();
+}>(), { unread: undefined });
 
 const emit = defineEmits<{
   action: [action: AgentContextMenuAction];
@@ -128,6 +133,7 @@ const menuItems = computed<AppMenuItem[]>(() => props.shared ? [{ id: 'close-age
     })),
   },
   { id: 'group-session', type: 'separator' },
+  ...(props.unread === undefined ? [] : [{ id: props.unread ? 'mark-read' : 'mark-unread', type: 'action', label: t(props.unread ? 'agents.menu.markRead' : 'agents.menu.markUnread'), icon: props.unread ? MailOpenedIcon : MailIcon } satisfies AppMenuItem]),
   {
     id: 'compact-session',
     type: 'action',
@@ -240,7 +246,7 @@ function teamIdFromMoveItemId(itemId: string): string | null {
 }
 
 function isAgentContextMenuAction(itemId: string): itemId is AgentContextMenuAction {
-  return itemId === 'share-agent' || itemId === 'close-agent' ||
+  return itemId === 'mark-read' || itemId === 'mark-unread' || itemId === 'share-agent' || itemId === 'close-agent' ||
     itemId === 'compress-session' ||
     itemId === 'compact-session' ||
     itemId === 'duplicate-agent' ||

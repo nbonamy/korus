@@ -10,7 +10,7 @@ permissions:
 jobs:
   downloads-badge:
     name: Publish package downloads
-    if: github.repository == 'nbonamy/korus' && github.ref == 'refs/heads/main'
+    if: github.repository == 'Korus-Dev/korus' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -94,9 +94,9 @@ describe('ImageAnnotationDialog', () => {
     expect(wrapper.findAll('.image-annotation-dialog__footer .app-button').map((button) => button.text()))
       .toStrictEqual(['Cancel', 'Clear', 'Save 1']);
     expect(wrapper.findAll('.image-annotation-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--secondary'],
-      ['app-button', 'app-button--primary', 'image-annotation-dialog__save'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--secondary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'image-annotation-dialog__save', 'agent-ui-interactive'],
     ]);
 
     await wrapper.get('[aria-label="Clear image annotations"]').trigger('click');

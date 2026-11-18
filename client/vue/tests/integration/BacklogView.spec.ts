@@ -20,7 +20,7 @@ describe('BacklogView', () => {
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['gitlab.com/other/repo']]);
     wrapper.unmount();
   });
-  it('reveals keyboard-focused favorite controls without a button outline', async () => {
+  it('reveals keyboard-focused favorite controls with shared focus styling', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')], undefined, 'nbonamy/a', document.body);
     try {
       await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
@@ -29,7 +29,7 @@ describe('BacklogView', () => {
       star.element.focus();
       expect(document.activeElement).toBe(star.element);
       expect(getComputedStyle(star.element).opacity).toBe('1');
-      expect(getComputedStyle(star.element).outline).toBe('none');
+      expect(star.classes()).toContain('agent-ui-interactive');
     } finally {
       wrapper.unmount();
     }
@@ -65,13 +65,39 @@ describe('BacklogView', () => {
 
   it('sorts repositories from the shared popup menu', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('b', '2026-01-01'), repository('a', '2026-02-01')]);
-    await wrapper.get('.app-menu-chip').trigger('click');
+    await wrapper.get('[aria-label="Sort repositories by recent activity"]').trigger('click');
     const items = Array.from(document.body.querySelectorAll<HTMLElement>('.app-menu__item'));
     expect(items.map((item) => item.textContent?.trim())).toEqual(['Recent activity', 'Alphabetical']);
     items[1]!.click();
     await flushPromises();
-    expect(wrapper.get('.app-menu-chip').text()).toContain('A–Z');
+    expect(wrapper.find('[aria-label="Sort repositories by name"]').exists()).toBe(true);
     expect(document.body.querySelector('.app-menu__item')).toBeNull();
+  });
+
+  it('filters repositories by organization, combines it with the text filter, and offers it only when several exist', async () => {
+    const owned = (owner: string, name: string): WorkSource => ({ ...repository(name, ''), id: `${owner}/${name}`, owner, fullName: `${owner}/${name}`, url: `https://github.com/${owner}/${name}` });
+    const wrapper = mountView(createInitialSnapshot(), [], [owned('acme', 'api'), owned('acme', 'web'), owned('nbonamy', 'api')]);
+    const organizationChip = () => wrapper.get('[aria-label="Filter repositories by organization"]');
+    const rows = () => wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').attributes('title'));
+    expect(organizationChip().classes()).not.toContain('cockpit-view__navigation-action--active');
+    expect(rows()).toHaveLength(3);
+
+    await organizationChip().trigger('click');
+    expect(Array.from(document.body.querySelectorAll<HTMLElement>('.app-menu__item')).map(entry => entry.textContent?.trim())).toEqual(['All organizations', 'acme', 'nbonamy']);
+    await wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'owner:acme');
+    await flushPromises();
+    expect(organizationChip().classes()).toContain('cockpit-view__navigation-action--active');
+    expect(organizationChip().attributes('title')).toBe('acme');
+    expect(rows().sort()).toStrictEqual(['api', 'web']);
+
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('web');
+    expect(rows()).toStrictEqual(['web']);
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
+
+    await wrapper.setProps({ workBacklog: { ...wrapper.props('workBacklog')!, repositories: [owned('nbonamy', 'api'), owned('nbonamy', 'cli')] } });
+    expect(wrapper.find('[aria-label="Filter repositories by organization"]').exists()).toBe(false);
+    expect(rows().sort()).toStrictEqual(['api', 'cli']);
+    wrapper.unmount();
   });
 
   it('rolls back a failed favorite save and accepts later saved preferences', async () => {
@@ -341,7 +367,7 @@ describe('BacklogView', () => {
     const rows = wrapper.findAll('.cockpit-view__repositories > div');
 
     expect(wrapper.get('.cockpit-view__navigation-section').text()).toContain('Repositories');
-    expect(wrapper.get('[aria-label="Sort repositories by recent activity"]').text()).toContain('Recent');
+    expect(wrapper.get('[aria-label="Sort repositories by recent activity"]').text()).toBe('');
     expect(rows.map((row) => row.text())).toStrictEqual(['recent', 'older']);
     expect(rows[0]!.findAll('button')[0]!.attributes('aria-pressed')).toBe('true');
     expect(rows[0]!.findAll('button')[0]!.attributes('title')).toBe('recent');
@@ -350,11 +376,11 @@ describe('BacklogView', () => {
     expect(wrapper.findAll('.cockpit-view__repositories > div').map((row) => row.text())).toStrictEqual(['older']);
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
 
-    await wrapper.get('.app-menu-chip').trigger('click');
+    await wrapper.get('[aria-label="Sort repositories by recent activity"]').trigger('click');
     await wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'alphabetical');
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.get('[aria-label="Sort repositories by name"]').text()).toContain('A–Z');
+    expect(wrapper.find('[aria-label="Sort repositories by name"]').exists()).toBe(true);
     expect(wrapper.findAll('.cockpit-view__repositories > div').map((row) => row.text())).toStrictEqual(['older', 'recent']);
 
     await wrapper.findAll('.cockpit-view__repositories > div')[1]!.findAll('button')[0]!.trigger('click');

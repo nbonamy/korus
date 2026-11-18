@@ -122,9 +122,7 @@ th {
 tbody tr {
   transition: background 120ms ease;
 }
-tbody tr:hover {
-  background: color-mix(in srgb, var(--color-text) 3%, transparent);
-}
+
 tbody tr:last-child td {
   border-bottom: 0;
 }

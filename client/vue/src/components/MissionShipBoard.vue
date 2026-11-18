@@ -10,7 +10,7 @@
     <div class="mission-ship__grid">
       <article v-for="delivery in deliveries" :key="delivery.repositoryPath" class="mission-ship__card" :data-status="delivery.status">
         <header class="mission-ship__card-header">
-          <button class="mission-ship__repository" type="button" :disabled="!agent(delivery.agentId)" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
+          <button class="mission-ship__repository agent-ui-interactive" type="button" :disabled="!agent(delivery.agentId)" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
             <GitForkIcon aria-hidden="true" />
             <span><strong>{{ repositoryName(delivery.repositoryPath) }}</strong><small>{{ workspaceBranch(delivery.repositoryPath) }}</small></span>
             <ArrowRightIcon aria-hidden="true" />
@@ -208,10 +208,7 @@ async function recordDelivery(repositoryPath: string, result: { kind: 'pullReque
   flex: 1;
   padding: 0;
   border: 0;
-  color: inherit;
-  background: transparent;
   text-align: left;
-  cursor: pointer;
 }
 
 .mission-ship__repository > svg {

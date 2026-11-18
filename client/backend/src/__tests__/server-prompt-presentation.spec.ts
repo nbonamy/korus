@@ -2,11 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
-import type { AgentProviderDriver, ProviderSendResult } from '@workspace/core/provider-driver';
 import type { Agent } from '@workspace/core/contracts';
 import { createTestSnapshot } from './server-test-fixtures';
 import type { ReviewToolHandlers } from '../review/review-tool-registry';
+import { scriptedDriver } from './support/scripted-driver';
 
 describe('injected prompt presentation', () => {
   it.each([
@@ -22,10 +21,13 @@ describe('injected prompt presentation', () => {
     let fail!: (error: Error) => void;
     let handlers!: ReviewToolHandlers;
     const gate = new Promise<void>((resolve, reject) => { release = resolve; fail = reject; });
-    const sendPrompt = vi.fn(async (): Promise<ProviderSendResult> => { await gate; return { providerSession: agent.providerSession!, turnId: 'injected-turn' }; });
-    const runCodeReview = vi.fn(async () => { await gate; await handlers.finishReviewRound({ findingCount: 0 }); return { text: 'Reviewed', reviewerSession: agent.providerSession! }; });
-    const driver: AgentProviderDriver = { provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities, sendPrompt, runCodeReview, interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn() };
+    const { driver, script, admit, sentPrompts } = scriptedDriver('codex');
+    await admit(agent);
+    script.on('sendPrompt', async () => { await gate; return { providerSession: agent.providerSession, turnId: 'injected-turn' }; });
+    script.on('executeScopedPrompt', async () => {
+      await gate; await handlers.finishReviewRound({ findingCount: 0 });
+      return { text: 'Reviewed', session: agent.providerSession };
+    });
     const published: unknown[] = [];
     const server = new AppBackendServer({ snapshot, version: 'test', driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])), saveSnapshot: vi.fn(),
       onEvent: event => { if (event.type === 'agent.updated') published.push(structuredClone(event.payload)); },
@@ -36,12 +38,14 @@ describe('injected prompt presentation', () => {
       const request = source === 'mission' ? server.sendTaskPrompt(agent, 'Implement the assigned Mission ticket.')
         : server.handleMessage({ jsonrpc: '2.0', id: 'review', method: backendMethods.agentCodeReviewStart, params: { agentId: agent.id, input: { scope: { type: 'uncommitted' }, threadMode: 'current' } } });
       const settled = request.catch(() => undefined);
-      await vi.waitFor(() => expect(source === 'mission' ? sendPrompt : runCodeReview).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(source === 'mission' ? sentPrompts() : script.calls('executeScopedPrompt')).toHaveLength(1));
       expect(agent).toHaveProperty('pendingPrompts', [expect.objectContaining({ id: expect.any(String), text: expect.any(String), createdAt: expect.any(String) })]);
       expect(published).toContainEqual(expect.objectContaining({ id: agent.id, pendingPrompts: expect.arrayContaining([expect.objectContaining({ text: expect.any(String) })]) }));
       if (outcome === 'accepted') release(); else fail(new Error('Provider rejected the injected prompt'));
       await settled;
       await vi.waitFor(() => expect(agent.pendingPrompts).toEqual([]));
+      if (source === 'mission') expect(agent.status.type).toBe(outcome === 'accepted' ? 'working' : 'error');
+      else await vi.waitFor(() => expect(agent.codeReview?.status).toBe(outcome === 'accepted' ? 'ready' : 'failed'));
       expect(published.at(-1)).toMatchObject({ id: agent.id, pendingPrompts: [] });
     } finally { release(); await server.close(); }
   });

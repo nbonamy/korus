@@ -52,12 +52,15 @@ export class CompanionRelayPolicy {
     this.leases.set(host, { until: this.now() + companionAdmissionLeaseMs, source });
     return true;
   }
-  register(host: string, devices: string[], invitations: PairingInvitation[] = [], source = host) {
+  register(host: string, devices: string[], offered: PairingInvitation[] = [], source = host) {
     this.prune();
+    // The laptop stamps expiry by its own clock. One running ahead of the relay must not get the whole admission refused,
+    // which would leave its phones unrouted and its QR code unknown: the relay caps each invitation at its own lifetime.
+    const invitations = offered.map(invite => Number.isSafeInteger(invite.expiresAt) ? { ...invite, expiresAt: Math.min(invite.expiresAt, this.now() + pairingLifetimeMs) } : invite);
     for (const [code, owner] of this.invitations) if (owner.expiresAt <= this.now()) this.invitations.delete(code);
     if (!this.reserve(host, source) || devices.length > companionMaxDevices || devices.some(id => !companionPeerIdPattern.test(id))
       || invitations.length > 5 || invitations.some(invite => normalizePairingCode(invite.code) !== invite.code
-        || !Number.isSafeInteger(invite.expiresAt) || invite.expiresAt > this.now() + pairingLifetimeMs)) throw new Error('Invalid relay admission.');
+        || !Number.isSafeInteger(invite.expiresAt))) throw new Error('Invalid relay admission.');
     const fresh = invitations.filter(invite => invite.expiresAt > this.now());
     if (fresh.some(invite => invite.code === this.pairing?.code)) throw new Error('Pairing code is reserved by relay configuration.');
     if (fresh.some(invite => this.invitations.has(invite.code) && this.invitations.get(invite.code)!.host !== host)) throw new Error('Pairing code already registered.');
@@ -92,6 +95,11 @@ export class CompanionRelayPolicy {
     return owner.host;
   }
   paired(host: string, device: string) { return this.admitted(host) && this.routes.get(host)?.has(device) === true; }
+  /** Why a circuit is refused, for the relay log: phones get one status for both, so this is how the two are told apart. */
+  denial(source: string, destination: string): 'laptop-offline' | 'not-paired' | null {
+    if (this.route(source, destination)) return null;
+    return this.admitted(destination) ? 'not-paired' : 'laptop-offline';
+  }
   route(source: string, destination: string) {
     if (!this.admitted(destination)) return false;
     if (this.routes.get(destination)?.has(source)) return true;
@@ -121,7 +129,12 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
         const source = connection && ingress.source(connection.remoteAddr);
         return !source || !policy.reserve(peer.toString(), source);
       },
-      denyOutboundRelayedConnection: (source, destination) => !policy.route(source.toString(), destination.toString()),
+      denyOutboundRelayedConnection: (source, destination) => {
+        const reason = policy.denial(source.toString(), destination.toString());
+        // The reason only, never the identities: a refused phone is retried, and the log says whether to look at the laptop or the pairing.
+        if (reason) options.log?.('relay circuit refused', { reason });
+        return reason !== null;
+      },
     },
     services: { identify: identify(), relay: circuitRelayServer({ hopTimeout: 10_000, maxInboundHopStreams: 10, maxOutboundHopStreams: 10, maxOutboundStopStreams: guestOwnerLimit + 8,
       reservations: { maxReservations: 1000, reservationTtl: 120_000, reservationClearInterval: 60_000,
@@ -179,9 +192,15 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
       const source = ingress.source(connection.remoteAddr);
       if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
       const result = await (protocol === companionPushProtocol ? push.send.bind(push) : push.liveActivity.bind(push))(connection.remotePeer.toString(), source, await readOne(stream));
+      if (result !== 'sent') options.log?.('push not delivered', { kind: protocol === companionPushProtocol ? 'notification' : 'live-activity', result });
       stream.send(encodeCompanionFrame({ result }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-    } catch { stream.abort(new Error('Push unavailable.')); }
+    } catch (error) {
+      // Our own refusals carry no identities; anything else is reported by kind only.
+      options.log?.('push refused', { kind: protocol === companionPushProtocol ? 'notification' : 'live-activity',
+        reason: error instanceof z.ZodError ? 'invalid-request' : error instanceof Error && ['Push denied.', 'Denied.'].includes(error.message) ? 'denied' : 'error' });
+      stream.abort(new Error('Push unavailable.'));
+    }
   }, { maxInboundStreams: 4, maxOutboundStreams: 1 });
   return relay;
 }

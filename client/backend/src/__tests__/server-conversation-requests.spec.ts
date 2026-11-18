@@ -2,8 +2,7 @@ import { product } from '@workspace/core/product';
 import { describe, expect, it, vi } from 'vitest';
 import { turnCompleted, turnStarted } from './support/conversation-activity';
 import type { AppSnapshot } from '@workspace/core/contracts';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
+import { scriptedDriver } from './support/scripted-driver';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
 import { MISSION_COMMAND_PROMPT } from '../agents/mission-command';
@@ -37,15 +36,9 @@ describe('AppBackendServer', () => {
     snapshot.activeAgentId = other.id;
     let rejectPrompt!: (error: Error) => void;
     let acceptPrompt!: (result: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
-    const sendPrompt = vi.fn()
-      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPrompt = reject; }))
-      .mockImplementationOnce(() => new Promise(resolve => { acceptPrompt = resolve; }));
-    const driver: AgentProviderDriver = {
-      provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities, sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'source-thread' } }),
-      respondToAgentRequest: async () => undefined, onEvent: () => () => undefined, close: async () => undefined,
-    };
+    const { driver, calls, respondOnce } = scriptedDriver('codex');
+    respondOnce('sendPrompt', () => new Promise((_resolve, reject) => { rejectPrompt = reject; }));
+    respondOnce('sendPrompt', () => new Promise(resolve => { acceptPrompt = resolve; }));
     const persisted: AppSnapshot[] = [];
     const server = new AppBackendServer({
       version: 'test-version', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -59,7 +52,7 @@ describe('AppBackendServer', () => {
       const failed = respond();
       await flushMicrotasks();
       expect(source.threadFlags.work_proposed).toBe(true);
-      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: source.id }), prompt, undefined);
+      await vi.waitFor(() => expect(calls('sendPrompt')).toEqual([[expect.objectContaining({ id: source.id }), prompt, {}]]));
       await expect(respond('work_proposed', 'dismiss')).rejects.toThrow('already being handled');
       const rejection = expect(failed).rejects.toThrow('provider unavailable');
       rejectPrompt(new Error('provider unavailable'));
@@ -67,7 +60,7 @@ describe('AppBackendServer', () => {
       expect(source.threadFlags.work_proposed).toBe(true);
       const retry = respond();
       await flushMicrotasks();
-      expect(sendPrompt).toHaveBeenCalledTimes(2);
+      await vi.waitFor(() => expect(calls('sendPrompt')).toHaveLength(2));
       expect(source.threadFlags.work_proposed).toBe(true);
       emitTurnStarted(server, source.id, 'accepted', 'codex', 'source-thread');
       expect(source.threadFlags).toBeUndefined();
@@ -102,19 +95,9 @@ describe('AppBackendServer', () => {
         updatedAt: '2026-06-13T00:00:00.000Z',
       }];
       let accept!: (value: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
-      const sendPrompt = vi.fn().mockImplementation(() => new Promise(resolve => { accept = resolve; }));
-      const setConversationTitle = vi.fn().mockResolvedValue(undefined);
-      const driver: AgentProviderDriver = {
-        provider: 'codex',
-        getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-        getCapabilities: () => codexProviderCapabilities,
-        sendPrompt,
-        interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-        respondToAgentRequest: async () => undefined,
-        setConversationTitle,
-        onEvent: () => () => undefined,
-        close: async () => undefined,
-      };
+      const { driver, script, calls, respondAlways } = scriptedDriver('codex');
+      respondAlways('sendPrompt', () => new Promise(resolve => { accept = resolve; }));
+      script.on('setConversationTitle', () => undefined);
       const events: unknown[] = [];
       const saveSnapshot = vi.fn().mockResolvedValue(undefined);
       const server = new AppBackendServer({
@@ -144,15 +127,12 @@ describe('AppBackendServer', () => {
       await vi.advanceTimersByTimeAsync(0);
       await flushMicrotasks();
 
-      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'revert everything', undefined);
+      await vi.waitFor(() => expect(calls('sendPrompt')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), 'revert everything', {}]));
       expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-dina' });
       expect(snapshot.agents[0]?.conversationTitle).toBe('Dina');
       expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
       expect(snapshot.agents[0]?.status).toStrictEqual({ type: 'working' });
-      expect(setConversationTitle).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-        'Dina',
-      );
+      await vi.waitFor(() => expect(calls('setConversationTitle')).toContainEqual([expect.objectContaining({ id: 'agent-dina', providerSession: { kind: 'codex', conversationId: 'thread-dina' } }), 'Dina']));
       expect(events).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'agent.statusChanged', payload: { type: 'working' } }),
         expect.objectContaining({ type: 'agent.updated', payload: expect.objectContaining({ id: 'agent-dina', threadFlags: null }) }),
@@ -175,20 +155,9 @@ describe('AppBackendServer', () => {
       userDelegationOverrides: { startingContext: 'conversation', instructions: 'Existing user directions', execution: { provider: 'codex', conversationId: 'thread-dina', turnId: 'turn-original' } },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const steerPrompt = vi.fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValue({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-steered' });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: vi.fn(),
-      steerPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, calls, respondOnce, respondAlways } = scriptedDriver('codex');
+    respondOnce('steerPrompt', () => { throw new Error('offline'); });
+    respondAlways('steerPrompt', () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-steered' }));
     const events: Array<{ type: string; payload: unknown }> = [];
     const server = new AppBackendServer({
       version: 'test-version', pid: 123, snapshot,
@@ -267,20 +236,10 @@ describe('AppBackendServer', () => {
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const titleSyncResolves: Array<() => void> = [];
-    const setConversationTitle = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+    const { driver, script, calls } = scriptedDriver('codex');
+    script.on('setConversationTitle', () => new Promise<void>((resolve) => {
       titleSyncResolves.push(resolve);
     }));
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      respondToAgentRequest: async () => undefined,
-      setConversationTitle,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -323,17 +282,9 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(setConversationTitle).toHaveBeenCalledTimes(2);
-    expect(setConversationTitle).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ id: 'agent-dina' }),
-      'Dina Renamed',
-    );
-    expect(setConversationTitle).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ id: 'agent-dina', name: null }),
-      'work-routing',
-    );
+    await vi.waitFor(() => expect(calls('setConversationTitle')).toHaveLength(2));
+    await vi.waitFor(() => expect(calls('setConversationTitle')[0]).toEqual([expect.objectContaining({ id: 'agent-dina' }), 'Dina Renamed']));
+    await vi.waitFor(() => expect(calls('setConversationTitle')[1]).toEqual([expect.objectContaining({ id: 'agent-dina', name: null }), 'work-routing']));
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
     for (const resolveTitleSync of titleSyncResolves) resolveTitleSync();
     await flushMicrotasks();
@@ -357,19 +308,8 @@ describe('AppBackendServer', () => {
       providerSession: { kind: 'codex' as const, conversationId: 'thread-command' },
       turnId: 'turn-command',
     });
-    const tryHandlePromptCommand = vi.fn().mockReturnValue(commandResult);
-    const sendPrompt = vi.fn();
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt,
-      tryHandlePromptCommand,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script, calls } = scriptedDriver('codex');
+    script.on('tryHandlePromptCommand', () => commandResult);
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -385,8 +325,8 @@ describe('AppBackendServer', () => {
     });
     await flushMicrotasks();
 
-    expect(tryHandlePromptCommand).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), '/compact');
-    expect(sendPrompt).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(calls('tryHandlePromptCommand')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), '/compact']));
+    expect(calls('sendPrompt')).toHaveLength(0);
     expect(snapshot.agents[0]?.providerSession).toStrictEqual({ kind: 'codex', conversationId: 'thread-command' });
     await server.close();
   });
@@ -405,21 +345,13 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     let acceptPrompt!: (value: { providerSession: { kind: 'codex'; conversationId: string }; turnId: string }) => void;
-    const sendPrompt = vi.fn().mockReturnValue(new Promise((resolve) => { acceptPrompt = resolve; }));
+    const { driver, calls, respondAlways } = scriptedDriver('codex');
+    const pendingPrompt = new Promise((resolve) => { acceptPrompt = resolve; });
+    respondAlways('sendPrompt', () => pendingPrompt);
     const onPromptStarting = vi.fn();
     const onPromptSource = vi.fn();
     const delegation = prompt === 'run next' ? { delegation: { startingContext: 'handoff' as const, instructions: 'Queued user directions' } } : {};
     const events: Array<{ type: string; snapshot?: AppSnapshot; payload: unknown }> = [];
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version', pid: 123, snapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -445,7 +377,7 @@ describe('AppBackendServer', () => {
     })]);
     expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
     expect(snapshot.agents[0]?.suggestedPrompt).toBeUndefined();
-    expect(sendPrompt).not.toHaveBeenCalled();
+    expect(calls('sendPrompt')).toHaveLength(0);
     expect(onPromptStarting).not.toHaveBeenCalled();
     expect(snapshot.agents[0]?.userDelegationOverrides).toBeUndefined();
 
@@ -459,13 +391,13 @@ describe('AppBackendServer', () => {
     });
     await flushMicrotasks();
     expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), clientId);
-    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), delivered, {
+    await vi.waitFor(() => expect(calls('sendPrompt')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), delivered, {
       selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' },
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
       inputMethod: 'dictated',
       ...delegation,
-    });
-    expect(sendPrompt).toHaveBeenCalledTimes(1);
+    }]));
+    await vi.waitFor(() => expect(calls('sendPrompt')).toHaveLength(1));
     expect(onPromptStarting).toHaveBeenCalledWith('agent-dina', {
       selection: { model: 'sol', reasoningEffort: 'high', serviceTier: 'fast' },
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
@@ -504,22 +436,12 @@ describe('AppBackendServer', () => {
         options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
       },
     ];
-    const steerPrompt = vi.fn().mockResolvedValue({
+    const { driver, calls, respondOnce, respondAlways } = scriptedDriver('codex');
+    respondAlways('steerPrompt', () => ({
       providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       turnId: 'turn-steered',
-    });
+    }));
     const events: Array<{ type: string; payload: unknown }> = [];
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: vi.fn(),
-      steerPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version', pid: 123, snapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -544,16 +466,12 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0', id: 'steer', method: 'agent/queuedPrompt/steer',
       params: { agentId: 'agent-dina', promptId: 'queued-2', prompt: 'edited steer', options: { content: steeredContent } },
     });
-    steerPrompt.mockRejectedValueOnce(new Error('Transport failed'));
+    respondOnce('steerPrompt', () => { throw new Error('Transport failed'); });
     await expect(steer()).rejects.toThrow('Transport failed');
     expect(snapshot.queuedPrompts?.[1]?.options?.content).toStrictEqual(content);
     await steer();
 
-    expect(steerPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'agent-dina' }),
-      'edited steer',
-      { content: steeredContent, attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
-    );
+    await vi.waitFor(() => expect(calls('steerPrompt')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), 'edited steer', { content: steeredContent, attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] }]));
     expect(snapshot.queuedPrompts).toEqual([
       expect.objectContaining({ id: 'queued-1', text: 'first' }),
     ]);
@@ -570,19 +488,9 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const failure = blocked ? 'This request was blocked by our safety systems. Reason: Potentially unintended activity.' : 'transport disconnected';
-    const sendPrompt = vi.fn()
-      .mockRejectedValueOnce(new Error(failure))
-      .mockResolvedValueOnce({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-retry' });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt,
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' } }),
-      respondToAgentRequest: async () => undefined,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, calls, respondOnce } = scriptedDriver('codex');
+    respondOnce('sendPrompt', () => { throw new Error(failure); });
+    respondOnce('sendPrompt', () => ({ providerSession: { kind: 'codex', conversationId: 'thread-dina' }, turnId: 'turn-retry' }));
     const server = new AppBackendServer({
       version: 'test-version', pid: 123, snapshot,
       driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])),
@@ -610,12 +518,12 @@ describe('AppBackendServer', () => {
     expect(snapshot.agents[0]?.status).toMatchObject({ type: 'error', message: expect.stringContaining(failure) });
     await vi.runOnlyPendingTimersAsync();
     await flushMicrotasks();
-    expect(sendPrompt).toHaveBeenCalledTimes(blocked ? 1 : 2);
+    await vi.waitFor(() => expect(calls('sendPrompt')).toHaveLength(blocked ? 1 : 2));
     if (blocked) {
       expect(snapshot.queuedPrompts?.map(prompt => prompt.text)).toEqual(['retry safely']);
       server.emitEvent(turnCompleted('agent-dina', 'blocked', { conversationId: 'thread-dina', status: 'failed', error: { message: failure, code: 'misalignment_policy_violation' } }));
       await flushMicrotasks();
-      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(calls('sendPrompt')).toHaveLength(1));
     } else expect(snapshot.queuedPrompts).toStrictEqual([]);
     await server.close();
     vi.useRealTimers();
@@ -635,31 +543,19 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const retryTurn = vi.fn().mockResolvedValue({
+    const { driver, script, calls } = scriptedDriver('codex');
+    script.on('retryTurn', () => ({
       providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-new',
-    });
-    const continueInterruptedTurn = vi.fn().mockResolvedValue({
+    }));
+    script.on('continueInterruptedTurn', () => ({
       providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-continued',
-    });
-    const editTurn = vi.fn().mockResolvedValue({
+    }));
+    script.on('editTurn', () => ({
       providerSession: { kind: 'codex' as const, conversationId: 'thread-dina' },
       activeTurnId: 'turn-edited',
-    });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      editTurn,
-      retryTurn,
-      continueInterruptedTurn,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    }));
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -674,7 +570,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina', turnId: 'turn-1' },
     });
 
-    expect(retryTurn).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'turn-1');
+    await vi.waitFor(() => expect(calls('retryTurn')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), 'turn-1']));
 
     snapshot.agents[0]!.status = { type: 'idle' };
     const continued = await server.handleMessage({
@@ -683,7 +579,7 @@ describe('AppBackendServer', () => {
       method: 'agent/turn/continueInterrupted',
       params: { agentId: 'agent-dina' },
     });
-    expect(continueInterruptedTurn).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
+    await vi.waitFor(() => expect(calls('continueInterruptedTurn').map(([agent]) => agent)).toContainEqual(expect.objectContaining({ id: 'agent-dina' })));
     expect(continued).toMatchObject({ result: { agents: [{ status: { type: 'working' } }] } });
 
     snapshot.agents[0]!.status = { type: 'idle' };
@@ -694,7 +590,7 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-dina', turnId: 'turn-1', content: ' edited prompt ', options: { content: [{ type: 'mention', kind: 'file', id: 'docs/edit.md', value: 'docs/edit.md', label: 'edited prompt' }] } },
     });
 
-    expect(editTurn).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'turn-1', 'edited prompt', { content: [{ type: 'mention', kind: 'file', id: 'docs/edit.md', value: 'docs/edit.md', label: 'edited prompt' }] });
+    await vi.waitFor(() => expect(calls('editTurn')).toContainEqual([expect.objectContaining({ id: 'agent-dina' }), 'turn-1', 'edited prompt', { content: [{ type: 'mention', kind: 'file', id: 'docs/edit.md', value: 'docs/edit.md', label: 'edited prompt' }] }]));
     await server.close();
   });
 });

@@ -4,8 +4,8 @@
     <div class="design-canvas__boards" :style="canvasStyle">
       <article v-for="board in boards" v-show="!play || board.id === activeArtboardId" :key="board.id" class="design-canvas__artboard" :data-artboard-id="board.id" :data-active="board.id === activeArtboardId" :style="boardStyle(board)">
         <header v-if="!play" class="design-canvas__caption" :style="{ height: `${captionHeight}px` }">
-          <button type="button" :aria-label="t('design.editArtboard', { name: board.title })" :title="t('design.moveArtboardHint')" :disabled="locked" @pointerdown.stop="startBoardDrag($event, board.id)" @keydown="nudgeBoard($event, board.id)" @click="clickBoard($event, board.id)">{{ board.title }}</button>
-          <button class="app-icon-button" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
+          <button class="agent-ui-interactive" type="button" :aria-label="t('design.editArtboard', { name: board.title })" :title="t('design.moveArtboardHint')" :disabled="locked" @pointerdown.stop="startBoardDrag($event, board.id)" @keydown="nudgeBoard($event, board.id)" @click="clickBoard($event, board.id)">{{ board.title }}</button>
+          <button class="app-icon-button agent-ui-interactive" type="button" :aria-label="t('design.focusArtboard', { name: board.title })" :title="t('design.focusArtboard', { name: board.title })" :disabled="locked" @click="emit('focus', board.id)"><ArrowsDiagonalIcon /></button>
         </header>
         <div class="design-canvas__surface" :style="{ height: `${board.height * zoom}px` }">
           <DesignArtboardFrame :board="board" :css="displayed.css" :document-id="documentId" :revision="revision" :play="play" :selected-node-id="board.id === selectedArtboardId ? selectedNodeId : null" :zoom="zoom" :locked="locked || pan" :frozen="interacting" @select="emit('select', board.id, $event)" @styles="(nodeId, frameRevision, styles, properties) => emit('styles', board.id, nodeId, frameRevision, styles, properties)" @edit="emit('edit', $event)" @interaction="emit('interaction', board.id, $event)" @prototype="navigate(board.id, $event)" />
@@ -296,8 +296,6 @@ defineExpose({ focus, zoom, activeArtboardId });
   border: 0;
   padding: 0;
   text-align: left;
-  background: transparent;
-  color: inherit;
   font: inherit;
   font-size: var(--font-size-13);
   white-space: nowrap;

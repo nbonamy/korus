@@ -9,7 +9,6 @@ import {
   IconDeviceMobile as MobileIcon,
   IconBrowser as BrowserIcon,
   IconDeviceDesktop as DeviceDesktopIcon,
-  IconGitBranch as GitBranchIcon,
   IconMarkdown as MarkdownIcon,
   IconMessage as MessageIcon,
   IconMessageReport as MessageReportIcon,
@@ -23,6 +22,7 @@ import {
   IconWorld as WorldIcon,
 } from '@tabler/icons-vue';
 import { presentClaudeToolTitle } from './claude-tool-titles';
+import { GitBranchIcon } from './shared/icons/app-icons';
 import { appMcpToolName, appToolName, presentAppToolTitle } from './tool-title-presenter';
 
 type Translate = ToolTitlePresenterContext['translate'];

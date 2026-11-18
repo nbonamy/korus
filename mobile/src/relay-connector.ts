@@ -19,13 +19,15 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   const caches = new ConversationCaches();
   const sessions = new Map<CompanionSession, string>();
   let registrations = Promise.resolve();
+  let networkOwner = 0;
+  const resume = () => { networkOwner++; network.resume(); };
   const closeSessions = (laptopId?: string) => { for (const [session, id] of [...sessions]) if (laptopId === undefined || id === laptopId) session.close(); };
 
   return {
     get laptops() { return pairing.laptops; },
     initialize: pairing.initialize,
     relayConfigured: Boolean(relay),
-    pair: pairing.pair,
+    async pair(...args) { resume(); return pairing.pair(...args); },
     rename: pairing.rename,
     cachedConversation: (target) => caches.peek(target),
     conversationUpdates: (target, since) => caches.updates(target, since),
@@ -34,6 +36,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         await pairing.initialize();
         const host = pairing.find(laptopId);
         if (!host) throw new Error('Pair the laptop first.');
+        const owner = networkOwner;
+        const wasSuspended = network.isSuspended();
         network.resume();
         try {
           let signed: LiveActivityRegistration | null = registration;
@@ -45,7 +49,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           }
           await network.request(host, 'liveActivity.register', signed);
         }
-        finally { if (!sessions.size) await network.suspend(); }
+        // A token refresh only borrows a paused transport. Foreground use that
+        // started meanwhile owns it, even before its first session is attached.
+        finally { if (wasSuspended && owner === networkOwner && !sessions.size) await network.suspend(); }
       });
       registrations = work.catch(() => {});
       return work;
@@ -65,9 +71,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const host = await pairing.forget(laptopId);
       if (host) await network.request(host, 'device.forget', {});
     },
-    async resume() { network.resume(); },
+    async resume() { resume(); },
     // The network refuses new dials from the moment it is told, so closing the sessions cannot reopen anything.
-    async suspend() { const stopped = network.suspend(); closeSessions(); await stopped; },
+    async suspend() { networkOwner++; const stopped = network.suspend(); closeSessions(); await stopped; },
     async dispose() { const stopped = network.dispose(); caches.closeAll(); closeSessions(); await stopped; },
   };
 }

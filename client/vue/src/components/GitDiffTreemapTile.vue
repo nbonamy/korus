@@ -1,6 +1,6 @@
 <template>
       <button type="button"
-        class="diff-treemap__tile" :data-diff-map-path="file.fullPath"
+        class="diff-treemap__tile agent-ui-interactive" :data-diff-map-path="file.fullPath"
         :style="style"
         :aria-label="`${file.fullPath}: +${file.addedLines} -${file.removedLines}`"
         @click="emit('select', file.fullPath)">
@@ -44,16 +44,14 @@ const canShowStats = computed(() => {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
-  cursor: pointer;
   overflow: hidden;
 }
-.diff-treemap__tile:hover, .diff-treemap__tile:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; z-index: 1; background: color-mix(in srgb, var(--diff-treemap-file-color) 12%, transparent); }
+.diff-treemap__tile:hover, .diff-treemap__tile:focus-visible { z-index: 1; }
 .diff-treemap__label { display: flex; flex-direction: column; gap: var(--space-2); position: absolute; inset: 0; padding: var(--space-4); overflow: hidden; }
 .diff-treemap__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-weight-semibold); }
 .diff-treemap__ratio { position: absolute; inset: auto 2px 2px; height: 4px; overflow: hidden; border-radius: 0; background: var(--color-error); }

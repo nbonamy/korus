@@ -214,7 +214,7 @@ describe('AppShell work routing', () => {
       sourceRepositories: [{ name: 'repo', path: '/code/selected', remoteIdentity: provider === 'gitlab' ? 'github.com/owner/repo' : gitlab.id, worktrees: [] }],
       workRepositoriesByProvider: { github: [github], gitlab: [gitlab] },
     });
-    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected', ...(remoteConnectionId ? { remoteConnectionId } : {}) });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected', initialTab: 'pullRequests', ...(remoteConnectionId ? { remoteConnectionId } : {}) });
     await flushPromises();
     expect(listSourceRepositories).toHaveBeenCalledExactlyOnceWith(remoteConnectionId);
     // Pull requests and issues come from the repository, whichever machine it is looked at on.
@@ -223,7 +223,7 @@ describe('AppShell work routing', () => {
     const dialog = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
     expect(dialog.props('selectedRepositoryId')).toBe(selected.id);
     expect(dialog.props('workItems')).toStrictEqual([request]);
-    await dialog.findAll('[role="tab"]').find(tab => tab.text() === (provider === 'gitlab' ? 'Merge requests' : 'Pull requests'))!.trigger('click');
+    expect(dialog.get('[role="tab"].is-active').text()).toBe(provider === 'gitlab' ? 'Merge requests' : 'Pull requests');
     expect(dialog.text()).toContain(request.title);
   });
 
@@ -502,6 +502,29 @@ describe('AppShell work routing', () => {
     await flushPromises();
 
     expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
+  });
+
+  it('opens an unsent skin prompt in a new Quick Chat in the current workspace', async () => {
+    const snapshot = createInitialSnapshot();
+    const chat = { ...snapshot.agents[0]!, id: 'skin-chat', sessionKind: 'quickChat' as const };
+    const createQuickChat = vi.fn().mockResolvedValue(chat);
+    const wrapper = mountShell({ snapshot, createQuickChat });
+
+    await wrapper.get('.settings-menu__actions [role="menuitem"]').trigger('click');
+    await wrapper.findAll('.el-menu-item').find(item => item.text() === 'Appearance')!.trigger('click');
+    await wrapper.findAll('button').find(button => button.text() === `ask ${product.name} to create your own`)!.trigger('click');
+    await flushPromises();
+
+    expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: snapshot.activeTeamId, selection: { provider: 'codex' } });
+    const [{ agentId, state }] = wrapper.emitted<[{
+      agentId: string; state: { text: string; selectionStart: number; selectionEnd: number };
+    }]>('update:composerState')![0]!;
+    expect(agentId).toBe(chat.id);
+    expect(state.text).toContain('korus-skin');
+    expect(state.selectionStart).toBe(state.text.length);
+    expect(state.selectionEnd).toBe(state.text.length);
+    expect(wrapper.find('.settings-view').exists()).toBe(false);
+    expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
   it('creates a new Git project and opens an agent in it', async () => {
@@ -862,11 +885,11 @@ describe('AppShell work routing', () => {
     expect(confirm).toHaveBeenCalledWith(
       "GitHub #12 is already assigned to Jesse. We don't know if Jesse is still working on it. Assign it to Dina anyway?",
       'Assign anyway?',
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Assign Anyway',
         type: 'warning',
-      },
+      }),
     );
     expect(wrapper.emitted('assign-work-item')).toStrictEqual([[{
       agentId: 'agent-dina',
@@ -909,7 +932,7 @@ describe('AppShell work routing', () => {
     });
 
     expect(wrapper.text()).toContain(`Welcome to ${product.name}`);
-    expect(wrapper.text()).toContain('Choose a source to start a session');
+    expect(wrapper.text()).toContain('New agent from…');
     expect(wrapper.find('.agent-header').exists()).toBe(false);
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
     expect(wrapper.find('.conversation-pane').exists()).toBe(false);
@@ -1267,11 +1290,11 @@ describe('AppShell work routing', () => {
     expect(confirm).toHaveBeenCalledWith(
       `Agents, missions and quick chats will be removed from ${product.name}. Mission worktrees will not be deleted.`,
       'Close Skwad?',
-      {
+      expect.objectContaining({
         cancelButtonText: 'Cancel',
         confirmButtonText: 'Close Workspace',
         type: 'warning',
-      },
+      }),
     );
     expect(wrapper.emitted('close-team')).toStrictEqual([['team-skwad']]);
   });

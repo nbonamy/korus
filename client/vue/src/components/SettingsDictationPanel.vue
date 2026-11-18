@@ -8,8 +8,8 @@
       <FormRow :title="$t('dictation.engine')">
         <template #control>
           <el-select class="settings-dictation__control" :model-value="settings.engine" :aria-label="$t('dictation.engine')" :disabled="busy" @update:model-value="selectEngine">
-            <el-option v-if="settings.appleAvailable" value="apple" :label="$t('dictation.apple')" />
-            <el-option value="openai" :label="$t('dictation.openai')" />
+            <el-option class="agent-ui-interactive" v-if="settings.appleAvailable" value="apple" :label="$t('dictation.apple')" />
+            <el-option class="agent-ui-interactive" value="openai" :label="$t('dictation.openai')" />
           </el-select>
         </template>
       </FormRow>

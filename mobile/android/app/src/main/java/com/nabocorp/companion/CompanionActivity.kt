@@ -28,7 +28,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.ui.graphics.Color
@@ -439,11 +438,17 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     }
                     if (expanded) Row(verticalAlignment = Alignment.CenterVertically) {
                         addAction()
-                        val fastTier = selected?.items("tiers")?.firstOrNull { it.string("id") in listOf("fast", "priority") }
-                        if (state.obj("capabilities").optBoolean("serviceTier") && fastTier != null) {
-                            val fast = composer.string("serviceTier") == fastTier.string("id")
-                            IconToggleButton(checked = fast, onCheckedChange = { model.chooseServiceTier(if (it) fastTier.string("id") else null) }, enabled = model.canChooseModel,
-                                modifier = Modifier.size(48.dp).semantics { contentDescription = "Fast mode"; stateDescription = if (fast) "On" else "Off" }) { Icon(if (fast) Icons.Filled.Bolt else Icons.Outlined.Bolt, null) }
+                        // Each press steps standard → the model's faster tiers → standard, as on the desktop.
+                        val speedTiers = composer.strings("speedTiers")
+                        if (state.obj("capabilities").optBoolean("serviceTier") && speedTiers.isNotEmpty()) {
+                            val active = composer.string("serviceTier").takeIf { it in speedTiers }
+                            val next = composer.string("nextServiceTier").ifBlank { null }
+                            val tierName = { id: String? -> id?.let { tier -> selected?.items("tiers")?.firstOrNull { it.string("id") == tier }?.string("name") } ?: "Standard" }
+                            val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+                            IconButton(onClick = { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); model.chooseServiceTier(next) }, enabled = model.canChooseModel,
+                                modifier = Modifier.size(48.dp).semantics { contentDescription = "Speed"; stateDescription = tierName(active) }) {
+                                SpeedIcon(active, if (active == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+                            }
                         }
                         Box(Modifier.weight(1f)) {
                             TextButton(onClick = { modelMenu = true }, enabled = model.canChooseModel && !model.modelsLoading, modifier = Modifier.semantics { contentDescription = "Choose model and reasoning" }) {

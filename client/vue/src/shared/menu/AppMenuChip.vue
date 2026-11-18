@@ -7,7 +7,7 @@
     @select="emit('select', $event)"
   >
     <template #trigger="{ attrs }">
-      <button v-bind="attrs" class="app-menu-chip" type="button" :aria-label="triggerLabel ?? ariaLabel">
+      <button v-bind="attrs" class="app-menu-chip agent-ui-interactive" type="button" :aria-label="triggerLabel ?? ariaLabel">
         <span>{{ label }}</span>
         <ChevronDown aria-hidden="true" />
       </button>
@@ -43,24 +43,12 @@ const emit = defineEmits<{ select: [itemId: string] }>();
   padding: 0 var(--space-3) 0 var(--space-4);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-regular);
   white-space: nowrap;
-  cursor: pointer;
   -webkit-app-region: no-drag;
-}
-
-.app-menu-chip:hover,
-.app-menu-chip[aria-expanded="true"] {
-  background: var(--color-surface-low);
-}
-
-.app-menu-chip:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
 }
 
 .app-menu-chip svg {

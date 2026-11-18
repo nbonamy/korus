@@ -7,8 +7,8 @@
         <section class="command-picker__panel">
           <div v-if="!editor" class="command-picker__toolbar">
             <el-select v-model="source" class="command-picker__source" :aria-label="$t('runProfiles.sourceFiles')">
-              <el-option :value="ALL_FILES" :label="$t('runProfiles.allFiles')" />
-              <el-option v-for="file in sources" :key="file" :value="file" :label="file.split('/').at(-1)" />
+              <el-option class="agent-ui-interactive" :value="ALL_FILES" :label="$t('runProfiles.allFiles')" />
+              <el-option class="agent-ui-interactive" v-for="file in sources" :key="file" :value="file" :label="file.split('/').at(-1)" />
             </el-select>
             <ClearableTextInput v-model="query" class="command-picker__search" :aria-label="$t('runProfiles.searchCommands')" :placeholder="$t('runProfiles.searchCommandsPlaceholder')" autofocus />
           </div>
@@ -17,7 +17,7 @@
             <div class="command-picker__scroll" :aria-label="$t('runProfiles.availableCommands')">
               <p v-if="loading" class="command-picker__empty" role="status">{{ $t('runProfiles.scanning') }}</p>
               <p v-else-if="!available.length" class="command-picker__empty">{{ $t(query ? 'runProfiles.noMatches' : 'runProfiles.noAvailableCommands') }}</p>
-              <button v-for="action in available" :key="key(action)" class="command-picker__row" type="button" :aria-label="$t('runProfiles.pinNamed', { name: action.name })" :disabled="saving" @click="add(action)">
+              <button v-for="action in available" :key="key(action)" class="command-picker__row agent-ui-interactive" type="button" :aria-label="$t('runProfiles.pinNamed', { name: action.name })" :disabled="saving" @click="add(action)">
                 <span class="command-picker__identity"><code><span class="command-picker__prefix">{{ commandParts(action).prefix }}</span>{{ commandParts(action).label }}</code></span><IconArrowRight class="command-picker__move" :size="16" aria-hidden="true" />
               </button>
             </div>
@@ -27,7 +27,7 @@
             <FormField :label="$t('runProfiles.command')" label-for="profile-command"><el-input id="profile-command" v-model="editor.command" :placeholder="$t('runProfiles.commandExample')" /></FormField>
             <FormField :label="$t('runProfiles.directory')" label-for="profile-directory"><el-input id="profile-directory" v-model="editor.directory" placeholder="." /></FormField>
             <FormField :label="$t('runProfiles.previewUrl')" label-for="profile-preview"><el-input id="profile-preview" v-model="editor.previewUrl" :placeholder="$t('runProfiles.previewExample')" /></FormField>
-            <div class="command-picker__editor-actions"><button class="app-button app-button--tertiary" type="button" :disabled="saving" @click="editor = null">{{ $t('common.cancel') }}</button><button class="app-button app-button--primary" :disabled="saving || !editor.name.trim() || !editor.command.trim()">{{ $t('runProfiles.save') }}</button></div>
+            <div class="command-picker__editor-actions"><button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="saving" @click="editor = null">{{ $t('common.cancel') }}</button><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" :disabled="saving || !editor.name.trim() || !editor.command.trim()">{{ $t('runProfiles.save') }}</button></div>
           </form>
         </section>
         <section class="command-picker__panel">
@@ -35,15 +35,15 @@
           <div class="command-picker__scroll" :aria-label="$t('runProfiles.pinnedCommands')">
             <div v-if="!profiles.length" class="command-picker__empty command-picker__empty--pinned"><IconPin :size="24" aria-hidden="true" /><strong>{{ $t('runProfiles.nothingPinned') }}</strong><span>{{ $t('runProfiles.pinHelp') }}</span></div>
             <div v-for="profile in profiles" :key="profile.id" class="command-picker__pinned">
-              <button class="command-picker__row" type="button" :aria-label="$t('runProfiles.removeNamed', { name: profile.name })" :disabled="saving || runningProfileIds.includes(profile.id)" :title="runningProfileIds.includes(profile.id) ? $t('runProfiles.stopBeforeRemoving') : undefined" @click="remove(profile)"><span class="command-picker__identity"><code><span class="command-picker__prefix">{{ commandParts(profile).prefix }}</span>{{ commandParts(profile).label }}</code><small v-if="profile.directory !== '.'">{{ profile.directory }}</small></span><IconArrowLeft class="command-picker__move" :size="16" aria-hidden="true" /></button>
-              <button class="command-picker__icon" :aria-label="$t('runProfiles.editNamed', { name: profile.name })" :title="$t('runProfiles.editNamed', { name: profile.name })" :disabled="saving" @click="editor = { ...profile }"><IconPencil :size="16" aria-hidden="true" /></button>
+              <button class="command-picker__row agent-ui-interactive" type="button" :aria-label="$t('runProfiles.removeNamed', { name: profile.name })" :disabled="saving || runningProfileIds.includes(profile.id)" :title="runningProfileIds.includes(profile.id) ? $t('runProfiles.stopBeforeRemoving') : undefined" @click="remove(profile)"><span class="command-picker__identity"><code><span class="command-picker__prefix">{{ commandParts(profile).prefix }}</span>{{ commandParts(profile).label }}</code><small v-if="profile.directory !== '.'">{{ profile.directory }}</small></span><IconArrowLeft class="command-picker__move" :size="16" aria-hidden="true" /></button>
+              <button class="command-picker__icon agent-ui-interactive" :aria-label="$t('runProfiles.editNamed', { name: profile.name })" :title="$t('runProfiles.editNamed', { name: profile.name })" :disabled="saving" @click="editor = { ...profile }"><IconPencil :size="16" aria-hidden="true" /></button>
             </div>
           </div>
         </section>
       </div>
     </div>
-    <template #footer-left><button class="app-button app-button--tertiary" :disabled="saving" @click="editor = { name: '', command: '', directory: '.', previewUrl: '' }"><IconPlus :size="16" aria-hidden="true" />{{ $t('runProfiles.customCommand') }}</button></template>
-    <template #footer><button class="app-button app-button--primary" :disabled="saving" @click="emit('done')">{{ $t('runProfiles.done') }}</button></template>
+    <template #footer-left><button class="app-button app-button--tertiary agent-ui-interactive" :disabled="saving" @click="editor = { name: '', command: '', directory: '.', previewUrl: '' }"><IconPlus :size="16" aria-hidden="true" />{{ $t('runProfiles.customCommand') }}</button></template>
+    <template #footer><button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" :disabled="saving" @click="emit('done')">{{ $t('runProfiles.done') }}</button></template>
   </FormDialog>
 </template>
 
@@ -133,10 +133,7 @@ onBeforeUnmount(() => { revision++; });
 .command-picker__toolbar :deep(.app-form-dialog__input-control) { flex: 1; min-width: 0; }
 .command-picker__source { flex: none; width: 145px; }
 .command-picker__scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.command-picker__row { display: flex; align-items: center; gap: var(--space-4); width: 100%; min-height: 36px; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 1px solid var(--color-border); color: var(--color-text); background: transparent; text-align: left; cursor: pointer; }
-.command-picker__row:hover:not(:disabled), .command-picker__row:focus-visible { background: var(--color-surface-low); }
-.command-picker__row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
-.command-picker__row:disabled { opacity: 0.5; cursor: default; }
+.command-picker__row { display: flex; align-items: center; gap: var(--space-4); width: 100%; min-height: 36px; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 1px solid var(--color-border); --agent-ui-state-rest-foreground: var(--color-text); text-align: left; }
 .command-picker__move { flex: none; color: var(--color-text-muted); opacity: 0; }
 .command-picker__row:hover .command-picker__move, .command-picker__row:focus-visible .command-picker__move { opacity: 1; }
 .command-picker__pinned { display: flex; align-items: center; border-bottom: 1px solid var(--color-border); }
@@ -150,9 +147,7 @@ onBeforeUnmount(() => { revision++; });
 .command-picker__empty--pinned { display: flex; align-items: center; flex-direction: column; gap: var(--space-4); padding-top: var(--space-20); text-align: center; }
 .command-picker__empty--pinned strong { color: var(--color-text); font-weight: var(--font-weight-medium); }
 .command-picker__empty--pinned span { max-width: 24ch; line-height: var(--line-height-20); }
-.command-picker__icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-md); color: var(--color-text-muted); background: transparent; cursor: pointer; }
-.command-picker__icon:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface-high); }
-.command-picker__icon:disabled { opacity: 0.4; cursor: default; }
+.command-picker__icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 28px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-md); --agent-ui-state-rest-foreground: var(--color-text-muted); }
 .command-picker__editor { display: grid; gap: var(--space-4); padding: var(--space-6); overflow-y: auto; }
 .command-picker__editor-actions { display: flex; justify-content: flex-end; gap: var(--space-4); }
 .command-picker__error { margin: 0; color: var(--color-error); font-size: var(--font-size-12); }

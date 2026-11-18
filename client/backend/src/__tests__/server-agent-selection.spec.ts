@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { AppBackendServer } from '../server';
 import { createMission } from '@workspace/core/missions';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
   createTestSnapshot
 } from './server-test-fixtures';
+
+/** A Codex driver whose conversation loads as `result` (or fails when it is an Error), and the loads it served. */
+function codexLoading(result: unknown) {
+  const scripted = scriptedDriver('codex');
+  scripted.respondAlways('loadConversation', () => { if (result instanceof Error) throw result; return result; });
+  return { ...scripted, loads: () => scripted.script.calls('loadConversation').map(({ args }) => (args[0] as { id: string }).id) };
+}
 
 describe('AppBackendServer', () => {
 
@@ -27,7 +33,6 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/agent-workspace',
       branch: 'main',
@@ -40,17 +45,7 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-06-13T00:00:00.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      loadConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, loads, respondOnce } = codexLoading({ kind: 'codex', conversationId: 'thread-hydrated' });
     const events: unknown[] = [];
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
@@ -72,7 +67,7 @@ describe('AppBackendServer', () => {
     });
     expect(getGitStatus).not.toHaveBeenCalled();
     await server.handleMessage({ jsonrpc: '2.0', id: 'navigate', method: 'client/navigation/selectAgent', params: { agentId: 'agent-dina' } });
-    expect(loadConversation).not.toHaveBeenCalled();
+    expect(loads()).toHaveLength(0);
     expect(getGitStatus).not.toHaveBeenCalled();
 
     await expect(server.handleMessage({
@@ -90,7 +85,7 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(loadConversation).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
+    expect(loads()).toContain('agent-dina');
     expect(getGitStatus).toHaveBeenCalledOnce();
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'git.statusUpdated', agentId: 'agent-dina' }),
@@ -104,7 +99,7 @@ describe('AppBackendServer', () => {
     mission.execution = { teamId: snapshot.teams[0]!.id, repoPath: '/repo', memberIds: ['agent-dina'], runs: [{ id: 'retained-run', stage: 'requirements', memberId: 'agent-dina', workerId: 'agent-dina', status: 'awaitingReview', skills: [], feedback: '', startedAt: '', proposal }] };
     const compact = await server.handleMessage({ jsonrpc: '2.0', id: 'compact', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } });
     expect(compact).toEqual({ jsonrpc: '2.0', id: 'compact', result: null });
-    expect(loadConversation).toHaveBeenCalledTimes(2);
+    expect(loads()).toHaveLength(2);
     const legacy = await server.handleMessage({ jsonrpc: '2.0', id: 'legacy', method: 'agent/conversation/load', params: { agentId: 'agent-dina' } });
     // Decode the released request's JSON independently of current shared types.
     const decoded = JSON.parse(JSON.stringify(legacy));
@@ -112,7 +107,7 @@ describe('AppBackendServer', () => {
     expect(decoded.result.missions[0].execution.runs[0].proposal.requirements.problem).toHaveLength(6_000_000);
     expect(getGitStatus).toHaveBeenCalledTimes(2);
     // A rebound session reference reaches the renderer; the compact response stays null otherwise.
-    loadConversation.mockResolvedValueOnce({ kind: 'codex', conversationId: 'thread-rebound' });
+    respondOnce('loadConversation', () => ({ kind: 'codex', conversationId: 'thread-rebound' }));
     const rebound = JSON.parse(JSON.stringify(await server.handleMessage({ jsonrpc: '2.0', id: 'rebound', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } })));
     expect(rebound.result.agents[0].providerSession).toEqual({ kind: 'codex', conversationId: 'thread-rebound' });
     // A handoff owns the conversation; there is nothing to hydrate until it ends.
@@ -148,18 +143,7 @@ describe('AppBackendServer', () => {
         updatedAt: '2026-06-13T00:00:00.000Z',
       },
     ];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      loadConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, loads, respondOnce } = codexLoading({ kind: 'codex', conversationId: 'thread-hydrated' });
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test-version',
@@ -186,7 +170,7 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(loadConversation).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-jesse' }));
+    expect(loads()).toContain('agent-jesse');
     expect(saveSnapshot).toHaveBeenCalled();
     expect(snapshot.activeAgentId).toBe('agent-dina');
     await server.close();
@@ -207,17 +191,7 @@ describe('AppBackendServer', () => {
       createdAt: '2026-09-05T00:00:00.000Z',
       updatedAt: '2026-09-05T00:00:00.000Z',
     }];
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      loadConversation: vi.fn().mockRejectedValue(new Error('active writer: provider-only detail')),
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, loads } = codexLoading(new Error('active writer: provider-only detail'));
     const events: Array<{ type: string; agentId?: string; payload?: unknown }> = [];
     const server = new AppBackendServer({
       version: 'test-version',
@@ -264,19 +238,8 @@ describe('AppBackendServer', () => {
       createdAt: '2026-06-13T00:00:00.000Z',
       updatedAt: '2026-06-13T00:00:00.000Z',
     }];
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-stale' });
     const getGitStatus = vi.fn().mockResolvedValue(null);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      loadConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, loads, respondOnce } = codexLoading({ kind: 'codex', conversationId: 'thread-stale' });
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -297,7 +260,7 @@ describe('AppBackendServer', () => {
       },
     });
     expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty('messages');
-    expect(loadConversation).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }));
+    expect(loads()).toContain('agent-dina');
     expect(getGitStatus).toHaveBeenCalledOnce();
     await server.close();
   });
@@ -365,7 +328,6 @@ describe('AppBackendServer', () => {
       originUrl: `https://github.com/current-owner/${folder.split('/').at(-1)!}.git`,
       updatedAt: '2026-06-13T00:00:00.000Z',
     }));
-    const loadConversation = vi.fn().mockResolvedValue({ kind: 'codex', conversationId: 'thread-hydrated' });
     const getGitStatus = vi.fn().mockResolvedValue({
       folder: '/Users/nbonamy/src/multi-llm-ts',
       branch: 'main',
@@ -378,17 +340,7 @@ describe('AppBackendServer', () => {
       state: 'dirty',
       updatedAt: '2026-06-13T00:00:00.000Z',
     });
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      loadConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, loads, respondOnce } = codexLoading({ kind: 'codex', conversationId: 'thread-hydrated' });
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -403,7 +355,7 @@ describe('AppBackendServer', () => {
       method: 'client/navigation/selectTeam',
       params: { teamId: 'team-other' },
     })).resolves.toMatchObject({ result: { activeTeamId: 'team-other', activeAgentId: 'agent-jesse' } });
-    expect(loadConversation).not.toHaveBeenCalled();
+    expect(loads()).toHaveLength(0);
     expect(identity).not.toHaveBeenCalled();
     expect(getGitStatus).not.toHaveBeenCalled();
     await expect(server.handleMessage({
@@ -423,7 +375,7 @@ describe('AppBackendServer', () => {
       },
     });
 
-    expect(loadConversation).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-jesse' }));
+    expect(loads()).toContain('agent-jesse');
     expect(identity).toHaveBeenCalledWith('/Users/nbonamy/src/multi-llm-ts');
     expect(identity).not.toHaveBeenCalledWith('/Users/nbonamy/src/other-project');
     expect(getGitStatus).toHaveBeenCalledWith('/Users/nbonamy/src/multi-llm-ts');

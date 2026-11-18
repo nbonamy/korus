@@ -6,11 +6,15 @@ export { default as CockpitIcon } from './CockpitIcon.vue';
 export { default as FolderSparkleIcon } from './FolderSparkleIcon.vue';
 export { default as ProductMarkIcon } from './ProductMarkIcon.vue';
 export { default as DuoPoseIcon } from './DuoPoseIcon.vue';
+export { default as GitMainIcon } from './GitMainIcon.vue';
+export { default as GitBranchIcon } from './GitBranchIcon.vue';
 // Softer corners than Tabler's sharp play triangle.
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
 
 export {
   IconMessage2 as Message2Icon,
+  IconMail as MailIcon,
+  IconMailOpened as MailOpenedIcon,
   IconForms as FormsIcon,
   IconArrowForwardUp as ArrowForwardUpIcon,
   IconAffiliate as AffiliateIcon,
@@ -92,7 +96,6 @@ export {
   IconFolders as FoldersIcon,
   IconGitFork as GitForkIcon,
   IconGitPullRequest as GitPullRequestIcon,
-  IconGitBranch as GitBranchIcon,
   IconGitCommit as GitCommitIcon,
   IconGitMerge as GitMergeIcon,
   IconCloudUpload as CloudUploadIcon,
@@ -145,6 +148,7 @@ export {
   IconTextWrapDisabled as TextWrapDisabledIcon,
   IconTrash as Trash2Icon,
   IconUser as UserIcon,
+  IconCopyPlus as NewAgentIcon,
   IconViewportShort as ViewportShortIcon,
   IconVolume as VolumeIcon,
   IconVolumeOff as VolumeOffIcon,

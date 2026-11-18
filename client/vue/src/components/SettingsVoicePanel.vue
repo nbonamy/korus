@@ -30,16 +30,16 @@
             role="radiogroup"
             :aria-label="$t('surface.settingsVoicePanel.voice')"
           >
-            <div
+            <div :data-selected="(option.value === settings.spokenAnnouncementVoice) ? '' : undefined"
               v-for="option in voiceOptions"
               :key="option.value"
-              class="settings-voice-panel__voice"
+              class="settings-voice-panel__voice agent-ui-interactive"
               :class="{ 'settings-voice-panel__voice--selected': option.value === settings.spokenAnnouncementVoice }"
             >
               <button
                 type="button"
                 role="radio"
-                class="settings-voice-panel__voice-select"
+                class="settings-voice-panel__voice-select agent-ui-interactive" data-appearance="text"
                 :aria-checked="option.value === settings.spokenAnnouncementVoice"
                 @click="updateSpokenAnnouncementVoice(option.value)"
               >
@@ -48,7 +48,7 @@
               </button>
               <button
                 type="button"
-                class="settings-voice-panel__voice-play"
+                class="settings-voice-panel__voice-play agent-ui-interactive"
                 :disabled="previewingVoice !== null"
                 :aria-busy="previewingVoice === option.value"
                 :aria-label="$t('surface.settingsVoicePanel.previewVoiceName', { name: option.name })"
@@ -87,11 +87,11 @@
               :aria-label="$t('surface.settingsVoicePanel.spokenAcknowledgmentScope')"
               @update:model-value="updateSpokenAnnouncementScope"
             >
-              <el-option
+              <el-option class="agent-ui-interactive"
                 :label="$t('surface.settingsVoicePanel.selectedAgentOnly')"
                 value="selected"
               />
-              <el-option
+              <el-option class="agent-ui-interactive"
                 :label="$t('surface.settingsVoicePanel.allAgents')"
                 value="all"
               />
@@ -225,16 +225,17 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
 }
 
 .settings-voice-panel__voice {
+  --agent-ui-state-selected: var(--color-primary-container);
+  --voice-accent-color: var(--color-text-muted);
   position: relative;
   min-width: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface-lowest);
 }
 
 .settings-voice-panel__voice--selected {
   border-color: var(--color-primary);
-  background: var(--color-primary-container);
+  --voice-accent-color: var(--color-primary);
 }
 
 .settings-voice-panel__voice-select {
@@ -247,17 +248,9 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
   padding: var(--space-4) var(--space-12) var(--space-4) var(--space-6);
   border: 0;
   border-radius: inherit;
-  background: transparent;
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
-}
-
-.settings-voice-panel__voice-select:focus-visible,
-.settings-voice-panel__voice-play:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
 }
 
 .settings-voice-panel__voice-select strong {
@@ -267,13 +260,9 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
 }
 
 .settings-voice-panel__voice-select span {
-  color: var(--color-text-muted);
+  color: var(--voice-accent-color);
   font-size: var(--font-size-12);
   line-height: var(--line-height-16);
-}
-
-.settings-voice-panel__voice--selected .settings-voice-panel__voice-select span {
-  color: var(--color-on-primary-container);
 }
 
 .settings-voice-panel__voice-play {
@@ -287,19 +276,7 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.settings-voice-panel__voice-play:hover:not(:disabled) {
-  background: var(--color-surface-high);
-  color: var(--color-text);
-}
-
-.settings-voice-panel__voice-play:disabled {
-  cursor: default;
-  opacity: 0.4;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .settings-voice-panel__voice-play[aria-busy='true'] {

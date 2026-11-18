@@ -5,7 +5,7 @@
       v-for="marker in markers"
       :key="marker.annotation.id"
       :data-annotation-id="marker.annotation.id"
-      class="conversation-pane__annotation-marker"
+      data-variant="primary" data-appearance="solid" class="conversation-pane__annotation-marker agent-ui-interactive"
       type="button"
       :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
       :aria-label="t('chat.textAnnotations.edit', { number: marker.annotation.number })"
@@ -106,10 +106,8 @@ onBeforeUnmount(() => { if (focusTimer !== undefined) clearTimeout(focusTimer); 
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-full);
   place-items: center;
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  --agent-ui-state-rest-foreground: var(--color-on-primary);
   font: 600 var(--font-size-10) / 1 var(--font-family-ui);
   transform: translate(2px, -45%);
-  cursor: pointer;
 }
 </style>

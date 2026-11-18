@@ -8,6 +8,7 @@ import type { PromptPart } from '@korus-dev/multi-agent-sdk';
  * last selection.
  */
 export type WindowViewState = {
+  navigation?: WindowNavigation;
   agentId?: string;
   /** The team of a team, feature or Mission window. */
   teamId?: string;
@@ -68,8 +69,14 @@ export function isWindowSetup(value: unknown): value is WindowSetup {
  */
 export type WindowScope = 'workspace' | 'team' | 'agent' | 'feature' | 'mission';
 
+export type WindowNavigation = 'workspace' | 'cockpit' | 'backlog';
+export function isWindowNavigation(value: unknown): value is WindowNavigation {
+  return value === 'workspace' || value === 'cockpit' || value === 'backlog';
+}
+
 export function isWindowViewState(value: unknown): value is WindowViewState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  if ('navigation' in value && !isWindowNavigation(value.navigation)) return false;
   const { agentId, teamId, branch, missionId, scope, setup } = value as { agentId?: unknown; teamId?: unknown; branch?: unknown; missionId?: unknown; scope?: unknown; setup?: unknown };
   if (agentId !== undefined && typeof agentId !== 'string') return false;
   if (teamId !== undefined && typeof teamId !== 'string') return false;

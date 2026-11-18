@@ -12,8 +12,8 @@ const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 const text = (v: unknown): v is string => typeof v === 'string' && v.length <= 100_000;
 export function isMissionArtifacts(v: unknown): v is MissionArtifacts {
   return record(v) && record(v.requirements) && text(v.requirements.problem) && text(v.requirements.acceptance)
-    && Array.isArray(v.tickets) && v.tickets.length <= 200 && v.tickets.every(t => record(t) && (t.id === undefined || (text(t.id) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(t.id))) && (t.revision === undefined || (Number.isInteger(t.revision) && (t.revision as number) >= 0)) && text(t.title) && (t.body === undefined || text(t.body)) && (t.repositoryPath === undefined || (text(t.repositoryPath) && !!t.repositoryPath.trim())) && typeof t.done === 'boolean' && (t.reference === undefined || (text(t.reference) && !!t.reference.trim())) && (t.dependsOn === undefined || (Array.isArray(t.dependsOn) && t.dependsOn.every(n => Number.isInteger(n) && n >= 0)))) && validTicketDependencies(v.tickets as MissionTicket[])
-    && record(v.implementation) && text(v.implementation.changes) && text(v.implementation.tests)
+    && Array.isArray(v.tickets) && v.tickets.every(t => record(t) && (t.id === undefined || (text(t.id) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(t.id))) && (t.revision === undefined || (Number.isInteger(t.revision) && (t.revision as number) >= 0)) && text(t.title) && (t.body === undefined || text(t.body)) && (t.repositoryPath === undefined || (text(t.repositoryPath) && !!t.repositoryPath.trim())) && typeof t.done === 'boolean' && (t.reference === undefined || (text(t.reference) && !!t.reference.trim())) && (t.dependsOn === undefined || (Array.isArray(t.dependsOn) && t.dependsOn.every(n => Number.isInteger(n) && n >= 0)))) && validTicketDependencies(v.tickets as MissionTicket[])
+    && record(v.implementation) && typeof v.implementation.changes === 'string' && typeof v.implementation.tests === 'string'
     && record(v.review) && text(v.review.summary) && text(v.review.pullRequestUrl)
     && (v.review.findings === undefined || (Array.isArray(v.review.findings) && v.review.findings.length <= 500 && v.review.findings.every(isMissionReviewFinding)))
     && (!v.review.pullRequestUrl || /^https?:\/\//.test(v.review.pullRequestUrl));
@@ -38,16 +38,26 @@ function isMissionReviewFinding(v: unknown): v is MissionReviewFinding {
     && text(v.createdAt) && text(v.updatedAt);
 }
 function validTicketDependencies(tickets: MissionTicket[]): boolean {
-  const visited = new Set<number>();
-  const visiting = new Set<number>();
-  const visit = (index: number): boolean => {
-    if (visiting.has(index) || !tickets[index]) return false;
-    if (visited.has(index)) return true;
-    visiting.add(index);
-    if (!(tickets[index]!.dependsOn ?? []).every(visit)) return false;
-    visiting.delete(index); visited.add(index); return true;
-  };
-  return tickets.every((_, index) => visit(index));
+  const dependents: number[][] = Array.from({ length: tickets.length }, () => []);
+  const remaining = new Array<number>(tickets.length).fill(0);
+  const ready: number[] = [];
+  for (let index = 0; index < tickets.length; index++) {
+    const ticket = tickets[index];
+    if (!ticket) return false;
+    for (const blocker of ticket.dependsOn ?? []) {
+      if (!tickets[blocker]) return false;
+      dependents[blocker]!.push(index);
+      remaining[index]!++;
+    }
+    if (remaining[index] === 0) ready.push(index);
+  }
+  // Walk the dependency graph without a call-stack limit on the backlog's depth.
+  for (let next = 0; next < ready.length; next++) {
+    for (const dependent of dependents[ready[next]!]!) {
+      if (--remaining[dependent]! === 0) ready.push(dependent);
+    }
+  }
+  return ready.length === tickets.length;
 }
 export function missionTicketReady(tickets: MissionTicket[], index: number): boolean {
   const ticket = tickets[index];

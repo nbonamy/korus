@@ -1,4 +1,5 @@
 import { gitRepositoryKey, fileRepositoryKey, repositoryIconAliases } from '@workspace/core/repository-key';
+import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
@@ -9,7 +10,7 @@ import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
 import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitForkIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitPullRequestIcon, GitMainIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { useProviderChoices } from './provider-selection';
 import { providerDisplayName } from '@workspace/core/provider-driver';
@@ -32,7 +33,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const organizationMenuItems = computed<AppMenuItem[]>(() => [
     { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
     { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
-    { id: 'worktree', type: 'radio', checked: organizationMode.value === 'worktree', label: t('sidebar.worktree'), icon: GitForkIcon },
+    { id: 'worktree', type: 'radio', checked: organizationMode.value === 'worktree', label: t('sidebar.worktree'), icon: GitBranchIcon },
   ]);
   const featureMenuItems = computed<AppMenuItem[]>(() => [
     ...(appApi?.openWindow && contextMenuFeature.value?.sessions.length ? [{ id: 'open-window', type: 'action', label: t('features.openInNewWindow'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
@@ -313,11 +314,16 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
         id: 'default-branch',
         type: 'action',
         label: defaultBranch?.name ?? t('sidebar.defaultBranchUnavailable'),
-        icon: GitBranchIcon,
+        icon: GitMainIcon,
         disabled: !defaultBranch,
         ...remoteAction('default-branch:remote'),
       },
-      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitForkIcon, ...remoteAction('new-worktree:remote') },
+      { id: 'from-branch', type: 'action', label: t('sidebar.fromBranch'), icon: GitBranchIcon },
+      { id: 'new-worktree', type: 'action', label: t('sidebar.newWorktree'), icon: GitBranchIcon, ...remoteAction('new-worktree:remote') },
+      {
+        id: 'from-work-item', type: 'action', icon: GitPullRequestIcon,
+        label: t(canonicalGitRemoteIdentity(group.originUrl ?? '')?.startsWith('gitlab.com/') ? 'sidebar.fromIssueOrMergeRequest' : 'sidebar.fromIssueOrPullRequest'),
+      },
     ];
   }
 
@@ -397,6 +403,8 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
       }
     } else if (itemId === 'new-worktree') {
       emit('create-agent-worktree-in-repository', payload);
+    } else if (itemId === 'from-branch' || itemId === 'from-work-item') {
+      emit('create-agent-from-repository', { ...payload, initialTab: itemId === 'from-branch' ? 'branches' : 'pullRequests' });
     }
     repositorySessionMenuId.value = null;
   }
@@ -483,6 +491,10 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     }
 
     switch (action) {
+      case 'mark-read':
+      case 'mark-unread':
+        emit('set-agent-unread', { agentId, unread: action === 'mark-unread' });
+        break;
       case 'share-agent':
         emit('share-agent', agentId);
         break;
@@ -568,7 +580,6 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     toggleWorkspace,
     repositorySessionMenuId,
     repositorySessionMenuItems,
-    sectionTarget,
     remoteConnection,
     rowHost,
     repositorySessionMenu,

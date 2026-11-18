@@ -16,13 +16,13 @@
       <div ref="results" class="quick-open-dialog__results" :role="readOnly ? 'list' : undefined" :tabindex="readOnly ? 0 : undefined" :aria-label="readOnly ? dialogLabel : undefined">
         <template v-for="(item, index) in matches" :key="item.id">
           <h3 v-if="item.group && item.group !== matches[index - 1]?.group" class="quick-open-dialog__group">{{ item.group }}</h3>
-          <div class="quick-open-dialog__result" :class="{ 'quick-open-dialog__result--selected': index === selectedIndex }" @mouseenter="selectedIndex = index" @focusin="selectedIndex = index">
-            <component
+          <div :data-selected="(index === selectedIndex) ? '' : undefined" class="quick-open-dialog__result agent-ui-interactive" :data-disabled="item.disabled || undefined" :class="{ 'quick-open-dialog__result--selected': index === selectedIndex }" @mouseenter="selectedIndex = index" @focusin="selectedIndex = index">
+            <component :data-selected="(index === selectedIndex) ? '' : undefined"
               :is="readOnly ? 'div' : 'button'"
               :type="readOnly ? undefined : 'button'"
               :disabled="readOnly ? undefined : item.disabled"
               :role="readOnly ? 'listitem' : undefined"
-              class="quick-open-dialog__item"
+              class="quick-open-dialog__item agent-ui-interactive" data-appearance="text"
               :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
               @click="select(item.id)"
               @mouseenter="selectedIndex = index"
@@ -181,8 +181,7 @@ function select(id: string): void {
   padding: var(--space-3) var(--space-4);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
 }
 
@@ -190,11 +189,6 @@ function select(id: string): void {
   display: flex;
   align-items: center;
   border-radius: var(--radius-md);
-}
-
-.quick-open-dialog__result:hover,
-.quick-open-dialog__result--selected {
-  background: var(--color-primary-container);
 }
 
 .quick-open-dialog__item-actions {
@@ -211,16 +205,6 @@ function select(id: string): void {
 .quick-open-dialog__result:focus-within .quick-open-dialog__item-actions {
   opacity: 1;
   pointer-events: auto;
-}
-
-.quick-open-dialog__item:hover,
-.quick-open-dialog__item--selected {
-  background: var(--color-primary-container) !important;
-}
-
-.quick-open-dialog__item:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
 }
 
 .quick-open-dialog__results p {
@@ -276,4 +260,6 @@ function select(id: string): void {
   font-family: inherit;
   font-size: var(--font-size-12);
 }
+/* Reference-only rows retain the shared highlighting without suggesting a click action. */
+.quick-open-dialog__results[role="list"] .agent-ui-interactive { cursor: default; }
 </style>

@@ -207,6 +207,9 @@ describe(`${product.name} MCP tool registration`, () => {
     expect(await handlers.get('reopen-mission-stage')!({ stage: 'requirements' })).toMatchObject({ structuredContent: { success: true, stage: 'requirements' } });
     expect(coordinator.reopenMissionStage).toHaveBeenCalledWith('agent-dina', 'requirements');
     const plan = { commandId: 'decision-1', expectedRevision: 0, assignments: [], maxConcurrency: 1, continuationLimit: 0 };
+    const scheduleDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'set-mission-schedule')![1] as { inputSchema: z.ZodRawShape };
+    expect(z.object(scheduleDefinition.inputSchema).safeParse({ ...plan, maxConcurrency: 21 }).success).toBe(false);
+    expect(z.object(scheduleDefinition.inputSchema).safeParse({ ...plan, assignments: Array.from({ length: 201 }, (_, index) => ({ ticketId: `mission-ticket-${index}`, ticketRevision: 0, memberId: 'worker' })) }).success).toBe(false);
     coordinator.setMissionSchedule.mockResolvedValue({ revision: 1 });
     await handlers.get('set-mission-schedule')!(plan);
     expect(coordinator.setMissionSchedule).toHaveBeenCalledWith('agent-dina', plan);
@@ -225,10 +228,14 @@ describe(`${product.name} MCP tool registration`, () => {
     expect(coordinator.writeMissionArtifact).toHaveBeenCalledWith('agent-dina', { stage: 'requirements', content: '# Brief', expectedRevision: 1 });
 
     coordinator.submitMissionResult.mockResolvedValue({ success: true, status: 'awaitingReview' });
-    const input = { summary: 'Ready', artifacts: { requirements: { problem: 'Billing', acceptance: 'Pay' }, tickets: [], implementation: { changes: '', tests: '' }, review: { summary: '', pullRequestUrl: '' } } };
-    input.artifacts.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false, reference: 'https://example.com/issue/1', dependsOn: [] }] as never[];
+    const input = { summary: 'Ready', artifacts: { requirements: { problem: 'Billing', acceptance: 'Pay' }, tickets: [], implementation: { changes: 'c'.repeat(100_001), tests: 't'.repeat(100_001) }, review: { summary: '', pullRequestUrl: '' } } };
+    input.artifacts.tickets = Array.from({ length: 250 }, (_, index) => ({ title: `Checkout ${index}`, repositoryPath: '/repo', done: false, reference: 'https://example.com/issue/1', dependsOn: index === 249 ? Array.from({ length: 249 }, (_, blocker) => blocker) : [] })) as never[];
     const definition = mocks.registerTool.mock.calls.find(([name]) => name === 'submit-mission-result')![1] as { inputSchema: z.ZodRawShape };
     expect(z.object(definition.inputSchema).parse(input)).toEqual(input);
+    for (const field of ['changes', 'tests']) {
+      expect(z.object(definition.inputSchema).safeParse({ summary: 'Done', ticketId: 'mission-ticket-one',
+        implementation: { changes: 'Committed', tests: 'Passed', [field]: 'x'.repeat(100_001) } }).success).toBe(false);
+    }
     expect(z.object(definition.inputSchema).parse({ ...input, missionId: 'stale-mission', runId: 'stale-run' })).toEqual(input);
     expect(await handlers.get('submit-mission-result')!(input)).toMatchObject({ structuredContent: { success: true, status: 'awaitingReview' } });
     expect(coordinator.submitMissionResult).toHaveBeenCalledWith('agent-dina', input);
@@ -237,7 +244,9 @@ describe(`${product.name} MCP tool registration`, () => {
     coordinator.missionContext.mockReturnValue({ missionId: 'mission-1', runId: 'run-2', stage: 'tickets' });
     createServer();
     coordinator.upsertMissionTicket.mockResolvedValue({ success: true, ticketId: 'mission-ticket-1', index: 0, artifactRevision: 1 });
-    const draft = { title: 'Add checkout', body: 'Deliver owner checkout.', repositoryPath: '/repo', blockedByTicketIds: [] };
+    const draft = { title: 'Add checkout', body: 'Deliver owner checkout.', repositoryPath: '/repo', blockedByTicketIds: Array.from({ length: 250 }, (_, index) => `mission-ticket-${index}`) };
+    const draftDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'upsert-mission-ticket')![1] as { inputSchema: z.ZodRawShape };
+    expect(z.object(draftDefinition.inputSchema).parse(draft)).toStrictEqual(draft);
     expect(await handlers.get('upsert-mission-ticket')!(draft)).toMatchObject({
       structuredContent: { success: true, ticketId: 'mission-ticket-1', index: 0, artifactRevision: 1 },
     });

@@ -4,24 +4,24 @@
     <div class="plan-review-footer__actions">
       <button
         v-if="cancellable"
-        class="app-button app-button--tertiary"
+        class="app-button app-button--tertiary agent-ui-interactive"
         type="button"
         :disabled="disabled"
         @click="emit('cancel')"
       >
         {{ t('chat.planReview.cancel') }}
       </button>
-      <button
-        class="app-button app-button--secondary"
+      <button data-variant="primary"
+        class="app-button app-button--secondary agent-ui-interactive"
         type="button"
         :disabled="disabled || !hasFeedback"
         @click="emit('revise')"
       >
         {{ t('planFeedback.submit') }}
       </button>
-      <button
+      <button data-variant="primary" data-appearance="solid"
         v-if="canApprove"
-        class="app-button app-button--primary"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :disabled="disabled"
         @click="emit('approve')"

@@ -1,5 +1,6 @@
 import type { AppThemeSettings } from '@workspace/core/contracts';
 import { effectiveTheme } from './themes';
+import { applySkinCss } from './skin-css';
 
 const mediaQuery = typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
@@ -7,6 +8,7 @@ const mediaQuery = typeof window !== 'undefined'
   : null;
 
 let currentSettings: AppThemeSettings | null = null;
+let appliedColorTokens: string[] = [];
 
 export function applyAppTheme(settings: AppThemeSettings): void {
   currentSettings = settings;
@@ -17,8 +19,13 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.dataset.theme = theme.appearance;
   root.dataset.effectiveAppearance = theme.appearance;
   root.dataset.appTheme = theme.id;
+  const custom = settings.skin?.id === theme.id;
+  if (custom) root.dataset.skin = theme.id;
+  else delete root.dataset.skin;
   root.classList.toggle('dark', theme.appearance === 'dark');
   root.style.colorScheme = theme.appearance;
+  for (const token of appliedColorTokens) if (!(token in theme.colors)) root.style.removeProperty(token);
+  appliedColorTokens = Object.keys(theme.colors);
   for (const [token, value] of Object.entries(theme.colors)) {
     root.style.setProperty(token, value);
   }
@@ -43,6 +50,9 @@ export function applyAppTheme(settings: AppThemeSettings): void {
   root.style.setProperty('--chat-font-size', `${settings.chatFontSize}px`);
   root.style.setProperty('--code-font-size', `${settings.codeFontSize}px`);
   applyAgentUiThemeTokens(root, theme.colors, theme.appearance);
+  // Imported themes specify independent shell/message roles and may override aliases.
+  if (custom) for (const [token, value] of Object.entries(theme.colors)) root.style.setProperty(token, value);
+  applySkinCss(custom ? theme.css : undefined);
 }
 
 function applyAgentUiThemeTokens(
@@ -57,11 +67,16 @@ function applyAgentUiThemeTokens(
     '--app-surface-color': colors['--color-surface'],
     '--agent-ui-background-color': colors['--color-surface'],
     '--agent-ui-border-color': colors['--color-outline-variant'],
-    '--agent-ui-hover-color': colors['--color-surface-low'],
+    '--agent-ui-hover-color': 'var(--agent-ui-state-hover)',
+    '--agent-ui-surface-low-color': colors['--color-surface-low'],
     '--agent-ui-muted-text-color': colors['--color-on-surface-variant'],
     '--agent-ui-primary-color': colors['--color-primary'],
+    '--agent-ui-on-primary-color': colors['--color-on-primary'],
+    '--agent-ui-primary-container-color': colors['--color-primary-container'],
+    '--agent-ui-on-primary-container-color': colors['--color-on-primary-container'],
     '--agent-ui-secondary-color': colors['--color-secondary'],
     '--agent-ui-shell-main-color': shellMain,
+    '--agent-ui-shell-sidebar-color': appearance === 'dark' ? colors['--color-surface-lowest'] : colors['--color-surface-low'],
     '--agent-ui-strong-border-color': colors['--color-outline'],
     '--agent-ui-surface-color': colors['--color-surface-lowest'],
     '--agent-ui-surface-high-color': colors['--color-surface-high'],

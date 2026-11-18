@@ -75,6 +75,13 @@ export class CodeReviewService {
     }
   }
 
+  /** Available before loading history as well as before sending a review prompt. */
+  independentMcpServerUrl(agent: Agent): string | undefined {
+    const session = agent.codeReview;
+    if (session?.threadMode !== 'independent' || session.reviewerAgentId !== agent.id || session.status === 'finished') return undefined;
+    return this.reviewToolContext(agent, session).url;
+  }
+
   private runReview(
     agent: Agent, prompt: string, url: string, reviewerSession?: ProviderSessionData,
   ): Promise<ProviderCodeReviewResult> {

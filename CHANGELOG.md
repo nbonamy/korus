@@ -2,7 +2,66 @@
 
 All notable Korus changes are recorded here.
 
-## Unreleased
+## [0.58.4] - 2026-11-18
+
+### Improvements and fixes
+
+- **Skins:** In Appearance, ask Korus to create your own skin to open a Quick Chat with an editable prompt.
+- **Paired devices:** Desktop supports showing the names phones set for themselves.
+- **Companion diagnostics:** Logs show where Live Activity delivery failed.
+- **Agent messages:** Sent message entries show the recipient’s name when available and omit raw agent IDs.
+
+## [0.58.3] - 2026-11-17
+
+### Improvements and fixes
+
+- **Annotations:** The Annotate button stays opaque on hover and press, keeping chat text from showing through.
+- **Model picker:** Click the speed button to cycle through the model’s available speeds while keeping the picker open.
+
+## [0.58.2] - 2026-11-17
+
+### Improvements and fixes
+
+- **Updates:** Downloaded updates keep the green badge visible, and checking for updates offers to install them.
+- **New agent:** Use one repository + menu for the main branch, an existing branch, a new worktree, or pull requests and issues.
+- **Git icons:** Distinguish the main branch from worktrees with consistent icons throughout the app.
+- **Screen lock:** Restored the warning color while automatic screen locking is disabled.
+- **Cost estimates:** Updated pricing for OpenAI and Gemini image models.
+
+## [0.58.1] - 2026-11-16
+
+### Improvements and fixes
+
+- **Annotations:** Restored the text-selection Annotate button's background in light and dark themes.
+
+## [0.58.0] - 2026-11-16
+
+### New features
+
+- **Skins:** Choose a skin from t3skins.dev in Appearance settings, or load one from a JSON file.
+- **Custom skins:** Ask your agent to build, apply and reload a skin, and manage saved skins in the picker.
+- **Cockpit groups:** Fold status groups independently and keep your choices after reopening.
+- **Mark unread:** Mark an agent unread from its menu or the shortcut shown when hovering an idle agent.
+- **Restore your view:** Each window remembers whether you left it in a workspace, Cockpit or Backlog.
+
+### Improvements and fixes
+
+- **Appearance:** More consistent button, menu, tab and sidebar states across light themes, dark themes and skins.
+- **Screenshots:** Large screenshots remain visible in new Claude chats instead of appearing as a generic content placeholder.
+- **Past conversations:** Open Automation and handoff conversations when their original agent session is unavailable.
+
+## [0.57.3] - 2026-11-15
+
+### New features
+
+- **Backlog:** Filter the repository list by organization.
+
+### Improvements and fixes
+
+- **Missions:** Run larger backlogs without ticket-count or accumulated-evidence limits, with smaller scheduling responses and preserved history.
+- **Code reviews:** Fixed loading older messages and attachment previews in independent code reviews.
+- **Controls:** Removed unwanted focus outlines from buttons, fields and menus.
+- **Analytics:** Updated model pricing.
 
 ## [0.57.2] - 2026-11-14
 

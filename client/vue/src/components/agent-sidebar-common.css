@@ -1,4 +1,7 @@
 .agent-sidebar {
+  --agent-ui-state-selected: color-mix(in srgb, var(--color-text) 3%, transparent);
+  --agent-ui-state-hover: color-mix(in srgb, var(--color-text) 1%, transparent);
+  --agent-ui-state-pressed: color-mix(in srgb, var(--color-text) 5%, transparent);
   --agent-sidebar-width: 260px;
   --agent-sidebar-min-width: 200px;
   --agent-sidebar-max-width: 420px;
@@ -28,13 +31,14 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* Paint the header and body in one layer so their translucent tints never stack. */
-  background: linear-gradient(
-    to bottom,
-    var(--color-shell-rail) 0 var(--workbench-appbar-height),
-    var(--color-shell-sidebar) var(--workbench-appbar-height) 100%
-  );
   user-select: none;
+}
+
+@layer app-surfaces {
+  .agent-sidebar {
+    /* One native paint layer keeps the translucent header and body tints from stacking. */
+    background: linear-gradient(to bottom, var(--color-shell-rail) 0 var(--workbench-appbar-height), var(--color-shell-sidebar) var(--workbench-appbar-height) 100%);
+  }
 }
 
 .agent-sidebar__header {
@@ -60,15 +64,8 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   -webkit-app-region: no-drag;
-}
-
-.agent-sidebar__header-action:hover {
-  color: var(--color-text);
-  background: var(--color-surface-base);
 }
 
 .agent-sidebar__header-action svg {
@@ -95,17 +92,7 @@
   margin-left: 0;
   padding: 0;
   border: none;
-  background: transparent;
   -webkit-app-region: no-drag;
-}
-
-.agent-sidebar__collapse:hover {
-  background: var(--color-surface-base);
-}
-
-.agent-sidebar__collapse:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
 }
 
 .agent-sidebar__collapse-icon {
@@ -157,9 +144,7 @@
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .agent-sidebar__workspace-label {
@@ -170,16 +155,6 @@
   justify-content: flex-start;
   border-radius: var(--radius-sm);
   text-align: left;
-}
-
-.agent-sidebar__workspace-label:hover,
-.agent-sidebar__workspace-label:focus-visible {
-  color: var(--color-text);
-}
-
-.agent-sidebar__workspace-label:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
 }
 
 .agent-sidebar__workspace-actions {
@@ -207,11 +182,6 @@
 .agent-sidebar__workspace-actions svg {
   width: calc(var(--icon-sm) + 2px);
   height: calc(var(--icon-sm) + 2px);
-}
-
-.agent-sidebar__workspace-actions button:hover {
-  color: var(--color-text);
-  background: var(--color-surface-base);
 }
 
 .agent-sidebar__workspace-icon {
@@ -251,10 +221,8 @@
     calc(var(--agent-sidebar-workspace-inline-padding) + var(--space-6));
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
 }
 
 .agent-sidebar__agent-row {
@@ -287,21 +255,14 @@
   height: var(--line-height-18);
   padding: 0;
   border: 0;
-  color: var(--color-warning);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-warning);
   transform: translateY(-50%);
-  cursor: pointer;
 }
 
 .agent-sidebar__pull-request-attention svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
   stroke-width: 2;
-}
-
-.agent-sidebar__pull-request-attention:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
 }
 
 .agent-sidebar__workspace-group[data-group-kind="quickChats"]
@@ -363,11 +324,6 @@
 .agent-sidebar__workspace-group.list-reorder-drag--dragging,
 .agent-sidebar__agent.list-reorder-drag--dragging {
   opacity: 0.48;
-}
-
-.agent-sidebar__agent--active,
-.agent-sidebar__overview-entry--active {
-  background: color-mix(in srgb, var(--color-surface-base) 72%, transparent);
 }
 
 .agent-sidebar__status {

@@ -22,7 +22,7 @@
         >
       </div>
       <div v-else class="repository-session-source-dialog__assignment-header">
-        <button type="button" :aria-label="t('common.back')" @click="selectedWorkItem = null">
+        <button class="agent-ui-interactive" type="button" :aria-label="t('common.back')" @click="selectedWorkItem = null">
           <ArrowLeftIcon aria-hidden="true" />
         </button>
         <strong>{{ t('repositoryBacklog.startWork', { identifier: workItemDisplayIdentifier(selectedWorkItem) }) }}</strong>
@@ -31,7 +31,7 @@
 
     <div v-if="!selectedWorkItem && purpose === 'session'" class="repository-session-source-dialog__toolbar">
       <div class="repository-session-source-dialog__toolbar-start">
-        <el-tabs v-model="tab" class="repository-session-source-dialog__tabs" :aria-label="t('repositories.sessionSource.type')">
+        <el-tabs data-agent-ui-scope v-model="tab" class="repository-session-source-dialog__tabs" :aria-label="t('repositories.sessionSource.type')">
           <el-tab-pane v-for="option in tabs" :key="option.id" :name="option.id" :label="option.label" />
         </el-tabs>
         <BacklogSourceSelector
@@ -82,14 +82,15 @@
         </WorkItemAssignmentPicker>
       </template>
       <p v-else-if="effectiveLoading" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.loading') }}</p>
-      <p v-else-if="tab === 'issues' && backlog.error.value" role="alert">{{ backlog.error.value }} <button type="button" @click="backlog.refresh">{{ t('backlogSource.retry') }}</button></p>
+      <p v-else-if="tab === 'issues' && backlog.error.value" role="alert">{{ backlog.error.value }} <button class="agent-ui-interactive" type="button" @click="backlog.refresh">{{ t('backlogSource.retry') }}</button></p>
       <p v-else-if="purpose === 'session' && tab !== 'issues' && error" class="repository-session-source-dialog__state repository-session-source-dialog__state--error">{{ error }}</p>
       <p v-else-if="purpose === 'missionIssue' && backlog.sources.value.length === 0" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.noRepositories') }}</p>
       <p v-else-if="purpose === 'missionIssue' && !backlog.sourceId.value" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.chooseRepositoryToSeeIssues') }}</p>
       <template v-else-if="tab === 'branches' && purpose === 'session'">
         <h3>{{ t('repositories.sessionSource.recentBranches') }}</h3>
-        <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result" type="button" @click="emit('select-branch', branch)">
-          <GitBranchIcon
+        <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result agent-ui-interactive" type="button" @click="emit('select-branch', branch)">
+          <component
+            :is="branch.isDefault ? GitMainIcon : GitBranchIcon"
             class="repository-session-source-dialog__result-icon repository-session-source-dialog__result-icon--branch"
             :class="{
               'repository-session-source-dialog__result-icon--default': branch.isDefault,
@@ -108,7 +109,7 @@
       </template>
       <template v-else>
         <h3>{{ tab === 'pullRequests' ? t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.recentMergeRequests' : 'repositories.sessionSource.recentPullRequests') : t('repositories.sessionSource.recentIssues') }}</h3>
-        <button v-for="item in filteredWorkItems" :key="item.id" class="repository-session-source-dialog__result" type="button" @click="selectWorkItem(item)">
+        <button v-for="item in filteredWorkItems" :key="item.id" class="repository-session-source-dialog__result agent-ui-interactive" type="button" @click="selectWorkItem(item)">
           <GitPullRequestIcon v-if="item.kind === 'pullRequest'" class="repository-session-source-dialog__result-icon" aria-hidden="true" />
           <IssueIcon v-else class="repository-session-source-dialog__result-icon" aria-hidden="true" />
           <span class="repository-session-source-dialog__result-copy">
@@ -156,17 +157,17 @@ import type { RemoteConnection, SourceBranch, WorkItem, WorkSource } from '@work
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkItemDetail from './WorkItemDetail.vue';
 import { useWorkSourceBacklog } from './use-work-source-backlog';
-import { ArrowRightIcon, GitBranchIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
+import { ArrowRightIcon, GitBranchIcon, GitMainIcon, GitForkIcon as RepositoryIcon } from '../shared/icons/app-icons';
 import HostSelector from './HostSelector.vue';
 import type { RemoteCheckout } from './use-remote-target';
 import WorkItemAssignmentPicker from './WorkItemAssignmentPicker.vue';
 import { useProviderChoices, useNewAgentProvider } from './provider-selection';
 const agentProvider = defineModel<import('@workspace/core/contracts').HarnessProvider>('provider');
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
-
-type SourceTab = 'branches' | 'pullRequests' | 'issues';
+import type { RepositorySessionSourceTab as SourceTab } from './repository-session-context';
 
 const props = withDefaults(defineProps<{
+  initialTab?: SourceTab;
   location?: import('@workspace/core/contracts').AutomationLocation;
   modelAgentId?: string;
   branches?: SourceBranch[];
@@ -186,6 +187,7 @@ const props = withDefaults(defineProps<{
   hostCheckout?: RemoteCheckout | null;
   hostBusy?: boolean;
 }>(), {
+  initialTab: 'branches',
   hosts: () => [],
   hostCheckout: null,
   hostBusy: false,
@@ -239,7 +241,7 @@ watch([backlog.provider, () => backlog.providers.value.length > 0], () => {
   selectedWorkItem.value = null;
   query.value = '';
 });
-const tab = ref<SourceTab>(props.purpose === 'missionIssue' ? 'issues' : 'branches');
+const tab = ref<SourceTab>(props.purpose === 'missionIssue' ? 'issues' : props.initialTab);
 const tabs = computed<ReadonlyArray<{ id: SourceTab; label: string }>>(() => [
   { id: 'branches', label: t('repositories.sessionSource.branches') },
   { id: 'pullRequests', label: t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'repositories.sessionSource.pullRequests') },
@@ -278,7 +280,7 @@ const assignmentExistingWorktreePath = computed(() => (
 watch(() => props.visible, async (visible) => {
   if (!visible) return;
   query.value = '';
-  tab.value = props.purpose === 'missionIssue' ? 'issues' : 'branches';
+  tab.value = props.purpose === 'missionIssue' ? 'issues' : props.initialTab;
   selectedWorkItem.value = null;
   await nextTick();
   searchInput.value?.focus();
@@ -378,18 +380,10 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.repository-session-source-dialog__assignment-header button:hover {
-  color: var(--color-text);
-  background: var(--color-surface-base);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .repository-session-source-dialog__assignment-header button:disabled {
-  opacity: 0.4;
   pointer-events: none;
 }
 
@@ -473,11 +467,8 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   padding: var(--space-3) var(--space-6);
   border: 0;
   border-radius: var(--radius-full);
-  color: var(--color-text-muted);
-  background: transparent;
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
-  cursor: pointer;
 }
 
 .repository-session-source-dialog__tabs
@@ -488,11 +479,6 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
 .repository-session-source-dialog__tabs
   :deep(.el-tabs__item.is-top:last-child) {
   padding-right: var(--space-6);
-}
-
-.repository-session-source-dialog__tabs :deep(.el-tabs__item.is-active) {
-  color: var(--color-text);
-  background: var(--color-surface-base);
 }
 
 .repository-session-source-dialog__repository {
@@ -543,16 +529,8 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   padding: var(--space-1) var(--space-6);
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
-}
-
-.repository-session-source-dialog__result:hover,
-.repository-session-source-dialog__result:focus-visible {
-  outline: 0;
-  background: var(--color-surface-base);
 }
 
 .repository-session-source-dialog__result-copy {

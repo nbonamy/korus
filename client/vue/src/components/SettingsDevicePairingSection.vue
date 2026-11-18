@@ -68,7 +68,7 @@
         >
           <template #control>
             <span class="settings-device-pairing__actions">
-              <el-button
+              <el-button class="agent-ui-interactive"
                 v-if="status?.status === 'connecting'"
                 text
                 size="small"
@@ -76,13 +76,13 @@
                 disabled
               > {{ $t('surface.settingsDevicePairingSection.refreshing') }} </el-button>
               <template v-else-if="status?.status === 'connected'">
-                <el-button
+                <el-button class="agent-ui-interactive"
                   text
                   size="small"
                   :loading="action === 'start'"
                   @click="startPairing"
                 > {{ $t('surface.settingsDevicePairingSection.addDevice') }} </el-button>
-                <el-button
+                <el-button class="agent-ui-interactive"
                   text
                   size="small"
                   :loading="loadingDevices"
@@ -107,7 +107,7 @@
             :description="deviceLabel(device)"
           >
             <template #control>
-              <el-button
+              <el-button data-variant="destructive" class="agent-ui-interactive"
                 text
                 type="danger"
                 size="small"
@@ -124,7 +124,7 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { toString as qrCodeToString } from 'qrcode';
 import type { DevicePairingSession, DevicePairingStatus, PairedDevice, UpdateSettingsInput } from '@workspace/core/contracts';
@@ -326,7 +326,7 @@ async function confirmRevoke(device: PairedDevice): Promise<void> {
   const environmentId = status.value?.environmentId ?? session.value?.environmentId;
   if (!environmentId) return;
   try {
-    await ElMessageBox.confirm(
+    await appMessageBox.confirm(
       translate('dynamic.misc.deviceRevokeDetail', {
         device: device.displayName || device.deviceModel || translate('dynamic.misc.deviceFallback'),
       }),

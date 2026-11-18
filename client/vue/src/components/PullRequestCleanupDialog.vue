@@ -23,10 +23,10 @@
 
     <template #footer>
       <div class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')">
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="emit('close')">
           {{ t('pullRequestCleanup.later') }}
         </button>
-        <button class="app-button app-button--primary" type="button" :aria-busy="busy" :disabled="busy" @click="emit('confirm')">
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="button" :aria-busy="busy" :disabled="busy" @click="emit('confirm')">
           {{ t('pullRequestCleanup.action') }}
         </button>
       </div>

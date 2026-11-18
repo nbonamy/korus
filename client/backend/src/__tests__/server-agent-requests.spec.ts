@@ -9,6 +9,7 @@ import { codexProviderCapabilities } from '@workspace/core/provider-capabilities
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 import type { AgentGitService } from '../git/agent-git-service';
 import {
   createTestSnapshot,
@@ -20,14 +21,15 @@ describe('AppBackendServer', () => {
   it('offers the imagegen bridge alongside native skills only to eligible non-Codex agents', async () => {
     const snapshot = createTestSnapshot();
     const native = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
-    const drivers = (['codex', 'claude', 'antigravity'] as const).map(provider => ({
-      provider: provider, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(() => ({ skills: true }) as never),
-      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-    } satisfies AgentProviderDriver));
-    snapshot.agents = drivers.map(({ provider: provider }) => ({ id: provider, teamId: 'team-test', name: provider,
-      provider: provider, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
+    const drivers = (['codex', 'claude', 'antigravity'] as const).map(provider => {
+      const scripted = scriptedDriver(provider, { capabilities: { skills: true } });
+      scripted.script.on('listSkills', () => [native]);
+      return scripted;
+    });
+    snapshot.agents = drivers.map(({ provider }) => ({ id: provider, teamId: 'team-test', name: provider,
+      provider, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
     snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
-    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map(drivers.map(driver => [driver.provider, driver]))) });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map(drivers.map(({ provider, driver }) => [provider, driver]))) });
     const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'skills', method: backendMethods.agentSkillsList, params: { agentId } });
     try {
       await expect(list('codex')).resolves.toMatchObject({ result: [native] });
@@ -41,7 +43,7 @@ describe('AppBackendServer', () => {
       await expect(list('claude')).resolves.toMatchObject({ result: [native] });
       snapshot.general.providerEnabled = { codex: true };
       const ownImagegen = { ...native, name: 'imagegen' };
-      drivers[1]!.listSkills.mockResolvedValue([ownImagegen]);
+      drivers[1]!.script.on('listSkills', () => [ownImagegen]);
       await expect(list('claude')).resolves.toMatchObject({ result: [ownImagegen] });
     } finally { await server.close(); }
   });
@@ -50,17 +52,17 @@ describe('AppBackendServer', () => {
     const snapshot = createTestSnapshot();
     const gmail = { id: 'gmail@remote', name: 'gmail', displayName: 'Gmail', enabled: true };
     const bundled = { id: 'computer-use@openai-bundled', name: 'computer-use', displayName: 'Computer Use', enabled: true };
-    const drivers = (['codex', 'claude'] as const).map(provider => ({
-      provider, listPlugins: vi.fn(async () => [gmail, bundled]), getRuntimeStatus: vi.fn(),
-      getCapabilities: vi.fn(() => ({ plugins: provider === 'codex' }) as never),
-      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-    } satisfies AgentProviderDriver));
+    const drivers = (['codex', 'claude'] as const).map(provider => {
+      const scripted = scriptedDriver(provider, { capabilities: { plugins: provider === 'codex' } });
+      scripted.script.on('listPlugins', () => [gmail, bundled]);
+      return scripted;
+    });
     snapshot.agents = drivers.map(({ provider }) => ({ id: provider, teamId: 'team-test', name: provider,
       provider, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
     snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
     let computerUse = true;
     const server = new AppBackendServer({ version: 'test', snapshot, computerUsePluginAvailable: () => computerUse,
-      driverRpc: new ProviderDriverRpc(new Map(drivers.map(driver => [driver.provider, driver]))) });
+      driverRpc: new ProviderDriverRpc(new Map(drivers.map(({ provider, driver }) => [provider, driver]))) });
     const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'plugins', method: backendMethods.agentPluginsList, params: { agentId } });
     try {
       await expect(list('codex')).resolves.toMatchObject({ result: [gmail, { id: 'korus-computer-use', displayName: 'Computer Use' }] });
@@ -291,7 +293,7 @@ describe('AppBackendServer', () => {
         params: { input: { id: agentId, name: 'Dina Backend' } },
       })).resolves.toMatchObject({
         result: {
-          agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir }],
+          agents: [{ id: agentId, name: 'Dina Backend', folder: tempDir, status: { type: 'idle' } }],
         },
       });
       const selection = { provider: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: null };
@@ -471,21 +473,11 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.agents = [agent];
     snapshot.activeAgentId = agent.id;
-    const releaseConversation = vi.fn();
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
+    const { driver } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    // The real driver, watched at the contract the server calls it through.
+    const releaseConversation = vi.spyOn(driver, 'releaseConversation');
+    const archiveAgentConversation = vi.spyOn(driver, 'archiveAgentConversation');
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      releaseConversation,
-      archiveAgentConversation,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
     const server = new AppBackendServer({
       version: 'test-version',
       snapshot,
@@ -523,27 +515,13 @@ describe('AppBackendServer', () => {
     snapshot.teams[0]!.agentIds = [agent.id];
     snapshot.agents = [agent];
     snapshot.activeAgentId = agent.id;
-    const archiveAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const deleteAgentConversation = vi.fn().mockResolvedValue(undefined);
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: agent.providerSession }),
-      interrupt: async () => ({ providerSession: agent.providerSession }),
-      respondToAgentRequest: async () => undefined,
-      releaseConversation: vi.fn(),
-      archiveAgentConversation,
-      ...(withDelete ? { deleteAgentConversation } : {}),
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true, conversationDelete: withDelete }, ...(withDelete ? {} : { unsupported: ['deleteAgentConversation'] as const }) });
     const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined), driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'close-chat', method: backendMethods.agentDelete, params: { agentId: agent.id } });
 
-      expect(deleteAgentConversation).toHaveBeenCalledTimes(expected === 'delete' ? 1 : 0);
-      expect(archiveAgentConversation).toHaveBeenCalledTimes(expected === 'archive' ? 1 : 0);
+      expect(script.calls('deleteAgentConversation')).toHaveLength(expected === 'delete' ? 1 : 0);
+      expect(script.calls('archiveAgentConversation')).toHaveLength(expected === 'archive' ? 1 : 0);
       expect(snapshot.agents).toStrictEqual([]);
     } finally { await server.close(); }
   });
@@ -917,22 +895,9 @@ describe('AppBackendServer', () => {
       storageState: 'active' as const,
       ref,
     }));
-    const driver: AgentProviderDriver = {
-      provider: 'codex',
-      getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-      getCapabilities: () => codexProviderCapabilities,
-      sendPrompt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      interrupt: async () => ({ providerSession: { kind: 'codex', conversationId: 'thread-test' } }),
-      respondToAgentRequest: async () => undefined,
-      listConversations,
-      listModels,
-      listPlugins,
-      listSkills,
-      readConversationMessages,
-      readConversationSummary,
-      onEvent: () => () => undefined,
-      close: async () => undefined,
-    };
+    // The real driver, with the provider's catalogs and histories laid over it at the contract the server calls it through.
+    const { driver } = scriptedDriver('codex');
+    Object.assign(driver, { listConversations, listModels, listPlugins, listSkills, readConversationMessages, readConversationSummary });
     const server = new AppBackendServer({
       version: 'test-version',
       pid: 123,
@@ -1036,13 +1001,10 @@ describe('closing an agent whose turn is running', () => {
     snapshot.agents.push(running);
     snapshot.teams[0]!.agentIds.push(running.id);
     const order: string[] = [];
-    const driver = {
-      provider: 'codex', getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(() => ({ conversationArchive: true }) as never),
-      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
-      interrupt: vi.fn(async () => { order.push('interrupt'); return { providerSession: running.providerSession }; }),
-      archiveAgentConversation: vi.fn(async () => { order.push('archive'); }),
-      releaseConversation: vi.fn(async () => { order.push('release'); }),
-    } satisfies AgentProviderDriver;
+    const { driver, script } = scriptedDriver('codex', { capabilities: { conversationArchive: true } });
+    script.on('interrupt', () => { order.push('interrupt'); return { providerSession: running.providerSession }; });
+    script.on('archiveAgentConversation', () => { order.push('archive'); });
+    script.on('releaseConversation', () => { order.push('release'); });
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
     try {
       await server.handleMessage({ jsonrpc: '2.0', id: 'close', method: backendMethods.agentDelete, params: { agentId: 'reviewer' } });

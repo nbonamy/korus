@@ -1,6 +1,7 @@
 <template>
   <aside
     class="agent-sidebar"
+    data-slot="sidebar-inner"
     :class="{ 'agent-sidebar--compact': compact }"
     :style="sidebarStyle"
     :aria-label="t('sidebar.agents')"
@@ -15,13 +16,13 @@
         @select="organization.select($event)"
       >
         <template #trigger="{ attrs }">
-          <button v-bind="attrs" class="agent-sidebar__header-action" type="button" :aria-label="t('sidebar.view')" :title="t('sidebar.view')">
+          <button v-bind="attrs" class="agent-sidebar__header-action agent-ui-interactive" type="button" :aria-label="t('sidebar.view')" :title="t('sidebar.view')">
             <ArrowsSortIcon aria-hidden="true" />
           </button>
         </template>
       </AppMenuButton>
       <button
-        class="agent-sidebar__collapse"
+        class="agent-sidebar__collapse agent-ui-interactive"
         type="button"
         :aria-label="t('sidebar.hide')"
         @click="emit('collapse-sidebar')"
@@ -34,7 +35,7 @@
       <StartWorkMenu @select="emit('start-work', $event)" />
       <button
         v-if="!quickChatGroup"
-        class="agent-sidebar__quick-chat-action"
+        class="agent-sidebar__quick-chat-action agent-ui-interactive"
         type="button"
         @click="emit('create-quick-chat')"
       >
@@ -43,7 +44,7 @@
       </button>
       <button
         v-if="!phoneScope && !missions?.length"
-        class="agent-sidebar__mission-action"
+        class="agent-sidebar__mission-action agent-ui-interactive"
         type="button"
         :aria-busy="missionCreationPending"
         :disabled="missionCreationPending"
@@ -62,7 +63,7 @@
         <header class="agent-sidebar__workspace-header">
           <TargetArrowIcon class="agent-sidebar__workspace-icon" data-icon="target-arrow" aria-hidden="true" />
           <button
-            class="agent-sidebar__workspace-label"
+            class="agent-sidebar__workspace-label agent-ui-interactive" data-selection="none"
             type="button"
             :aria-label="t('missions.title')"
             :aria-expanded="!missionsCollapsed"
@@ -71,7 +72,7 @@
             <strong>{{ t('missions.title') }}</strong>
           </button>
           <span class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent">
-            <button
+            <button class="agent-ui-interactive"
               type="button"
               :aria-label="t('missions.new')"
               :title="t('missions.new')"
@@ -84,8 +85,8 @@
         </header>
         <template v-if="!missionsCollapsed">
           <div v-for="mission in missions" :key="mission.id" class="agent-sidebar__agent-row">
-            <button
-              class="agent-sidebar__agent"
+            <button :data-selected="(activeMissionId === mission.id) ? '' : undefined"
+              class="agent-sidebar__agent agent-ui-interactive"
               :class="{ 'agent-sidebar__agent--active': activeMissionId === mission.id, 'agent-sidebar__agent--awaiting-input': attentionOf(mission) === 'needsInput' }"
               type="button"
               :aria-pressed="activeMissionId === mission.id"
@@ -142,7 +143,7 @@
           />
           <component
             v-else-if="group.kind === 'worktree'"
-            :is="worktreeGroupKind(group) === 'worktree' ? GitForkIcon : GitBranchIcon"
+            :is="worktreeGroupKind(group) === 'main' ? GitMainIcon : GitBranchIcon"
             class="agent-sidebar__workspace-icon"
             :data-session-kind="worktreeGroupKind(group)"
             aria-hidden="true"
@@ -157,7 +158,7 @@
           />
 
           <button
-            class="agent-sidebar__workspace-label"
+            class="agent-sidebar__workspace-label agent-ui-interactive" data-selection="none"
             type="button"
             :aria-label="workspaceToggleLabel(group)"
             :aria-expanded="!isWorkspaceCollapsed(group)"
@@ -170,7 +171,7 @@
             v-if="group.kind === 'quickChats' && !featureOnly"
             class="agent-sidebar__workspace-actions agent-sidebar__workspace-actions--persistent"
           >
-            <button
+            <button class="agent-ui-interactive"
               type="button"
               :aria-label="t('sidebar.newQuickChat')"
               :title="t('sidebar.newQuickChat')"
@@ -181,7 +182,7 @@
           </span>
           <span v-else-if="group.kind === 'worktree'" class="agent-sidebar__workspace-actions">
             <el-tooltip :content="group.sessions.length > 4 ? t('features.openLimited', { count: group.sessions.length }) : t('features.open')" placement="right" :show-after="300">
-              <button type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
+              <button class="agent-ui-interactive" type="button" :aria-label="t('features.open')" @click.stop="emit('open-feature', group.sessions.map(session => session.agentId))">
                 <OpenFeatureIcon aria-hidden="true" />
               </button>
             </el-tooltip>
@@ -192,21 +193,13 @@
               @select="selectFeatureMenuItem(group, $event)"
             >
               <template #trigger="{ attrs }">
-                <button v-bind="attrs" type="button" :aria-label="group.protected ? t('features.newWorktree') : t('features.newAgent')" :title="group.protected ? t('features.newWorktree') : t('features.newAgent')">
+                <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="group.protected ? t('features.newWorktree') : t('features.newAgent')" :title="group.protected ? t('features.newWorktree') : t('features.newAgent')">
                   <PlusIcon aria-hidden="true" />
                 </button>
               </template>
             </AppMenuButton>
           </span>
           <span v-else-if="group.kind === 'repository' && !featureOnly" class="agent-sidebar__workspace-actions">
-            <button
-              type="button"
-              :aria-label="t('sidebar.createFromRepository')"
-              :title="t('sidebar.createFrom')"
-              @click.stop="emit('create-agent-from-repository', sectionTarget(group))"
-            >
-              <GitForkIcon aria-hidden="true" />
-            </button>
             <AppMenuButton
               :open="repositorySessionMenuId === group.id"
               :ariaLabel="t('sidebar.newSessionIn', { repository: group.label })"
@@ -217,7 +210,7 @@
               @select="selectRepositorySessionMenuItem(group, $event)"
             >
               <template #trigger="{ attrs }">
-                <button v-bind="attrs" type="button" :aria-label="t('sidebar.newSessionIn', { repository: group.label })" :title="t('sidebar.newSession')">
+                <button class="agent-ui-interactive" v-bind="attrs" type="button" :aria-label="t('sidebar.newSessionIn', { repository: group.label })" :title="t('sidebar.newSession')">
                   <PlusIcon aria-hidden="true" />
                 </button>
               </template>
@@ -246,14 +239,14 @@
             class="agent-sidebar__agent-row"
             :data-motion-id="session.agentId"
           >
-            <RepositoryAgentRow
+            <RepositoryAgentRow :data-selected="(session.isActive) ? '' : undefined"
               v-bind="clientAgentOrderUpdate.dragItemAttributes(session.agentId)"
               :session="session"
               :group-kind="group.kind"
               :host="rowHost(session)"
               :repository-icon="activityRepository.get(session.agentId)"
               v-show="!isWorkspaceCollapsed(group)"
-              class="agent-sidebar__agent"
+              class="agent-sidebar__agent agent-ui-interactive"
               :class="[
                 { 'agent-sidebar__agent--active': session.isActive, 'agent-sidebar__agent--awaiting-input': session.status.type === 'awaitingInput' },
                 clientAgentOrderUpdate.dropTargetClass(session.agentId),
@@ -307,7 +300,7 @@
             >
               <button
                 v-show="!isWorkspaceCollapsed(group)"
-                class="agent-sidebar__pull-request-attention"
+                class="agent-sidebar__pull-request-attention agent-ui-interactive"
                 type="button"
                 :aria-label="pullRequestAttentionLabel(session)"
                 @click.stop="emit('cleanup-pull-request', session.agentId)"
@@ -347,7 +340,7 @@ import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
 import type { WorkspaceSidebarGroup, WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { AlertTriangleIcon, ArrowsSortIcon, ChartBarIcon, FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, ChartBarIcon, FolderIcon, GitBranchIcon, GitMainIcon, MessageIcon, NewAgentIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import ProviderIcon from './ProviderIcon.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
@@ -362,8 +355,8 @@ function hasReadSafetyBlock(session: WorkspaceSidebarSession): boolean {
 const props = defineProps<{ model: AgentSidebarModel }>();
 // The default-branch group starts anything new; a feature only gains agents on its own branch.
 function featureMenuItems(group: WorkspaceSidebarGroup): AppMenuItem[] {
-  const agent: AppMenuItem = { id: 'new-agent', type: 'action', label: t.value('sidebar.newAgent'), icon: MessageIcon };
-  return group.protected ? [agent, { id: 'new-worktree', type: 'action', label: t.value('sidebar.newWorktree'), icon: GitForkIcon }] : [agent];
+  const agent: AppMenuItem = { id: 'new-agent', type: 'action', label: t.value('sidebar.newAgent'), icon: NewAgentIcon };
+  return group.protected ? [agent, { id: 'new-worktree', type: 'action', label: t.value('sidebar.newWorktree'), icon: GitBranchIcon }] : [agent];
 }
 
 function selectFeatureMenuItem(group: WorkspaceSidebarGroup, itemId: string): void {
@@ -410,7 +403,6 @@ const {
   toggleWorkspace,
   repositorySessionMenuId,
   repositorySessionMenuItems,
-  sectionTarget,
   remoteConnection,
   rowHost,
   activityRepository,
@@ -488,32 +480,17 @@ const {
   padding: 0;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
   text-align: left;
-  cursor: pointer;
-}
-
-.agent-sidebar__quick-chat-action:hover,
-.agent-sidebar__mission-action:hover,
-.agent-sidebar__mission-action:focus-visible,
-.agent-sidebar__quick-chat-action:focus-visible {
-  color: var(--color-text);
-  outline: 0;
 }
 
 .agent-sidebar__mission-action svg,
 .agent-sidebar__quick-chat-action svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.agent-sidebar__mission-action:disabled {
-  cursor: wait;
-  opacity: 0.6;
 }
 
 .agent-sidebar__workspace-group {

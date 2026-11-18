@@ -16,14 +16,14 @@
       <details v-if="agent.handoff?.note">
         <summary>{{ t('handoff.savedNote') }}</summary>
         <pre class="handoff-note">{{ agent.handoff.note }}</pre>
-        <button class="app-button app-button--tertiary" type="button" @click="openSource">{{ t('handoff.source') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="openSource">{{ t('handoff.source') }}</button>
       </details>
     </form>
     <template #footer>
-      <button v-if="running" class="app-button app-button--secondary" type="button" @click="close">{{ t('common.runInBackground') }}</button>
+      <button data-variant="primary" v-if="running" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="close">{{ t('common.runInBackground') }}</button>
       <template v-else>
-        <button class="app-button app-button--tertiary" type="button" @click="close">{{ t('handoff.cancel') }}</button>
-        <button class="app-button app-button--primary" type="submit" form="agent-handoff-form" :disabled="!!blocker || !selection || loadingModels">{{ t('handoff.submit') }}</button>
+        <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="close">{{ t('handoff.cancel') }}</button>
+        <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary agent-ui-interactive" type="submit" form="agent-handoff-form" :disabled="!!blocker || !selection || loadingModels">{{ t('handoff.submit') }}</button>
       </template>
     </template>
   </FormDialog>

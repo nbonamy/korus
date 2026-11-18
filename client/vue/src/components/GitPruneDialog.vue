@@ -8,12 +8,12 @@
   >
     <div class="git-prune-dialog__intro">
       <p>{{ $t('gitPrune.description') }}</p>
-      <button class="git-prune-dialog__icon" type="button" :aria-label="$t('gitPrune.refresh')" :disabled="loading || busy" @click="refresh()">
+      <button class="git-prune-dialog__icon agent-ui-interactive" type="button" :aria-label="$t('gitPrune.refresh')" :disabled="loading || busy" @click="refresh()">
         <ElIcon :size="14" :class="{ 'is-loading': loading }"><RefreshIcon /></ElIcon>
       </button>
     </div>
     <div v-if="eligibleRemotes.length" class="git-prune-dialog__actions">
-      <el-button link type="primary" :disabled="loading || busy || eligibleRemotes.every(target => selected.has(target.id))" @click="selectMergedRemotes">{{ $t('gitPrune.selectMergedRemotes') }}</el-button>
+      <el-button data-variant="primary" class="agent-ui-interactive" link type="primary" :disabled="loading || busy || eligibleRemotes.every(target => selected.has(target.id))" @click="selectMergedRemotes">{{ $t('gitPrune.selectMergedRemotes') }}</el-button>
     </div>
     <p v-if="error" class="git-prune-dialog__error" role="alert">{{ error }}</p>
     <p v-if="deletedCount" role="status" class="git-prune-dialog__message">{{ $t('gitPrune.deleted', { count: deletedCount }, deletedCount) }}</p>
@@ -33,7 +33,7 @@
               <span v-if="(target.uncommittedFiles ?? 0) > 0" class="git-prune-dialog__dirty">{{ $t('gitPrune.uncommittedChanges') }}</span>
               <a v-else-if="target.pullRequest" class="git-prune-dialog__pr" :href="target.pullRequest.url" target="_blank" rel="noopener noreferrer" @click.prevent="openPullRequest(target)">{{ $t(target.pullRequest.url.startsWith('https://gitlab.com/') ? 'gitPrune.mr' : 'gitPrune.pr', { number: target.pullRequest.number, state: $t(`gitPrune.prStates.${target.pullRequest.state}`) }) }}</a>
               <span v-else :class="target.merged ? 'git-prune-dialog__merged' : 'git-prune-dialog__unmerged'">{{ $t(target.merged ? 'gitPrune.merged' : 'gitPrune.notMerged') }}</span>
-              <button v-if="index === 0" class="git-prune-dialog__icon git-prune-dialog__fold" type="button" :aria-label="$t(collapsed.has(group.branch) ? 'gitPrune.expand' : 'gitPrune.collapse', { branch: group.branch })" :aria-expanded="!collapsed.has(group.branch)" @click="toggleGroup(group.branch)">
+              <button v-if="index === 0" class="git-prune-dialog__icon git-prune-dialog__fold agent-ui-interactive" type="button" :aria-label="$t(collapsed.has(group.branch) ? 'gitPrune.expand' : 'gitPrune.collapse', { branch: group.branch })" :aria-expanded="!collapsed.has(group.branch)" @click="toggleGroup(group.branch)">
                 <ChevronRightIcon v-if="collapsed.has(group.branch)" /><ChevronDown v-else />
               </button>
             </div>
@@ -42,16 +42,17 @@
       </section>
     </div>
     <template #footer>
-      <button v-if="pruneOperation" class="app-button app-button--secondary" type="button" @click="runInBackground">{{ $t('common.runInBackground') }}</button>
-      <button v-else class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('update:modelValue', false)">{{ $t('gitPrune.close') }}</button>
-      <button v-if="!pruneOperation" class="app-button app-button--primary" type="button" data-action="prune" :disabled="loading || busy || !selected.size" :aria-busy="busy" @click="submit">{{ busy ? $t('gitPrune.pruning') : $t('gitPrune.pruneCount', { count: selected.size }, selected.size) }}</button>
+      <button data-variant="primary" v-if="pruneOperation" class="app-button app-button--secondary agent-ui-interactive" type="button" @click="runInBackground">{{ $t('common.runInBackground') }}</button>
+      <button v-else class="app-button app-button--tertiary agent-ui-interactive" type="button" :disabled="busy" @click="emit('update:modelValue', false)">{{ $t('gitPrune.close') }}</button>
+      <button data-variant="primary" data-appearance="solid" v-if="!pruneOperation" class="app-button app-button--primary agent-ui-interactive" type="button" data-action="prune" :disabled="loading || busy || !selected.size" :aria-busy="busy" @click="submit">{{ busy ? $t('gitPrune.pruning') : $t('gitPrune.pruneCount', { count: selected.size }, selected.size) }}</button>
     </template>
   </FormDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { ElIcon, ElMessage, ElMessageBox } from 'element-plus';
+import { ElIcon, ElMessage } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { GitPruneInput, GitPruneInventory, GitPruneResult, GitPruneTarget } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import { ChevronDown, ChevronRightIcon, RefreshIcon } from '../shared/icons/app-icons';
@@ -133,7 +134,7 @@ async function submit(): Promise<void> {
     if (force) {
       const worktreeRisk = selection.some(target => target.worktree && (target.blocked || target.changedFiles || target.usedBy.length));
       try {
-        await ElMessageBox.confirm(
+        await appMessageBox.confirm(
           translate(worktreeRisk ? 'gitPrune.confirmDiscardMessage' : 'gitPrune.confirmUnmergedMessage', { branch: inventory.value.baseBranch }),
           translate(worktreeRisk ? 'gitPrune.confirmDiscardTitle' : 'gitPrune.confirmUnmergedTitle'),
           { type: 'warning', confirmButtonText: translate('gitPrune.pruneAnyway'), cancelButtonText: translate('gitPrune.review') },
@@ -236,10 +237,8 @@ onBeforeUnmount(() => {
 .git-prune-dialog__dirty { color: var(--color-error); }
 .git-prune-dialog__unmerged { color: var(--color-warning); }
 .git-prune-dialog__pr { padding: 0 var(--space-4); border-radius: var(--radius-full); background: var(--color-primary-container); color: var(--color-primary); text-decoration: none; }
-.git-prune-dialog__icon { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 20px; height: 20px; border: 0; background: none; color: var(--color-text-muted); cursor: pointer; flex-shrink: 0; }
+.git-prune-dialog__icon { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 20px; height: 20px; border: 0; --agent-ui-state-rest: transparent; --agent-ui-state-rest-foreground: var(--color-text-muted); flex-shrink: 0; }
 .git-prune-dialog__icon svg { width: var(--icon-sm); height: var(--icon-sm); }
-.git-prune-dialog__icon:disabled { opacity: 0.5; cursor: default; }
-.git-prune-dialog__icon:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .git-prune-dialog__message,
 .git-prune-dialog__error,
 .git-prune-dialog__empty { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-13); }

@@ -4,9 +4,9 @@ import { claudeAuthenticationDriver } from './support/scripted-driver';
 import { createTestSnapshot, readyRemoteConnection } from './server-test-fixtures';
 import { normalizeGeneralSettings } from '@workspace/core/settings';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
 import { resolveProviderCoordinationPolicy } from '@workspace/core/provider-driver';
 import { ProviderDriverRpc } from '../driver-rpc';
+import { scriptedDriver } from './support/scripted-driver';
 
 const claudeAuth = vi.hoisted(() => ({ check: vi.fn(), logout: vi.fn() }));
 
@@ -26,7 +26,10 @@ describe('connected engine admission', () => {
     const remoteOnly = { provider: 'antigravity' as const, status: 'starting' as const, detail: 'Preserved remote-only runtime', capabilities: defaultProviderCapabilities('antigravity') };
     snapshot.providerRuntimes = [runtime, remoteOnly];
     const getCapabilities = vi.fn(capabilities), onEvent = vi.fn();
-    const driver: AgentProviderDriver = { provider: 'claude', getCapabilities, getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }), sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {} };
+    const { driver } = scriptedDriver('claude');
+    // What the test varies is what the driver reports, at the contract the server asks it through.
+    Object.assign(driver, { getCapabilities });
+    vi.spyOn(driver, 'sendPrompt');
     const server = new AppBackendServer({ version: 'test', snapshot, onEvent, driverRpc: new ProviderDriverRpc(new Map([['claude', driver]])) });
     const update = (enabled: boolean) => server.handleMessage({ jsonrpc: '2.0', id: 'settings', method: 'settings/update', params: { input: { general: { celebrationsEnabled: enabled } } } });
     try {
@@ -46,13 +49,8 @@ describe('connected engine admission', () => {
   it.each([false, true])('uses registered authentication policy rather than backend identity (declared=%s)', async declared => {
     const snapshot = createTestSnapshot(); snapshot.general.providerEnabled = { claude: false };
     let connected = true;
-    const authenticate = vi.fn(async () => ({ kind: 'claude' as const, connected, state: { loggedIn: connected } }));
-    const driver: AgentProviderDriver = {
-      provider: 'claude',
-      ...(declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const } } } : {}),
-      authenticate, getRuntimeStatus: () => ({ provider: 'claude', status: 'running' }), getCapabilities: () => defaultProviderCapabilities('claude'),
-      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: async () => {},
-    };
+    const { driver, script, calls } = scriptedDriver('claude', {}, declared ? { coordinationPolicy: { authentication: { actions: ['check', 'cancel', 'logout', 'login'] as const } } } : {});
+    script.on('authenticate', async () => ({ kind: 'claude' as const, connected, state: { loggedIn: connected } }));
     const rpc = new ProviderDriverRpc(new Map([['claude', driver]]));
     const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: rpc,
       providerSetup: { isChanging: () => false, list: () => [{ provider: 'claude', installed: true, homePath: '/synthetic/claude' }] } as never });
@@ -61,23 +59,23 @@ describe('connected engine admission', () => {
       // A check on its own turns no engine on.
       expect(snapshot.general.providerEnabled?.claude).toBe(false);
       await server.handleMessage({ jsonrpc: '2.0', id: 'enable', method: 'provider/enabled/set', params: { provider: 'claude', enabled: true } });
-      const checks = authenticate.mock.calls.length;
+      const checks = calls('authenticate').length;
       await expect(Promise.all([server.requireConnectedEngine('claude'), server.requireConnectedEngine('claude')])).resolves.toStrictEqual(['claude', 'claude']);
       // Starting work never checks a harness seen signed in: if that changed, its prompt says so.
-      expect(authenticate).toHaveBeenCalledTimes(checks);
+      expect(calls('authenticate')).toHaveLength(checks);
       connected = false;
       await expect(server.requireConnectedEngine()).resolves.toBe('claude');
-      expect(authenticate).toHaveBeenCalledTimes(checks);
+      expect(calls('authenticate')).toHaveLength(checks);
       connected = true;
-      const beforeLogin = authenticate.mock.calls.length;
+      const beforeLogin = calls('authenticate').length;
       const login = server.handleMessage({ jsonrpc: '2.0', id: 'login', method: 'provider/authenticate', params: { provider: 'claude', action: 'login' } });
       if (declared) {
         expect(await login).toMatchObject({ result: { kind: 'claude', connected: true } });
-        expect(authenticate).toHaveBeenCalledTimes(beforeLogin + 1);
-        expect(authenticate).toHaveBeenLastCalledWith({ action: 'login' });
+        expect(calls('authenticate')).toHaveLength(beforeLogin + 1);
+        expect(calls('authenticate').at(-1)).toEqual([{ action: 'login' }]);
       } else {
         await expect(login).rejects.toThrow('Unsupported native authentication action');
-        expect(authenticate).toHaveBeenCalledTimes(beforeLogin);
+        expect(calls('authenticate')).toHaveLength(beforeLogin);
         await expect(rpc.handle('driver/provider/authentication', { provider: 'claude', action: 'login' })).rejects.toThrow('Invalid authentication action');
       }
     } finally { await server.close(); }

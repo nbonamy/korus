@@ -1,7 +1,7 @@
 <template>
   <div ref="root" class="subagent-control">
     <button
-      class="subagent-control__trigger"
+      class="subagent-control__trigger agent-ui-interactive"
       type="button"
       :aria-label="triggerLabel"
       :title="triggerLabel"
@@ -22,10 +22,10 @@
         <strong>{{ t('chat.subagents.label') }}</strong>
         <span>{{ t('chat.subagents.totalCount', { count: nodes.length }) }}</span>
       </header>
-      <button
+      <button :data-selected="(entry.node.conversationId === selectedConversationId) ? '' : undefined"
         v-for="entry in displayedEntries"
         :key="entry.node.conversationId"
-        class="subagent-control__row"
+        class="subagent-control__row agent-ui-interactive"
         :class="{ 'subagent-control__row--selected': entry.node.conversationId === selectedConversationId }"
         :style="{ '--subagent-depth': String(entry.depth) }"
         type="button"
@@ -200,15 +200,7 @@ function flattenNodes(tree: AgentSubagentTree): Array<{ node: SubagentNode; dept
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   place-items: center;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.subagent-control__trigger:hover,
-.subagent-control__trigger[aria-expanded="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-high);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .subagent-control__trigger svg {
@@ -278,15 +270,8 @@ function flattenNodes(tree: AgentSubagentTree): Array<{ node: SubagentNode; dept
   padding-left: calc(var(--space-4) + var(--subagent-depth) * var(--space-8));
   border: 0;
   border-radius: var(--radius-lg);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   text-align: left;
-  cursor: pointer;
-}
-
-.subagent-control__row:hover,
-.subagent-control__row--selected {
-  background: var(--color-surface-low);
 }
 
 .subagent-control__status {

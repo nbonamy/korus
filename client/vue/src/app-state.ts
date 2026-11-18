@@ -191,6 +191,7 @@ const {
   handleMainEvent: syncUnreadStateFromMainEvent,
   markDebugAgentsUnread,
   markRead: markAgentRead,
+  markForFollowup: markAgentForFollowup,
   prune: pruneUnreadAgentIds,
   reset: resetUnreadAgentIds,
   setRendererWindowFocused,
@@ -1875,6 +1876,12 @@ export function useAppState() {
     setVisibleAgentIds: (agentIds: string[]) => {
       visibleAgentIds = new Set(agentIds);
       windowState.reportSelection(appApi, snapshot.value.activeAgentId, [...visibleAgentIds]);
+    },
+    setAgentUnread: async ({ agentId, unread }: { agentId: string; unread: boolean }) => {
+      try {
+        if (unread) await markAgentForFollowup(agentId);
+        else markAgentRead(agentId, true);
+      } catch (error) { ElMessage.error(localizedErrorMessage(error, translate)); }
     },
     markDebugAgentsUnread,
     selectTeam,

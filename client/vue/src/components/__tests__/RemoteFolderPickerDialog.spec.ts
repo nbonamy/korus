@@ -29,8 +29,8 @@ describe('RemoteFolderPickerDialog', () => {
     await flushPromises();
 
     expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--primary'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'agent-ui-interactive'],
     ]);
     expect(listSourceFolders).toHaveBeenCalledWith({
       path: '/srv/repos',

@@ -28,6 +28,53 @@ describe('companion state', () => {
       expect(state.errorDetail.value).toBe('');
     } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
   });
+  it.each([
+    ['an unavailable laptop', Object.assign(new Error('no valid addresses'), { name: 'DialError' })],
+    ['a failed encryption', Object.assign(new Error('Encrypted connection failed'), { name: 'EncryptionFailedError' })],
+  ])('keeps a saved pairing through a first connection that fails on %s, and retries until it opens', async (_case, failure) => {
+    vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const connector = createDemoConnector(); const original = connector.connect;
+    const pair = vi.fn(); connector.pair = pair;
+    let failing = true;
+    connector.connect = vi.fn(async (id: string) => { if (failing) throw failure; return original(id); });
+    // A freshly started engine: the saved laptop is known, but no workspace was ever loaded in this process.
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop');
+      expect(state.status.value).toBe('error');
+      expect(state.laptopId.value).toBe('demo-laptop');
+      expect(state.errorDetail.value).toContain(failure.name);
+      failing = false;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(state.status.value).toBe('connected');
+      expect(pair).not.toHaveBeenCalled();
+    } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
+  it('tells each laptop the name this phone goes by, on connecting and when it changes, and ignores laptops that cannot take it', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const renameDevice = vi.fn(async (_name: string) => { throw new Error('Unknown method'); });
+    connector.connect = async id => ({ ...await original(id), renameDevice });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop');
+      expect(renameDevice).not.toHaveBeenCalled();
+      await state.setDeviceName('Evan\u2019s iPhone');
+      expect(renameDevice).toHaveBeenLastCalledWith('Evan\u2019s iPhone');
+      expect(state.status.value).toBe('connected');
+      await state.connect('demo-laptop', true);
+      await vi.waitFor(() => expect(renameDevice).toHaveBeenCalledTimes(2));
+      expect(state.status.value).toBe('connected');
+      await state.setDeviceName('   ');
+      expect(renameDevice).toHaveBeenCalledTimes(2);
+    } finally { state.dispose(); }
+  });
+  it('still asks to pair for a laptop this phone has no pairing with', async () => {
+    const connector = createDemoConnector();
+    const state = createCompanionState(connector);
+    await state.connect('never-paired');
+    expect(state.status.value).toBe('unpaired');
+    state.dispose();
+  });
   it('restarts the retry schedule when the app returns to the foreground', async () => {
     vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const connector = createDemoConnector(); const original = connector.connect;

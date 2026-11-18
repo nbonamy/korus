@@ -7,20 +7,22 @@ test('the passage being annotated stays highlighted while its comment is written
     import {createApp,h,ref} from 'vue';
     import ElementPlus from 'element-plus';
     import 'element-plus/dist/index.css';
+    import '@korus-dev/agent-ui-sdk/styles.css';
     import '/client/vue/src/styles/variables.css';
     import '/client/vue/src/styles/base.css';
+    import {applyAppTheme} from '/client/vue/src/theme/apply-theme.ts';
     import {i18n} from '/client/vue/src/i18n/index.ts';
     import Ticket from '/client/vue/src/components/MissionTicketDialog.vue';
     import Plan from '/client/vue/src/components/PlanReviewSection.vue';
     import Chat from '/client/vue/src/components/ChatTextSelectionAnnotation.vue';
     createApp({setup(){
       const mode=ref('ticket'), selection=ref(null), draft=ref({comments:[],choices:[]});
-      window.fixture={show(value){mode.value=value;selection.value=null;draft.value={comments:[],choices:[]}}};
+      window.fixture={show(value){mode.value=value;selection.value=null;draft.value={comments:[],choices:[]}},theme(id){applyAppTheme({id,mode:id==='app-light'?'light':'dark',uiFontSize:14,chatFontSize:15,codeFontSize:13})}};
       const capture=()=>{
         const r=getSelection().getRangeAt(0).getBoundingClientRect();
         selection.value={text:getSelection().toString(),messageIndex:0,role:'assistant',anchor:{x:r.x,y:r.y,width:r.width,height:r.height}};
       };
-      return ()=>h('main',{style:'padding:40px'},
+      return ()=>h('main',{style:'padding:40px;background:var(--color-surface-lowest)'},
         mode.value==='ticket'
           ? [h(Ticket,{modelValue:true,annotatable:true,ticketKey:'ticket',ticketNumber:'01',ticket:{title:'Ticket',body:'Keep the **selected context** visible.'},onSaveComment:()=>{}})]
         : mode.value==='plan'
@@ -43,7 +45,15 @@ test('the passage being annotated stays highlighted while its comment is written
         getSelection().removeAllRanges(); getSelection().addRange(range);
         element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       });
-      if (mode === 'chat') await page.locator('.chat-text-selection-annotation__add').click();
+      if (mode === 'chat') {
+        const annotate = page.getByRole('button', { name: 'Annotate', exact: true });
+        for (const theme of ['app-light', 'app-dark-blue']) {
+          await page.evaluate(theme => window.fixture.theme(theme), theme);
+          assert.equal(await annotate.evaluate(element => getComputedStyle(element).backgroundColor),
+            await page.locator('main').evaluate(element => getComputedStyle(element).backgroundColor), `${theme} annotation action has an opaque surface`);
+        }
+        await annotate.click();
+      }
       const input = page.locator(mode === 'chat' ? '.annotation-popup__input' : 'textarea:visible');
       await input.click();
       await input.fill('Retain this context.');

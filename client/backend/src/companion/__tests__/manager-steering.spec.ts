@@ -7,13 +7,12 @@ import { PromptRejectedError } from '../../agents/prompt-rejected';
 import { appRpcErrorCodes } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { Agent } from '@workspace/core/contracts';
-import type { AgentProviderDriver } from '@workspace/core/provider-driver';
-import { codexProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { companionTarget } from '@workspace/core/companion-protocol';
 import { createMission } from '@workspace/core/missions';
 import { AppBackendServer } from '../../server';
 import { ProviderDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import { scriptedDriver } from '../../__tests__/support/scripted-driver';
 import { CompanionManager, type CompanionBackendPort } from '../manager';
 import type { CompanionGateway } from '../gateway';
 
@@ -39,17 +38,10 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
     createdAt: '', updatedAt: '',
   };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
-  const result = { providerSession: agent.providerSession, turnId: 'turn-phone' };
-  const sendPrompt = vi.fn(async () => result);
-  const steerPrompt = vi.fn(async () => { if (rejectSteer) throw new Error('Steering failed'); return result; });
-  const driver: AgentProviderDriver = {
-    provider: 'codex', getRuntimeStatus: () => ({ provider: 'codex', status: 'running' }),
-    getCapabilities: () => codexProviderCapabilities, sendPrompt, steerPrompt,
-    listPlugins: async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }],
-    listSkills: async () => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }],
-    interrupt: async () => result, respondToAgentRequest: async () => undefined,
-    onEvent: () => () => undefined, close: async () => undefined,
-  };
+  const { driver, script, sentPrompts, steeredPrompts, respondOnce } = scriptedDriver('codex');
+  if (rejectSteer) script.on('steerPrompt', () => { throw new Error('Steering failed'); });
+  script.on('listPlugins', () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]);
+  script.on('listSkills', () => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]);
   const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new ProviderDriverRpc(new Map([['codex', driver]])) });
   cleanup.push(() => server.close());
   const provider: CompanionBackendPort = {
@@ -71,7 +63,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   const manager = new CompanionManager(directory, provider, {});
   cleanup.push(() => manager.stop());
   await manager.control({ action: 'status' });
-  return { gateway: transport.gateway!, snapshot, sendPrompt, steerPrompt,
+  return { gateway: transport.gateway!, snapshot, sentPrompts, steeredPrompts, respondOnce,
     command: { target: companionTarget(host.hostId, snapshot.teams[0]!, agent), text: 'Use the smaller change', clientCommandId: randomUUID(), options: { planMode: false, selection: { model: 'gpt' } } } };
 }
 
@@ -93,7 +85,7 @@ describe('mobile prompt admission', () => {
     expect(workspace.missionProgress.find(value => value.id === mission.id)!.tickets).toStrictEqual([
       { number: 1, title: 'Checkout', state: 'cancelled', repository: 'phone', agentId: 'agent-phone' },
     ]);
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
   });
 
   it.each(['steer', 'delete'] as const)('rechecks the session at the backend before a queued %s', async action => {
@@ -101,7 +93,7 @@ describe('mobile prompt admission', () => {
     f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' }];
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(1);
-    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.steeredPrompts()).toHaveLength(0);
   });
 
   it.each(['steer', 'delete'] as const)('applies %s to the selected queued prompt without changing its sibling', async action => {
@@ -112,9 +104,9 @@ describe('mobile prompt admission', () => {
     ];
     await f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' });
     expect(f.snapshot.queuedPrompts).toStrictEqual([{ id: 'sibling', createdAt: '', agentId: 'agent-phone', text: 'Keep this queued' }]);
-    if (action === 'steer') expect(f.steerPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), 'Selected instruction', f.command.options);
-    else expect(f.steerPrompt).not.toHaveBeenCalled();
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    if (action === 'steer') expect(f.steeredPrompts()).toEqual([{ agent: expect.objectContaining({ id: 'agent-phone' }), prompt: 'Selected instruction', options: f.command.options }]);
+    else expect(f.steeredPrompts()).toHaveLength(0);
+    expect(f.sentPrompts()).toHaveLength(0);
   });
 
   it('retains a queued prompt when steering fails', async () => {
@@ -122,7 +114,7 @@ describe('mobile prompt admission', () => {
     f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Keep on failure' }];
     await expect(f.gateway.request('phone', 'agent.queuedPrompt.steer', { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toStrictEqual([{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Keep on failure' }]);
-    expect(f.steerPrompt).toHaveBeenCalledOnce();
+    expect(f.steeredPrompts()).toHaveLength(1);
   });
 
   it.each(['steer', 'delete'] as const)('rejects %s for another agent queue or a stale session', async action => {
@@ -133,29 +125,29 @@ describe('mobile prompt admission', () => {
     f.snapshot.agents[0]!.providerSession = { kind: 'codex', conversationId: 'replacement' };
     await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
     expect(f.snapshot.queuedPrompts).toHaveLength(2);
-    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.steeredPrompts()).toHaveLength(0);
   });
 
   it.each(['working', 'awaitingInput'] as const)('queues once on the host and exposes the queue to the phone (%s)', async status => {
     const f = await fixture(status);
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
-    expect(f.sendPrompt).not.toHaveBeenCalled();
-    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
+    expect(f.steeredPrompts()).toHaveLength(0);
     expect(f.snapshot.queuedPrompts).toStrictEqual([expect.objectContaining({ agentId: 'agent-phone', text: command.text, options: f.command.options })]);
     const workspace = await f.gateway.request('phone', 'snapshot.get', {});
     expect(workspace).toMatchObject({ queuedPrompts: [{ id: f.snapshot.queuedPrompts![0]!.id, agentId: 'agent-phone', text: command.text }] });
     f.snapshot.agents[0]!.status = { type: 'idle' };
     await f.gateway.request('phone', 'prompt.submit', command);
     expect(f.snapshot.queuedPrompts).toHaveLength(1);
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, followUpBehavior: 'steer' } })).rejects.toThrow('reused');
   });
 
   it('waits for provider acceptance when Queue is chosen for an idle agent', async () => {
     const f = await fixture('idle');
     let accept!: () => void;
-    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { providerSession: { kind: 'codex', conversationId: 'thread-phone' }, turnId: 'queued-idle' }; });
+    f.respondOnce('sendPrompt', async () => { await new Promise<void>(resolve => { accept = resolve; }); return { providerSession: { kind: 'codex', conversationId: 'thread-phone' }, turnId: 'queued-idle' }; });
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     const sending = f.gateway.request('phone', 'prompt.submit', command);
     try {
@@ -164,8 +156,8 @@ describe('mobile prompt admission', () => {
     } finally { accept?.(); }
     expect(await sending).toMatchObject({ state: 'accepted' });
     expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
-    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), command.text, expect.objectContaining(f.command.options));
-    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toEqual([{ agent: expect.objectContaining({ id: 'agent-phone' }), prompt: command.text, options: expect.objectContaining(f.command.options) }]);
+    expect(f.steeredPrompts()).toHaveLength(0);
   });
 
   it('rejects a queued send if its session changes after gateway admission', async () => {
@@ -173,15 +165,15 @@ describe('mobile prompt admission', () => {
     const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
     expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
   });
 
   it.each(['idle', 'working'] as const)('rejects a session replaced after gateway admission without dispatching (%s)', async status => {
     const f = await fixture(status, false, agent => { agent.providerSession = { kind: 'codex', conversationId: 'replacement' }; });
     const command = { ...f.command, attachments: [{ type: 'file', name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('note').toString('base64') }] };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
-    expect(f.sendPrompt).not.toHaveBeenCalled();
-    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
+    expect(f.steeredPrompts()).toHaveLength(0);
     expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'rejected' });
   });
   it('records an engine-disconnected rejection without dispatching or locking the command as uncertain', async () => {
@@ -189,7 +181,7 @@ describe('mobile prompt admission', () => {
     f.snapshot.providerConnections = [];
     expect(await f.gateway.request('phone', 'prompt.submit', f.command)).toMatchObject({ state: 'rejected' });
     expect(await f.gateway.request('phone', 'command.status', { clientCommandId: f.command.clientCommandId })).toMatchObject({ state: 'rejected' });
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.sentPrompts()).toHaveLength(0);
   });
 
   it.each(['idle', 'working'] as const)('delivers phone image and file bytes through provider attachments (%s)', async (status) => {
@@ -199,8 +191,8 @@ describe('mobile prompt admission', () => {
       { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('file bytes').toString('base64') },
     ];
     expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text: '', attachments: uploads })).toMatchObject({ state: 'accepted' });
-    const operation = status === 'idle' ? f.sendPrompt : f.steerPrompt;
-    const options = (operation.mock.calls[0] as unknown as [unknown, string, { attachments: { type: string; name: string; path: string; mimeType: string }[] }])[2];
+    const operation = status === 'idle' ? f.sentPrompts : f.steeredPrompts;
+    const options = operation()[0]!.options as unknown as { attachments: { type: string; name: string; path: string; mimeType: string }[] };
     expect(options.attachments.map(({ path: _path, ...metadata }) => metadata)).toStrictEqual(uploads.map(({ data: _data, ...metadata }) => metadata));
     expect(await Promise.all(options.attachments.map((item) => readFile(item.path, 'utf8')))).toStrictEqual(['photo bytes', 'file bytes']);
   });
@@ -210,7 +202,7 @@ describe('mobile prompt admission', () => {
     expect(await f.gateway.request('phone', 'plugins.list', f.command.target)).toStrictEqual({ plugins: [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }] });
     const text = 'Use @github with @agent:agent-phone';
     expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text })).toMatchObject({ state: 'accepted' });
-    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), text, expect.any(Object));
+    expect(f.sentPrompts()).toEqual([{ agent: expect.objectContaining({ id: 'agent-phone' }), prompt: text, options: expect.any(Object) }]);
   });
 
   it('routes the companion skill catalog and a selected skill to the owning provider', async () => {
@@ -219,20 +211,20 @@ describe('mobile prompt admission', () => {
     expect(await f.gateway.request('phone', 'skills.list', f.command.target)).toStrictEqual({ skills: [{ ...skill, enabled: true }] });
     const options = { ...f.command.options, skills: [skill] };
     expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text: '$review', options })).toMatchObject({ state: 'accepted' });
-    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), '$review', expect.objectContaining(options));
+    expect(f.sentPrompts()).toEqual([{ agent: expect.objectContaining({ id: 'agent-phone' }), prompt: '$review', options: expect.objectContaining(options) }]);
   });
 
   it.each(['idle', 'working', 'awaitingInput'] as const)('starts idle work or steers active work without queuing (%s)', async (status) => {
     const f = await fixture(status);
     expect(await f.gateway.request('phone', 'prompt.submit', f.command)).toMatchObject({ state: 'accepted' });
-    const operation = status === 'idle' ? f.sendPrompt : f.steerPrompt;
-    expect(operation).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), f.command.text, expect.objectContaining(f.command.options));
-    expect(status === 'idle' ? f.steerPrompt : f.sendPrompt).not.toHaveBeenCalled();
+    const operation = status === 'idle' ? f.sentPrompts : f.steeredPrompts;
+    expect(operation()).toEqual([{ agent: expect.objectContaining({ id: 'agent-phone' }), prompt: f.command.text, options: expect.objectContaining(f.command.options) }]);
+    expect((status === 'idle' ? f.steeredPrompts : f.sentPrompts)()).toHaveLength(0);
     expect(f.snapshot.queuedPrompts ?? []).toEqual([]);
     // A retry must remain a receipt lookup even if the agent has since become idle.
     f.snapshot.agents[0]!.status = { type: 'idle' };
     await f.gateway.request('phone', 'prompt.submit', f.command);
-    expect(operation).toHaveBeenCalledTimes(1);
+    expect(operation()).toHaveLength(1);
     expect(f.snapshot.queuedPrompts ?? []).toEqual([]);
   });
 
@@ -240,8 +232,8 @@ describe('mobile prompt admission', () => {
     const f = await fixture('working', true);
     expect(await f.gateway.request('phone', 'prompt.submit', f.command)).toMatchObject({ state: 'unresolved' });
     await f.gateway.request('phone', 'prompt.submit', f.command);
-    expect(f.steerPrompt).toHaveBeenCalledTimes(1);
-    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.steeredPrompts()).toHaveLength(1);
+    expect(f.sentPrompts()).toHaveLength(0);
     expect(f.snapshot.queuedPrompts ?? []).toEqual([]);
   });
 });

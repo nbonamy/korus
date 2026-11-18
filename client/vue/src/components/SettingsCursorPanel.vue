@@ -7,7 +7,7 @@
     </SettingsEngineConnectionRow>
     <FormSection v-if="connected && enabled !== false && !remoteConnectionId" :title="$t('cursor.billing')" title-id="settings-cursor-billing-title">
       <template #actions>
-        <el-button size="small" :loading="billingLoading" :aria-label="$t('cursor.refreshBilling')" @click="refreshBilling">{{ $t('cursor.refreshBilling') }}</el-button>
+        <el-button class="agent-ui-interactive" size="small" :loading="billingLoading" :aria-label="$t('cursor.refreshBilling')" @click="refreshBilling">{{ $t('cursor.refreshBilling') }}</el-button>
       </template>
       <FormRow :title="$t('surface.settingsMenu.credits')" :description="billing ? money(billing.includedBalanceUsd) : $t('surface.settingsMenu.unknown')" :error="billingFailed ? $t('surface.settingsMenu.loadFailed') : undefined" />
       <FormRow :title="$t('surface.settingsMenu.onDemand')" :description="onDemandValue" />

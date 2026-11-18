@@ -13,7 +13,7 @@
     >
       <template #reference>
         <button
-          class="identity-picker__trigger agent-avatar-picker__trigger"
+          class="identity-picker__trigger agent-avatar-picker__trigger agent-ui-interactive"
           type="button"
           :aria-label="resolvedAriaLabel"
           :aria-expanded="popoverOpen"
@@ -44,7 +44,7 @@
         <strong v-if="title" class="identity-picker__title agent-avatar-picker__title">{{ title }}</strong>
         <div class="identity-picker__grid">
           <button
-            class="identity-picker__preset agent-avatar-picker__preset"
+            class="identity-picker__preset agent-avatar-picker__preset agent-ui-interactive"
             type="button"
             :aria-label="resolvedEmptyLabel"
             :aria-pressed="!customAvatarActive && !modelValue"
@@ -54,7 +54,7 @@
           <button
             v-for="preset in avatarPresets"
             :key="preset"
-            class="identity-picker__preset agent-avatar-picker__preset"
+            class="identity-picker__preset agent-avatar-picker__preset agent-ui-interactive"
             type="button"
             :aria-label="presetAriaLabel(preset)"
             :aria-pressed="!customAvatarActive && modelValue === preset"
@@ -62,9 +62,9 @@
           >
             <span class="identity-picker__preset-glyph" aria-hidden="true">{{ preset }}</span>
           </button>
-          <input
+          <input :data-selected="(customAvatarActive) ? '' : undefined"
             v-model="customAvatar"
-            class="identity-picker__custom agent-avatar-picker__custom"
+            class="identity-picker__custom agent-avatar-picker__custom agent-ui-interactive"
             :class="{
               'identity-picker__custom--active': customAvatarActive,
               'agent-avatar-picker__custom--active': customAvatarActive,
@@ -79,7 +79,7 @@
             @keydown.enter.prevent="applyCustomAvatar"
           />
           <button
-            class="identity-picker__custom-apply agent-avatar-picker__custom-apply"
+            class="identity-picker__custom-apply agent-avatar-picker__custom-apply agent-ui-interactive"
             type="button"
             :aria-label="resolvedCustomApplyAriaLabel"
             :disabled="!customAvatar.trim()"
@@ -93,7 +93,7 @@
         <div class="identity-picker__divider" />
 
         <button
-          class="identity-picker__choose-image agent-avatar-picker__choose-image"
+          class="identity-picker__choose-image agent-avatar-picker__choose-image agent-ui-interactive"
           type="button"
           :aria-label="resolvedChooseImageAriaLabel"
           @click="openImagePicker"
@@ -112,7 +112,7 @@
     </el-popover>
     <button
       v-if="showHint"
-      class="identity-picker__hint agent-avatar-picker__hint"
+      class="identity-picker__hint agent-avatar-picker__hint agent-ui-interactive"
       type="button"
       @click="popoverOpen = !popoverOpen"
     >
@@ -283,8 +283,6 @@ function applyCroppedAvatar(nextAvatar: string): void {
   padding: 0;
   border: 0;
   border-radius: var(--radius-lg);
-  background: var(--color-surface-base);
-  cursor: pointer;
 }
 
 .identity-picker__trigger .identity-picker__preview {
@@ -294,12 +292,10 @@ function applyCroppedAvatar(nextAvatar: string): void {
 .identity-picker__hint {
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-18);
-  cursor: pointer;
 }
 
 .identity-picker__popover {
@@ -326,15 +322,7 @@ function applyCroppedAvatar(nextAvatar: string): void {
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
-  cursor: pointer;
-}
-
-.identity-picker__preset[aria-pressed="true"],
-.identity-picker__preset:hover {
-  background: var(--color-surface-base);
-  border-color: var(--color-primary);
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 
 .identity-picker__preset-glyph {
@@ -360,21 +348,10 @@ function applyCroppedAvatar(nextAvatar: string): void {
   padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font: inherit;
   font-size: var(--font-size-20);
   text-align: center;
-  outline: none;
-}
-
-.identity-picker__custom:focus {
-  border-color: var(--color-primary);
-}
-
-.identity-picker__custom--active {
-  border-color: var(--color-primary);
-  background: var(--color-surface-base);
 }
 
 .identity-picker__custom::placeholder {
@@ -393,19 +370,7 @@ function applyCroppedAvatar(nextAvatar: string): void {
   place-items: center;
   padding: 0;
   border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.identity-picker__custom-apply:hover:not(:disabled) {
-  color: var(--color-primary);
-}
-
-.identity-picker__custom-apply:disabled {
-  color: var(--color-text-muted);
-  cursor: default;
-  opacity: 0.35;
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .identity-picker__custom-apply svg {
@@ -424,12 +389,10 @@ function applyCroppedAvatar(nextAvatar: string): void {
   padding: 0 var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: var(--color-surface-low);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   font: inherit;
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-semibold);
-  cursor: pointer;
 }
 
 .identity-picker__choose-image svg {

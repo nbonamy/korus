@@ -1,6 +1,7 @@
 <template>
   <main
     class="app-shell"
+    data-slot="sidebar-wrapper"
     :class="{ 'app-shell--auth-gated': showOnboardingGate, 'app-shell--no-rail': hideTeamRail, 'app-shell--chromeless': chromeless, 'app-shell--sidebar-collapsed': agentSidebarCollapsed }"
     @contextmenu.capture="conversationFileActions.capture"
   >
@@ -151,6 +152,7 @@
       @resize-sidebar="setAgentSidebarWidth"
       @start-sidebar-resize="startAgentSidebarResize"
       @restart-agent="$emit('restart-agent', $event)"
+      @set-agent-unread="$emit('set-agent-unread', $event)"
       @resume-session="openResumeSession"
       @select-agent="selectAgentFromShell"
       @select-team="selectTeamFromRail"
@@ -166,7 +168,7 @@
       aria-hidden="true"
       @click="compactNavOpen = false"
     />
-    <section class="app-shell__content">
+    <section class="app-shell__content" data-slot="sidebar-inset">
       <BackendConnectionBanner :connection-state="connectionState" />
       <header v-if="compactViewport && !isAgentWorkspaceVisible && activeHost !== 'mission'" class="app-shell__compact-bar">
         <SidebarExpandButton :label="t('surface.agentHeader.showAgentSidebar')" @click="expandSidebar" />
@@ -234,6 +236,7 @@
         :set-daemon-enabled="setDaemonEnabled"
         :restart-app="restartApp"
         @select-tab="settingsActiveTab = $event"
+        @create-skin="createQuickChat(t('surface.settingsAppearancePanel.createSkinPrompt'))"
       />
       <AutomationsView
         v-else-if="automationsVisible"
@@ -433,7 +436,7 @@
             </template>
             <template #default="{ agentId, focused }">
               <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :follow-up-behavior="snapshot.general.followUpBehavior" :busy="guestBusy ?? false" :control="guestControl" />
-              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
+              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button agent-ui-interactive" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
               <AgentConversationPanel v-else-if="conversationViewFor(agentId)" :key="agentId" :ref="instance => setConversationPanel(agentId, instance)"
                 :view="conversationViewFor(agentId)!" :actions="conversationActions" :agents="snapshot.agents" :focused="focused"
                 :preview-message="debugUserQuestions?.agentId === agentId ? debugUserQuestions.message : undefined"
@@ -458,6 +461,7 @@
     <RepositorySessionSourceDialog
       v-model:provider="repositorySession.provider.value"
       :visible="repositorySessionSourceVisible"
+      :initial-tab="repositorySessionSource?.initialTab"
       :repository-name="repositorySessionSource?.repositoryName ?? ''"
       :branches="repositorySessionSourceBranches"
       :work-items="repositorySessionSourceWorkItems"
@@ -663,7 +667,8 @@ import { product } from '@workspace/core/product';
 
 import { translate } from '../i18n';
 import { localizedErrorMessage, localizedText } from '../i18n/errors';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -1117,6 +1122,7 @@ const emit = defineEmits<{
   'assign-work-item': [payload: { agentId: string; item: WorkItem }];
   'remove-work-item-assignment': [item: WorkItem];
   'restart-agent': [agentId: string];
+  'set-agent-unread': [input: { agentId: string; unread: boolean }];
   'resolve-approval': [approvalId: string, decision: ProviderApprovalDecision, scope: ProviderApprovalScope];
   'retry-turn': [turnId: string];
   'send-agent-prompt': [payload: { agentId: string; prompt: string }];
@@ -1236,9 +1242,9 @@ function rememberMissionId(id: string | null): void {
     // Client-local navigation still works when browser storage is unavailable.
   }
 }
-let pendingMissionRestoreId = rememberedMissionId();
+let pendingMissionRestoreId = windowScope.value === 'workspace' && windowState.navigation.value === 'backlog' ? null : rememberedMissionId();
 const activeHost = ref<AppSurface>('agent');
-const cockpitScope = ref(false);
+const cockpitScope = ref(windowScope.value === 'workspace' && windowState.navigation.value === 'cockpit');
 const settingsReturnMissionId = ref<string | null>(null);
 const automationsReturnHost = ref<Exclude<AppSurface, 'automations'>>('agent');
 const missionViewedStage = ref<MissionStage>();
@@ -1679,7 +1685,7 @@ const workItemRouting = useWorkItemRouting({
     notifyError: (message) => ElMessage.error(message),
     confirmReassignment: async (message) => {
       try {
-        await ElMessageBox.confirm(
+        await appMessageBox.confirm(
           message,
           translate('surface.appShell.assignAnyway'),
           {
@@ -2274,7 +2280,7 @@ async function startVisualizeForAgent(agentId: string, input?: import('@workspac
 
 async function deleteDesignAfterConfirm(agentId: string, designId: string): Promise<void> {
   try {
-    await ElMessageBox.confirm(translate('design.deleteConfirm'), translate('design.deleteTitle'), {
+    await appMessageBox.confirm(translate('design.deleteConfirm'), translate('design.deleteTitle'), {
       confirmButtonText: translate('design.deleteAction'), cancelButtonText: translate('common.cancel'), type: 'warning',
     });
   } catch { return; }
@@ -2390,7 +2396,7 @@ const cockpitBacklogState = useCockpitBacklog({
   configure: (input) => props.configureWorkBacklog(input),
   confirmLoadAll: async () => {
     try {
-      await ElMessageBox.confirm(
+      await appMessageBox.confirm(
         translate('backlogSource.loadGlobalConfirmation'),
         translate('surface.appShell.loadTheGlobalBacklog'),
         {
@@ -2543,6 +2549,16 @@ watch(() => overviewVisible.value && !overviewPreview.value && !props.snapshot.a
 });
 const automationsVisible = computed(() => activeHost.value === 'automations');
 const settingsVisible = computed(() => activeHost.value === 'settings');
+watch([windowScope, windowState.navigation], ([scope, navigation]) => {
+  if (scope !== 'workspace') return;
+  cockpitScope.value = navigation === 'cockpit';
+  if (navigation === 'backlog') void openBacklog();
+  else if (activeHost.value !== 'mission') activeHost.value = 'agent';
+}, { immediate: true });
+watch([activeHost, cockpitScope], ([host, cockpit]) => {
+  if (host === 'backlog') windowState.reportNavigation(appApi, 'backlog');
+  else if (host === 'agent' || host === 'mission') windowState.reportNavigation(appApi, cockpit ? 'cockpit' : 'workspace');
+});
 async function setEngineEnabled(provider: HarnessProvider, enabled: boolean) {
   if (!appApi) throw new Error('Backend connection is unavailable.');
   await appApi.setProviderEnabled(provider, enabled);
@@ -2896,12 +2912,19 @@ function repositorySessionContext(source?: Pick<RepositorySessionSource, 'agentI
   return resolveRepositorySessionContext(props.snapshot, source, activeTeam.value?.id);
 }
 
-async function createQuickChat(): Promise<void> {
+async function createQuickChat(draft?: string): Promise<void> {
   const { teamId } = repositorySessionContext(null);
   try {
     const backend = preferredProviderChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
     const created = await props.createQuickChat({ selection: { provider: backend }, ...(teamId ? { teamId } : {}) });
+    if (created && draft) {
+      emit('update:composerState', {
+        agentId: created.id,
+        state: { text: draft, selectionStart: draft.length, selectionEnd: draft.length },
+      });
+      pendingComposerFocusAgentId.value = created.id;
+    }
     if (created !== null) activeHost.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
@@ -3404,7 +3427,6 @@ watch(() => props.fileActivity, (activity) => {
   min-height: 0;
   overflow: hidden;
   color: var(--color-text);
-  background: var(--color-shell-window);
 }
 
 .app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
@@ -3439,7 +3461,11 @@ html[data-platform='macos'] .app-shell--no-rail.app-shell--sidebar-collapsed :de
   display: flex;
   flex-direction: column;
   overflow: visible;
-  background: var(--color-shell-main);
+}
+
+@layer app-surfaces {
+  .app-shell { background: var(--color-shell-window); }
+  .app-shell__content { background: var(--color-shell-main); }
 }
 
 @media (max-width: 768px) {

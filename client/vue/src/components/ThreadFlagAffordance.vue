@@ -8,7 +8,7 @@
         <button
           v-for="choice in proposalChoices"
           :key="choice.action"
-          class="thread-flag-affordance__choice"
+          class="thread-flag-affordance__choice agent-ui-interactive"
           type="button"
           :aria-label="t(copyKey(choice.key))"
           :disabled="busy"
@@ -17,7 +17,7 @@
       </template>
       <template v-else>
         <button
-          class="thread-flag-affordance__action"
+          class="thread-flag-affordance__action agent-ui-interactive"
           type="button"
           :aria-label="t(copyKey('accept'))"
           :title="t(copyKey('accept'))"
@@ -26,7 +26,7 @@
         ><CheckIcon aria-hidden="true" /></button>
       </template>
       <button
-        class="thread-flag-affordance__dismiss"
+        class="thread-flag-affordance__dismiss agent-ui-interactive"
         type="button"
         :aria-label="t(copyKey('dismiss'))"
         :title="t(copyKey('dismiss'))"
@@ -101,17 +101,15 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'implement' | 'delegate
   justify-content: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font-size: var(--font-size-12);
   line-height: var(--line-height-18);
-  cursor: pointer;
 }
 
 .thread-flag-affordance__choice {
   min-height: var(--space-12);
   gap: var(--space-2);
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
   padding: var(--space-2) var(--space-4);
   white-space: nowrap;
 }
@@ -120,14 +118,14 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'implement' | 'delegate
   width: var(--space-12);
   height: var(--space-12);
   padding: 0;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .thread-flag-affordance__dismiss {
   width: var(--space-12);
   height: var(--space-12);
   padding: 0;
-  color: var(--color-text-muted);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .thread-flag-affordance__action svg,
@@ -135,14 +133,5 @@ function copyKey(kind: 'prompt' | 'accept' | 'dismiss' | 'implement' | 'delegate
 .thread-flag-affordance__choice svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
-}
-
-.thread-flag-affordance button:hover:not(:disabled) {
-  background: var(--color-surface-high);
-}
-
-.thread-flag-affordance button:disabled {
-  opacity: 0.55;
-  cursor: default;
 }
 </style>

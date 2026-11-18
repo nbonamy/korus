@@ -19,7 +19,7 @@
         </div>
         <button
           type="button"
-          class="mission-ticket-dialog__close"
+          class="mission-ticket-dialog__close agent-ui-interactive"
           :aria-label="t('missions.closeTicketDetails')"
           @click="closeDetails"
         >
@@ -408,15 +408,7 @@ function oneLine(value: string): string {
   place-items: center;
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.mission-ticket-dialog__close:hover,
-.mission-ticket-dialog__close:focus-visible {
-  color: var(--color-text);
-  background: var(--color-surface-high);
+  --agent-ui-state-rest-foreground: var(--color-text-muted);
 }
 
 .mission-ticket-dialog__close svg {

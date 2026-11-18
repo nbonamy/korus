@@ -50,7 +50,7 @@ function select(node: Layer) { if (!props.disabled) emit('select', node.id); }
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
-  --el-tree-node-hover-bg-color: var(--color-surface-low);
+  --el-tree-node-hover-bg-color: var(--agent-ui-state-hover);
 }
 .design-layers :deep(.el-tree-node__content) { height: 28px; border-radius: var(--radius-md); }
 .design-layers :deep(.el-tree-node__expand-icon) { padding: var(--space-2); color: var(--color-text-muted); font-size: var(--font-size-12); }

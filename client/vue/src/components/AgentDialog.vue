@@ -21,11 +21,11 @@
             @update:model-value="selectRepositoryControl"
           >
             <el-option
-              class="agent-dialog__source-custom-option"
+              class="agent-dialog__source-custom-option agent-ui-interactive"
               :label="customFolderOptionLabel"
               :value="customFolderOptionValue"
             />
-            <el-option
+            <el-option class="agent-ui-interactive"
               v-for="repository in sourceRepositories"
               :key="repository.path"
               :label="repository.name"
@@ -47,14 +47,14 @@
             :disabled="Boolean(initialNewWorktreeBranchName.trim())"
             @update:model-value="selectWorktreeControl"
           >
-            <el-option
+            <el-option class="agent-ui-interactive"
               v-for="worktree in selectedSourceWorktrees"
               :key="worktree.path"
               :label="worktree.name"
               :value="worktree.path"
             />
             <el-option
-              class="agent-dialog__source-custom-option"
+              class="agent-dialog__source-custom-option agent-ui-interactive"
               :label="$t('surface.agentDialog.newWorktree')"
               :value="newWorktreeOptionValue"
             />
@@ -70,13 +70,13 @@
         <div class="agent-dialog__stacked-controls">
           <div class="app-form-dialog__control">
             <el-select id="agent-dialog-team" v-model="clientNavigationSelectTeamion">
-              <el-option
+              <el-option class="agent-ui-interactive"
                 v-for="team in teams"
                 :key="team.id"
                 :label="team.name"
                 :value="team.id"
               />
-              <el-option
+              <el-option class="agent-ui-interactive"
                 :label="$t('surface.agentDialog.newTeam')"
                 :value="newTeamOptionId"
               />
@@ -157,9 +157,9 @@
       <ProviderSelector id="agent-dialog-backend" v-model="provider" :remote-connection-id="selectedRemoteConnectionId" :disabled="submitting" />
     </template>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.agentDialog.cancel') }}</button>
-      <button
-        class="app-button app-button--primary"
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="close">{{ $t('surface.agentDialog.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid"
+        class="app-button app-button--primary agent-ui-interactive"
         type="button"
         :aria-busy="submitting"
         :disabled="submitting || !canSave"
@@ -695,6 +695,6 @@ function syncRepositoryControlValue(): void {
 }
 
 .agent-dialog__source-custom-option {
-  color: var(--color-text);
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 </style>

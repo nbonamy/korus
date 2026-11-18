@@ -7,6 +7,7 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-effective-appearance');
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-app-theme');
+  document.documentElement.removeAttribute('data-skin');
   document.documentElement.removeAttribute('data-platform');
   document.documentElement.classList.remove('dark');
   document.documentElement.removeAttribute('style');
@@ -26,6 +27,7 @@ describe('applyAppTheme', () => {
     expect(root.dataset.effectiveAppearance).toBe('light');
     expect(root.style.getPropertyValue('--color-shell-main')).toBe('var(--color-surface-lowest)');
     expect(root.style.getPropertyValue('--color-shell-sidebar')).toBe('var(--color-surface-low)');
+    expect(root.style.getPropertyValue('--agent-ui-shell-sidebar-color')).toBe('#F4F4F5');
     expect(root.style.getPropertyValue('--color-shell-rail')).toBe('color-mix(in srgb, var(--color-shell-main) 92%, black)');
   });
 
@@ -47,6 +49,7 @@ describe('applyAppTheme', () => {
     expect(root.style.colorScheme).toBe('dark');
     expect(root.style.getPropertyValue('--color-surface-lowest')).toBe('#010409');
     expect(root.style.getPropertyValue('--agent-ui-surface-color')).toBe('#010409');
+    expect(root.style.getPropertyValue('--agent-ui-shell-sidebar-color')).toBe('#010409');
     expect(root.style.getPropertyValue('--agent-ui-text-color')).toBe('#e6edf3');
     expect(root.style.getPropertyValue('--color-text')).toBe('var(--color-on-surface)');
     expect(root.style.getPropertyValue('--color-shell-main')).toBe('var(--color-surface-low)');
@@ -71,6 +74,7 @@ describe('applyAppTheme', () => {
     expect(root.style.getPropertyValue('--color-shell-sidebar')).toBe(
       'color-mix(in srgb, var(--color-shell-main) var(--shell-glass-opacity), transparent)',
     );
+    expect(root.style.getPropertyValue('--agent-ui-shell-sidebar-color')).toBe('#F4F4F5');
     expect(root.style.getPropertyValue('--color-shell-rail')).toBe(
       'color-mix(in srgb, color-mix(in srgb, var(--color-shell-main) 92%, black) var(--shell-glass-opacity), transparent)',
     );

@@ -1,4 +1,6 @@
 import { DictationSettingsStore } from './dictation-settings';
+import { CustomSkinStore } from './custom-skins';
+import { runtimeDaemonHome } from './runtime-config';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
 import type { HarnessProvider, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
 import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
@@ -26,7 +28,7 @@ import { COMPACT_MIN_SIZE, createMainWindow } from './main-window';
 import { featureAgentIds } from '@workspace/core/feature-groups';
 import { WindowRegistry } from './window-registry';
 import { readWindowLayout, restorableWindows, writeWindowLayout, type WindowFrame, type WindowLayout } from './window-layout';
-import { isWindowSetup, isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
+import { isWindowNavigation, isWindowSetup, isWindowViewState, type ComposerDraft, type NativeResource, type WindowContext, type WindowViewState } from '@workspace/core/windows';
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
@@ -72,6 +74,13 @@ type PendingBrowserOpen = {
 };
 
 export class AppController {
+  private customSkins: CustomSkinStore | undefined;
+  /** Sources live in the app home so people and agents can find and edit them. */
+  private customSkinStore(): CustomSkinStore {
+    return this.customSkins ??= new CustomSkinStore(path.join(runtimeDaemonHome(), 'skins'), async skin => {
+      this.emitSnapshotToRenderer(await this.updateSettings({ theme: { skin } }));
+    }, () => this.snapshot?.theme.skin?.id);
+  }
   private dictationSettingsStore: DictationSettingsStore | undefined;
   private dictationSettings(): DictationSettingsStore {
     return this.dictationSettingsStore ??= new DictationSettingsStore(app.getPath('userData'), safeStorage, process.platform);
@@ -175,6 +184,7 @@ export class AppController {
       }),
     );
     this.backendClient = backendClient ?? createRuntimeAppBackendClient({
+      setSkin: input => this.customSkinStore().set(input),
       debugRestartBackend: app?.isPackaged ? undefined : input => this.requestDebugBackendRestart(input),
       mobileSimulator: (agentId, input) => this.executeMobileSimulator(agentId, input),
       browserOpen: (agentId, browserId, url) => this.requestBrowserOpen(agentId, browserId, url),
@@ -575,6 +585,7 @@ export class AppController {
     });
 
     ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
+    ipc.handle(ipcChannels.markAgentUnread, (_event, agentId: string) => this.requireBackendClient().request(backendMethods.agentMarkUnread, { agentId }));
 
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {
       return this.selectAgent(agentId);
@@ -632,6 +643,9 @@ export class AppController {
 
     ipc.handle(ipcChannels.launchChatGptApp, (_event, input) => launchChatGptApp(input));
 
+    ipc.handle(ipcChannels.listLocalSkins, () => this.customSkinStore().list());
+    ipc.handle(ipcChannels.deleteLocalSkin, (_event, name: string) => this.customSkinStore().remove(name));
+
     ipc.handle(ipcChannels.quit, () => {
       this.appLifecycle.quit();
     });
@@ -641,6 +655,7 @@ export class AppController {
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
     ipc.handle(ipcChannels.openWindow, (_event, viewState) => this.openWindowFromRenderer(viewState));
     ipc.handle(ipcChannels.setWindowSetup, (event, setup) => this.setWindowSetup(this.windowOf(event), setup));
+    ipc.handle(ipcChannels.setWindowNavigation, (event, navigation) => this.setWindowNavigation(this.windowOf(event), navigation));
     ipc.handle(ipcChannels.setWindowSelection, (event, agentId, visibleAgentIds) => {
       const window = this.windowOf(event);
       if (window) this.windows.setSelectedAgent(window, agentId, visibleAgentIds);
@@ -826,6 +841,12 @@ export class AppController {
   /** Remembers the open windows in this file, and lets {@link openStartupWindows} bring them back. */
   enableWindowLayout(filePath: string): void {
     this.layoutFile = filePath;
+  }
+
+  private setWindowNavigation(window: BrowserWindow | undefined, navigation: unknown): void {
+    if (!window || !isWindowNavigation(navigation)) return;
+    this.windows.setNavigation(window, navigation);
+    this.scheduleLayoutSave();
   }
 
   /** Opens the windows the app was left with, or the default workspace window when there is nothing usable to restore. */

@@ -45,8 +45,8 @@ describe('AgentDialog', () => {
     expect(wrapper.get('#agent-dialog-name').attributes('placeholder')).toBe('Optional');
     expect(wrapper.findAllComponents({ name: 'ElOption' })[0]?.props('label')).toBe('Choose folder...');
     expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--primary'],
+      ['app-button', 'app-button--tertiary', 'agent-ui-interactive'],
+      ['app-button', 'app-button--primary', 'agent-ui-interactive'],
     ]);
     expect(saveButton(wrapper).attributes()).toHaveProperty('disabled');
   });

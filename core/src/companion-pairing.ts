@@ -21,3 +21,11 @@ export function formatPairingCode(input: string): string {
   const typed = symbols(input.toUpperCase().replace(/[^A-Z0-9]/g, '')).slice(0, codeLength);
   return typed.length > channelLength ? `${typed.slice(0, channelLength)}-${typed.slice(channelLength)}` : typed;
 }
+
+export const companionDeviceNameMax = 80;
+/** What a paired device calls itself, made fit to show: one line, single spaces, bounded; null when unusable. */
+export function companionDeviceName(value: unknown): string | null {
+  if (typeof value !== 'string' || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  const name = value.replace(/\s+/g, ' ').trim();
+  return name && name.length <= companionDeviceNameMax ? name : null;
+}

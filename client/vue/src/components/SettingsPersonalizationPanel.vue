@@ -5,10 +5,10 @@
     </template>
     <div class="settings-personalization__toolbar">
           <el-select class="settings-personalization__engine" :model-value="engine" :disabled="busy" :aria-label="$t('surface.instructionSettings.engine')" @update:model-value="selectEngine">
-            <el-option v-for="id in engines" :key="id" :label="engineLabel(id)" :value="id" />
+            <el-option class="agent-ui-interactive" v-for="id in engines" :key="id" :label="engineLabel(id)" :value="id" />
           </el-select>
       <div class="settings-personalization__actions">
-        <button class="app-button app-button--secondary" type="button" :disabled="busy || !loaded" @click="saveAll">{{ $t('surface.instructionSettings.saveAll') }}</button>
+        <button data-variant="primary" class="app-button app-button--secondary agent-ui-interactive" type="button" :disabled="busy || !loaded" @click="saveAll">{{ $t('surface.instructionSettings.saveAll') }}</button>
       </div>
     </div>
     <p v-if="engines.length === 0" class="settings-personalization__hint">{{ $t('surface.instructionSettings.noEngines') }}</p>
@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useDebouncedSave } from '../shared/use-debounced-save';
-import { ElMessageBox } from 'element-plus';
+import { appMessageBox } from '../shared/dialog/message-box';
 import type { HarnessProvider, AppApi } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
@@ -71,7 +71,7 @@ async function selectEngine(next: HarnessProvider) {
   await load(next);
 }
 async function saveAll() {
-  try { await ElMessageBox.confirm(translate('surface.instructionSettings.overwriteBoth'), translate('surface.instructionSettings.saveAll'), { type: 'warning', confirmButtonText: translate('surface.instructionSettings.overwrite') }); }
+  try { await appMessageBox.confirm(translate('surface.instructionSettings.overwriteBoth'), translate('surface.instructionSettings.saveAll'), { type: 'warning', confirmButtonText: translate('surface.instructionSettings.overwrite') }); }
   catch { return; }
   busy.value = true;
   error.value = '';

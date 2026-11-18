@@ -54,7 +54,7 @@ export class RepositoryStore {
       try { document = schema.parse(parseStoreFile(this.file, await readFile(this.file, 'utf8')).data); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; document = { repositories: {} }; }
       const before = JSON.stringify(document);
-      // TODO(remove-after: 2026-11-30): Remove run-profiles.json import and retirement. https://github.com/nbonamy/korus/issues/74
+      // TODO(remove-after: 2026-11-30): Remove run-profiles.json import and retirement. https://github.com/Korus-Dev/korus/issues/74
       const legacyFile = path.join(path.dirname(this.file), 'run-profiles.json');
       let legacy: Record<string, RunProfile[]> | undefined;
       if (legacyFile !== this.file) {

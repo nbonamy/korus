@@ -51,7 +51,7 @@
         </div>
       </div>
       <ul>
-        <li
+        <li class="usage-share__series agent-ui-interactive"
           v-for="row in orderedSeries"
           :key="row.key"
           :tabindex="row.value !== null && row.value > 0 ? 0 : -1"
@@ -279,9 +279,7 @@ li {
     opacity 140ms ease,
     background 140ms ease;
 }
-li:hover {
-  background: color-mix(in srgb, var(--color-text) 4%, transparent);
-}
+
 li.dimmed {
   opacity: 0.45;
 }
@@ -311,4 +309,5 @@ strong {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
+.usage-share__series { cursor: default; }
 </style>

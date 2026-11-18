@@ -8,6 +8,7 @@ import { mountShell } from '../support/app-shell-test-harness';
 
 afterEach(() => {
   windowState.scope.value = 'workspace';
+  windowState.navigation.value = 'workspace';
   windowState.teamId.value = null;
   windowState.agentId.value = null;
   windowState.branch.value = null;
@@ -55,9 +56,11 @@ describe('AppShell in a window that shows less than the workspace', () => {
 
   it('drops the rail in a team window and keeps the team’s sidebar', () => {
     windowState.scope.value = 'team';
+    windowState.navigation.value = 'cockpit';
     const wrapper = mountShell({ realAgentSidebar: true, stubAgentWorkspace: true });
     expect(wrapper.find('.team-rail').exists()).toBe(false);
     expect(wrapper.find('.agent-sidebar').exists()).toBe(true);
+    expect(wrapper.getComponent({ name: 'AgentSidebar' }).props('allTeams')).toBe(false);
     expect(wrapper.classes()).toContain('app-shell--no-rail');
   });
 
@@ -131,7 +134,7 @@ describe('AppShell in a window that shows less than the workspace', () => {
       expect(wrapper.find('.team-rail').exists()).toBe(false);
       expect(wrapper.findAll('.agent-sidebar__agent')).toHaveLength(1);
       expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
-      expect(wrapper.text()).not.toMatch(/Quick chat|New mission|Add project/);
+      expect(wrapper.text()).not.toMatch(/Quick chat|New mission|New agent/);
     });
 
     it('opens its agents in split from the feature sidebar in the team’s own order', async () => {

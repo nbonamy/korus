@@ -4,7 +4,9 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import type { LiveActivityRegistration, LiveActivityPush } from '@workspace/core/companion-live-activity';
 import { product } from '@workspace/core/product';
 
-export type ApnsConfig = { keyId: string; teamId: string; topic: string; privateKey: string; environment: CompanionPushRegistration['environment'] };
+export type ApnsConfig = { keyId: string; teamId: string; topic: string; privateKey: string; environment: CompanionPushRegistration['environment'];
+  /** Why a push was not delivered: Apple's status and reason only, never a device token. */
+  log?: (message: string, details: Record<string, unknown>) => void };
 export type PushResult = 'sent' | 'invalid' | 'unavailable';
 const messages = { completed: 'Finished its turn', approval: 'Needs your approval', question: 'Has a question for you' };
 
@@ -29,13 +31,17 @@ export class ApnsSender {
   }
 
   async sendLiveActivity(registration: LiveActivityRegistration, push: LiveActivityPush): Promise<PushResult> {
-    if (registration.environment !== this.config.environment) return 'unavailable';
+    if (registration.environment !== this.config.environment) { this.refused('liveactivity', 0, 'environment-mismatch'); return 'unavailable'; }
     const aps = { timestamp: push.timestamp, event: push.event, 'content-state': push.state,
       ...(push.event === 'end' ? { 'dismissal-date': push.timestamp } : { 'stale-date': push.timestamp + 900 }),
       ...(push.event === 'start' ? { 'attributes-type': 'WorkActivityAttributes', attributes: { hostId: push.hostId, instanceId: push.instanceId, startedAt: push.startedAt },
         'input-push-token': 1, alert: { title: product.name, body: 'Your agents are active' } } : {}) };
     return this.deliver(registration, { aps }, `${this.config.topic}.push-type.liveactivity`, 'liveactivity',
       push.event === 'update' && push.state.attention === 0 ? '5' : '10', push.instanceId);
+  }
+
+  private refused(pushType: string, status: number, reason: unknown) {
+    this.config.log?.('apns refused', { pushType, status, reason: typeof reason === 'string' && /^[A-Za-z-]{1,64}$/.test(reason) ? reason : 'unknown' });
   }
 
   private async deliver(registration: Pick<CompanionPushRegistration, 'token' | 'environment'>, value: unknown, topic: string, pushType: string, priority: string, collapseId: string): Promise<PushResult> {
@@ -64,6 +70,7 @@ export class ApnsSender {
       request.on('error', () => finish('unavailable'));
       request.on('end', () => {
         let reason = ''; try { reason = JSON.parse(body).reason; } catch { /* Empty success response. */ }
+        if (status !== 200) this.refused(pushType, status, reason);
         finish(status === 200 ? 'sent' : status === 410 || status === 400 && ['BadDeviceToken', 'DeviceTokenNotForTopic'].includes(reason) ? 'invalid' : 'unavailable');
       });
       request.on('close', () => finish('unavailable'));

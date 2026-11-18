@@ -329,7 +329,7 @@ describe('AgentSidebar sessions', () => {
       expect(wrapper.find('.agent-sidebar__start-work').exists()).toBe(false);
       expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
       expect(wrapper.find('[data-group-kind="missions"]').exists()).toBe(false);
-      for (const label of ['New worktree', 'Quick chat', 'New mission', 'Add project']) {
+      for (const label of ['New worktree', 'Quick chat', 'New mission', 'New agent']) {
         expect(wrapper.find(`button[aria-label="${label}"]`).exists(), label).toBe(false);
       }
       expect(wrapper.findAll('.agent-sidebar__agent').length).toBe(1);
@@ -349,6 +349,7 @@ describe('AgentSidebar sessions', () => {
       await flushPromises();
       const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
       expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New agent…']);
+      expect(items[0]!.querySelector('.tabler-icon-copy-plus')).not.toBeNull();
       items[0]!.click();
       await flushPromises();
       expect(wrapper.emitted('create-feature-agent')?.[0]).toMatchObject([[{ repositoryName: 'id8' }], 'feat1']);
@@ -365,6 +366,7 @@ describe('AgentSidebar sessions', () => {
       await flushPromises();
       const items = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
       expect(items.map(item => item.textContent?.trim())).toStrictEqual(['New agent…', 'New worktree…']);
+      expect(items[0]!.querySelector('.tabler-icon-copy-plus')).not.toBeNull();
       const targets = [
         { repositoryName: 'id8', repositoryRoot: '~/src/id8' },
         { repositoryName: 'multi-llm-ts', repositoryRoot: '~/src/multi-llm-ts' },
@@ -379,6 +381,30 @@ describe('AgentSidebar sessions', () => {
       await flushPromises();
       expect(wrapper.emitted('create-feature-worktree')?.[0]?.[0]).toMatchObject(targets);
     } finally { wrapper.unmount(); }
+  });
+
+  it('offers Mark unread/read using the existing agent unread indicator', async () => {
+    const wrapper = mount(AgentSidebar, { props: { agents: [
+      { ...agents[0]!, status: { type: 'idle' } },
+      { ...agents[0]!, id: 'running', status: { type: 'working' } },
+    ], activeAgentId: agents[0]!.id, teamName: 'Workspace', allTeams: true } });
+    await wrapper.get('button[aria-label="Mark unread"]').trigger('click');
+    expect(wrapper.emitted('select-agent')).toBeUndefined();
+    expect(tooltipContents(wrapper)).toContain('Mark unread');
+    expect(wrapper.find('[data-reorder-id="running"] + button[aria-label="Mark unread"]').exists()).toBe(false);
+    for (const unread of [false, true]) {
+      await wrapper.setProps({ unreadAgentIds: unread ? [agents[0]!.id] : [] });
+      expect(wrapper.find('button[aria-label="Mark unread"]').exists()).toBe(!unread);
+      await wrapper.get(`.agent-sidebar__agent[data-reorder-id="${agents[0]!.id}"]`).trigger('contextmenu', { clientX: 80, clientY: 120 });
+      const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === (unread ? 'Mark read' : 'Mark unread'));
+      expect(action).toBeDefined();
+      action!.click();
+      await flushPromises();
+    }
+    expect(wrapper.emitted('set-agent-unread')).toStrictEqual([
+      [{ agentId: agents[0]!.id, unread: true }],
+      [{ agentId: agents[0]!.id, unread: true }], [{ agentId: agents[0]!.id, unread: false }],
+    ]);
   });
 
   // Rendered activity sorting, controlled aging and per-team preferences across remounts.
@@ -441,6 +467,14 @@ describe('AgentSidebar sessions', () => {
         expect(row.get('.agent-sidebar__session-context').text()).toBe(subtitle);
       }
       expect(ids('idle')).toStrictEqual(['new', 'idle', 'review', 'error', 'plan']);
+      const disclosure = (group: string) => wrapper.get(`[data-activity-group="${group}"] header button[aria-expanded]`);
+      await disclosure('working').trigger('click');
+      expect(disclosure('working').attributes('aria-expanded')).toBe('false');
+      expect(ids('working')).toStrictEqual([]);
+      expect(ids('attention')).toStrictEqual(['waiting']);
+      await disclosure('attention').trigger('click');
+      await disclosure('working').trigger('click');
+      expect(ids('working')).toStrictEqual(['working']);
       expect(wrapper.get('[data-reorder-id="working"]').attributes('draggable')).toBe('false');
       await vi.advanceTimersByTimeAsync(250);
       await wrapper.setProps({ agents: items.map(agent => agent.id === 'working' ? { ...agent, status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: new Date().toISOString() } : agent) });
@@ -461,6 +495,9 @@ describe('AgentSidebar sessions', () => {
       wrapper.unmount();
       const restored = mount(AgentSidebar, { props });
       expect(restored.find('[data-activity-group="attention"]').exists()).toBe(true);
+      expect(restored.find('[data-reorder-id="waiting"]').exists()).toBe(false);
+      await restored.get('[data-activity-group="attention"] header button[aria-expanded]').trigger('click');
+      expect(restored.find('[data-reorder-id="waiting"]').exists()).toBe(true);
       restored.unmount();
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   }, 5_000);
@@ -547,7 +584,7 @@ describe('AgentSidebar sessions', () => {
     expect(firstSession.attributes('style') ?? '').not.toContain('display: none');
   });
 
-  it('creates directly on main even with multiple backends enabled', async () => {
+  it('offers one repository creation menu for main, worktrees, branches and work items', async () => {
     const listRepositoryBranches = vi.fn().mockResolvedValue([{ name: 'main', isDefault: true, worktreePath: '~/src/id8' }]);
     const wrapper = mount(AgentSidebar, {
       props: {
@@ -567,11 +604,22 @@ describe('AgentSidebar sessions', () => {
     ));
     await sessionMenu?.vm.$emit('update:open', true);
     await flushPromises();
-    const main = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'main')!;
+    expect(wrapper.get('[data-group-kind="repository"] .agent-sidebar__workspace-actions').findAll('button')).toHaveLength(1);
+    const menuItems = () => [...document.body.querySelectorAll<HTMLButtonElement>('[role="menu"][aria-label="New session in id8"] [role="menuitem"]')];
+    expect(menuItems().map(item => item.textContent?.trim()))
+      .toStrictEqual(['main', 'From branch…', 'New worktree…', 'Pull requests & issues…']);
+    const main = menuItems().find((item) => item.textContent?.trim() === 'main')!;
+    expect(main.querySelector('.git-main-icon')).not.toBeNull();
     expect(main.getAttribute('aria-haspopup')).toBeNull();
     main.click();
     await flushPromises();
-    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
+    for (const id of ['new-worktree', 'from-branch', 'from-work-item']) {
+      await sessionMenu?.vm.$emit('update:open', true);
+      await flushPromises();
+      const labels = { 'new-worktree': 'New worktree…', 'from-branch': 'From branch…', 'from-work-item': 'Pull requests & issues…' };
+      menuItems().find(item => item.textContent?.trim() === labels[id as keyof typeof labels])!.click();
+      await flushPromises();
+    }
 
     expect(listRepositoryBranches).toHaveBeenCalledWith({
       agentId: 'agent-dina',
@@ -584,12 +632,16 @@ describe('AgentSidebar sessions', () => {
       originUrl: 'git@github.com:nbonamy/id8.git',
       branch: { name: 'main', isDefault: true, worktreePath: '~/src/id8' },
     }]]);
-    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{
+    const target = {
       agentId: 'agent-dina',
       repositoryName: 'id8',
       repositoryRoot: '~/src/id8',
       originUrl: 'git@github.com:nbonamy/id8.git',
-    }]]);
+    };
+    expect(wrapper.emitted('create-agent-worktree-in-repository')).toStrictEqual([[target]]);
+    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([
+      [{ ...target, initialTab: 'branches' }], [{ ...target, initialTab: 'pullRequests' }],
+    ]);
   });
 
   describe('remote actions on the repository menu', () => {
@@ -646,8 +698,9 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.remote-host-indicator').attributes('aria-label')).toBe('Devbox');
     expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(true);
     expect(tooltipContents(wrapper)).toContain('Devbox');
-    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
-    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin }]]);
+    const sourceMenu = () => wrapper.findAllComponents({ name: 'AppMenuButton' }).find(button => button.props('ariaLabel').startsWith('New session in'))!;
+    await sourceMenu().vm.$emit('select', 'from-branch');
+    expect(wrapper.emitted('create-agent-from-repository')).toStrictEqual([[{ agentId: 'local', repositoryName: 'id8', repositoryRoot: '~/src/id8', originUrl: origin, initialTab: 'branches' }]]);
 
     await wrapper.setProps({ agents: [remote] });
     expect(wrapper.findAll('.agent-sidebar__repository-agent .remote-host-indicator')).toHaveLength(1);
@@ -658,8 +711,8 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.find('.remote-host-indicator__badge').exists()).toBe(false);
     expect(wrapper.find('.remote-host-indicator--offline').exists()).toBe(true);
     expect(tooltipContents(wrapper)).toContain('Devbox is not connected');
-    await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
-    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin }]);
+    await sourceMenu().vm.$emit('select', 'from-branch');
+    expect(wrapper.emitted('create-agent-from-repository')![1]).toStrictEqual([{ agentId: 'remote', repositoryName: 'id8', repositoryRoot: '/srv/id8', remoteConnectionId: 'devbox', originUrl: origin, initialTab: 'branches' }]);
   });
 
   it('shows the host icon on remote-only sections and flags a host that is not connected', async () => {
@@ -711,7 +764,7 @@ describe('AgentSidebar sessions', () => {
     });
     const icon = () => wrapper.get('.agent-sidebar__session-icon');
     expect(wrapper.get('.agent-sidebar__agent').attributes('data-session-kind')).toBe('main');
-    expect(icon().classes()).toContain('tabler-icon-git-branch');
+    expect(icon().classes()).toContain('git-main-icon');
     expect(getComputedStyle(icon().element).color).toBe('var(--color-primary)');
 
     await wrapper.setProps({ agents: [{ ...source, workspace: { ...workspace, branch: 'main' } }] });
@@ -721,7 +774,7 @@ describe('AgentSidebar sessions', () => {
 
     await wrapper.setProps({ agents: [{ ...source, workspace: { ...workspace, isLinkedWorktree: true } }] });
     expect(wrapper.get('.agent-sidebar__agent').attributes('data-session-kind')).toBe('worktree');
-    expect(icon().classes()).toContain('tabler-icon-git-fork');
+    expect(icon().classes()).toContain('tabler-icon-git-branch');
     expect(getComputedStyle(icon().element).color).toBe('var(--color-warning)');
     wrapper.unmount();
   });
@@ -739,11 +792,11 @@ describe('AgentSidebar sessions', () => {
     const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: rows, activeAgentId: null, teamId: 'worktree-icons', teamName: 'Team' } });
     try {
       const icon = (label: string) => wrapper.findAll('[data-group-kind="worktree"]').find(group => group.get('header strong').text() === label)!.get('header > svg');
-      expect(icon('trunk').classes()).toContain('tabler-icon-git-branch');
+      expect(icon('trunk').classes()).toContain('git-main-icon');
       expect(getComputedStyle(icon('trunk').element).color).toBe('var(--color-primary)');
       expect(icon('topic').classes()).toContain('tabler-icon-git-branch');
       expect(getComputedStyle(icon('topic').element).color).toBe('var(--color-success)');
-      expect(icon('feat/shared').classes()).toContain('tabler-icon-git-fork');
+      expect(icon('feat/shared').classes()).toContain('tabler-icon-git-branch');
       expect(getComputedStyle(icon('feat/shared').element).color).toBe('var(--color-warning)');
       expect(wrapper.find('[data-reorder-id="feature-tree"] .agent-avatar').exists()).toBe(true);
     } finally { wrapper.unmount(); localStorage.removeItem('app:agentOrganization:worktree-icons'); }
@@ -946,8 +999,8 @@ describe('mission navigation', () => {
     });
     expect(wrapper.get('.agent-sidebar__start-work').findAll('button')
       .map(button => button.text())
-      .filter(label => ['Add project', 'Quick chat', 'New mission'].includes(label)))
-      .toStrictEqual(['Add project', 'Quick chat', 'New mission']);
+      .filter(label => ['New agent', 'Quick chat', 'New mission'].includes(label)))
+      .toStrictEqual(['New agent', 'Quick chat', 'New mission']);
     expect(wrapper.find('[data-group-kind="create"]').exists()).toBe(false);
     expect(wrapper.find('[data-group-kind="missions"]').exists()).toBe(false);
     await wrapper.get('.agent-sidebar__mission-action').trigger('click');

@@ -5,12 +5,12 @@ import WorkItemDetail from '../WorkItemDetail.vue';
 
 const item: WorkItem = {
   provider: 'github',
-  id: 'github:nbonamy/korus#27',
-  sourceId: 'nbonamy/korus',
-  sourceName: 'nbonamy/korus',
+  id: 'github:owner/repo#27',
+  sourceId: 'owner/repo',
+  sourceName: 'owner/repo',
   number: 27,
   title: 'Add commit actions',
-  url: 'https://github.com/nbonamy/korus/issues/27',
+  url: 'https://github.com/owner/repo/issues/27',
   state: 'open',
   kind: 'issue',
   labels: [{ name: 'ux' }],

@@ -1,7 +1,9 @@
 <template>
   <!-- A stable root: the parent pane transition follows the root element, so swapping variants must not replace it. -->
-  <div class="agent-sidebar-pane" :style="sidebar.sidebarStyle">
-    <component :is="sidebar.organizationMode === 'activity' ? AgentSidebarActivity : AgentSidebarRepo" :model="sidebar" />
+  <div class="agent-sidebar-pane" data-slot="sidebar" data-app-sidebar :style="sidebar.sidebarStyle">
+    <div class="agent-sidebar-pane__container" data-slot="sidebar-container">
+      <component :is="sidebar.organizationMode === 'activity' ? AgentSidebarActivity : AgentSidebarRepo" :model="sidebar" />
+    </div>
   </div>
 </template>
 
@@ -20,6 +22,7 @@ defineExpose({ quickSwitchAgentIds });
 </script>
 
 <style scoped>
+.agent-sidebar-pane__container { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .agent-sidebar-pane {
   --agent-sidebar-width: 260px;
   --agent-sidebar-min-width: 200px;

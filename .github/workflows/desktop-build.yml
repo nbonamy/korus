@@ -100,7 +100,7 @@ jobs:
           - target: win32-x64
             runner: windows-latest
           - target: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04 # electron-installer-redhat requires the older RPM build layout.
           - target: linux-arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}

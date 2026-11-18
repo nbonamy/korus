@@ -15,8 +15,8 @@
       <input v-model="comment" :aria-label="t('chat.textAnnotations.commentLabel')" autofocus :placeholder="t('chat.textAnnotations.commentPlaceholder')" @keydown.enter.prevent="save">
     </div>
     <template #footer>
-      <button class="app-button app-button--tertiary" type="button" @click="editingId = null">{{ t('chat.textAnnotations.cancel') }}</button>
-      <button class="app-button app-button--primary chat-annotation-editor__save" type="button" :disabled="disabled || !comment.trim()" @click="save">{{ t('chat.textAnnotations.saveChanges') }}</button>
+      <button class="app-button app-button--tertiary agent-ui-interactive" type="button" @click="editingId = null">{{ t('chat.textAnnotations.cancel') }}</button>
+      <button data-variant="primary" data-appearance="solid" class="app-button app-button--primary chat-annotation-editor__save agent-ui-interactive" type="button" :disabled="disabled || !comment.trim()" @click="save">{{ t('chat.textAnnotations.saveChanges') }}</button>
     </template>
   </FormDialog>
 </template>

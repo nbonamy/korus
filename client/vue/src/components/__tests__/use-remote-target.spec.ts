@@ -5,8 +5,8 @@ import { useRemoteTarget, type RemoteTargetRequest } from '../use-remote-target'
 const connection = (id: string, status: RemoteConnection['status'] = 'ready', sourceFolderPath?: string): RemoteConnection => ({
   id, kind: 'ssh', name: id, host: id, status, createdAt: '', updatedAt: '', ...(sourceFolderPath ? { sourceFolderPath } : {}),
 });
-const request: RemoteTargetRequest = { action: 'main', repositoryName: 'korus', repositoryKey: 'remote:github.com/nbonamy/korus', originUrl: 'git@github.com:nbonamy/korus.git' };
-const checkout = (path: string, remoteIdentity = 'github.com/nbonamy/korus'): SourceRepository => ({ name: 'korus', path, remoteIdentity, worktrees: [] });
+const request: RemoteTargetRequest = { action: 'main', repositoryName: 'korus', repositoryKey: 'remote:github.com/owner/repo', originUrl: 'git@github.com:owner/repo.git' };
+const checkout = (path: string, remoteIdentity = 'github.com/owner/repo'): SourceRepository => ({ name: 'korus', path, remoteIdentity, worktrees: [] });
 
 function setup(repositories: Record<string, SourceRepository[] | Error>, overrides: { clone?: (input: CloneSourceRepositoryInput) => Promise<SourceRepository> } = {}) {
   const store = new Map<string, string>();
@@ -59,10 +59,10 @@ describe('remote target', () => {
 
   it('preselects the machine last used for the project', async () => {
     const { target, store } = setup({ devbox: [checkout('/srv/korus')], lab: [checkout('/lab/korus')] });
-    store.set('remoteTarget:lastHost:remote:github.com/nbonamy/korus', 'lab');
+    store.set('remoteTarget:lastHost:remote:github.com/owner/repo', 'lab');
     await target.open(request);
     expect(target.selectedId.value).toBe('lab');
-    store.set('remoteTarget:lastHost:remote:github.com/nbonamy/korus', 'gone');
+    store.set('remoteTarget:lastHost:remote:github.com/owner/repo', 'gone');
     await target.open(request);
     expect(target.selectedId.value).toBe('devbox');
   });
@@ -73,7 +73,7 @@ describe('remote target', () => {
     await target.confirm();
     expect(cloneRepository).not.toHaveBeenCalled();
     expect(openMain).toHaveBeenCalledExactlyOnceWith('/srv/korus', 'devbox', request, undefined);
-    expect(store.get('remoteTarget:lastHost:remote:github.com/nbonamy/korus')).toBe('devbox');
+    expect(store.get('remoteTarget:lastHost:remote:github.com/owner/repo')).toBe('devbox');
     expect(target.visible.value).toBe(false);
   });
 
@@ -97,9 +97,9 @@ describe('remote target', () => {
 
   it('clones the stored origin with its git user restored, since persistence strips it', async () => {
     const { target, cloneRepository } = setup({ devbox: [] });
-    await target.open({ ...request, originUrl: 'github.com:nbonamy/korus.git' });
+    await target.open({ ...request, originUrl: 'github.com:owner/repo.git' });
     await target.confirm();
-    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: 'git@github.com:nbonamy/korus.git', remoteConnectionId: 'devbox', reuseExisting: true });
+    expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: 'git@github.com:owner/repo.git', remoteConnectionId: 'devbox', reuseExisting: true });
   });
 
   it('stops with the clone error and does not continue when the clone cannot authenticate', async () => {

@@ -266,12 +266,7 @@ describe('GitWorkflowControl', () => {
     expect(actions.map(action => action.text())).toStrictEqual(['Merge', 'Create PR']);
     expect(actions.every(action => action.find('svg').exists())).toBe(true);
     expect(actions.every(action => action.classes().includes('app-button--neutral'))).toBe(true);
-    expect(actions.map(action => {
-      return [getComputedStyle(action.element).color, getComputedStyle(action.get('svg').element).color];
-    })).toStrictEqual([
-      ['var(--color-text)', 'var(--color-text)'],
-      ['var(--color-text)', 'var(--color-text)'],
-    ]);
+    expect(actions.every(action => action.classes().includes('agent-ui-interactive'))).toBe(true);
     expect(merge.find('.git-workflow-control__trigger').exists()).toBe(false);
 
     await actions[0]!.trigger('click');

@@ -160,6 +160,18 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         private set
     private fun observePush() = push.observe { command("pushRegistration", "registration" to it) }
     private var stopPush = observePush()
+    /** What this phone calls itself on the laptops it pairs with: the name set in Android, until the person picks another. */
+    internal var deviceName by mutableStateOf(preferences.getString("device.name", null)
+        ?: android.provider.Settings.Global.getString(application.contentResolver, android.provider.Settings.Global.DEVICE_NAME)?.trim().orEmpty())
+        private set
+    private val pairingDeviceName get() = deviceName.trim().ifEmpty { android.os.Build.MODEL }
+    private fun shareDeviceName() { command("deviceName", "name" to deviceName) }
+    internal fun renameDevice(value: String) {
+        val name = cleanDeviceName(value) ?: return
+        if (name == deviceName) return
+        deviceName = name; preferences.edit().putString("device.name", name).apply()
+        shareDeviceName()
+    }
     private val stopNotificationOpen = attention.bindOpen { target ->
         if (screenUnlocked && engineReady && !fatalError && !engineRecovering) openNotification(target) else pendingNotification = target
     }
@@ -276,7 +288,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal fun submitPairing() {
         if (pairingBusy || appLock.isLocked || !needsPairing || !PairingCode.complete(pairingCode)) return
         pairingPending = true; pairingWasBusy = false; scanError = false
-        command("pair", "code" to pairingCode, "deviceName" to android.os.Build.MODEL)
+        command("pair", "code" to pairingCode, "deviceName" to pairingDeviceName)
     }
     internal fun acceptPairingScan(payload: String) {
         if (pairingBusy || appLock.isLocked || !needsPairing) return
@@ -622,6 +634,8 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                 engineReady = true; engine.call("companionEngine", "start")
                 commands.toList().also { commands.clear() }.forEach(::dispatch)
                 command("activity", "active" to (foreground && screenUnlocked))
+                // Every engine page starts knowing nothing: tell it the name this phone goes by.
+                shareDeviceName()
                 if (screenUnlocked) pendingNotification?.let { pendingNotification = null; openNotification(it) }
                 return
             }

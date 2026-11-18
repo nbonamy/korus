@@ -46,13 +46,15 @@
       <div
         v-else-if="item.type === 'submenu'"
         class="app-menu__submenu"
+        @mouseenter="hoveredSubmenuId = item.id" @mouseleave="hoveredSubmenuId = null"
+        @focusin="focusedSubmenuId = item.id" @focusout="leaveSubmenu($event)"
       >
         <button
-          class="app-menu__item app-menu__item--submenu"
+          data-focus="fill" class="app-menu__item app-menu__item--submenu agent-ui-interactive"
           type="button"
           role="menuitem"
           aria-haspopup="menu"
-          :aria-expanded="!item.disabled && item.items.length > 0"
+          :aria-expanded="!item.disabled && item.items.length > 0 && (hoveredSubmenuId === item.id || focusedSubmenuId === item.id)"
           :disabled="item.disabled || item.items.length === 0"
         >
           <CheckIcon
@@ -102,8 +104,8 @@
         v-else-if="item.type === 'action' && item.secondaryAction"
         class="app-menu__row"
       >
-        <button
-          class="app-menu__item"
+        <button :data-variant="(item.danger) ? 'destructive' : undefined"
+          data-focus="fill" class="app-menu__item agent-ui-interactive"
           :class="{ 'app-menu__item--danger': item.danger }"
           type="button"
           role="menuitem"
@@ -129,7 +131,7 @@
           aria-hidden="true"
         />
         <button
-          class="app-menu__secondary"
+          class="app-menu__secondary agent-ui-interactive"
           type="button"
           role="menuitem"
           :aria-label="item.secondaryAction.label"
@@ -144,9 +146,9 @@
         </button>
       </div>
 
-      <button
+      <button :data-variant="(item.type === 'action' && item.danger) ? 'destructive' : undefined"
         v-else
-        class="app-menu__item"
+        data-focus="fill" class="app-menu__item agent-ui-interactive"
         :class="{
           'app-menu__item--danger': item.type === 'action' && item.danger,
           'app-menu__item--selected': isSelected(item),
@@ -213,6 +215,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import { CheckIcon, ChevronRightIcon } from '../icons/app-icons';
 import type { AppMenuCheckboxItem, AppMenuItem, AppMenuRadioItem } from './app-menu';
 
@@ -228,6 +231,12 @@ defineProps<{
 const emit = defineEmits<{
   select: [itemId: string];
 }>();
+
+const hoveredSubmenuId = ref<string | null>(null);
+const focusedSubmenuId = ref<string | null>(null);
+function leaveSubmenu(event: FocusEvent): void {
+  if (!(event.relatedTarget instanceof Node) || !(event.currentTarget as HTMLElement).contains(event.relatedTarget)) focusedSubmenuId.value = null;
+}
 
 function selectItem(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }>): void {
   if (!item.disabled) {
@@ -290,11 +299,9 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   padding: var(--space-2) var(--space-4);
   border: 0;
   border-radius: var(--radius-xl);
-  color: var(--color-text);
-  background: transparent;
+  --agent-ui-state-rest-foreground: var(--color-text);
   font-size: var(--font-size-13-5);
   text-align: left;
-  cursor: pointer;
 }
 
 .app-menu__row {
@@ -325,19 +332,7 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   padding: 0;
   border: 0;
   border-radius: var(--radius-lg);
-  color: var(--color-text);
-  background: transparent;
-  cursor: pointer;
-}
-
-.app-menu__secondary:hover:not(:disabled),
-.app-menu__secondary:focus-visible {
-  background: var(--color-surface-low);
-}
-
-.app-menu__secondary:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
+  --agent-ui-state-rest-foreground: var(--color-text);
 }
 
 .app-menu__info {
@@ -358,19 +353,8 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   letter-spacing: 0.02em;
 }
 
-.app-menu__item:hover:not(:disabled),
-.app-menu__item:focus-visible {
-  background: var(--color-surface-low);
-}
-
-.app-menu__item:disabled {
-  color: var(--color-text-muted);
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
 .app-menu__item--danger:not(:disabled) {
-  color: var(--color-error);
+  --agent-ui-state-rest-foreground: var(--color-error);
 }
 
 .app-menu__item:has(.el-switch) {
