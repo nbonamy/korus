@@ -18,8 +18,8 @@ describe('ProviderInstallActions', () => {
     { provider: 'cursor' as const },
     { provider: 'antigravity' as const, command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash', url: 'https://antigravity.google/docs/getting-started?tab=cli' },
     { provider: 'codex' as const, capabilities: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } } },
-  ])('uses external installation policy for $provider despite a legacy automated caller', async ({ provider: backend, capabilities, command = 'curl https://cursor.com/install -fsS | bash', url = 'https://cursor.com/docs/cli/installation' }: { provider: 'cursor' | 'codex' | 'antigravity'; capabilities?: ProviderSetupCapabilities; command?: string; url?: string }) => {
-    const wrapper = mount(ProviderInstallActions, { props: { provider: backend, capabilities, automated: true } });
+  ])('uses external installation instructions for $provider when the app cannot install it', async ({ provider: backend, capabilities, command = 'curl https://cursor.com/install -fsS | bash', url = 'https://cursor.com/docs/cli/installation' }: { provider: 'cursor' | 'codex' | 'antigravity'; capabilities?: ProviderSetupCapabilities; command?: string; url?: string }) => {
+    const wrapper = mount(ProviderInstallActions, { props: { provider: backend, capabilities, automated: Boolean(capabilities) } });
     expect(wrapper.text()).toContain(command);
     expect(wrapper.get('a').attributes('href')).toBe(url);
     await wrapper.get('button[aria-label="Check again"]').trigger('click');

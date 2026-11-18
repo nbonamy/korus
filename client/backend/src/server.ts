@@ -87,7 +87,7 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
 import { RemoteTeamService, type RemoteSnapshotCache, type RemoteTeamPointer } from './connections/remote-team-service';
 import { SshConnectionService } from './connections/ssh-connections';
-import { installedByRemoteDaemon, installOverSsh } from './connections/remote-engines';
+import { installOverSsh } from './connections/remote-engines';
 import type { AutomationRunner } from './automations/runner';
 import type { WorkIntegrationManager } from './work-integrations/manager';
 import { logMain, warnMain } from './log';
@@ -2002,16 +2002,7 @@ export class AppBackendServer {
           this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? { ...candidate, detail } : candidate);
           await this.persistAndEmitSnapshot();
         };
-        let checked = await this.sshConnections.checkConnection(connection, backends, progress);
-        for (const provider of backends.filter(installedByRemoteDaemon)) {
-          if (checked.status !== 'ready') break;
-          await progress(`Installing ${providerDisplayName(provider)}…`);
-          try {
-            const installed = await this.remoteClients.request<ProviderSetupStatus>(checked, backendMethods.providerInstall, { provider, _clientId: 'remote-controller' });
-            if (!installed.installed) throw new Error(`${providerDisplayName(provider)} installation could not be verified.`);
-          }
-          catch (error) { checked = { ...checked, status: 'error', detail: error instanceof Error ? error.message : String(error) }; }
-        }
+        const checked = await this.sshConnections.checkConnection(connection, backends, progress);
         this.snapshot.remoteConnections.connections = this.snapshot.remoteConnections.connections.map(candidate => candidate.id === connectionId ? checked : candidate);
         await this.activateRemoteConnection(checked);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
@@ -3611,11 +3602,13 @@ export class AppBackendServer {
         if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           if (!isHarnessProvider(input.provider)) throw new Error('Unknown provider.');
-          if (message.method === backendMethods.providerInstall && !installedByRemoteDaemon(input.provider)) {
+          if (message.method === backendMethods.providerInstall) {
             const connection = this.snapshot.remoteConnections.connections.find(candidate => candidate.id === connectionId);
             if (!connection || connection.status !== 'ready') throw new Error('Connect the SSH host before installing an engine.');
             await installOverSsh(this.sshConnections, connection.host, input.provider);
-            return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, backendMethods.providerRefresh, { provider: input.provider }));
+            const setup = await this.remoteTeams.request<ProviderSetupStatus>(connectionId, backendMethods.providerRefresh, { provider: input.provider });
+            if (!setup?.installed || setup.provider !== input.provider) throw new Error(`${providerDisplayName(input.provider)} installation could not be verified on the remote host.`);
+            return createAppRpcResult(message.id, setup);
           }
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { provider: input.provider }));
         }

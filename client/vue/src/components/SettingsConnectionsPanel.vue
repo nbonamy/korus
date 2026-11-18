@@ -31,6 +31,9 @@
         <button
           type="button"
           class="settings-connections-panel__identity agent-ui-interactive"
+          data-appearance="text"
+          data-focus="fill"
+          data-selection="none"
           :aria-expanded="isExpanded(connection)"
           :aria-controls="`connection-details-${connection.id}`"
           :disabled="connectionBusy(connection)"
@@ -681,6 +684,10 @@ function statusLabel(status: RemoteConnection['status']): string {
   border: 0;
   font: inherit;
   text-align: left;
+}
+
+.settings-connections-panel__identity:focus-visible strong {
+  text-decoration: underline;
 }
 
 .settings-connections-panel__attention {

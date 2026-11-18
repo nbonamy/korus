@@ -8,11 +8,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { HarnessProvider, AddSshConnectionInput, ClaudeAuthentication, RemoteConnection, SshHostCandidate } from '@workspace/core/contracts';
 import { createEntityId } from '@workspace/core/ids';
+import { providerDisplayName } from '@workspace/core/provider-driver';
 import { backendProviderTokensFilePath } from '../state';
 import { remoteCodexVersionCommand } from './remote-codex-command';
 import { remoteClaudeAuthenticationCommand, remoteClaudeInstallCommand, remoteClaudeVersionCommand } from './remote-claude-install';
 import { exclusiveHomeEnvironment } from '../home-lock';
 import { remoteEngineLinkCommand } from './remote-engine-links';
+import { remoteShellEngineInstallCommand, type RemoteShellEngine } from './remote-engines';
 import { remoteEnvironmentCommand, remoteNodeInstallCommand } from './remote-node';
 
 type ExecResult = {
@@ -86,6 +88,11 @@ export class SshConnectionService {
         await progress('Installing Claude Code…');
         claudeVersion = await this.ensureRemoteClaudeInstalled(next.host);
       }
+      for (const provider of new Set(providers)) {
+        if (provider === 'codex' || provider === 'claude') continue;
+        await progress(`Installing ${providerDisplayName(provider)}…`);
+        await this.ensureRemoteShellEngineInstalled(next.host, provider);
+      }
       await progress('Verifying the remote environment…');
       await this.linkRemoteEngines(next.host);
       const runtimeVersions = [`${product.daemonName} ${daemonVersion}`, ...(codexVersion ? [`Codex ${codexVersion}`] : []), ...(claudeVersion ? [`Claude ${claudeVersion}`] : [])];
@@ -155,6 +162,13 @@ export class SshConnectionService {
     const version = /^codex-cli\s+(\S+)/mu.exec(result.stdout)?.[1];
     if (!version) throw new Error('Remote Codex installation could not be verified.');
     return version;
+  }
+
+  async ensureRemoteShellEngineInstalled(host: string, provider: RemoteShellEngine): Promise<void> {
+    await this.run('ssh', [
+      '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
+      remoteEnvironmentCommand(remoteShellEngineInstallCommand(provider)),
+    ], { timeoutMs: 360_000 });
   }
 
   async getRemoteClaudeAuthentication(host: string): Promise<ClaudeAuthentication> {

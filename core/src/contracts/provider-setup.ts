@@ -92,9 +92,14 @@ const providerSetupDefaults: Record<HarnessProvider, ProviderSetupCapabilities> 
   cursor: { homeSelection: false, skillSharing: false, installation: { managed: false, instructionsUrl: 'https://cursor.com/docs/cli/installation', command: 'curl https://cursor.com/install -fsS | bash' } },
 };
 
+// These installers run on the controller. Keep support out of the daemon's metadata so
+// older controllers continue to show the manual action instead of calling an installer they lack.
+const controllerShellInstallers = new Set<HarnessProvider>(['cursor', 'antigravity']);
+
 export function resolveProviderSetupCapabilities(provider: HarnessProvider, observed?: ProviderSetupCapabilities, automated = false): ProviderSetupCapabilities {
   const policy = observed ?? providerSetupDefaults[provider];
-  return { ...policy, installation: { ...policy.installation, managed: policy.installation.managed || (automated && policy.installation.allowControllerInstall === true) } };
+  const allowControllerInstall = policy.installation.allowControllerInstall ?? controllerShellInstallers.has(provider);
+  return { ...policy, installation: { ...policy.installation, managed: policy.installation.managed || (automated && allowControllerInstall) } };
 }
 
 export type ProviderSetupStatus = ProviderHomeSettings & {

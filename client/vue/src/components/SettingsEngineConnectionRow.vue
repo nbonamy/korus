@@ -3,8 +3,9 @@
     <FormRow :title="title ?? $t('engineConnection.title')" :error="error">
       <template #control>
         <template v-if="overflow">
-          <ProviderInstallActions v-if="installed === false && provider && !setupCapabilities?.installation.managed" :provider="provider" :capabilities="setupCapabilities" :busy="busy" :disabled="saving || updateBusy" @refresh="emit('refresh')" />
-          <el-button class="agent-ui-interactive" v-else-if="installed === false" size="small" :disabled="busy || saving || updateBusy" @click="emit('install')">{{ $t('auth.installProvider') }}</el-button>
+          <template v-if="installed === false">
+            <el-button v-if="canInstall" class="agent-ui-interactive" size="small" :disabled="busy || saving || updateBusy" @click="install">{{ $t('auth.installProvider') }}</el-button>
+          </template>
           <el-button class="agent-ui-interactive" v-else-if="!connected && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('connect')">{{ $t('engineConnection.connect') }}</el-button>
           <el-button class="agent-ui-interactive" v-else-if="updateAvailable && !pending" size="small" :disabled="busy || saving || updateBusy" @click="emit('upgrade')">{{ $t('engineConnection.update') }}</el-button>
           <AppMenuButton :ariaLabel="t('engineConnection.actions', { name: title })" :items="overflowItems" @select="selectOverflowItem">
@@ -25,7 +26,7 @@
         <span v-if="overflow && version" class="settings-engine-connection__version" :title="version">{{ version }}</span>
         <span v-if="accountLabel" :title="accountLabel">{{ accountLabel }}</span>
         <span v-if="busy && !pending && !overflow" role="status">{{ $t('auth.checking') }}</span>
-        <span v-else-if="!pending && !accountLabel">{{ statusLabel }}</span>
+        <span v-else-if="!pending && !accountLabel && !error">{{ statusLabel }}</span>
       </template>
     </FormRow>
     <slot />
@@ -61,6 +62,7 @@
 import { computed, ref } from 'vue';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import { resolveProviderSetupCapabilities, type ProviderAuthentication, type ProviderSetupCapabilities } from '@workspace/core/contracts/provider-setup';
+import { appPlatformActions } from '../platform-api';
 import { appMessageBox } from '../shared/dialog/message-box';
 import { useI18n } from 'vue-i18n';
 import FormRow from '../shared/form/FormRow.vue';
@@ -72,8 +74,19 @@ import type { AppMenuItem } from '../shared/menu/app-menu';
 import { DotsVerticalIcon, RefreshIcon, QuitIcon } from '../shared/icons/app-icons';
 const props = withDefaults(defineProps<{ provider?: HarnessProvider; installed?: boolean; compact?: boolean; installable?: boolean; capabilities?: ProviderSetupCapabilities; overflow?: boolean; version?: string; updateAvailable?: boolean; updateBusy?: boolean; menuItems?: AppMenuItem[]; title?: string; connected?: boolean; enabled?: boolean; busy?: boolean; pending?: boolean; error?: string | null; authentication?: ProviderAuthentication; setEnabled?: (enabled: boolean) => unknown }>(), { enabled: true, installed: true });
 const setupCapabilities = computed(() => props.provider ? resolveProviderSetupCapabilities(props.provider, props.capabilities, props.installable) : undefined);
+const installation = computed(() => setupCapabilities.value?.installation);
+const canInstall = computed(() => {
+  const setup = installation.value;
+  return !setup || Boolean(setup.managed || setup.instructionsUrl || setup.command);
+});
 const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; refresh: []; install: []; upgrade: []; 'menu-select': [id: string] }>();
 const { t } = useI18n();
+function install(): void {
+  const setup = installation.value;
+  if (!setup || setup.managed) emit('install');
+  else if (setup.instructionsUrl) void appPlatformActions.openExternal?.(setup.instructionsUrl);
+  else if (setup.command) void appMessageBox.alert(setup.command, t('auth.installProvider'), { confirmButtonText: t('common.ok') }).catch(() => {});
+}
 const enabledLabel = computed(() => t('engineConnection.enabled', { name: props.title ?? t('engineConnection.title') }));
 const saving = ref(false);
 const overflowItems = computed<AppMenuItem[]>(() => {

@@ -108,13 +108,6 @@ export const conversationMessages = {
     "retry": "Retry account check"
   },
   "remoteClaudeAuth": {
-    "connected": "Claude connected",
-    "signInRequired": "Claude needs sign-in on this host.",
-    "unavailable": "Could not check Claude on this host.",
-    "connect": "Connect Claude",
-    "checking": "Checking Claude account…",
-    "dialogTitle": "Sign in to Claude",
-    "runOnHost": "On {host}, run one of these commands:",
     "subscriptionLabel": "Claude subscription",
     "consoleLabel": "Anthropic Console (API billing)",
     "copySubscription": "Copy Claude subscription command",
@@ -125,6 +118,20 @@ export const conversationMessages = {
     "close": "Close",
     "refresh": "Refresh status",
     "retry": "Retry account check"
+  },
+  "remoteTerminalAuth": {
+    "title": "Sign in to {provider}",
+    "runOnHost": "Run the sign-in command in a terminal on {host}.",
+    "command": "Sign-in command",
+    "copy": "Copy sign-in command",
+    "copied": "Sign-in command copied",
+    "cursorHint": "Open the URL printed in your terminal to finish signing in.",
+    "antigravityHint": "Open the URL printed in your terminal, then paste the authorization code back into the terminal.",
+    "homeUnavailable": "Could not read Antigravity’s sign-in directory. Close this dialog, then choose Refresh status from the engine menu.",
+    "check": "Check sign-in",
+    "unverified": "Could not verify sign-in",
+    "pending": "Sign-in hasn’t been detected yet.",
+    "unavailable": "Could not verify sign-in on {host}. Try again after completing sign-in."
   },
   "app": {
     "applyingResourceChanges": "Applying resource changes…",

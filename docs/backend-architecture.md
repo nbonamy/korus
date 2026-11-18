@@ -29,9 +29,9 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   executable detection, home preparation and resource sharing;
   `ProviderSetup` owns locking, serialization, persistence and driver replacement.
   Setup capabilities describe mutable home/skill choices and installation policy.
-  A controller-provided installer needs an explicit grant; local installation
-  support alone does not grant remote installation. Shared controls consume this
-  policy, with registered compatibility defaults for older daemons.
+  A controller-provided installer needs a grant from setup capabilities or the
+  controller's built-in registration when an older daemon omits that field.
+  Local installation support alone does not grant remote installation.
   Authentication enters through the optional `AgentProviderDriver.authenticate`
   capability; the server caches the app-owned result and never interprets
   credentials or probes provider CLIs itself. `AgentProviderDriver.coordinationPolicy`
@@ -742,9 +742,11 @@ does not install software or close a running client.
 Setup mirrors a local `provider-tokens.json` when present; absence of a local file
 preserves the remote host's credentials. It never copies app state or conversation
 data. Only selected providers are installed; existing engine installations are
-preserved. Engine installation runs on the owning host: Codex uses the user's
-`~/.local` npm prefix and Claude uses its native installer. Detection, account
-sign-in and provider upgrades belong to that host, independently of Korus updates.
+preserved. Engine installation runs over SSH on the owning host. Codex uses the
+user's `~/.local` npm prefix. Claude, Cursor and Antigravity use their vendor
+installers. The controller verifies the CLI and asks the remote daemon to refresh
+discovery after an explicit engine install. Detection, account sign-in and
+provider upgrades belong to that host, independently of Korus updates.
 User-local Codex upgrades verify package ownership and retain the `~/.local` npm
 prefix even when the Node runtime has a different default global directory.
 Version discovery accepts the previous daemon CLI name for hosts not yet upgraded.
