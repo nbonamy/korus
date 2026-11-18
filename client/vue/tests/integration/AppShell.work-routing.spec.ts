@@ -192,6 +192,27 @@ describe('AppShell work routing', () => {
     wrapper.unmount();
   });
 
+  it.each([['from-branch', 'branches'], ['from-work-item', 'pullRequests']] as const)('opens %s from the checkout on the selected host', async (action, initialTab) => {
+    const snapshot = createInitialSnapshot();
+    snapshot.remoteConnections.connections = [{ id: 'devbox', kind: 'ssh', name: 'Devbox', host: 'devbox', status: 'ready', createdAt: '', updatedAt: '' }];
+    const listSourceBranches = vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]);
+    const wrapper = mountShell({ snapshot, listSourceBranches,
+      listSourceRepositories: async () => [{ name: 'repo', path: '/remote/repo', remoteIdentity: 'github.com/org/repo', worktrees: [] }],
+    });
+    try {
+      wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('open-on-remote', {
+        action, repositoryName: 'repo', repositoryKey: 'remote:github.com/org/repo', originUrl: 'https://github.com/org/repo.git',
+      });
+      await flushPromises();
+      const target = wrapper.getComponent({ name: 'RemoteTargetDialog' });
+      await target.findAll('button').find(button => button.text() === 'Next')!.trigger('click');
+      await flushPromises();
+      const source = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
+      expect(source.props()).toMatchObject({ visible: true, initialTab, hostId: 'devbox' });
+      expect(listSourceBranches).toHaveBeenCalledExactlyOnceWith('/remote/repo', 'devbox');
+    } finally { wrapper.unmount(); }
+  });
+
   it.each([
     { provider: 'gitlab' as const, remoteConnectionId: undefined },
     { provider: 'github' as const, remoteConnectionId: undefined },

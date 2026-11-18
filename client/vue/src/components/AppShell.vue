@@ -1790,12 +1790,17 @@ const remoteTarget = useRemoteTarget({
       ElMessage.error(localizedErrorMessage(error, t));
     }
   },
-  openWorktree: (path, remoteConnectionId, request) => openRepositorySessionWorktree({
-    repositoryName: request.repositoryName,
-    repositoryRoot: path,
-    remoteConnectionId,
-    ...(activeTeam.value ? { teamId: activeTeam.value.id } : {}),
-  }),
+  openNext: (path, remoteConnectionId, request) => {
+    const source = {
+      repositoryName: request.repositoryName,
+      repositoryRoot: path,
+      remoteConnectionId,
+      originUrl: request.originUrl,
+      teamId: activeTeam.value?.id,
+    };
+    if (request.action === 'new-worktree') return openRepositorySessionWorktree(source);
+    return openRepositorySessionSource({ ...source, initialTab: request.action === 'from-branch' ? 'branches' : 'pullRequests' });
+  },
 });
 function openOnRemote(request: RemoteTargetRequest): void {
   void remoteTarget.open(request);

@@ -12,15 +12,15 @@ function setup(repositories: Record<string, SourceRepository[] | Error>, overrid
   const store = new Map<string, string>();
   const list = vi.fn(async (id: string) => { const value = repositories[id]; if (value instanceof Error) throw value; return value ?? []; });
   const openMain = vi.fn().mockResolvedValue(undefined);
-  const openWorktree = vi.fn().mockResolvedValue(undefined);
+  const openNext = vi.fn().mockResolvedValue(undefined);
   const cloneRepository = vi.fn(overrides.clone ?? (async () => checkout('/home/me/src/korus')));
   const target = useRemoteTarget({
     connections: () => [connection('devbox', 'ready', '/home/me/src'), connection('offline', 'error'), connection('lab')],
     listSourceRepositories: list,
-    cloneRepository, openMain, openWorktree,
+    cloneRepository, openMain, openNext,
     storage: { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => { store.set(key, value); } },
   });
-  return { target, store, openMain, openWorktree, cloneRepository, list };
+  return { target, store, openMain, openNext, cloneRepository, list };
 }
 
 describe('remote target', () => {
@@ -50,7 +50,7 @@ describe('remote target', () => {
 
   it('cannot clone a repository without an origin and never queries the machines', async () => {
     const list = vi.fn();
-    const target = useRemoteTarget({ connections: () => [connection('devbox')], listSourceRepositories: list, cloneRepository: vi.fn(), openMain: vi.fn(), openWorktree: vi.fn() });
+    const target = useRemoteTarget({ connections: () => [connection('devbox')], listSourceRepositories: list, cloneRepository: vi.fn(), openMain: vi.fn(), openNext: vi.fn() });
     await target.open({ ...request, originUrl: undefined });
     expect(target.checkouts.value.devbox).toStrictEqual({ state: 'noOrigin' });
     expect(target.canConfirm.value).toBe(false);
@@ -88,11 +88,11 @@ describe('remote target', () => {
   });
 
   it('clones from the origin first, then continues in the new checkout', async () => {
-    const { target, openWorktree, cloneRepository } = setup({ devbox: [] });
+    const { target, openNext, cloneRepository } = setup({ devbox: [] });
     await target.open({ ...request, action: 'new-worktree' });
     await target.confirm();
     expect(cloneRepository).toHaveBeenCalledExactlyOnceWith({ url: request.originUrl, remoteConnectionId: 'devbox', reuseExisting: true });
-    expect(openWorktree).toHaveBeenCalledExactlyOnceWith('/home/me/src/korus', 'devbox', { ...request, action: 'new-worktree' });
+    expect(openNext).toHaveBeenCalledExactlyOnceWith('/home/me/src/korus', 'devbox', { ...request, action: 'new-worktree' });
   });
 
   it('clones the stored origin with its git user restored, since persistence strips it', async () => {

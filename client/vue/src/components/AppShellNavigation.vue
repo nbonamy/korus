@@ -131,6 +131,7 @@ import { computed, ref, toRefs } from 'vue';
 import AgentSidebar from './AgentSidebar.vue';
 import TeamRail from './TeamRail.vue';
 import type { SettingsTab } from './settings-tabs';
+import type { RemoteTargetRequest } from './use-remote-target';
 
 type RepositorySessionPayload = {
   agentId: string;
@@ -139,8 +140,6 @@ type RepositorySessionPayload = {
   remoteConnectionId?: string;
   originUrl?: string;
 };
-
-type OpenOnRemotePayload = { action: 'main' | 'new-worktree'; repositoryName: string; repositoryKey: string; originUrl?: string };
 
 const props = defineProps<{
   activeMissionId?: string | null;
@@ -185,7 +184,7 @@ const emit = defineEmits<{
   'create-agent-worktree-in-repository': [payload: RepositorySessionPayload];
   'create-feature-agent': [repositories: import('./agent-sidebar-contracts').SidebarRepositoryTarget[], branch?: string];
   'create-feature-worktree': [repositories: import('./agent-sidebar-contracts').SidebarRepositoryTarget[]];
-  'open-on-remote': [payload: OpenOnRemotePayload];
+  'open-on-remote': [payload: RemoteTargetRequest];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
