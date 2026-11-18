@@ -49,7 +49,10 @@
       <FormRow :title="$t('surface.settingsAppearancePanel.skin')">
         <template #description>
           <I18nT keypath="surface.settingsAppearancePanel.skinDescription" tag="span">
-            <template #site><a class="settings-appearance-panel__skin-link" :href="skinGalleryUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(skinGalleryUrl)">{{ skinGalleryLabel }}</a></template>
+            <template #site><a class="settings-appearance-panel__skin-link" :href="skinGalleryUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(skinGalleryUrl)">{{ $t('surface.settingsAppearancePanel.skinGalleryName') }}</a></template>
+            <template #create>
+              <button class="settings-appearance-panel__skin-create agent-ui-interactive" data-appearance="text" type="button" @click="emit('create-skin')">{{ $t('surface.settingsAppearancePanel.makeYourOwnSkin') }}</button>
+            </template>
           </I18nT>
         </template>
         <template #control>
@@ -164,6 +167,7 @@ const props = defineProps<{
   settings: AppThemeSettings;
   updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
 }>();
+const emit = defineEmits<{ 'create-skin': [] }>();
 
 const skins = ref<CatalogSkin[]>([]);
 const localSkins = ref<LocalSkin[]>([]);
@@ -360,6 +364,14 @@ function updateNumericTheme(key: 'chatFontSize' | 'codeFontSize' | 'uiFontSize',
 
 .settings-appearance-panel__skin-link {
   color: var(--color-secondary);
+}
+
+.settings-appearance-panel__skin-create {
+  --agent-ui-state-rest-foreground: var(--color-secondary);
+  padding: 0;
+  border: 0;
+  font: inherit;
+  text-decoration: underline;
 }
 
 .settings-appearance-panel__theme-actions {

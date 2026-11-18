@@ -504,6 +504,29 @@ describe('AppShell work routing', () => {
     expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'team-app', selection: { ...{ provider: 'codex' } } });
   });
 
+  it('opens an unsent skin prompt in a new Quick Chat in the current workspace', async () => {
+    const snapshot = createInitialSnapshot();
+    const chat = { ...snapshot.agents[0]!, id: 'skin-chat', sessionKind: 'quickChat' as const };
+    const createQuickChat = vi.fn().mockResolvedValue(chat);
+    const wrapper = mountShell({ snapshot, createQuickChat });
+
+    await wrapper.get('.settings-menu__actions [role="menuitem"]').trigger('click');
+    await wrapper.findAll('.el-menu-item').find(item => item.text() === 'Appearance')!.trigger('click');
+    await wrapper.findAll('button').find(button => button.text() === `ask ${product.name} to create your own`)!.trigger('click');
+    await flushPromises();
+
+    expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: snapshot.activeTeamId, selection: { provider: 'codex' } });
+    const [{ agentId, state }] = wrapper.emitted<[{
+      agentId: string; state: { text: string; selectionStart: number; selectionEnd: number };
+    }]>('update:composerState')![0]!;
+    expect(agentId).toBe(chat.id);
+    expect(state.text).toContain('korus-skin');
+    expect(state.selectionStart).toBe(state.text.length);
+    expect(state.selectionEnd).toBe(state.text.length);
+    expect(wrapper.find('.settings-view').exists()).toBe(false);
+    expect(wrapper.emitted('sendPrompt')).toBeUndefined();
+  });
+
   it('creates a new Git project and opens an agent in it', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.sourceFolder = { path: '/src', initialized: true, recentRepoNames: [] };

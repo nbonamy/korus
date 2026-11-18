@@ -906,7 +906,10 @@ export const conversationMessages = {
   },
   "settingsAppearancePanel": {
     "skin": "Skin",
-    "skinDescription": "Skins hosted on {site}. Ask your agent to create your own.",
+    "skinDescription": "Pick a skin from {site} or {create}",
+    "skinGalleryName": "t3skins",
+    "makeYourOwnSkin": `ask ${product.name} to create your own`,
+    "createSkinPrompt": "Use the korus-skin skill to create and apply a custom Korus skin based on my idea below.\n\nMy idea: ",
     "customSkin": "Custom skin",
     "removeSkinTitle": "Remove {name}",
     "removeSkin": "Remove",

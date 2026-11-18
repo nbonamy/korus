@@ -233,6 +233,7 @@
         :set-daemon-enabled="setDaemonEnabled"
         :restart-app="restartApp"
         @select-tab="settingsActiveTab = $event"
+        @create-skin="createQuickChat(t('surface.settingsAppearancePanel.createSkinPrompt'))"
       />
       <AutomationsView
         v-else-if="automationsVisible"
@@ -2864,12 +2865,19 @@ function repositorySessionContext(source?: Pick<RepositorySessionSource, 'agentI
   return resolveRepositorySessionContext(props.snapshot, source, activeTeam.value?.id);
 }
 
-async function createQuickChat(): Promise<void> {
+async function createQuickChat(draft?: string): Promise<void> {
   const { teamId } = repositorySessionContext(null);
   try {
     const backend = preferredProviderChoices(props.snapshot)[0];
     if (!backend) { openSettings(); return; }
     const created = await props.createQuickChat({ selection: { provider: backend }, ...(teamId ? { teamId } : {}) });
+    if (created && draft) {
+      emit('update:composerState', {
+        agentId: created.id,
+        state: { text: draft, selectionStart: draft.length, selectionEnd: draft.length },
+      });
+      pendingComposerFocusAgentId.value = created.id;
+    }
     if (created !== null) activeHost.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));

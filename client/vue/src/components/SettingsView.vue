@@ -120,6 +120,7 @@
           v-else-if="activeTab === 'appearance'"
           :settings="settings"
           :update-settings="updateSettings"
+          @create-skin="emit('create-skin')"
         />
         <SettingsAppshotsPanel
           v-else-if="activeTab === 'appshots' && appHostCapabilities.appshots"
@@ -309,6 +310,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   selectTab: [tab: SettingsTab];
+  'create-skin': [];
 }>();
 
 const tokenUnavailableProviders = computed(() => (props.providerConnections ?? [])
