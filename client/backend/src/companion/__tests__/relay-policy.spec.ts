@@ -5,6 +5,33 @@ const host = '12D3KooW'.padEnd(52, 'h'); const phone = '12D3KooW'.padEnd(52, 'p'
 const other = '12D3KooW'.padEnd(52, 'o');
 const invite = (expiresAt = 1001, code = 'K7QDM2XP') => ({ code, expiresAt });
 describe('trusted companion rendezvous', () => {
+  it('keeps routing paired phones and accepts an invitation when the laptop clock runs a little ahead of the relay', () => {
+    const now = 1_000_000;
+    const policy = new CompanionRelayPolicy(undefined, () => now);
+    // The laptop stamps expiry by its own clock: two seconds ahead, it lands just past the relay's own lifetime.
+    const ahead = { code: 'K7QDM2XP', expiresAt: now + 300_000 + 2_000 };
+    policy.register(host, [phone], [ahead]);
+    expect(policy.route(phone, host)).toBe(true);
+    expect(policy.resolve(other, ahead.code)).toBe(host);
+  });
+  it('says why a phone circuit is refused: the laptop is offline, or the phone is not on its list', () => {
+    let now = 1;
+    const policy = new CompanionRelayPolicy(undefined, () => now);
+    expect(policy.denial(phone, host)).toBe('laptop-offline');
+    policy.register(host, []);
+    expect(policy.denial(phone, host)).toBe('not-paired');
+    policy.register(host, [phone]);
+    expect(policy.denial(phone, host)).toBeNull();
+    now += 120_001;
+    expect(policy.denial(phone, host)).toBe('laptop-offline');
+  });
+  it('never lets an invitation outlive the relay\'s own lifetime, however far ahead the laptop clock is', () => {
+    let now = 1_000_000;
+    const policy = new CompanionRelayPolicy(undefined, () => now);
+    policy.register(host, [], [{ code: 'K7QDM2XP', expiresAt: now + 3_600_000 }]);
+    now += 300_001;
+    expect(policy.resolve(other, 'K7QDM2XP')).toBeNull();
+  });
   it('limits a configured code to its admitted destination and expires each temporary circuit permission', () => {
     let now = 1;
     const pairing = { code: 'ABCDEFGH', hostId: host };
@@ -138,7 +165,7 @@ describe('trusted companion rendezvous', () => {
     policy.register(host, [phone], [], '192.0.2.3');
     expect(policy.paired(host, phone)).toBe(true);
   });
-  it('bounds host capacity and rejects unadmitted hosts, malformed codes and excessive TTLs', () => {
+  it('bounds host capacity and rejects unadmitted hosts and malformed codes or expiries', () => {
     let now = 1; const automatic = new CompanionRelayPolicy(undefined, () => now);
     for (let i = 0; i < 1000; i++) expect(automatic.reserve(`host${i}`)).toBe(true);
     expect(automatic.reserve('overflow')).toBe(false);
@@ -146,7 +173,9 @@ describe('trusted companion rendezvous', () => {
     const policy = new CompanionRelayPolicy(new Set([host]), () => 1);
     expect(policy.reserve(other)).toBe(false);
     expect(() => policy.register(other, [])).toThrow();
-    expect(() => policy.register(host, [], [invite(300002)])).toThrow();
+    // A long TTL is capped to the relay's own lifetime rather than refused (see the clock-skew cases above).
+    expect(() => policy.register(host, [], [invite(300002)])).not.toThrow();
+    expect(() => policy.register(host, [], [invite(Number.NaN)])).toThrow();
     expect(() => policy.register(host, [], [invite(1000, 'K7QD')])).toThrow();
     expect(() => policy.register(host, [], [invite(1000, 'K7QDM2X0')])).toThrow();
     expect(() => policy.register(host, [], Array.from({ length: 6 }, () => invite()))).toThrow();
