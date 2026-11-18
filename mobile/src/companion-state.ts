@@ -435,7 +435,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === connectionEpoch) {
         error.value = 'mobile.errors.openLaptop';
         errorDetail.value = failure instanceof Error ? `${failure.name}: ${failure.message}`.slice(0, 160) : '';
-        if (workspaceLoaded) { status.value = 'error'; retryConnection(); }
+        // A laptop this phone is still paired with stays paired: an unreachable host, a failed encryption or a
+        // locked device is a connection problem to retry, never a reason to ask for a new QR code.
+        const paired = workspaceLoaded || connector.laptops.some(laptop => laptop.id === id);
+        if (paired) { status.value = 'error'; retryConnection(); }
         else { reconnectWanted = false; status.value = 'unpaired'; }
       }
     }
