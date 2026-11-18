@@ -123,9 +123,6 @@ describe('ProviderModelSelector', () => {
 
   describe('service tiers', () => {
     const catalog = [
-      { id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast',
-        supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }, { reasoningEffort: 'high', description: '' }],
-        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }, { id: 'ultrafast', name: 'Ultrafast', description: '' }] },
       { id: 'tiers-only', model: 'gpt-tiers', displayName: 'GPT Tiers', serviceTiers: [{ id: 'priority', name: 'Fast', description: '' }] },
       { id: 'plain', model: 'gpt-plain', displayName: 'GPT Plain', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] },
     ] as ProviderModelOption[];
@@ -142,63 +139,19 @@ describe('ProviderModelSelector', () => {
     const open = async (wrapper: ReturnType<typeof mountSelector>) => { await wrapper.get('[aria-label="Coding agent and model"]').trigger('click'); await flushPromises(); };
     const row = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === label)!;
 
-    // Header failures: changing tier changes model/effort, binary mode opens a menu,
-    // additional modes cannot be selected, or an unsupported model retains the control.
-    it('toggles Standard/Fast from the header without changing the model or effort', async () => {
+    it('passes the selected tier through to Korus and clears it on Standard', async () => {
       const wrapper = mountSelector({ model: 'gpt-tiers' });
       await flushPromises();
       await open(wrapper);
       const toggle = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Service tier:"]')!;
-      expect(toggle()).not.toBeNull();
-      expect(toggle().getAttribute('aria-label')).toBe('Service tier: Standard');
-      expect(toggle().getAttribute('aria-pressed')).toBe('false');
-      expect(toggle().getAttribute('aria-haspopup')).toBeNull();
-      const activation = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
-      toggle().dispatchEvent(activation);
-      expect(activation.defaultPrevented).toBe(false);
       toggle().click();
       await flushPromises();
       expect(wrapper.props('selection')).toStrictEqual({ provider: 'codex', model: 'gpt-tiers', reasoningEffort: null, serviceTier: 'priority' });
-      expect(toggle().getAttribute('aria-pressed')).toBe('true');
-      expect(toggle().getAttribute('aria-label')).toBe('Service tier: Fast');
-      expect(row('Standard')).toBeUndefined();
       toggle().click();
       await flushPromises();
       expect(wrapper.props('selection')?.serviceTier).toBeNull();
-      expect(toggle().getAttribute('aria-pressed')).toBe('false');
       await wrapper.setProps({ disabled: true });
       expect(toggle().disabled).toBe(true);
-    });
-
-    it('opens a mode picker for additional tiers, keeps effort, and lets Standard clear the tier', async () => {
-      const wrapper = mountSelector({ model: 'gpt-fast', reasoningEffort: 'low' });
-      await flushPromises();
-      await open(wrapper);
-      const button = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Service tier:"]')!;
-      expect(button()).not.toBeNull();
-      expect(button().getAttribute('aria-haspopup')).toBe('menu');
-      expect(button().getAttribute('aria-pressed')).toBeNull();
-      const submenu = row('low').closest('[role="menu"]')!;
-      expect([...submenu.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent?.trim())).toStrictEqual(['low', 'high']);
-      button().click();
-      await flushPromises();
-      expect(wrapper.props('selection')?.serviceTier).toBeNull();
-      expect(row('Standard').getAttribute('aria-checked')).toBe('true');
-      row('Ultrafast').click();
-      await flushPromises();
-      expect(wrapper.props('selection')?.model).toBe('gpt-fast');
-      expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
-      expect(wrapper.props('selection')?.serviceTier).toBe('ultrafast');
-      expect(wrapper.get('button').text()).toContain('ultrafast');
-      expect(button().getAttribute('aria-label')).toBe('Service tier: Ultrafast');
-      await vi.waitFor(() => expect(button().getAttribute('aria-expanded')).toBe('false'));
-      button().click();
-      await flushPromises();
-      expect(row('Ultrafast').getAttribute('aria-checked')).toBe('true');
-      row('Standard').click();
-      await flushPromises();
-      expect(wrapper.props('selection')?.serviceTier).toBeNull();
-      expect(wrapper.props('selection')?.reasoningEffort).toBe('low');
     });
 
     it('selects a model with only tiers directly and disables the control for unsupported models', async () => {

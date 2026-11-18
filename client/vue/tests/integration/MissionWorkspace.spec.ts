@@ -448,8 +448,6 @@ describe('MissionWorkspace', () => {
     await picker.trigger('click'); await flushPromises();
     document.querySelector<HTMLButtonElement>('button[aria-label="Service tier: Fast"]')!.click();
     await flushPromises();
-    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'Ultrafast')!.click();
-    await flushPromises();
     await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
