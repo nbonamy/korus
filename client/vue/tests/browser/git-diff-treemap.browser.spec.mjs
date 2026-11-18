@@ -132,7 +132,12 @@ test('diff treemap scales to hundreds of files and drills into the existing diff
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${origin}/diff-map`, { waitUntil: 'domcontentloaded' });
-    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 15_000 });
+    // Vite may re-optimize dependencies while the cold page loads, answering 504 "Outdated Optimize Dep" to
+    // its lazy imports so the app never mounts. Vite's own remedy is a reload, which then loads the new bundle.
+    await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 15_000 }).catch(async () => {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.locator('.git-review-panel__toolbar').waitFor({ timeout: 30_000 });
+    });
     const toggleMap = async () => {
       await page.locator('.git-review-panel__toolbar .el-segmented__item').filter({ hasText: /^Map$/ }).click();
     };
