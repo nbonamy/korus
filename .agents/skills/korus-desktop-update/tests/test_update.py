@@ -7,6 +7,7 @@ processes, timeouts, health requests and transaction journals are real.
 """
 import importlib.util
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -89,6 +90,28 @@ class Lifecycle:
     def close(self):
         self.refuse_stop = False
         self.stop(None)
+
+
+class PairingStateTest(unittest.TestCase):
+    def test_pairing_guard_checks_and_backs_up_the_current_companion_store(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / 'home'
+            home.mkdir()
+            file = home / 'companions.json'
+            saved = {'identity': 'fixture-identity', 'gateway': {'grants': [{'peerId': 'phone-b'}, {'peerId': 'phone-a'}]}}
+            file.write_text(json.dumps(saved))
+
+            lifecycle = update.MacLifecycle(root / 'main.log', home, {})
+            identity = hashlib.sha256(b'fixture-identity').hexdigest()
+            self.assertEqual(lifecycle.expected_pairing, (identity, ['phone-a', 'phone-b']))
+            backup = root / 'backup'
+            lifecycle.backup_state(home, backup)
+            self.assertEqual((backup / file.name).read_bytes(), file.read_bytes())
+
+            saved['gateway']['grants'].pop()
+            file.write_text(json.dumps(saved))
+            self.assertNotEqual(lifecycle.pairing(), lifecycle.expected_pairing)
 
 
 class DesktopUpdateTest(unittest.TestCase):

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promise
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { backendCodexHomeDir, backendHomeDir, backendLegacyStateFilePath, backendProviderTokensFilePath, backendSettingsFilePath, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from '../state';
+import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, backendSettingsFilePath, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from '../state';
 import { persistedStateFromSnapshot } from '../state-persistence';
 
 describe('backend state loading', () => {
@@ -36,7 +36,6 @@ describe('backend state loading', () => {
     vi.stubEnv('KORUS_HOME', mode === 'primary' ? '/unused-alias' : ` ${homeDir} `);
     expect(backendHomeDir()).toBe(homeDir);
     expect(backendCodexHomeDir()).toBe(path.join(homeDir, 'codex-home'));
-    expect(backendLegacyStateFilePath()).toBe(path.join(homeDir, 'state.json'));
     expect(backendSettingsFilePath()).toBe(path.join(homeDir, 'settings.json'));
     expect(backendProviderTokensFilePath()).toBe(path.join(homeDir, 'provider-tokens.json'));
   });

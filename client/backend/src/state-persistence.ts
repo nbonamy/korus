@@ -136,9 +136,7 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
 }
 
 /**
- * Undo and redo history belongs to the client and is never stored here. Files and snapshots from earlier versions
- * carried it, so it is dropped on load. The empty `undo` keeps the file readable by versions that require it.
- * TODO(remove-after: 2026-11-30): Stop stripping undo and redo from loaded files. https://github.com/Korus-Dev/korus/issues/74
+ * Undo and redo history belongs to the client. The empty `undo` keeps the snapshot compatible with readers that require it.
  */
 function persistedDesignWorkspace({ redo: _redo, ...workspace }: DesignWorkspace & { redo?: unknown }): DesignWorkspace {
   return { ...workspace, undo: [] };
@@ -415,7 +413,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const designWorkspaces = (Array.isArray(value.designWorkspaces) ? value.designWorkspaces : value.designWorkspace ? [value.designWorkspace] : [])
     .filter(isDesignWorkspace)
     .slice(0, 20)
-    .map(workspace => persistedDesignWorkspace({ ...structuredClone(workspace), conversationRef: withConversationId(workspace.conversationRef) as DesignWorkspace['conversationRef'] }));
+    .map(workspace => ({ ...structuredClone(workspace), conversationRef: withConversationId(workspace.conversationRef) as DesignWorkspace['conversationRef'] }));
   return {
     id: value.id,
     ...(readPersistedAgentHandoff(value.handoff) ? { handoff: readPersistedAgentHandoff(value.handoff) } : {}),

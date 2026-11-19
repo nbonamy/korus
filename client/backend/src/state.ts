@@ -16,11 +16,6 @@ export function backendHomeDir(): string {
   return configured || path.join(homedir(), product.homeDirectory);
 }
 
-/** The file the app used before roster.json and settings.json; migrated and retired on first start. */
-export function backendLegacyStateFilePath(): string {
-  return path.join(backendHomeDir(), 'state.json');
-}
-
 export function backendSettingsFilePath(): string {
   return path.join(backendHomeDir(), 'settings.json');
 }

@@ -54,20 +54,8 @@ export class RepositoryStore {
       try { document = schema.parse(parseStoreFile(this.file, await readFile(this.file, 'utf8')).data); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; document = { repositories: {} }; }
       const before = JSON.stringify(document);
-      // TODO(remove-after: 2026-11-30): Remove run-profiles.json import and retirement. https://github.com/Korus-Dev/korus/issues/74
-      const legacyFile = path.join(path.dirname(this.file), 'run-profiles.json');
-      let legacy: Record<string, RunProfile[]> | undefined;
-      if (legacyFile !== this.file) {
-        try { legacy = z.object({ repositories: z.record(z.string(), z.array(storedRunProfileSchema)) }).parse(parseStoreFile(legacyFile, await readFile(legacyFile, 'utf8')).data).repositories; }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      }
-      for (const [folder, commands] of Object.entries(legacy ?? {})) {
-        const key = await this.key(folder);
-        const entry = document.repositories[key] ??= {};
-        entry.commands = mergeCommands(entry.commands, commands);
-      }
       const result = await action(document.repositories);
-      if (JSON.stringify(document) !== before || legacy) {
+      if (JSON.stringify(document) !== before) {
         await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
         const content = serializeStoreFile(schema.parse(document));
         const temporary = `${this.file}.${randomUUID()}.tmp`;
@@ -79,10 +67,8 @@ export class RepositoryStore {
             const directory = await open(path.dirname(this.file), 'r');
             try { await directory.sync(); } finally { await directory.close(); }
           }
-          if (await readFile(this.file, 'utf8') !== content) throw new Error('Repository migration verification failed.');
         } finally { await unlink(temporary).catch(() => {}); }
       }
-      if (legacy) await unlink(legacyFile);
       return structuredClone(result);
     });
     queues.set(this.file, operation);
@@ -104,12 +90,8 @@ export class RepositoryStore {
     return entry;
   }
 
-  async icons(legacy?: Record<string, string>): Promise<Record<string, string>> {
-    const normalized = await this.normalizeIcons(legacy ?? {});
-    return this.transaction(entries => {
-      for (const [key, icon] of Object.entries(normalized)) (entries[key] ??= {}).icon ??= icon;
-      return this.projectIcons(entries);
-    });
+  icons(): Promise<Record<string, string>> {
+    return this.transaction(entries => this.projectIcons(entries));
   }
 
   async replaceIcons(icons: Record<string, string>): Promise<void> {

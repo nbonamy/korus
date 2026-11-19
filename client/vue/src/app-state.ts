@@ -508,8 +508,6 @@ export function useAppState() {
       await synchronizeRendererSnapshot(false);
       markLoad('startup.snapshot-ready');
       await startWindowState();
-      await generalPreferences.migrate();
-      markLoad('startup.preferences-ready');
       // The SDK publishes a bounded initial page immediately. Older pages stay
       // behind the conversation's demand-paging cursor until the user reaches
       // the top of the transcript.

@@ -58,13 +58,12 @@ describe('GitHub star composer prompt', () => {
   });
 
   it('restores the prompt count and opens the product repository without asking again', async () => {
-    localStorage.setItem('app:githubStarPrompt:v1', JSON.stringify({ sentPrompts: 4, dismissed: false }));
     const snapshot = createInitialSnapshot();
+    snapshot.general.githubStarPrompt = { sentPrompts: 4, dismissed: false };
     stubElectronTestWindow({ app: {
       getSnapshot: async () => structuredClone(snapshot),
       sendPrompt: async () => structuredClone(snapshot),
-      updateSettings: vi.fn().mockRejectedValueOnce(new Error('Temporary disk failure'))
-        .mockImplementation(async input => { updateSettingsInSnapshot(snapshot, input); return structuredClone(snapshot); }),
+      updateSettings: async input => { updateSettingsInSnapshot(snapshot, input); return structuredClone(snapshot); },
     } });
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const state = useAppState();
@@ -80,7 +79,6 @@ describe('GitHub star composer prompt', () => {
     await flushPromises();
     await pane.get('.github-star-prompt button').trigger('click');
     await flushPromises();
-    expect(localStorage.getItem('app:githubStarPrompt:v1')).toBeNull();
     expect(snapshot.general.githubStarPrompt).toStrictEqual({ sentPrompts: 5, dismissed: true });
     expect(product.repositoryUrl).toBe('https://github.com/Korus-Dev/korus');
     expect(open).toHaveBeenCalledWith(product.repositoryUrl, '_blank', 'noopener,noreferrer');

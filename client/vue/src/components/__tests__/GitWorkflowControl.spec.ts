@@ -1,7 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { mountProvisioningHost } from '../../../tests/support/provisioning-host';
 import { ElMessage } from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive } from 'vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
@@ -143,8 +143,6 @@ describe('GitWorkflowControl', () => {
     });
   });
 
-  beforeEach(() => window.localStorage.removeItem('app:mergeCleanup'));
-  afterEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => vi.useRealTimers());
   it('opens Branch from the actual command palette and submits through its confirmation dialog', async () => {
     const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
@@ -829,7 +827,6 @@ describe('GitWorkflowControl', () => {
     primary.unmount();
     await flushPromises();
     expect(snapshot.general.gitMergeCleanup).toStrictEqual({ deleteWorktree: true, deleteBranch: false });
-    expect(localStorage.getItem('app:mergeCleanup')).toBeNull();
 
     const mergeBranch = vi.fn(async () => workflow);
     const next = mountControl({ agent: { ...agent, id: 'next-agent' }, mergeBranch }, false, preferences);

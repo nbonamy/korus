@@ -7,7 +7,7 @@ import { PromptRejectedError } from '../agents/prompt-rejected';
 import { product } from '@workspace/core/product';
 import { CompanionNotifications } from './notifications';
 import { CompanionLiveActivities, type SavedLiveActivities } from './live-activities';
-import { chmod, lstat, mkdir, open, readFile, rename, rmdir, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UnchangedWrites } from '../persistence/unchanged-writes';
@@ -252,21 +252,12 @@ export class CompanionManager {
     const pairing = await readConfiguredPairing(this.env);
     await mkdir(this.home, { recursive: true, mode: 0o700 });
     let saved: Saved;
-    let migrated = false;
     try {
-      const read = async (file: string): Promise<Saved> => {
-        const stats = await lstat(file);
-        if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 32 * 1024 * 1024) throw new Error('Invalid companion state file.');
-        await chmod(file, 0o600);
-        return JSON.parse(await readFile(file, 'utf8')) as Saved;
-      };
-      try { saved = await read(path.join(this.home, 'companions.json')); }
-      // TODO(remove-after: 2026-11-30): Remove the legacy fallback and migrated-source retirement below. https://github.com/Korus-Dev/korus/issues/74
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        saved = await read(path.join(this.directory, 'state.json'));
-        migrated = true;
-      }
+      const file = path.join(this.home, 'companions.json');
+      const stats = await lstat(file);
+      if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 32 * 1024 * 1024) throw new Error('Invalid companion state file.');
+      await chmod(file, 0o600);
+      saved = JSON.parse(await readFile(file, 'utf8')) as Saved;
       if (saved.v !== 1 || typeof saved.enabled !== 'boolean' || !Array.isArray(saved.gateway?.grants) || !saved.gateway?.commands) throw new Error('Invalid companion state.');
       this.key = privateKeyFromProtobuf(Buffer.from(saved.identity, 'base64'));
     } catch (error) {
@@ -395,12 +386,6 @@ export class CompanionManager {
       push: (peerId, registration, activity) => this.connector.liveActivity(peerId, registration, activity) });
     this.activityHeartbeat = setInterval(() => this.scheduleActivity(), 30_000); this.activityHeartbeat.unref();
     await this.persist();
-    if (migrated) {
-      const verified = JSON.parse(await readFile(path.join(this.home, 'companions.json'), 'utf8'));
-      if (JSON.stringify(verified) !== JSON.stringify(this.saved)) throw new Error('Companion migration verification failed.');
-      await unlink(path.join(this.directory, 'state.json'));
-      await rmdir(this.directory).catch(error => { if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes(error.code)) throw error; });
-    }
     const relay = this.relay;
     this.provider.onAccessChanged?.(saved.enabled && Boolean(relay));
     if (saved.enabled && relay) await this.startTransport();

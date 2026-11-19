@@ -13,7 +13,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   disablePhone() {}
 } }));
 import { CompanionManager } from '../manager';
-import { generateKeyPair, privateKeyToProtobuf } from '@libp2p/crypto/keys';
+import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
@@ -25,40 +25,6 @@ async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
-  it('migrates the legacy companion identity and grants, then restores them from companions.json', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-migration-')); directories.push(directory);
-    const key = await generateKeyPair('Ed25519');
-    const phone = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
-    const saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(key)).toString('base64'), enabled: false, relayOrigin: '', relayPeerId: '', gateway: { grants: [{ peerId: phone, name: 'Existing phone', createdAt: 1 }], commands: {} } };
-    const legacy = path.join(directory, 'companion/state.json');
-    await mkdir(path.dirname(legacy)); await writeFile(legacy, JSON.stringify(saved));
-    let manager = new CompanionManager(directory, { request: vi.fn() }, {});
-    try {
-      const status = await manager.control({ action: 'status' });
-      expect(status.status.hostId).toBe(peerIdFromPrivateKey(key).toString());
-      expect(status.status.devices).toMatchObject([{ peerId: phone, name: 'Existing phone' }]);
-      const file = path.join(directory, 'companions.json');
-      expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual(saved);
-      expect((await stat(file)).mode & 0o777).toBe(0o600);
-      await expect(stat(legacy)).rejects.toMatchObject({ code: 'ENOENT' });
-      await manager.stop(); manager = new CompanionManager(directory, { request: vi.fn() }, {});
-      expect((await manager.control({ action: 'status' })).status).toStrictEqual(status.status);
-    } finally { await manager.stop(); }
-  });
-
-  it('does not discard the legacy identity when the destination cannot be written', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-migration-')); directories.push(directory);
-    const saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(await generateKeyPair('Ed25519'))).toString('base64'), enabled: false, gateway: { grants: [], commands: {} } };
-    const legacy = path.join(directory, 'companion/state.json');
-    await mkdir(path.dirname(legacy)); await writeFile(legacy, JSON.stringify(saved));
-    await mkdir(path.join(directory, 'companions.json'));
-    const manager = new CompanionManager(directory, { request: vi.fn() }, {});
-    try {
-      await expect(manager.control({ action: 'status' })).rejects.toThrow();
-      expect(JSON.parse(await readFile(legacy, 'utf8'))).toStrictEqual(saved);
-    } finally { await manager.stop(); }
-  });
-
   it('publishes authoritative aggregate counts after an event and removes activity registration when mobile access is disabled', async () => {
     const { directory, manager } = await fixture(); await manager.control({ action: 'status' }); await manager.stop();
     const file = path.join(directory, 'companions.json'); const saved = JSON.parse(await readFile(file, 'utf8'));

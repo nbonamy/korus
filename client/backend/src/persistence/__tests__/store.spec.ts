@@ -75,38 +75,32 @@ describe('AppStateStore', () => {
     expect((await new AppStateStore(home).load()).general.repositoryIcons).toStrictEqual({});
   });
 
-  it('retains legacy icons and commands when repository storage is corrupt and safely retries', async () => {
+  it('refuses a corrupt repository store without changing settings or the saved repository bytes', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾' };
     await new AppStateStore(home).save(snapshot);
-    const legacySettings = await readJson('settings.json');
-    (legacySettings.data.settings as Record<string, unknown>).repositoryIcons = snapshot.general.repositoryIcons;
-    await writeFile(file('settings.json'), JSON.stringify(legacySettings));
-    const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Dev', command: 'npm run dev', directory: '.' };
-    const legacyCommands = serializeStoreFile({ repositories: { '/plain folder': [command] } });
-    await writeFile(file('run-profiles.json'), legacyCommands);
+    const settings = await readFile(file('settings.json'), 'utf8');
+    const savedRepositories = await readFile(file('repositories.json'), 'utf8');
     await writeFile(file('repositories.json'), '{broken');
+
     await expect(new AppStateStore(home).load()).rejects.toThrow(StoreFormatError);
-    expect((await readJson('settings.json')).data.settings).toHaveProperty('repositoryIcons', snapshot.general.repositoryIcons);
-    expect(await readFile(file('run-profiles.json'), 'utf8')).toBe(legacyCommands);
-    await rm(file('repositories.json'));
-    const loaded = await new AppStateStore(home).load();
-    expect(loaded.general.repositoryIcons).toStrictEqual(snapshot.general.repositoryIcons);
-    expect((await readJson('settings.json')).data.settings).not.toHaveProperty('repositoryIcons');
-    await expect(readFile(file('run-profiles.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(file('settings.json'), 'utf8')).toBe(settings);
+    expect(await readFile(file('repositories.json'), 'utf8')).toBe('{broken');
+
+    await writeFile(file('repositories.json'), savedRepositories);
+    expect((await new AppStateStore(home).load()).general.repositoryIcons).toStrictEqual(snapshot.general.repositoryIcons);
   });
 
-  it('moves icons out of settings and preserves commands across icon saves and reload', async () => {
+  it('projects icons from the repository store and preserves commands across icon saves', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.general.repositoryIcons = { 'remote:github.com/fixture/project': '🎾', '/plain folder': '📁' };
     const store = new AppStateStore(home);
     await store.save(snapshot);
-    const settings = await readJson('settings.json');
-    const legacySettings = structuredClone(settings);
-    (legacySettings.data.settings as Record<string, unknown>).repositoryIcons = snapshot.general.repositoryIcons;
-    await writeFile(file('settings.json'), JSON.stringify(legacySettings));
     const command = { id: '11111111-1111-4111-8111-111111111111', name: 'Dev', command: 'npm run dev', directory: '.' };
-    await writeFile(file('run-profiles.json'), serializeStoreFile({ repositories: { '/plain folder': [command] } }));
+    const saved = (await readJson('repositories.json')).data;
+    const entries = saved.repositories as Record<string, { icon?: string; commands?: unknown[] }>;
+    entries['file:///plain%20folder']!.commands = [command];
+    await writeFile(file('repositories.json'), serializeStoreFile(saved));
     const loaded = await new AppStateStore(home).load();
     expect(loaded.general.repositoryIcons['remote:github.com/fixture/project']).toBe('🎾');
     expect(loaded.general.repositoryIcons['/plain folder']).toBe('📁');

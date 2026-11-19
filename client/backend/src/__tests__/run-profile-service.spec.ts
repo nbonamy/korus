@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { serializeStoreFile } from '../persistence/store-format';
 import { RunProfileService } from '../run-profile-service';
 
 const exec = promisify(execFile);
@@ -32,33 +31,23 @@ afterEach(async () => { await service.close(); await rm(root, { recursive: true,
 
 // Real Git worktrees and owned child-process shutdown are the integration boundary.
 describe('repository run profiles', () => {
-  it('migrates commands from separate clones into one Git identity and resolves each selected worktree locally', async () => {
+  it('shares saved commands across clones of the same origin and resolves each selected worktree locally', async () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:fixture/project.git']);
     const clone = path.join(root, 'second');
     await exec('git', ['clone', repo, clone]);
     await exec('git', ['-C', clone, 'remote', 'set-url', 'origin', 'https://github.com/fixture/project.git']);
-    const first = { ...profile, id: '11111111-1111-4111-8111-111111111111' };
-    const second = { ...profile, name: 'Tests', command: 'node test.cjs', id: '22222222-2222-4222-8222-222222222222' };
-    const home = path.join(root, 'home'); await mkdir(home);
-    const conflicting = { ...first, name: 'Alternate dev', command: 'node alternate.cjs' };
-    const legacy = serializeStoreFile({ repositories: { [repo]: [first], [clone]: [second, conflicting] } });
-    await writeFile(path.join(home, 'run-profiles.json'), legacy);
-    await service.close(); service = new RunProfileService(path.join(home, 'repositories.json'));
-    const migrated = (await service.get(agent, repo)).profiles;
-    expect(migrated.slice(0, 2)).toStrictEqual([first, second]);
-    expect(migrated[2]).toMatchObject({ name: conflicting.name, command: conflicting.command });
-    expect(new Set(migrated.map(command => command.id)).size).toBe(3);
+    const first = (await service.save(agent, repo, profile)).profiles[0]!;
+    const profiles = (await service.save(agent, clone, { ...profile, name: 'Tests', command: 'node test.cjs' })).profiles;
+    expect(profiles.map(command => command.name)).toStrictEqual(['Dev server', 'Tests']);
+    await service.close();
+    service = new RunProfileService(path.join(root, 'home', 'repositories.json'));
     for (const folder of [repo, worktree, clone]) {
       const catalog = await service.get(agent, folder);
-      expect(catalog.profiles).toStrictEqual(migrated);
+      expect(catalog.profiles).toStrictEqual(profiles);
       expect(catalog.targets[first.id]).toStrictEqual({ cwd: await realpath(folder) });
     }
-    const saved = JSON.parse(await readFile(path.join(home, 'repositories.json'), 'utf8'));
-    expect(saved.data.repositories['git:github.com/fixture/project'].commands).toStrictEqual(migrated);
-    // Replaying the old source after a successful write cannot duplicate definitions.
-    await writeFile(path.join(home, 'run-profiles.json'), legacy);
-    expect((await service.get(agent, repo)).profiles).toStrictEqual(migrated);
-    await expect(readFile(path.join(home, 'run-profiles.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const saved = JSON.parse(await readFile(path.join(root, 'home/repositories.json'), 'utf8'));
+    expect(saved.data.repositories['git:github.com/fixture/project'].commands).toStrictEqual(profiles);
   });
 
   it('stores ordinary-folder commands under a file URL and preserves them when the folder gains a remote', async () => {

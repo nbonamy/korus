@@ -226,7 +226,7 @@ class MacLifecycle:
         self.stable_pid = None
 
     def pairing(self):
-        file = self.home / 'companion/state.json'
+        file = self.home / 'companions.json'
         if not file.exists():
             return None
         data = json.loads(file.read_text())
@@ -315,7 +315,7 @@ class MacLifecycle:
 
     def backup_state(self, home, destination):
         destination.mkdir(mode=0o700)
-        for name in ['roster.json', 'settings.json', 'provider-tokens.json', 'requirements.json', 'companion']:
+        for name in ['roster.json', 'settings.json', 'provider-tokens.json', 'requirements.json', 'companions.json', 'companion']:
             source = home / name
             if source.is_dir():
                 shutil.copytree(source, destination / name)

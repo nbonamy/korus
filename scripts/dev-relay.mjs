@@ -40,9 +40,10 @@ export function relayPushConfig(env, dotenv, product) {
 }
 
 /** The laptops the relay admits: an explicit list, or the identity of the local daemon. */
-export async function relayHostIds(env, companionState) {
+export async function relayHostIds(env, home) {
   const listed = (env.APP_COMPANION_RELAY_HOST_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
   if (listed.length) return listed;
+  const companionState = readIfPresent(path.join(home, 'companions.json'));
   if (!companionState) throw new Error('No laptop identity yet. Start the desktop app once (it creates one), or set APP_COMPANION_RELAY_HOST_IDS.');
   const { privateKeyFromProtobuf } = await import('@libp2p/crypto/keys');
   const { peerIdFromPrivateKey } = await import('@libp2p/peer-id');
@@ -60,7 +61,7 @@ async function main() {
   const endpoint = relayEndpoint(process.env, readIfPresent(path.join(root, '.env')));
   const product = JSON.parse(readFileSync(path.join(root, 'core/src/product.json'), 'utf8'));
   const home = configuredAppHome(process.env) || path.join(homedir(), product.homeDirectory);
-  const hostIds = await relayHostIds(process.env, readIfPresent(path.join(home, 'companion/state.json')));
+  const hostIds = await relayHostIds(process.env, home);
 
   // Always rebuilt: a stale bundle would silently run an old protocol.
   const bundle = path.join(root, 'client/backend/relay-dist/relay.mjs');

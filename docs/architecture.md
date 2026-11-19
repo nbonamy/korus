@@ -325,8 +325,7 @@ The laptop stores uploads privately under `companion/uploads/` and passes stable
 provider attachment paths through its existing prompt route. Startup and hourly
 cleanup expire uploads after a day, retaining queued attachments and those owned
 by active agents; uploads without ownership metadata are retained while any agent
-is active. Companion state is stored separately in `companions.json`; importing
-`companion/state.json` preserves identity and grants before retiring the old file. Remote agents remain text-only until their
+is active. `companions.json` stores companion identity and grants. Remote agents remain text-only until their
 owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
 
@@ -443,10 +442,8 @@ garbage-collects unreferenced transient Markdown. Saved files remain on disk.
 Worktree cleanup retains the workspace until closure succeeds; a disconnected
 remote host alone does not establish that an agent was closed.
 
-Repository metadata has one serialized writer for icon and command updates. Icons
-remain projected through the existing settings contract for clients; they are not
-stored in `settings.json`. Legacy inputs are retired only after the repository
-file has been validated, durably written and verified.
+Repository metadata has one serialized writer for icon and command updates. The
+client settings projection reads repository icons from `repositories.json`.
 
 Rules:
 

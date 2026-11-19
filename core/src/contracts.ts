@@ -516,7 +516,7 @@ export type AppGeneralSettings = {
   providerEnabled?: Partial<Record<HarnessProvider, boolean>>;
   /** Last model selection made in a chat, per provider; seeds new agents. */
   providerModelDefaults?: Partial<Record<HarnessProvider, ExecutionSelection>>;
-  /** Durable client preferences; absence allows legacy renderer migration. */
+  /** Durable client preferences. */
   githubStarPrompt?: { sentPrompts: number; dismissed: boolean };
   preferredProviders?: Record<string, HarnessProvider>;
   gitMergeCleanup?: { deleteWorktree: boolean; deleteBranch: boolean };

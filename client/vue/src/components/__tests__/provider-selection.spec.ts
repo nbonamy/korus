@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, provide, reactive, ref } from 'vue';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
 import type { HarnessProvider } from '@workspace/core/contracts';
 import ProviderSelector from '../ProviderSelector.vue';
@@ -9,7 +9,6 @@ import { createGeneralPreferences, generalPreferencesKey } from '../../general-p
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { deferred } from '../../../tests/support/app-state-test-harness';
 
-afterEach(() => localStorage.removeItem('app:preferredEngines'));
 
 describe('host-scoped manual engine selection', () => {
   it('preserves both host choices when a second selection is made while the first save is pending', async () => {
@@ -36,7 +35,6 @@ describe('host-scoped manual engine selection', () => {
     await flushPromises();
     expect(save).toHaveBeenCalledTimes(2);
     expect(snapshot.general.preferredProviders).toStrictEqual({ local: 'claude', remote: 'antigravity' });
-    expect(localStorage.getItem('app:preferredEngines')).toBeNull();
   });
 
   it.each(['claude', 'antigravity'] as const)('remembers explicit %s choices per host, but not temporary availability fallback', async backend => {
@@ -67,7 +65,6 @@ describe('host-scoped manual engine selection', () => {
     await wrapper.vm.$nextTick();
     expect(model.value).toBe('codex');
     expect(snapshot.general.preferredProviders).toStrictEqual({ local: backend });
-    expect(localStorage.getItem('app:preferredEngines')).toBeNull();
     expect(save).toHaveBeenCalledOnce();
     snapshot.providerConnections[1]!.connected = true;
     wrapper.unmount();

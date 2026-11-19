@@ -464,24 +464,6 @@ describe('state persistence', () => {
       expect(snapshot.agents[0]!.designWorkspaces![0]!.undo).toHaveLength(2);
       expect((snapshot.agents[0]!.designWorkspaces![0] as { redo?: unknown[] }).redo).toHaveLength(1);
     });
-    it('is dropped from files saved by earlier versions, which are rewritten without it', async () => {
-      const home = await tempHome();
-      const snapshot = createInitialSnapshot();
-      snapshot.agents[0]!.designWorkspaces = [workspace()];
-      const store = new AppStateStore(home);
-      await store.save(snapshot);
-      const roster = path.join(home, 'roster.json');
-      const legacy = JSON.parse(await readFile(roster, 'utf8'));
-      Object.assign(legacy.data.agents[0].designWorkspaces[0], { undo: [content, content], redo: [content] });
-      await writeFile(roster, JSON.stringify(legacy));
-      const reloadedStore = new AppStateStore(home);
-      const reloaded = await reloadedStore.load();
-      expect(reloaded.agents[0]!.designWorkspaces![0]).toMatchObject({ undo: [], document: { revision: 3 } });
-      expect(reloaded.agents[0]!.designWorkspaces![0]).not.toHaveProperty('redo');
-      await reloadedStore.save(reloaded);
-      expect(await readFile(roster, 'utf8')).not.toContain('"redo"');
-      expect(JSON.parse(await readFile(roster, 'utf8')).data.agents[0].designWorkspaces![0]!.undo).toEqual([]);
-    });
   });
 
   it('migrates the earlier keep-unlocked switch to the Always lock prevention mode and rewrites it on the next save', async () => {
