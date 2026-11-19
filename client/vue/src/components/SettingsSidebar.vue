@@ -51,6 +51,7 @@ function selectTab(tab: string): void {
 <style scoped>
 .settings-sidebar {
   --agent-ui-state-primary-selected: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  overflow-y: auto;
   border-right: 1px solid var(--color-border);
   padding-top: var(--space-24);
 }
