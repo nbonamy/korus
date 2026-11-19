@@ -345,6 +345,7 @@ function selectTab(tab: SettingsTab): void {
 }
 
 .settings-view__sidebar {
+  --settings-nav-top: var(--workbench-appbar-height);
   min-height: 0;
   user-select: none;
 }

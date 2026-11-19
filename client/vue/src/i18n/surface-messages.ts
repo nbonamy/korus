@@ -1176,6 +1176,9 @@ export const conversationMessages = {
   },
   "settingsSidebar": {
     "settingsCategories": "Settings categories",
+    "search": "Search settings",
+    "clearSearch": "Clear search",
+    "noMatches": "No matching settings",
     "general": "General",
     "codex": "Codex",
     "claudeCode": "Claude Code",

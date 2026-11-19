@@ -38,9 +38,14 @@ test('settings navigation reaches bottom panels and scrolls independently at sup
       const nav = page.locator('.settings-sidebar');
       const content = page.locator('.settings-view__content');
       await nav.evaluate(el => { el.scrollTop = 0; });
+      const searchBox = nav.getByRole('searchbox', { name: 'Search settings' });
+      const initialSearch = await searchBox.boundingBox();
       await nav.hover();
       await page.mouse.wheel(0, 3000);
       await page.waitForFunction(() => document.querySelector('.settings-sidebar').scrollTop > 0, undefined, { timeout: 2500 });
+      const search = await searchBox.boundingBox();
+      assert.ok(search.y >= 0 && search.y + search.height <= height, 'search stays visible while the sidebar scrolls');
+      assert.equal(search.y, initialSearch.y, 'search stays at the top of the sidebar');
       const bottom = nav.getByRole('menuitem', { name: 'Connections', exact: true });
       const bounds = await bottom.boundingBox();
       assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= height, 'bottom destination must be visible after scrolling');
@@ -109,7 +114,8 @@ async function expectFocusedSelectionInView(page, name) {
   }, name, { timeout: 2500 });
   const box = await item.boundingBox();
   const region = await nav.boundingBox();
-  assert.ok(box.y >= region.y && box.y + box.height <= region.y + region.height + 1, name + ' visible');
+  const search = await nav.getByRole('searchbox').boundingBox();
+  assert.ok(box.y >= search.y + search.height && box.y + box.height <= region.y + region.height + 1, name + ' visible below search');
 }
 
 async function arrowToDestination(page, name, key) {
@@ -170,6 +176,8 @@ test('arrows traverse the available destinations when host and provider entries 
 test('Tab enters at the selected destination and arrows change the panel without a mouse click', async () => {
   await withShortSettings(filteredSource, async page => {
     await page.keyboard.press('Tab');
+    assert.equal(await page.getByRole('searchbox', { name: 'Search settings' }).evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('Tab');
     await expectFocusedSelectionInView(page, 'General');
 
     await page.keyboard.press('ArrowDown');
@@ -180,6 +188,53 @@ test('Tab enters at the selected destination and arrows change the panel without
     assert.equal(await page.locator('.settings-view__content').evaluate(el => el.contains(document.activeElement)), true);
     await page.keyboard.press('Shift+Tab');
     await expectFocusedSelectionInView(page, 'Analytics');
+  });
+}, 60000);
+
+test('settings search debounces and opens the first screen matching translated settings copy', async () => {
+  await withShortSettings(filteredSource, async page => {
+    const nav = page.locator('.settings-sidebar');
+    const search = nav.getByRole('searchbox', { name: 'Search settings' });
+    await search.waitFor();
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 500));
+
+    await search.fill('Workflows');
+    await page.clock.runFor(100);
+    await search.fill('Git');
+    await page.clock.runFor(100);
+    assert.equal(await page.evaluate(() => window.activeSettingsTab()), 'general');
+    await page.clock.runFor(150);
+    await expectSettingsPanel(page, 'Git');
+    assert.equal(await nav.getByRole('menuitem').first().textContent(), 'Git');
+    await search.fill('Workflows');
+    await page.clock.runFor(250);
+    await expectSettingsPanel(page, 'Workflows');
+    await search.fill('otherwise copy local environment files');
+    await page.clock.runFor(250);
+    await nav.getByRole('menuitem', { name: 'Git', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.activeSettingsTab()), 'git');
+
+    await search.fill('MONOSPACE text size');
+    await page.clock.runFor(250);
+    await expectSettingsPanel(page, 'Appearance');
+    assert.deepEqual(await nav.getByRole('menuitem').allTextContents(), ['Appearance']);
+
+    await search.fill('API key');
+    await page.clock.runFor(250);
+    const first = nav.getByRole('menuitem').first();
+    assert.equal(await first.textContent(), 'Dictation');
+    assert.equal(await first.getAttribute('data-selected'), '');
+    await nav.getByRole('menuitem', { name: 'Codex', exact: true }).click();
+    await expectSettingsPanel(page, 'Codex');
+    await search.fill('official extension updates');
+    await page.clock.runFor(250);
+    await nav.getByText('No matching settings', { exact: true }).waitFor();
+    await expectSettingsPanel(page, 'Codex');
+    await nav.getByRole('button', { name: 'Clear search' }).click();
+    await nav.getByRole('menuitem', { name: 'General', exact: true }).waitFor();
+    assert.equal(await search.inputValue(), '');
+    assert.equal(await search.evaluate(el => el === document.activeElement), true);
   });
 }, 60000);
 
