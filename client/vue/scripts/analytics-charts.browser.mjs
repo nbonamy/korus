@@ -222,6 +222,15 @@ try {
           ...(app === "server" ? ["latency"] : []),
         ]) {
           await page.goto(`${origin}/?app=${app}&scene=${scene}`);
+          const checkDarkMarkers =
+            !baseline &&
+            app === "desktop" &&
+            scene === "stacked" &&
+            width === 1200;
+          if (checkDarkMarkers)
+            await page.evaluate(() =>
+              document.documentElement.classList.add("dark"),
+            );
           await page.locator(".capture-frame").waitFor({ timeout: 15_000 }); // Cold route/module startup.
           await page
             .locator('svg[role="img"],canvas[role="img"]')
@@ -357,6 +366,39 @@ try {
                 fillSamples.filter((alpha) => alpha > 0).length >= 2,
                 `${app}: a missing lower series must not punch a hole in the upper fill`,
               );
+              if (checkDarkMarkers) {
+                const canvas = await page.locator("canvas").boundingBox();
+                const day = 3;
+                const point = rendered.datasets[0].points[day];
+                await page.mouse.move(canvas.x + point.x, canvas.y + point.y);
+                await page.waitForFunction((day) => {
+                  const chart = window.captureChart();
+                  return chart.getActiveElements().filter(({ index }) => index === day)
+                    .length === chart.data.datasets.length;
+                }, day);
+                const colors = await page.evaluate(() => {
+                  const chart = window.captureChart();
+                  const reference = document.createElement("canvas").getContext("2d");
+                  const ratio = chart.currentDevicePixelRatio;
+                  return chart.getActiveElements().map(({ datasetIndex, element }) => {
+                    const series = chart.data.datasets[datasetIndex];
+                    reference.fillStyle = series.borderColor;
+                    reference.fillRect(0, 0, 1, 1);
+                    const expected = reference.getImageData(0, 0, 1, 1).data;
+                    // Sample inside the marker, clear of the crosshair and outline.
+                    const x = Math.round((element.x + 2) * ratio);
+                    const y = Math.round((element.y + 2) * ratio);
+                    const actual = chart.ctx.getImageData(x, y, 1, 1).data;
+                    return { series: series.label, expected: [...expected], actual: [...actual] };
+                  });
+                });
+                for (const { series, expected, actual } of colors) {
+                  assert.ok(
+                    actual.every((channel, i) => Math.abs(channel - expected[i]) <= 1),
+                    `${series} dark hover marker: expected ${expected}, got ${actual}`,
+                  );
+                }
+              }
             }
             assert.ok(rendered.width <= width && rendered.width > 190);
             for (const set of rendered.datasets)

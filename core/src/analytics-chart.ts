@@ -272,6 +272,8 @@ export function buildAnalyticsChart(
           pointRadius: rate ? 4.5 : 0,
           pointHoverRadius: 4.5,
           pointBackgroundColor: color,
+          // Chart.js's hover color parser cannot handle CSS color-mix().
+          pointHoverBackgroundColor: color,
           pointBorderColor: theme.surface,
           pointBorderWidth: 2,
         };
