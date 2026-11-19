@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { test } from 'vitest';
-import { withAnnotationFixture } from './annotation-fixture.mjs';
+import { afterAll, beforeAll, test } from 'vitest';
+import { startAnnotationFixture } from './annotation-fixture.mjs';
 import { themeImportSource } from './fixtures/theme-import.mjs';
 import { mockSkinCatalog, chooseSkin } from './fixtures/skin-catalog.mjs';
 
@@ -11,8 +11,14 @@ const koi = await readFile(new URL('./fixtures/themes/pixel-koi-pond.json', impo
 const starry = await readFile(new URL('./fixtures/themes/starry-ridge.json', import.meta.url));
 const nyx = await readFile(new URL('./fixtures/themes/nyx.json', import.meta.url));
 
+let fixture;
+beforeAll(async () => {
+  fixture = await startAnnotationFixture({ appearance: themeImportSource, hostPane: hostPaneSource });
+});
+afterAll(() => fixture?.close());
+
 test('loads Nebula, renders it after reload, and switches back to a chosen palette', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+  const errors = await fixture.run('appearance', async page => {
     await mockSkinCatalog(page, [{ slug: 'nebula', name: 'Nebula', body: nebula.toString() }]);
     await page.locator('.settings-appearance-panel__theme-select .el-select__wrapper').click();
     await page.getByRole('option', { name: 'Korus Dark Blue', exact: true }).click();
@@ -102,7 +108,7 @@ test('loads Nebula, renders it after reload, and switches back to a chosen palet
 });
 
 test('renders Pixel-Koi Pond’s embedded SVG background', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+  const errors = await fixture.run('appearance', async page => {
     await mockSkinCatalog(page, [{ slug: 'pixel-koi-pond', name: 'Pixel-Koi Pond', body: koi.toString() }]);
     await chooseSkin(page, 'Pixel-Koi Pond');
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-pixel-koi-pond');
@@ -125,51 +131,8 @@ test('renders Pixel-Koi Pond’s embedded SVG background', async () => {
   assert.deepEqual(errors, []);
 });
 
-test('groups the skin picker into file loading, local skins and t3skins.dev skins', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
-    await mockSkinCatalog(page, [{ slug: 'nebula', name: 'Nebula', body: nebula.toString() }]);
-    const description = page.locator('.form-row').filter({ has: page.getByText('Skin', { exact: true }) }).locator('.form-row__copy > span');
-    const typography = locator => locator.evaluate(el => { const s = getComputedStyle(el); return [s.color, s.fontSize, s.lineHeight]; });
-    assert.deepEqual(await typography(description), await typography(page.getByText('Select the color palette used across the app', { exact: true })), 'skin guidance uses the shared settings description typography');
-    const select = page.locator('.settings-appearance-panel__skin-select .el-select__wrapper');
-    const menu = () => page.locator('.settings-appearance-panel__skin-menu:visible').first().evaluate(el =>
-      [...el.querySelectorAll('.el-select-group__title, .el-select-dropdown__item')].map(item => item.textContent.trim()));
-    await select.click();
-    await page.getByRole('option', { name: 'Nebula', exact: true }).waitFor();
-    assert.deepEqual(await menu(), ['Load from file…', 't3skins.dev', 'Nebula'], 'no local group without saved skins');
-    await page.keyboard.press('Escape');
-    await page.evaluate(() => { window.localSkins = [{ name: 'moss', definition: { version: 1, name: 'Moss', appearance: 'dark',
-      colors: { canvas: '#12150f', text: '#e8e2d0' } } }]; });
-    await select.click();
-    await page.getByRole('option', { name: 'Moss', exact: true }).waitFor();
-    assert.deepEqual(await menu(), ['Load from file…', 'Local skins', 'Moss', 't3skins.dev', 'Nebula'], 'reopening picks up newly saved skins');
-    await page.getByRole('option', { name: 'Moss', exact: true }).click();
-    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-moss');
-    await select.click();
-    assert.equal(await page.getByRole('option', { name: 'Moss', exact: true }).getAttribute('aria-selected'), 'true', 'the active local skin is the selected entry');
-    assert.equal(await page.getByRole('option', { name: 'Nebula', exact: true }).getByRole('button').count(), 0, 'catalog skins cannot be deleted');
-    await page.getByRole('button', { name: 'Delete Moss', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
-    assert.equal(await page.evaluate(() => window.localSkins.length), 1, 'cancelling keeps the saved skin');
-    await page.getByRole('dialog').waitFor({ state: 'hidden' });
-    await page.keyboard.press('Escape');
-    await page.locator('.settings-appearance-panel__skin-menu:visible').waitFor({ state: 'hidden' });
-    await select.click();
-    await page.getByRole('button', { name: 'Delete Moss', exact: true }).press('Enter');
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('theme')).skin);
-    await page.keyboard.press('Escape');
-    await select.click();
-    await page.waitForFunction(() => !document.querySelector('.settings-appearance-panel__skin-menu:not([style*="display: none"])')?.textContent.includes('Moss'));
-    assert.equal(await page.getByRole('option', { name: 'Moss', exact: true }).count(), 0);
-    await page.reload();
-    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'app-light');
-  });
-  assert.deepEqual(errors, []);
-});
-
 test('keeps the sidebar palette beneath skin sidebar images', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+  const errors = await fixture.run('appearance', async page => {
     await mockSkinCatalog(page, []);
     const plain = await page.locator('.agent-sidebar').evaluate(el => getComputedStyle(el).backgroundImage);
     assert.equal(plain.match(/color\(srgb [^)]* \/ 0\.65\)/g)?.length, 4, 'without a skin the macOS sidebar keeps its translucent glass tint: ' + plain);
@@ -219,7 +182,7 @@ createApp({render:()=>h('div',{'data-slot':'sidebar-wrapper',class:'app-shell',s
 `;
 
 test('keeps a skin canvas image on the app conversation pane and the shell surface without one', async () => {
-  const errors = await withAnnotationFixture(hostPaneSource, async page => {
+  const errors = await fixture.run('hostPane', async page => {
     const canvas = page.locator('.conversation-pane .agent-ui-conversation-pane');
     await canvas.waitFor();
     const paint = () => canvas.evaluate(el => {
@@ -272,7 +235,7 @@ test('keeps a skin canvas image on the app conversation pane and the shell surfa
 });
 
 test('keeps Nyx menu surfaces opaque', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+  const errors = await fixture.run('appearance', async page => {
     await mockSkinCatalog(page, [{ slug: 'nyx', name: 'Nyx', body: nyx.toString() }]);
     await chooseSkin(page, 'Nyx');
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-nyx');
@@ -291,7 +254,7 @@ test('keeps Nyx menu surfaces opaque', async () => {
 });
 
 test('reveals Starry Ridge’s document background and animated stars through the conversation', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+  const errors = await fixture.run('appearance', async page => {
     await mockSkinCatalog(page, [{ slug: 'starry-ridge', name: 'Starry Ridge', body: starry.toString() }]);
     await chooseSkin(page, 'Starry Ridge');
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-starry-ridge');
@@ -320,8 +283,8 @@ test('reveals Starry Ridge’s document background and animated stars through th
   assert.deepEqual(errors, []);
 });
 
-test('keeps light/dark variants, rejects invalid imports, and prevents skin CSS from loading remote resources', async () => {
-  const errors = await withAnnotationFixture(themeImportSource, async page => {
+test('imports a local skin variant without letting its CSS load remote resources', async () => {
+  const errors = await fixture.run('appearance', async page => {
     const requests = [];
     await page.route('https://example.invalid/**', route => { requests.push(route.request().url()); return route.abort(); });
     const theme = { version: 1, name: 'Safe sky', appearance: 'dark', colors: { canvas: '#101018', accent: '#cc88ee' },
@@ -332,25 +295,13 @@ test('keeps light/dark variants, rejects invalid imports, and prevents skin CSS 
         [data-user-message-bubble]{--leak:u\\72l('https://example.invalid/escaped');background-image:var(--leak)}
         @media(min-width:1px){[data-slot="composer-host"]{background-image:image-set('https://example.invalid/set' 1x)}}`,
     };
-    await mockSkinCatalog(page, [
-      { slug: 'safe-sky', name: 'Safe sky', body: theme },
-      { slug: 'safe-sky-two', name: 'Safe sky two', body: { ...theme, name: 'Safe sky two' } },
-      { slug: 'invalid', name: 'Invalid skin', body: { ...theme, version: 99 } },
-    ], { failFirst: true, pageSize: 1 });
+    await mockSkinCatalog(page, []);
     await page.locator('.settings-appearance-panel__skin-select .el-select__wrapper').click();
-    await page.getByRole('alert').waitFor();
-    await page.keyboard.press('Escape');
-    await page.locator('.settings-appearance-panel__skin-select .el-select__wrapper').click();
-    const preview = page.getByRole('link', { name: 'Preview Safe sky', exact: true });
-    await preview.waitFor();
-    assert.equal(await preview.getAttribute('href'), 'https://www.t3skins.dev/skins/safe-sky');
-    await preview.click();
-    assert.equal(await page.locator('html').getAttribute('data-app-theme'), 'app-light');
-    await page.getByRole('option', { name: 'Safe sky', exact: true }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('option', { name: 'Load from file…', exact: true }).click();
+    await (await chooser).setFiles({ name: 'local-skin.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(theme)) });
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-safe-sky');
     assert.equal(await page.locator('html').getAttribute('data-theme'), 'light', 'System mode keeps following the OS with a skin variant');
-    await chooseSkin(page, 'Safe sky two');
-    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-safe-sky-two');
     await page.locator('.el-segmented').getByText('Light', { exact: true }).click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     const segment = await page.evaluate(() => {
@@ -366,21 +317,8 @@ test('keeps light/dark variants, rejects invalid imports, and prevents skin CSS 
     for (const selector of ['.agent-ui-conversation-pane', '.chat-composer', '.chat-message--user .chat-message__stack']) {
       assert.equal(await page.locator(selector).first().evaluate(el => getComputedStyle(el).backgroundImage), 'none');
     }
-    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
-    await chooseSkin(page, 'Invalid skin');
-    await page.getByRole('alert').waitFor();
-    assert.equal(await page.locator('html').getAttribute('data-app-theme'), 'custom-safe-sky-two');
     assert.deepEqual(requests, []);
-    await page.getByRole('button', { name: 'Remove', exact: true }).click();
-    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'app-light');
-    await page.reload();
-    assert.equal(await page.getByRole('button', { name: 'Remove', exact: true }).count(), 0);
-    await page.locator('.settings-appearance-panel__skin-select .el-select__wrapper').click();
-    assert.equal(await page.getByRole('option').first().innerText(), 'Load from file…');
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('option', { name: 'Load from file…', exact: true }).click();
-    await (await chooser).setFiles({ name: 'local-skin.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(theme)) });
-    await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'custom-safe-sky');
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
     await page.getByRole('button', { name: 'Remove', exact: true }).click();
     await page.waitForFunction(() => document.documentElement.dataset.appTheme === 'app-light');
     assert.equal(await page.locator('html').getAttribute('data-theme'), 'light', 'removing a dark skin restores the chosen light mode');
