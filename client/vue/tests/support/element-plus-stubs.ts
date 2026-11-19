@@ -9,9 +9,10 @@ const radioGroupKey: InjectionKey<{
 }> = Symbol('radio-group');
 
 const flattenNodes = (nodes: VNode[]): VNode[] => nodes.flatMap((node) => {
-  return node.type === Fragment && Array.isArray(node.children)
-    ? flattenNodes(node.children as VNode[])
-    : [node];
+  if (node.type === Fragment && Array.isArray(node.children)) return flattenNodes(node.children as VNode[]);
+  // An option group's options live in its default slot, not in its vnode children.
+  if (node.type === ElOptionGroupStub) return flattenNodes((node.children as { default?: () => VNode[] } | null)?.default?.() ?? []);
+  return [node];
 });
 
 const buttonProps = {
@@ -165,6 +166,12 @@ export const ElOptionStub = defineComponent({
   name: 'ElOption',
   props: ['disabled', 'label', 'value'],
   template: '<option :disabled="disabled" :value="value"><slot>{{ label }}</slot></option>',
+});
+
+export const ElOptionGroupStub = defineComponent({
+  name: 'ElOptionGroup',
+  props: ['disabled', 'label'],
+  template: '<optgroup :label="label"><slot /></optgroup>',
 });
 
 export const ElPopoverStub = defineComponent({
@@ -321,6 +328,7 @@ export const elementPlusStubs = {
   ElMenuItem: ElMenuItemStub,
   ElMenuItemGroup: ElMenuItemGroupStub,
   ElOption: ElOptionStub,
+  ElOptionGroup: ElOptionGroupStub,
   ElPopover: ElPopoverStub,
   ElRadio: ElRadioStub,
   ElRadioGroup: ElRadioGroupStub,

@@ -63,4 +63,22 @@ describe('Element Plus test controls', () => {
     expect(wrapper.vm.choice).toBe(false);
     expect(inputs.map(input => (input.element as HTMLInputElement).checked)).toStrictEqual([false, true]);
   });
+
+  it('renders grouped select options and names the selected one without unresolved components', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wrapper = mount(defineComponent({
+      template: `
+        <ElSelect model-value="b" placeholder="Pick">
+          <ElOptionGroup label="First"><ElOption value="a" label="Alpha" /></ElOptionGroup>
+          <ElOptionGroup label="Second"><ElOption value="b" label="Beta" /></ElOptionGroup>
+        </ElSelect>
+      `,
+    }));
+
+    expect(wrapper.findAll('optgroup').map(group => group.attributes('label'))).toStrictEqual(['First', 'Second']);
+    expect(wrapper.findAll('option')).toHaveLength(2);
+    expect(wrapper.get('.el-select__placeholder').text()).toBe('Beta');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
