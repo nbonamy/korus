@@ -3,6 +3,7 @@
     class="settings-sidebar"
     data-slot="sidebar-inner"
     data-workspace-area="settings-nav"
+    tabindex="-1"
     @keydown.capture="navigate"
     :aria-label="$t('surface.settingsSidebar.settingsCategories')"
   >
@@ -11,7 +12,15 @@
       @select="selectTab"
     >
       <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
-        <el-menu-item class="agent-ui-interactive" data-variant="primary" :data-selected="activeTab === destination.id ? '' : undefined" v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
+        <el-menu-item
+          v-for="destination in destinations.filter(item => item.group === group.id)"
+          :key="destination.id"
+          :index="destination.id"
+          class="agent-ui-interactive"
+          data-variant="primary"
+          :data-selected="activeTab === destination.id ? '' : undefined"
+          :tabindex="tabStop === destination.id ? 0 : -1"
+        >
           <ProviderIcon v-if="destination.provider" :provider="destination.provider" monochrome />
           <component :is="destination.icon" v-else aria-hidden="true" />
           <span>{{ $t(destination.labelKey) }}</span>
@@ -43,6 +52,8 @@ const groups = [
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
 const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableProviders: props.availableProviders ?? [] }));
+const tabStop = computed(() => (destinations.value.find(destination => destination.id === props.activeTab) ?? destinations.value[0])?.id);
+
 function navigate(event: KeyboardEvent): void {
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
   const sidebar = event.currentTarget as HTMLElement;

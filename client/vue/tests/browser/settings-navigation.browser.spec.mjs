@@ -37,9 +37,10 @@ test('settings navigation reaches bottom panels and scrolls independently at sup
       await page.setViewportSize({ width: 1200, height });
       const nav = page.locator('.settings-sidebar');
       const content = page.locator('.settings-view__content');
+      await nav.evaluate(el => { el.scrollTop = 0; });
       await nav.hover();
       await page.mouse.wheel(0, 3000);
-      await page.waitForFunction(() => document.querySelector('.settings-sidebar').scrollTop > 0);
+      await page.waitForFunction(() => document.querySelector('.settings-sidebar').scrollTop > 0, undefined, { timeout: 2500 });
       const bottom = nav.getByRole('menuitem', { name: 'Connections', exact: true });
       const bounds = await bottom.boundingBox();
       assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= height, 'bottom destination must be visible after scrolling');
@@ -51,14 +52,18 @@ test('settings navigation reaches bottom panels and scrolls independently at sup
       await nav.evaluate(el => { el.scrollTop = 0; });
       await nav.getByRole('menuitem', { name: 'General', exact: true }).click();
       const navTop = await nav.evaluate(el => el.scrollTop);
+      await content.evaluate(el => { el.scrollTop = 0; });
       await content.hover();
-      await page.mouse.wheel(0, 3000);
-      await page.waitForFunction(() => document.querySelector('.settings-view__content').scrollTop > 0);
+      await page.mouse.wheel(0, 100);
+      await page.waitForFunction(() => document.querySelector('.settings-view__content').scrollTop > 0, undefined, { timeout: 2500 });
       assert.equal(await nav.evaluate(el => el.scrollTop), navTop, 'content scrolling must not move navigation');
-      const contentTop = await content.evaluate(el => el.scrollTop);
+      const { top: contentTop, max: contentMax } = await content.evaluate(el => ({
+        top: el.scrollTop, max: el.scrollHeight - el.clientHeight,
+      }));
+      assert.ok(contentTop < contentMax, 'content must have room to scroll down during the navigation wheel check');
       await nav.hover();
       await page.mouse.wheel(0, 3000);
-      await page.waitForFunction(() => document.querySelector('.settings-sidebar').scrollTop > 0);
+      await page.waitForFunction(top => document.querySelector('.settings-sidebar').scrollTop > top, navTop, { timeout: 2500 });
       assert.equal(await content.evaluate(el => el.scrollTop), contentTop, 'navigation scrolling must not move content');
       const geometry = await page.evaluate(() => ({height:innerHeight, documentHeight:document.documentElement.scrollHeight,
         nav:document.querySelector('.settings-sidebar').getBoundingClientRect().toJSON(),
@@ -162,13 +167,19 @@ test('arrows traverse the available destinations when host and provider entries 
   });
 }, 60000);
 
-test('arrow selection starts from a focused destination without a mouse click', async () => {
+test('Tab enters at the selected destination and arrows change the panel without a mouse click', async () => {
   await withShortSettings(filteredSource, async page => {
-    const items = page.locator('.settings-sidebar').getByRole('menuitem');
-    const next = (await items.nth(1).textContent()).trim();
-    await items.first().focus();
+    await page.keyboard.press('Tab');
+    await expectFocusedSelectionInView(page, 'General');
+
     await page.keyboard.press('ArrowDown');
-    await expectFocusedSelectionInView(page, next);
+    await expectFocusedSelectionInView(page, 'Analytics');
+    await page.locator('.settings-view__content').getByRole('heading', { name: 'Analytics', exact: true }).waitFor();
+
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('.settings-view__content').evaluate(el => el.contains(document.activeElement)), true);
+    await page.keyboard.press('Shift+Tab');
+    await expectFocusedSelectionInView(page, 'Analytics');
   });
 }, 60000);
 
