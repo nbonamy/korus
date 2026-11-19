@@ -11779,6 +11779,103 @@
         }
       ]
     },
+    "gemini-4-neon": {
+      "metadata": {
+        "canonicalId": "google/gemini-4-neon",
+        "source": {
+          "path": "providers/google/models/gemini-4-neon.toml",
+          "urls": [
+            "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
+            "https://ai.google.dev/gemini-api/docs/flex-inference",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
+            "https://ai.google.dev/gemini-api/docs/generate-content/caching",
+            "https://ai.google.dev/gemini-api/docs/interactions-overview",
+            "https://ai.google.dev/gemini-api/docs/interactions-overview#supported-models-agents",
+            "https://ai.google.dev/gemini-api/docs/models/gemini-4-neon",
+            "https://ai.google.dev/gemini-api/docs/openai",
+            "https://ai.google.dev/gemini-api/docs/pricing",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-4-neon",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-4-neon;",
+            "https://ai.google.dev/gemini-api/docs/priority-inference",
+            "https://ai.google.dev/gemini-api/docs/thinking",
+            "https://ai.google.dev/gemini-api/docs/whats-new-gemini-4-neon",
+            "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon/"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-19T14:30:27.794Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 3,
+                "cache": {
+                  "read": 0.15
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 15,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 3,
+                "cache": {
+                  "read": 0.15
+                },
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "flex"
+                  }
+                },
+                "factor": {
+                  "audio": 0.5,
+                  "text": 0.5
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "audio": 1.8,
+                  "text": 1.8
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "flex",
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 4096
+            }
+          },
+          "source": {
+            "revision": "ba846a56a8a2c486b92c82732a849fa474dc885b",
+            "collectedAt": "2026-11-19T14:30:27.794Z",
+            "blobSha": "e711a5a9f472ccaeae2132abe22073179fd32bd7"
+          }
+        }
+      ]
+    },
     "gemini-decision-1": {
       "metadata": {
         "canonicalId": "google/gemini-decision-1",
