@@ -385,9 +385,9 @@ try {
                     reference.fillStyle = series.borderColor;
                     reference.fillRect(0, 0, 1, 1);
                     const expected = reference.getImageData(0, 0, 1, 1).data;
-                    // Sample inside the marker, clear of the crosshair and outline.
-                    const x = Math.round((element.x + 2) * ratio);
-                    const y = Math.round((element.y + 2) * ratio);
+                    // Stay on the center row, just outside the vertical crosshair.
+                    const x = Math.floor((element.x + 1.5) * ratio);
+                    const y = Math.floor(element.y * ratio);
                     const actual = chart.ctx.getImageData(x, y, 1, 1).data;
                     return { series: series.label, expected: [...expected], actual: [...actual] };
                   });
