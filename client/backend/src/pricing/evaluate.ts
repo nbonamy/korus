@@ -8,7 +8,7 @@ import { pricingBaselineDate, type PricingHistory } from "./schema";
 type ObjectValue = { [key: string]: unknown };
 type Match = boolean | null;
 export type RequestPrice =
-  | { usd: number; snapshot: string }
+  | { usd: number; snapshot: string; region: string | null }
   | { reason: UsageCostReason };
 const object = (v: unknown): v is ObjectValue =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -171,6 +171,8 @@ export function priceRequest(
   if (mode?.cost) cost = merge(cost, mode.cost);
   const evidence = {
     ...request.pricingContext,
+    // Select base regional rates without turning the estimate into reported evidence.
+    region: request.pricingContext.region ?? "global",
     service_tier: tier,
     date: new Date(request.at).toISOString().slice(0, 10),
   };
@@ -315,7 +317,11 @@ export function priceRequest(
         multipliers.reduce<number>((n, f) => n * factorAt(f, item.path), 1)) /
       1e6;
   }
-  return { usd: Number(usd.toPrecision(15)), snapshot: model.date };
+  return {
+    usd: Number(usd.toPrecision(15)),
+    snapshot: model.date,
+    region: request.pricingContext.region,
+  };
 }
 
 /** Price retained execution counters without fabricating billable request identities. */
@@ -358,7 +364,7 @@ export function priceExecution(
         inputIncludesCacheWrite: true,
         outputIncludesReasoning: true,
       },
-      pricingContext: { context: null, region: claude ? "global" : null },
+      pricingContext: { context: null, region: null },
       requestedServiceTier: record.serviceTier ?? null,
       reportedServiceTier: tier,
       reportedMode: claude && record.serviceTier === "fast" ? "fast" : null,

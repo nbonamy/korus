@@ -1119,8 +1119,10 @@ predicates use their authored strict/inclusive operators, matching overrides mer
 in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated
 from ordinary output before applying rates. Missing usage, inclusion semantics,
-cache rates/lifetimes, context, region, tier or model evidence leaves a request
-unpriced with a reason. Codex executions and legacy Claude executions without
+cache rates/lifetimes, context, tier or model evidence leaves a request
+unpriced with a reason. An unreported pricing region uses the global rate for
+the estimate. Analytics distinguishes unreported regions from region evidence
+supplied by the provider. Codex executions and legacy Claude executions without
 request observations are priced from their retained model and measured token
 counters, with cached reads priced separately, normal pricing for missing tiers,
 and no long-context premium. Legacy Claude cache creation uses the default

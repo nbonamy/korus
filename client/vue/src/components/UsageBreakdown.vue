@@ -41,7 +41,7 @@
           </td>
           <td class="num">{{ chartFormat(row.turns, true) }}</td>
           <td class="num">{{ chartFormat(row.tokens, true) }}</td>
-          <td class="num">{{ usdFormat(row.cost?.usd) }}</td>
+          <td class="num" :title="pricingRegionTitle(row.cost?.pricingRegions)">{{ usdFormat(row.cost?.usd) }}</td>
           <td>
             <span class="breakdown-share"
               ><UsageBar :value="share(row)" :color="row.color" /><b>{{
@@ -58,6 +58,7 @@
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import UsageBar from "./UsageBar.vue";
 import UsageCard from "./UsageCard.vue";
 import {
@@ -71,6 +72,14 @@ const props = defineProps<{
   series: UsageSeries[];
   grouping: UsageGrouping;
 }>();
+const { t } = useI18n();
+function pricingRegionTitle(regions?: (string | null)[]): string | undefined {
+  if (!regions?.length) return;
+  const labels = regions.map(region => region === null
+    ? t("analytics.unreportedPricingRegion")
+    : region === "global" ? t("analytics.globalPricingRegion") : region.toUpperCase());
+  return t("analytics.pricingRegions", { regions: labels.join(", ") });
+}
 const rows = computed(() => sortUsageValues(props.series, row => row.tokens));
 const measuredTotal = computed(() =>
   props.series.reduce((n, row) => n + (row.tokens ?? 0), 0),

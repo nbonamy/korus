@@ -1110,7 +1110,7 @@ const costRow = (label: string, usd: number | null, partial = false) => ({
   cost: costFixture(usd, partial),
 });
 
-it("shows Codex execution costs without unavailable request metadata or pricing assumption copy", async () => {
+it("shows execution costs and pricing region details without exposing request bookkeeping", async () => {
   const cost = {
     usd: 0.25,
     coverage: "complete" as const,
@@ -1120,6 +1120,7 @@ it("shows Codex execution costs without unavailable request metadata or pricing 
     pricedExecutions: 1,
     unknownRequestExecutions: 0,
     reasons: [],
+    pricingRegions: [null, "global", "us"],
   };
   setElectronTestClient({
     getUsage: vi.fn(async () => ({
@@ -1141,6 +1142,8 @@ it("shows Codex execution costs without unavailable request metadata or pricing 
       "Runtime request evidence unavailable",
     );
     expect(wrapper.text()).not.toContain("assum");
+    expect(wrapper.get('[aria-label="Usage breakdown"] tbody tr td[title]').attributes("title"))
+      .toBe("Pricing regions · Unreported (no surcharge), Global, US");
     expect(wrapper.get('[aria-label="Usage breakdown"]').text()).not.toContain(
       "Observed requests",
     );

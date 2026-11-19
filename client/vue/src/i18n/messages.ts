@@ -138,6 +138,7 @@ export const messages = {
       tokenReportingWarning: '{providers} turns are reported, but token usage and cost are unavailable.',
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',
       costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
+      pricingRegions: 'Pricing regions · {regions}', globalPricingRegion: 'Global', unreportedPricingRegion: 'Unreported (no surcharge)',
       title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Workspace',repository:'Repository',agentId:'Agent',
       clear:'Clear',clearConfirm:'Clear',clearing:'Clearing…',clearTitle:'Clear statistics?',clearConfirmation:'All recorded statistics will be deleted.',clearError:'Could not clear statistics. Try again.',
       allProviders:'All providers',usageOverview:'Usage',share:'Usage share',groupBy:'Group by',measuredTokens:'Tokens',cacheRead:'Cache read',cacheWrite:'Cache write',reasoning:'Reasoning',

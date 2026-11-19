@@ -178,7 +178,7 @@ it("prices Codex execution counters with cached reads, normal missing tiers and 
     await start(ledger, { ...execution, turnId: 'normal' });
     await start(ledger, { ...execution, turnId: 'priority', serviceTier: 'priority' });
     expect(ledger.query().cost).toStrictEqual({ usd: 0.75, coverage: 'complete', requests: 0,
-      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [] });
+      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [], pricingRegions: [null] });
     expect(ledger.query({ group: 'model', model: 'gpt-6-sol' }).rows.map(row => row.cost?.usd)).toStrictEqual([0.25, 0.5]);
     expect(ledger.query({ apiProvider: 'openai', group: 'apiProvider' }).rows[0]?.cost?.usd).toBe(0.75);
     expect(ledger.query({ apiProvider: 'google' }).cost?.usd).toBeNull();
@@ -213,7 +213,7 @@ it("prices legacy Claude totals with separate cache reads and default writes whi
     await start(ledger, { ...execution, turnId: "fast", model: "claude-opus-5-5", serviceTier: "fast" });
     // 50k ordinary input, 200k cache hits, 50k five-minute writes, 1k output.
     expect(ledger.query().cost).toStrictEqual({ usd: 1.4325, coverage: "complete", requests: 0,
-      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [] });
+      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [], pricingRegions: [null] });
     expect(ledger.query({ group: "model", model: "claude-sonnet-4-6" }).rows[0]?.cost?.usd).toBe(0.4125);
     const byApi = ledger.query({ apiProvider: "anthropic", group: "apiProvider" });
     expect(byApi.rows.map(row => [row.label, row.cost?.usd])).toStrictEqual([["anthropic", 1.4325]]);
@@ -237,6 +237,27 @@ it("prices legacy Claude totals with separate cache reads and default writes whi
     await ledger.clear();
     expect(ledger.query().cost).toMatchObject({ usd: null, requests: 0 });
   } finally { await ledger.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+it("prices Sol turn totals at each speed from the announced launch with an unreported region", async () => {
+  const startedAt = Date.parse("2026-11-17T18:00:37.118Z");
+  const ledger = new UsageLedger(":memory:", () => startedAt);
+  try {
+    const turn = { ...parent, provider: "codex", model: "gpt-6.2-sol",
+      tokens: { input: 10000, output: 1000, cacheRead: 0, cacheWrite: null } };
+    for (const serviceTier of ["normal", "priority", "ultrafast"]) {
+      await start(ledger, { ...turn, turnId: serviceTier, serviceTier, at: startedAt });
+    }
+    expect(ledger.query({ group: "model" }).rows).toMatchObject([
+      { modelVariant: { serviceTier: "standard" }, cost: { usd: 0.03, pricingRegions: [null] } },
+      { modelVariant: { serviceTier: "fast" }, cost: { usd: 0.06, pricingRegions: [null] } },
+      { modelVariant: { serviceTier: "ultrafast" }, cost: { usd: 0.09, pricingRegions: [null] } },
+    ]);
+    await start(ledger, { ...turn, turnId: "before-launch", serviceTier: "normal", at: startedAt - 1 });
+    expect(ledger.query().cost).toMatchObject({
+      usd: 0.18, coverage: "partial", reasons: [{ reason: "unknown-model", count: 1 }],
+    });
+  } finally { await ledger.close(); }
 });
 
 // Failure modes: cache double counting/lifetime loss; turn-total double charging;
@@ -266,6 +287,7 @@ it("prices disjoint cache lifetimes and reasoning once, replaces replayed sample
       unpricedRequests: 0,
       unknownRequestExecutions: 0,
       reasons: [],
+      pricingRegions: ["global"],
     };
     expect(ledger.query().cost).toStrictEqual(expected);
     await ledger.close();
@@ -448,10 +470,6 @@ it("leaves incomplete, provisional, unknown and pre-baseline requests unpriced w
           apiProvider: "google",
           model: "gemini-2.5-pro",
         },
-        "missing-pricing-context",
-      ],
-      [
-        { pricingContext: { context: 10000, region: null } },
         "missing-pricing-context",
       ],
       [{ status: "provisional" }, "provisional-usage"],
@@ -658,6 +676,15 @@ it("composes long-context and priority prices, served-mode rates and exclusive t
       12,
     );
     await ledger.observeRequest({
+      ...exclusive,
+      requestId: "unreported-region",
+      pricingContext: { context: 10000, region: null },
+    });
+    expect(ledger.query({ model: exclusive.model! }).cost).toMatchObject({
+      usd: 0.110205,
+      pricingRegions: [null, "global", "us"],
+    });
+    await ledger.observeRequest({
       ...base,
       requestId: "documented",
       reportedServiceTier: null,
@@ -667,7 +694,7 @@ it("composes long-context and priority prices, served-mode rates and exclusive t
       },
       pricingContext: { context: 10000, region: null },
     });
-    expect(ledger.query().cost?.pricedRequests).toBe(7);
+    expect(ledger.query().cost?.pricedRequests).toBe(8);
   } finally {
     await ledger.close();
   }
