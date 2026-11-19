@@ -3,6 +3,8 @@
     class="settings-sidebar"
     data-slot="sidebar-inner"
     data-workspace-area="settings-nav"
+    tabindex="-1"
+    @keydown.capture="navigate"
     :aria-label="$t('surface.settingsSidebar.settingsCategories')"
   >
     <el-menu
@@ -10,7 +12,15 @@
       @select="selectTab"
     >
       <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
-        <el-menu-item class="agent-ui-interactive" data-variant="primary" :data-selected="activeTab === destination.id ? '' : undefined" v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
+        <el-menu-item
+          v-for="destination in destinations.filter(item => item.group === group.id)"
+          :key="destination.id"
+          :index="destination.id"
+          class="agent-ui-interactive"
+          data-variant="primary"
+          :data-selected="activeTab === destination.id ? '' : undefined"
+          :tabindex="tabStop === destination.id ? 0 : -1"
+        >
           <ProviderIcon v-if="destination.provider" :provider="destination.provider" monochrome />
           <component :is="destination.icon" v-else aria-hidden="true" />
           <span>{{ $t(destination.labelKey) }}</span>
@@ -42,6 +52,22 @@ const groups = [
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
 const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableProviders: props.availableProviders ?? [] }));
+const tabStop = computed(() => (destinations.value.find(destination => destination.id === props.activeTab) ?? destinations.value[0])?.id);
+
+function navigate(event: KeyboardEvent): void {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  const sidebar = event.currentTarget as HTMLElement;
+  const items = Array.from(sidebar.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])'));
+  const index = items.indexOf(event.target as HTMLElement);
+  if (index < 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const target = items[Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+  target?.focus({ preventScroll: true });
+  target?.click();
+  target?.scrollIntoView({ block: 'nearest' });
+}
+
 function selectTab(tab: string): void {
   const destination = destinations.value.find(item => item.id === tab);
   if (destination) emit('select', destination.id);
@@ -51,6 +77,7 @@ function selectTab(tab: string): void {
 <style scoped>
 .settings-sidebar {
   --agent-ui-state-primary-selected: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  overflow-y: auto;
   border-right: 1px solid var(--color-border);
   padding-top: var(--space-24);
 }
