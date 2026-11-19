@@ -674,10 +674,11 @@ clears or changes it, Korus never re-detects.
   setup of its new worktree until the captured changes and staging state are
   transferred and source cleanup succeeds, then uses the same configured
   initializer in the background. Setup errors do not roll back the transfer.
-  Agent creation returns after Git creates the worktree; initialization continues
-  in the owning daemon. Agents carry setup state and the current command across
-  desktop, split panes and remote projections. Their conversations can start during
-  setup; an identity-scoped wait operation gates dependency-dependent checks,
+  Setup always runs in the owning daemon's background after checkout finishes,
+  including the final fast-forward for a pull or merge request. Worktree creation
+  returns without waiting for setup. Agents carry setup state and the current
+  command across desktop, split panes and remote projections. Conversations can
+  start during setup. An identity-scoped wait operation gates dependency-dependent checks,
   competing installs and commits. Failures remain visible, and saved running setup
   becomes an interrupted error after a daemon restart. Setup processes are cancelled
   during daemon shutdown.

@@ -7,8 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Agent, AgentGitFile } from '@workspace/core/contracts';
 import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult, BranchWorkProgress } from '@workspace/core/branch-current-work';
-import { suggestedSourceWorktreePath } from '../git-worktrees';
-import { WorktreeManager } from '../worktrees/worktree-manager';
+import { createGitWorktree, suggestedSourceWorktreePath } from '../git-worktrees';
 
 const exec = promisify(execFile);
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -19,7 +18,7 @@ type Journal = {
   result: BranchWorkResult;
 };
 type Options = {
-  initializeWorktree?(repositoryPath: string, worktreePath: string): Promise<void>;
+  initializeWorktree?(repositoryPath: string, worktreePath: string): void;
   /** How long source cleanup waits for another git process to release the index lock. */
   lockWaitMs?: number;
   progress?(progress: BranchWorkProgress): void;
@@ -127,7 +126,7 @@ export class BranchCurrentWorkService {
       const folder = record.result.folder;
       if (!await exists(folder)) {
         // Setup must wait until source cleanup succeeds, preserving the captured files.
-        await new WorktreeManager().create({ repoPath: source, branchName: input.branchName, destinationPath: folder, startPoint: record.head, requireNewBranch: true }, { skipInitialization: true });
+        await createGitWorktree({ repoPath: source, branchName: input.branchName, destinationPath: folder, startPoint: record.head, requireNewBranch: true });
         const marker = await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', 'korus-branch-transfer']);
         await writeFile(marker, `${hash(key)}:${specification}`, { flag: 'wx', mode: 0o600 });
       }
@@ -192,7 +191,7 @@ export class BranchCurrentWorkService {
       record.result.detail = error instanceof Error ? error.message : String(error);
       await saveJournal(journalPath, record);
     }
-    if (record.result.state === 'completed') await this.options.initializeWorktree?.(source, record.result.folder);
+    if (record.result.state === 'completed') this.options.initializeWorktree?.(source, record.result.folder);
     return structuredClone(record.result);
   }
 

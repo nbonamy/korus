@@ -565,7 +565,7 @@ export class AppMcpService {
       if (!this.options.createRemoteWorktree) throw new McpToolError('Remote worktree creation is unavailable.');
       return this.options.createRemoteWorktree(input);
     }
-    return (await this.worktreeManager.create(input, { backgroundInitialization: true })).worktree;
+    return (await this.worktreeManager.create(input)).worktree;
   }
 
   private async createAgentFromMcp(
