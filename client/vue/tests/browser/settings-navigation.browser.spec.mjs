@@ -74,47 +74,132 @@ test('settings navigation reaches bottom panels and scrolls independently at sup
   assert.deepEqual(errors, []);
 }, 60000);
 
-// Real toolkit focus and layout: group boundaries, clamped endpoints and content isolation.
-test('arrow selection follows visible destinations and keeps focus, panel and viewport together', async () => {
-  for (const filtered of [false, true]) {
-    const fixture = filtered ? source.replace("platform:'desktop'", "platform:'web'").replace("['codex','claude','cursor','antigravity']", "['codex','claude']") : source;
-    const errors = await withAnnotationFixture(fixture, async page => {
-      await page.setViewportSize({width:1200,height:560});
+const filteredSource = source
+  .replace("platform:'desktop'", "platform:'web'")
+  .replace("['codex','claude','cursor','antigravity']", "['codex','claude']");
+
+// Keep the original panel checkpoints; intermediate destinations also prove focus,
+// selection and visibility. These examples are independent of production tab data.
+const panelCheckpoints = [
+  'General', 'Personalization', 'Skills', 'Plugins',
+  'Workflows', 'Integrations', 'Connections',
+];
+
+async function withShortSettings(fixture, run) {
+  const errors = await withAnnotationFixture(fixture, async page => {
+    await page.setViewportSize({ width: 1200, height: 560 });
+    await page.locator('.settings-sidebar').getByRole('menuitem').first().waitFor();
+    await run(page);
+  });
+  assert.deepEqual(errors, []);
+}
+
+async function expectFocusedSelectionInView(page, name) {
+  const nav = page.locator('.settings-sidebar');
+  const item = nav.getByRole('menuitem', { name, exact: true });
+  await page.waitForFunction(name => {
+    const item = [...document.querySelectorAll('.settings-sidebar [role="menuitem"]')]
+      .find(item => item.textContent.trim() === name);
+    return item === document.activeElement && item.hasAttribute('data-selected');
+  }, name, { timeout: 2500 });
+  const box = await item.boundingBox();
+  const region = await nav.boundingBox();
+  assert.ok(box.y >= region.y && box.y + box.height <= region.y + region.height + 1, name + ' visible');
+}
+
+async function arrowToDestination(page, name, key) {
+  const nav = page.locator('.settings-sidebar');
+  const names = (await nav.getByRole('menuitem').allTextContents()).map(value => value.trim());
+  const current = (await nav.locator('[role="menuitem"][data-selected]').textContent()).trim();
+  const start = names.indexOf(current), end = names.indexOf(name);
+  assert.ok(start >= 0 && end >= 0, 'navigation starts and ends at available destinations');
+  const path = names.slice(Math.min(start, end), Math.max(start, end) + 1);
+  const destinations = (key === 'ArrowDown' ? path : path.reverse()).slice(1);
+  for (const destination of destinations) {
+    await page.keyboard.press(key);
+    await expectFocusedSelectionInView(page, destination);
+  }
+}
+
+async function expectSettingsPanel(page, name) {
+  await page.locator('#settings-' + name.toLowerCase() + '-title').waitFor();
+}
+
+// Each workflow includes cold Vite/Chromium startup; interaction waits stay bounded.
+test('arrows select across groups, display their panels and reveal each destination', async () => {
+  await withShortSettings(source, async page => {
+    const nav = page.locator('.settings-sidebar');
+    await nav.getByRole('menuitem', { name: 'General', exact: true }).click();
+    for (const name of panelCheckpoints.slice(1)) {
+      await arrowToDestination(page, name, 'ArrowDown');
+      await expectSettingsPanel(page, name);
+    }
+    assert.ok(await nav.evaluate(el => el.scrollTop) > 0, 'arrows scroll to bottom destinations');
+    for (const name of panelCheckpoints.slice(0, -1).reverse()) {
+      await arrowToDestination(page, name, 'ArrowUp');
+      await expectSettingsPanel(page, name);
+    }
+  });
+}, 60000);
+
+test('arrows traverse the available destinations when host and provider entries are filtered out', async () => {
+  await withShortSettings(filteredSource, async page => {
+    const nav = page.locator('.settings-sidebar');
+    const names = (await nav.getByRole('menuitem').allTextContents()).map(value => value.trim());
+    for (const absent of ['Browser', 'Appshots', 'Cursor', 'Antigravity']) {
+      assert.ok(!names.includes(absent), absent + ' filtered');
+    }
+    await nav.getByRole('menuitem', { name: 'General', exact: true }).click();
+    for (const name of panelCheckpoints.slice(1)) {
+      await arrowToDestination(page, name, 'ArrowDown');
+      await expectSettingsPanel(page, name);
+    }
+    assert.ok(await nav.evaluate(el => el.scrollTop) > 0, 'filtered navigation still overflows');
+    for (const name of panelCheckpoints.slice(0, -1).reverse()) {
+      await arrowToDestination(page, name, 'ArrowUp');
+      await expectSettingsPanel(page, name);
+    }
+  });
+}, 60000);
+
+test('arrow selection starts from a focused destination without a mouse click', async () => {
+  await withShortSettings(filteredSource, async page => {
+    const items = page.locator('.settings-sidebar').getByRole('menuitem');
+    const next = (await items.nth(1).textContent()).trim();
+    await items.first().focus();
+    await page.keyboard.press('ArrowDown');
+    await expectFocusedSelectionInView(page, next);
+  });
+}, 60000);
+
+test('arrows stop at the first and last available destinations', async () => {
+  for (const fixture of [source, filteredSource]) {
+    await withShortSettings(fixture, async page => {
       const nav = page.locator('.settings-sidebar');
-      const items = nav.getByRole('menuitem');
-      await items.first().waitFor();
-      const names = (await items.allTextContents()).map(value=>value.trim());
-      assert.ok(names.includes('Connections'));
-      if (filtered) for (const absent of ['Browser','Appshots','Cursor','Antigravity']) assert.ok(!names.includes(absent), absent+' filtered');
-      if (filtered) await items.first().focus();
-      else await items.first().click();
-      const check = async index => {
-        const item = items.nth(index);
-        await page.waitForFunction(index => {
-          const items = document.querySelectorAll('.settings-sidebar [role="menuitem"]');
-          return items[index] === document.activeElement && items[index].hasAttribute('data-selected');
-        }, index, {timeout:2500});
-        const box = await item.boundingBox(), region = await nav.boundingBox();
-        assert.ok(box.y >= region.y && box.y+box.height <= region.y+region.height+1, names[index]+' visible');
-        if (['General','Personalization','Skills','Plugins','Workflows','Integrations','Connections'].includes(names[index])) {
-          await page.locator('#settings-'+names[index].toLowerCase()+'-title').waitFor();
-        }
-      };
-      await page.keyboard.press('ArrowUp'); await check(0);
-      for (let index=1; index<names.length; index++) { await page.keyboard.press('ArrowDown'); await check(index); }
-      assert.ok(await nav.evaluate(el=>el.scrollTop)>0);
-      await page.keyboard.press('ArrowDown'); await check(names.length-1);
-      for (let index=names.length-2; index>=0; index--) { await page.keyboard.press('ArrowUp'); await check(index); }
-      await page.keyboard.press('ArrowUp'); await check(0);
-      await nav.getByRole('menuitem',{name:'Appearance',exact:true}).click();
+      await nav.getByRole('menuitem', { name: 'General', exact: true }).click();
+      await page.keyboard.press('ArrowUp');
+      await expectFocusedSelectionInView(page, 'General');
+      await expectSettingsPanel(page, 'General');
+      await nav.getByRole('menuitem', { name: 'Connections', exact: true }).click();
+      await page.keyboard.press('ArrowDown');
+      await expectFocusedSelectionInView(page, 'Connections');
+      await expectSettingsPanel(page, 'Connections');
+    });
+  }
+}, 60000);
+
+test('content-control arrows keep their normal behavior without changing the selected destination', async () => {
+  for (const fixture of [source, filteredSource]) {
+    await withShortSettings(fixture, async page => {
+      await page.locator('.settings-sidebar').getByRole('menuitem', { name: 'Appearance', exact: true }).click();
       const input = page.locator('.settings-view__content input[role="spinbutton"]').first();
-      await input.waitFor(); await input.focus();
+      await input.waitFor();
+      await input.focus();
       const before = await input.inputValue();
       await input.press('ArrowUp');
       assert.notEqual(await input.inputValue(), before, 'real Element Plus numeric control handles arrows');
-      assert.equal(await page.evaluate(()=>window.activeSettingsTab()), 'appearance');
-      assert.equal(await input.evaluate(el=>el===document.activeElement), true);
+      assert.equal(await page.evaluate(() => window.activeSettingsTab()), 'appearance');
+      assert.equal(await input.evaluate(el => el === document.activeElement), true);
     });
-    assert.deepEqual(errors, []);
   }
 }, 60000);
