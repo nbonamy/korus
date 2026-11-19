@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.58.5",
+  "currentVersion": "0.59.0",
   "releases": [
+    {
+      "version": "0.59.0",
+      "releasedAt": "2026-11-18",
+      "sourceSha256": "2c66893613101db8a15d6a963a636a0a041fd1a2f18cb6be92a06d353ea43d0b",
+      "markdown": "### New features\n\n- **Remote Missions:** Choose a connected SSH host when starting a Mission. Workers check out repositories as needed, and you can see their progress when you reconnect.\n- **Settings search:** Search labels, descriptions and help text from the sidebar and open the first match as you type.\n\n### Improvements and fixes\n\n- **SSH agents:** Agents on SSH hosts keep working when you quit Korus or lose your connection.\n- **Worktree setup:** Open the agent as soon as Git finishes checkout and follow background setup in the conversation.\n- **Settings navigation:** Scroll the sidebar independently and use the Up and Down arrows to switch sections.\n- **Code reviews:** Removed the extra background behind the selected review round."
+    },
     {
       "version": "0.58.5",
       "releasedAt": "2026-11-18",
