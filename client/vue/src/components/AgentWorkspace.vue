@@ -3,7 +3,7 @@
     v-if="showHeader && (!splitHeaders || rightWorkspaceExpanded) && !isAgentEmpty && currentAgent"
     v-bind="headerBindingsFor(emptySplitPane ? null : currentAgent.id, true, true)"
   />
-  <div ref="workspaceBody" class="app-shell__body workspace-body" @dragstart.capture="linkDrag.start">
+  <div ref="workspaceBody" class="app-shell__body workspace-body" :class="{ 'workspace-body--seamless-header': splitHeaders && agentSidebarCollapsed }" @dragstart.capture="linkDrag.start">
     <AgentEmptyState v-if="isAgentEmpty" @start-work="handleStartWorkAction" />
     <div v-else v-show="!rightWorkspaceExpanded" class="app-shell__conversations" :class="{ 'app-shell__conversations--split': splitHeaders }">
     <div v-if="$slots['layout-control']" class="app-shell__layout-control">
@@ -774,6 +774,12 @@ defineExpose({
   top: var(--space-3);
   right: var(--space-4);
   z-index: 3;
+}
+
+/* Split panes carry their headers inside the body, so its edge would cut through the header row
+   beside a collapsed sidebar; the rail's divider, which starts below the header, marks the seam. */
+.workspace-body--seamless-header {
+  box-shadow: none;
 }
 
 .app-shell__conversations--split .app-shell__layout-control {

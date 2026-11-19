@@ -8,6 +8,7 @@ import AgentWorkspace from '../../src/components/AgentWorkspace.vue';
 import type { AgentRightWorkspaceState } from '../../src/components/use-right-workspace-state';
 import type { RightWorkspaceTab } from '../../src/components/right-workspace';
 import { stubElectronTestWindow } from '../support/client';
+import '../../src/styles/base.css';
 
 const WorkspaceConversationSlot = defineComponent({
   name: 'WorkspaceConversationSlot', props: ['plan', 'planVisible'],
@@ -255,6 +256,21 @@ describe('AgentWorkspace', () => {
       expect(planVisible(wrapper)).toBe(true);
       wrapper.unmount();
     });
+  });
+
+  it('keeps the window header seamless over a collapsed sidebar in split layouts', async () => {
+    const { wrapper } = mountWorkspace();
+    const edge = () => getComputedStyle(wrapper.get('.workspace-body').element).boxShadow;
+    // Single layout: the header sits above the body, so its edge starts below the header.
+    await wrapper.setProps({ agentSidebarCollapsed: true });
+    expect(edge()).not.toBe('none');
+    // Split panes put their headers inside the body: its edge would cut through the header row,
+    // so the rail's own divider (which starts below the header) marks the seam instead.
+    await wrapper.setProps({ splitHeaders: true });
+    expect(edge()).toBe('none');
+    await wrapper.setProps({ agentSidebarCollapsed: false });
+    expect(edge()).not.toBe('none');
+    wrapper.unmount();
   });
 
   it('persists the selected Git diff target on the active agent', async () => {
