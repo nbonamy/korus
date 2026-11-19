@@ -1,6 +1,10 @@
 import { product } from '@workspace/core/product';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { pathToFileURL } from 'node:url';
+import { appRpcErrorCodes, createAppRpcError, createAppRpcResult, isAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
+import { spawn } from 'node:child_process';
+import { rename } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import net from 'node:net';
 import type { Readable, Writable } from 'node:stream';
 import { createDaemonRuntime, type DaemonRuntime, type DaemonRuntimeOptions } from './runtime';
@@ -14,6 +18,8 @@ import { runCompanionRelay } from './companion/relay-cli';
 
 export const DAEMON_VERSION = backendPackage.version;
 export { loadPricingHistory } from './pricing/catalog';
+
+const stopSshServiceMethod = 'ssh-service/stop';
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   process.title = product.daemonName;
@@ -30,12 +36,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 
   if (argv.includes('--stdio')) {
-    await runStdio();
+    await withHomeLock(runStdio, process.env[exclusiveHomeEnvironment] === '1');
     return;
   }
 
   if (argv.includes('serve')) {
-    await serve();
+    const sshService = argv.includes('--ssh-service');
+    // Concurrent bridges wait for the same socket. A losing launcher must
+    // exit instead of keeping a second service queued behind the live one.
+    await withHomeLock(lock => serve(lock, sshService), sshService, 0);
     return;
   }
 
@@ -45,7 +54,27 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
 
   if (argv.includes('connect')) {
-    process.exitCode = await connectToDaemon({ expectedVersion: DAEMON_VERSION });
+    process.exitCode = await connectToDaemon({
+      expectedVersion: DAEMON_VERSION,
+      startDaemon: argv.includes('--start') ? startSshService : undefined,
+    });
+    return;
+  }
+
+  if (argv[0] === 'install-ssh-service' && argv[1]) {
+    try {
+      await requestSshServiceStop();
+      // The old service can close its socket before it finishes flushing state.
+      const lock = await acquireHomeLock(backendHomeDir(), { waitMs: 25_000 });
+      try {
+        await rename(fileURLToPath(import.meta.url), argv[1]);
+      } finally {
+        await lock.release();
+      }
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -62,40 +91,103 @@ export type ConnectToDaemonOptions = {
   socketPath?: string;
   stderr?: Writable;
   expectedVersion?: string;
+  startDaemon?: () => Promise<void>;
 };
+
+function openDaemonSocket(socketPath: string, connect = net.createConnection): Promise<net.Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(socketPath);
+    const onConnect = () => {
+      socket.off('error', onError);
+      resolve(socket);
+    };
+    const onError = (error: Error) => {
+      socket.off('connect', onConnect);
+      socket.destroy();
+      reject(error);
+    };
+    socket.once('connect', onConnect);
+    socket.once('error', onError);
+  });
+}
+
+function isUnavailableSocket(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === 'ENOENT' || code === 'ECONNREFUSED';
+}
+
+async function openOrStartDaemonSocket(options: ConnectToDaemonOptions): Promise<net.Socket> {
+  const open = () => openDaemonSocket(options.socketPath ?? backendSocketPath(), options.connectSocket);
+  try {
+    return await open();
+  } catch (error) {
+    if (!options.startDaemon || !isUnavailableSocket(error)) throw error;
+  }
+  await options.startDaemon();
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      return await open();
+    } catch (error) {
+      if (!isUnavailableSocket(error) || Date.now() >= deadline) throw error;
+      await delay(100);
+    }
+  }
+}
+
+async function startSshService(): Promise<void> {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', '--ssh-service'], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
+  child.unref();
+}
+
+async function requestSshServiceStop(): Promise<void> {
+  let socket: net.Socket;
+  try {
+    socket = await openDaemonSocket(backendSocketPath());
+  } catch (error) {
+    if (isUnavailableSocket(error)) return;
+    throw error;
+  }
+  const peer = new StdioRpcPeer({
+    input: socket,
+    output: socket,
+    requestTimeoutMs: 5_000,
+    onMessage: () => undefined,
+  });
+  socket.once('close', () => peer.stop());
+  socket.once('error', () => peer.stop());
+  peer.start();
+  try {
+    const result = await peer.request<{ stopping: boolean }>(stopSshServiceMethod);
+    if (result.stopping !== true) throw new Error('The SSH service did not acknowledge shutdown.');
+  } finally {
+    peer.stop();
+    socket.destroy();
+  }
+}
 
 export async function connectToDaemon(options: ConnectToDaemonOptions = {}): Promise<number> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
-  const socketPath = options.socketPath ?? backendSocketPath();
-  const socket = (options.connectSocket ?? net.createConnection)(socketPath);
-  let connectErrorMessage = socketPath;
-
-  const connected = await new Promise<boolean>((resolve) => {
-    const onConnect = () => {
-      socket.off('error', onError);
-      resolve(true);
-    };
-    const onError = (error: Error) => {
-      socket.off('connect', onConnect);
-      connectErrorMessage = error.message;
-      resolve(false);
-    };
-    socket.once('connect', onConnect);
-    socket.once('error', onError);
-  });
-
-  if (!connected) {
-    socket.destroy();
-    stderr.write(`${product.daemonName} socket unavailable: ${connectErrorMessage}\n`);
+  let socket: net.Socket;
+  try {
+    socket = await openOrStartDaemonSocket(options);
+  } catch (error) {
+    stderr.write(`${product.daemonName} socket unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
 
   if (options.expectedVersion && !await verifySocketVersion(socket, options.expectedVersion)) {
     socket.destroy();
     stderr.write('Restart the running Korus service on this SSH host to finish the update. Its version differs from the installed version.\n');
-    // Only a missing socket permits stdio fallback. An incompatible live owner must never fork state.
     return 2;
   }
 
@@ -107,6 +199,7 @@ export async function connectToDaemon(options: ConnectToDaemonOptions = {}): Pro
       }
       finished = true;
       input.unpipe(socket);
+      input.pause();
       socket.unpipe(output);
       socket.destroy();
       resolve(code);
@@ -158,11 +251,11 @@ function verifySocketVersion(socket: net.Socket, version: string): Promise<boole
   });
 }
 
-async function runStdio(): Promise<void> {
+async function withHomeLock(start: (lock: HomeLock | null) => Promise<void>, required: boolean, waitMs?: number): Promise<void> {
   let homeLock: HomeLock | null = null;
-  if (process.env[exclusiveHomeEnvironment] === '1') {
+  if (required) {
     try {
-      homeLock = await acquireHomeLock(backendHomeDir());
+      homeLock = await acquireHomeLock(backendHomeDir(), { waitMs });
     } catch (error) {
       if (!(error instanceof HomeInUseError)) throw error;
       process.stderr.write(`${error.message}\n`);
@@ -170,6 +263,15 @@ async function runStdio(): Promise<void> {
       return;
     }
   }
+  try {
+    await start(homeLock);
+  } catch (error) {
+    await homeLock?.release();
+    throw error;
+  }
+}
+
+async function runStdio(homeLock: HomeLock | null): Promise<void> {
   let runtime: DaemonRuntime;
   const stdio = new StdioRpcPeer({
     input: process.stdin,
@@ -214,8 +316,10 @@ async function runStdio(): Promise<void> {
   process.stdin.resume();
 }
 
-async function serve(): Promise<void> {
+async function serve(homeLock: HomeLock | null, sshService: boolean): Promise<void> {
   let socketServer: LocalSocketRpcServer | null = null;
+  let shutdownScheduled = false;
+  let stopping = false;
   const runtime = await createDaemonRuntime({
     version: DAEMON_VERSION,
     features: runtimeFeatures(),
@@ -232,13 +336,25 @@ async function serve(): Promise<void> {
   });
   socketServer = new LocalSocketRpcServer({
     socketPath: backendSocketPath(),
-    onMessage: (message) => runtime.server.handleMessage(message),
+    onMessage: (message) => {
+      if (shutdownScheduled) throw new Error('The SSH service is shutting down for an update.');
+      if (isAppRpcRequest(message) && message.method === stopSshServiceMethod) {
+        if (!sshService) {
+          return createAppRpcError(message.id, appRpcErrorCodes.methodNotFound, 'Stop the running Korus service on this SSH host before updating.');
+        }
+        runtime.prepareForRestart();
+        shutdownScheduled = true;
+        // Let this peer send its reply before closing the listening socket.
+        setImmediate(shutdown);
+        return createAppRpcResult(message.id, { stopping: true });
+      }
+      return runtime.server.handleMessage(message);
+    },
   });
   await socketServer.start();
   logMain('daemon', 'listening', { socketPath: backendSocketPath() });
 
-  let stopping = false;
-  const stop = async () => {
+  async function stop() {
     if (stopping) {
       return;
     }
@@ -246,13 +362,13 @@ async function serve(): Promise<void> {
     await socketServer?.stop();
     await runtime.stop();
     await flushBackendLogs();
-  };
-  process.once('SIGTERM', () => {
+    await homeLock?.release();
+  }
+  function shutdown() {
     void stop().finally(() => process.exit(0));
-  });
-  process.once('SIGINT', () => {
-    void stop().finally(() => process.exit(0));
-  });
+  }
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 
 function runtimeFeatures(): DaemonRuntimeOptions['features'] {
