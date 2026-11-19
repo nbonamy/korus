@@ -627,7 +627,7 @@ export class ProviderDriverRpc {
       }
       case backendMethods.sourceWorktreeCreate: {
         const record = requireRecord(params);
-        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput, { backgroundInitialization: true })).worktree;
+        return (await this.worktreeManager.create(record.input as CreateSourceWorktreeInput)).worktree;
       }
       default:
         return undefined;

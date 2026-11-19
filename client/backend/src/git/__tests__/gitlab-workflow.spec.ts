@@ -7,7 +7,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { decodeAppSnapshot } from '@workspace/core/snapshot-guards';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { createSourceWorktree } from '../../git-worktrees';
+import { createGitWorktree } from '../../git-worktrees';
+import { WorktreeManager } from '../../worktrees/worktree-manager';
 import { AgentGitService } from '../agent-git-service';
 import { GitLabWorkProviderDriver } from '../../work-integrations/gitlab-driver';
 import { GitHubWorkProviderDriver } from '../../work-integrations/github-driver';
@@ -70,7 +71,10 @@ it.each(['git@gitlab.com:group/sub/repo.git', 'https://gitlab.com/group/sub/repo
     expect(await service.workflow(root)).toMatchObject({ remote: 'other', repository: 'owner/other', repositoryProvider: 'github' });
   } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
 }, 10_000); // Real Git init, commit and remote setup per case needs headroom when the full suite runs in parallel.
-it.each(['github', 'gitlab'].flatMap(provider => ['current', 'new', 'reuse'].map(mode => ({ provider, mode }))))('checks out the intended $provider request head with worktree mode $mode', async ({ provider, mode }) => {
+it.each([
+  ...['github', 'gitlab'].flatMap(provider => ['current', 'new', 'reuse'].map(mode => ({ provider, mode }))),
+  { provider: undefined, mode: 'new' },
+])('checks out the intended head with provider $provider and worktree mode $mode', async ({ provider, mode }) => {
   const container = await mkdtemp(join(tmpdir(), 'korus-request-ref-'));
   const root = join(container, 'repo');
   await mkdir(root);
@@ -82,13 +86,18 @@ it.each(['github', 'gitlab'].flatMap(provider => ['current', 'new', 'reuse'].map
     const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim();
     const ref = provider === 'gitlab' ? 'refs/merge-requests/7/head' : 'refs/pull/7/head';
     await git(root, ['update-ref', ref, head]); await git(root, ['reset', '--hard', base]);
-    await git(root, ['remote', 'add', 'origin', `git@${provider}.com:group/repo.git`]);
+    if (provider) await git(root, ['remote', 'add', 'origin', `git@${provider}.com:group/repo.git`]);
     const target = join(container, 'checkout');
     if (mode === 'reuse') await git(root, ['worktree', 'add', '-b', 'review', target, base]);
     // Only replace the network remote at the process boundary; worktree policy is real.
-    const service = new AgentGitService(() => new Date(), async (folder, args) => git(folder, args[0] === 'fetch' ? ['fetch', root, args[2]!] : args), async input => ({ path: (await createSourceWorktree({ ...input, destinationPath: target })).path }));
-    const folder = await service.createBranch(root, 'review', mode !== 'current', 7, head);
-    expect((await git(folder, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(head);
+    const worktrees = new WorktreeManager({ createGitWorktree: input => createGitWorktree({ ...input, destinationPath: target }) });
+    const service = new AgentGitService(() => new Date(), async (folder, args) => git(folder, args[0] === 'fetch' ? ['fetch', root, args[2]!] : args),
+      async input => (await worktrees.create(input)).worktree);
+    const folder = provider
+      ? await service.createBranch(root, 'review', mode !== 'current', 7, head)
+      : await service.createBranch(root, 'review', true);
+    expect((await git(folder, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(provider ? head : base);
+    expect(await worktrees.waitForInitialization(folder)).toEqual(mode === 'new' ? { state: 'complete' } : undefined);
     expect((await git(folder, ['branch', '--show-current'])).stdout.trim()).toBe('review');
     expect((await git(root, ['status', '--porcelain'])).stdout.trim()).toBe('');
   } finally { await rm(container, { recursive: true, force: true }); }
@@ -112,14 +121,34 @@ it('keeps a fork PR linked after updating its local worktree from main and resto
   const container = await mkdtemp(join(tmpdir(), 'korus-fork-pr-'));
   const root = join(container, 'repo'), target = join(container, 'review'), fork = join(container, 'fork.git');
   let server: AppBackendServer | undefined;
+  let setupStarted!: () => void;
+  const setupStartedPromise = new Promise<void>(resolve => { setupStarted = resolve; });
+  let finishSetup!: () => void;
+  const finishSetupPromise = new Promise<void>(resolve => { finishSetup = resolve; });
+  let setupHead: string | undefined;
+  const worktrees = new WorktreeManager({
+    createGitWorktree: input => createGitWorktree({ ...input, destinationPath: target }),
+    getInitializationMode: () => 'automatic',
+    runCommand: async (command, args, { cwd }) => {
+      expect([command, ...args]).toEqual(['npm', 'ci']);
+      expect(cwd).toBe(target);
+      setupHead = (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
+      setupStarted();
+      await finishSetupPromise;
+      return {};
+    },
+  });
   try {
     await mkdir(root);
     await git(root, ['init', '-b', 'main']);
     await git(root, ['config', 'user.email', 'test@example.test']);
     await git(root, ['config', 'user.name', 'Test']);
     await git(root, ['commit', '--allow-empty', '-m', 'base']);
+    await git(root, ['branch', 'feat/project-overview']);
     await git(root, ['switch', '-c', 'contributor']);
     await writeFile(join(root, 'contributor.txt'), 'PR changes');
+    await writeFile(join(root, 'package.json'), '{}');
+    await writeFile(join(root, 'package-lock.json'), '{}');
     await git(root, ['add', '.']); await git(root, ['commit', '-m', 'PR changes']);
     const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim();
     await git(container, ['init', '--bare', fork]);
@@ -149,11 +178,17 @@ it('keeps a fork PR linked after updating its local worktree from main and resto
         expect((await git(folder, ['remote', 'get-url', '--push', remote])).stdout.trim()).toBe(fork);
       }
       return git(folder, args[0] === 'fetch' ? ['fetch', root, args[2]!] : args);
-    },
-      async input => ({ path: (await createSourceWorktree({ ...input, destinationPath: target })).path }));
-    server = new AppBackendServer({ version: 'test', snapshot, agentGitService: service, workIntegrations: manager });
+    }, async input => (await worktrees.create(input)).worktree);
+    server = new AppBackendServer({ version: 'test', snapshot, agentGitService: service, workIntegrations: manager,
+      worktreeInitializationForFolder: folder => worktrees.getInitializationState(folder) });
     const call = (method: string, params: object = {}) => server!.handleMessage({ jsonrpc: '2.0', id: 'test', method, params: { agentId: agent.id, ...params } });
     await call(backendMethods.agentGitBranchCreate, { input: { confirmed: true, name: 'feat/project-overview', createWorktree: true, pullRequestNumber: 87 } });
+    await setupStartedPromise;
+    expect(setupHead).toBe(head);
+    expect(agent.folder).toBe(target);
+    expect(agent.worktreeInitialization?.state).toBe('running');
+    finishSetup();
+    await expect(worktrees.waitForInitialization(target)).resolves.toEqual({ state: 'complete' });
     expect(agent.pullRequest).toMatchObject({ provider: 'github', repository: 'owner/repo', branch: 'feat/project-overview', number: 87 });
     expect(await call(backendMethods.agentGitUpdateFromBase, { input: { confirmed: true } })).toMatchObject({ result: {
       conflicts: [], workflow: { existingPullRequest: { number: 87, headSha: head, url: pr.html_url } },
@@ -185,5 +220,5 @@ it('keeps a fork PR linked after updating its local worktree from main and resto
     const unrelated = await call(backendMethods.agentGitWorkflowGet, { includePullRequest: true }) as { result: { branch: string; existingPullRequest?: unknown } };
     expect(unrelated.result.branch).toBe('unrelated');
     expect(unrelated.result.existingPullRequest).toBeUndefined();
-  } finally { await server?.close(); await rm(container, { recursive: true, force: true }); }
+  } finally { finishSetup(); await worktrees.close(); await server?.close(); await rm(container, { recursive: true, force: true }); }
 }, 5_000); // Real Git checkout/merge and backend startup/restart share this integration budget.

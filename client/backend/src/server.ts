@@ -179,7 +179,7 @@ export type AppBackendServerOptions = {
   saveCodeReviewReport?: (agent: Agent, session: CodeReviewSession) => Promise<string>;
   agentCreation?: AgentCreationService;
   worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
-  initializeWorktree?: (repositoryPath: string, worktreePath: string) => Promise<void>;
+  initializeWorktree?: (repositoryPath: string, worktreePath: string) => void;
   designService?: DesignService;
   visualizeService?: VisualizeService;
 };
@@ -979,6 +979,7 @@ export class AppBackendServer {
       getWorkIntegrations: () => this.requireWorkIntegrations(),
       recordMerge: (agentId, sourceFolder, worktreeDeleted, pushPending) => this.missionExecution.recordMerge(agentId, sourceFolder, worktreeDeleted, pushPending),
       git: this.agentGitService,
+      worktreeInitializationForFolder: options.worktreeInitializationForFolder,
       persistAndEmitSnapshot: () => this.persistAndEmitSnapshot(),
       refreshGitStatus: async (agentId) => { await this.agentWorkspaces.refreshGitStatus(agentId); },
       refreshWorkspaceIdentity: (agentId) => this.agentWorkspaces.refreshIdentity(agentId),

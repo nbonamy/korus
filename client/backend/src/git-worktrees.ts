@@ -14,7 +14,7 @@ export type GitWorktreeCreateInput = CreateSourceWorktreeInput & {
   startPoint?: string;
 };
 
-type GitWorktreeCreateResult = {
+export type GitWorktreeCreateResult = {
   worktree: SourceWorktree;
   created: boolean;
 };
@@ -81,7 +81,10 @@ async function createGitWorktreeUnlocked(
 
   if (input.reuseExisting && !input.requireNewBranch) {
     const existing = (await listSourceWorktrees(repoPath, runner)).find((worktree) => worktree.name === branchName);
-    if (existing) return { worktree: existing, created: false };
+    if (existing) {
+      if (input.startPoint) await runner.run('git', ['merge', '--ff-only', input.startPoint], { cwd: existing.path });
+      return { worktree: existing, created: false };
+    }
   }
 
   const worktreePath = input.destinationPath?.trim() || await freeWorktreePath(suggestedSourceWorktreePath(repoPath, branchName));

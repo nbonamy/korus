@@ -515,7 +515,6 @@ export class AgentGitService {
         reuseExisting: true,
         ...(startPoint ? { startPoint } : {}),
       });
-      if (startPoint) await this.runGit(worktree.path, ['merge', '--ff-only', startPoint]);
       return worktree.path;
     }
     const branchExists = await this.localBranchExists(folder, normalized);

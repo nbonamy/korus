@@ -60,6 +60,7 @@ export type AgentGitWorkflowServiceOptions = {
   getSnapshot: () => AppSnapshot;
   getWorkIntegrations: () => AgentGitWorkIntegrationsPort;
   git: AgentGitService;
+  worktreeInitializationForFolder?: (folder: string) => Agent['worktreeInitialization'];
   persistAndEmitSnapshot: () => Promise<AppSnapshot>;
   refreshGitStatus: (agentId: string) => Promise<void>;
   refreshWorkspaceIdentity: (agentId: string) => Promise<boolean>;
@@ -202,6 +203,9 @@ export class AgentGitWorkflowService {
           : await this.options.git.createBranch(folder, branchName, input.createWorktree === true, pullRequestNumber as number, ...(expectedHeadSha ? [expectedHeadSha] : []));
         if (input.createWorktree === true) {
           updateAgentFolder(this.options.getSnapshot(), agentId, targetFolder);
+          const initialization = this.options.worktreeInitializationForFolder?.(targetFolder);
+          if (initialization) agent.worktreeInitialization = initialization;
+          else if (agent.folder !== folder) delete agent.worktreeInitialization;
           await this.options.releaseConversation(agent);
         }
         if (tracking) agent.pullRequest = tracking;
