@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,19 +70,44 @@ describe('backend state loading', () => {
     await expect(readFile(path.join(homeDir, 'state.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('migrates an existing state.json on first load', async () => {
+  it('refuses a monolithic desktop home without changing it and still imports it on SSH hosts', async () => {
     const snapshot = await loadBackendSnapshot();
     const persisted = {
       ...persistedStateFromSnapshot(snapshot),
       teams: [{ id: 'team-loaded', name: 'Loaded', agentIds: [] }],
       activeTeamId: 'team-loaded',
     };
-    await writeFile(path.join(homeDir, 'state.json'), JSON.stringify(persisted), 'utf8');
+    const original = JSON.stringify(persisted);
+    const stateFile = path.join(homeDir, 'state.json');
+    await writeFile(stateFile, original, 'utf8');
 
-    await expect(loadBackendSnapshot()).resolves.toMatchObject({
+    await expect(loadBackendSnapshot()).rejects.toThrow(/state\.json.*0\.57\.0/);
+    expect(await readdir(homeDir)).toStrictEqual(['state.json']);
+    expect(await readFile(stateFile, 'utf8')).toBe(original);
+
+    await expect(loadBackendSnapshot({ allowLegacyStartup: true })).resolves.toMatchObject({
       activeTeamId: 'team-loaded',
       teams: [{ id: 'team-loaded' }],
     });
+    await expect(loadBackendSnapshot()).resolves.toMatchObject({ activeTeamId: 'team-loaded' });
+  });
+
+  it('requires a roster at the desktop upgrade floor before rewriting any files', async () => {
+    await saveBackendSnapshot(await loadBackendSnapshot());
+    const rosterFile = path.join(homeDir, 'roster.json');
+    const settingsFile = path.join(homeDir, 'settings.json');
+    const original = JSON.stringify({ ...JSON.parse(await readFile(rosterFile, 'utf8')), schemaVersion: 4 });
+    const settings = JSON.stringify({ ...JSON.parse(await readFile(settingsFile, 'utf8')), schemaVersion: 1 });
+    await writeFile(rosterFile, original);
+    await writeFile(settingsFile, settings);
+
+    await expect(loadBackendSnapshot()).rejects.toThrow(/roster\.json.*0\.57\.0/);
+    expect(await readFile(rosterFile, 'utf8')).toBe(original);
+    expect(await readFile(settingsFile, 'utf8')).toBe(settings);
+    await expect(stat(path.join(homeDir, 'backups'))).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await expect(loadBackendSnapshot({ allowLegacyStartup: true })).resolves.toMatchObject({ activeTeamId: 'team-app' });
+    await expect(loadBackendSnapshot()).resolves.toMatchObject({ activeTeamId: 'team-app' });
   });
 
   it('saves backend snapshots into the alias home’s versioned roster and settings files', async () => {
@@ -102,7 +127,7 @@ describe('backend state loading', () => {
     await loadBackendSnapshot();
     await writeFile(path.join(homeDir, 'state.json'), JSON.stringify({ teams: [] }), 'utf8');
 
-    await expect(loadBackendSnapshot()).resolves.toMatchObject({
+    await expect(loadBackendSnapshot({ allowLegacyStartup: true })).resolves.toMatchObject({
       activeTeamId: 'team-app',
     });
   });

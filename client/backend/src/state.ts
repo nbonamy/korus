@@ -59,9 +59,9 @@ export function backendSocketPath(): string {
   return path.join(backendHomeDir(), 'daemon.sock');
 }
 
-export async function loadBackendSnapshot(): Promise<AppSnapshot> {
+export async function loadBackendSnapshot({ allowLegacyStartup = false } = {}): Promise<AppSnapshot> {
   await mkdir(backendHomeDir(), { recursive: true, mode: 0o700 });
-  return backendStateStore().load();
+  return backendStateStore().load({ allowLegacyStartup });
 }
 
 export async function saveBackendSnapshot(snapshot: AppSnapshot): Promise<void> {

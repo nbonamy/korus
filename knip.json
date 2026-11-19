@@ -3,7 +3,8 @@
   "ignoreBinaries": [
     "shasum",
     "swift",
-    "spctl"
+    "spctl",
+    "tar.exe"
   ],
   "workspaces": {
     ".": {

@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { projectClientSnapshot } from '@workspace/core/client-preferences';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
+import { product } from '@workspace/core/product';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import { backupFile } from './backup';
 import { UnchangedWrites } from './unchanged-writes';
@@ -21,6 +22,7 @@ const settingsFile = 'settings.json';
 const visualizationsDirectory = 'visualizations';
 const backupsDirectory = 'backups';
 const legacyFile = 'state.json';
+const desktopRosterSchemaFloor = 6; // First written by 0.57.0.
 
 /** Left in place of the legacy file: it is not JSON, so builds that predate the store refuse to start. */
 const retiredMarker = '# agent-workspace: this file was replaced by roster.json, settings.json and visualizations/.\n# It is not JSON on purpose, so an older build fails to start instead of creating an empty state.\n';
@@ -31,6 +33,10 @@ const fileMigrations = {
   visualization: storeMigrations,
   tasks: storeMigrations,
 };
+
+function desktopUpgradeError(file: string): StoreFormatError {
+  return new StoreFormatError(`${file} predates the desktop upgrade floor (${product.name} 0.57.0). Open the home once with ${product.name} 0.59.0 to migrate it before upgrading.`);
+}
 
 export type AppStateStoreOptions = {
   log?: (message: string) => void;
@@ -86,16 +92,19 @@ export class AppStateStore {
 
   constructor(private readonly home: string, private readonly options: AppStateStoreOptions = {}) {}
 
-  async load(): Promise<AppSnapshot> {
+  async load({ allowLegacyStartup = true } = {}): Promise<AppSnapshot> {
     const legacy = await readIfExists(this.absolute(legacyFile));
-    if (legacy !== null && !legacy.startsWith('#')) return this.migrateLegacy(legacy);
+    if (legacy !== null && !legacy.startsWith('#')) {
+      if (!allowLegacyStartup) throw desktopUpgradeError(legacyFile);
+      return this.migrateLegacy(legacy);
+    }
     const roster = await readIfExists(this.absolute(rosterFile));
     if (roster === null) {
       if (legacy !== null) throw new StoreFormatError(`${legacyFile} was retired but ${rosterFile} is missing. Restore ${rosterFile} or a state backup from the ${backupsDirectory} folder.`);
       if (await readIfExists(this.absolute(settingsFile)) !== null) throw new StoreFormatError(`${settingsFile} exists without ${rosterFile}. Restore ${rosterFile} from the ${backupsDirectory} folder.`);
       return createEmptySnapshot();
     }
-    return this.readLayout(roster);
+    return this.readLayout(roster, allowLegacyStartup);
   }
 
   save(snapshot: AppSnapshot): Promise<void> {
@@ -150,8 +159,11 @@ export class AppStateStore {
     for (const name of existing) await rename(this.absolute(name), path.join(directory, name));
   }
 
-  private async readLayout(rosterText: string): Promise<AppSnapshot> {
+  private async readLayout(rosterText: string, allowLegacyStartup = true): Promise<AppSnapshot> {
     const rosterEnvelope = parseStoreFile(rosterFile, rosterText, rosterSchemaVersion);
+    if (!allowLegacyStartup && rosterEnvelope.schemaVersion < desktopRosterSchemaFloor) {
+      throw desktopUpgradeError(rosterFile);
+    }
     let settingsText = await readIfExists(this.absolute(settingsFile));
     if (settingsText === null) throw new StoreFormatError(`${settingsFile} is missing. Restore it from the ${backupsDirectory} folder.`);
     const settingsEnvelope = parseStoreFile(settingsFile, settingsText);

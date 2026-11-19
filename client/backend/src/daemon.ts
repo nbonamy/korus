@@ -322,6 +322,7 @@ async function serve(homeLock: HomeLock | null, sshService: boolean): Promise<vo
   let stopping = false;
   const runtime = await createDaemonRuntime({
     version: DAEMON_VERSION,
+    sshService,
     features: runtimeFeatures(),
     requestClient: (method, params) => {
       if (!socketServer) {

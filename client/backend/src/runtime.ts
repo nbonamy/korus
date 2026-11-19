@@ -78,6 +78,7 @@ export type DaemonRuntimeOptions = {
     mobileSimulator?: boolean;
   };
   requestClient: DaemonClientRequest;
+  sshService?: boolean;
   version: string;
 };
 
@@ -108,7 +109,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const requirements = await loadRequirements(backendHomeDir());
   const computerUseAvailable = options.features?.computerUse !== false;
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
-  const snapshot = await loadBackendSnapshot();
+  const snapshot = await loadBackendSnapshot({ allowLegacyStartup: options.sshService });
   let telemetryUpload: TelemetryUploadService | undefined;
   const telemetryConsent = await TelemetryConsentService.open({ load: loadBackendTelemetrySettings, save: state => saveBackendTelemetrySettings(snapshot, state) }, {
     legacyFile: path.join(backendHomeDir(), 'telemetry.json'),
