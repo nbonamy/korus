@@ -1,6 +1,6 @@
 ---
 name: update-changelog
-description: Audit Korus and its locked published codex-app-sdk Git histories, curate CHANGELOG.md Unreleased from user-visible outcomes, and recommend a semantic version. Use only when Nicolas explicitly requests a changelog audit or prepare-release invokes it; never during ordinary implementation, review, commit, or push work.
+description: Audit Korus and its pinned published SDK histories, curate CHANGELOG.md Unreleased from user-visible outcomes, and recommend a semantic version. Use for an explicit changelog audit or when prepare-release invokes it.
 ---
 
 # Update Changelog
@@ -25,26 +25,18 @@ Uncommitted desktop release inputs block the audit, except the dependency-only
 manifest/lockfile refresh recorded by `prepare-release`. Do not stash, discard,
 stage, commit, or absorb unrelated work.
 
-Confirm Korus's branch/upstream without pulling or switching branches. Resolve
-`<sdk-version>` from the backend workspace's SDK dependency and its matching
-`package-lock.json` entry. npm may install packages under a workspace's
-`node_modules` or hoist them to the root; follow resolution from each consuming
-workspace rather than requiring a root entry. Require every SDK declaration
-to pin that exact numeric version and all SDK lockfile entries, including
-nested/transitive copies, to resolve to the same published version with registry
-tarball URLs and integrity hashes. Apply the same lookup to the baseline lockfile.
-Resolve `<sdk-head>` with `npm view @codex-app-sdk/backend@<sdk-version>
-gitHead --registry=https://registry.npmjs.org`. Require a full commit SHA.
-The audit ends at that published commit, even if the sibling checkout is newer.
-Use the sibling repository as a read-only Git object database if available;
-otherwise use the SDK repository's GitHub compare/commit APIs. Do not require
-a sibling checkout for builds or alter its worktree.
-
-Read `<current-version>` from the root `package.json`.
+Confirm Korus's branch and upstream. Resolve the exact published versions of
+`@korus-dev/codex-sdk`, `@korus-dev/multi-agent-sdk` and
+`@korus-dev/agent-ui-sdk` from the consuming manifests and `package-lock.json`,
+including nested entries and Multi's transitive Codex dependency. Use the
+registry verification and provenance checks in [Prepare Release](../prepare-release/SKILL.md).
+Reuse verified version and commit evidence supplied by that workflow. Each SDK
+audit ends at the source commit of the package Korus consumes.
 
 ## 2. Resolve trustworthy audit baselines
 
-Prefer `v<current-version>` as the Korus baseline:
+Use the published Korus release being replaced as `<current-version>`. Resolve
+its tag to a commit:
 
 ```bash
 git rev-parse --verify "refs/tags/v<current-version>"
@@ -58,40 +50,25 @@ git log -n 1 --format=%H -S "## [<current-version>]" -- CHANGELOG.md
 
 Stop and ask Nicolas if neither baseline exists.
 
-Read the SDK baseline from the current Korus release tag annotation:
+Apply the same lockfile and registry provenance checks to the baseline commit.
+Record each SDK's baseline and selected version and source SHA. Identical pins
+share the verified SHA and have an empty audit range. Ask Nicolas for a baseline
+if a changed SDK's published source cannot be verified.
 
-```bash
-git for-each-ref "refs/tags/v<current-version>" --format='%(contents)' \
-  | sed -n 's/^codex-app-sdk: //p'
-```
-
-Require exactly one full commit SHA and verify it exists in the SDK repository.
-If the annotation is absent, first resolve the SDK version from the baseline
-Korus lockfile and obtain that version's npm `gitHead`. For a legacy local SDK
-lockfile without published provenance, infer the SDK baseline from the tag's
-creation time. If the current release has no tag, use the resolved Korus
-baseline commit time instead:
-
-```bash
-git for-each-ref "refs/tags/v<current-version>" \
-  --format='%(creatordate:iso-strict)'
-git -C ../codex-app-sdk rev-list -n 1 --before='<baseline-date>' <sdk-head>
-```
-
-State explicitly when the SDK baseline was inferred. Stop and ask Nicolas if
-no trustworthy SDK baseline can be resolved.
-
-## 3. Audit both histories
+## 3. Audit Korus and SDK histories
 
 Inspect all first-parent commits and aggregate diffs:
 
 ```bash
 git log --first-parent --reverse --format='%h %s' <app-baseline>..HEAD
 git diff --stat <app-baseline>..HEAD
-git -C ../codex-app-sdk log --first-parent --reverse --format='%h %s' \
+git -C <sdk-repository> log --first-parent --reverse --format='%h %s' \
   <sdk-baseline>..<sdk-head>
-git -C ../codex-app-sdk diff --stat <sdk-baseline>..<sdk-head>
+git -C <sdk-repository> diff --stat <sdk-baseline>..<sdk-head>
 ```
+
+Use each sibling repository as a read-only Git object database or use its
+GitHub compare and commit APIs.
 
 Use commit titles only for discovery. Inspect relevant diffs when the outcome
 is ambiguous, especially SDK chat behavior, controls, shortcuts, rendering,
@@ -184,6 +161,6 @@ Return a concise audit result for Nicolas or the calling release skill:
 - current version and exact recommended version, or `no release`;
 - semantic-version rationale tied to concrete user-visible outcomes;
 - Korus baseline and `HEAD`;
-- SDK baseline and `<sdk-head>`, noting any inferred baseline;
+- baseline and selected versions and verified source SHAs for each SDK;
 - whether `CHANGELOG.md` changed;
 - the reviewed release-note section.
