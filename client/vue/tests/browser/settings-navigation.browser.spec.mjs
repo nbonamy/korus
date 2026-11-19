@@ -18,8 +18,10 @@ import SettingsView from '/client/vue/src/components/SettingsView.vue';
 configureAppClient({platform:'desktop'});
 const snapshot=createInitialSnapshot();
 const activeTab=ref('general');
+const theme=ref(snapshot.theme);
+window.activeSettingsTab=()=>activeTab.value;
 createApp({render:()=>h('div',{style:'height:100vh;display:flex'},[h(SettingsView,{
- settings:snapshot.theme,generalSettings:snapshot.general,activeTab:activeTab.value,
+ settings:theme.value,updateSettings:async input=>{theme.value={...theme.value,...input.theme}},generalSettings:snapshot.general,activeTab:activeTab.value,
  providerConnections:['codex','claude','cursor','antigravity'].map(provider=>({provider,installed:false,connected:false})),
  onSelectTab:value=>activeTab.value=value
 })])}).use(ElementPlus).use(i18n).mount('#app');
@@ -70,4 +72,49 @@ test('settings navigation reaches bottom panels and scrolls independently at sup
     if (process.env.SETTINGS_EVIDENCE) await writeFile(process.env.SETTINGS_EVIDENCE+'/geometry.json',JSON.stringify(evidence,null,2));
   });
   assert.deepEqual(errors, []);
+}, 60000);
+
+// Real toolkit focus and layout: group boundaries, clamped endpoints and content isolation.
+test('arrow selection follows visible destinations and keeps focus, panel and viewport together', async () => {
+  for (const filtered of [false, true]) {
+    const fixture = filtered ? source.replace("platform:'desktop'", "platform:'web'").replace("['codex','claude','cursor','antigravity']", "['codex','claude']") : source;
+    const errors = await withAnnotationFixture(fixture, async page => {
+      await page.setViewportSize({width:1200,height:560});
+      const nav = page.locator('.settings-sidebar');
+      const items = nav.getByRole('menuitem');
+      await items.first().waitFor();
+      const names = (await items.allTextContents()).map(value=>value.trim());
+      assert.ok(names.includes('Connections'));
+      if (filtered) for (const absent of ['Browser','Appshots','Cursor','Antigravity']) assert.ok(!names.includes(absent), absent+' filtered');
+      if (filtered) await items.first().focus();
+      else await items.first().click();
+      const check = async index => {
+        const item = items.nth(index);
+        await page.waitForFunction(index => {
+          const items = document.querySelectorAll('.settings-sidebar [role="menuitem"]');
+          return items[index] === document.activeElement && items[index].hasAttribute('data-selected');
+        }, index, {timeout:2500});
+        const box = await item.boundingBox(), region = await nav.boundingBox();
+        assert.ok(box.y >= region.y && box.y+box.height <= region.y+region.height+1, names[index]+' visible');
+        if (['General','Personalization','Skills','Plugins','Workflows','Integrations','Connections'].includes(names[index])) {
+          await page.locator('#settings-'+names[index].toLowerCase()+'-title').waitFor();
+        }
+      };
+      await page.keyboard.press('ArrowUp'); await check(0);
+      for (let index=1; index<names.length; index++) { await page.keyboard.press('ArrowDown'); await check(index); }
+      assert.ok(await nav.evaluate(el=>el.scrollTop)>0);
+      await page.keyboard.press('ArrowDown'); await check(names.length-1);
+      for (let index=names.length-2; index>=0; index--) { await page.keyboard.press('ArrowUp'); await check(index); }
+      await page.keyboard.press('ArrowUp'); await check(0);
+      await nav.getByRole('menuitem',{name:'Appearance',exact:true}).click();
+      const input = page.locator('.settings-view__content input[role="spinbutton"]').first();
+      await input.waitFor(); await input.focus();
+      const before = await input.inputValue();
+      await input.press('ArrowUp');
+      assert.notEqual(await input.inputValue(), before, 'real Element Plus numeric control handles arrows');
+      assert.equal(await page.evaluate(()=>window.activeSettingsTab()), 'appearance');
+      assert.equal(await input.evaluate(el=>el===document.activeElement), true);
+    });
+    assert.deepEqual(errors, []);
+  }
 }, 60000);

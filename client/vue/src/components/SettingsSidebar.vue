@@ -3,6 +3,7 @@
     class="settings-sidebar"
     data-slot="sidebar-inner"
     data-workspace-area="settings-nav"
+    @keydown.capture="navigate"
     :aria-label="$t('surface.settingsSidebar.settingsCategories')"
   >
     <el-menu
@@ -42,6 +43,20 @@ const groups = [
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
 const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableProviders: props.availableProviders ?? [] }));
+function navigate(event: KeyboardEvent): void {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  const sidebar = event.currentTarget as HTMLElement;
+  const items = Array.from(sidebar.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])'));
+  const index = items.indexOf(event.target as HTMLElement);
+  if (index < 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const target = items[Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+  target?.focus({ preventScroll: true });
+  target?.click();
+  target?.scrollIntoView({ block: 'nearest' });
+}
+
 function selectTab(tab: string): void {
   const destination = destinations.value.find(item => item.id === tab);
   if (destination) emit('select', destination.id);
