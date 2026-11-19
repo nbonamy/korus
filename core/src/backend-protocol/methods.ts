@@ -58,6 +58,7 @@ export const backendMethods = {
   projectCreate: 'project/create',
   missionExecute: 'mission/execution/update',
   missionCreate: 'mission/create',
+  missionCreateHosted: 'mission/hosted/create',
   missionDelete: 'mission/delete',
   missionArtifactRead: 'mission/artifact/read',
   missionUpdate: 'mission/update',

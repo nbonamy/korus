@@ -13,7 +13,7 @@ export type LocalSocketRpcServerOptions = {
 
 export class LocalSocketRpcServer {
   private server: Server | null = null;
-  private readonly peers = new Set<StdioRpcPeer>();
+  private readonly peers = new Map<Socket, StdioRpcPeer>();
 
   constructor(private readonly options: LocalSocketRpcServerOptions) {}
 
@@ -33,8 +33,9 @@ export class LocalSocketRpcServer {
   }
 
   async stop(): Promise<void> {
-    for (const peer of this.peers) {
+    for (const [socket, peer] of this.peers) {
       peer.stop();
+      socket.destroy();
     }
     this.peers.clear();
 
@@ -45,16 +46,10 @@ export class LocalSocketRpcServer {
         server.close((error) => error ? reject(error) : resolve());
       });
     }
-
-    await unlink(this.options.socketPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-    });
   }
 
   broadcastEvent(event: AppBackendEvent): void {
-    for (const peer of this.peers) {
+    for (const peer of this.peers.values()) {
       peer.notify(backendMethods.backendEventNotify, event);
     }
   }
@@ -71,7 +66,7 @@ export class LocalSocketRpcServer {
     // Only the owning controller accepts the team identity; desktops and unrelated controllers reject it.
     try {
       const ownerId = params && typeof params === 'object' && 'ownerId' in params ? params.ownerId : undefined;
-      return await Promise.any([...this.peers].map(async peer => {
+      return await Promise.any([...this.peers.values()].map(async peer => {
         const reply = await peer.request<Result>(backendMethods.clientCollaborationCall, params);
         if (!isRemoteCollaborationReply(reply, ownerId)) throw new Error('This client is not the collaboration controller.');
         return reply;
@@ -87,14 +82,14 @@ export class LocalSocketRpcServer {
       output: socket,
       onMessage: this.options.onMessage,
     });
-    this.peers.add(peer);
+    this.peers.set(socket, peer);
     socket.once('close', () => {
       peer.stop();
-      this.peers.delete(peer);
+      this.peers.delete(socket);
     });
     socket.once('error', () => {
       peer.stop();
-      this.peers.delete(peer);
+      this.peers.delete(socket);
     });
     peer.start();
   }

@@ -149,13 +149,12 @@
         role="tablist"
         :aria-label="$t('surface.codeReviewPanel.reviewRounds')"
       >
-        <button class="agent-ui-interactive"
+        <button class="agent-ui-interactive" data-appearance="text"
           v-for="round in session.rounds"
           :key="round.id"
           type="button"
           role="tab"
           :aria-selected="selectedRoundId === round.id"
-          :class="{ 'is-active': selectedRoundId === round.id }"
           @click="selectedRoundId = round.id"
         >
           {{ $t('surface.codeReviewPanel.roundNumber', { number: round.number }) }}
@@ -896,6 +895,7 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
   border-bottom: 2px solid transparent;
   padding: var(--space-2) var(--space-1);
   --agent-ui-state-rest-foreground: var(--color-text-muted);
+  --agent-ui-state-selected-foreground: var(--color-text);
   font: inherit;
 }
 

@@ -1,12 +1,28 @@
-import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
+import { closeAgentInSnapshot, createAgentInSnapshot } from '@workspace/core/agent-manager';
+import { resolveAgentProvider } from '@workspace/core/agent-providers';
+import { createEntityId } from '@workspace/core/ids';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import { createMission, deleteMission, updateMission, type DeleteMissionInput, type Mission } from '@workspace/core/missions';
 import { isMissionScreenshotAgent } from './mission-screenshot-fixture';
+import type { CreateMissionInput, MissionRepository } from '@workspace/core/mission-types';
 
 /** Serializes mission revisions and publishes them only after durable storage succeeds. */
 export class MissionService {
   private pending: Promise<unknown> = Promise.resolve();
   constructor(private readonly snapshot: AppSnapshot, private readonly persist: (snapshot: AppSnapshot) => Promise<void>) {}
+
+  createHosted(input: Pick<CreateMissionInput, 'outcome' | 'teamId' | 'workflowType'>, catalog: MissionRepository[]): Promise<Mission> {
+    return this.transaction(candidate => {
+      const leadId = createEntityId('agent');
+      const provider = resolveAgentProvider(candidate);
+      if (!candidate.teams.some(team => team.id === input.teamId)) throw new Error('The Mission workspace is unavailable on this host.');
+      createAgentInSnapshot(candidate, { name: `Mission lead · ${input.outcome}`, folder: '', teamId: input.teamId, selection: { provider } }, undefined, leadId, { select: false });
+      const mission = createMission(candidate, { ...input, orchestratorMemberId: leadId });
+      mission.execution!.memberIds = [leadId];
+      mission.execution!.repositoryCatalog = catalog;
+      return mission;
+    }, true);
+  }
 
   mutate(action: 'create' | 'update', input: unknown): Promise<void> {
     return this.transaction(candidate => {

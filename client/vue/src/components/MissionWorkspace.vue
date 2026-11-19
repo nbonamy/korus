@@ -79,14 +79,19 @@
           </div>
         </header>
 
-        <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements', 'mission-workspace__workbench-scroll--stage-loading': showStageLoading }">
-          <form v-if="membershipUnavailable && !debugFixture" class="mission-workspace__member-recovery" @submit.prevent="reassignMembers">
-            <p role="alert">{{ t('missions.memberUnavailable') }}</p>
-            <select v-model="replacementMemberId" :aria-label="t('missions.replacementMember')" :disabled="busy || !!activeStageRun">
-              <option value="" disabled>{{ t('missions.replacementMember') }}</option>
-              <option v-for="member in localMembers" :key="member.id" :value="member.id">{{ member.name }}</option>
-            </select>
-            <button class="app-button app-button--small agent-ui-interactive" type="submit" data-testid="reassign-mission-member" :disabled="busy || !!activeStageRun || !replacementMemberId || !executeMission">{{ t('missions.reassignMembers') }}</button>
+        <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements' }">
+          <form v-if="showMemberRecovery && !debugFixture" class="mission-workspace__member-recovery" @submit.prevent="reassignMembers">
+            <p role="alert">
+              {{ t(mission.execution?.memberIds.length ? 'missions.assignedAgentUnavailable' : 'missions.noAssignedAgents') }}
+              {{ t(hostMembers.length ? 'missions.chooseAgentForRemainingWork' : 'missions.addAgentToMissionWorkspace') }}
+            </p>
+            <template v-if="hostMembers.length">
+              <select v-model="replacementMemberId" :aria-label="t('missions.chooseAgent')" :disabled="busy">
+                <option value="" disabled>{{ t('missions.chooseAgent') }}</option>
+                <option v-for="member in hostMembers" :key="member.id" :value="member.id">{{ member.name }}</option>
+              </select>
+              <button class="app-button app-button--small agent-ui-interactive" type="submit" data-testid="reassign-mission-member" :disabled="busy || !replacementMemberId || !executeMission">{{ t('missions.useAgent') }}</button>
+            </template>
           </form>
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
           <MissionTaskFilters v-if="filterTickets.length" v-model:statuses="taskStatuses" :tickets="filterTickets" :items="filterItems" />
@@ -148,7 +153,7 @@
             <MarkdownPanel v-else-if="viewedStage !== 'review'" :content="artifactMarkdown" />
           </section>
 
-          <section v-else-if="showStageLoading" class="mission-workspace__stage-loading" role="status" aria-live="polite">
+          <section v-else-if="showStageLoading || (initialRequirements && $slots['draft-conversation'])" class="mission-workspace__stage-loading" role="status" aria-live="polite">
             <template v-if="viewedStage === 'requirements'">
               <TargetArrowIcon class="mission-workspace__stage-icon" aria-hidden="true" />
               <h3>{{ t('missions.missionLeadWelcome') }}</h3>
@@ -203,6 +208,7 @@
             <ArrowsDiagonalIcon v-else aria-hidden="true" />
           </button>
         </template>
+        <template v-if="$slots['draft-conversation']" #draft><slot name="draft-conversation" /></template>
         <template #conversation="{ agentId }"><slot name="conversation" :agent-id="agentId" /></template>
       </MissionConversationRail>
       </PaneTransition>
@@ -242,6 +248,7 @@
         v-if="!leadExecutesImplementation"
         v-model:selection="implementationSelection"
         :agent-id="missionLead.id"
+        :remote-connection-id="mission.remoteConnectionId"
         :disabled="busy"
       />
       <p v-if="implementationMode === 'multiplePerRepository'" class="mission-workspace__parallel-warning">
@@ -403,14 +410,18 @@ onBeforeUnmount(() => { stopChatResize(); workspaceObserver?.disconnect(); });
 const busy = ref(false);
 const error = ref('');
 const replacementMemberId = ref('');
-const localMembers = computed(() => props.agents.filter(agent => agent.teamId === props.mission.teamId && !agent.remoteConnectionId));
-const membershipUnavailable = computed(() => !!props.mission.execution && (!props.mission.execution.memberIds.length
-  || props.mission.execution.memberIds.some(id => !localMembers.value.some(member => member.id === id))));
+const hostMembers = computed(() => props.agents.filter(agent => agent.teamId === props.mission.teamId
+  && agent.remoteConnectionId === props.mission.remoteConnectionId));
+const showMemberRecovery = computed(() => {
+  const execution = props.mission.execution;
+  if (!execution || execution.runs.some(run => run.status === 'preparing' || run.status === 'running')) return false;
+  return !execution.memberIds.length || execution.memberIds.some(id => !hostMembers.value.some(member => member.id === id));
+});
 async function reassignMembers(): Promise<void> {
   if (!props.executeMission || !replacementMemberId.value) return;
   busy.value = true; error.value = '';
   try {
-    const memberIds = [...new Set([...(props.mission.execution?.memberIds ?? []).filter(id => localMembers.value.some(member => member.id === id)), replacementMemberId.value])];
+    const memberIds = [...new Set([...(props.mission.execution?.memberIds ?? []).filter(id => hostMembers.value.some(member => member.id === id)), replacementMemberId.value])];
     await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'configure', teamId: props.mission.teamId, memberIds });
     replacementMemberId.value = '';
   } catch (cause) { error.value = String(cause); }

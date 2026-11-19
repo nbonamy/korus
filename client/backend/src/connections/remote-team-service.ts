@@ -55,6 +55,13 @@ export class RemoteTeamService {
     return agent.remoteConnectionId?.trim() || null;
   }
 
+  pointerForMission(missionId: string): RemoteTeamPointer | undefined {
+    if (this.options.getSnapshot().missions?.some(mission => mission.id === missionId)) return;
+    return this.pointers().find(pointer => this.snapshots.get(pointer.connectionId)?.missions?.some(
+      mission => mission.id === missionId && mission.teamId === pointer.remoteTeamId,
+    ));
+  }
+
   linksForTeam(team: Team | null): RemoteTeamLink[] {
     return team?.remoteLinks ?? [];
   }
@@ -278,6 +285,7 @@ export class RemoteTeamService {
       ...createEmptySnapshot(),
       teams,
       agents: snapshot.agents.filter(agent => agentIds.has(agent.id)),
+      missions: snapshot.missions?.filter(mission => teamIds.has(mission.teamId)),
       providerConnections: snapshot.providerConnections,
     };
   }
@@ -364,6 +372,13 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
 
   const projectedAgentIds = new Set(remoteAgents.map((agent) => agent.id));
   target.agents = [...target.agents.filter((agent) => !projectedAgentIds.has(agent.id)), ...remoteAgents];
+  for (const mission of remoteSnapshot.missions ?? []) {
+    if (mission.teamId !== link.remoteTeamId || target.missions?.some(candidate => candidate.id === mission.id)) continue;
+    (target.missions ??= []).push({
+      ...mission, teamId: localTeam.id, remoteConnectionId: link.connectionId,
+      ...(mission.execution ? { execution: { ...mission.execution, teamId: localTeam.id } } : {}),
+    });
+  }
   target.agentGitStatuses = {
     ...target.agentGitStatuses,
     ...Object.fromEntries(Object.entries(remoteSnapshot.agentGitStatuses).filter(([agentId]) => projectedAgentIds.has(agentId))),

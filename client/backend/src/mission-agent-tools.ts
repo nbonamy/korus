@@ -143,7 +143,7 @@ export class MissionAgentTools {
       throw new Error('Mission ticket title, body, repository, or reference is invalid.');
     }
     if (!missionTeamRepositories(this.ports.snapshot, mission).includes(repositoryPath)) throw new Error('Choose a repository represented in this Mission workspace.');
-    await this.ports.validateRepository(repositoryPath);
+    if (!mission.execution?.repositoryCatalog) await this.ports.validateRepository(repositoryPath);
     const result = await this.ports.missions.changeAsync(context.missionId, async mission => {
       const run = mission.execution?.runs.find(candidate => candidate.id === context.runId);
       if (!run || !this.ownsWritableRun(mission, run.id, agentId) || run.stage !== 'tickets') {

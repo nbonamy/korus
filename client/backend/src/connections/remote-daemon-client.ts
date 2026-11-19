@@ -146,6 +146,8 @@ class RemoteDaemonClient {
       this.process = null;
       this.rejectPending(new Error(code === 2
         ? 'Restart the running Korus service on this SSH host to finish the update.'
+        : code === 1 && this.connection.kind === 'ssh'
+          ? 'The Korus background service could not start on this SSH host. Update Korus on the host and retry.'
         : `remote daemon exited before responding (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`));
       this.onStopped();
     });

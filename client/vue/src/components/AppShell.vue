@@ -75,7 +75,7 @@
     >
     <AppShellNavigation
       ref="navigation"
-      :active-mission-id="activeHost === 'mission' ? selectedMissionId : null"
+      :active-mission-id="activeHost === 'mission' ? displayedMission?.id ?? null : null"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
       :phone-scope="compactViewport"
@@ -355,16 +355,28 @@
         <template v-if="activeHost !== 'mission' && !compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
-        <template v-if="activeHost === 'mission' && selectedMission" #conversation>
-          <MissionWorkspace :repository-icons="snapshot.general.repositoryIcons" v-model:viewed-stage="missionViewedStage" :workspace-preview-open="missionWorkspaceVisible" :workspace-toggle-available="Boolean(currentAgent && !currentAgent.sharedConversation)" :key="selectedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="selectedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+        <template v-if="activeHost === 'mission' && displayedMission" #conversation>
+          <MissionWorkspace :repository-icons="snapshot.general.repositoryIcons" v-model:viewed-stage="missionViewedStage" :workspace-preview-open="missionWorkspaceVisible" :workspace-toggle-available="!missionDraft && Boolean(currentAgent && !currentAgent.sharedConversation)" :key="displayedMission.id" :agents="snapshot.agents" :unread-agent-ids="unreadAgentIds" :sidebar-collapsed="agentSidebarCollapsed || compactViewport" @expand-sidebar="expandSidebar" @toggle-workspace="toggleRightWorkspace" :mission="displayedMission" :implementation-start-progress="missionImplementationStartProgress" :read-mission-artifact="readMissionArtifact" :execute-mission="executeMission" :send-mission-prompt="forwardPrompt" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-review-finding="prepareMissionReviewDiscussion" @open-conversation="emit('select-agent', $event)" @open-worktree="openMissionWorktree">
+            <template v-if="missionDraft" #draft-conversation>
+              <MissionCreationPane
+                v-model:host="missionDraft.host"
+                v-model:selection="missionDraft.selection"
+                :hosts="missionHosts"
+                :local-available="Boolean(localMissionMember(missionDraft.teamId))"
+                :host-locked="Boolean(missionDraft.created)"
+                :pending="missionCreationPending"
+                :submit="submitMissionDraft"
+                @choose-issue="openMissionIssuePicker"
+              />
+            </template>
             <template #code-review="{ agentId, reviewSummary, chatAboutFinding }">
-              <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="selectedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
+              <MissionCodeReview v-if="snapshot.agents.find(agent => agent.id === agentId) && props.getAgentGitDiff" :agent="snapshot.agents.find(agent => agent.id === agentId)!" :agents="snapshot.agents" :git-statuses="snapshot.agentGitStatuses" :get-diff="props.getAgentGitDiff" :mission="displayedMission" :review-summary="reviewSummary" :execute-mission="executeMission" :open-in-available="missionOpenInAvailable" :open-in-applications="openInApplications" @chat-about-finding="chatAboutFinding" @open-worktree="openMissionWorktree" />
             </template>
             <template #ship="{ openConversation }">
               <MissionShipBoard
                 :agents="snapshot.agents"
                 :teams="snapshot.teams"
-                :mission="selectedMission"
+                :mission="displayedMission"
                 :execute-mission="executeMission"
                 :git-statuses="snapshot.agentGitStatuses"
                 :get-workflow="props.getAgentGitWorkflow"
@@ -388,9 +400,9 @@
                 :mention-groups="agentMentionGroups"
                 :saved-prompt-drafts="snapshot.general.savedPromptDrafts" :save-prompt-draft="savePromptDraft" :remove-prompt-draft="removePromptDraft"
                 :follow-up-behavior="snapshot.general.followUpBehavior"
-                :empty-headline="selectedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined"
-                :empty-subhead="selectedMission.stage === 'requirements' ? '' : undefined"
-                :placeholder="selectedMission.stage === 'requirements' && conversationMessages.length === 0 ? t('missions.describeWhatYouWantToBuild') : undefined"
+                :empty-headline="displayedMission.stage === 'requirements' ? t('missions.whatDoYouWantToBuild') : undefined"
+                :empty-subhead="displayedMission.stage === 'requirements' ? '' : undefined"
+                :placeholder="displayedMission.stage === 'requirements' && conversationMessages.length === 0 ? t('missions.describeWhatYouWantToBuild') : undefined"
                 :open-link="link => openConversationLink(agentId, link)"
                 :open-image="(image, context) => agentWorkspace?.openConversationImage(image, context, agentId) ?? false"
                 :open-visualization="visualization => agentWorkspace?.openConversationVisualization(visualization, agentId)"
@@ -399,7 +411,7 @@
                 <template #composer-drawers>
                   <MissionDocumentRequest v-if="missionDocuments.pending.value" :request="missionDocuments.pending.value" @open="missionDocuments.confirm" @dismiss="missionDocuments.dismiss" />
                 </template>
-                <template v-if="selectedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
+                <template v-if="displayedMission.stage === 'requirements' && conversationMessages.length === 0" #empty-actions>
                   <AppMenu class="app-menu--embedded" :ariaLabel="t('missions.chooseIssue')" :items="missionSourceMenuItems" @select="openMissionIssuePicker" />
                 </template>
               </AgentConversationPanel>
@@ -723,6 +735,9 @@ import type { AgentConversationView } from '../app-state';
 import MissionCodeReview from './MissionCodeReview.vue';
 import MissionShipBoard from './MissionShipBoard.vue';
 import MissionWorkspace from './MissionWorkspace.vue';
+import MissionCreationPane from './MissionCreationPane.vue';
+import { shapeAndShipFeatureWorkflow } from '@workspace/core/mission-workflows';
+import type { ExecutionSelection } from '@workspace/core/contracts/execution';
 import MissionDocumentRequest from './MissionDocumentRequest.vue';
 import { useMissionDocuments } from './use-mission-documents';
 import FeatureGroupDialog from './FeatureGroupDialog.vue';
@@ -1213,12 +1228,25 @@ const automationsReturnHost = ref<Exclude<AppSurface, 'automations'>>('agent');
 const missionViewedStage = ref<MissionStage>();
 const missionCreationError = ref('');
 const missionCreationPending = ref(false);
+const missionDraft = ref<{ teamId: string; host: string; selection?: ExecutionSelection; created?: Mission } | null>(null);
+const missionHosts = computed(() => props.snapshot.remoteConnections.connections.filter(connection => connection.status === 'ready'));
 const missionDeleteTargetId = ref<string | null>(null);
 const missionDeleteOperations = reactive(new Map<string, { backgrounded: boolean }>());
 const missionDeletePending = computed(() => missionDeleteTargetId.value !== null && missionDeleteOperations.has(missionDeleteTargetId.value));
 const missionDeleteError = ref('');
 const selectedMissionId = ref<string | null>(null);
 const selectedMission = computed(() => props.snapshot.missions?.find(m => m.id === selectedMissionId.value) ?? null);
+const displayedMission = computed<Mission | null>(() => {
+  const draft = missionDraft.value;
+  if (!draft) return selectedMission.value;
+  const workflow = shapeAndShipFeatureWorkflow;
+  return {
+    id: 'new-mission', teamId: draft.teamId, outcome: t('missions.new'),
+    workflow: { type: workflow.type, version: workflow.version },
+    stage: 'requirements', status: 'active', artifacts: workflow.createArtifacts(),
+    stageAgentIds: {}, revision: 0, createdAt: '', updatedAt: '',
+  };
+});
 watch(() => selectedMission.value?.stage, (stage, previousStage) => {
   if (stage && previousStage && stage !== previousStage) missionViewedStage.value = stage;
 });
@@ -1227,8 +1255,8 @@ const missionIssueLoading = ref(false);
 const missionIssueError = ref<string | null>(null);
 const missionSourceMenuItems = computed(() => [{ id: 'issue', type: 'action' as const, label: t('missions.chooseIssue'), icon: BacklogIcon }]);
 
-function missionIssueRepositoryIdentities(mission: Mission): Set<string> {
-  const team = props.snapshot.teams.find(candidate => candidate.id === mission.teamId);
+function missionIssueRepositoryIdentities(teamId: string): Set<string> {
+  const team = props.snapshot.teams.find(candidate => candidate.id === teamId);
   const workerIds = new Set((props.snapshot.missions ?? []).flatMap(candidate => (
     candidate.execution?.runs.flatMap(run => run.workerId && run.workerId !== run.memberId ? [run.workerId] : []) ?? []
   )));
@@ -1258,13 +1286,13 @@ function missionIssueRepositoryIdentities(mission: Mission): Set<string> {
 
 function acceptMissionSource(source: WorkSource): boolean {
   if (!workProviderDefinition(source.provider).repositoryBacked) return true;
-  const mission = selectedMission.value;
+  const teamId = selectedMission.value?.teamId ?? missionDraft.value?.teamId;
   const identity = canonicalGitRemoteIdentity(source.url);
-  return Boolean(mission && identity && missionIssueRepositoryIdentities(mission).has(identity.toLocaleLowerCase()));
+  return Boolean(teamId && identity && missionIssueRepositoryIdentities(teamId).has(identity.toLocaleLowerCase()));
 }
 
 function openMissionIssuePicker(): void {
-  if (!selectedMission.value) return;
+  if ((!selectedMission.value && !missionDraft.value) || missionCreationPending.value) return;
   missionIssueError.value = null;
   missionIssuePickerVisible.value = true;
 }
@@ -1274,15 +1302,16 @@ function closeMissionIssuePicker(): void {
 }
 
 async function chooseMissionIssue(item: WorkItem): Promise<void> {
-  const mission = selectedMission.value;
-  if (!mission || mission.stage !== 'requirements' || missionIssueLoading.value
+  if ((!missionDraft.value && selectedMission.value?.stage !== 'requirements') || missionIssueLoading.value
     || !missionIssuePickerVisible.value || item.kind === 'pullRequest') return;
   missionIssueLoading.value = true;
   missionIssueError.value = null;
   try {
     const issueContext = `Shape this Mission from ${workProviderLabel(item.provider)} issue ${workItemDisplayIdentifier(item)}: ${item.title}\nBacklog source: ${item.sourceName}\nWork item ID: ${workItemAssignmentKey(item)}\n${item.url}`;
     const issueBody = item.body?.trim().slice(0, 16_000);
-    await forwardPrompt(issueBody ? `${issueContext}\n\n${issueBody}` : issueContext);
+    const prompt = issueBody ? `${issueContext}\n\n${issueBody}` : issueContext;
+    if (missionDraft.value) await submitMissionDraft(prompt);
+    else await forwardPrompt(prompt);
     closeMissionIssuePicker();
   } catch (caught) {
     missionIssueError.value = localizedErrorMessage(caught, t);
@@ -1292,7 +1321,7 @@ async function chooseMissionIssue(item: WorkItem): Promise<void> {
 }
 const missionOpenInAvailable = computed(() => {
   const mission = selectedMission.value;
-  if (!mission || props.openInApplications.applications.length === 0) return false;
+  if (!mission || mission.remoteConnectionId || props.openInApplications.applications.length === 0) return false;
   return props.snapshot.teams.some(candidate => candidate.id === mission.teamId);
 });
 function openMissionWorktree(request: MissionWorkspaceOpenRequest): void {
@@ -1300,6 +1329,7 @@ function openMissionWorktree(request: MissionWorkspaceOpenRequest): void {
 }
 const missionDeleteTarget = computed(() => props.snapshot.missions?.find(m => m.id === missionDeleteTargetId.value) ?? null);
 function selectMissionSurface(id: string): void {
+  missionDraft.value = null;
   if (selectedMissionId.value !== id) missionViewedStage.value = undefined;
   selectedMissionId.value = id;
   activeHost.value = 'mission';
@@ -1308,15 +1338,6 @@ watch(
   () => activeHost.value === 'mission' ? selectedMissionId.value : null,
   missionId => { closeMissionIssuePicker(); if (!missionWindow.value) rememberMissionId(missionId); void props.selectMission(missionId); },
 );
-function missionTeamContext(): { team: Team; orchestrator: Agent } {
-  const team = activeTeam.value;
-  const activeAgent = currentAgent.value;
-  const orchestrator = activeAgent && activeAgent.teamId === team?.id
-    ? activeAgent
-    : activeTeamAgents.value[0];
-  if (!team || !orchestrator) throw new Error(translate('missions.teamContextRequired'));
-  return { team, orchestrator };
-}
 async function selectMission(id: string): Promise<void> {
   if (missionWindow.value && id !== windowState.missionId.value) return;
   const mission = props.snapshot.missions?.find(mission => mission.id === id);
@@ -1324,21 +1345,83 @@ async function selectMission(id: string): Promise<void> {
   if (mission.teamId !== activeTeam.value?.id) emit('select-team', mission.teamId);
   selectMissionSurface(id);
 }
-async function createNewMission() {
-  if (missionCreationPending.value) return;
+function createNewMission() {
+  if (missionCreationPending.value || (activeHost.value === 'mission' && missionDraft.value)) return;
+  const teamId = activeTeam.value?.id;
+  if (missionHosts.value.length && teamId) {
+    missionCreationError.value = '';
+    const currentHost = missionHosts.value.find(connection => connection.id === currentAgent.value?.remoteConnectionId);
+    missionDraft.value = { teamId, host: currentHost?.id ?? (localMissionMember(teamId) ? 'local' : missionHosts.value[0]!.id) };
+    selectedMissionId.value = null;
+    missionViewedStage.value = undefined;
+    activeHost.value = 'mission';
+  } else void submitNewMission(teamId);
+}
+
+function localMissionMember(teamId: string | undefined): Agent | undefined {
+  const members = props.snapshot.agents.filter(agent => agent.teamId === teamId && !agent.remoteConnectionId);
+  return members.find(agent => agent.id === currentAgent.value?.id) ?? members[0];
+}
+
+async function createMissionOnHost(teamId: string | undefined, remoteConnectionId?: string): Promise<Mission> {
+  const orchestrator = localMissionMember(teamId);
+  if (!teamId || (!remoteConnectionId && !orchestrator)) throw new Error(translate('missions.teamContextRequired'));
+  if (remoteConnectionId && !missionHosts.value.some(host => host.id === remoteConnectionId)) throw new Error(translate('missions.environmentUnavailable'));
+  return props.createMission({
+    outcome: translate('missions.new'),
+    workflowType: 'shapeAndShipFeature',
+    teamId,
+    ...(remoteConnectionId ? { remoteConnectionId } : { orchestratorMemberId: orchestrator!.id }),
+  });
+}
+
+async function submitNewMission(teamId: string | undefined) {
   missionCreationPending.value = true;
   missionCreationError.value = '';
   try {
-    const { team, orchestrator } = missionTeamContext();
-    const mission = await props.createMission({
-      outcome: translate('missions.new'),
-      workflowType: 'shapeAndShipFeature',
-      teamId: team.id,
-      orchestratorMemberId: orchestrator.id,
-    });
+    const mission = await createMissionOnHost(teamId);
     selectMissionSurface(mission.id);
   } catch (error) {
     missionCreationError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    missionCreationPending.value = false;
+  }
+}
+
+function waitForMissionLead(mission: Mission): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const read = () => (props.snapshot.missions?.find(candidate => candidate.id === mission.id) ?? mission).execution?.runs[0];
+    const stop = watch(read, check, { deep: true });
+    const timeout = setTimeout(() => {
+      stop();
+      reject(new Error(t('missions.leadUnavailable')));
+    }, 30_000);
+    function check() {
+      const run = read();
+      if (run?.status === 'running' && run.workerId) {
+        clearTimeout(timeout);
+        stop();
+        resolve(run.workerId);
+      } else if (run?.status === 'failed' || run?.status === 'cancelled') {
+        clearTimeout(timeout);
+        stop();
+        reject(new Error(run.error ?? t('missions.leadUnavailable')));
+      }
+    }
+    check();
+  });
+}
+
+async function submitMissionDraft(prompt: string, options?: RendererSendPromptOptions): Promise<void> {
+  const draft = missionDraft.value;
+  if (!draft || missionCreationPending.value) return;
+  missionCreationPending.value = true;
+  try {
+    draft.created ??= await createMissionOnHost(draft.teamId, draft.host === 'local' ? undefined : draft.host);
+    const leadId = await waitForMissionLead(draft.created);
+    if (draft.selection) await props.updateAgent({ id: leadId, selection: { ...draft.selection } });
+    await conversationActions.value.send(leadId, prompt, options);
+    if (missionDraft.value === draft && activeHost.value === 'mission') selectMissionSurface(draft.created.id);
   } finally {
     missionCreationPending.value = false;
   }
@@ -1394,10 +1477,11 @@ async function createAgentInMissionWorktree(input: { missionId: string; worktree
   const mission = props.snapshot.missions?.find(candidate => candidate.id === input.missionId);
   const workspace = missionCreatedWorkspaces(mission).find(candidate => candidate.path === input.worktreePath);
   if (!mission || !workspace) return;
-  const backend = preferredProviderChoices(props.snapshot)[0];
+  const backend = preferredProviderChoices(props.snapshot, mission.remoteConnectionId)[0];
   if (!backend) { openSettings(); return; }
   try {
-    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, selection: { provider: backend }, teamId: mission.teamId });
+    const agent = await props.createAgent({ name: mission.outcome, folder: workspace.path, selection: { provider: backend }, teamId: mission.teamId,
+      ...(mission.remoteConnectionId ? { remoteConnectionId: mission.remoteConnectionId } : {}) });
     if (agent) selectAgentFromShell(agent.id);
   } catch (error) {
     ElMessage.error(localizedErrorMessage(error, t));
@@ -1600,10 +1684,19 @@ watch([() => windowState.missionId.value, () => props.snapshot.missions], ([miss
   selectMissionSurface(missionId);
 }, { immediate: true });
 watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
-  if (activeHost.value === 'mission' && ((previousMission && !mission) || (!cockpitScope.value && mission && mission.teamId !== team?.id))) {
+  const displayedTeamId = mission?.teamId ?? missionDraft.value?.teamId;
+  if (activeHost.value === 'mission' && (
+    (previousMission && !mission && !missionDraft.value)
+    || (!cockpitScope.value && displayedTeamId && displayedTeamId !== team?.id)
+  )) {
     selectedMissionId.value = null;
     activeHost.value = 'agent';
   }
+});
+watch(activeHost, surface => {
+  if (surface === 'mission' || !missionDraft.value) return;
+  missionDraft.value = null;
+  closeMissionIssuePicker();
 });
 // The Mission may reach the renderer a moment after the request, so keep the request until it is known.
 const pendingMissionFocusId = ref<string | null>(null);

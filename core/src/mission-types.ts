@@ -98,6 +98,8 @@ export type MissionDispatchPlan = MissionDispatchInput & { revision: number; lea
 
 export type MissionExecution = {
   teamId: string;
+  /** Repository keys available to a hosted Mission before any checkout is provisioned. */
+  repositoryCatalog?: MissionRepository[];
   debugFixture?: true;
   implementationModel?: ExecutionSelection;
   /** Opt-in shared-checkout execution; absent means one implementation worker per repository. */
@@ -119,6 +121,8 @@ export type MissionExecution = {
 export type Mission = {
   id: string;
   teamId: string;
+  /** Set on the controller projection only. */
+  remoteConnectionId?: string;
   outcome: string;
   workflow: { type: MissionWorkflowType; version: 1 };
   stage: MissionStage;
@@ -135,8 +139,10 @@ export type CreateMissionInput = {
   outcome: string;
   workflowType: MissionWorkflowType;
   teamId: string;
-  orchestratorMemberId: string;
+  orchestratorMemberId?: string;
+  remoteConnectionId?: string;
 };
+export type MissionRepository = { key: string; url?: string; checkoutPath?: string };
 export type DeleteMissionInput = { id: string; revision: number; deleteWorktrees: boolean; confirmed: true };
 export type UpdateMissionInput = {
   id: string;

@@ -2,7 +2,7 @@ import { isExecutionSelection } from './execution-selection';
 import { missionImplementationBusy, pendingMissionRun } from './mission-execution';
 import type { AppSnapshot } from './contracts';
 import { createEntityId } from './ids';
-import type { Mission, MissionArtifacts, MissionExecution, MissionReviewFinding, MissionStage, MissionTicket } from './mission-types';
+import type { Mission, MissionArtifacts, MissionExecution, MissionRepository, MissionReviewFinding, MissionStage, MissionTicket } from './mission-types';
 import { featureStages, findMissionWorkflow, missionWorkflow } from './mission-workflows';
 
 export { featureStages } from './mission-workflows';
@@ -87,7 +87,15 @@ export function isMission(v: unknown): v is Mission {
     && (v.status !== 'completed' || v.stage === 'review' || v.stage === 'ship') && isMissionArtifacts(v.artifacts)
     && (v.artifactFiles === undefined || isArtifactFiles(v.artifactFiles)) && isStageAgents(v.stageAgentIds)
     && (v.execution === undefined || isMissionExecution(v.execution))
+    && (v.remoteConnectionId === undefined || text(v.remoteConnectionId))
     && Number.isInteger(v.revision) && (v.revision as number) >= 0 && text(v.createdAt) && text(v.updatedAt);
+}
+
+export function isMissionRepositoryCatalog(value: unknown): value is MissionRepository[] {
+  return Array.isArray(value) && value.every(repo => record(repo) && text(repo.key) && !!repo.key.trim()
+    && (repo.url === undefined || (text(repo.url) && !!repo.url.trim()))
+    && (repo.checkoutPath === undefined || (text(repo.checkoutPath) && !!repo.checkoutPath.trim())))
+    && new Set(value.map(repo => repo.key)).size === value.length;
 }
 export function missionStageReady(stage: MissionStage, a: MissionArtifacts): boolean {
   return missionWorkflow('shapeAndShipFeature').stageReady(stage, a);
@@ -165,6 +173,7 @@ function isMissionDispatchPlan(v: unknown): boolean {
 
 function isMissionExecution(v: unknown): v is MissionExecution {
   return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
+    && (v.repositoryCatalog === undefined || isMissionRepositoryCatalog(v.repositoryCatalog))
     && (v.debugFixture === undefined || v.debugFixture === true)
     && (v.stoppedAgentIds === undefined || (Array.isArray(v.stoppedAgentIds) && v.stoppedAgentIds.every(text)))
     && (v.supervisorUpdates === undefined || (Array.isArray(v.supervisorUpdates) && v.supervisorUpdates.every(update => record(update)
